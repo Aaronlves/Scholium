@@ -1670,7 +1670,6 @@ struct AgentCLISettingsView: View {
                 .accessibilityIdentifier("scholium.agentCLI.copyInstructions")
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityIdentifier("scholium.agentCLI.section")
         }
     }
 }
@@ -1921,6 +1920,7 @@ struct WorkspaceSettingsView: View {
                     HStack(spacing: ScholiumMetrics.Settings.rootSpacing) {
                         triptychPicker
                         triptychActions
+                        Spacer(minLength: ScholiumMetrics.Settings.editorContentInset)
                     }
                     VStack(
                         alignment: .leading,
@@ -2379,10 +2379,16 @@ private struct AppearanceProfileEditor: View {
 
             Divider()
 
-            DisclosureGroup(
-                "Advanced Appearance",
-                isExpanded: $showsAdvancedAppearance
+            ScholiumDisclosureHeaderButton(
+                isExpanded: showsAdvancedAppearance,
+                accessibilityLabel: Text("Advanced Appearance"),
+                accessibilityIdentifier: "scholium.appearance.advanced",
+                action: { showsAdvancedAppearance.toggle() }
             ) {
+                Text("Advanced Appearance")
+                    .font(ScholiumTypography.interface(.body))
+            }
+            if showsAdvancedAppearance {
                 VStack(
                     alignment: .leading,
                     spacing: ScholiumGrid.Spacing.sectionSeparation
@@ -2451,6 +2457,7 @@ private struct AppearanceProfileEditor: View {
                     }
                 }
                 .padding(.top, ScholiumGrid.Spacing.inlineControlGap)
+                .padding(.leading, ScholiumGrid.Spacing.nestedContentInset)
             }
         }
     }

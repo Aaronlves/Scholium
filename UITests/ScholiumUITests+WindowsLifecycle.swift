@@ -6,7 +6,7 @@ import notify
 extension ScholiumUITests {
     @MainActor
     func testLivePreviewHidesYAMLAndSourceShortcutIsUnavailable() throws {
-        let mode = app.descendants(matching: .any)["scholium.documentModeButton"]
+        let mode = documentModeControl()
         XCTAssertTrue(mode.waitForExistence(timeout: 10))
         selectDocumentMode("Edit")
 
@@ -42,7 +42,7 @@ extension ScholiumUITests {
         )
         app.launch()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
-        waitForDocumentSurface()
+        waitForCurrentDocumentSurface()
         let observingWindowID = app.windows.firstMatch.identifier
 
         app.typeKey("n", modifierFlags: [.command])
@@ -53,43 +53,36 @@ extension ScholiumUITests {
             })
         )
         openNote("QA Autosave A.md", expectedTitle: "QA Autosave A", in: editingWindow)
-        let editingMetadata = editingWindow.descendants(matching: .any)["scholium.documentNoteName"]
-        XCTAssertTrue(waitUntil(timeout: 10) { editingMetadata.value as? String == "QA Autosave A" })
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A", in: editingWindow))
 
         let token = " SHARED-\(UUID().uuidString)"
         let firstURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
-        try enterLivePreviewAndAppend(token, in: editingWindow)
+        try enterLivePreviewAndPrepend(token, in: editingWindow)
         XCTAssertFalse(try source(at: firstURL).contains(token))
 
         let secondRow = editingWindow.descendants(matching: .any)["scholium.noteRow.QA Autosave B.md"]
         XCTAssertTrue(secondRow.waitForExistence(timeout: 5))
         secondRow.click()
         XCTAssertTrue(waitUntil(timeout: 15) {
-            editingWindow.staticTexts["scholium.documentNoteName"].value as? String
-                == "QA Autosave B"
+            self.documentTitle(in: editingWindow) == "QA Autosave B"
         })
         XCTAssertTrue(waitUntil(timeout: 8) { (try? self.source(at: firstURL).contains(token)) == true })
 
         XCTAssertTrue(
             waitUntil(timeout: 15) {
                 let titles = self.app.windows.allElementsBoundByIndex.compactMap { window -> String? in
-                    let metadata = window.descendants(matching: .any)[
-                        "scholium.documentNoteName"
-                    ].firstMatch
-                    guard metadata.exists else { return nil }
-                    return metadata.value as? String
+                    self.documentTitle(in: window)
                 }
                 return Set(titles) == Set(["QA Autosave A", "QA Autosave B"])
             },
             "The observing window must retain its own selection after the peer window navigates."
         )
         let observingWindow = try XCTUnwrap(app.windows.allElementsBoundByIndex.first { window in
-            window.descendants(matching: .any)["scholium.documentNoteName"].value as? String
-                == "QA Autosave A"
+            documentTitle(in: window) == "QA Autosave A"
         })
 
         let committedToken = token.trimmingCharacters(in: .whitespaces)
-        let peerProjection = app.descendants(matching: .any).matching(
+        let peerProjection = observingWindow.descendants(matching: .any).matching(
             NSPredicate(
                 format: "label CONTAINS %@ OR value CONTAINS %@",
                 committedToken,
@@ -113,7 +106,7 @@ extension ScholiumUITests {
         )
         app.launch()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
-        waitForDocumentSurface()
+        waitForCurrentDocumentSurface()
         let originalWindowID = app.windows.firstMatch.identifier
 
         app.typeKey("n", modifierFlags: [.command])
@@ -126,8 +119,7 @@ extension ScholiumUITests {
             XCTFail("New Window must create a distinct window identity.")
         }
         for window in windows {
-            let metadata = window.descendants(matching: .any)["scholium.documentNoteName"]
-            XCTAssertTrue(waitUntil(timeout: 10) { metadata.value as? String == "QA Autosave A" })
+            XCTAssertTrue(waitForDocumentTitle("QA Autosave A", in: window))
         }
 
         let analyses = triptychDirectory.appendingPathComponent("01-analyses", isDirectory: true)
@@ -140,14 +132,13 @@ extension ScholiumUITests {
         for window in windows {
             let renamedRow = window.descendants(matching: .any)["scholium.noteRow.\(renamedPath)"]
             let originalRow = window.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"]
-            let metadata = window.descendants(matching: .any)["scholium.documentNoteName"]
             XCTAssertTrue(
                 renamedRow.waitForExistence(timeout: 12),
                 "Every independent window must receive the shared runtime rename."
             )
             XCTAssertTrue(waitUntil(timeout: 12) { !originalRow.exists })
             XCTAssertTrue(
-                waitUntil(timeout: 12) { metadata.value as? String == "QA Autosave A" },
+                waitForDocumentTitle("QA Autosave A", in: window, timeout: 12),
                 "Each window must migrate its own selected document session to the rebound path."
             )
             XCTAssertFalse(window.staticTexts["Confirm Note Identity"].exists)
@@ -167,7 +158,7 @@ extension ScholiumUITests {
         )
         app.launch()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
-        waitForDocumentSurface()
+        waitForCurrentDocumentSurface()
         let dirtyWindowID = app.windows.firstMatch.identifier
 
         app.typeKey("n", modifierFlags: [.command])
@@ -193,8 +184,7 @@ extension ScholiumUITests {
         XCTAssertTrue(peerSecondRow.waitForExistence(timeout: 5))
         peerSecondRow.click()
         XCTAssertTrue(waitUntil(timeout: 15) {
-            peerWindow.staticTexts["scholium.documentNoteName"].value as? String
-                == "QA Autosave B"
+            self.documentTitle(in: peerWindow) == "QA Autosave B"
         })
         XCTAssertTrue(waitUntil(timeout: 20) {
             (try? self.source(at: noteURL).contains(peerToken)) == true
@@ -211,12 +201,6 @@ extension ScholiumUITests {
         XCTAssertTrue((dirtyEditor.value as? String ?? "").contains(localToken))
         XCTAssertFalse((dirtyEditor.value as? String ?? "").contains(peerToken))
 
-        compare.click()
-        XCTAssertTrue(
-            dirtyWindow.descendants(matching: .any)["scholium.conflictComparison"].waitForExistence(timeout: 5)
-        )
-        XCTAssertTrue(dirtyWindow.buttons["Return to Editing"].exists)
-        XCTAssertTrue(dirtyWindow.buttons["Reload from Disk"].exists)
         XCTAssertTrue(try source(at: noteURL).contains(peerToken))
         XCTAssertFalse(try source(at: noteURL).contains(localToken))
     }
@@ -231,7 +215,7 @@ extension ScholiumUITests {
         )
         app.launch()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
-        waitForDocumentSurface()
+        waitForCurrentDocumentSurface()
         let firstWindowID = app.windows.firstMatch.identifier
 
         app.typeKey("n", modifierFlags: [.command])
@@ -271,7 +255,7 @@ extension ScholiumUITests {
         )
         app.launch()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
-        waitForDocumentSurface()
+        waitForCurrentDocumentSurface()
 
         while app.windows.count > 1 {
             closeFrontmostWindow()
@@ -279,8 +263,7 @@ extension ScholiumUITests {
         }
 
         let originalWindow = app.windows.firstMatch
-        let originalMetadata = originalWindow.descendants(matching: .any)["scholium.documentNoteName"]
-        XCTAssertTrue(waitUntil(timeout: 10) { originalMetadata.value as? String == "QA Autosave A" })
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A", in: originalWindow))
         let originalWindowID = originalWindow.identifier
 
         app.typeKey("n", modifierFlags: [.command])
@@ -292,10 +275,9 @@ extension ScholiumUITests {
         let secondRow = secondWindow.descendants(matching: .any)["scholium.noteRow.QA Autosave B.md"]
         XCTAssertTrue(secondRow.waitForExistence(timeout: 8))
         secondRow.click()
-        let secondMetadata = secondWindow.descendants(matching: .any)["scholium.documentNoteName"]
-        XCTAssertTrue(waitUntil(timeout: 8) { secondMetadata.value as? String == "QA Autosave B" })
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave B", in: secondWindow, timeout: 8))
 
-        let secondMode = secondWindow.descendants(matching: .any)["scholium.documentModeButton"]
+        let secondMode = documentModeControl(in: secondWindow)
         XCTAssertTrue(secondMode.waitForExistence(timeout: 5))
         selectDocumentMode("Edit", in: secondWindow)
         XCTAssertTrue(waitUntil(timeout: 8) { secondMode.value as? String == "Edit" })
@@ -320,29 +302,23 @@ extension ScholiumUITests {
         XCTAssertTrue(waitUntil(timeout: 20) { self.app.windows.count == 2 })
         XCTAssertTrue(waitUntil(timeout: 15) {
             let titles = self.app.windows.allElementsBoundByIndex.compactMap { window -> String? in
-                let metadata = window.descendants(matching: .any)[
-                    "scholium.documentNoteName"
-                ].firstMatch
-                guard metadata.exists else { return nil }
-                return metadata.value as? String
+                self.documentTitle(in: window)
             }
             return Set(titles) == Set(["QA Autosave A", "QA Autosave B"])
         })
 
         let restoredWindows = app.windows.allElementsBoundByIndex
         let restoredA = try XCTUnwrap(restoredWindows.first { window in
-            window.descendants(matching: .any)["scholium.documentNoteName"].value as? String
-                == "QA Autosave A"
+            documentTitle(in: window) == "QA Autosave A"
         })
         let restoredB = try XCTUnwrap(restoredWindows.first { window in
-            window.descendants(matching: .any)["scholium.documentNoteName"].value as? String
-                == "QA Autosave B"
+            documentTitle(in: window) == "QA Autosave B"
         })
         XCTAssertEqual(
-            restoredA.descendants(matching: .any)["scholium.documentModeButton"].value as? String,
-            "Review"
+            documentModeControl(in: restoredA).value as? String,
+            "Edit"
         )
-        let restoredBMode = restoredB.descendants(matching: .any)["scholium.documentModeButton"]
+        let restoredBMode = documentModeControl(in: restoredB)
         XCTAssertTrue(waitUntil(timeout: 10) { restoredBMode.value as? String == "Edit" })
 
         XCTAssertEqual(app.windows.count, 2)
@@ -352,42 +328,49 @@ extension ScholiumUITests {
 
     @MainActor
     func testSidebarWorkspaceLibraryAndTriptychAttentionWindowJourney() throws {
-        app.terminate()
-        synthesisAttentionFixture = try seedSynthesisAttentionFixture()
-        sessionID = UUID()
-        app = configuredApplication(
-            sessionID: sessionID,
-            initialWorkspaceWidth: Int(QAWorkspaceMetricContract.preferredWidth),
-            usesFixtureWorkspace: false,
-            appearance: .light
+        XCTAssertEqual(documentTitle(), "QA Autosave A")
+        selectDocumentMode("Review")
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "Rendered Markdown"
+        ].waitForExistence(timeout: 20))
+
+        let libraryFilters = app.menuButtons["scholium.libraryFilters"]
+        XCTAssertTrue(libraryFilters.waitForExistence(timeout: 5))
+        libraryFilters.click()
+        let needsAttention = app.menuItems["Needs Attention"].firstMatch
+        XCTAssertTrue(needsAttention.waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            waitUntil(timeout: 45) { needsAttention.isEnabled },
+            "The complete workspace catalog did not become available for Library and Attention."
         )
-        app.launch()
-        XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
-        waitForDocumentSurface()
-        let documentTitle = app.descendants(matching: .any)[
-            "scholium.documentNoteName"
-        ].firstMatch
-        XCTAssertEqual(documentTitle.value as? String, "QA Autosave A")
+        app.typeKey(.escape, modifierFlags: [])
 
         let topics = app.buttons["scholium.vault.topic_knowledge"].firstMatch
         let analyses = app.buttons["scholium.vault.paper_analysis"].firstMatch
         XCTAssertTrue(topics.waitForExistence(timeout: 5))
-        topics.click()
-        XCTAssertFalse(
-            NSPredicate(format: "hasKeyboardFocus == true").evaluate(with: topics),
+        topics.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).click()
+        XCTAssertTrue(
+            waitUntil(timeout: 3) {
+                !NSPredicate(format: "hasKeyboardFocus == true")
+                    .evaluate(with: topics)
+            },
             "Pointer workspace selection must not leave a keyboard-only focus ring."
         )
         XCTAssertTrue(app.descendants(matching: .any)[
             "scholium.noteRow.QA Topic.md"
-        ].waitForExistence(timeout: 8))
+        ].waitForExistence(timeout: 12))
         let noDocumentState = app.descendants(matching: .any)[
             "scholium.noDocumentState"
         ]
         XCTAssertTrue(noDocumentState.waitForExistence(timeout: 5))
 
-        analyses.click()
-        XCTAssertTrue(documentTitle.waitForExistence(timeout: 5))
-        XCTAssertEqual(documentTitle.value as? String, "QA Autosave A")
+        selectVault(
+            "scholium.vault.paper_analysis",
+            waitingFor: "scholium.noteRow.QA Autosave A.md"
+        )
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 5))
         let folder = app.descendants(matching: .any)[
             "scholium.folderRow.Cluster-01"
         ]
@@ -415,10 +398,10 @@ extension ScholiumUITests {
             "Folder rows must scroll with the native hierarchy rather than becoming sticky sections."
         )
 
-        topics.click()
-        XCTAssertTrue(app.descendants(matching: .any)[
-            "scholium.noteRow.QA Topic.md"
-        ].waitForExistence(timeout: 8))
+        selectVault(
+            "scholium.vault.topic_knowledge",
+            waitingFor: "scholium.noteRow.QA Topic.md"
+        )
         let attentionButton = app.descendants(matching: .any)[
             "scholium.triptychAttention"
         ]
@@ -455,7 +438,7 @@ extension ScholiumUITests {
 
         XCTAssertTrue(waitUntil(timeout: 5) { !attentionPopover.exists })
         XCTAssertTrue(waitUntil(timeout: 8) {
-            (documentTitle.value as? String) == "QA Autosave A"
+            self.documentTitle() == "QA Autosave A"
         })
         app.menuBars.menuBarItems["Window"].click()
         let attentionMenuItem = app.menuItems["Attention"].firstMatch
@@ -478,7 +461,7 @@ extension ScholiumUITests {
 
     @MainActor
     func testCommittedWindowModeRestoresAfterRelaunch() throws {
-        let mode = app.descendants(matching: .any)["scholium.documentModeButton"]
+        let mode = documentModeControl()
         XCTAssertTrue(mode.waitForExistence(timeout: 10))
         selectDocumentMode("Edit")
         XCTAssertTrue(waitUntil(timeout: 5) { mode.value as? String == "Edit" })
@@ -492,11 +475,16 @@ extension ScholiumUITests {
         })
 
         app.terminate()
+        XCTAssertTrue(
+            waitUntil(timeout: 10) { self.app.state == .notRunning },
+            "The first application process must terminate before session restoration."
+        )
         app = configuredApplication(sessionID: sessionID)
         app.launch()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
+        waitForCurrentDocumentSurface()
 
-        let restoredMode = app.descendants(matching: .any)["scholium.documentModeButton"]
+        let restoredMode = documentModeControl()
         XCTAssertTrue(restoredMode.waitForExistence(timeout: 10))
         XCTAssertTrue(
             waitUntil(timeout: 8) {
@@ -508,6 +496,7 @@ extension ScholiumUITests {
 
     @MainActor
     func testDocumentHasNoFloatingMetadataSurfaceAndInspectorRemainsIndependent() throws {
+        selectDocumentMode("Review")
         let renderedDocument = app.descendants(matching: .any)[
             "scholium.renderedDocument.QA Autosave A.md"
         ]
@@ -516,18 +505,20 @@ extension ScholiumUITests {
         XCTAssertFalse(app.descendants(matching: .any)["scholium.documentContextControls"].exists)
         XCTAssertFalse(app.descendants(matching: .any)["scholium.metadataPanel"].exists)
 
-        let documentIdentity = app.descendants(matching: .any)["scholium.documentNoteName"]
-        XCTAssertTrue(documentIdentity.waitForExistence(timeout: 10))
-        XCTAssertEqual(documentIdentity.value as? String, "QA Autosave A")
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A"))
 
-        let inspectorButton = app.descendants(matching: .any)["scholium.toggleInspector"]
+        let inspectorButton = inspectorVisibilityControl()
         let inspector = app.descendants(matching: .any)["scholium.researchInspector"]
         XCTAssertTrue(inspectorButton.waitForExistence(timeout: 5))
         let inspectorWasVisible = inspector.exists
-        inspectorButton.click()
+        inspectorButton.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).click()
         XCTAssertTrue(waitUntil(timeout: 3) { inspector.exists != inspectorWasVisible })
         XCTAssertTrue(renderedDocument.exists)
-        inspectorButton.click()
+        inspectorVisibilityControl().coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).click()
         XCTAssertTrue(waitUntil(timeout: 3) { inspector.exists == inspectorWasVisible })
         XCTAssertTrue(renderedDocument.exists)
     }

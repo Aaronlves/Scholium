@@ -1359,6 +1359,11 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                     }
                 }
                 updatePresentation { $0.complete(appliedMode) }
+                // CodeMirror has replaced its exact source, but WebKit can
+                // retain the previous accessibility value until a separate
+                // DOM interaction occurs. Invalidate that value projection
+                // without moving focus or adding an audible announcement.
+                NSAccessibility.post(element: webView, notification: .valueChanged)
                 flushPendingLine()
             } catch {
                 guard intendedRequestEpoch == requestEpoch,

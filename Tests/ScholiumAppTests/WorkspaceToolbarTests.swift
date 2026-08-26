@@ -157,6 +157,45 @@ struct WorkspaceToolbarTests {
         }
     }
 
+    @Test("Peripheral controls mirror their current accessible visibility state")
+    func peripheralControlsMirrorVisibility() async throws {
+        let model = WindowModel(workspaceStore: makeTestWorkspaceStore())
+        let split = testSplitViewController()
+        let window = testWindow()
+        window.contentViewController = split
+        window.layoutIfNeeded()
+        defer {
+            window.toolbar = nil
+            window.close()
+        }
+
+        let controller = ScholiumWorkspaceToolbarController(
+            appState: model,
+            windowActions: inertWindowActions,
+            splitViewController: split
+        )
+        controller.install(in: window)
+
+        let toolbar = try #require(window.toolbar)
+        let sidebar = try #require(item(
+            ScholiumWorkspaceToolbarController.Item.sidebar,
+            in: toolbar
+        ))
+        let sidebarButton = try #require(sidebar.view?.subviews.first as? NSButton)
+        #expect(sidebarButton.accessibilityLabel() == "Hide Sidebar")
+        #expect(sidebarButton.accessibilityValue() as? String == "Shown")
+
+        model.shellState.recordLibraryVisibility(false)
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async {
+                continuation.resume()
+            }
+        }
+
+        #expect(sidebarButton.accessibilityLabel() == "Show Sidebar")
+        #expect(sidebarButton.accessibilityValue() as? String == "Hidden")
+    }
+
     private var inertWindowActions: WorkspaceWindowActions {
         WorkspaceWindowActions(
             setLibraryVisible: { _ in },

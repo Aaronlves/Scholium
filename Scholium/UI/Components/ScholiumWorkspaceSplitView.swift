@@ -665,16 +665,45 @@ struct ScholiumWorkspaceSplitView<Library: View, Document: View, Apparatus: View
                   libraryItem != nil,
                   libraryIsVisible != visible
             else { return }
+            let retainedApparatusWidth = currentApparatusWidth
             if animated {
                 NSAnimationContext.runAnimationGroup { context in
                     context.allowsImplicitAnimation = true
                     libraryItem.isCollapsed = !visible
+                } completionHandler: {
+                    Task { @MainActor in
+                        self.restoreApparatusWidth(retainedApparatusWidth)
+                    }
                 }
             } else {
                 libraryItem.isCollapsed = !visible
                 splitView.layoutSubtreeIfNeeded()
+                restoreApparatusWidth(retainedApparatusWidth)
             }
             reportVisibility()
+        }
+
+        private var currentApparatusWidth: CGFloat? {
+            guard apparatusItem != nil,
+                  !apparatusItem.isCollapsed,
+                  let apparatusView = splitView.arrangedSubviews.last
+            else { return nil }
+            splitView.layoutSubtreeIfNeeded()
+            return apparatusView.frame.width
+        }
+
+        private func restoreApparatusWidth(_ width: CGFloat?) {
+            guard let width,
+                  apparatusItem != nil,
+                  !apparatusItem.isCollapsed,
+                  splitView.arrangedSubviews.count >= 3
+            else { return }
+            splitView.layoutSubtreeIfNeeded()
+            splitView.setPosition(
+                splitView.bounds.maxX - width,
+                ofDividerAt: splitView.arrangedSubviews.count - 2
+            )
+            splitView.layoutSubtreeIfNeeded()
         }
 
         func setResearchInspectorVisible(_ visible: Bool, animated: Bool) {

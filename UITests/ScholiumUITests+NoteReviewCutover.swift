@@ -73,7 +73,7 @@ extension ScholiumUITests {
             waitingFor: "scholium.noteRow.QA Topic.md"
         )
         openNote("QA Topic.md", expectedTitle: "QA Topic", in: workspace)
-        workspace.buttons["scholium.showResearchRecords"].click()
+        clickResearchRecordsControl(in: workspace)
         XCTAssertTrue(firstRow.waitForExistence(timeout: 10))
         XCTAssertTrue(recordsWindow.descendants(matching: .any)[
             "scholium.researchRecord.row.\(secondRecordID.uuidString)"
@@ -349,7 +349,13 @@ extension ScholiumUITests {
         ].waitForExistence(timeout: 8))
         let copy = actionSheet.buttons["scholium.researchAction.copyHandoff"]
         XCTAssertTrue(copy.waitForExistence(timeout: 5))
-        XCTAssertTrue(copy.isEnabled)
+        let researchRequest = actionSheet.textViews[
+            "scholium.researchAction.academicText.research-request"
+        ]
+        XCTAssertTrue(researchRequest.waitForExistence(timeout: 5))
+        researchRequest.click()
+        researchRequest.typeText("Synthesize this fixture without changing source.")
+        XCTAssertTrue(waitUntil(timeout: 5) { copy.isEnabled })
         copy.click()
         XCTAssertTrue(waitUntil(timeout: 15) { !actionSheet.exists })
 
@@ -410,9 +416,9 @@ extension ScholiumUITests {
     private func openCurrentNoteRecords(
         in workspace: XCUIElement
     ) throws -> XCUIElement {
-        let recordsButton = workspace.buttons["scholium.showResearchRecords"]
+        let recordsButton = researchRecordsControl(in: workspace)
         XCTAssertTrue(recordsButton.waitForExistence(timeout: 5))
-        recordsButton.click()
+        clickResearchRecordsControl(in: workspace)
         let triptych = try triptychID(at: triptychDirectory)
         let window = app.windows[
             "scholium-research-records-\(triptych.uuidString.lowercased())"

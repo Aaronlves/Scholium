@@ -69,7 +69,12 @@ final class WindowCommandObservation: ObservableObject {
             changes(researchActionController.$pendingCancellationBarrierCount),
         ]
 
+        // `@Published` sends before storing its new value. Deliver command
+        // invalidation on the next main-queue turn so imperative consumers
+        // such as the native toolbar read the committed presentation state,
+        // rather than refreshing once against the value being replaced.
         Publishers.MergeMany(commandChanges)
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] in self?.advanceRevision() }
             .store(in: &cancellables)
     }

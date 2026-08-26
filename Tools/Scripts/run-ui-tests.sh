@@ -14,7 +14,19 @@ QA_RUN_LOCK="${ROOT}/.build/com.scholium.qa.ui-tests.lock"
 DEVELOPER_DIR="$("${ROOT}/Tools/Scripts/resolve-xcode-developer-dir.sh")"
 export SCHOLIUM_QA_FIXTURES="${FIXTURES}"
 
+require_qa_free_space() {
+  local available_kb minimum_kb
+  available_kb="$(df -Pk "${ROOT}" | awk 'NR == 2 { print $4 }')"
+  minimum_kb=$((20 * 1024 * 1024))
+  if [[ ! "${available_kb}" =~ '^[0-9]+$' ]] || (( available_kb < minimum_kb )); then
+    print -u2 "Scholium UI automation requires at least 20 GiB free on the workspace volume."
+    print -u2 "Run Tools/Scripts/manage-development-storage.sh clean-all --delete, then retry."
+    exit 74
+  fi
+}
+
 acquire_qa_run_lock() {
+  mkdir -p "${ROOT}/.build"
   if mkdir "${QA_RUN_LOCK}" 2>/dev/null; then
     print "$$" > "${QA_RUN_LOCK}/pid"
     return
@@ -98,6 +110,7 @@ acquire_qa_run_lock
 trap cleanup EXIT
 
 "${ROOT}/Tools/Scripts/require-unlocked-ui-host.sh"
+require_qa_free_space
 
 DEVELOPER_DIR="${DEVELOPER_DIR}" "${ROOT}/Tools/Scripts/build-qa-app.sh"
 [[ -d "${QA_APP}" && -d "${FIXTURES}" ]] || {

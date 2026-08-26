@@ -4226,10 +4226,19 @@ final class WindowModel: ObservableObject {
             return
         }
 
-        await windowWorkspaceController.refreshRegistrations()
-        await refreshWorkspaceAssignment(
-            preferredTriptychID: requestedTriptychID ?? stored.triptychID
-        )
+        if ScholiumRuntimeIsolation.fixtureRootURL() != nil {
+            // A disposable QA fixture is reconstructed from its explicit root
+            // on every process launch. Its saved window presentation is still
+            // real, but it cannot authorize restoration before that isolated
+            // workspace has installed its current capabilities and document
+            // projection in this process.
+            await restoreWorkspaceIfNeeded()
+        } else {
+            await windowWorkspaceController.refreshRegistrations()
+            await refreshWorkspaceAssignment(
+                preferredTriptychID: requestedTriptychID ?? stored.triptychID
+            )
+        }
         guard let restoredAssignment = workspaceAssignment else {
             windowWorkspaceController.markInitialRestoreAttempted()
             return
@@ -4320,6 +4329,19 @@ final class WindowModel: ObservableObject {
             restoredPresentation.documentTextScale
                 ?? ScholiumMetrics.Document.defaultTextScale
         )
+        if ScholiumRuntimeIsolation.fixtureRootURL() != nil {
+            // The stored presentation contains no editor bytes, but it does
+            // retain the selected committed document for each window. Restore
+            // that identity before falling back to the launch-only QA note so
+            // multiple fixture windows do not all converge on the same note.
+            if let selected = restoredPresentation
+                .workspaceSession(for: selectedWorkspace)?.selectedDocument,
+               selected.vaultID == restoredAssignment.vault(for: selectedWorkspace)?.id {
+                openNote(selected.relativePath)
+            } else {
+                openRequestedTestNoteIfNeeded()
+            }
+        }
     }
 
     func persistWindowSessionNow() {

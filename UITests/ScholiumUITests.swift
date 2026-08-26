@@ -65,7 +65,7 @@ final class ScholiumUITests: XCTestCase {
     /// compact workspace shell: it never owns the three-region split or its
     /// toolbar, and it is replaced by the configured workspace on success.
     enum QABootstrapMetricContract {
-        static let preferredWidth: CGFloat = 720
+        static let preferredWidth: CGFloat = 760
     }
 
     enum QAAppearance: String, CaseIterable {
@@ -90,7 +90,6 @@ final class ScholiumUITests: XCTestCase {
         let recommendationID: UUID?
         let analysisNoteID: UUID
         let topicNoteID: UUID
-        let tombstoneNoteID: UUID
         let overflowParticipantNoteIDs: [UUID]
     }
 
@@ -104,13 +103,14 @@ final class ScholiumUITests: XCTestCase {
         }
         if name.contains("testWorkspaceInitialDefaultPreservesNativeReachability")
             || name.contains("testNativeToolbarVisualProofAtDefaultWindowSize")
-            || name.contains("testNoDocumentKeepsTrailingToolbarControlsVisibleAndDisabled")
+            || name.contains("testNoDocumentKeepsTriptychRecordsAvailableAndInspectorDisabled")
             || name.contains("testInspectorToolbarItemOpensAndClosesInspector")
             || name.contains("testInspectorDividerResizesWithoutInteractiveCollapse")
             || name.contains("testPeripheralToolbarVisibilityControlsToggleWithPointerCoordinates")
             || name.contains("testAppearanceLineWidthVisualMatrixAndKeyboardControl")
             || name.contains("testDocumentHeadingStudyWrapsLongMixedTitleUsingAcceptedBodyRhythm")
-            || name.contains("testLibraryRemainsReadableAtItsNativeMinimum") {
+            || name.contains("testLibraryRemainsReadableAtItsNativeMinimum")
+            || name.contains("testSidebarWorkspaceLibraryAndTriptychAttentionWindowJourney") {
             return Int(QAWorkspaceMetricContract.preferredWidth)
         }
         return 1_380
@@ -143,7 +143,12 @@ final class ScholiumUITests: XCTestCase {
         sessionID = UUID()
         try createIsolatedTriptych()
         if name.contains(
-            "testResearchRecordActionTombstoneDeepLinkAndCrossTriptychFocus"
+            "testAmbiguousExternalRenameRequiresExplicitIdentityConfirmation"
+        ) {
+            try seedAmbiguousIdentityFixture()
+        }
+        if name.contains(
+            "testResearchRecordActionDeepLinkAndCrossTriptychFocus"
         ) {
             secondTriptychDirectory = try createSecondTriptychFixture()
         }
@@ -165,8 +170,17 @@ final class ScholiumUITests: XCTestCase {
             autosaveDelayMS: name.contains(
                 "testDirtyLivePreviewSearchesThisNoteWithoutSaving"
             ) ? 300_000 : 5_000,
+            appearance: name.contains(
+                "testSidebarWorkspaceLibraryAndTriptychAttentionWindowJourney"
+            ) ? .light : nil,
             openNote: initialOpenNoteForCurrentTest
         )
+        // A runner killed by XCTest cannot execute tearDown, so its QA app can
+        // survive into the next test process. A fresh XCUIApplication can
+        // report `.notRunning` even while that orphan still owns the bundle.
+        // Reclaim every process with the QA-only bundle identifier before the
+        // journey asks SwiftUI to create its one default scene.
+        terminateRunningQAApplications()
         app.launch()
         XCTAssertTrue(
             app.windows.firstMatch.waitForExistence(timeout: 15),

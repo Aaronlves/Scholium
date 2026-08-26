@@ -342,6 +342,7 @@ struct SidebarView: View {
                 }
             )
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.libraryHeader")
     }
 

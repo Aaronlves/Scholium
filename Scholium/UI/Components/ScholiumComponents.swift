@@ -216,6 +216,16 @@ private struct ScholiumSegmentButton<Value: Hashable>: View {
             )
         )
         .scholiumActivationFocus(focusedValue, equals: value)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onEnded { _ in
+                    Task { @MainActor in
+                        await Task.yield()
+                        guard focusedValue.wrappedValue == value else { return }
+                        focusedValue.wrappedValue = nil
+                    }
+                }
+        )
         .onMoveCommand(perform: move)
         .scholiumHoverState { isHovering = $0 }
         .accessibilityLabel(Text(verbatim: title))
@@ -690,6 +700,16 @@ private struct ScholiumTriptychWorkspaceButton: View {
             )
         )
         .scholiumActivationFocus(focusedSlot, equals: slot)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onEnded { _ in
+                    Task { @MainActor in
+                        await Task.yield()
+                        guard focusedSlot.wrappedValue == slot else { return }
+                        focusedSlot.wrappedValue = nil
+                    }
+                }
+        )
         .onMoveCommand(perform: move)
         .disabled(noteCount == nil)
         .accessibilityLabel(ScholiumL10n.dynamicString(slot.displayName))

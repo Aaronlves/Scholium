@@ -4,36 +4,49 @@ import CryptoKit
 import notify
 
 extension ScholiumUITests {
+    @MainActor
+    func terminateRunningQAApplications() {
+        let bundleIdentifier = "com.scholium.qa"
+        let runningApplications = NSRunningApplication.runningApplications(
+            withBundleIdentifier: bundleIdentifier
+        )
+        runningApplications.forEach { $0.terminate() }
+        if !waitUntil(timeout: 5, condition: {
+            NSRunningApplication.runningApplications(
+                withBundleIdentifier: bundleIdentifier
+            ).isEmpty
+        }) {
+            NSRunningApplication.runningApplications(
+                withBundleIdentifier: bundleIdentifier
+            ).forEach { $0.forceTerminate() }
+        }
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                NSRunningApplication.runningApplications(
+                    withBundleIdentifier: bundleIdentifier
+                ).isEmpty
+            },
+            "The previous isolated QA process did not terminate before launch."
+        )
+    }
+
     func localResearchExecutionDirectoryURL() throws -> URL {
         let triptych = try triptychID(at: triptychDirectory)
-        let support = homeDirectory
+        let executionStore = homeDirectory
             .appendingPathComponent("ApplicationSupport", isDirectory: true)
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(triptych.uuidString, isDirectory: true)
-        let candidates = try FileManager.default.contentsOfDirectory(
-            at: support,
-            includingPropertiesForKeys: [.isDirectoryKey]
-        ).filter { candidate in
-            let isDirectory = try? candidate.resourceValues(
-                forKeys: [.isDirectoryKey]
-            ).isDirectory
-            guard isDirectory == true else { return false }
-            return FileManager.default.fileExists(
-                atPath: candidate.appendingPathComponent(
-                    "agent-analysis-creations",
-                    isDirectory: true
-                ).path
-            ) && FileManager.default.fileExists(
-                atPath: candidate.appendingPathComponent(
+            .appendingPathComponent("research-execution-v10", isDirectory: true)
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: executionStore.appendingPathComponent(
                     "unsupported-executions",
                     isDirectory: true
                 ).path
-            )
-        }
-        return try XCTUnwrap(
-            candidates.count == 1 ? candidates.first : nil,
-            "The QA workspace must expose exactly one Local Execution store."
+            ),
+            "The QA workspace must expose the current Local Execution store."
         )
+        return executionStore
     }
 
     var unreadableLocalExecutionFixtureBytes: Data {
@@ -100,14 +113,14 @@ extension ScholiumUITests {
         }
         guard !isVisiblyHittable() else { return }
 
-        // XCUITest exposes offscreen SwiftUI list rows with their actual frame.
-        // Scroll toward that frame rather than always moving down the list;
-        // an unconditional upward swipe can move a near-top row offscreen.
-        for _ in 0..<12 where !isVisiblyHittable() {
+        // XCUITest exposes offscreen SwiftUI rows with their actual frame. A
+        // swipe can advance by more than one viewport on macOS and oscillate
+        // around a compact target, so use bounded native scroll-wheel deltas.
+        for _ in 0..<24 where !isVisiblyHittable() {
             if element.frame.midY < scrollView.frame.midY {
-                scrollView.swipeDown(velocity: .slow)
+                scrollView.scroll(byDeltaX: 0, deltaY: 120)
             } else {
-                scrollView.swipeUp(velocity: .slow)
+                scrollView.scroll(byDeltaX: 0, deltaY: -120)
             }
         }
         XCTAssertTrue(
@@ -165,17 +178,32 @@ extension ScholiumUITests {
             currentFrame = window.frame
         }
 
-        let widthDelta = width - currentFrame.width
-        let heightDelta = height.map { $0 - currentFrame.height } ?? 0
-        let resizeCorner = window.coordinate(
-            withNormalizedOffset: CGVector(dx: 0.996, dy: 0.996)
-        )
-        resizeCorner.click(
-            forDuration: 0.15,
-            thenDragTo: resizeCorner.withOffset(
-                CGVector(dx: widthDelta, dy: heightDelta)
+        for _ in 0..<3 {
+            currentFrame = window.frame
+            let widthDelta = width - currentFrame.width
+            let heightDelta = height.map { $0 - currentFrame.height } ?? 0
+            if abs(widthDelta) <= QAWorkspaceMetricContract.frameTolerance,
+               abs(heightDelta) <= QAWorkspaceMetricContract.frameTolerance {
+                break
+            }
+            let resizeCorner = window.coordinate(
+                withNormalizedOffset: CGVector(dx: 0.996, dy: 0.996)
             )
-        )
+            resizeCorner.click(
+                forDuration: 0.15,
+                thenDragTo: resizeCorner.withOffset(
+                    CGVector(dx: widthDelta, dy: heightDelta)
+                )
+            )
+            _ = waitUntil(timeout: 2) {
+                abs(window.frame.width - width)
+                    <= QAWorkspaceMetricContract.frameTolerance
+                    && (height.map {
+                        abs(window.frame.height - $0)
+                            <= QAWorkspaceMetricContract.frameTolerance
+                    } ?? true)
+            }
+        }
         XCTAssertTrue(waitUntil(timeout: 5) {
             abs(window.frame.width - width) <= QAWorkspaceMetricContract.frameTolerance
                 && (height.map {
@@ -359,21 +387,34 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func waitForDocumentSurface() {
-        let renderedDocument = app.descendants(matching: .any).matching(
-            NSPredicate(
-                format: "identifier BEGINSWITH %@ AND identifier != %@ AND identifier != %@",
-                "scholium.renderedDocument.",
-                "scholium.renderedDocument.loading",
-                "scholium.renderedDocument.failed"
-            )
-        ).firstMatch
-        XCTAssertTrue(waitUntil(timeout: 20) { renderedDocument.exists })
+    func waitForCurrentDocumentSurface() {
+        let isUsable = waitUntil(timeout: 20) { self.documentSurfaceIsUsable() }
+        XCTAssertTrue(
+            isUsable,
+            "The current window did not expose an Edit, Source, or rendered document surface."
+        )
     }
 
     @MainActor
-    func waitForCurrentDocumentSurface() {
-        XCTAssertTrue(waitUntil(timeout: 20) { self.documentSurfaceIsUsable() })
+    func settingsWindow() -> XCUIElement {
+        app.windows.allElementsBoundByIndex.first { window in
+            window.descendants(matching: .any)["scholium.settings.root"].exists
+        } ?? app.windows.firstMatch
+    }
+
+    @MainActor
+    func researchRecordsWindow(timeout: TimeInterval = 8) -> XCUIElement {
+        let recordsWindow = app.windows.matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@",
+                "scholium-research-records-"
+            )
+        ).firstMatch
+        XCTAssertTrue(
+            recordsWindow.waitForExistence(timeout: timeout),
+            "Research Records did not expose its keyed native window."
+        )
+        return recordsWindow
     }
 
     @MainActor
@@ -403,7 +444,7 @@ extension ScholiumUITests {
     /// controls through their actual pointer hit-testing paths.
     @MainActor
     func exercisePeripheralVisibilityControls() {
-        waitForDocumentSurface()
+        waitForCurrentDocumentSurface()
         let toolbar = app.toolbars.firstMatch
         XCTAssertTrue(toolbar.waitForExistence(timeout: 5))
 
@@ -421,7 +462,9 @@ extension ScholiumUITests {
         XCTAssertTrue(hideSidebar.waitForExistence(timeout: 5))
         XCTAssertTrue(hideSidebar.isHittable)
         XCTAssertEqual(
-            app.buttons.matching(identifier: "scholium.toggleSidebar").count,
+            toolbar.buttons.matching(
+                NSPredicate(format: "label IN %@", ["Show Sidebar", "Hide Sidebar"])
+            ).count,
             1
         )
         hideSidebar.coordinate(
@@ -433,7 +476,9 @@ extension ScholiumUITests {
         XCTAssertTrue(showSidebar.waitForExistence(timeout: 5))
         XCTAssertTrue(showSidebar.isHittable)
         XCTAssertEqual(
-            app.buttons.matching(identifier: "scholium.toggleSidebar").count,
+            toolbar.buttons.matching(
+                NSPredicate(format: "label IN %@", ["Show Sidebar", "Hide Sidebar"])
+            ).count,
             1
         )
         showSidebar.coordinate(
@@ -455,7 +500,12 @@ extension ScholiumUITests {
         XCTAssertTrue(showInspector.waitForExistence(timeout: 5))
         XCTAssertTrue(showInspector.isHittable)
         XCTAssertEqual(
-            app.buttons.matching(identifier: "scholium.toggleInspector").count,
+            toolbar.buttons.matching(
+                NSPredicate(
+                    format: "label IN %@",
+                    ["Show Research Inspector", "Hide Research Inspector"]
+                )
+            ).count,
             1
         )
         showInspector.coordinate(
@@ -467,7 +517,12 @@ extension ScholiumUITests {
         XCTAssertTrue(hideInspector.waitForExistence(timeout: 5))
         XCTAssertTrue(hideInspector.isHittable)
         XCTAssertEqual(
-            app.buttons.matching(identifier: "scholium.toggleInspector").count,
+            toolbar.buttons.matching(
+                NSPredicate(
+                    format: "label IN %@",
+                    ["Show Research Inspector", "Hide Research Inspector"]
+                )
+            ).count,
             1
         )
         hideInspector.coordinate(
@@ -483,11 +538,12 @@ extension ScholiumUITests {
             "scholium.researchInspector"
         ].firstMatch
         if !inspector.exists {
-            let toggle = app.descendants(matching: .any)[
-                "scholium.toggleInspector"
-            ].firstMatch
+            let toggle = inspectorVisibilityControl()
             XCTAssertTrue(toggle.waitForExistence(timeout: 5))
-            toggle.click()
+            XCTAssertTrue(waitUntil(timeout: 3) { toggle.isHittable })
+            toggle.coordinate(
+                withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+            ).click()
         }
         XCTAssertTrue(inspector.waitForExistence(timeout: 5))
 
@@ -529,10 +585,8 @@ extension ScholiumUITests {
             "The requested note must be available in the target window."
         )
         row.click()
-        let metadata = window.descendants(matching: .any)["scholium.documentNoteName"]
         XCTAssertTrue(
-            metadata.waitForExistence(timeout: 10)
-                && waitUntil(timeout: 10) { metadata.value as? String == expectedTitle },
+            waitForDocumentTitle(expectedTitle, in: window, timeout: 10),
             "The target window must finish opening the requested note."
         )
     }
@@ -582,10 +636,23 @@ extension ScholiumUITests {
     }
 
     @MainActor
+    func enterLivePreviewAndPrepend(_ token: String, in root: XCUIElement? = nil) throws {
+        let editor = enterLivePreview(in: root)
+        editor.typeKey(.home, modifierFlags: [.command])
+        try setPasteboardText(token + "\n")
+        editor.typeKey("v", modifierFlags: [.command])
+        XCTAssertTrue(
+            waitUntil(timeout: 8) {
+                (editor.value as? String ?? "").contains(token)
+            },
+            "The editor must accept the complete synthetic token before the journey tests a save or navigation boundary."
+        )
+    }
+
+    @MainActor
     func selectDocumentMode(_ title: String, in root: XCUIElement? = nil) {
         if let root { focusWorkspaceWindow(root) }
-        let mode = root?.descendants(matching: .any)["scholium.documentModeButton"]
-            ?? app.descendants(matching: .any)["scholium.documentModeButton"]
+        let mode = documentModeControl(in: root)
         XCTAssertTrue(mode.waitForExistence(timeout: 10))
         if mode.value as? String == title { return }
 
@@ -618,6 +685,105 @@ extension ScholiumUITests {
     }
 
     @MainActor
+    func documentModeControl(in root: XCUIElement? = nil) -> XCUIElement {
+        if let root {
+            return root.toolbars.firstMatch.buttons["Document Mode"].firstMatch
+        }
+        return app.toolbars.firstMatch.buttons["Document Mode"].firstMatch
+    }
+
+    @MainActor
+    func inspectorVisibilityControl(in root: XCUIElement? = nil) -> XCUIElement {
+        let toolbar = root?.toolbars.firstMatch ?? app.toolbars.firstMatch
+        let show = toolbar.buttons["Show Research Inspector"].firstMatch
+        return show.exists ? show : toolbar.buttons["Hide Research Inspector"].firstMatch
+    }
+
+    @MainActor
+    func sidebarVisibilityControl(in root: XCUIElement? = nil) -> XCUIElement {
+        let toolbar = root?.toolbars.firstMatch ?? app.toolbars.firstMatch
+        let show = toolbar.buttons["Show Sidebar"].firstMatch
+        return show.exists ? show : toolbar.buttons["Hide Sidebar"].firstMatch
+    }
+
+    @MainActor
+    func researchRecordsControl(in root: XCUIElement? = nil) -> XCUIElement {
+        let toolbar = root?.toolbars.firstMatch ?? app.toolbars.firstMatch
+        let noteRecords = toolbar.buttons["This Note Records"].firstMatch
+        return noteRecords.exists
+            ? noteRecords
+            : toolbar.buttons["Triptych Records"].firstMatch
+    }
+
+    @MainActor
+    func clickInspectorVisibilityControl(in root: XCUIElement? = nil) {
+        let control = inspectorVisibilityControl(in: root)
+        XCTAssertTrue(control.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(timeout: 3) { control.isHittable })
+        control.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).click()
+    }
+
+    @MainActor
+    func clickSidebarVisibilityControl(in root: XCUIElement? = nil) {
+        let control = sidebarVisibilityControl(in: root)
+        XCTAssertTrue(control.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(timeout: 3) { control.isHittable })
+        control.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).click()
+    }
+
+    @MainActor
+    func clickResearchRecordsControl(in root: XCUIElement? = nil) {
+        let control = researchRecordsControl(in: root)
+        XCTAssertTrue(control.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(timeout: 3) { control.isHittable })
+        control.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).click()
+    }
+
+    @MainActor
+    func documentTitle(in root: XCUIElement? = nil) -> String? {
+        let window: XCUIElement
+        if let root {
+            window = root
+        } else {
+            window = app.windows.matching(
+                NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
+            ).firstMatch
+        }
+        guard window.exists else { return nil }
+        return window.title
+    }
+
+    @MainActor
+    func documentTitleElement(in root: XCUIElement? = nil) -> XCUIElement {
+        let window = root ?? app.windows.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
+        ).firstMatch
+        guard let title = documentTitle(in: window) else {
+            return window.staticTexts.firstMatch
+        }
+        return window.staticTexts.matching(
+            NSPredicate(format: "value == %@ OR label == %@", title, title)
+        ).firstMatch
+    }
+
+    @MainActor
+    func waitForDocumentTitle(
+        _ expectedTitle: String,
+        in root: XCUIElement? = nil,
+        timeout: TimeInterval = 10
+    ) -> Bool {
+        waitUntil(timeout: timeout) {
+            self.documentTitle(in: root) == expectedTitle
+        }
+    }
+
+    @MainActor
     func enterLivePreview(in root: XCUIElement? = nil) -> XCUIElement {
         selectDocumentMode("Edit", in: root)
 
@@ -634,17 +800,26 @@ extension ScholiumUITests {
 
     @MainActor
     func chooseSetupFolder(_ folder: URL, role: String) {
-        let openPanelButton = app.buttons["Choose \(role) folder"]
+        let openPanelButton = app.buttons["Choose Folder…"]
         XCTAssertTrue(openPanelButton.waitForExistence(timeout: 5))
         openPanelButton.click()
 
         let panel = app.descendants(matching: .any)["open-panel"]
         XCTAssertTrue(panel.waitForExistence(timeout: 5))
-        let folderEntry = panel.descendants(matching: .any).matching(
-            NSPredicate(format: "value == %@", folder.lastPathComponent)
-        ).firstMatch
-        XCTAssertTrue(folderEntry.waitForExistence(timeout: 5))
-        folderEntry.click()
+        app.typeKey("g", modifierFlags: [.command, .shift])
+        let goToFolderSheet = panel.sheets.firstMatch
+        XCTAssertTrue(goToFolderSheet.waitForExistence(timeout: 5))
+        let pathField = goToFolderSheet.textFields.firstMatch
+        XCTAssertTrue(pathField.waitForExistence(timeout: 5))
+        pathField.click()
+        pathField.typeKey("a", modifierFlags: .command)
+        pathField.typeText(folder.path)
+        XCTAssertEqual(pathField.value as? String, folder.path)
+        for _ in 0..<2 where goToFolderSheet.exists {
+            app.typeKey(.return, modifierFlags: [])
+            _ = waitUntil(timeout: 2) { !goToFolderSheet.exists }
+        }
+        XCTAssertTrue(waitUntil(timeout: 5) { !goToFolderSheet.exists })
 
         let choose = panel.buttons["OKButton"]
         XCTAssertTrue(choose.waitForExistence(timeout: 5))
@@ -659,7 +834,9 @@ extension ScholiumUITests {
 
     @MainActor
     func authorizePortableFolder(_ folder: URL, in owner: XCUIElement? = nil) {
-        let authorizeButton = app.buttons["Authorize folder containing Works"]
+        let authorizeButton = owner == nil
+            ? app.buttons["Authorize This Folder"]
+            : app.buttons["Authorize folder containing Works"]
         XCTAssertTrue(authorizeButton.waitForExistence(timeout: 5))
         authorizeButton.click()
 
@@ -675,11 +852,13 @@ extension ScholiumUITests {
                 "The originating window must present one standard Open panel."
             )
         }
-        let folderEntry = panel.descendants(matching: .any).matching(
-            NSPredicate(format: "value == %@", folder.lastPathComponent)
-        ).firstMatch
-        XCTAssertTrue(folderEntry.waitForExistence(timeout: 5))
-        folderEntry.click()
+        if owner != nil {
+            let folderEntry = panel.descendants(matching: .any).matching(
+                NSPredicate(format: "value == %@", folder.lastPathComponent)
+            ).firstMatch
+            XCTAssertTrue(folderEntry.waitForExistence(timeout: 5))
+            folderEntry.click()
+        }
 
         let authorize = panel.buttons["OKButton"]
         XCTAssertTrue(authorize.waitForExistence(timeout: 5))
@@ -809,9 +988,21 @@ extension ScholiumUITests {
         XCTAssertTrue(destination.waitForExistence(timeout: 10))
         destination.click()
         if openAdvanced {
+            XCTAssertTrue(app.staticTexts[
+                "External Tools & Citations"
+            ].waitForExistence(timeout: 20))
+            let advancedScroll = app.scrollViews[
+                "scholium.researchGuidance.detail"
+            ].firstMatch
+            XCTAssertTrue(advancedScroll.waitForExistence(timeout: 20))
+            let copyInstructions = app.buttons[
+                "scholium.agentCLI.copyInstructions"
+            ]
+            for _ in 0..<8 where !copyInstructions.exists {
+                advancedScroll.swipeUp(velocity: .slow)
+            }
             XCTAssertTrue(
-                app.descendants(matching: .any)["scholium.agentCLI.section"]
-                    .waitForExistence(timeout: 10)
+                copyInstructions.waitForExistence(timeout: 10)
                 )
         }
     }
@@ -893,9 +1084,6 @@ extension ScholiumUITests {
         let researcherStatementID = UUID(
             uuidString: "5E551019-0000-4000-8000-000000000006"
         )!
-        let tombstoneNoteID = UUID(
-            uuidString: "5E551019-0000-4000-8000-000000000003"
-        )!
         let recommendationID = qaResearchRecommendationID(
             runID: recordID,
             ordinal: 0
@@ -904,8 +1092,6 @@ extension ScholiumUITests {
         let startedAt = "2026-07-27T04:00:00Z"
         let finishedAt = "2026-07-27T04:01:00Z"
         let profileRevision = qaFingerprint("QA bounded Analyze Profile")
-        let deletedRevision = qaFingerprint("Deleted QA Note starting bytes")
-
         func note(
             _ identity: QAStoredNoteIdentity,
             role: String,
@@ -922,7 +1108,6 @@ extension ScholiumUITests {
                 "title": title,
                 "starting_revision": identity.fingerprint,
                 "ending_revision": identity.fingerprint,
-                "is_tombstone": false,
             ]
         }
 
@@ -946,17 +1131,6 @@ extension ScholiumUITests {
         var participatingNotes: [[String: Any]] = [
             note(analysis, role: "analysis", title: "QA Autosave A"),
             topicParticipant,
-            [
-                "note_id": tombstoneNoteID.uuidString,
-                "note": [
-                    "vaultID": analysis.vaultID.uuidString,
-                    "relativePath": "Deleted QA Note.md",
-                ],
-                "role": "analysis",
-                "title": "Deleted QA Note",
-                "starting_revision": deletedRevision,
-                "is_tombstone": true,
-            ],
         ]
         if hasEvidenceOverflow {
             participatingNotes.append(
@@ -1013,7 +1187,7 @@ extension ScholiumUITests {
         }
 
         var portableRecord: [String: Any] = [
-            "schema_version": 8,
+            "schema_version": 13,
             "id": recordID.uuidString,
             "triptych_id": triptychID.uuidString,
             "record_title": createsSynthesisAttention
@@ -1082,6 +1256,7 @@ extension ScholiumUITests {
             portableRecord["primary_note_id"] = topic.noteID.uuidString
         } else {
             portableRecord["primary_note_id"] = analysis.noteID.uuidString
+            portableRecord["analysis_source_route"] = "scholium_source"
             portableRecord["source_reference"] = [
                 "schemaVersion": 1,
                 "identity": [
@@ -1133,7 +1308,6 @@ extension ScholiumUITests {
             recommendationID: createsSynthesisAttention ? nil : recommendationID,
             analysisNoteID: analysis.noteID,
             topicNoteID: topic.noteID,
-            tombstoneNoteID: tombstoneNoteID,
             overflowParticipantNoteIDs: hasEvidenceOverflow
                 ? [secondAnalysis.noteID, work.noteID]
                 : []
@@ -1179,7 +1353,6 @@ extension ScholiumUITests {
                     "title": participant.title,
                     "starting_revision": starting,
                     "ending_revision": ending,
-                    "is_tombstone": false,
                 ]
             }
             let primary = try XCTUnwrap(identities[seed.primaryRelativePath])
@@ -1189,6 +1362,7 @@ extension ScholiumUITests {
                 return [
                     "note_id": identity.noteID.uuidString,
                     "actor": "agent",
+                    "kind": "modified",
                     "starting_revision": qaFingerprint(
                         "Before Agent work \(seed.recordID.uuidString.lowercased()) \(relativePath)"
                     ),
@@ -1200,7 +1374,7 @@ extension ScholiumUITests {
             )
             let profileRevision = qaFingerprint("QA bounded Synthesize Profile")
             let record: [String: Any] = [
-                "schema_version": 8,
+                "schema_version": 13,
                 "id": seed.recordID.uuidString,
                 "triptych_id": triptychID.uuidString,
                 "record_title": seed.title,
@@ -1523,7 +1697,7 @@ extension ScholiumUITests {
             || name.contains("testLineCommentDiscussReopenAndFinish")
             || name.contains("testCritiqueActionUsesTriptychWorkingMethodWithoutAdHocPrompting")
             || name.contains("testResearchActionPanelFits") {
-            try resetNewTriptychActionFixtureState()
+            try resetResearchActionFixtureState()
         }
 
         let analyses = triptychDirectory.appendingPathComponent("01-analyses", isDirectory: true)
@@ -1548,6 +1722,19 @@ extension ScholiumUITests {
                         "The static TestVault anchor is missing: \(staticAnchor.lastPathComponent)",
                 ]
             )
+        }
+        try seedManagedTopicAliases(
+            relativePath: "QA Topic.md",
+            aliases: [
+                "Synthetic Topic Alias 001",
+                "Fixture Concept 001",
+                "Normative QA Nexus",
+            ]
+        )
+        if name.contains(
+            "testSidebarWorkspaceLibraryAndTriptychAttentionWindowJourney"
+        ) {
+            synthesisAttentionFixture = try seedSynthesisAttentionFixture()
         }
         if name.contains("testCanonicalAcceptanceJourney")
             || name.contains("testOverviewRoutesZoteroOnlyFromCurrentAnalysis") {
@@ -1624,19 +1811,23 @@ extension ScholiumUITests {
         }
         if name.contains("testSearchExplainsTitleAliasHeadingAndBodyRanking") {
             try write(
-                "---\ntitle: Deliberative Autonomy\n---\nA concise account.\n",
+                "# Deliberative Autonomy\n\nA concise account.\n",
                 to: analyses.appendingPathComponent("Ranking Title.md")
             )
             try write(
-                "---\ntitle: Agency Structure\naliases: [Deliberative Autonomy]\n---\nA concise account.\n",
-                to: analyses.appendingPathComponent("Ranking Alias.md")
+                "# Agency Structure\n\nA concise account.\n",
+                to: topics.appendingPathComponent("QA Topic.md")
+            )
+            try seedManagedTopicAliases(
+                relativePath: "QA Topic.md",
+                aliases: ["Deliberative Autonomy"]
             )
             try write(
-                "---\ntitle: Normative Architecture\n---\n# Deliberative Autonomy\nA concise account.\n",
+                "# Normative Architecture\n\n## Deliberative Autonomy\n\nA concise account.\n",
                 to: analyses.appendingPathComponent("Ranking Heading.md")
             )
             try write(
-                "---\ntitle: Practical Reason\n---\nThis account develops deliberative autonomy in ordinary prose.\n",
+                "# Practical Reason\n\nThis account develops deliberative autonomy in ordinary prose.\n",
                 to: analyses.appendingPathComponent("Ranking Body.md")
             )
         }
@@ -1680,6 +1871,20 @@ extension ScholiumUITests {
 
     func write(_ string: String, to url: URL) throws {
         try Data(string.utf8).write(to: url, options: .atomic)
+    }
+
+    func ambiguousIdentitySource() -> String {
+        "---\ntitle: QA Ambiguous Identity\n---\n# QA Ambiguous Identity\n\nExact shared bytes.\n"
+    }
+
+    func seedAmbiguousIdentityFixture() throws {
+        let analyses = triptychDirectory.appendingPathComponent(
+            "01-analyses",
+            isDirectory: true
+        )
+        let source = ambiguousIdentitySource()
+        try write(source, to: analyses.appendingPathComponent("QA Identity A.md"))
+        try write(source, to: analyses.appendingPathComponent("QA Identity B.md"))
     }
 
     func documentHeadingStudySource() -> String {
@@ -1812,33 +2017,82 @@ extension ScholiumUITests {
         )).firstMatch
     }
 
-    /// Preserves the fixture's stable Note identities and editable Working
-    /// Methods while removing portable state that belongs to its old Triptych
-    /// identity. The QA app can then exercise the real new-Triptych bootstrap
-    /// path, which creates a new manifest, policy, Citation Method, and empty
-    /// Research Record store without mixing identities.
-    private func resetNewTriptychActionFixtureState() throws {
+    /// Preserves the fixture's valid Triptych identity, Note identities, and
+    /// editable Working Methods while removing only mutable Research Records
+    /// owned by these action journeys. Deleting the manifest while retaining
+    /// identity-bound control files would manufacture an unsupported partial
+    /// Triptych and correctly route the app back to recovery Bootstrap.
+    private func resetResearchActionFixtureState() throws {
         let scholiumDirectory = triptychDirectory.appendingPathComponent(
             ".scholium",
             isDirectory: true
         )
-        let identityBoundComponents = [
-            "manifest.json",
-            "collaboration-policy-v1.json",
-            "citation-method-v1.json",
-            "research-records",
-        ]
+        let mutableComponents = ["research-records"]
 
-        for component in identityBoundComponents {
+        for component in mutableComponents {
             let stateURL = scholiumDirectory.appendingPathComponent(component)
             if FileManager.default.fileExists(atPath: stateURL.path) {
                 try FileManager.default.removeItem(at: stateURL)
             }
             XCTAssertFalse(
                 FileManager.default.fileExists(atPath: stateURL.path),
-                "New-Triptych fixture retained identity-bound state: \(component)"
+                "Research Action fixture retained mutable state: \(component)"
             )
         }
+    }
+
+    private func seedManagedTopicAliases(
+        relativePath: String,
+        aliases: [String]
+    ) throws {
+        let controlDirectory = triptychDirectory.appendingPathComponent(
+            ".scholium",
+            isDirectory: true
+        )
+        let identityDocument = try XCTUnwrap(
+            try JSONSerialization.jsonObject(
+                with: Data(contentsOf: controlDirectory.appendingPathComponent(
+                    "identities.json"
+                ))
+            ) as? [String: Any]
+        )
+        let matchingRecords = (identityDocument["records"] as? [[String: Any]] ?? [])
+            .filter { $0["relativePath"] as? String == relativePath }
+        let noteID = try XCTUnwrap(
+            matchingRecords.count == 1 ? matchingRecords.first?["id"] as? String : nil,
+            "The managed Topic alias fixture requires one exact stable Note identity."
+        )
+        let encodedAliases = aliases.map { alias in
+            ["string": ["_0": alias]]
+        }
+        let record: [String: Any] = [
+            "schemaVersion": 1,
+            "noteID": noteID,
+            "fields": [
+                "aliases": [
+                    "array": ["_0": encodedAliases],
+                ],
+            ],
+        ]
+        let destinationDirectory = controlDirectory.appendingPathComponent(
+            "note-metadata/v1",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: destinationDirectory,
+            withIntermediateDirectories: true
+        )
+        let destination = destinationDirectory.appendingPathComponent(
+            "\(noteID.lowercased()).json"
+        )
+        try JSONSerialization.data(
+            withJSONObject: record,
+            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        ).write(to: destination, options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o600)],
+            ofItemAtPath: destination.path
+        )
     }
 
     private func seedAnalysisZoteroBinding(

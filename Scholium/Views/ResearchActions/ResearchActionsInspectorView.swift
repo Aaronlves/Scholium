@@ -428,10 +428,8 @@ struct ResearchActionsInspectorView: View {
                 focusRequestToken: focusRequest?.actionID == item.id
                     ? focusRequest?.token
                     : nil
-            ) { shouldRestoreKeyboardFocus in
-                if shouldRestoreKeyboardFocus {
-                    registerFocusOwner(item.id)
-                }
+            ) {
+                registerFocusOwner(item.id)
                 select(item)
             }
             .disabled(!item.canPresent)
@@ -515,7 +513,7 @@ struct ResearchActionsInspectorView: View {
             systemImage: "checkmark.circle",
             detail: nil,
             showsChevron: true
-        ) { _ in
+        ) {
             presentsSettlement = true
         }
         .disabled(presentation.target == nil)
@@ -633,7 +631,7 @@ private struct ResearchActionRowButton: View {
     let showsChevron: Bool
     let localizesTitle: Bool
     let focusRequestToken: UUID?
-    let action: (_ shouldRestoreKeyboardFocus: Bool) -> Void
+    let action: () -> Void
 
     @State private var focusRestorationTask: Task<Void, Never>?
     @FocusState private var hasKeyboardFocus: Bool
@@ -647,7 +645,7 @@ private struct ResearchActionRowButton: View {
         showsChevron: Bool = true,
         localizesTitle: Bool = true,
         focusRequestToken: UUID? = nil,
-        action: @escaping (_ shouldRestoreKeyboardFocus: Bool) -> Void
+        action: @escaping () -> Void
     ) {
         self.title = title
         self.systemImage = systemImage
@@ -663,7 +661,7 @@ private struct ResearchActionRowButton: View {
     var body: some View {
         Button {
             focusRestorationTask?.cancel()
-            action(hasKeyboardFocus)
+            action()
         } label: {
             ScholiumApparatusActionRowContent(
                 title: titleText,

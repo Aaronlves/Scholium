@@ -494,7 +494,7 @@ struct WindowControllerArchitectureTests {
     }
 
     @Test("WindowModel publishes only owned state while commands observe a narrow scope")
-    func windowObservationScopes() {
+    func windowObservationScopes() async {
         let store = makeTestWorkspaceStore()
         let first = WindowModel(workspaceStore: store)
         let second = WindowModel(workspaceStore: store)
@@ -510,6 +510,8 @@ struct WindowControllerArchitectureTests {
         #expect(first.commandObservation.revision == firstCommandRevision)
 
         first.shellState.recordLibraryVisibility(false)
+        await Task.yield()
+        await Task.yield()
         #expect(rootInvalidations == 0)
         #expect(first.commandObservation.revision > firstCommandRevision)
         #expect(second.commandObservation.revision == secondCommandRevision)
@@ -519,6 +521,8 @@ struct WindowControllerArchitectureTests {
             vaultID: UUID(),
             relativePath: "Topics/Command Target.md"
         )
+        await Task.yield()
+        await Task.yield()
         #expect(rootInvalidations == 0)
         #expect(first.commandObservation.revision > revisionAfterShellChange)
         #expect(second.commandObservation.revision == secondCommandRevision)

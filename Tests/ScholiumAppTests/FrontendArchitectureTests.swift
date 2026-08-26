@@ -2218,11 +2218,11 @@ struct FrontendArchitectureTests {
         #expect(uiTestSource.contains("XCTAssertEqual(sliderNumericValue(lineWidth), 72)"))
         #expect(
             uiTestSource.contains(
-                "Heading Study — accepted A — long mixed H1 — 1180×760 — Review — static secondary toolbar identity"
+                "Heading Study — accepted A — long mixed H1 — 1180×760 — Review — native window title"
             ))
         #expect(
             uiTestSource.contains(
-                "Heading Study — accepted A — long mixed H1 — 900×760 — Review — static secondary toolbar identity"
+                "Heading Study — accepted A — long mixed H1 — 900×760 — Review — native window title"
             ))
         #expect(uiTestSource.contains("在长期论证中保持证据边界：Reasons, Values"))
         #expect(!uiTestSource.contains("## Abstract"))
@@ -2429,9 +2429,9 @@ struct FrontendArchitectureTests {
         #expect(!actionsSource.contains("title: \"RESEARCHER SKILLS\""))
         #expect(actionsSource.contains("ScholiumApparatusSection(\"JUDGMENT\")"))
         #expect(!actionsSource.contains("@FocusedValue(\\.scholiumResearchActionActions)"))
-        #expect(actionsSource.contains("if shouldRestoreKeyboardFocus"))
+        #expect(!actionsSource.contains("if shouldRestoreKeyboardFocus"))
         #expect(actionsSource.contains("registerFocusOwner(item.id)"))
-        #expect(actionsSource.contains("action(hasKeyboardFocus)"))
+        #expect(actionsSource.contains("action()"))
         #expect(
             actionsSource.contains(
                 ".scholiumActivationFocus($hasKeyboardFocus)"

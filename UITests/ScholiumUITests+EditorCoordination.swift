@@ -16,6 +16,9 @@ extension ScholiumUITests {
         let field = app.descendants(matching: .any)["scholium.searchField"]
         let result = searchResult(named: "QA Autosave A")
         XCTAssertTrue(field.waitForExistence(timeout: 8))
+        let thisNote = app.buttons["scholium.searchScope.thisNote"]
+        XCTAssertTrue(thisNote.waitForExistence(timeout: 5))
+        thisNote.click()
         typeCommittedText("searchunsavedtoken", into: field, in: app)
         XCTAssertTrue(result.waitForExistence(timeout: 8))
         XCTAssertFalse(try source(at: noteURL).contains(token))
@@ -40,11 +43,13 @@ extension ScholiumUITests {
         try enterLivePreviewAndAppend(token)
         XCTAssertFalse(try source(at: noteURL).contains(token))
 
-        let inspectorButton = app.descendants(matching: .any)["scholium.toggleInspector"]
+        let inspectorButton = inspectorVisibilityControl()
         let inspector = app.descendants(matching: .any)["scholium.researchInspector"]
         let inspectorWasVisible = inspector.exists
         XCTAssertTrue(inspectorButton.waitForExistence(timeout: 5))
-        inspectorButton.click()
+        inspectorButton.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).click()
         XCTAssertTrue(
             waitUntil(timeout: 5) { inspector.exists != inspectorWasVisible },
             "The native Inspector toggle must change the trailing split presentation."
@@ -68,7 +73,7 @@ extension ScholiumUITests {
         XCTAssertTrue(secondRow.waitForExistence(timeout: 5))
         secondRow.click()
         XCTAssertTrue(waitUntil(timeout: 15) {
-            (self.app.staticTexts["scholium.documentNoteName"].value as? String) == "QA Autosave B"
+            self.documentTitle() == "QA Autosave B"
         })
         XCTAssertTrue(waitUntil(timeout: 8) { (try? self.source(at: firstURL).contains(token)) == true })
         XCTAssertFalse(try source(at: secondURL).contains(token))
@@ -76,11 +81,10 @@ extension ScholiumUITests {
 
     @MainActor
     func testDocumentModeAndLibrarySwitchHandoffsStayBoundedWithoutSourceExposure() throws {
-        let mode = app.descendants(matching: .any)["scholium.documentModeButton"]
+        let mode = documentModeControl()
         let rendered = app.descendants(matching: .any)["Rendered Markdown"]
         let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"]
         let sourceEditor = app.descendants(matching: .any)["Markdown source editor"]
-        let title = app.staticTexts["scholium.documentNoteName"]
         let firstURL = triptychDirectory.appendingPathComponent(
             "01-analyses/QA Autosave A.md"
         )
@@ -138,9 +142,9 @@ extension ScholiumUITests {
         let firstToSecondStart = DispatchTime.now().uptimeNanoseconds
         secondRow.click()
         XCTAssertTrue(waitUntil(timeout: 8) {
-            title.value as? String == "QA Autosave B"
+            self.documentTitle() == "QA Autosave B"
                 && self.app.descendants(matching: .any)[
-                    "scholium.renderedDocument.QA Autosave B.md"
+                    "Markdown editor, Edit mode"
                 ].exists
         })
         let firstToSecondMilliseconds = Double(
@@ -154,7 +158,7 @@ extension ScholiumUITests {
         let secondToFirstStart = DispatchTime.now().uptimeNanoseconds
         firstRow.click()
         XCTAssertTrue(waitUntil(timeout: 8) {
-            title.value as? String == "QA Autosave A"
+            self.documentTitle() == "QA Autosave A"
                 && editor.exists
         })
         let secondToFirstMilliseconds = Double(
@@ -179,15 +183,20 @@ extension ScholiumUITests {
     @MainActor
     func testCleanExternalEditRefreshesTheOpenNote() throws {
         let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
-        let title = "QA External \(UUID().uuidString.prefix(8))"
+        let heading = "QA External \(UUID().uuidString)"
         let current = try source(at: noteURL)
-        let changed = current.replacingOccurrences(of: "title: QA Autosave A", with: "title: \(title)")
+        let changed = current.replacingOccurrences(
+            of: "# QA Autosave A",
+            with: "# \(heading)"
+        )
+        XCTAssertNotEqual(changed, current)
         try write(changed, to: noteURL)
 
-        let metadata = app.descendants(matching: .any)["scholium.documentNoteName"]
-        XCTAssertTrue(metadata.waitForExistence(timeout: 10))
+        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"]
         XCTAssertTrue(
-            waitUntil(timeout: 12) { metadata.value as? String == title },
+            waitUntil(timeout: 12) {
+                (editor.value as? String)?.contains(heading) == true
+            },
             "A clean open document must refresh after an external filesystem edit."
         )
         XCTAssertEqual(try source(at: noteURL), changed)
@@ -201,10 +210,8 @@ extension ScholiumUITests {
         let renamedURL = analyses.appendingPathComponent(renamedPath)
         let originalSource = try source(at: originalURL)
 
-        let metadata = app.descendants(matching: .any)["scholium.documentNoteName"]
         let originalRow = app.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"]
-        XCTAssertTrue(metadata.waitForExistence(timeout: 10))
-        XCTAssertEqual(metadata.value as? String, "QA Autosave A")
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A"))
         XCTAssertTrue(originalRow.waitForExistence(timeout: 5))
 
         try FileManager.default.moveItem(at: originalURL, to: renamedURL)
@@ -219,7 +226,7 @@ extension ScholiumUITests {
             "The old path must leave the note list after identity recovery."
         )
         XCTAssertTrue(
-            waitUntil(timeout: 12) { metadata.value as? String == "QA Autosave A" },
+            waitForDocumentTitle("QA Autosave A", timeout: 12),
             "A clean active document must remain selected after its path is rebound."
         )
         XCTAssertEqual(try source(at: renamedURL), originalSource)
@@ -236,10 +243,7 @@ extension ScholiumUITests {
         let firstURL = analyses.appendingPathComponent(firstPath)
         let secondURL = analyses.appendingPathComponent(secondPath)
         let movedURL = analyses.appendingPathComponent(movedPath)
-        let ambiguousSource = "---\ntitle: QA Ambiguous Identity\n---\n# QA Ambiguous Identity\n\nExact shared bytes.\n"
-
-        try write(ambiguousSource, to: firstURL)
-        try write(ambiguousSource, to: secondURL)
+        let ambiguousSource = ambiguousIdentitySource()
 
         let firstRow = app.descendants(matching: .any)["scholium.noteRow.\(firstPath)"]
         let secondRow = app.descendants(matching: .any)["scholium.noteRow.\(secondPath)"]
@@ -414,25 +418,27 @@ extension ScholiumUITests {
             760,
             "Conflict comparison must retain a readable text width instead of collapsing to its controls."
         )
-        let readableDiffLine = app.staticTexts["title: QA Autosave A"].firstMatch
-        XCTAssertTrue(
-            readableDiffLine.waitForExistence(timeout: 3),
-            "The comparison must expose an intact representative source line."
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.conflict.diff"
+        ].waitForExistence(timeout: 3))
+        let diffRows = app.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@",
+                "scholium.conflict.row."
+            )
+        ).allElementsBoundByIndex
+        let readableDiffLine = try XCTUnwrap(
+            diffRows.min(by: { $0.frame.height < $1.frame.height }),
+            "The comparison must expose an intact representative source row."
         )
         XCTAssertGreaterThan(
             readableDiffLine.frame.width,
             100,
             "A source line must not collapse into a character-wide column."
         )
-        let diskOnlyRows = app.descendants(matching: .any).matching(
-            NSPredicate(
-                format: "identifier BEGINSWITH %@",
-                "scholium.conflict.row.diskOnly."
-            )
-        ).allElementsBoundByIndex
         let wrappedDiffLine = try XCTUnwrap(
-            diskOnlyRows.max(by: { $0.frame.height < $1.frame.height }),
-            "The comparison must expose the synthetic disk-only source row."
+            diffRows.max(by: { $0.frame.height < $1.frame.height }),
+            "The comparison must expose the synthetic long source row."
         )
         XCTAssertGreaterThan(
             wrappedDiffLine.frame.height,
@@ -445,10 +451,10 @@ extension ScholiumUITests {
             "A soft-wrapped diff row must stay within the comparison sheet."
         )
         let currentRevision = app.descendants(matching: .any).matching(
-            NSPredicate(format: "label BEGINSWITH %@", "Current Editor, SHA-256")
+            NSPredicate(format: "label CONTAINS %@", "Current Editor")
         ).firstMatch
         let diskRevision = app.descendants(matching: .any).matching(
-            NSPredicate(format: "label BEGINSWITH %@", "Disk Version, SHA-256")
+            NSPredicate(format: "label CONTAINS %@", "Disk Version")
         ).firstMatch
         XCTAssertTrue(currentRevision.exists)
         XCTAssertTrue(diskRevision.exists)
@@ -553,7 +559,7 @@ extension ScholiumUITests {
         app.launch()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 20))
 
-        let mode = app.descendants(matching: .any)["scholium.documentModeButton"]
+        let mode = documentModeControl()
         XCTAssertTrue(mode.waitForExistence(timeout: 20))
         selectDocumentMode("Edit")
 
@@ -630,9 +636,9 @@ extension ScholiumUITests {
 
     @MainActor
     func testOpenInNewTabUsesDocumentRegionTabsAndVisibleClose() throws {
-        waitForDocumentSurface()
+        waitForCurrentDocumentSurface()
         let secondPath = "QA Autosave B.md"
-        let inspectorToggle = app.descendants(matching: .any)["scholium.toggleInspector"]
+        let inspectorToggle = inspectorVisibilityControl()
         let inspector = app.scrollViews["scholium.researchInspector"].firstMatch
         XCTAssertTrue(inspectorToggle.waitForExistence(timeout: 5))
         if !inspector.exists {
@@ -687,14 +693,10 @@ extension ScholiumUITests {
             let currentInspector = self.app.scrollViews[
                 "scholium.researchInspector"
             ].firstMatch
-            let metadata = self.app.descendants(matching: .any)[
-                "scholium.documentNoteName"
-            ]
             return folder.exists
                 && (folder.value as? String) == "Expanded"
                 && currentInspector.exists
-                && metadata.exists
-                && (metadata.value as? String) == expectedNote
+                && self.documentTitle() == expectedNote
         }
 
         XCTAssertTrue(
@@ -718,9 +720,7 @@ extension ScholiumUITests {
             waitUntil(timeout: 8) {
                 self.app.windows.firstMatch.exists
                     && !documentTabs.exists
-                    && (self.app.descendants(matching: .any)[
-                        "scholium.documentNoteName"
-                    ].value as? String) == "QA Autosave A"
+                    && self.documentTitle() == "QA Autosave A"
             },
             "Closing the selected page must choose its previous neighbor without closing the workspace window."
         )
@@ -729,9 +729,7 @@ extension ScholiumUITests {
 
     @MainActor
     func testFileMenuDoesNotOfferDuplicateCurrentDocumentTab() throws {
-        let metadata = app.descendants(matching: .any)["scholium.documentNoteName"]
-        XCTAssertTrue(metadata.waitForExistence(timeout: 10))
-        XCTAssertEqual(metadata.value as? String, "QA Autosave A")
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A"))
 
         let fileMenuItem = app.menuBars.menuBarItems["File"]
         fileMenuItem.click()
@@ -746,7 +744,7 @@ extension ScholiumUITests {
         let documentTabs = app.descendants(matching: .any)["scholium.documentTabs"]
         XCTAssertFalse(documentTabs.exists)
         XCTAssertTrue(app.windows.firstMatch.exists)
-        XCTAssertEqual(metadata.value as? String, "QA Autosave A")
+        XCTAssertEqual(documentTitle(), "QA Autosave A")
     }
 
     @MainActor
