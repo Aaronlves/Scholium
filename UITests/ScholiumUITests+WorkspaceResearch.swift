@@ -1630,6 +1630,16 @@ extension ScholiumUITests {
         XCTAssertTrue(cancel.waitForExistence(timeout: 5))
         cancel.click()
         XCTAssertTrue(waitUntil(timeout: 3) { !sheet.exists })
+        let pointerFocusExpectation = XCTNSPredicateExpectation(
+            predicate: keyboardFocus,
+            object: discuss
+        )
+        pointerFocusExpectation.isInverted = true
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [pointerFocusExpectation], timeout: 0.5),
+            .completed,
+            "Pointer dismissal must not synthesize keyboard focus on the Action row."
+        )
 
         for _ in 0..<12 where !keyboardFocus.evaluate(with: actionsMode) {
             app.typeKey(.tab, modifierFlags: [.shift])

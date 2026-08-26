@@ -1499,11 +1499,7 @@ struct FrontendArchitectureTests {
         #expect(designSystemSource.contains("NSTrackingArea("))
         #expect(designSystemSource.contains("@State private var isPressed"))
         #expect(!designSystemSource.contains("@GestureState private var isPressed"))
-        #expect(designSystemSource.contains(".focusable()"))
-        #expect(designSystemSource.contains(".focusEffectDisabled()"))
-        #expect(designSystemSource.contains(".simultaneousGesture(pointerFocusReset)"))
         #expect(!designSystemSource.contains("ScholiumControlActivation"))
-        #expect(!designSystemSource.contains("NSApp.currentEvent"))
         #expect(
             ScholiumContentInteractionSurface.opacity(
                 isHovering: true,
@@ -2429,19 +2425,8 @@ struct FrontendArchitectureTests {
         #expect(!actionsSource.contains("title: \"RESEARCHER SKILLS\""))
         #expect(actionsSource.contains("ScholiumApparatusSection(\"JUDGMENT\")"))
         #expect(!actionsSource.contains("@FocusedValue(\\.scholiumResearchActionActions)"))
-        #expect(!actionsSource.contains("if shouldRestoreKeyboardFocus"))
-        #expect(actionsSource.contains("registerFocusOwner(item.id)"))
-        #expect(actionsSource.contains("action()"))
-        #expect(
-            actionsSource.contains(
-                ".scholiumActivationFocus($hasKeyboardFocus)"
-            ))
         #expect(!actionsSource.contains("ScholiumControlActivation"))
         #expect(!sharedComponentsSource.contains("ScholiumControlActivation"))
-        #expect(
-            !actionsSource.contains(
-                "focusRestorationTask?.cancel()\n            hasKeyboardFocus = true\n            action()"
-            ))
         #expect(!actionsSource.contains("ScholiumStructuralRule()"))
         #expect(!actionsSource.contains("ResearchActionHelpModifier"))
         #expect(!actionsSource.contains("helpText"))

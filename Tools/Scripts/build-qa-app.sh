@@ -68,11 +68,13 @@ DEVELOPER_DIR="${XCODE}" swift build \
   --package-path "${ROOT}" \
   --scratch-path "${DERIVED}" \
   --configuration debug \
+  --only-use-versions-from-resolved-file \
   --product ScholiumApp
 DEVELOPER_DIR="${XCODE}" swift build \
   --package-path "${ROOT}" \
   --scratch-path "${DERIVED}" \
   --configuration debug \
+  --only-use-versions-from-resolved-file \
   --product scholium
 mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources"
 cp "${DERIVED}/debug/ScholiumApp" "${APP}/Contents/MacOS/Scholium"

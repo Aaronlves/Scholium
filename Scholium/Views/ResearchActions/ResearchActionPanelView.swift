@@ -1,6 +1,22 @@
+import AppKit
 import Foundation
 import ScholiumContracts
 import SwiftUI
+
+enum ResearchActionDismissalFocusDisposition: Equatable, Sendable {
+    case preserveInputModality
+    case restoreOriginatingAction
+
+    @MainActor
+    static var currentInput: Self {
+        switch NSApp.currentEvent?.type {
+        case .keyDown, .keyUp:
+            .restoreOriginatingAction
+        default:
+            .preserveInputModality
+        }
+    }
+}
 
 struct ResearchActionPanelContext {
     let chooseLocalSource: @MainActor () async throws -> URL?
@@ -8,7 +24,7 @@ struct ResearchActionPanelContext {
     let didCopyHandoff: (UUID) -> Void
     let retryRefresh: () -> Void
     let openRecovery: () -> Void
-    let dismiss: () -> Void
+    let dismiss: (ResearchActionDismissalFocusDisposition) -> Void
 }
 
 enum ResearchActionHandoffDelivery {
@@ -39,6 +55,8 @@ struct ResearchActionPanelView: View {
     @State private var confirmsEndAction = false
     @State private var showsAdditionalContext = false
     @State private var showsOptionalAcademicInputs = false
+    @State private var pendingDismissalFocusDisposition:
+        ResearchActionDismissalFocusDisposition = .preserveInputModality
 
     init(
         controller: ResearchActionController,
@@ -89,7 +107,7 @@ struct ResearchActionPanelView: View {
                 pendingHandoff = nil
             case .cancelled:
                 pendingHandoff = nil
-                context.dismiss()
+                context.dismiss(pendingDismissalFocusDisposition)
             case .idle, .loading, .editing, .preparing, .cancelling:
                 break
             }
@@ -106,6 +124,7 @@ struct ResearchActionPanelView: View {
         ) {
             Button("Keep Action", role: .cancel) {}
             Button("End Action", role: .destructive) {
+                pendingDismissalFocusDisposition = .currentInput
                 controller.cancelPreparedRun()
             }
         } message: {
@@ -297,7 +316,7 @@ struct ResearchActionPanelView: View {
 
     private var statusFooter: some View {
         HStack(spacing: ScholiumMetrics.ResearchSheet.footerControlSpacing) {
-            Button("Close") { context.dismiss() }
+            Button("Close", action: dismissFromCurrentInput)
                 .keyboardShortcut(.cancelAction)
                 .disabled(controller.isBusy)
             if canEndStatusAction {
@@ -336,7 +355,7 @@ struct ResearchActionPanelView: View {
             Button("Retry Refresh") { context.retryRefresh() }
                 .disabled(controller.isBusy)
         case .sourceConflict:
-            Button("Return to Document") { context.dismiss() }
+            Button("Return to Document", action: dismissFromCurrentInput)
                 .disabled(controller.isBusy)
         case .sourceChanged, .none:
             EmptyView()
@@ -872,7 +891,7 @@ struct ResearchActionPanelView: View {
     private var footer: some View {
         HStack(spacing: ScholiumMetrics.ResearchSheet.footerControlSpacing) {
             Button(controller.preparation == nil ? "Cancel" : "Close") {
-                context.dismiss()
+                dismissFromCurrentInput()
             }
             .keyboardShortcut(.cancelAction)
             .disabled(
@@ -917,6 +936,7 @@ struct ResearchActionPanelView: View {
     }
 
     private func beginHandoff(_ handoff: PendingHandoff) {
+        pendingDismissalFocusDisposition = .currentInput
         handoffErrorMessage = nil
         if let agentHandoff = controller.agentHandoff,
            controller.canCancelPreparedRun,
@@ -947,6 +967,7 @@ struct ResearchActionPanelView: View {
     }
 
     private func copyNewHandoff() {
+        pendingDismissalFocusDisposition = .currentInput
         guard controller.canCancelPreparedRun,
               pendingHandoff == nil,
               !controller.isBusy else { return }
@@ -968,7 +989,9 @@ struct ResearchActionPanelView: View {
                 runID: runID,
                 copy: context.copyInstructions,
                 didCopy: context.didCopyHandoff,
-                dismiss: context.dismiss
+                dismiss: {
+                    context.dismiss(pendingDismissalFocusDisposition)
+                }
             )
         } catch {
             handoffErrorMessage = String(
@@ -977,6 +1000,10 @@ struct ResearchActionPanelView: View {
                 bundle: .module
             )
         }
+    }
+
+    private func dismissFromCurrentInput() {
+        context.dismiss(.currentInput)
     }
 
     private var actionTitle: String {

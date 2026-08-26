@@ -40,6 +40,8 @@ struct ContentView: View {
     private var attentionDismissalLedgerData = Data()
     @State private var pendingResearchActionFocusID: ResearchActionID?
     @State private var researchActionFocusRequest: ResearchActionFocusRequest?
+    @State private var researchActionDismissalFocusDisposition:
+        ResearchActionDismissalFocusDisposition = .preserveInputModality
 
     init(
         appState: WindowModel,
@@ -219,9 +221,14 @@ struct ContentView: View {
                 permissionController.finishDismissal()
             } else if researchActionController.isPresented {
                 let actionID = researchActionController.activeActionID
+                let focusDisposition = researchActionDismissalFocusDisposition
                 appState.presentationRouter.dismissSheet()
                 researchActionController.dismiss()
-                restoreResearchActionFocus(ifOwnedBy: actionID)
+                completeResearchActionDismissalFocus(
+                    ifOwnedBy: actionID,
+                    disposition: focusDisposition
+                )
+                researchActionDismissalFocusDisposition = .preserveInputModality
                 permissionController.presentationBecameAvailable()
             } else {
                 permissionController.presentationBecameAvailable()
@@ -344,12 +351,15 @@ struct ContentView: View {
         )
     }
 
-    private func restoreResearchActionFocus(
-        ifOwnedBy actionID: ResearchActionID?
+    private func completeResearchActionDismissalFocus(
+        ifOwnedBy actionID: ResearchActionID?,
+        disposition: ResearchActionDismissalFocusDisposition
     ) {
         let pendingActionID = pendingResearchActionFocusID
         pendingResearchActionFocusID = nil
-        guard let actionID, pendingActionID == actionID else {
+        guard disposition == .restoreOriginatingAction,
+              let actionID,
+              pendingActionID == actionID else {
             return
         }
         researchActionFocusRequest = ResearchActionFocusRequest(actionID: actionID)
@@ -912,7 +922,10 @@ struct ContentView: View {
                                 appState.showTransactionRecovery = true
                             }
                         },
-                        dismiss: { appState.presentationRouter.dismissSheet() }
+                        dismiss: { focusDisposition in
+                            researchActionDismissalFocusDisposition = focusDisposition
+                            appState.presentationRouter.dismissSheet()
+                        }
                     )
                 )
                 .onDisappear {
@@ -1144,6 +1157,7 @@ struct ContentView: View {
                 researchActionFocusRequest: researchActionFocusRequest,
                 registerResearchActionFocusOwner: {
                     pendingResearchActionFocusID = $0
+                    researchActionDismissalFocusDisposition = .preserveInputModality
                 },
                 openResearchAction: { item in
                     if let activity = item.activity {
