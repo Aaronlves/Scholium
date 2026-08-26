@@ -4,9 +4,9 @@
 
 > 面向哲学与人文研究、本地优先、以文档为权威的研究环境。
 
-**当前公开 Beta：**[v0.1.0-beta.8](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.0-beta.8) ·
-[下载 Apple 芯片版 Scholium](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.8/Scholium-v0.1.0-beta.8-macos-arm64.dmg) ·
-[下载独立 CLI](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.8/Scholium-CLI-macos.zip)
+**当前公开 Beta：**[v0.1.0-beta.10](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.0-beta.10) ·
+[下载 Apple 芯片版 Scholium](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.10/Scholium-v0.1.0-beta.10-macos-arm64.dmg) ·
+[下载独立 CLI](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.10/Scholium-CLI-macos.zip)
 
 Scholium 是一款面向持续哲学与人文研究的原生 macOS 研究环境。它的内容核心是
 一套由研究者治理、以文档为权威，并可由一位研究者与获得授权的外部 Agent 共同
@@ -191,18 +191,18 @@ SHA-256 校验值。tag、版本和 package provenance 必须一致。应用启�
 安装只需执行一次普通拖拽。
 
 当前版本是
-[v0.1.0-beta.8](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.0-beta.8)：
+[v0.1.0-beta.10](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.0-beta.10)：
 
-- [macOS arm64 版 Scholium 应用 DMG](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.8/Scholium-v0.1.0-beta.8-macos-arm64.dmg)
-  （[SHA-256](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.8/Scholium-v0.1.0-beta.8-macos-arm64.dmg.sha256)）；
-- [独立 Scholium CLI](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.8/Scholium-CLI-macos.zip)
-  （[SHA-256](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.8/Scholium-CLI-macos.zip.sha256)）；
-- [准确标签源码](https://github.com/Aaronlves/Scholium/tree/v0.1.0-beta.8)。
+- [macOS arm64 版 Scholium 应用 DMG](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.10/Scholium-v0.1.0-beta.10-macos-arm64.dmg)
+  （[SHA-256](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.10/Scholium-v0.1.0-beta.10-macos-arm64.dmg.sha256)）；
+- [独立 Scholium CLI](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.10/Scholium-CLI-macos.zip)
+  （[SHA-256](https://github.com/Aaronlves/Scholium/releases/download/v0.1.0-beta.10/Scholium-CLI-macos.zip.sha256)）；
+- [准确标签源码](https://github.com/Aaronlves/Scholium/tree/v0.1.0-beta.10)。
 
 把产物与对应 checksum 文件下载到同一文件夹后，先运行：
 
 ```bash
-shasum -a 256 -c Scholium-v0.1.0-beta.8-macos-arm64.dmg.sha256
+shasum -a 256 -c Scholium-v0.1.0-beta.10-macos-arm64.dmg.sha256
 shasum -a 256 -c Scholium-CLI-macos.zip.sha256
 ```
 

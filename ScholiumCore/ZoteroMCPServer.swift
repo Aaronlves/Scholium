@@ -58,7 +58,7 @@ public struct ZoteroMCPURLSessionClient: ZoteroMCPHTTPClient, Sendable {
 public actor ZoteroMCPServer {
     public static let protocolVersion = "2025-11-25"
     public static let serverName = "scholium-zotero"
-    public static let serverVersion = "0.1.0"
+    public static let serverVersion = ScholiumProductIdentity.marketingVersion
 
     private let client: any ZoteroMCPHTTPClient
     private let now: @Sendable () -> Date

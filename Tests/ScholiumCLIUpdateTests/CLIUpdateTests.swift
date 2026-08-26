@@ -10,12 +10,15 @@ struct CLIUpdateTests {
     @Test("A newer verified release replaces the executable and resource bundle")
     func appliesVerifiedRelease() async throws {
         let fixture = try UpdateFixture(
-            identity: releaseIdentity(label: "v0.1.0-beta.1"),
+            identity: releaseIdentity(label: "v0.1.0-beta.10"),
             executableContents: Data("old-cli".utf8)
         )
         defer { fixture.remove() }
 
-        let available = releaseIdentity(label: "v0.1.0-beta.10")
+        let available = releaseIdentity(
+            label: "v0.1.1-beta1",
+            marketingVersion: "0.1.1"
+        )
         let archive = Data("verified-archive".utf8)
         let engine = makeEngine(
             archive: archive,
@@ -29,10 +32,10 @@ struct CLIUpdateTests {
         )
 
         #expect(report.state == .updated)
-        #expect(report.current.releaseLabel == "v0.1.0-beta.1")
-        #expect(report.available.releaseLabel == "v0.1.0-beta.10")
+        #expect(report.current.releaseLabel == "v0.1.0-beta.10")
+        #expect(report.available.releaseLabel == "v0.1.1-beta1")
         #expect(try Data(contentsOf: fixture.executable) == Data("new-cli".utf8))
-        #expect(try readReleaseLabel(from: fixture.bundle) == "v0.1.0-beta.10")
+        #expect(try readReleaseLabel(from: fixture.bundle) == "v0.1.1-beta1")
         #expect(try transactionDirectories(in: fixture.root).isEmpty)
     }
 
@@ -715,9 +718,12 @@ private struct InstallerFixture {
     }
 }
 
-private func releaseIdentity(label: String) -> CLIReleaseIdentity {
+private func releaseIdentity(
+    label: String,
+    marketingVersion: String = "0.1.0"
+) -> CLIReleaseIdentity {
     CLIReleaseIdentity(
-        marketingVersion: "0.1.0",
+        marketingVersion: marketingVersion,
         releaseLabel: label,
         buildNumber: "1",
         packageMode: "release",

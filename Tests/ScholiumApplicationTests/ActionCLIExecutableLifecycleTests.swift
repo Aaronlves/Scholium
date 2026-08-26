@@ -1709,7 +1709,10 @@ struct ActionCLIExecutableLifecycleTests {
         let versionObject = try #require(
             JSONSerialization.jsonObject(with: version.stdout) as? [String: Any]
         )
-        #expect(versionObject["cli_version"] as? String == "0.1.0")
+        #expect(
+            versionObject["cli_version"] as? String
+                == ScholiumProductIdentity.marketingVersion
+        )
         #expect(versionObject["release_label"] as? String == "development")
         #expect(versionObject["build_number"] as? String == "0")
         let help = try cli.run([

@@ -95,7 +95,11 @@ rm -rf \
 mkdir -p "${STAGING_APP}/Contents/MacOS" "${STAGING_APP}/Contents/Resources" \
   "${CLI_STAGE}" "${OUTPUT}"
 
-swift build --package-path "${ROOT}" -c release --scratch-path "${SCRATCH}"
+swift build \
+  --package-path "${ROOT}" \
+  --configuration release \
+  --scratch-path "${SCRATCH}" \
+  --only-use-versions-from-resolved-file
 cp "${SCRATCH}/release/ScholiumApp" "${STAGING_APP}/Contents/MacOS/Scholium"
 if [[ -d "${SCRATCH}/release/Scholium_ScholiumApp.bundle" ]]; then
   cp -R "${SCRATCH}/release/Scholium_ScholiumApp.bundle" "${STAGING_APP}/Contents/Resources/Scholium_ScholiumApp.bundle"
@@ -171,7 +175,7 @@ cp "${PROVENANCE}" \
 cp "${PROVENANCE}" \
   "${CLI_STAGE}/Scholium_ScholiumCore.bundle/Contents/Resources/ScholiumBuildProvenance.plist"
 
-[[ "${MARKETING_VERSION}" == "0.1.0" ]]
+[[ "${MARKETING_VERSION}" == "0.1.1" ]]
 [[ "${BUILD_NUMBER}" == "1" ]]
 [[ "$(plutil -extract LSMinimumSystemVersion raw "${STAGING_APP}/Contents/Info.plist")" == "26.0" ]]
 

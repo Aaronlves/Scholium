@@ -131,5 +131,6 @@
 - Inspect the canonical icon in Finder, Dock, small sizes, Light/Dark, and the
   packaged application.
 - Close current packaged performance, remaining distribution-integrity, Agent
-  field trials, and final researcher release acceptance. Their explicit waiver
-  for `v0.1.0-beta.8` did not convert them into passed evidence.
+  field trials, and final researcher release acceptance. The Beta-release
+  waivers recorded through `v0.1.0-beta.10` did not convert them into passed
+  evidence.

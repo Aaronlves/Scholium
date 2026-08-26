@@ -186,7 +186,7 @@ results.
 Each source-first Beta release requires:
 
 - a public prerelease tag and label that exactly match package provenance;
-- app marketing version `0.1.0`, its recorded build number, and minimum macOS
+- app marketing version `0.1.1`, its recorded build number, and minimum macOS
   26;
 - the corresponding exact tagged source under `GPL-3.0-or-later`; and
 - an architecture-labelled `Scholium-<release>-macos-<architecture>.dmg`

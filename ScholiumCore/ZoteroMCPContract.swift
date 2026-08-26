@@ -239,7 +239,7 @@ private struct InitializeRequest: Encodable {
 
     struct ClientInfo: Encodable {
         let name = "Scholium"
-        let version = "0.1.0"
+        let version = ScholiumProductIdentity.marketingVersion
     }
 }
 

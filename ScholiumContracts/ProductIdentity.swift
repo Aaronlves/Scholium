@@ -1,5 +1,5 @@
 public enum ScholiumProductIdentity {
-    public static let marketingVersion = "0.1.0"
+    public static let marketingVersion = "0.1.1"
 }
 
 /// Immutable distribution coordinates for the independently delivered CLI.

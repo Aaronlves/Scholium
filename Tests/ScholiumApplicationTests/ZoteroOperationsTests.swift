@@ -47,7 +47,10 @@ struct ZoteroOperationsTests {
         #expect(result["protocolVersion"] as? String == "2024-11-05")
         let server = try #require(result["serverInfo"] as? [String: Any])
         #expect(server["name"] as? String == "scholium-zotero")
-        #expect(server["version"] as? String == "0.1.0")
+        #expect(
+            server["version"] as? String
+                == ScholiumProductIdentity.marketingVersion
+        )
 
         let notification = Data(
             #"{"jsonrpc":"2.0","method":"notifications/initialized"}"#.utf8
