@@ -528,10 +528,26 @@ final class ScholiumPerformanceUITests: XCTestCase {
             return
         }
         XCTAssertTrue(
-            waitForRenderedDocument(setupDocument, in: application, timeout: 30),
-            "The warm metric setup document did not finish rendering."
+            waitForUsableDocument(setupDocument, in: application, timeout: 30),
+            "The warm metric setup document did not expose an accessible surface."
         )
         if metric == .warmReadActivation {
+            requestPerformanceEditorAction("review")
+            let modeMenu = application.descendants(matching: .any)[
+                "scholium.documentModeButton"
+            ]
+            XCTAssertTrue(modeMenu.waitForExistence(timeout: 10))
+            XCTAssertTrue(
+                waitUntil(timeout: 30) {
+                    (modeMenu.value as? String) == "Review"
+                        && self.waitForRenderedDocument(
+                            setupDocument,
+                            in: application,
+                            timeout: 0.1
+                        )
+                },
+                "The warm Read setup did not reach accessible Review."
+            )
             try prepareWarmReadLibraryTargets(in: application)
             return
         }
@@ -539,11 +555,16 @@ final class ScholiumPerformanceUITests: XCTestCase {
             || metric == .editorCachedPreview
             || metric == .warmEditActivation
             || metric == .editorVisibleProjection {
-            application.typeKey("r", modifierFlags: [.command])
             let modeMenu = application.descendants(matching: .any)[
                 "scholium.documentModeButton"
             ]
             XCTAssertTrue(modeMenu.waitForExistence(timeout: 10))
+            if (modeMenu.value as? String) != "Edit"
+                || !application.descendants(matching: .any)[
+                    "Markdown editor, Edit mode"
+                ].exists {
+                requestPerformanceEditorAction("activation")
+            }
             XCTAssertTrue(
                 waitUntil(timeout: 20) {
                     (modeMenu.value as? String) == "Edit"
@@ -883,6 +904,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
             "Sample \(sample): setup selected a document before the measured action."
         )
 
+        requestPerformanceEditorAction("review")
         target.click()
         XCTAssertTrue(
             waitForRenderedDocument(documentID, in: application, timeout: 60),
@@ -943,6 +965,33 @@ final class ScholiumPerformanceUITests: XCTestCase {
         application.descendants(matching: .any)[
             "scholium.renderedDocument.\(documentID)"
         ].waitForExistence(timeout: timeout)
+    }
+
+    @MainActor
+    private func waitForUsableDocument(
+        _ documentID: String,
+        in application: XCUIApplication,
+        timeout: TimeInterval
+    ) -> Bool {
+        let row = application.descendants(matching: .any)[
+            "scholium.noteRow.\(documentID)"
+        ]
+        return waitUntil(timeout: timeout) {
+            guard row.isSelected else { return false }
+            if self.waitForRenderedDocument(
+                documentID,
+                in: application,
+                timeout: 0.1
+            ) {
+                return true
+            }
+            return application.descendants(matching: .any)[
+                "Markdown editor, Edit mode"
+            ].exists
+                || application.descendants(matching: .any)[
+                    "Markdown source editor"
+                ].exists
+        }
     }
 
     @MainActor

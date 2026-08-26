@@ -3691,7 +3691,14 @@ final class WindowModel: ObservableObject {
         case "com.scholium.qa.performance-editor-activation":
             requestPerformanceEditActivation()
         case "com.scholium.qa.performance-editor-review":
-            requestDocumentMode(.read)
+            if currentNote == nil {
+                // First-use Review is measured from the Library click. Arm
+                // the workspace's presentation intent before a document
+                // exists so setup does not create an unmeasured Editor.
+                documentController.rememberPresentationMode(.read)
+            } else {
+                requestDocumentMode(.read)
+            }
         case "com.scholium.qa.performance-editor-cached-preview":
             requestPerformanceCachedPreview()
         case "com.scholium.qa.performance-editor-visible-projection":
