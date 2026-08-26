@@ -73,6 +73,25 @@ struct ScholiumRuntimeIsolationTests {
         #expect(ScholiumRuntimeIsolation.fixtureRootURL(
             environment: ["SCHOLIUM_UI_TEST_WORKSPACE_ROOT": root.path]
         ) == root.standardizedFileURL)
+
+        let releaseEnvironment = [
+            "SCHOLIUM_UI_TEST_WORKSPACE_ROOT": root.path,
+            "SCHOLIUM_PERFORMANCE_RUN_ID": "release-fixture",
+        ]
+        #expect(ScholiumRuntimeIsolation.fixtureRootURL(
+            environment: releaseEnvironment,
+            arguments: [
+                ScholiumRuntimeIsolation.packagedPerformanceIsolationArgument,
+            ],
+            bundleIdentifier: ScholiumRuntimeIsolation.productionBundleIdentifier,
+            isDebugBuild: false
+        ) == root.standardizedFileURL)
+        #expect(ScholiumRuntimeIsolation.fixtureRootURL(
+            environment: releaseEnvironment,
+            arguments: [],
+            bundleIdentifier: ScholiumRuntimeIsolation.productionBundleIdentifier,
+            isDebugBuild: false
+        ) == nil)
     }
 
     @Test("The Restore Access proof is bounded to the QA bundle and fixture")
@@ -101,8 +120,8 @@ struct ScholiumRuntimeIsolationTests {
         ) == nil)
     }
 
-    @Test("Only the QA bundle accepts a deterministic initial window identity")
-    func initialWindowIdentityIsQABounded() {
+    @Test("Only isolated automation accepts a deterministic initial window identity")
+    func initialWindowIdentityIsIsolationBounded() {
         let id = UUID()
         let environment = ["SCHOLIUM_UI_TEST_SESSION_ID": id.uuidString]
 
@@ -134,10 +153,33 @@ struct ScholiumRuntimeIsolationTests {
             environment: ["SCHOLIUM_UI_TEST_WORKSPACE_ROOT": fixtureRoot.path],
             bundleIdentifier: "com.scholium.app"
         ) == nil)
+
+        let releaseEnvironment = [
+            "SCHOLIUM_UI_TEST_WORKSPACE_ROOT": fixtureRoot.path,
+            "SCHOLIUM_PERFORMANCE_RUN_ID": "release-window",
+        ]
+        let releaseFallback = ScholiumRuntimeIsolation.initialWindowSessionID(
+            environment: releaseEnvironment,
+            arguments: [
+                ScholiumRuntimeIsolation.packagedPerformanceIsolationArgument,
+            ],
+            bundleIdentifier: ScholiumRuntimeIsolation.productionBundleIdentifier,
+            isDebugBuild: false
+        )
+        #expect(
+            releaseFallback
+                == ScholiumRuntimeIsolation.packagedPerformanceWindowSessionID
+        )
+        #expect(ScholiumRuntimeIsolation.initialWindowSessionID(
+            environment: releaseEnvironment,
+            arguments: [],
+            bundleIdentifier: ScholiumRuntimeIsolation.productionBundleIdentifier,
+            isDebugBuild: false
+        ) == nil)
     }
 
-    @Test("QA viewport control is independent from fixture configuration")
-    func qaViewportIsIndependent() {
+    @Test("QA and packaged-performance viewport controls stay bounded")
+    func isolatedViewportIsBounded() {
         let environment = ["SCHOLIUM_UI_TEST_INITIAL_WORKSPACE_WIDTH": "1180"]
 
         #expect(ScholiumRuntimeIsolation.initialWorkspaceWidth(
@@ -151,6 +193,25 @@ struct ScholiumRuntimeIsolationTests {
         #expect(ScholiumRuntimeIsolation.initialWorkspaceWidth(
             environment: ["SCHOLIUM_UI_TEST_INITIAL_WORKSPACE_WIDTH": "invalid"],
             bundleIdentifier: ScholiumRuntimeIsolation.qaBundleIdentifier
+        ) == nil)
+
+        let releaseEnvironment = [
+            "SCHOLIUM_UI_TEST_INITIAL_WORKSPACE_WIDTH": "1380",
+            "SCHOLIUM_PERFORMANCE_RUN_ID": "release-width",
+        ]
+        #expect(ScholiumRuntimeIsolation.initialWorkspaceWidth(
+            environment: releaseEnvironment,
+            arguments: [
+                ScholiumRuntimeIsolation.packagedPerformanceIsolationArgument,
+            ],
+            bundleIdentifier: ScholiumRuntimeIsolation.productionBundleIdentifier,
+            isDebugBuild: false
+        ) == 1_380)
+        #expect(ScholiumRuntimeIsolation.initialWorkspaceWidth(
+            environment: releaseEnvironment,
+            arguments: [],
+            bundleIdentifier: ScholiumRuntimeIsolation.productionBundleIdentifier,
+            isDebugBuild: false
         ) == nil)
     }
 

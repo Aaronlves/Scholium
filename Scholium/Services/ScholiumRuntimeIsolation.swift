@@ -16,6 +16,7 @@ enum ScholiumRuntimeIsolation {
     /// launch receives a fresh value and cannot collide with stale native
     /// scene bookkeeping from an earlier QA process.
     static let qaFixtureWindowSessionID = UUID()
+    static let packagedPerformanceWindowSessionID = UUID()
     static let packagedPerformanceIsolationArgument =
         "--scholium-performance-driver-isolation"
 
@@ -51,21 +52,44 @@ enum ScholiumRuntimeIsolation {
         isDebugBuild: Bool
     ) -> Bool {
         if isDebugBuild { return true }
-        return bundleIdentifier == productionBundleIdentifier
+        return allowsPackagedPerformanceIsolation(
+            environment: environment,
+            arguments: arguments,
+            bundleIdentifier: bundleIdentifier
+        )
+    }
+
+    static func allowsPackagedPerformanceIsolation(
+        environment: [String: String],
+        arguments: [String],
+        bundleIdentifier: String?
+    ) -> Bool {
+        bundleIdentifier == productionBundleIdentifier
             && arguments.contains(packagedPerformanceIsolationArgument)
             && nonempty(environment["SCHOLIUM_PERFORMANCE_RUN_ID"]) != nil
     }
 
     static func fixtureRootURL(
-        environment: [String: String] = ProcessInfo.processInfo.environment
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = CommandLine.arguments,
+        bundleIdentifier: String? = Bundle.main.bundleIdentifier,
+        isDebugBuild: Bool? = nil
     ) -> URL? {
-        if let explicit = nonempty(environment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"]) {
-            return URL(
-                fileURLWithPath: (explicit as NSString).expandingTildeInPath,
-                isDirectory: true
-            ).standardizedFileURL
+        guard let explicit = nonempty(
+            environment["SCHOLIUM_UI_TEST_WORKSPACE_ROOT"]
+        ) else { return nil }
+        let debugBuild = isDebugBuild ?? currentBuildIsDebug
+        guard debugBuild || allowsPackagedPerformanceIsolation(
+            environment: environment,
+            arguments: arguments,
+            bundleIdentifier: bundleIdentifier
+        ) else {
+            return nil
         }
-        return nil
+        return URL(
+            fileURLWithPath: (explicit as NSString).expandingTildeInPath,
+            isDirectory: true
+        ).standardizedFileURL
     }
 
     /// Supplies one synthetic existing vault path so XCUITest can exercise the
@@ -88,41 +112,76 @@ enum ScholiumRuntimeIsolation {
 #endif
     }
 
-    /// Resolves the one deterministic native-window identity requested by UI
-    /// automation. The bootstrap scene installs this identity in the initial
-    /// workspace route; later windows keep their independently generated IDs.
+    /// Resolves the one deterministic native-window identity requested by
+    /// isolated QA or packaged-performance automation. The bootstrap scene
+    /// installs this identity in the initial workspace route; later windows
+    /// keep their independently generated IDs.
     static func initialWindowSessionID(
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        bundleIdentifier: String? = Bundle.main.bundleIdentifier
+        arguments: [String] = CommandLine.arguments,
+        bundleIdentifier: String? = Bundle.main.bundleIdentifier,
+        isDebugBuild: Bool? = nil
     ) -> UUID? {
-#if DEBUG
-        guard bundleIdentifier == qaBundleIdentifier else { return nil }
-        if let rawID = nonempty(environment["SCHOLIUM_UI_TEST_SESSION_ID"]) {
-            return UUID(uuidString: rawID)
+        let debugBuild = isDebugBuild ?? currentBuildIsDebug
+        if debugBuild {
+            guard bundleIdentifier == qaBundleIdentifier else { return nil }
+            if let rawID = nonempty(environment["SCHOLIUM_UI_TEST_SESSION_ID"]) {
+                return UUID(uuidString: rawID)
+            }
+            guard fixtureRootURL(
+                environment: environment,
+                arguments: arguments,
+                bundleIdentifier: bundleIdentifier,
+                isDebugBuild: true
+            ) != nil else { return nil }
+            return qaFixtureWindowSessionID
         }
-        guard fixtureRootURL(environment: environment) != nil else { return nil }
-        return qaFixtureWindowSessionID
-#else
-        return nil
-#endif
+        guard allowsPackagedPerformanceIsolation(
+            environment: environment,
+            arguments: arguments,
+            bundleIdentifier: bundleIdentifier
+        ), fixtureRootURL(
+            environment: environment,
+            arguments: arguments,
+            bundleIdentifier: bundleIdentifier,
+            isDebugBuild: false
+        ) != nil else { return nil }
+        return packagedPerformanceWindowSessionID
     }
 
-    /// Returns an explicitly requested QA scene default without correcting a
-    /// native window after it opens or coupling the value to fixture setup.
+    /// Returns an explicitly requested isolated-automation scene default
+    /// without correcting a native window after it opens or coupling the value
+    /// to fixture setup.
     static func initialWorkspaceWidth(
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        bundleIdentifier: String? = Bundle.main.bundleIdentifier
+        arguments: [String] = CommandLine.arguments,
+        bundleIdentifier: String? = Bundle.main.bundleIdentifier,
+        isDebugBuild: Bool? = nil
     ) -> CGFloat? {
-#if DEBUG
-        guard bundleIdentifier == qaBundleIdentifier,
-              let rawWidth = nonempty(environment["SCHOLIUM_UI_TEST_INITIAL_WORKSPACE_WIDTH"]),
+        let debugBuild = isDebugBuild ?? currentBuildIsDebug
+        let allowsWidth = debugBuild
+            ? bundleIdentifier == qaBundleIdentifier
+            : allowsPackagedPerformanceIsolation(
+                environment: environment,
+                arguments: arguments,
+                bundleIdentifier: bundleIdentifier
+            )
+        guard allowsWidth,
+              let rawWidth = nonempty(
+                  environment["SCHOLIUM_UI_TEST_INITIAL_WORKSPACE_WIDTH"]
+              ),
               let width = Double(rawWidth),
               width > 0 else {
             return nil
         }
         return CGFloat(width)
+    }
+
+    private static var currentBuildIsDebug: Bool {
+#if DEBUG
+        true
 #else
-        return nil
+        false
 #endif
     }
 

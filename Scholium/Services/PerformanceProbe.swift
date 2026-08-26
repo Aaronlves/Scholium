@@ -79,7 +79,11 @@ final class PerformanceProbe {
               let rawRunID = environment["SCHOLIUM_PERFORMANCE_RUN_ID"],
               Self.isSafeRunID(rawRunID),
               let bundleID,
-              Self.allowsConfiguration(bundleID: bundleID, arguments: arguments),
+              Self.allowsConfiguration(
+                  environment: environment,
+                  bundleID: bundleID,
+                  arguments: arguments
+              ),
               let resultURL = Self.safeResultURL(
                   rawURL,
                   runID: rawRunID,
@@ -676,14 +680,16 @@ final class PerformanceProbe {
     }
 
     private static func allowsConfiguration(
+        environment: [String: String],
         bundleID: String,
         arguments: [String]
     ) -> Bool {
         bundleID == "com.scholium.qa"
-            || (bundleID == "com.scholium.app"
-                && arguments.contains(
-                    ScholiumRuntimeIsolation.packagedPerformanceIsolationArgument
-                ))
+            || ScholiumRuntimeIsolation.allowsPackagedPerformanceIsolation(
+                environment: environment,
+                arguments: arguments,
+                bundleIdentifier: bundleID
+            )
     }
 
     private static func isSafeRunID(_ value: String) -> Bool {
