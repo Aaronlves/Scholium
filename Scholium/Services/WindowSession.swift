@@ -161,10 +161,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
 
     private static func validateApplicationSupportURL(_ url: URL) throws {
         let fileManager = FileManager.default
-        try fileManager.createDirectory(
-            at: url,
-            withIntermediateDirectories: true
-        )
+        try ScholiumPaths.ensurePrivateDirectory(at: url, fileManager: fileManager)
         let values = try url.resourceValues(forKeys: [
             .isDirectoryKey,
             .isSymbolicLinkKey,

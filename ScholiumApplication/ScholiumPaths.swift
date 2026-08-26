@@ -8,6 +8,31 @@ public enum ScholiumPaths {
     public static let agentSessionDirectoryName = "Agent Sessions"
     public static let agentBridgeDirectoryName = "AgentBridge"
 
+    /// Creates or normalizes a directory that contains private Scholium
+    /// state. Both the App and the independently delivered CLI use this
+    /// boundary so a fresh isolated Home cannot leave shared state readable
+    /// by other local users.
+    public static func ensurePrivateDirectory(
+        at url: URL,
+        fileManager: FileManager = .default
+    ) throws {
+        try fileManager.createDirectory(
+            at: url,
+            withIntermediateDirectories: true
+        )
+        let values = try url.resourceValues(forKeys: [
+            .isDirectoryKey,
+            .isSymbolicLinkKey,
+        ])
+        guard values.isDirectory == true, values.isSymbolicLink != true else {
+            throw CocoaError(.fileWriteInvalidFileName)
+        }
+        try fileManager.setAttributes(
+            [.posixPermissions: 0o700],
+            ofItemAtPath: url.path
+        )
+    }
+
     /// Returns the current machine-state namespace. Unsupported pre-release
     /// bytes at the parent Scholium directory remain untouched and cannot
     /// authorize the current application.
@@ -30,11 +55,7 @@ public enum ScholiumPaths {
         let current = base
             .appendingPathComponent(applicationSupportDirectoryName, isDirectory: true)
             .appendingPathComponent(machineStateDirectoryName, isDirectory: true)
-        try fileManager.createDirectory(at: current, withIntermediateDirectories: true)
-        try fileManager.setAttributes(
-            [.posixPermissions: 0o700],
-            ofItemAtPath: current.path
-        )
+        try ensurePrivateDirectory(at: current, fileManager: fileManager)
         return current
     }
 

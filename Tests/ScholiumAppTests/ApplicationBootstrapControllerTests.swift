@@ -34,8 +34,41 @@ struct ApplicationBootstrapControllerTests {
         }
         #expect(controller.isReady)
         #expect(store.applicationSupportURL == supportURL.standardizedFileURL)
+        let supportMode = try #require(
+            FileManager.default.attributesOfItem(atPath: supportURL.path)[
+                .posixPermissions
+            ] as? NSNumber
+        ).intValue
+        #expect(supportMode == 0o700)
         await store.shutdownApplicationRuntime()
         try? FileManager.default.removeItem(at: supportURL.deletingLastPathComponent())
+    }
+
+    @Test("An isolated Home is private before App and CLI share its state")
+    func isolatedHomeIsPrivate() throws {
+        let home = testRoot()
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o755],
+            ofItemAtPath: home.path
+        )
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let resolved = try ApplicationBootstrapController.resolveStorageURL(
+            environment: ["SCHOLIUM_HOME": home.path],
+            bundleIdentifier: ScholiumRuntimeIsolation.qaBundleIdentifier
+        )
+
+        #expect(
+            resolved.standardizedFileURL.path
+                == home.appendingPathComponent("ApplicationSupport").standardizedFileURL.path
+        )
+        let homeMode = try #require(
+            FileManager.default.attributesOfItem(atPath: home.path)[
+                .posixPermissions
+            ] as? NSNumber
+        ).intValue
+        #expect(homeMode == 0o700)
     }
 
     @Test("WorkspaceStore refuses an Application Support path below a regular file")

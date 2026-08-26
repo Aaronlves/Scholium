@@ -195,6 +195,7 @@ final class ApplicationBootstrapController: ObservableObject {
             environment: environment,
             bundleIdentifier: bundleIdentifier
         ) {
+            try ScholiumPaths.ensurePrivateDirectory(at: isolatedHome)
             return isolatedHome.appendingPathComponent(
                 "ApplicationSupport",
                 isDirectory: true
