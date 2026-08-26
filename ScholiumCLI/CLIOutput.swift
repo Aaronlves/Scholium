@@ -182,11 +182,11 @@ extension ScholiumCLI {
                 usage: "scholium agent start --triptych <selector> --from <json|->",
                 inputContract: "ResearchAgentStartRequest schema \(ResearchAgentStartRequest.currentSchemaVersion)",
                 input: "Strict JSON fields: schema_version, action_id, exactly one of existing target {vault_id, relative_path} or the unchanged new_analysis payload returned by agent preflight-analysis, optional source_route=researcher_provided only for an existing Analysis, and academic_inputs containing every required current Profile field. Each academic input is a typed freeText, singleChoice, or multipleChoice value. Optional Settings preferences grant no authority and cannot invalidate creation; replay requires the exact complete start payload.",
-                output: "ResearchAgentStartReceipt with the new Run locator, Action, target revision, state, and a non-secret message. The Session credential is stored in protected local state and is not printed.",
+                output: "AgentStartReport with the ResearchAgentStartReceipt and initial ResearchAuthenticatedRunContext. The Session credential is stored in protected local state and is not printed.",
                 nextSteps: [
                     "Run agent preflight-analysis first for every new Analysis",
-                    "scholium agent context --run <locator>",
-                    "Continue with the returned current Bounded Write Set and Result Contract; no Pairing Code is required",
+                    "Continue with the returned current evidence actions, Bounded Write Set, and Result Contract; no Pairing Code or separate context command is required",
+                    "If initial context delivery fails after Session creation, run scholium agent reload --run <locator>; do not repeat start",
                 ]
             ),
             "agent pair": AgentCLICommandHelp(
@@ -194,20 +194,10 @@ extension ScholiumCLI {
                 usage: "scholium agent pair --run <locator>",
                 inputContract: "ResearchPairingCode on standard input",
                 input: "When prompted, enter the one-time Pairing Code from the current handoff. Do not put it in an argument, URL, file, or log.",
-                output: "AgentPairingReport with paired=true and the Run locator. The exchanged Session credential is stored in protected local state and is not printed.",
+                output: "AgentPairingReport with paired=true, the Run locator, context_kind, and the Run owner's initial ResearchAuthenticatedRunContext or ResearchMethodImprovementContext. The exchanged Session credential is stored in protected local state and is not printed.",
                 nextSteps: [
-                    "scholium agent context --run <locator>",
-                ]
-            ),
-            "agent context": AgentCLICommandHelp(
-                rule: .init(pathLength: 2, options: ["--run": .value]),
-                usage: "scholium agent context --run <locator>",
-                inputContract: "Authenticated Run locator; no JSON body",
-                input: "Use the Run locator from the handoff. The CLI loads the hidden Session credential from protected local state.",
-                output: "ResearchAuthenticatedRunContext: Core Protocol on first delivery, Run Brief with current state, frozen Skill entry and reference-folder path, Result Contract, any exact Fidelity target/material/source boundary with ready inspection_requests, current bounded write set, continuation handoff, and typed next_actions.",
-                nextSteps: [
-                    "scholium agent query --run <locator> --from <json|-> when more Research Context is needed",
-                    "scholium agent reload --run <locator> whenever current Run state is uncertain",
+                    "Continue with the returned current evidence actions, Bounded Write Set, and Result Contract; no separate context command is required",
+                    "If initial context delivery fails after pairing succeeds, run scholium agent reload --run <locator>; do not pair again",
                 ]
             ),
             "agent reload": AgentCLICommandHelp(
@@ -215,7 +205,7 @@ extension ScholiumCLI {
                 usage: "scholium agent reload --run <locator>",
                 inputContract: "Authenticated Run locator; no JSON body",
                 input: "Use the current Run locator. No earlier Research Context response is accepted as input or replayed.",
-                output: "ResearchAuthenticatedRunContext with the current Run state and exact current boundaries. A changed target, Material, or formal source returns structured code stale_run instead of a usable context. The one-time Core Protocol is not replayed.",
+                output: "The current ResearchAuthenticatedRunContext, or ResearchMethodImprovementContext for an improvement Run. Action context includes typed required/when-needed evidence actions including Search, exact current boundaries, and only required Result fields in its fillable template. A changed target, Material, formal source, feedback, or Method returns a structured error instead of a usable context. The one-time Core Protocol is not replayed.",
                 nextSteps: [
                     "Follow the returned current state and run the applicable agent command",
                     "On stale_run, stop this Run; do not retry a write or Result against the changed boundary",

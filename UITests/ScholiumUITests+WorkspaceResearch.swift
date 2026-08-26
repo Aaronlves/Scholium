@@ -2197,7 +2197,8 @@ extension ScholiumUITests {
         )
         let copiedInstructions = try pasteboardText()
         XCTAssertTrue(copiedInstructions.contains("scholium agent pair --run"))
-        XCTAssertTrue(copiedInstructions.contains("scholium agent context --run"))
+        XCTAssertTrue(copiedInstructions.contains("Pair returns the initial authenticated Run context"))
+        XCTAssertFalse(copiedInstructions.contains("scholium agent context --run"))
     }
 
 

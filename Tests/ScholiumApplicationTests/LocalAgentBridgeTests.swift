@@ -970,7 +970,8 @@ private func endRequest() throws -> LocalAgentBridgeRequest {
 private func testCredential() throws -> ResearchConnectionCredential {
     try ResearchConnectionCredential(
         sessionID: UUID(),
-        secret: String(repeating: "s", count: 48)
+        secret: String(repeating: "s", count: 48),
+        expiresAt: Date().addingTimeInterval(3_600)
     )
 }
 

@@ -194,12 +194,13 @@ actor ResearchAgentSessionAuthority {
         let locator = try uniqueLocator()
         let secretData = try random.bytes(count: 32)
         let secret = Self.base64URL(secretData)
-        let credential = try ResearchConnectionCredential(
-            sessionID: UUID(),
-            secret: secret
-        )
         let expiry = now.addingTimeInterval(
             min(max(sessionValidity, 60), 24 * 60 * 60)
+        )
+        let credential = try ResearchConnectionCredential(
+            sessionID: UUID(),
+            secret: secret,
+            expiresAt: expiry
         )
         revokeAuthorizationLineage(rootRunID: runID)
         pairings = pairings.filter { $0.value.runID != runID }
@@ -252,12 +253,13 @@ actor ResearchAgentSessionAuthority {
 
         let secretData = try random.bytes(count: 32)
         let secret = Self.base64URL(secretData)
-        let credential = try ResearchConnectionCredential(
-            sessionID: UUID(),
-            secret: secret
-        )
         let expiry = now.addingTimeInterval(
             min(max(sessionValidity, 60), 24 * 60 * 60)
+        )
+        let credential = try ResearchConnectionCredential(
+            sessionID: UUID(),
+            secret: secret,
+            expiresAt: expiry
         )
         var binding = try requiredRun(locator)
         if let previousID = binding.activeSessionID {
@@ -291,6 +293,7 @@ actor ResearchAgentSessionAuthority {
               var session = sessions[credential.sessionID],
               session.userID == userID,
               session.expiresAt > now,
+              credential.expiresAt == session.expiresAt,
               Self.constantTimeEqual(session.generationDigest, generationDigest),
               Self.constantTimeEqual(
                 session.secretDigest,
@@ -332,6 +335,7 @@ actor ResearchAgentSessionAuthority {
         guard let session = sessions[credential.sessionID],
               session.userID == userID,
               session.expiresAt > now,
+              credential.expiresAt == session.expiresAt,
               Self.constantTimeEqual(
                 session.secretDigest,
                 Self.digest(Data(credential.secret.utf8))
@@ -419,6 +423,7 @@ actor ResearchAgentSessionAuthority {
         guard let session = sessions[credential.sessionID],
               session.userID == userID,
               session.expiresAt > now,
+              credential.expiresAt == session.expiresAt,
               Self.constantTimeEqual(session.generationDigest, generationDigest),
               Self.constantTimeEqual(
                 session.secretDigest,
@@ -666,6 +671,7 @@ actor ResearchAgentSessionAuthority {
     ) throws {
         guard let session = sessions[credential.sessionID],
               session.userID == userID,
+              credential.expiresAt == session.expiresAt,
               Self.constantTimeEqual(session.generationDigest, generationDigest),
               Self.constantTimeEqual(
                 session.secretDigest,

@@ -54,7 +54,17 @@ directly.
 0. An Agent may begin an eligible Run with `agent start` when it has the
    selected Triptych and target identity. This direct route does not use a
    Pairing Code; GUI-created Runs use `agent pair` with the copied handoff.
-1. Use `agent query` when the Skill needs additional Research Context.
+   Both commands return the initial authenticated Run packet; do not perform a
+   separate context-loading operation. If initial delivery fails after the
+   Session is stored, use `agent reload` for that Run and do not repeat start
+   or pair.
+1. Follow each typed `next_actions` requirement. Read the exact current Target
+   and execute every `required` Fidelity inspection before judging it. Execute
+   selected-Material, formal-source, and Search queries marked `when_needed`
+   only when the registered Skill and bounded task need that evidence. Search
+   uses `agent query`; keep it bounded to the current Triptych. Calling a query
+   is not evidence that its returned material was actually used: report only
+   genuine use through supported source-use testimony.
 2. For a Discuss Run, use `agent discuss-reply` with one stable `statement_id`
    and the attributed Agent turn. An exact retry is idempotent. This appends
    only to the active portable Discussion; it does not edit a Note or finish
@@ -79,8 +89,11 @@ directly.
    fidelity self-check inside the Analyze Skill; it does not create a Check
    Fidelity child Run. Check Fidelity is a separate read-only Action and is
    prepared only when the researcher explicitly initiates it.
-7. Use `agent continue` only for a distinct next Action, or `agent end` to stop
-   an unfinished Run without a Result.
+7. Use `agent continue` only for a distinct next Action. Use `agent end` only
+   to stop an unfinished Run without a Result; a finalized Result needs no
+   extra end operation. The CLI automatically removes an expired local
+   credential, while Continue remains bounded by the Application-issued
+   Session expiry.
 
 The authenticated Run packet and command inputs own current fields, allowed
 values, capabilities, write members, and next steps. This protocol does not
@@ -93,7 +106,9 @@ including an explicit blocked result when the required research cannot be
 completed safely or faithfully. For the default Check Fidelity profile, keep
 `academic_results.values` empty: Scholium derives Finding, Finding Status, and
 suggested correction from the attributed `fidelity_outcomes`. A customized
-profile remains explicit in the returned input template. The Record Title names
+profile remains explicit in the returned input template. Optional academic
+fields stay visible in the Result Contract but are omitted from the fillable
+template; include them only when the research actually supports them. The Record Title names
 the completed research record; it is not a second result, source title, or
 process narration. Do not provide process narration merely to demonstrate
 compliance.

@@ -69,10 +69,15 @@ final class LocalAgentBridgeRequestRouter {
                   let credential = request.credential else {
                 throw LocalAgentBridgeError.invalidRequest
             }
-            return .context(try await runtime.researchAgentContext(
+            let context = try await runtime.researchAgentInitialContext(
                 credential: credential,
                 run: run
-            ))
+            )
+            return context.fold(
+                action: LocalAgentBridgeHandlerResult.context,
+                methodImprovement:
+                    LocalAgentBridgeHandlerResult.methodImprovementContext
+            )
         case .query:
             guard let run = request.run,
                   let credential = request.credential,

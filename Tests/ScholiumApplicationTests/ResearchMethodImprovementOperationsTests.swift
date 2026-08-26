@@ -26,10 +26,21 @@ struct ResearchMethodImprovementOperationsTests {
             run: handoff.run,
             pairingCode: handoff.pairingCode
         )
+        let initialContext = try await runtime.researchAgentInitialContext(
+            credential: credential,
+            run: handoff.run
+        )
+        let routedContext = try #require({
+            if case .methodImprovement(let context) = initialContext {
+                return context
+            }
+            return nil
+        }())
         let context = try await handle.research.methodImprovementContext(
             credential: credential,
             run: handoff.run
         )
+        #expect(routedContext == context)
         #expect(context.feedbackText == commented.methodFeedbackComment?.text)
         #expect(context.targets.first?.id == "primary-method")
         #expect(context.targets.allSatisfy { target in

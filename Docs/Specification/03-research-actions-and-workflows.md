@@ -166,59 +166,47 @@ not retryable because Session may be revoked. Retained identity with missing/tra
 source permits Restore or distinct creation—never recreation, overwrite,
 deletion, or retry rename.
 
-Direct Agent connection is local, provider-neutral, and bound to the current
-Scholium application process. The researcher deliberately copies one complete
-handoff into the selected Agent conversation. It contains the opaque Run
-locator, short-lived one-time **Pairing Code**, and direct instructions for the
-Agent to run the installed `scholium` CLI itself, enter that code through the
-pairing command's standard input, and load the authenticated Run context. The
-handoff contains no research text, complete method, local path, internal
-fingerprint, permission payload, result schema, Session secret, or reusable
-bearer authority.
+Direct Agent connection is local, provider-neutral, and process-bound. The
+copied handoff contains only an opaque Run locator, one-time **Pairing Code**,
+and CLI instructions. `pair` reads the code from standard input and returns the
+Run owner's initial authenticated context; `start` returns its receipt and
+context together. Only `reload` recovers or revalidates context. The handoff
+omits research text, method, paths, fingerprints, permissions, result schema,
+Session secret, and reusable authority.
 
-Pairing exchanges the one-time code for a hidden **Connection Session**. Both
-values are independently generated, bounded, nonpredictable, and never stored
-in recoverable plain text. The code enters only the researcher-selected Agent
-conversation and pairing standard input; the reusable secret enters neither.
-Neither value enters a vault, command argument, URL, ordinary output, log,
-later prompt, Result, or Record.
+Pairing exchanges the code for a hidden **Connection Session**. Neither secret
+may enter a vault, command argument, URL, ordinary output, log, later prompt,
+Result, or Record. A Session binds user, application-process generation, Runs,
+expiry, and revocation. One Run has at most one writer Session; replacement
+revokes its authority lineage but not independent Runs or durable Run state.
+Process exit or restart invalidates Sessions; Keychain does not restore them.
 
-A Session binds the current macOS user, current application-process
-generation, allowed Runs, expiry, and revocation. One Run has at most one
-write-capable Session. Re-pair or direct-Session replacement revokes that Run
-and all child locators derived from its authority root, while preserving
-independently attached Runs. Ordinary reconnection needs no new pairing while
-process and Session remain valid; full app exit, crash, update, or Mac restart
-invalidates all Sessions. Re-pairing changes connection authority only, never
-the Run, confirmed writes, Records, conflicts, or recovery. Keychain does not
-restore Sessions.
+The credential carries its Application-issued expiry. The CLI prunes only exact
+expired current-schema credentials; unsafe or unknown entries authorize
+nothing. Result finalization revokes writes but retains the binding until that
+expiry for Continue Research, with no extra `end`.
 
-The packaged App and matching CLI use one per-user, loopback-only bridge with
-bounded messages, timeouts, and version checks. It relies on the Pairing Code
-and process-bound Session, owns no research or recovery state, and exposes no
-relay, LAN, or public endpoint. Pairing requires Agent access to that local
-CLI/bridge; cloud copy is not a Session. Transport mechanics belong to
+The App and CLI use one per-user loopback bridge with bounded messages,
+timeouts, and version checks. It owns no research or recovery state and exposes
+no relay, LAN, or public endpoint. Cloud copy is not a Session. Mechanics belong to
 [Research Actions and Execution](../Architecture/02-research-actions-and-execution.md#pairing-and-delivery).
 
 Delivery is progressive:
 
-- a newly paired Agent session receives Core Protocol, capability catalog, and
-  Session boundary once;
-- each Run receives a short Run Brief, exact Method Context, Result Contract,
-  and fillable `next_actions` for Discuss reply/finish, each ready write, or the
-  strict non-Discuss Result; Fidelity adds its exact boundary and inspections;
+- a new Session receives Core Protocol, capabilities, and boundary once;
+- each Run receives Brief, Method, Result Contract, and typed `next_actions`;
+  Target/Fidelity reads and terminal actions are `required`, while supporting
+  evidence, bounded Search, and writes are `when_needed`;
 - Research Context arrives only after an explicit query;
 - a specialized capability explains only its additional contract on first
   use; and
 - ordinary calls return data, result, error, next step, current Run/Action,
   and `reload`/`help` anchors without repeating Core Protocol.
 
-`reload` revalidates exact Target, Materials, and formal source, then returns
-the frozen Skill entry, folder path, Result Contract, and current state.
-Genuine drift returns `stale_run`; an authenticated write uses the Run-owned
-revision and completes without scheduling a Fidelity Action. Reload substitutes
-no later method and replays no cached Context response, ranking, availability, or
-cache.
+`reload` revalidates exact Target, Materials, and formal source and returns the
+frozen current packet. Drift returns `stale_run`; no later method or cached
+Context response is substituted. A read or Search call proves response delivery,
+not evidential use; only supported Context Use testimony records use.
 Local absolute paths are delivered only after authentication.
 
 The versioned, read-only **Research Context Query/Response** contract belongs
@@ -406,6 +394,10 @@ Machine facts are never recopied by the Agent; one academic judgment is not
 requested under several labels. `Unable to determine`, `Not applicable`, no
 warranted change, no academic publication used, and an honest blocked result
 are valid when the Action permits them.
+
+The fillable Result template contains required academic fields only. Optional
+fields remain visible in the frozen Result Contract and are added only when the
+research actually warrants them; omission is not replaced by empty testimony.
 
 The common first contract is one `Academic Outcome` text field plus machine
 facts. Action-specific defaults refine the same model:

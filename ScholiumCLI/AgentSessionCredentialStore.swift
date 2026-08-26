@@ -4,17 +4,19 @@ import ScholiumContracts
 
 struct AgentSessionCredentialStore {
     private struct StoredCredential: Codable {
-        static let currentSchemaVersion = 2
+        static let currentSchemaVersion = 3
         let schemaVersion: Int
         let run: ResearchRunLocator
         let sessionID: UUID
         let secret: String
+        let expiresAt: Date
 
         init(run: ResearchRunLocator, credential: ResearchConnectionCredential) {
             schemaVersion = Self.currentSchemaVersion
             self.run = run
             sessionID = credential.sessionID
             secret = credential.secret
+            expiresAt = credential.expiresAt
         }
 
         private enum CodingKeys: String, CodingKey, CaseIterable {
@@ -22,6 +24,7 @@ struct AgentSessionCredentialStore {
             case run
             case sessionID = "session_id"
             case secret
+            case expiresAt = "expires_at"
         }
 
         init(from decoder: Decoder) throws {
@@ -39,13 +42,15 @@ struct AgentSessionCredentialStore {
             run = try container.decode(ResearchRunLocator.self, forKey: .run)
             sessionID = try container.decode(UUID.self, forKey: .sessionID)
             secret = try container.decode(String.self, forKey: .secret)
+            expiresAt = try container.decode(Date.self, forKey: .expiresAt)
         }
 
         func validatedCredential() throws -> ResearchConnectionCredential {
             do {
                 return try ResearchConnectionCredential(
                     sessionID: sessionID,
-                    secret: secret
+                    secret: secret,
+                    expiresAt: expiresAt
                 )
             } catch {
                 throw AgentSessionCredentialStoreError.missingOrUnsafe
@@ -61,15 +66,17 @@ struct AgentSessionCredentialStore {
 
     /// Establishes the protected parent and Session directory before a remote
     /// operation can create or consume a bearer Session.
-    func prepare() throws {
+    func prepare(now: Date = Date()) throws {
         try prepareDirectory()
+        try pruneExpiredCredentials(now: now)
     }
 
     func save(
         _ credential: ResearchConnectionCredential,
-        for run: ResearchRunLocator
+        for run: ResearchRunLocator,
+        now: Date = Date()
     ) throws {
-        try prepareDirectory()
+        try prepare(now: now)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         let data = try encoder.encode(StoredCredential(
@@ -119,8 +126,11 @@ struct AgentSessionCredentialStore {
         }
     }
 
-    func load(for run: ResearchRunLocator) throws -> ResearchConnectionCredential {
-        try prepareDirectory()
+    func load(
+        for run: ResearchRunLocator,
+        now: Date = Date()
+    ) throws -> ResearchConnectionCredential {
+        try prepare(now: now)
         let fileURL = url(for: run)
         var info = stat()
         guard lstat(fileURL.path, &info) == 0,
@@ -186,6 +196,36 @@ struct AgentSessionCredentialStore {
               (info.st_mode & 0o077) == 0 else {
             throw AgentSessionCredentialStoreError.unsafeState
         }
+    }
+
+    /// Removes only a current-schema credential whose Run filename and
+    /// Application-issued expiry are exact. Unknown, malformed, symlinked, or
+    /// otherwise unsafe entries remain untouched and nonauthorizing.
+    private func pruneExpiredCredentials(now: Date) throws {
+        let entries = try FileManager.default.contentsOfDirectory(
+            at: directoryURL,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        )
+        for entry in entries where entry.pathExtension == "json" {
+            guard let stored = try? storedCredential(at: entry),
+                  entry.lastPathComponent == stored.run.rawValue + ".json",
+                  stored.expiresAt <= now else { continue }
+            try remove(for: stored.run)
+        }
+    }
+
+    private func storedCredential(at fileURL: URL) throws -> StoredCredential {
+        var info = stat()
+        guard lstat(fileURL.path, &info) == 0,
+              info.st_uid == geteuid(),
+              (info.st_mode & S_IFMT) == S_IFREG,
+              (info.st_mode & 0o177) == 0,
+              info.st_size <= 4_096 else {
+            throw AgentSessionCredentialStoreError.missingOrUnsafe
+        }
+        let data = try Data(contentsOf: fileURL, options: [.mappedIfSafe])
+        return try JSONDecoder().decode(StoredCredential.self, from: data)
     }
 
     private func url(for run: ResearchRunLocator) -> URL {

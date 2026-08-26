@@ -53,20 +53,43 @@ extension ResearchActionRunOperationsTests {
                 run: handoff.run,
                 pairingCode: handoff.pairingCode
             )
-            let context = try await handle.research.authenticatedAgentContext(
+            let initialContext = try await runtime.researchAgentInitialContext(
                 credential: credential,
                 run: handoff.run
             )
+            let context = try #require({
+                if case .action(let context) = initialContext { return context }
+                return nil
+            }())
             #expect(context.nextActions.allSatisfy {
                 Array($0.command.prefix(2)) == ["scholium", "agent"]
             })
+            let evidenceQueries = context.nextActions.filter {
+                $0.kind == .query
+            }
+            #expect(evidenceQueries.contains {
+                $0.requirement == .required
+                    && $0.label.contains("exact current Target revision")
+                    && $0.inputTemplate?.contains("read_note") == true
+            })
+            #expect(evidenceQueries.contains {
+                $0.requirement == .whenNeeded
+                    && $0.label.contains("Search the current Triptych")
+                    && $0.inputTemplate?.contains("discover_note") == true
+                    && $0.inputTemplate?.contains(
+                        "REPLACE_WITH_BOUNDED_SEARCH_QUERY"
+                    ) == true
+            })
 
             if actionID == .discuss {
-                #expect(context.nextActions.map { $0.kind } == [
+                #expect(context.nextActions.suffix(2).map { $0.kind } == [
                     AgentCommandActionKind.reply,
                     AgentCommandActionKind.finish,
                 ])
-                let reply = try #require(context.nextActions.first)
+                let reply = try #require(context.nextActions.first {
+                    $0.kind == .reply
+                })
+                #expect(reply.requirement == .required)
                 let replyTemplate = try #require(reply.inputTemplate)
                 #expect(replyTemplate.contains("statement_id"))
                 #expect(replyTemplate.contains("attribution"))
@@ -97,9 +120,9 @@ extension ResearchActionRunOperationsTests {
                 #expect(derivesDefaultFidelity
                     ? values.isEmpty
                     : Set(values.keys) == Set(
-                        preparation.snapshot.resultContract.academicFields.map {
-                            $0.fieldID.rawValue
-                        }
+                        preparation.snapshot.resultContract.academicFields
+                            .filter { $0.requirement == .required }
+                            .map { $0.fieldID.rawValue }
                     ))
                 #expect((object["literature_recommendations"] != nil)
                     == (actionID == .analyze))
@@ -111,6 +134,7 @@ extension ResearchActionRunOperationsTests {
                     .contains(actionID)
                 #expect(writes.isEmpty == !expectsWrite)
                 for write in writes {
+                    #expect(write.requirement == .whenNeeded)
                     let template = try #require(write.inputTemplate)
                     #expect(template.contains("\"relative_path\""))
                     #expect(template.contains("\"operation\""))

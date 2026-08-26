@@ -217,13 +217,26 @@ Materials, and formal source owners, and returns typed `stale_run` rather than
 a usable packet after true drift. It never reads later method/Profile values or
 old Research Context responses.
 
+`agent start` stores its issued credential and then returns the start receipt
+with the initial authenticated Action context. `agent pair` stores the exchanged
+credential and asks the Application-owned Run owner for one initial context:
+ordinary Actions return `ResearchAuthenticatedRunContext`, while Method
+improvement returns `ResearchMethodImprovementContext`. This owner-routed union
+prevents the CLI from probing both lifecycles. A failed initial delivery retains
+the protected credential and directs the Agent to `reload` for the same Run;
+start or pair is not repeated. The retired public `agent context` command has no
+compatibility route.
+
 Application derives ordered authenticated `next_actions` from the frozen
 Action, Result Contract, and current bounded-write-set state. Discuss receives
-one fillable reply plus Finish; each ready writable member receives its exact
-role, relative path, operation, and payload form; every non-Discuss Action
-receives a strict Result template generated from its current academic fields
-and any Fidelity boundary. CLI help describes those typed contracts but does
-not maintain a second template owner.
+an exact-Target read plus bounded Search, one fillable reply, and Finish. Every
+other Action receives exact-Target read, optional selected-evidence and Search
+queries, each ready writable member, and a strict Result template. Each action
+carries `required` or `when_needed`; Check Fidelity marks all frozen inspection
+requests required. Result templates include only required academic fields while
+the complete frozen contract retains optional fields. Query execution itself
+does not create Context Use testimony. CLI help describes those typed contracts
+but does not maintain a second template owner.
 
 Agent-facing material is serialized under an explicit evidence channel.
 `taskDirective` contains public Action, researcher request, safe capability
@@ -293,7 +306,7 @@ reading a replacement Note or revision. Contracts cap an encoded context
 response below the bridge frame, and `LocalAgentBridgeResponse` preflights the
 complete outer envelope before it writes a frame.
 
-Continue Result schema 3 and authenticated Run Context schema 9 carry the
+Continue Result schema 3 and authenticated Run Context schema 13 carry the
 closed Material reference states `current`, `changed`, `missing`, and
 `unavailable` plus the typed Researcher State requery requirement. The stable
 Local Execution envelope persists Run and Triptych identity, complete Note
@@ -301,7 +314,7 @@ participation, authority state, payload revision, and payload fingerprint. Its
 current private payload persists the frozen Analyze source route, active child
 handoff, and independent Zotero-binding write state. Agent change evidence is keyed directly by
 `(Run ID, Note ID)` rather than copied foreign identifiers. Authenticated Run
-Context schema 9 also carries optional typed Zotero Integration and Fidelity
+Context schema 13 also carries optional typed Zotero Integration and Fidelity
 contracts. The Fidelity contract contains vault-qualified exact-read selectors
 and expected revisions but no write capability; the Research Context provider
 loads those exact owners directly rather than resolving an ambiguous Search
@@ -694,3 +707,11 @@ the complete bearer value once to the bridge's authenticated Session-revocation
 operation. Confirmed revocation leaves the Run active and directs the Agent to
 copy a new handoff and pair that same Run; unknown revocation stops and reports.
 The bridge cannot revoke a Session from its UUID alone.
+
+Each current-schema credential stores the exact Application-issued expiry.
+Every credential-store preparation prunes only expired regular files whose
+validated Run identity exactly matches their filename; unknown schemas,
+malformed files, symlinks, and unsafe modes remain untouched and nonauthorizing.
+Result finalization revokes write capabilities but preserves the binding until
+that original expiry for idempotent confirmation and Continue Research, so the
+Agent performs no cleanup command after a normal Result.

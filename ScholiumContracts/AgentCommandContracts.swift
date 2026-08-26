@@ -49,6 +49,7 @@ public enum AgentRecoveryNextStep: String, Codable, Hashable, Sendable {
     case rerunCreationPreflight = "rerun_creation_preflight"
     case retryExactRequest = "retry_exact_request"
     case inspectOriginalRequestState = "inspect_original_request_state"
+    case reloadCurrentRun = "reload_current_run"
     case copyNewHandoffAndPairSameRun = "copy_new_handoff_and_pair_same_run"
     case startNewActionFromCurrentRevision = "start_new_action_from_current_revision"
     case correctRequest = "correct_request"
@@ -88,10 +89,20 @@ public struct AgentCreationRecoveryBranch: Codable, Hashable, Sendable {
 }
 
 public enum AgentCommandActionKind: String, Codable, Hashable, Sendable {
+    case query
     case reply
     case write
     case submitResult = "submit_result"
     case finish
+}
+
+/// Distinguishes steps needed to complete the current Action from bounded
+/// evidence or mutation routes used only when the Method and result require
+/// them. It is workflow guidance, never proof that an Agent performed or used
+/// the operation.
+public enum AgentCommandActionRequirement: String, Codable, Hashable, Sendable {
+    case required
+    case whenNeeded = "when_needed"
 }
 
 /// A delivery-neutral, shell-safe next step. `command` is an argument vector,
@@ -99,17 +110,20 @@ public enum AgentCommandActionKind: String, Codable, Hashable, Sendable {
 /// JSON and may intentionally contain non-decodable replacement markers.
 public struct AgentCommandAction: Codable, Hashable, Sendable {
     public let kind: AgentCommandActionKind
+    public let requirement: AgentCommandActionRequirement
     public let label: String
     public let command: [String]
     public let inputTemplate: String?
 
     public init(
         kind: AgentCommandActionKind,
+        requirement: AgentCommandActionRequirement,
         label: String,
         command: [String],
         inputTemplate: String? = nil
     ) {
         self.kind = kind
+        self.requirement = requirement
         self.label = label
         self.command = command
         self.inputTemplate = inputTemplate

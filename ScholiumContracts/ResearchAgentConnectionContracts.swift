@@ -675,7 +675,7 @@ public struct ResearchAgentHandoff: Hashable, Sendable, CustomStringConvertible,
         Scholium Run: \(run.rawValue)
         Pairing Code: \(pairingCode.rawValue)
 
-        Agent: use the installed `scholium` CLI yourself. Run `scholium agent pair --run \(run.rawValue)`, enter the Pairing Code above when the command asks through standard input, then run `scholium agent context --run \(run.rawValue)`. Do not ask the researcher to run these commands.
+        Agent: use the installed `scholium` CLI yourself. Run `scholium agent pair --run \(run.rawValue)` and enter the Pairing Code above when the command asks through standard input. Pair returns the initial authenticated Run context. If that delivery fails after pairing succeeds, recover it with `scholium agent reload --run \(run.rawValue)`; do not pair again. Do not ask the researcher to run these commands.
         """
     }
 
@@ -752,14 +752,20 @@ public struct ResearchConnectionCredential: Hashable, Sendable,
 {
     public let sessionID: UUID
     public let secret: String
+    /// Application-issued upper bound for this process-bound bearer Session.
+    /// The CLI uses it only to expire and remove its protected local copy;
+    /// Application authentication remains authoritative.
+    public let expiresAt: Date
 
-    public init(sessionID: UUID, secret: String) throws {
+    public init(sessionID: UUID, secret: String, expiresAt: Date) throws {
         guard (40...256).contains(secret.utf8.count),
-              !secret.unicodeScalars.contains(where: { $0.value <= 32 }) else {
+              !secret.unicodeScalars.contains(where: { $0.value <= 32 }),
+              expiresAt.timeIntervalSinceReferenceDate.isFinite else {
             throw ResearchAgentConnectionContractError.invalidCredential
         }
         self.sessionID = sessionID
         self.secret = secret
+        self.expiresAt = expiresAt
     }
 
     public var description: String { "<redacted connection credential>" }
@@ -1068,7 +1074,7 @@ public struct ResearchFidelityRunContract: Codable, Hashable, Sendable {
 }
 
 public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 12
+    public static let currentSchemaVersion = 13
 
     public let schemaVersion: Int
     /// Present exactly once for a Connection Session, never on ordinary reload.

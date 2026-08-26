@@ -36,6 +36,7 @@ private struct LocalAgentBridgeWireCredential: Codable {
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case sessionID = "session_id"
         case secret
+        case expiresAt = "expires_at"
     }
 
     init(from decoder: Decoder) throws {
@@ -46,10 +47,12 @@ private struct LocalAgentBridgeWireCredential: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let sessionID = try container.decode(UUID.self, forKey: .sessionID)
         let secret = try container.decode(String.self, forKey: .secret)
+        let expiresAt = try container.decode(Date.self, forKey: .expiresAt)
         do {
             value = try ResearchConnectionCredential(
                 sessionID: sessionID,
-                secret: secret
+                secret: secret,
+                expiresAt: expiresAt
             )
         } catch {
             throw DecodingError.dataCorruptedError(
@@ -64,13 +67,14 @@ private struct LocalAgentBridgeWireCredential: Codable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(value.sessionID, forKey: .sessionID)
         try container.encode(value.secret, forKey: .secret)
+        try container.encode(value.expiresAt, forKey: .expiresAt)
     }
 }
 
 public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertible,
     CustomDebugStringConvertible
 {
-    public static let currentSchemaVersion = 19
+    public static let currentSchemaVersion = 20
 
     public let schemaVersion: Int
     public let correlationID: UUID
@@ -646,7 +650,7 @@ public struct LocalAgentBridgeErrorPayload: Codable, Hashable, Sendable {
 public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertible,
     CustomDebugStringConvertible
 {
-    public static let currentSchemaVersion = 22
+    public static let currentSchemaVersion = 23
 
     public let schemaVersion: Int
     public let correlationID: UUID

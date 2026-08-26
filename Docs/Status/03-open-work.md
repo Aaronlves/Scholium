@@ -52,7 +52,7 @@
   invalidation, re-pairing, Research Context, authenticated Discuss turns,
   bounded
   writes, conflict/recovery, Result, Continue Research, Method improvement, End,
-  and credential cleanup.
+  and automatic expiry-bounded credential cleanup without a post-Result End.
 - In that clean external-Agent pass, exercise `preflight-analysis` with omitted
   and populated authored YAML, optional Settings-preferred fields, managed-root and explicit researcher-selected
   existing-Analysis destinations, occupied path/identity, a Finder-restored Analysis, an emptied

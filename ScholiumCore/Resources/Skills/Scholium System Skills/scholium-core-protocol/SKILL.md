@@ -15,9 +15,10 @@ When this Skill is loaded from an authorized project-level discovery link and
 no Run exists yet, treat the researcher's current request as the only possible
 authority to begin a direct Scholium Action. Resolve the exact current
 Triptych and target through Scholium, inspect `scholium help agent start`, use
-`scholium agent start` only for an eligible unambiguous request, then load
-`scholium agent context` before applying the registered Skill. Ask when the
-Action or target is materially ambiguous. The discovery link grants no
+`scholium agent start` only for an eligible unambiguous request, and use the
+authenticated context returned by that same command before applying the
+registered Skill. Ask when the Action or target is materially ambiguous. The
+discovery link grants no
 research read, write, Session, Run, or reusable authority.
 
 ## Runtime contract

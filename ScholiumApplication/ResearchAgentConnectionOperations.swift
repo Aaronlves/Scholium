@@ -60,7 +60,7 @@ extension WorkspaceRuntime {
                 actionID: started.preparation.snapshot.actionID,
                 target: started.preparation.snapshot.target,
                 state: started.preparation.state,
-                message: "The Agent-originated Run is active. Fetch its authenticated context before continuing."
+                message: "The Agent-originated Run is active. Its initial authenticated context accompanies this receipt."
             )
             return ResearchAgentStartedSession(
                 receipt: receipt,
@@ -145,6 +145,27 @@ extension WorkspaceRuntime {
         )
         let handle = try await openWorkspace(id: authenticated.triptychID)
         return try await handle.authenticatedResearchAgentContext(
+            credential: credential,
+            run: run
+        )
+    }
+
+    public func researchAgentInitialContext(
+        credential: ResearchConnectionCredential,
+        run: ResearchRunLocator
+    ) async throws -> ResearchAgentInitialContext {
+        guard let sessions = researchAgentSessions else {
+            throw ResearchAgentConnectionError.secureRandomUnavailable
+        }
+        let authenticated = try await sessions.authenticate(
+            credential,
+            run: run,
+            requiresWrite: false,
+            claimCoreProtocol: false
+        )
+        let handle = try await openWorkspace(id: authenticated.triptychID)
+        return try await handle.researchAgentInitialContext(
+            authenticated: authenticated,
             credential: credential,
             run: run
         )
@@ -250,6 +271,31 @@ extension ResearchOperations {
 }
 
 extension WorkspaceHandle {
+    func researchAgentInitialContext(
+        authenticated: ResearchAuthenticatedRun,
+        credential: ResearchConnectionCredential,
+        run: ResearchRunLocator
+    ) async throws -> ResearchAgentInitialContext {
+        try requireActive()
+        guard authenticated.triptychID == id,
+              authenticated.locator == run else {
+            throw ResearchAgentSessionError.sessionRejected
+        }
+        if try await researchAgentConnectionDependencies.localResearchExecutionStore
+            .recordIfPresent(id: authenticated.runID) != nil {
+            return .action(try await authenticatedResearchAgentContext(
+                credential: credential,
+                run: run
+            ))
+        }
+        return .methodImprovement(
+            try await authenticatedMethodImprovementContext(
+                credential: credential,
+                run: run
+            )
+        )
+    }
+
     func startResearchAgentRun(
         _ request: ResearchAgentStartRequest,
         expectedZoteroBinding: AnalysisZoteroBinding? = nil,
@@ -1589,7 +1635,7 @@ extension WorkspaceHandle {
             sourceReference: evidence.sourceReference,
             requiredUnavailableChecks: requiredUnavailable,
             evidenceLimitation: limitation,
-            inspectionRequests: try fidelityInspectionRequests(
+            inspectionRequests: try evidenceInspectionRequests(
                 for: record,
                 includeSourceMaterial: evidence.isAnalyzeAction
             )
@@ -1716,13 +1762,16 @@ extension WorkspaceHandle {
         }
     }
 
-    private func fidelityInspectionRequests(
+    private func evidenceInspectionRequests(
         for record: LocalResearchExecutionRecord,
         includeSourceMaterial: Bool
     ) throws -> [ResearchContextRequest] {
         let request = record.snapshot.request
-        var clauses: [ResearchContextClause] = try (
-            request.resolvedFidelityTargets.map { target in
+        let inspectionTargets = request.actionID == .checkFidelity
+            ? request.resolvedFidelityTargets
+            : [request.target]
+        let targetClauses: [ResearchContextClause] = try
+            inspectionTargets.map { target in
                 try ResearchContextClause(
                     id: Self.stableAgentUUID(
                         runID: record.id,
@@ -1734,7 +1783,9 @@ extension WorkspaceHandle {
                     limit: 1,
                     useEligibility: .contextUse
                 )
-            } + request.materials.map { material in
+            }
+        var supportingClauses: [ResearchContextClause] = try
+            request.materials.map { material in
                 try ResearchContextClause(
                     id: Self.stableAgentUUID(
                         runID: record.id,
@@ -1747,9 +1798,8 @@ extension WorkspaceHandle {
                     useEligibility: .contextUse
                 )
             }
-        )
         if includeSourceMaterial {
-            clauses.append(try ResearchContextClause(
+            supportingClauses.append(try ResearchContextClause(
                 id: Self.stableAgentUUID(
                     runID: record.id,
                     label: "formal-source-material"
@@ -1760,19 +1810,27 @@ extension WorkspaceHandle {
             ))
         }
         var requests: [ResearchContextRequest] = []
-        for start in stride(
-            from: 0,
-            to: clauses.count,
-            by: ResearchContextRequest.maximumClauses
-        ) {
-            let end = min(start + ResearchContextRequest.maximumClauses, clauses.count)
-            requests.append(try ResearchContextRequest(
-                id: Self.stableAgentUUID(
-                    runID: record.id,
-                    label: "fidelity-inspection:\(start)"
-                ),
-                clauses: Array(clauses[start..<end])
-            ))
+        for (family, clauses) in [
+            ("target", targetClauses),
+            ("supporting", supportingClauses),
+        ] where !clauses.isEmpty {
+            for start in stride(
+                from: 0,
+                to: clauses.count,
+                by: ResearchContextRequest.maximumClauses
+            ) {
+                let end = min(
+                    start + ResearchContextRequest.maximumClauses,
+                    clauses.count
+                )
+                requests.append(try ResearchContextRequest(
+                    id: Self.stableAgentUUID(
+                        runID: record.id,
+                        label: "\(family)-inspection:\(start)"
+                    ),
+                    clauses: Array(clauses[start..<end])
+                ))
+            }
         }
         return requests
     }
@@ -1782,10 +1840,16 @@ extension WorkspaceHandle {
         action: ResearchActionSnapshot,
         run: ResearchRunLocator
     ) async throws -> [AgentCommandAction] {
+        var actions = try await authenticatedEvidenceActions(
+            for: record,
+            action: action,
+            run: run
+        )
         if action.actionID == .discuss {
-            return [
+            actions.append(contentsOf: [
                 AgentCommandAction(
                     kind: .reply,
+                    requirement: .required,
                     label: "Append one attributed Agent turn to this Discussion",
                     command: [
                         "scholium", "agent", "discuss-reply", "--run",
@@ -1799,22 +1863,78 @@ extension WorkspaceHandle {
                 ),
                 AgentCommandAction(
                     kind: .finish,
+                    requirement: .required,
                     label: "Finish the Discussion after the final durable Agent turn and form its Record",
                     command: [
                         "scholium", "agent", "finish-discussion", "--run",
                         run.rawValue,
                     ]
                 ),
-            ]
+            ])
+            return actions
         }
-        var actions = try Self.authenticatedWriteActions(
+        actions.append(contentsOf: try Self.authenticatedWriteActions(
             record.boundedWriteSet.entries,
             run: run
-        )
+        ))
         actions.append(try await authenticatedResultAction(
             for: record,
             action: action,
             run: run
+        ))
+        return actions
+    }
+
+    private func authenticatedEvidenceActions(
+        for record: LocalResearchExecutionRecord,
+        action: ResearchActionSnapshot,
+        run: ResearchRunLocator
+    ) async throws -> [AgentCommandAction] {
+        let evidence = try await effectiveResearchAgentEvidence(for: record)
+        let inspections = try evidenceInspectionRequests(
+            for: record,
+            includeSourceMaterial: evidence.isAnalyzeAction
+        )
+        var actions = try inspections.enumerated().map { index, request in
+            let isFidelity = action.actionID == .checkFidelity
+            let isInitialTargetOnly = index == 0
+                && request.clauses.count == 1
+                && request.clauses[0].kind == .readNote
+                && request.clauses[0].note == action.target.note
+            return AgentCommandAction(
+                kind: .query,
+                requirement: isFidelity || isInitialTargetOnly
+                    ? .required
+                    : .whenNeeded,
+                label: isInitialTargetOnly
+                    ? "Read the exact current Target revision"
+                    : "Inspect the selected Materials and formal source boundary when the Method needs them",
+                command: [
+                    "scholium", "agent", "query", "--run",
+                    run.rawValue, "--from", "-",
+                ],
+                inputTemplate: try Self.agentContextRequestTemplate(request)
+            )
+        }
+        let search = try ResearchContextRequest(
+            id: Self.stableAgentUUID(runID: record.id, label: "search-request"),
+            clauses: [try ResearchContextClause(
+                id: Self.stableAgentUUID(runID: record.id, label: "search-clause"),
+                kind: .discoverNote,
+                query: "REPLACE_WITH_BOUNDED_SEARCH_QUERY",
+                limit: 8,
+                useEligibility: .contextUse
+            )]
+        )
+        actions.append(AgentCommandAction(
+            kind: .query,
+            requirement: .whenNeeded,
+            label: "Search the current Triptych when the Method needs additional evidence",
+            command: [
+                "scholium", "agent", "query", "--run",
+                run.rawValue, "--from", "-",
+            ],
+            inputTemplate: try Self.agentContextRequestTemplate(search)
         ))
         return actions
     }
@@ -1833,7 +1953,7 @@ extension WorkspaceHandle {
         var academicValues: [String: Any] = [:]
         if !derivesDefaultAcademicResults {
             for field in action.resultContract.academicFields
-                where field.requirement != .excluded {
+                where field.requirement == .required {
                 let value: [String: Any] = switch field.kind {
                 case .freeText:
                     ["kind": "freeText", "text": "REPLACE_WITH_\(field.fieldID.rawValue)"]
@@ -1893,6 +2013,7 @@ extension WorkspaceHandle {
         }
         return AgentCommandAction(
             kind: .submitResult,
+            requirement: .required,
             label: action.actionID == .checkFidelity && derivesDefaultAcademicResults
                 ? "Submit the attributed Fidelity outcomes; Scholium derives the default aggregate Finding fields"
                 : "Submit this Action's frozen academic Result Contract",
@@ -1923,6 +2044,7 @@ extension WorkspaceHandle {
                             : "write"
                         return AgentCommandAction(
                             kind: .write,
+                            requirement: .whenNeeded,
                             label: "Write \(entry.title) with \(operation.rawValue)",
                             command: [
                                 "scholium", "agent", command, "--run",
@@ -1979,6 +2101,16 @@ extension WorkspaceHandle {
             options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         )
         return String(decoding: data, as: UTF8.self)
+    }
+
+    private static func agentContextRequestTemplate(
+        _ request: ResearchContextRequest
+    ) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [
+            .prettyPrinted, .sortedKeys, .withoutEscapingSlashes,
+        ]
+        return String(decoding: try encoder.encode(request), as: UTF8.self)
     }
 
     private static func stableAgentUUID(runID: UUID, label: String) -> UUID {

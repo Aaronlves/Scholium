@@ -446,6 +446,10 @@ public protocol AgentBridgeUseCases: Sendable {
         run: ResearchRunLocator,
         pairingCode: ResearchPairingCode
     ) async throws -> ResearchConnectionCredential
+    func initialContext(
+        run: ResearchRunLocator,
+        credential: ResearchConnectionCredential
+    ) async throws -> ResearchAgentInitialContext
     func revokeSession(
         _ credential: ResearchConnectionCredential
     ) async throws -> ResearchAgentSessionRevocationReceipt
@@ -510,6 +514,26 @@ public protocol AgentBridgeUseCases: Sendable {
         run: ResearchRunLocator,
         credential: ResearchConnectionCredential
     ) async throws -> ResearchRunEndReceipt
+}
+
+/// The context owned by the exact Run paired through the shared Session
+/// boundary. A Research Action and a Method-improvement Run have distinct
+/// contracts; pairing does not make the Agent probe both public workflows.
+public enum ResearchAgentInitialContext: Hashable, Sendable {
+    case action(ResearchAuthenticatedRunContext)
+    case methodImprovement(ResearchMethodImprovementContext)
+
+    public func fold<Result>(
+        action: (ResearchAuthenticatedRunContext) throws -> Result,
+        methodImprovement: (ResearchMethodImprovementContext) throws -> Result
+    ) rethrows -> Result {
+        switch self {
+        case .action(let context):
+            return try action(context)
+        case .methodImprovement(let context):
+            return try methodImprovement(context)
+        }
+    }
 }
 
 public struct StyleSnapshot: Codable, Hashable, Sendable {

@@ -161,10 +161,17 @@
   Session creation or Pairing. If credential persistence then fails, the CLI asks Application to authenticate
   and revoke that exact Session while retaining the Run; confirmed cleanup
   returns a same-Run re-pair route, while unknown cleanup stops and reports.
-  Both routes use the same protected
-  Session for subsequent operations. Authenticated Context supplies fillable
-  current `next_actions` for all six Actions: Discuss reply/finish, each ready
-  bounded write, and every non-Discuss Result submission.
+  Both routes use the same protected Session for subsequent operations. `start`
+  returns its receipt with initial authenticated Action context; `pair` returns
+  the initial Action or Method-improvement context selected by the Application-
+  owned Run owner. The public `agent context` command is removed; `reload`
+  remains recovery and current-state revalidation. Authenticated Context
+  supplies fillable typed `next_actions` for all six Actions: required exact-
+  Target/Fidelity reads, bounded Search and supporting-evidence queries when
+  needed, Discuss reply/finish, each ready bounded write when needed, and every
+  non-Discuss Result submission. Result templates omit optional academic fields
+  while the frozen Result Contract retains them. Calling a query does not itself
+  prove Context Use.
 - A staged Analyze or other write Result completes after the Action's own
   transaction and Method checks. Analyze performs one bounded fidelity
   self-check inside its Method and records unresolved or unavailable limits in
@@ -216,6 +223,11 @@
   unchanged unfinished Run instead of persisting a bearer credential. Parent
   re-pair or direct-Session replacement also revokes every child locator
   derived from that parent's old Session without revoking independent Runs.
+  Credentials carry the Application-issued Session expiry. The protected CLI
+  store automatically prunes only exact expired current-schema files and leaves
+  unknown or unsafe entries untouched and nonauthorizing. Finalized Results
+  need no `end`: write authority is revoked immediately while the original
+  Session expiry bounds idempotent confirmation and Continue Research.
 - Action inspection revalidates an Agent-written target against the Run-owned
   current write/completion revision. A later unrelated external revision still
   fails stale, while ordinary Agent continuation remains available within the

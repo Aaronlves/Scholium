@@ -446,18 +446,20 @@ architecture measurement; all 652 App tests; the 10 signed executable CLI
 lifecycles; the sandboxed App-to-standalone-CLI bridge probe; and the optimized
 Release build.
 
-An earlier pre-cutover gate attempt on that tree entered the complete repository
-gate. Documentation, shipped
-resources, 199 Web editor tests and reproducible bundles, 439 Core tests plus 3
-performance tests, 147 Contracts tests, 257 Application tests, 14 bridge tests,
-and 1 architecture measurement passed. The gate then reached the 652-test App
-batch and stopped on the same 15 pre-existing failures recorded below: 3 stale
-toolbar source assertions and 12 schema-11-invalid Research Record browser
-fixtures. Later stages therefore did not run inside that gate attempt.
-Separately on the same tree, the public symbol-graph boundary, 12/12 signed
-executable CLI lifecycles, sandboxed App-to-standalone-CLI loopback probe, and
-optimized Release build passed. These are local disposable-fixture engineering
-evidence, not packaged clean-account or human acceptance.
+On 2026-08-27, the external-Agent operation reduction passed the complete
+repository gate after its first attempt exposed and the focused 24-test
+architecture suite corrected two delivery-boundary assertions. The final gate
+passed documentation and 9 shipped-Skill roots; 206 Web editor tests and
+reproducible bundles; 464 Core plus 3 performance tests; 150 Contracts tests;
+284 Application tests, 16 bridge tests, and 1 architecture measurement; all 668
+App tests; public symbol guards; all 16 signed executable CLI lifecycles; the
+sandboxed App-to-standalone-CLI probe; and the optimized Release build. The CLI
+fixtures execute all six Actions, required exact reads, bounded Search, owner-
+routed initial Action/Method context, reload-only initial-delivery recovery,
+required-only Result templates, Continue after Result, and exact expired-
+credential pruning while preserving malformed and symlink entries. Query calls
+create no Context Use claim. This is disposable local engineering evidence, not
+packaged clean-account use, scholarly adequacy, or human acceptance.
 
 On 2026-08-21, independent-review hardening passed 34 Core storage tests, 19
 Agent-start and portable-Record Contract tests, 104 Application/bridge tests,
@@ -470,16 +472,6 @@ They also exercise the request-owned binding phase transitions and structured
 `replay_conflict` response. Documentation authority and the Debug CLI build
 passed. This is local automated evidence, not packaged clean-account or human
 acceptance, and no real research vault was used.
-
-The same tree entered the complete repository gate. Documentation, shipped
-resources, bundle checks, 439 Core tests plus 3 performance tests, 146 Contracts
-tests, 249 Application tests, 13 bridge tests, and 1 architecture measurement
-passed. The gate then stopped in the 652-test App batch on 15 pre-existing
-failures outside this change's App source/test diff: 3 static toolbar assertions
-and 12 Research Record browser fixtures rejected by current schema 11. Later
-symbol, executable-CLI, sandbox bridge, and Release stages therefore did not
-run in that attempt; the two focused executable start lifecycles above remain
-the CLI evidence for this change.
 
 On 2026-08-21, the external Analyze handoff repair passed 40 focused Contracts
 tests, 39 Core storage and Search tests, 101 Application and bridge tests, and

@@ -47,7 +47,15 @@ extension ScholiumCLI {
                 operations: operations,
                 credentialStore: credentialStore
             )
-            try writeAgentJSON(started.receipt)
+            let context = try await initialContext(
+                for: started.receipt.run,
+                credential: started.credential,
+                operations: operations
+            )
+            try writeAgentJSON(AgentStartReport(
+                receipt: started.receipt,
+                context: context
+            ))
             return
         }
         if arguments.first == "pair" {
@@ -73,20 +81,30 @@ extension ScholiumCLI {
                 operations: operations,
                 credentialStore: credentialStore
             )
-            try writeAgentJSON(AgentPairingReport(run: run))
+            let context = try await initialPairedContext(
+                for: run,
+                credential: credential,
+                operations: operations
+            )
+            try writeAgentJSON(AgentPairingReport(run: run, context: context))
             return
         }
-        if arguments.first == "context" || arguments.first == "reload" {
+        if arguments.first == "reload" {
             guard let rawRun = option("--run", in: arguments),
                   let run = ResearchRunLocator(rawValue: rawRun) else {
-                throw commandUsageError("agent \(arguments.first ?? "context")")
+                throw commandUsageError("agent reload")
             }
             let credential = try credentialStore.load(for: run)
-            let context = try await operations.context(
+            let context = try await operations.initialContext(
                 run: run,
                 credential: credential
             )
-            try writeAgentJSON(context)
+            switch context {
+            case .action(let value):
+                try writeAgentJSON(value)
+            case .methodImprovement(let value):
+                try writeAgentJSON(value)
+            }
             return
         }
         if arguments.first == "query" {
@@ -525,6 +543,57 @@ extension ScholiumCLI {
             )
         }
     }
+
+    /// Delivers the first authenticated context without making the Agent
+    /// perform a second public lifecycle operation. If transport delivery
+    /// fails after the Session is stored, the existing Run and credential are
+    /// intentionally retained so `reload` can recover them exactly.
+    private static func initialContext(
+        for run: ResearchRunLocator,
+        credential: ResearchConnectionCredential,
+        operations: any AgentBridgeUseCases
+    ) async throws -> ResearchAuthenticatedRunContext {
+        do {
+            return try await operations.context(run: run, credential: credential)
+        } catch {
+            throw AgentInitialContextDeliveryError(run: run)
+        }
+    }
+
+    private static func initialPairedContext(
+        for run: ResearchRunLocator,
+        credential: ResearchConnectionCredential,
+        operations: any AgentBridgeUseCases
+    ) async throws -> ResearchAgentInitialContext {
+        do {
+            return try await operations.initialContext(
+                run: run,
+                credential: credential
+            )
+        } catch {
+            throw AgentInitialContextDeliveryError(run: run)
+        }
+    }
+}
+
+private struct AgentInitialContextDeliveryError: LocalizedError,
+    AgentCommandErrorCodeProviding
+{
+    let run: ResearchRunLocator
+
+    var errorDescription: String? {
+        "The Session for Run \(run.rawValue) was stored, but its initial authenticated context could not be delivered. Do not repeat start or pair; run scholium agent reload --run \(run.rawValue)."
+    }
+
+    var agentCommandErrorCode: String { "initial_context_unavailable" }
+
+    var agentCommandRecovery: AgentOperationRecovery? {
+        AgentOperationRecovery(
+            safeToRetry: true,
+            mustReuseRequestIdentity: false,
+            nextStep: .reloadCurrentRun
+        )
+    }
 }
 
 private struct AgentSessionPersistenceError: LocalizedError,
@@ -553,14 +622,43 @@ private struct AgentSessionPersistenceError: LocalizedError,
     }
 }
 
-private struct AgentPairingReport: Encodable {
+private struct AgentStartReport: Encodable {
     let schemaVersion = 1
+    let receipt: ResearchAgentStartReceipt
+    let context: ResearchAuthenticatedRunContext
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion = "schema_version"
+        case receipt, context
+    }
+}
+
+private struct AgentPairingReport: Encodable {
+    let schemaVersion = 2
     let paired = true
     let run: ResearchRunLocator
+    let context: ResearchAgentInitialContext
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion = "schema_version"
         case paired, run
+        case contextKind = "context_kind"
+        case context
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(paired, forKey: .paired)
+        try container.encode(run, forKey: .run)
+        switch context {
+        case .action(let value):
+            try container.encode("action", forKey: .contextKind)
+            try container.encode(value, forKey: .context)
+        case .methodImprovement(let value):
+            try container.encode("method_improvement", forKey: .contextKind)
+            try container.encode(value, forKey: .context)
+        }
     }
 }
 

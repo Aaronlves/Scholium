@@ -17,7 +17,7 @@ struct ActionCLIExecutableLifecycleTests {
         ).appendingPathComponent(".build/agent-help", isDirectory: true)
         let cli = ActionCLIProcess(binaryPath: binaryPath, home: root)
         let commands = [
-            "preflight-analysis", "start", "pair", "context", "reload", "query", "discuss-reply",
+            "preflight-analysis", "start", "pair", "reload", "query", "discuss-reply",
             "finish-discussion",
             "extend-write-set",
             "write", "write-zotero-binding", "resolve-write-conflict",
@@ -58,6 +58,11 @@ struct ActionCLIExecutableLifecycleTests {
             #expect(!(contract["output"] as? String ?? "").isEmpty)
             #expect(!(contract["next_steps"] as? [String] ?? []).isEmpty)
         }
+        #expect(!rootHelp.contains("scholium agent context"))
+        try cli.expectFailure(
+            ["agent", "context", "--run", "abcdefghijklmnopqrstuvwx"],
+            contains: "Unknown command 'agent context'"
+        )
 
         let pairHelp = String(
             decoding: try cli.run([
@@ -82,6 +87,291 @@ struct ActionCLIExecutableLifecycleTests {
             as: UTF8.self
         )
         #expect(inlineThreePartHelp.contains("scholium zotero mcp config"))
+    }
+
+    @Test("The real external-Agent CLI executes every Platform Action against Application owners")
+    func everyPlatformActionThroughExternalCLI() async throws {
+        guard let binaryPath = ProcessInfo.processInfo.environment[
+            "SCHOLIUM_ACTION_CLI_BINARY"
+        ], !binaryPath.isEmpty else { return }
+
+        let fixture = try await ActionCLIFixture.make()
+        defer { fixture.remove() }
+        let bridgeContainer = URL(
+            fileURLWithPath: FileManager.default.currentDirectoryPath,
+            isDirectory: true
+        ).appendingPathComponent(
+            ".build/m/\(String(UUID().uuidString.prefix(8)))",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: bridgeContainer,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: bridgeContainer) }
+
+        let runtime = WorkspaceRuntime(configuration: .live(.init(
+            applicationSupportURL: fixture.homeURL.appendingPathComponent(
+                "ApplicationSupport",
+                isDirectory: true
+            ),
+            workspaceRegistryStorageURL: fixture.homeURL.appendingPathComponent(
+                "registry",
+                isDirectory: true
+            )
+        )))
+        defer { Task { await runtime.shutdown() } }
+        _ = try await runtime.openWorkspace(id: fixture.assignment.id)
+
+        let server = try LocalAgentBridgeServer(
+            applicationSupportURL: bridgeContainer
+        ) { request in
+            switch request.operation {
+            case .start:
+                guard let triptychID = request.triptychID,
+                      let start = request.startRequest else {
+                    throw LocalAgentBridgeError.invalidRequest
+                }
+                let started = try await runtime.startResearchAgentRun(
+                    triptychID: triptychID,
+                    request: start
+                )
+                return .started(
+                    receipt: started.receipt,
+                    credential: started.credential
+                )
+            case .context:
+                guard let run = request.run,
+                      let credential = request.credential else {
+                    throw LocalAgentBridgeError.invalidRequest
+                }
+                return .context(try await runtime.researchAgentContext(
+                    credential: credential,
+                    run: run
+                ))
+            case .query:
+                guard let run = request.run,
+                      let credential = request.credential,
+                      let contextRequest = request.contextRequest else {
+                    throw LocalAgentBridgeError.invalidRequest
+                }
+                return .researchContext(try await runtime.queryResearchContext(
+                    credential: credential,
+                    run: run,
+                    request: contextRequest
+                ))
+            case .discussionReply:
+                guard let run = request.run,
+                      let credential = request.credential,
+                      let reply = request.discussionReplyRequest else {
+                    throw LocalAgentBridgeError.invalidRequest
+                }
+                return .discussionReply(
+                    try await runtime.replyToResearchAgentDiscussion(
+                        credential: credential,
+                        run: run,
+                        request: reply
+                    )
+                )
+            case .discussionFinish:
+                guard let run = request.run,
+                      let credential = request.credential else {
+                    throw LocalAgentBridgeError.invalidRequest
+                }
+                return .discussionFinish(
+                    try await runtime.finishResearchAgentDiscussion(
+                        credential: credential,
+                        run: run
+                    )
+                )
+            case .writeDocument:
+                guard let run = request.run,
+                      let credential = request.credential,
+                      let intent = request.documentWriteIntent else {
+                    throw LocalAgentBridgeError.invalidRequest
+                }
+                return .documentWrite(try await runtime.writeResearchDocument(
+                    credential: credential,
+                    run: run,
+                    intent: intent
+                ))
+            case .submitResult:
+                guard let run = request.run,
+                      let credential = request.credential,
+                      let submission = request.resultSubmission else {
+                    throw LocalAgentBridgeError.invalidRequest
+                }
+                return .resultReceipt(try await runtime.submitResearchAgentResult(
+                    credential: credential,
+                    run: run,
+                    submission: submission
+                ))
+            case .preflightAnalysisCreation, .pair, .revokeSession,
+                    .extendWriteSet, .writeZoteroBinding,
+                    .resolveWriteConflict, .continueResearch,
+                    .methodImprovementContext, .submitMethodImprovement, .end:
+                throw LocalAgentBridgeError.invalidRequest
+            }
+        }
+        defer { server.stop() }
+
+        let cli = ActionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
+        let environment = [
+            "SCHOLIUM_AGENT_BRIDGE_CONTAINER": bridgeContainer.path,
+        ]
+        let analysisBefore = try Data(contentsOf: fixture.rootURL
+            .appendingPathComponent("Analyses/Analysis.md"))
+        let topicBefore = try Data(contentsOf: fixture.rootURL
+            .appendingPathComponent("Topics/Topic.md"))
+        let workBefore = try Data(contentsOf: fixture.rootURL
+            .appendingPathComponent("Works/Draft Argument.md"))
+
+        let discuss = try await Self.startActionThroughCLI(
+            .discuss,
+            target: fixture.analysisTarget,
+            triptychID: fixture.assignment.id,
+            cli: cli,
+            environment: environment
+        )
+        try Self.executeEvidenceQueriesThroughCLI(
+            context: discuss.context,
+            cli: cli,
+            environment: environment
+        )
+        let replyStatementID = UUID()
+        let reply: [String: String] = [
+            "statement_id": replyStatementID.uuidString,
+            "attribution": "External CLI simulation Agent",
+            "text": "The disposable Analysis contains one synthetic claim and one explicit limitation.",
+        ]
+        let replyOutput = try cli.run(
+            ["agent", "discuss-reply", "--run", discuss.receipt.run.rawValue,
+             "--from", "-"],
+            stdin: try Self.encoder().encode(reply),
+            environment: environment
+        )
+        #expect(try Self.decoder().decode(
+            ResearchAgentDiscussionReplyReceipt.self,
+            from: replyOutput.stdout
+        ).statementID == replyStatementID)
+        let finishOutput = try cli.run(
+            ["agent", "finish-discussion", "--run", discuss.receipt.run.rawValue],
+            environment: environment
+        )
+        #expect(try Self.decoder().decode(
+            ResearchAgentDiscussionFinishReceipt.self,
+            from: finishOutput.stdout
+        ).recordFormed)
+
+        let simulations: [(
+            action: ResearchActionID,
+            target: ResearchActionNoteSnapshot,
+            marker: String?
+        )] = [
+            (.analyze, fixture.analysisTarget, "external-cli-analyze-write"),
+            (.synthesize, fixture.topicTarget, "external-cli-synthesize-write"),
+            (.write, fixture.workTarget, "external-cli-write-write"),
+            (.critique, fixture.workTarget, nil),
+            (.checkFidelity, fixture.topicTarget, nil),
+        ]
+        for simulation in simulations {
+            let targetURL = Self.fixtureDocumentURL(
+                root: fixture.rootURL,
+                target: simulation.target
+            )
+            let readOnlySourceBefore = simulation.marker == nil
+                ? try Data(contentsOf: targetURL)
+                : nil
+            let started = try await Self.startActionThroughCLI(
+                simulation.action,
+                target: simulation.target,
+                triptychID: fixture.assignment.id,
+                cli: cli,
+                environment: environment,
+                sourceRoute: simulation.action == .analyze
+                    ? .researcherProvided
+                    : nil
+            )
+            try Self.executeEvidenceQueriesThroughCLI(
+                context: started.context,
+                cli: cli,
+                environment: environment
+            )
+            if let marker = simulation.marker {
+                let member = try #require(started.context.boundedWriteSet.first)
+                #expect(member.operations.contains(.modifyMarkdown))
+                let writePayload: [String: String] = [
+                    "role": member.role.rawValue,
+                    "relative_path": member.relativePath,
+                    "operation": ResearchDocumentWriteOperation.modifyMarkdown.rawValue,
+                    "content": "# \(simulation.target.title)\n\n\(marker)\n",
+                ]
+                let writeOutput = try cli.run(
+                    ["agent", "write", "--run", started.receipt.run.rawValue,
+                     "--from", "-"],
+                    stdin: try Self.encoder().encode(writePayload),
+                    environment: environment
+                )
+                let writeReport = try #require(
+                    JSONSerialization.jsonObject(with: writeOutput.stdout)
+                        as? [String: Any]
+                )
+                #expect(writeReport["state"] as? String == "committed")
+            } else {
+                #expect(started.context.boundedWriteSet.isEmpty)
+            }
+
+            let submission = try Self.simulatedResult(
+                action: simulation.action,
+                context: started.context
+            )
+            let resultOutput = try cli.run(
+                ["agent", "submit-result", "--run", started.receipt.run.rawValue,
+                 "--from", "-"],
+                stdin: try Self.encoder().encode(submission),
+                environment: environment
+            )
+            let receipt = try Self.decoder().decode(
+                ResearchAgentResultReceipt.self,
+                from: resultOutput.stdout
+            )
+            #expect(receipt.state == .finalized)
+            #expect(receipt.recordFormed)
+            if let readOnlySourceBefore {
+                #expect(try Data(contentsOf: targetURL) == readOnlySourceBefore)
+            }
+        }
+
+        let analysisAfter = try Data(contentsOf: fixture.rootURL
+            .appendingPathComponent("Analyses/Analysis.md"))
+        let topicAfter = try Data(contentsOf: fixture.rootURL
+            .appendingPathComponent("Topics/Topic.md"))
+        let workAfter = try Data(contentsOf: fixture.rootURL
+            .appendingPathComponent("Works/Draft Argument.md"))
+        #expect(analysisAfter != analysisBefore)
+        #expect(topicAfter != topicBefore)
+        #expect(workAfter != workBefore)
+        #expect(String(decoding: analysisAfter, as: UTF8.self)
+            .contains("external-cli-analyze-write"))
+        #expect(String(decoding: topicAfter, as: UTF8.self)
+            .contains("external-cli-synthesize-write"))
+        #expect(String(decoding: workAfter, as: UTF8.self)
+            .contains("external-cli-write-write"))
+
+        server.stop()
+        await runtime.shutdown()
+        let recordedActions = try Set([
+            fixture.analysisTarget.noteID,
+            fixture.topicTarget.noteID,
+            fixture.workTarget.noteID,
+        ].flatMap { noteID in
+            try Self.recordActionsThroughCLI(
+                noteID: noteID,
+                triptychID: fixture.assignment.id,
+                cli: cli
+            )
+        })
+        #expect(recordedActions == Set(ResearchActionID.allCases))
     }
 
     @Test("The real researcher CLI reads and CAS-updates managed Metadata without changing source")
@@ -164,7 +454,8 @@ struct ActionCLIExecutableLifecycleTests {
         )
         let credential = try ResearchConnectionCredential(
             sessionID: UUID(),
-            secret: String(repeating: "a", count: 48)
+            secret: String(repeating: "a", count: 48),
+            expiresAt: Date().addingTimeInterval(3_600)
         )
         let profile = try #require(
             ResearchAcademicProfileCatalog.defaultProfiles.first {
@@ -385,7 +676,14 @@ struct ActionCLIExecutableLifecycleTests {
             stdin: try Self.encoder().encode(startRequest),
             environment: environment
         )
+        let startedReport = try Self.decoder().decode(
+            CLIAgentStartReport.self,
+            from: started.stdout
+        )
         let startedOutput = String(decoding: started.stdout, as: UTF8.self)
+        #expect(startedReport.receipt == startReceipt)
+        #expect(startedReport.context.brief.run == run)
+        #expect(startedReport.context.coreProtocol == "Scholium Core Protocol")
         #expect(startedOutput.contains(run.rawValue))
         #expect(!startedOutput.contains(credential.secret))
 
@@ -406,12 +704,6 @@ struct ActionCLIExecutableLifecycleTests {
         ).intValue
         #expect(mode == 0o600)
 
-        let loaded = try cli.run(
-            ["agent", "context", "--run", run.rawValue],
-            environment: environment
-        )
-        #expect(String(decoding: loaded.stdout, as: UTF8.self)
-            .contains("Scholium Core Protocol"))
         let write = try cli.run(
             ["agent", "write", "--run", run.rawValue, "--from", "-"],
             stdin: try JSONSerialization.data(withJSONObject: [
@@ -454,7 +746,8 @@ struct ActionCLIExecutableLifecycleTests {
         )
         let credential = try ResearchConnectionCredential(
             sessionID: UUID(),
-            secret: String(repeating: "u", count: 48)
+            secret: String(repeating: "u", count: 48),
+            expiresAt: Date().addingTimeInterval(3_600)
         )
         let request = try ResearchAgentStartRequest(
             actionID: .analyze,
@@ -468,15 +761,68 @@ struct ActionCLIExecutableLifecycleTests {
             state: .prepared,
             message: "The Agent-originated Run is active."
         )
+        let profile = try #require(
+            ResearchAcademicProfileCatalog.defaultProfiles.first {
+                $0.actionID == .analyze
+            }
+        )
+        let registration = try ResearchSkillRegistration(
+            actionID: .analyze,
+            displayName: "Analysis Method",
+            primaryMarkdown: .machineLocal()
+        )
+        let method = try ResearchMethodSnapshot(
+            registration: registration,
+            primaryMarkdownSource: "# Analysis Method\n"
+        )
+        let context = try ResearchAuthenticatedRunContext(
+            coreProtocol: "Scholium Core Protocol",
+            brief: ResearchRunBrief(
+                run: run,
+                actionID: .analyze,
+                state: .prepared,
+                initialObjectTitle: fixture.analysisTarget.title,
+                initialObjectRole: .analysis,
+                academicPurpose: nil,
+                capabilities: ResearchRunCapabilityAvailability(
+                    search: true,
+                    read: true,
+                    relations: true,
+                    metadata: true,
+                    records: true,
+                    researchState: true,
+                    zotero: true,
+                    writeInitialObject: true,
+                    extendWriteSet: false
+                )
+            ),
+            method: ResearchMethodContext(snapshot: method),
+            resultContract: try ResearchResultContract(
+                profile: profile,
+                registrationKey: registration.key,
+                profileRevision: try profile.contentRevision()
+            ),
+            boundedWriteSet: []
+        )
         let server = try LocalAgentBridgeServer(
             applicationSupportURL: bridgeContainer
         ) { bridgeRequest in
-            guard bridgeRequest.operation == .start,
-                  bridgeRequest.triptychID == fixture.assignment.id,
-                  bridgeRequest.startRequest == request else {
+            switch bridgeRequest.operation {
+            case .start:
+                guard bridgeRequest.triptychID == fixture.assignment.id,
+                      bridgeRequest.startRequest == request else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                return .started(receipt: receipt, credential: credential)
+            case .context:
+                guard bridgeRequest.run == run,
+                      bridgeRequest.credential == credential else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                return .context(context)
+            default:
                 throw LocalAgentBridgeError.permissionDenied
             }
-            return .started(receipt: receipt, credential: credential)
         }
         defer { server.stop() }
 
@@ -491,8 +837,12 @@ struct ActionCLIExecutableLifecycleTests {
                 "SCHOLIUM_AGENT_BRIDGE_CONTAINER": bridgeContainer.path,
             ]
         )
-        #expect(String(decoding: result.stdout, as: UTF8.self)
-            .contains(run.rawValue))
+        let report = try Self.decoder().decode(
+            CLIAgentStartReport.self,
+            from: result.stdout
+        )
+        #expect(report.receipt.run == run)
+        #expect(report.context.brief.run == run)
     }
 
     @Test("The real CLI pairs, reloads Discuss context, and removes its credential after Finish")
@@ -524,7 +874,8 @@ struct ActionCLIExecutableLifecycleTests {
         )
         let credential = try ResearchConnectionCredential(
             sessionID: UUID(),
-            secret: String(repeating: "s", count: 48)
+            secret: String(repeating: "s", count: 48),
+            expiresAt: Date().addingTimeInterval(3_600)
         )
         let profile = try #require(
             ResearchAcademicProfileCatalog.defaultProfiles.first {
@@ -636,8 +987,15 @@ struct ActionCLIExecutableLifecycleTests {
             stdin: Data((code.rawValue + "\n").utf8),
             environment: environment
         )
+        let pairingReport = try Self.decoder().decode(
+            CLIAgentPairingReport.self,
+            from: paired.stdout
+        )
         let pairingOutput = String(decoding: paired.stdout, as: UTF8.self)
         #expect(pairingOutput.contains("\"paired\" : true"))
+        #expect(pairingReport.paired)
+        #expect(pairingReport.run == run)
+        #expect(pairingReport.context.brief.run == run)
         #expect(!pairingOutput.contains(credential.secret))
         #expect(!pairingOutput.contains(code.rawValue))
         let credentialURL = fixture.homeURL
@@ -651,11 +1009,7 @@ struct ActionCLIExecutableLifecycleTests {
         ).intValue
         #expect(mode == 0o600)
 
-        let loaded = try cli.run(
-            ["agent", "context", "--run", run.rawValue],
-            environment: environment
-        )
-        let contextOutput = String(decoding: loaded.stdout, as: UTF8.self)
+        let contextOutput = pairingOutput
         #expect(contextOutput.contains("Preserve alternatives."))
         #expect(contextOutput.contains("Scholium Core Protocol"))
         #expect(!contextOutput.contains(credential.secret))
@@ -673,7 +1027,7 @@ struct ActionCLIExecutableLifecycleTests {
             ofItemAtPath: credentialURL.path
         )
         let invalidSession = try cli.runExpectingFailure(
-            ["agent", "context", "--run", run.rawValue],
+            ["agent", "reload", "--run", run.rawValue],
             environment: environment,
         )
         let invalidSessionReport = try #require(
@@ -740,7 +1094,8 @@ struct ActionCLIExecutableLifecycleTests {
         ))
         let credential = try ResearchConnectionCredential(
             sessionID: UUID(),
-            secret: String(repeating: "w", count: 48)
+            secret: String(repeating: "w", count: 48),
+            expiresAt: Date().addingTimeInterval(3_600)
         )
         let hiddenRequestID = UUID()
         let hiddenOperationID = UUID()
@@ -794,6 +1149,14 @@ struct ActionCLIExecutableLifecycleTests {
                     throw LocalAgentBridgeError.permissionDenied
                 }
                 return .credential(credential)
+            case .context:
+                guard request.credential == credential else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                return .context(try Self.minimalContext(
+                    run: run,
+                    actionID: .write
+                ))
             case .extendWriteSet:
                 guard request.credential == credential,
                       request.writeSetIntent?.targets.first?.relativePath
@@ -842,7 +1205,7 @@ struct ActionCLIExecutableLifecycleTests {
                     target: ResearchBoundedWriteSetViewEntry(analysisEntry),
                     message: "The portable Zotero binding committed and read back."
                 ))
-            case .revokeSession, .context, .query, .discussionReply, .discussionFinish,
+            case .revokeSession, .query, .discussionReply, .discussionFinish,
                     .resolveWriteConflict, .submitResult,
                     .continueResearch, .methodImprovementContext,
                     .submitMethodImprovement, .end:
@@ -1309,7 +1672,8 @@ struct ActionCLIExecutableLifecycleTests {
         ))
         let credential = try ResearchConnectionCredential(
             sessionID: UUID(),
-            secret: String(repeating: "r", count: 48)
+            secret: String(repeating: "r", count: 48),
+            expiresAt: Date().addingTimeInterval(3_600)
         )
         let profile = try #require(
             ResearchAcademicProfileCatalog.defaultProfiles.first {
@@ -1371,6 +1735,14 @@ struct ActionCLIExecutableLifecycleTests {
                     throw LocalAgentBridgeError.permissionDenied
                 }
                 return .credential(credential)
+            case .context:
+                guard request.credential == credential else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                return .context(try Self.minimalContext(
+                    run: run,
+                    actionID: .critique
+                ))
             case .submitResult:
                 guard request.credential == credential,
                       let submission = request.resultSubmission else {
@@ -1385,7 +1757,7 @@ struct ActionCLIExecutableLifecycleTests {
                 }
                 observed.capture(continuation: continuation)
                 return .continuation(expectedContinuation)
-            case .revokeSession, .context, .query, .discussionReply, .discussionFinish,
+            case .revokeSession, .query, .discussionReply, .discussionFinish,
                     .extendWriteSet, .writeDocument,
                     .writeZoteroBinding,
                     .resolveWriteConflict, .methodImprovementContext,
@@ -1420,6 +1792,16 @@ struct ActionCLIExecutableLifecycleTests {
         #expect(!String(decoding: resultOutput.stdout, as: UTF8.self).contains(
             credential.secret
         ))
+        let credentialURL = fixture.homeURL
+            .appendingPathComponent("ApplicationSupport", isDirectory: true)
+            .appendingPathComponent("Agent Sessions", isDirectory: true)
+            .appendingPathComponent(run.rawValue + ".json")
+        #expect(FileManager.default.fileExists(atPath: credentialURL.path))
+        let storedCredential = try #require(
+            JSONSerialization.jsonObject(with: Data(contentsOf: credentialURL))
+                as? [String: Any]
+        )
+        #expect(storedCredential["expires_at"] != nil)
 
         let continuationOutput = try cli.run(
             ["agent", "continue", "--run", run.rawValue, "--from", "-"],
@@ -1439,6 +1821,128 @@ struct ActionCLIExecutableLifecycleTests {
             stdin: try encoder.encode(resultSubmission),
             contains: "Unknown command 'action complete'"
         )
+    }
+
+    @Test("The CLI prunes only exact expired Session credentials without an Agent cleanup command")
+    func expiredCredentialPruningIsAutomaticAndBounded() async throws {
+        guard let binaryPath = ProcessInfo.processInfo.environment[
+            "SCHOLIUM_ACTION_CLI_BINARY"
+        ], !binaryPath.isEmpty else { return }
+
+        let fixture = try await ActionCLIFixture.make()
+        defer { fixture.remove() }
+        let bridgeContainer = fixture.rootURL.appendingPathComponent(
+            "credential-pruning-bridge",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: bridgeContainer,
+            withIntermediateDirectories: true
+        )
+        let expiredRun = try #require(ResearchRunLocator(
+            rawValue: "expiredcredentialrunabcd"
+        ))
+        let currentRun = try #require(ResearchRunLocator(
+            rawValue: "currentcredentialrunabcd"
+        ))
+        let expiredCode = try #require(ResearchPairingCode(
+            rawValue: "23456789ABCDEFGHJKLMNPQR"
+        ))
+        let currentCode = try #require(ResearchPairingCode(
+            rawValue: "RQPNMLKJHGFEDCBA98765432"
+        ))
+        let expiredCredential = try ResearchConnectionCredential(
+            sessionID: UUID(),
+            secret: String(repeating: "e", count: 48),
+            expiresAt: Date().addingTimeInterval(-60)
+        )
+        let currentCredential = try ResearchConnectionCredential(
+            sessionID: UUID(),
+            secret: String(repeating: "c", count: 48),
+            expiresAt: Date().addingTimeInterval(3_600)
+        )
+        let server = try LocalAgentBridgeServer(
+            applicationSupportURL: bridgeContainer
+        ) { request in
+            switch request.operation {
+            case .pair:
+                if request.run == expiredRun,
+                   request.pairingCode == expiredCode {
+                    return .credential(expiredCredential)
+                }
+                if request.run == currentRun,
+                   request.pairingCode == currentCode {
+                    return .credential(currentCredential)
+                }
+                throw LocalAgentBridgeError.permissionDenied
+            case .context:
+                if request.run == expiredRun,
+                   request.credential == expiredCredential {
+                    return .context(try Self.minimalContext(
+                        run: expiredRun,
+                        actionID: .critique
+                    ))
+                }
+                if request.run == currentRun,
+                   request.credential == currentCredential {
+                    return .context(try Self.minimalContext(
+                        run: currentRun,
+                        actionID: .critique
+                    ))
+                }
+                throw LocalAgentBridgeError.permissionDenied
+            default:
+                throw LocalAgentBridgeError.invalidRequest
+            }
+        }
+        defer { server.stop() }
+
+        let cli = ActionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
+        let environment = [
+            "SCHOLIUM_AGENT_BRIDGE_CONTAINER": bridgeContainer.path,
+        ]
+        _ = try cli.run(
+            ["agent", "pair", "--run", expiredRun.rawValue],
+            stdin: Data((expiredCode.rawValue + "\n").utf8),
+            environment: environment
+        )
+        let sessionsURL = fixture.homeURL
+            .appendingPathComponent("ApplicationSupport", isDirectory: true)
+            .appendingPathComponent("Agent Sessions", isDirectory: true)
+        let expiredURL = sessionsURL.appendingPathComponent(
+            expiredRun.rawValue + ".json"
+        )
+        #expect(FileManager.default.fileExists(atPath: expiredURL.path))
+
+        let malformedURL = sessionsURL.appendingPathComponent("malformed.json")
+        try Data("not a credential".utf8).write(to: malformedURL)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o600],
+            ofItemAtPath: malformedURL.path
+        )
+        let symlinkTarget = fixture.rootURL.appendingPathComponent("outside.txt")
+        try Data("leave untouched".utf8).write(to: symlinkTarget)
+        let symlinkURL = sessionsURL.appendingPathComponent("unsafe.json")
+        try FileManager.default.createSymbolicLink(
+            at: symlinkURL,
+            withDestinationURL: symlinkTarget
+        )
+
+        _ = try cli.run(
+            ["agent", "pair", "--run", currentRun.rawValue],
+            stdin: Data((currentCode.rawValue + "\n").utf8),
+            environment: environment
+        )
+        #expect(!FileManager.default.fileExists(atPath: expiredURL.path))
+        #expect(FileManager.default.fileExists(atPath: malformedURL.path))
+        #expect(FileManager.default.fileExists(atPath: symlinkURL.path))
+        #expect(try String(contentsOf: symlinkTarget, encoding: .utf8)
+            == "leave untouched")
+        #expect(FileManager.default.fileExists(
+            atPath: sessionsURL.appendingPathComponent(
+                currentRun.rawValue + ".json"
+            ).path
+        ))
     }
 
     @Test("The real CLI exposes true Run drift as structured stale_run")
@@ -1470,8 +1974,10 @@ struct ActionCLIExecutableLifecycleTests {
         ))
         let credential = try ResearchConnectionCredential(
             sessionID: UUID(),
-            secret: String(repeating: "s", count: 48)
+            secret: String(repeating: "s", count: 48),
+            expiresAt: Date().addingTimeInterval(3_600)
         )
+        let contextRequests = LockedCounter()
         let server = try LocalAgentBridgeServer(
             applicationSupportURL: bridgeContainer
         ) { request in
@@ -1486,6 +1992,12 @@ struct ActionCLIExecutableLifecycleTests {
                 guard request.run == run,
                       request.credential == credential else {
                     throw LocalAgentBridgeError.permissionDenied
+                }
+                if contextRequests.increment() == 1 {
+                    return .context(try Self.minimalContext(
+                        run: run,
+                        actionID: .critique
+                    ))
                 }
                 throw ResearchAgentConnectionError.runStale(.targetChanged)
             default:
@@ -1521,6 +2033,99 @@ struct ActionCLIExecutableLifecycleTests {
         #expect(recovery["must_reuse_request_identity"] as? Bool == false)
         #expect(recovery["next_step"] as? String
             == "start_new_action_from_current_revision")
+    }
+
+    @Test("Initial context delivery failure retains one paired Session for reload")
+    func initialContextFailureReloadsWithoutRePairing() async throws {
+        guard let binaryPath = ProcessInfo.processInfo.environment[
+            "SCHOLIUM_ACTION_CLI_BINARY"
+        ], !binaryPath.isEmpty else { return }
+
+        let fixture = try await ActionCLIFixture.make()
+        defer { fixture.remove() }
+        let bridgeContainer = fixture.rootURL.appendingPathComponent(
+            "initial-context-reload-bridge",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: bridgeContainer,
+            withIntermediateDirectories: true
+        )
+        let run = try #require(ResearchRunLocator(
+            rawValue: "initialcontextreloadrun"
+        ))
+        let code = try #require(ResearchPairingCode(
+            rawValue: "BCDEFGHJKLMNPQR23456789A"
+        ))
+        let credential = try ResearchConnectionCredential(
+            sessionID: UUID(),
+            secret: String(repeating: "i", count: 48),
+            expiresAt: Date().addingTimeInterval(3_600)
+        )
+        let pairingRequests = LockedCounter()
+        let contextRequests = LockedCounter()
+        let server = try LocalAgentBridgeServer(
+            applicationSupportURL: bridgeContainer
+        ) { request in
+            switch request.operation {
+            case .pair:
+                guard request.run == run,
+                      request.pairingCode == code else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                _ = pairingRequests.increment()
+                return .credential(credential)
+            case .context:
+                guard request.run == run,
+                      request.credential == credential else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                if contextRequests.increment() == 1 {
+                    throw LocalAgentBridgeError.unavailable
+                }
+                return .context(try Self.minimalContext(
+                    run: run,
+                    actionID: .critique
+                ))
+            default:
+                throw LocalAgentBridgeError.invalidRequest
+            }
+        }
+        defer { server.stop() }
+
+        let cli = ActionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
+        let environment = [
+            "SCHOLIUM_AGENT_BRIDGE_CONTAINER": bridgeContainer.path,
+        ]
+        let failedPair = try cli.runExpectingFailure(
+            ["agent", "pair", "--run", run.rawValue],
+            stdin: Data((code.rawValue + "\n").utf8),
+            environment: environment
+        )
+        let report = try #require(
+            JSONSerialization.jsonObject(with: failedPair.stderr)
+                as? [String: Any]
+        )
+        #expect(report["code"] as? String == "initial_context_unavailable")
+        let recovery = try #require(report["recovery"] as? [String: Any])
+        #expect(recovery["safe_to_retry"] as? Bool == true)
+        #expect(recovery["next_step"] as? String == "reload_current_run")
+        let credentialURL = fixture.homeURL
+            .appendingPathComponent("ApplicationSupport", isDirectory: true)
+            .appendingPathComponent("Agent Sessions", isDirectory: true)
+            .appendingPathComponent(run.rawValue + ".json")
+        #expect(FileManager.default.fileExists(atPath: credentialURL.path))
+
+        let reloaded = try cli.run(
+            ["agent", "reload", "--run", run.rawValue],
+            environment: environment
+        )
+        #expect(try Self.decoder().decode(
+            ResearchAuthenticatedRunContext.self,
+            from: reloaded.stdout
+        ).brief.run == run)
+        #expect(pairingRequests.count == 1)
+        #expect(contextRequests.count == 2)
     }
 
     @Test("A credential-store failure revokes the new Session and preserves the Run recovery route")
@@ -1559,7 +2164,8 @@ struct ActionCLIExecutableLifecycleTests {
         )
         let credential = try ResearchConnectionCredential(
             sessionID: UUID(),
-            secret: String(repeating: "r", count: 48)
+            secret: String(repeating: "r", count: 48),
+            expiresAt: Date().addingTimeInterval(3_600)
         )
         let sessionsURL = home
             .appendingPathComponent("ApplicationSupport", isDirectory: true)
@@ -1643,7 +2249,8 @@ struct ActionCLIExecutableLifecycleTests {
         )
         let credential = try ResearchConnectionCredential(
             sessionID: UUID(),
-            secret: String(repeating: "d", count: 48)
+            secret: String(repeating: "d", count: 48),
+            expiresAt: Date().addingTimeInterval(3_600)
         )
         let request = try ResearchAgentStartRequest(
             actionID: .analyze,
@@ -1821,7 +2428,8 @@ struct ActionCLIExecutableLifecycleTests {
         ))
         let credential = try ResearchConnectionCredential(
             sessionID: UUID(),
-            secret: String(repeating: "m", count: 48)
+            secret: String(repeating: "m", count: 48),
+            expiresAt: Date().addingTimeInterval(3_600)
         )
         let registration = try ResearchSkillRegistration(
             actionID: .synthesize,
@@ -1878,7 +2486,7 @@ struct ActionCLIExecutableLifecycleTests {
                     throw LocalAgentBridgeError.permissionDenied
                 }
                 return .credential(credential)
-            case .methodImprovementContext:
+            case .context, .methodImprovementContext:
                 guard request.credential == credential else {
                     throw LocalAgentBridgeError.permissionDenied
                 }
@@ -1905,7 +2513,7 @@ struct ActionCLIExecutableLifecycleTests {
                     throw LocalAgentBridgeError.permissionDenied
                 }
                 return .endReceipt(endReceipt)
-            case .revokeSession, .context, .query, .discussionReply, .discussionFinish,
+            case .revokeSession, .query, .discussionReply, .discussionFinish,
                     .extendWriteSet, .writeDocument,
                     .writeZoteroBinding,
                     .resolveWriteConflict, .submitResult, .continueResearch:
@@ -1918,11 +2526,20 @@ struct ActionCLIExecutableLifecycleTests {
         let environment = [
             "SCHOLIUM_AGENT_BRIDGE_CONTAINER": bridgeContainer.path,
         ]
-        _ = try cli.run(
+        let paired = try cli.run(
             ["agent", "pair", "--run", locator.rawValue],
             stdin: Data((code.rawValue + "\n").utf8),
             environment: environment
         )
+        let pairObject = try #require(
+            JSONSerialization.jsonObject(with: paired.stdout) as? [String: Any]
+        )
+        #expect(pairObject["context_kind"] as? String == "method_improvement")
+        let pairedContext = try #require(pairObject["context"])
+        #expect(try Self.decoder().decode(
+            ResearchMethodImprovementContext.self,
+            from: JSONSerialization.data(withJSONObject: pairedContext)
+        ) == context)
         let loaded = try cli.run(
             ["agent", "method-context", "--run", locator.rawValue],
             environment: environment
@@ -1963,6 +2580,186 @@ struct ActionCLIExecutableLifecycleTests {
         )
     }
 
+    private static func startActionThroughCLI(
+        _ actionID: ResearchActionID,
+        target: ResearchActionNoteSnapshot,
+        triptychID: UUID,
+        cli: ActionCLIProcess,
+        environment: [String: String],
+        sourceRoute: ResearchAgentSourceRoute? = nil
+    ) async throws -> (
+        receipt: ResearchAgentStartReceipt,
+        context: ResearchAuthenticatedRunContext
+    ) {
+        let request = try ResearchAgentStartRequest(
+            actionID: actionID,
+            target: target.note,
+            academicInputs: [
+                "research-request": .freeText(
+                    "Execute the \(actionID.rawValue) Action against only this disposable fixture."
+                ),
+            ],
+            sourceRoute: sourceRoute
+        )
+        let startOutput = try cli.run(
+            ["agent", "start", "--triptych", triptychID.uuidString,
+             "--from", "-"],
+            stdin: try encoder().encode(request),
+            environment: environment
+        )
+        let report = try decoder().decode(
+            CLIAgentStartReport.self,
+            from: startOutput.stdout
+        )
+        let receipt = report.receipt
+        #expect(receipt.actionID == actionID)
+        #expect(receipt.target.noteID == target.noteID)
+        let context = report.context
+        #expect(context.brief.actionID == actionID)
+        #expect(context.nextActions.contains {
+            actionID == .discuss
+                ? $0.kind == .reply
+                : $0.kind == .submitResult
+        })
+        return (receipt, context)
+    }
+
+    private static func simulatedResult(
+        action: ResearchActionID,
+        context: ResearchAuthenticatedRunContext
+    ) throws -> ResearchAgentResultSubmission {
+        let academicResults: ResearchAcademicFieldValues
+        let fidelityOutcomes: [FidelityCheckOutcome]
+        if action == .checkFidelity {
+            academicResults = try ResearchAcademicFieldValues(
+                rawValues: [:],
+                definitions: []
+            )
+            let contract = try #require(context.fidelityContract)
+            fidelityOutcomes = contract.checks
+                .sorted { $0.rawValue < $1.rawValue }
+                .map { check in
+                    let unavailable = contract.requiredUnavailableChecks
+                        .contains(check)
+                    return FidelityCheckOutcome(
+                        check: check,
+                        state: unavailable ? .unavailable : .passed,
+                        summary: unavailable
+                            ? (contract.evidenceLimitation
+                                ?? "The simulated Run has no formal source envelope for this check.")
+                            : "The external CLI simulation found no inconsistency in the disposable checked scope."
+                    )
+                }
+        } else {
+            var rawValues: [String: ResearchAcademicFieldValue] = [:]
+            for definition in context.resultContract.academicFields
+                where definition.requirement == .required {
+                rawValues[definition.fieldID.rawValue] = switch definition.kind {
+                case .freeText:
+                    .freeText(
+                        "Bounded external CLI simulation result for \(definition.label)."
+                    )
+                case .singleChoice:
+                    .singleChoice(try #require(definition.choices.first?.value))
+                case .multipleChoice:
+                    .multipleChoice([try #require(definition.choices.first?.value)])
+                }
+            }
+            academicResults = try ResearchAcademicFieldValues(
+                rawValues: rawValues,
+                definitions: context.resultContract.academicFields
+            )
+            try ResearchAcademicProfileCatalog.validatePlatformResultRules(
+                academicResults,
+                actionID: action
+            )
+            fidelityOutcomes = []
+        }
+        return try ResearchAgentResultSubmission(
+            recordTitle: ResearchRecordTitle(
+                "External CLI \(action.rawValue) simulation"
+            ),
+            academicResults: academicResults,
+            fidelityOutcomes: fidelityOutcomes,
+            literatureRecommendations: action == .analyze ? [] : nil
+        )
+    }
+
+    private static func executeEvidenceQueriesThroughCLI(
+        context: ResearchAuthenticatedRunContext,
+        cli: ActionCLIProcess,
+        environment: [String: String]
+    ) throws {
+        let evidenceActions = context.nextActions.filter {
+            $0.kind == .query
+                && ($0.requirement == .required
+                    || $0.label.contains("Search the current Triptych"))
+        }
+        #expect(evidenceActions.contains {
+            $0.requirement == .required
+                && $0.label.contains("exact current Target revision")
+        })
+        #expect(evidenceActions.contains {
+            $0.requirement == .whenNeeded
+                && $0.label.contains("Search the current Triptych")
+        })
+        for action in evidenceActions {
+            let template = try #require(action.inputTemplate)
+                .replacingOccurrences(
+                    of: "REPLACE_WITH_BOUNDED_SEARCH_QUERY",
+                    with: "synthetic"
+                )
+            let arguments = Array(action.command.dropFirst())
+            let output = try cli.run(
+                arguments,
+                stdin: Data(template.utf8),
+                environment: environment
+            )
+            let response = try decoder().decode(
+                ResearchContextResponse.self,
+                from: output.stdout
+            )
+            #expect(!response.outcomes.isEmpty)
+        }
+    }
+
+    private static func recordActionsThroughCLI(
+        noteID: UUID,
+        triptychID: UUID,
+        cli: ActionCLIProcess
+    ) throws -> [ResearchActionID] {
+        let output = try cli.run([
+            "record", "list", "--note", noteID.uuidString,
+            "--triptych", triptychID.uuidString, "--format", "jsonl",
+        ])
+        return try String(decoding: output.stdout, as: UTF8.self)
+            .split(separator: "\n")
+            .dropFirst()
+            .compactMap { line in
+                let row = try #require(
+                    JSONSerialization.jsonObject(with: Data(line.utf8))
+                        as? [String: Any]
+                )
+                guard let rawAction = row["action_id"] as? String else {
+                    return nil
+                }
+                return ResearchActionID(rawValue: rawAction)
+            }
+    }
+
+    private static func fixtureDocumentURL(
+        root: URL,
+        target: ResearchActionNoteSnapshot
+    ) -> URL {
+        let directory = switch target.role {
+        case .analysis: "Analyses"
+        case .topic: "Topics"
+        case .work: "Works"
+        }
+        return root.appendingPathComponent(directory, isDirectory: true)
+            .appendingPathComponent(target.note.relativePath)
+    }
+
     private static func encoder() -> JSONEncoder {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -1974,6 +2771,55 @@ struct ActionCLIExecutableLifecycleTests {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return decoder
+    }
+
+    private static func minimalContext(
+        run: ResearchRunLocator,
+        actionID: ResearchActionID
+    ) throws -> ResearchAuthenticatedRunContext {
+        let profile = try #require(
+            ResearchAcademicProfileCatalog.defaultProfiles.first {
+                $0.actionID == actionID
+            }
+        )
+        let registration = try ResearchSkillRegistration(
+            actionID: actionID,
+            displayName: "Fixture Method",
+            primaryMarkdown: .machineLocal()
+        )
+        let method = try ResearchMethodSnapshot(
+            registration: registration,
+            primaryMarkdownSource: "# Fixture Method\n"
+        )
+        return try ResearchAuthenticatedRunContext(
+            coreProtocol: "Scholium Core Protocol",
+            brief: ResearchRunBrief(
+                run: run,
+                actionID: actionID,
+                state: .prepared,
+                initialObjectTitle: "Fixture",
+                initialObjectRole: actionID == .analyze ? .analysis : .work,
+                academicPurpose: nil,
+                capabilities: ResearchRunCapabilityAvailability(
+                    search: true,
+                    read: true,
+                    relations: true,
+                    metadata: true,
+                    records: true,
+                    researchState: true,
+                    zotero: true,
+                    writeInitialObject: false,
+                    extendWriteSet: false
+                )
+            ),
+            method: ResearchMethodContext(snapshot: method),
+            resultContract: try ResearchResultContract(
+                profile: profile,
+                registrationKey: registration.key,
+                profileRevision: try profile.contentRevision()
+            ),
+            boundedWriteSet: []
+        )
     }
 
     private static func readPayload(_ data: Data) throws -> CLIReadPayload {
@@ -2016,6 +2862,17 @@ struct ActionCLIExecutableLifecycleTests {
 private struct CLIReadPayload: Decodable {
     let sha256: String
     let content: String
+}
+
+private struct CLIAgentStartReport: Decodable {
+    let receipt: ResearchAgentStartReceipt
+    let context: ResearchAuthenticatedRunContext
+}
+
+private struct CLIAgentPairingReport: Decodable {
+    let paired: Bool
+    let run: ResearchRunLocator
+    let context: ResearchAuthenticatedRunContext
 }
 
 private struct CLICancellationReport: Decodable {
@@ -2071,6 +2928,8 @@ private final class LockedMethodImprovementSubmission: @unchecked Sendable {
 private final class LockedCounter: @unchecked Sendable {
     private let lock = NSLock()
     private var value = 0
+
+    var count: Int { lock.withLock { value } }
 
     func increment() -> Int {
         lock.withLock {

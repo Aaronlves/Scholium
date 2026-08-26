@@ -151,8 +151,9 @@ struct ResearchAgentSessionAuthorityTests {
         #expect(handoff.agentInstructions.contains(handoff.run.rawValue))
         #expect(handoff.agentInstructions.contains("use the installed `scholium` CLI yourself"))
         #expect(handoff.agentInstructions.contains(
-            "scholium agent context --run \(handoff.run.rawValue)"
+            "scholium agent reload --run \(handoff.run.rawValue)"
         ))
+        #expect(!handoff.agentInstructions.contains("scholium agent context"))
         #expect(handoff.agentInstructions.contains("Do not ask the researcher to run"))
         #expect(String(describing: handoff.pairingCode) == "<redacted pairing code>")
         #expect(!String(reflecting: handoff).contains(handoff.pairingCode.rawValue))
@@ -1119,11 +1120,24 @@ struct ResearchAgentSessionAuthorityTests {
         )
         let wrongCredential = try ResearchConnectionCredential(
             sessionID: issued.credential.sessionID,
-            secret: String(repeating: "x", count: 48)
+            secret: String(repeating: "x", count: 48),
+            expiresAt: issued.credential.expiresAt
+        )
+        let wrongExpiry = try ResearchConnectionCredential(
+            sessionID: issued.credential.sessionID,
+            secret: issued.credential.secret,
+            expiresAt: issued.credential.expiresAt.addingTimeInterval(1)
         )
 
         await #expect(throws: ResearchAgentSessionError.sessionRejected) {
             try await authority.revokeSession(authenticating: wrongCredential)
+        }
+        await #expect(throws: ResearchAgentSessionError.sessionRejected) {
+            _ = try await authority.authenticate(
+                wrongExpiry,
+                run: issued.run,
+                requiresWrite: false
+            )
         }
         _ = try await authority.authenticate(
             issued.credential,
