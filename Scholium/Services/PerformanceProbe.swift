@@ -131,6 +131,9 @@ final class PerformanceProbe {
     var exercisesLargeCJKCorrectness: Bool {
         configuration?.metric == .editorLargeCJKCorrectness
     }
+    var measuresEditorRetainedMemory: Bool {
+        configuration?.metric == .editorRetainedMemory
+    }
     var measuresEditorVisibility: Bool {
         configuration?.metric == .editorModeTransition
             || configuration?.metric == .warmEditActivation

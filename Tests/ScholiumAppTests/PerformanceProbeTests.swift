@@ -50,6 +50,20 @@ struct PerformanceProbeTests {
             bundleID: "com.scholium.qa"
         )
         #expect(!search.requiresInitialReviewPresentation)
+
+        let memory = PerformanceProbe(
+            environment: [
+                "SCHOLIUM_PERFORMANCE_RESULTS_PATH": directory
+                    .appendingPathComponent("editor_retained_memory.jsonl").path,
+                "SCHOLIUM_PERFORMANCE_METRIC": "editor_retained_memory",
+                "SCHOLIUM_PERFORMANCE_RUN_ID": "review_setup_test",
+                "SCHOLIUM_PERFORMANCE_SAMPLE": "0",
+                "SCHOLIUM_PERFORMANCE_SAMPLE_COUNT": "51",
+            ],
+            bundleID: "com.scholium.qa"
+        )
+        #expect(memory.measuresEditorRetainedMemory)
+        #expect(!memory.requiresInitialReviewPresentation)
     }
 
     @Test("Packaged probe writes only inside its explicit performance run")

@@ -282,19 +282,22 @@ def load_metric(
             raise SystemExit(f"{path}:{line_number}: unexpected launch phase duration")
         launch_details = tuple(record.get(phase) for phase in LAUNCH_DETAIL_KEYS)
         if metric in LAUNCH_PHASE_METRICS:
-            if any(
-                not isinstance(value, (int, float))
-                or isinstance(value, bool)
-                or not math.isfinite(value)
-                or value < 0
-                for value in launch_details
-            ):
-                raise SystemExit(f"{path}:{line_number}: invalid launch detail duration")
-            projection = record.get("workspace_ready_to_projection_duration_ms")
-            if not isinstance(projection, (int, float)) or abs(
-                sum(float(value) for value in launch_details) - float(projection)
-            ) > 0.001:
-                raise SystemExit(f"{path}:{line_number}: launch details do not match projection")
+            if any(value is not None for value in launch_details):
+                if any(
+                    not isinstance(value, (int, float))
+                    or isinstance(value, bool)
+                    or not math.isfinite(value)
+                    or value < 0
+                    for value in launch_details
+                ):
+                    raise SystemExit(f"{path}:{line_number}: invalid launch detail duration")
+                projection = record.get("workspace_ready_to_projection_duration_ms")
+                if not isinstance(projection, (int, float)) or abs(
+                    sum(float(value) for value in launch_details) - float(projection)
+                ) > 0.001:
+                    raise SystemExit(f"{path}:{line_number}: launch details do not match projection")
+            elif record["sample"] >= warmups:
+                raise SystemExit(f"{path}:{line_number}: missing retained launch detail")
         elif any(value is not None for value in launch_details):
             raise SystemExit(f"{path}:{line_number}: unexpected launch detail duration")
         first_read_phases = tuple(record.get(phase) for phase in FIRST_READ_PHASE_KEYS)
@@ -611,6 +614,52 @@ def self_test() -> None:
             assert "invalid first Read phase duration" in str(error)
         else:
             raise AssertionError("The summary accepted an incomplete first Read record.")
+
+        launch_path = Path(directory) / "warm_library_launch.jsonl"
+        launch_base = {
+            "schema": "scholium-performance-v1",
+            "metric": "warm_library_launch",
+            "run_id": "self_test",
+            "duration_ms": 10.0,
+            "completed_uptime_ns": 1,
+            "observed_count": 267,
+            "process_to_window_model_init_duration_ms": 1.0,
+            "window_model_init_to_workspace_ready_duration_ms": 2.0,
+            "workspace_ready_to_projection_duration_ms": 6.0,
+            "projection_to_layout_duration_ms": 1.0,
+        }
+        retained_launch = {
+            **launch_base,
+            "sample": 1,
+            "workspace_ready_to_startup_safety_ready_duration_ms": 2.0,
+            "startup_safety_ready_to_vault_configuration_ready_duration_ms": 3.0,
+            "vault_configuration_ready_to_projection_duration_ms": 1.0,
+        }
+        launch_path.write_text(
+            json.dumps({**launch_base, "sample": 0}) + "\n"
+            + json.dumps(retained_launch) + "\n",
+            encoding="utf-8",
+        )
+        loaded, measured = load_metric(
+            launch_path, "warm_library_launch", "self_test", 1, 1
+        )
+        assert len(loaded) == 2 and measured == [10.0]
+
+        incomplete_retained_launch = dict(retained_launch)
+        incomplete_retained_launch.pop(
+            "startup_safety_ready_to_vault_configuration_ready_duration_ms"
+        )
+        launch_path.write_text(
+            json.dumps({**launch_base, "sample": 0}) + "\n"
+            + json.dumps(incomplete_retained_launch) + "\n",
+            encoding="utf-8",
+        )
+        try:
+            load_metric(launch_path, "warm_library_launch", "self_test", 1, 1)
+        except SystemExit as error:
+            assert "invalid launch detail duration" in str(error)
+        else:
+            raise AssertionError("The summary accepted incomplete retained launch detail.")
 
         path.write_text(
             json.dumps({**records[0], "document": "Private.md"}) + "\n",

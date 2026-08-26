@@ -2693,8 +2693,9 @@ final class WindowModel: ObservableObject {
             requestedTriptychID: requestedTriptychID
         )
         self.requestedInitialDocument = requestedInitialDocument
-        if requestedInitialDocument != nil
-            || ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_OPEN_NOTE"] != nil {
+        if (requestedInitialDocument != nil
+            || ProcessInfo.processInfo.environment["SCHOLIUM_UI_TEST_OPEN_NOTE"] != nil)
+            && !PerformanceProbe.shared.measuresEditorRetainedMemory {
             ScholiumWebKitProcessPrewarmer.shared.start()
         }
         cssSnippetStore = workspaceStore.cssSnippetStore
