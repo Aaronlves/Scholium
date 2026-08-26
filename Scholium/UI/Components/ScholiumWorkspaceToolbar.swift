@@ -27,6 +27,8 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         static let documentMode = NSToolbarItem.Identifier(
             "scholium.toolbar.documentMode"
         )
+        static let documentModeAccessibilityIdentifier =
+            "scholium.documentModeButton"
         static let researchRecords = NSToolbarItem.Identifier(
             "scholium.toolbar.researchRecords"
         )
@@ -185,7 +187,8 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
                 identifier: itemIdentifier,
                 label: ScholiumL10n.string("Document Mode"),
                 systemImage: NotePresentationMode.livePreview.symbol,
-                action: #selector(toggleDocumentMode(_:))
+                action: #selector(toggleDocumentMode(_:)),
+                accessibilityIdentifier: Item.documentModeAccessibilityIdentifier
             )
         case Item.researchRecords:
             return actionItem(
@@ -229,7 +232,8 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         label: String,
         systemImage: String,
         action: Selector,
-        visibilityPriority: NSToolbarItem.VisibilityPriority = .high
+        visibilityPriority: NSToolbarItem.VisibilityPriority = .high,
+        accessibilityIdentifier: String? = nil
     ) -> NSToolbarItem {
         let item = NSToolbarItem(itemIdentifier: identifier)
         configure(
@@ -244,6 +248,9 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         )
         button.target = self
         button.action = action
+        if let accessibilityIdentifier {
+            button.setAccessibilityIdentifier(accessibilityIdentifier)
+        }
         item.view = ScholiumToolbarControlHost(button: button)
         let overflowItem = NSMenuItem(
             title: label,

@@ -119,6 +119,19 @@ struct WorkspaceToolbarTests {
         #expect(headingButton.target === controller)
         #expect(headingButton.action != nil)
 
+        let documentMode = try #require(item(
+            ScholiumWorkspaceToolbarController.Item.documentMode,
+            in: toolbar
+        ))
+        let documentModeButton = try #require(
+            documentMode.view?.subviews.first as? NSButton
+        )
+        #expect(
+            documentModeButton.accessibilityIdentifier()
+                == ScholiumWorkspaceToolbarController.Item
+                    .documentModeAccessibilityIdentifier
+        )
+
         for identifier in [
             ScholiumWorkspaceToolbarController.Item.sidebar,
             ScholiumWorkspaceToolbarController.Item.back,
