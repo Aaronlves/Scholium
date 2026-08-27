@@ -25,7 +25,7 @@ struct WorkspaceBootstrapTests {
         #expect(candidate.content.contains("scholium workspace skill-sources"))
         #expect(candidate.content.contains("scholium agent start"))
         #expect(candidate.content.contains(
-            "An instruction file or Skill discovery link never grants note-edit permission."
+            "An instruction file or Skill registration never grants note-edit permission."
         ))
         #expect(!FileManager.default.fileExists(
             atPath: fixture.target.appendingPathComponent("AGENTS.md").path

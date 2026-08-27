@@ -250,32 +250,31 @@ after exact-root validation; it never improvises, overwrites, merges, or shadows
 instructions. Claude Code may add only a minimal missing `CLAUDE.md` that
 refers to the applicable `AGENTS.md`.
 
-The CLI's read-only project Skill-source manifest contains only the installed
-release-managed Core Protocol and enabled Triptych-managed current Method
-folders. It exposes no machine-local Method locator, scans no arbitrary folder,
-and creates nothing. The Agent verifies that manifest's exact workspace root,
-identifies its own supported host, and creates directory symlinks only beneath
-that host's project-level Skill-discovery directory. Every existing directory
-component must be a real directory rather than a symlink, and the resolved
-discovery directory must remain beneath the exact workspace root. One correct
-existing link is reused; any file, directory, dangling link, or differently
-targeted link is a reported blocker and is never replaced or repaired. The
-Agent copies or edits no Skill bytes and inspects no sibling path. During
-preparation, the instruction permits only resolving each exact returned folder
-and confirming its `SKILL.md` exists without loading the Method body. The link
-itself grants no `.scholium` mutation, research read, Action, Session, Run, or
-write authority. An unsupported host receives no guessed discovery path.
+The CLI's read-only project Skill-source manifest contains every installed
+release-managed System Skill and every enabled current Method folder for the
+selected Triptych, including an explicitly registered machine-local folder.
+It scans no arbitrary directory, creates nothing, and never invents a missing
+source. The concise setup instruction tells the external Agent to register each
+exact returned source through its own host's project-level Skill mechanism and
+reload discovery if that host requires it. Scholium does not prescribe or
+simulate a host-specific link, copy, package, plug-in, or global installation
+scheme. The Agent copies or edits no Skill bytes and substitutes no other
+Scholium Skill. Registration grants no `.scholium` mutation, research read,
+Action, Session, Run, or write authority.
 
 The prompt otherwise prefers Scholium tools for research work, preserves
 Scholium's exact-source and `.scholium/` boundaries, and makes no research read
 or pairing request during preparation. A later researcher instruction may
 begin an eligible direct `agent start`; a GUI-created Run still requires its
 specific handoff. The Agent uses its host's own Skill listing to confirm every
-returned name resolves from the exact project link. A required restart or new
+returned name resolves from the registered project source. A required restart or new
 task is a preparation blocker rather than Ready. After confirmed discovery and
 the Agent's Ready report, **I’ve Set Up My Agent** requires a second researcher
 confirmation. Scholium accepts only that confirmation and never claims to
-inspect or verify the external project, links, Agent host, or CLI.
+inspect or verify the external project, registration, Agent host, or CLI. Every
+copied GUI handoff and direct-start help also carries the same short conditional
+first-workspace initialization instruction before Session creation or Pairing
+Code consumption.
 The illustration and its key metaphor are decorative and absent from the
 accessibility tree; the numbered text and native controls provide the complete
 linear task.
@@ -368,15 +367,16 @@ attachment bytes; §3.3 owns the portable catalog and machine-local bookmark
 boundary. Zotero remains authoritative for bibliography and Zotero-managed PDFs;
 external Agents remain authoritative for optional open-ended work.
 
-Project-level Agent Skill links are nonauthoritative discovery pointers to the
-same current Method folders already owned by Research Guidance. They create no
-copy, registration, package lifecycle, inheritance, sharing, capability, or
-permission. Researcher changes remain on that one current Method and are never
+Project-level Agent Skill registrations are nonauthoritative discovery
+pointers to the same current System and Method folders already owned by the
+installed release or Research Guidance. They create no second editable copy,
+package lifecycle, inheritance, sharing, capability, or permission. Researcher
+changes remain on that one current Method and are never
 silently replaced or offered a new default merely because a release ships
 different default bytes; **Restore Default** remains explicit. The protected
 Core Protocol is not researcher-editable and follows the compatible installed
-CLI resource bundle across upgrades. Conditional adapters remain authenticated
-Run payloads rather than persistent project-discovery Skills.
+CLI resource bundle across upgrades. Conditional adapters are registered System
+Skills and become required only when the typed Run Context names them.
 
 Scholium defines no separate durable research-handoff packet, memory object, or ontology.
 Analyses, Topics, Works, and researcher-authored Markdown remain the durable

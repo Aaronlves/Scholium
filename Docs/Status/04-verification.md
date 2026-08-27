@@ -36,6 +36,21 @@ override.
 
 ## Focused interface evidence
 
+- On 2026-08-27, the external-Agent Skill deployment cutover passed the complete
+  gate: documentation and 9 shipped-Skill guards; 206 Web, 465 Core plus 3
+  performance, 150 Contract, 284 Application, 16 bridge, 1 architecture, and
+  668 App tests; 16 signed executable CLI lifecycles; the sandbox loopback
+  probe; symbol/residue guards; and a 184.40-second Release build. A disposable
+  external Agent workspace obtained and registered 3 System plus 6 Action Skill
+  sources through the real CLI, retained an unrelated non-Scholium Skill,
+  received only minimum `required_skills` and the frozen Method revision in Run
+  Context, executed all six Actions, and performed Analyze, Synthesize, and
+  Write mutations only through `scholium agent write`. Continue returned its
+  attached child Context without another pair/reload, and substituted external
+  Skill entries failed closed. This proves local deterministic deployment and
+  CLI behavior, not live Codex/Claude discovery refresh, a packaged external
+  account, or human/researcher acceptance.
+
 - On 2026-08-25, the window-workspace and Local Agent bridge ownership cutover
   passed the complete gate: documentation/Skill guards; 206 Web, 464 Core, 3
   performance, 150 Contract, 279 Application, 16 bridge, and 663 App tests;
@@ -490,32 +505,6 @@ local executable evidence; it does not prove a packaged clean-account Agent
 journey, real-vault use, or human acceptance. The complete repository gate was
 not used because unrelated in-progress toolbar changes are present in this
 worktree and would enter that evidence boundary.
-
-On 2026-08-20, the project Skill-discovery cutover passed 26 focused tests:
-13 Core, 2 Contracts, 4 Application-boundary, and 7 App/bootstrap tests with
-Xcode 27 beta and Swift 6.4. The fixtures cover the strict source-manifest
-schema, the release-managed Core source, enabled Triptych Method sources,
-pre-authentication exclusion of machine-local folders, rejection of changed
-Method routing metadata without replacing source bytes, and a source-only
-Application route that does not open a Workspace, inventory research files,
-build Search, or start watchers. They also cover the host-specific symlink
-instructions, conflict refusal, generated project instructions, and Core-owned
-direct entry into an authenticated Run. All eight changed shipped Skills passed
-the package validator, and documentation authority passed.
-
-The same current tree entered the complete repository gate. It passed 199 Web
-editor tests and reproducible bundles; 437 Core tests plus 3 Search performance
-tests; 146 Contracts tests; and 243 Application tests, 12 bridge tests, and 1
-architecture measurement. The gate then stopped in the 652-test App batch on
-three existing static Document-toolbar source assertions; this change does not
-touch their production or test files. Consequently the later symbol, executable
-CLI lifecycle, sandbox loopback, and Release-build stages did not run in that
-attempt. The focused App/bootstrap owner tests remain 7/7 passing.
-
-This proves the repository-level manifest, preparation prompt, and fail-closed
-discovery boundaries on disposable fixtures. It does not prove clean installed
-Codex or Claude discovery, an external Agent-created symlink journey, human
-onboarding acceptance, or permission to read or mutate any linked source.
 
 The current-Run Material lineage cutover passed 57 focused tests across nine
 owning Contracts, Application, and architecture-boundary suites with Xcode 27

@@ -146,8 +146,10 @@
 - Run requests, completions, and required snapshots use that same exact Action
   identity. No compressed Function enum, mapping adapter, optional snapshot
   fallback, or old-shape decoder remains reachable.
-- GUI Copy Handoff and Copy New Handoff deliver one Run locator and one-use
-  Pairing Code for the installed CLI. `scholium agent` is the only external-
+- GUI Copy Handoff and Copy New Handoff deliver one nonauthorizing Triptych
+  selector, Run locator, one-use Pairing Code, and concise conditional
+  first-workspace Skill-registration instruction for the installed CLI.
+  `scholium agent` is the only external-
   Agent Action lifecycle; the prior public `action` preparation family is no
   longer reachable. `agent start`
   resolves a selected Triptych and current Analysis/Action directly, stores a
@@ -166,7 +168,10 @@
   the initial Action or Method-improvement context selected by the Application-
   owned Run owner. The public `agent context` command is removed; `reload`
   remains recovery and current-state revalidation. Authenticated Context
-  supplies fillable typed `next_actions` for all six Actions: required exact-
+  supplies the minimum project-discovered `required_skills`, frozen Action
+  Method revision, and no Skill prose or path. That set is not an allowlist for
+  other non-Scholium Skills. Context also supplies fillable typed
+  `next_actions` for all six Actions: required exact-
   Target/Fidelity reads, bounded Search and supporting-evidence queries when
   needed, Discuss reply/finish, each ready bounded write when needed, and every
   non-Discuss Result submission. Result templates omit optional academic fields
@@ -227,7 +232,10 @@
   store automatically prunes only exact expired current-schema files and leaves
   unknown or unsafe entries untouched and nonauthorizing. Finalized Results
   need no `end`: write authority is revoked immediately while the original
-  Session expiry bounds idempotent confirmation and Continue Research.
+  Session expiry bounds idempotent confirmation and Continue Research. A
+  created Continue response attaches the child to that Session and returns the
+  child's complete authenticated Context and fresh `required_skills` without
+  another pair or initial reload.
 - Action inspection revalidates an Agent-written target against the Run-owned
   current write/completion revision. A later unrelated external revision still
   fails stale, while ordinary Agent continuation remains available within the
@@ -384,10 +392,10 @@
   replacement. Updater and packaged installer share one protected lock; the
   installer uses no-clobber publication for first installation or an exact
   partial first install only and refuses a complete pair.
-- The first-launch preparation prompt uses a CLI read-only Skill-source
-  manifest and deterministic workspace-bootstrap candidate. The manifest
-  exposes only the installed Core Protocol and enabled Triptych-managed Method
-  folders, excluding machine-local registrations. The Agent creates only its
-  supported host's project-level directory symlinks, reuses exact links, and
-  stops on every conflicting path; Scholium neither detects the host nor
-  creates or verifies those links.
+- The first-launch preparation prompt and every first-workspace handoff use a
+  CLI read-only Skill-source manifest and deterministic workspace-bootstrap
+  candidate. The manifest exposes every installed System Skill and enabled
+  current Method folder, including an explicitly registered machine-local
+  folder. The Agent registers those exact sources through its host's
+  project-level Skill mechanism; Scholium neither detects the host nor creates
+  or verifies that registration.

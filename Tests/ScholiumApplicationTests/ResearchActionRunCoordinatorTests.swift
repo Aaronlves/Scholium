@@ -396,13 +396,11 @@ struct ResearchActionCoordinatorTests {
             firstStarted.credential,
             run: firstStarted.receipt.run,
             requiresWrite: true,
-            claimCoreProtocol: false
         )
         let sameAuthentication = try? await sessions.authenticate(
             sameStarted.credential,
             run: sameStarted.receipt.run,
             requiresWrite: true,
-            claimCoreProtocol: false
         )
         #expect((firstAuthentication == nil) != (sameAuthentication == nil))
         await handle.setManagedCreationPreLeaseBarrierForTesting(nil)
@@ -788,7 +786,6 @@ struct ResearchActionCoordinatorTests {
             started.credential,
             run: started.receipt.run,
             requiresWrite: false,
-            claimCoreProtocol: false
         )
 
         let changedPreflightInput = try ResearchAgentAnalysisCreationPreflightRequest(
@@ -867,7 +864,6 @@ struct ResearchActionCoordinatorTests {
             retried.credential,
             run: retried.receipt.run,
             requiresWrite: false,
-            claimCoreProtocol: false
         )
         #expect(authenticated.runID == firstAuthenticated.runID)
         await #expect(throws: ResearchAgentSessionError.sessionRejected) {
@@ -875,7 +871,6 @@ struct ResearchActionCoordinatorTests {
                 started.credential,
                 run: started.receipt.run,
                 requiresWrite: false,
-                claimCoreProtocol: false
             )
         }
         let execution = try await services.localResearchExecutionStore.record(

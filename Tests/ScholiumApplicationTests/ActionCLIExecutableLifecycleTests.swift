@@ -89,7 +89,7 @@ struct ActionCLIExecutableLifecycleTests {
         #expect(inlineThreePartHelp.contains("scholium zotero mcp config"))
     }
 
-    @Test("The real external-Agent CLI executes every Platform Action against Application owners")
+    @Test("A deployed external-Agent workspace discovers Skills and executes every Platform Action through the CLI")
     func everyPlatformActionThroughExternalCLI() async throws {
         guard let binaryPath = ProcessInfo.processInfo.environment[
             "SCHOLIUM_ACTION_CLI_BINARY"
@@ -219,6 +219,12 @@ struct ActionCLIExecutableLifecycleTests {
         let environment = [
             "SCHOLIUM_AGENT_BRIDGE_CONTAINER": bridgeContainer.path,
         ]
+        let deployedSkills = try Self.deployExternalAgentWorkspace(
+            triptychID: fixture.assignment.id,
+            fixtureRoot: fixture.rootURL,
+            cli: cli,
+            environment: environment
+        )
         let analysisBefore = try Data(contentsOf: fixture.rootURL
             .appendingPathComponent("Analyses/Analysis.md"))
         let topicBefore = try Data(contentsOf: fixture.rootURL
@@ -237,6 +243,7 @@ struct ActionCLIExecutableLifecycleTests {
             actionID: .discuss,
             run: discuss.receipt.run,
             context: discuss.context,
+            deployedSkills: deployedSkills,
             cli: cli,
             environment: environment
         )
@@ -303,6 +310,7 @@ struct ActionCLIExecutableLifecycleTests {
                 actionID: simulation.action,
                 run: started.receipt.run,
                 context: started.context,
+                deployedSkills: deployedSkills,
                 cli: cli,
                 environment: environment
             )
@@ -486,7 +494,6 @@ struct ActionCLIExecutableLifecycleTests {
             primaryMarkdownSource: "# Analysis Method\n\nKeep source limits visible.\n"
         )
         let context = try ResearchAuthenticatedRunContext(
-            coreProtocol: "Scholium Core Protocol",
             brief: ResearchRunBrief(
                 run: run,
                 actionID: .analyze,
@@ -506,7 +513,7 @@ struct ActionCLIExecutableLifecycleTests {
                     extendWriteSet: false
                 )
             ),
-            method: ResearchMethodContext(snapshot: method),
+            requiredSkills: try Self.requiredSkills(for: method),
             resultContract: try ResearchResultContract(
                 profile: profile,
                 registrationKey: registration.key,
@@ -697,7 +704,9 @@ struct ActionCLIExecutableLifecycleTests {
         let startedOutput = String(decoding: started.stdout, as: UTF8.self)
         #expect(startedReport.receipt == startReceipt)
         #expect(startedReport.context.brief.run == run)
-        #expect(startedReport.context.coreProtocol == "Scholium Core Protocol")
+        #expect(startedReport.context.requiredSkills.map(\.name) == [
+            "scholium-core-protocol", "scholium-analyze",
+        ])
         #expect(startedOutput.contains(run.rawValue))
         #expect(!startedOutput.contains(credential.secret))
 
@@ -790,7 +799,6 @@ struct ActionCLIExecutableLifecycleTests {
             primaryMarkdownSource: "# Analysis Method\n"
         )
         let context = try ResearchAuthenticatedRunContext(
-            coreProtocol: "Scholium Core Protocol",
             brief: ResearchRunBrief(
                 run: run,
                 actionID: .analyze,
@@ -810,7 +818,7 @@ struct ActionCLIExecutableLifecycleTests {
                     extendWriteSet: false
                 )
             ),
-            method: ResearchMethodContext(snapshot: method),
+            requiredSkills: try Self.requiredSkills(for: method),
             resultContract: try ResearchResultContract(
                 profile: profile,
                 registrationKey: registration.key,
@@ -907,7 +915,6 @@ struct ActionCLIExecutableLifecycleTests {
         )
         let profileRevision = try profile.contentRevision()
         let context = try ResearchAuthenticatedRunContext(
-            coreProtocol: "Scholium Core Protocol",
             brief: ResearchRunBrief(
                 run: run,
                 actionID: .discuss,
@@ -929,7 +936,7 @@ struct ActionCLIExecutableLifecycleTests {
                     discussionFinish: true
                 )
             ),
-            method: ResearchMethodContext(snapshot: method),
+            requiredSkills: try Self.requiredSkills(for: method),
             resultContract: try ResearchResultContract(
                 profile: profile,
                 registrationKey: registration.key,
@@ -937,16 +944,12 @@ struct ActionCLIExecutableLifecycleTests {
             ),
             boundedWriteSet: []
         )
-        let adapter = try ResearchZoteroIntegrationAdapter(
-            skillMarkdown: "# Zotero Integration\n",
-            capabilityContractMarkdown: "# Capability Contract\n"
-        )
         #expect(throws: ResearchAgentConnectionContractError.self) {
             _ = try ResearchAuthenticatedRunContext(
-                coreProtocol: context.coreProtocol,
                 brief: context.brief,
-                method: context.method,
-                zoteroIntegrationAdapter: adapter,
+                requiredSkills: context.requiredSkills + [
+                    try .systemAdapter(.zoteroIntegration),
+                ],
                 resultContract: context.resultContract,
                 boundedWriteSet: context.boundedWriteSet
             )
@@ -1024,8 +1027,11 @@ struct ActionCLIExecutableLifecycleTests {
         #expect(mode == 0o600)
 
         let contextOutput = pairingOutput
-        #expect(contextOutput.contains("Preserve alternatives."))
-        #expect(contextOutput.contains("Scholium Core Protocol"))
+        #expect(contextOutput.contains("scholium-core-protocol"))
+        #expect(contextOutput.contains("scholium-discussion-protocol"))
+        #expect(contextOutput.contains("scholium-discuss"))
+        #expect(!contextOutput.contains("Preserve alternatives."))
+        #expect(!contextOutput.contains("# Discussion Method"))
         #expect(!contextOutput.contains(credential.secret))
 
         var storedCredential = try #require(
@@ -2741,15 +2747,14 @@ struct ActionCLIExecutableLifecycleTests {
         actionID: ResearchActionID,
         run: ResearchRunLocator,
         context: ResearchAuthenticatedRunContext,
+        deployedSkills: URL,
         cli: ActionCLIProcess,
         environment: [String: String]
     ) throws {
-        let expectedCore = try repositoryResource(
-            "ScholiumCore/Resources/Skills/Scholium System Skills/"
-                + "scholium-core-protocol/references/runtime-protocol.md"
-        )
-        let receivedCore = try #require(context.coreProtocol)
-        #expect(receivedCore == expectedCore)
+        let registeredCore = deployedSkills
+            .appendingPathComponent("scholium-core-protocol", isDirectory: true)
+            .appendingPathComponent("references/runtime-protocol.md")
+        let receivedCore = try String(contentsOf: registeredCore, encoding: .utf8)
         let normalizedCore = receivedCore
             .split(whereSeparator: { $0.isWhitespace })
             .joined(separator: " ")
@@ -2763,30 +2768,34 @@ struct ActionCLIExecutableLifecycleTests {
             "a finalized Result needs no extra end operation"
         ))
 
-        let skillDirectory = switch actionID {
-        case .discuss: "scholium-discuss"
-        case .analyze: "scholium-analyze"
-        case .synthesize: "scholium-synthesize"
-        case .write: "scholium-write"
-        case .critique: "scholium-critique"
-        case .checkFidelity: "scholium-content-fidelity"
-        }
-        let expectedSkill = try repositoryResource(
-            "ScholiumCore/Resources/Skills/Scholium Method Skills/"
-                + skillDirectory + "/SKILL.md"
-        )
-        #expect(context.method.primaryMarkdown == expectedSkill)
-        #expect(context.method.primaryMarkdown.contains(
-            "name: \(skillDirectory)"
-        ))
-        let receivedFolder = URL(fileURLWithPath: try #require(
-            context.method.skillFolderPath
-        ), isDirectory: true)
-        #expect(receivedFolder.lastPathComponent == actionID.rawValue)
-        #expect(try String(
-            contentsOf: receivedFolder.appendingPathComponent("SKILL.md"),
+        let skillName = actionID.projectSkillName
+        let registeredMethod = deployedSkills
+            .appendingPathComponent(skillName, isDirectory: true)
+            .appendingPathComponent("SKILL.md")
+        let receivedMethod = try String(
+            contentsOf: registeredMethod,
             encoding: .utf8
-        ) == expectedSkill)
+        )
+        #expect(receivedMethod.contains("name: \(skillName)"))
+        let methodRequirement = try #require(context.requiredSkills.first {
+            $0.kind == .actionMethod
+        })
+        #expect(methodRequirement.name == skillName)
+        #expect(methodRequirement.primaryMarkdownRevision
+            == DocumentFingerprint(content: receivedMethod))
+        #expect(context.requiredSkills.contains(.coreProtocol))
+        #expect(context.requiredSkills.contains {
+            $0.name == skillName
+        })
+        #expect(FileManager.default.fileExists(atPath: deployedSkills
+            .appendingPathComponent("general-research-helper/SKILL.md").path))
+        let serializedContext = String(
+            decoding: try encoder().encode(context),
+            as: UTF8.self
+        )
+        #expect(!serializedContext.contains(receivedCore))
+        #expect(!serializedContext.contains(receivedMethod))
+        #expect(!serializedContext.contains(deployedSkills.path))
 
         let reload = try cli.run(
             ["agent", "reload", "--run", run.rawValue],
@@ -2796,20 +2805,60 @@ struct ActionCLIExecutableLifecycleTests {
             ResearchAuthenticatedRunContext.self,
             from: reload.stdout
         )
-        #expect(reloaded.coreProtocol == nil)
-        #expect(reloaded.method == context.method)
+        #expect(reloaded.requiredSkills == context.requiredSkills)
         #expect(reloaded.brief.actionID == actionID)
     }
 
-    private static func repositoryResource(_ relativePath: String) throws -> String {
-        let repositoryRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        return try String(
-            contentsOf: repositoryRoot.appendingPathComponent(relativePath),
-            encoding: .utf8
+    private static func deployExternalAgentWorkspace(
+        triptychID: UUID,
+        fixtureRoot: URL,
+        cli: ActionCLIProcess,
+        environment: [String: String]
+    ) throws -> URL {
+        let output = try cli.run(
+            ["workspace", "skill-sources", "--triptych", triptychID.uuidString,
+             "--format", "json"],
+            environment: environment
         )
+        let manifest = try decoder().decode(
+            WorkspaceSkillSourceManifest.self,
+            from: output.stdout
+        )
+        #expect(manifest.triptychID == triptychID)
+        #expect(Set(manifest.skills.filter {
+            $0.ownership == .scholiumManaged
+        }.map(\.name)) == Set(ResearchSystemSkillID.allCases.map(\.rawValue)))
+        #expect(Set(manifest.skills.compactMap(\.actionID))
+            == Set(ResearchActionID.allCases))
+
+        let skills = fixtureRoot
+            .appendingPathComponent("External Agent Workspace", isDirectory: true)
+            .appendingPathComponent(".agents/skills", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: skills,
+            withIntermediateDirectories: true
+        )
+        let general = skills.appendingPathComponent(
+            "general-research-helper",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: general,
+            withIntermediateDirectories: true
+        )
+        try Data("# General Research Helper\n".utf8).write(
+            to: general.appendingPathComponent("SKILL.md")
+        )
+        for source in manifest.skills {
+            try FileManager.default.createSymbolicLink(
+                at: skills.appendingPathComponent(source.name, isDirectory: true),
+                withDestinationURL: URL(
+                    fileURLWithPath: source.sourceDirectory,
+                    isDirectory: true
+                )
+            )
+        }
+        return skills
     }
 
     private static func recordActionsThroughCLI(
@@ -2881,7 +2930,6 @@ struct ActionCLIExecutableLifecycleTests {
             primaryMarkdownSource: "# Fixture Method\n"
         )
         return try ResearchAuthenticatedRunContext(
-            coreProtocol: "Scholium Core Protocol",
             brief: ResearchRunBrief(
                 run: run,
                 actionID: actionID,
@@ -2901,7 +2949,7 @@ struct ActionCLIExecutableLifecycleTests {
                     extendWriteSet: false
                 )
             ),
-            method: ResearchMethodContext(snapshot: method),
+            requiredSkills: try requiredSkills(for: method),
             resultContract: try ResearchResultContract(
                 profile: profile,
                 registrationKey: registration.key,
@@ -2909,6 +2957,17 @@ struct ActionCLIExecutableLifecycleTests {
             ),
             boundedWriteSet: []
         )
+    }
+
+    private static func requiredSkills(
+        for method: ResearchMethodSnapshot
+    ) throws -> [ResearchRequiredSkill] {
+        var skills: [ResearchRequiredSkill] = [.coreProtocol]
+        if method.registration.actionID == .discuss {
+            skills.append(try .systemAdapter(.discussionProtocol))
+        }
+        skills.append(try .actionMethod(method))
+        return skills
     }
 
     private static func readPayload(_ data: Data) throws -> CLIReadPayload {

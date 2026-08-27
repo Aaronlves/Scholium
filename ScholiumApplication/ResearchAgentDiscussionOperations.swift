@@ -35,7 +35,6 @@ extension WorkspaceRuntime {
             credential,
             run: run,
             requiresWrite: false,
-            claimCoreProtocol: false
         )
         let handle = try await openWorkspace(id: authenticated.triptychID)
         return try await handle.replyToResearchAgentDiscussion(
@@ -58,7 +57,6 @@ extension WorkspaceRuntime {
             credential,
             run: run,
             requiresWrite: false,
-            claimCoreProtocol: false
         )
         let handle = try await openWorkspace(id: authenticated.triptychID)
         return try await handle.finishResearchAgentDiscussion(
@@ -82,7 +80,6 @@ extension WorkspaceHandle {
             credential,
             run: run,
             requiresWrite: false,
-            claimCoreProtocol: false
         )
         guard authenticated.triptychID == self.id else {
             throw ResearchAgentSessionError.sessionRejected
@@ -174,7 +171,6 @@ extension WorkspaceHandle {
             credential,
             run: run,
             requiresWrite: false,
-            claimCoreProtocol: false
         )
         guard authenticated.triptychID == self.id else {
             throw ResearchAgentSessionError.sessionRejected

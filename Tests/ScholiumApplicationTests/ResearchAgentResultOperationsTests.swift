@@ -751,7 +751,7 @@ struct ResearchAgentResultOperationsTests {
             run: second.handoff.run
         )
         #expect(after.brief == before.brief)
-        #expect(after.method == before.method)
+        #expect(after.requiredSkills == before.requiredSkills)
         #expect(after.resultContract == before.resultContract)
         #expect(after.boundedWriteSet == before.boundedWriteSet)
         try await handle.research.cancelAction(runID: second.preparation.runID)

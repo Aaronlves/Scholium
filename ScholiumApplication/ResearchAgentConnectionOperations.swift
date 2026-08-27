@@ -84,7 +84,6 @@ extension WorkspaceRuntime {
             credential,
             run: run,
             requiresWrite: false,
-            claimCoreProtocol: false,
             allowFinalized: allowFinalized
         ).triptychID
     }
@@ -106,7 +105,6 @@ extension WorkspaceRuntime {
             credential,
             run: run,
             requiresWrite: false,
-            claimCoreProtocol: false
         )
         do {
             let handle = try await openWorkspace(id: authenticated.triptychID)
@@ -141,7 +139,6 @@ extension WorkspaceRuntime {
             credential,
             run: run,
             requiresWrite: false,
-            claimCoreProtocol: false
         )
         let handle = try await openWorkspace(id: authenticated.triptychID)
         return try await handle.authenticatedResearchAgentContext(
@@ -161,7 +158,6 @@ extension WorkspaceRuntime {
             credential,
             run: run,
             requiresWrite: false,
-            claimCoreProtocol: false
         )
         let handle = try await openWorkspace(id: authenticated.triptychID)
         return try await handle.researchAgentInitialContext(
@@ -183,7 +179,6 @@ extension WorkspaceRuntime {
             credential,
             run: run,
             requiresWrite: false,
-            claimCoreProtocol: false
         )
         let handle = try await openWorkspace(id: authenticated.triptychID)
         return try await handle.authenticatedResearchContext(
@@ -204,7 +199,6 @@ extension WorkspaceRuntime {
             credential,
             run: run,
             requiresWrite: false,
-            claimCoreProtocol: false,
             allowFinalized: true
         )
         let handle = try await openWorkspace(id: authenticated.triptychID)
@@ -1523,7 +1517,6 @@ extension WorkspaceHandle {
             credential,
             run: run,
             requiresWrite: false,
-            claimCoreProtocol: false
         )
         guard authenticated.triptychID == self.id else {
             await sessions.revokeSession(credential.sessionID)
@@ -1541,7 +1534,6 @@ extension WorkspaceHandle {
         guard let sessions = researchAgentConnectionDependencies.researchAgentSessions else {
             throw ResearchAgentConnectionError.secureRandomUnavailable
         }
-        let coreProtocol = try BundledResearchSkillResources.coreProtocol()
         let authenticated = try await sessions.authenticate(
             credential,
             run: run,
@@ -1568,14 +1560,10 @@ extension WorkspaceHandle {
             record.completion?.state ?? .prepared
         )
         let platform = try requiredPlatformAction(action.actionID)
-        let shouldDeliverZoteroIntegrationAdapter =
+        let requiresZoteroIntegrationSkill =
             action.target.role == .analysis
                 && record.snapshot.zoteroBibliographicContext != nil
                 && platform.operations.contains(.useZotero)
-        let zoteroIntegrationAdapter: ResearchZoteroIntegrationAdapter? =
-            shouldDeliverZoteroIntegrationAdapter
-            ? try BundledResearchSkillResources.zoteroIntegrationAdapter()
-            : nil
         let discussionResponseContract = action.actionID == .discuss
             ? record.discussion?.responseContract
             : nil
@@ -1584,10 +1572,16 @@ extension WorkspaceHandle {
         let fidelityContract = try await authenticatedFidelityContract(
             for: record
         )
+        let capabilities = Self.capabilities(platform)
+        var requiredSkills: [ResearchRequiredSkill] = [.coreProtocol]
+        if action.actionID == .discuss {
+            requiredSkills.append(try .systemAdapter(.discussionProtocol))
+        }
+        if requiresZoteroIntegrationSkill {
+            requiredSkills.append(try .systemAdapter(.zoteroIntegration))
+        }
+        requiredSkills.append(try .actionMethod(action.method))
         return try ResearchAuthenticatedRunContext(
-            coreProtocol: authenticated.shouldDeliverCoreProtocol
-                ? coreProtocol
-                : nil,
             brief: ResearchRunBrief(
                 run: run,
                 actionID: action.actionID,
@@ -1595,10 +1589,9 @@ extension WorkspaceHandle {
                 initialObjectTitle: action.target.title,
                 initialObjectRole: action.target.role,
                 academicPurpose: purpose,
-                capabilities: Self.capabilities(platform)
+                capabilities: capabilities
             ),
-            method: ResearchMethodContext(snapshot: action.method),
-            zoteroIntegrationAdapter: zoteroIntegrationAdapter,
+            requiredSkills: requiredSkills,
             resultContract: action.resultContract,
             fidelityContract: fidelityContract,
             boundedWriteSet: record.boundedWriteSet.entries.map(
@@ -1656,7 +1649,6 @@ extension WorkspaceHandle {
             credential,
             run: run,
             requiresWrite: false,
-            claimCoreProtocol: false
         )
         guard authenticated.triptychID == self.id else {
             throw ResearchAgentSessionError.sessionRejected
@@ -2164,7 +2156,6 @@ extension WorkspaceHandle {
             credential,
             run: run,
             requiresWrite: false,
-            claimCoreProtocol: false,
             allowFinalized: true
         )
         guard authenticated.triptychID == self.id else {

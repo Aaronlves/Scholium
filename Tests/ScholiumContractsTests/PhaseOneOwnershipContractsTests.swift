@@ -22,22 +22,21 @@ struct PhaseOneOwnershipContractsTests {
         }
     }
 
-    @Test("The Zotero adapter is strict instruction data without authority fields")
-    func zoteroAdapterContract() throws {
-        let adapter = try ResearchZoteroIntegrationAdapter(
-            skillMarkdown: "# Zotero Integration\n\nUse the bounded snapshot.\n",
-            capabilityContractMarkdown: "# Capability Contract\n\nStatus is read-only.\n"
+    @Test("A required System Skill is strict identity data without authority fields")
+    func requiredSystemSkillContract() throws {
+        let requirement = try ResearchRequiredSkill.systemAdapter(
+            .zoteroIntegration
         )
         let encoder = JSONEncoder()
-        let encoded = try encoder.encode(adapter)
+        let encoded = try encoder.encode(requirement)
         let encodedText = String(decoding: encoded, as: UTF8.self)
         #expect(!encodedText.contains("capabilities"))
         #expect(!encodedText.contains("permission"))
         #expect(!encodedText.contains("write_authority"))
         #expect(try JSONDecoder().decode(
-            ResearchZoteroIntegrationAdapter.self,
+            ResearchRequiredSkill.self,
             from: encoded
-        ) == adapter)
+        ) == requirement)
 
         var object = try #require(
             JSONSerialization.jsonObject(with: encoded) as? [String: Any]
@@ -45,7 +44,7 @@ struct PhaseOneOwnershipContractsTests {
         object["library_write"] = true
         #expect(throws: ResearchAgentConnectionContractError.self) {
             _ = try JSONDecoder().decode(
-                ResearchZoteroIntegrationAdapter.self,
+                ResearchRequiredSkill.self,
                 from: JSONSerialization.data(withJSONObject: object)
             )
         }

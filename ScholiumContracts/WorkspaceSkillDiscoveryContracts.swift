@@ -81,7 +81,7 @@ public struct WorkspaceSkillSource: Codable, Hashable, Sendable {
 }
 
 public struct WorkspaceSkillSourceManifest: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
     public static let maximumSkillCount = 64
 
     public let schemaVersion: Int
@@ -115,7 +115,8 @@ public struct WorkspaceSkillSourceManifest: Codable, Hashable, Sendable {
               Set(skills.map(\.sourceDirectory)).count == skills.count,
               Set(skills.compactMap(\.actionID)).count
                 == skills.compactMap(\.actionID).count,
-              skills.filter({ $0.ownership == .scholiumManaged }).count == 1
+              Set(skills.filter({ $0.ownership == .scholiumManaged }).map(\.name))
+                == Set(ResearchSystemSkillID.allCases.map(\.rawValue))
         else {
             throw WorkspaceSkillDiscoveryContractError.invalidManifest
         }

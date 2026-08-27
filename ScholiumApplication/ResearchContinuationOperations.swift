@@ -34,7 +34,6 @@ extension WorkspaceRuntime {
             credential,
             run: run,
             requiresWrite: false,
-            claimCoreProtocol: false,
             allowFinalized: true
         )
         let handle = try await openWorkspace(id: authenticated.triptychID)
@@ -60,7 +59,6 @@ extension WorkspaceRuntime {
             credential,
             run: run,
             requiresWrite: false,
-            claimCoreProtocol: false,
             allowFinalized: true
         )
         let handle = try await openWorkspace(id: authenticated.triptychID)
@@ -165,7 +163,6 @@ extension WorkspaceHandle {
             credential,
             run: run,
             requiresWrite: false,
-            claimCoreProtocol: false,
             allowFinalized: true
         )
         guard authenticated.triptychID == id else {
@@ -447,10 +444,15 @@ extension WorkspaceHandle {
                     decidedAt: decision.decidedAt ?? Date()
                 )
         }
+        let context = try await authenticatedResearchAgentContext(
+            credential: credential,
+            run: locator
+        )
         return try ResearchContinuationResult(
             state: .created,
             nextRun: locator,
             handoffContext: handoffContext,
+            context: context,
             message: handoffContext.requiresResearcherStateRequery
                 ? "A new independent Action Run was created without inherited Researcher State; query inspect_researcher_state in that Run to read current researcher-owned facts."
                 : "A new independent Action Run was created with current Method, Profile, permissions, and no inherited Context response or write state."

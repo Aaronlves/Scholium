@@ -203,14 +203,15 @@ This chapter owns pairing, Session, and Run lifecycle. [Research Guidance](04-re
 owns the Skill, Profile, collaboration-policy, and citation
 configuration consumed during preparation.
 
-The first authenticated Agent session receives the exact protected Core Skill
-runtime protocol and capability catalog. `ScholiumCore` owns those stable
-instructions as one bundled resource; Application loads them before claiming
-first delivery and embeds no prompt copy. Each allowed Run receives one Run
-Brief, Method Context, and Result Contract. Run Brief contains current
-task/object/state, safe capability availability and next action, not a dump or
-summary of research materials. Method Context preserves the exact Skill entry
-plus the post-authentication folder path. Result Contract
+An external Agent workspace registers every exact System and current Method
+source returned by `WorkspaceSkillDiscovery` through its host's project-level
+Skill mechanism before connecting a Run. `ScholiumCore` owns the release-managed
+System Skill folders; `ResearchConfigurationStore` owns current Method
+resolution. Each allowed Run receives one Run Brief, minimum
+`ResearchRequiredSkill` set, frozen Action Method revision, and Result Contract,
+with no Skill prose or source path. Run Brief contains current task/object/state,
+safe capability availability and next action, not a dump or summary of research
+materials. Result Contract
 marks Agent academic fields versus Application machine fields. `reload`
 reconstructs this packet from the frozen Run, revalidates exact Target,
 Materials, and formal source owners, and returns typed `stale_run` rather than
@@ -240,8 +241,8 @@ but does not maintain a second template owner.
 
 Agent-facing material is serialized under an explicit evidence channel.
 `taskDirective` contains public Action, researcher request, safe capability
-facts, and current Result Contract; `methodContext` contains the Skill entry
-and reference-folder path; `researchEvidence` contains Markdown, YAML declarations, citations,
+facts, current Result Contract, and the minimum required Skill identities plus
+the frozen Method revision; `researchEvidence` contains Markdown, YAML declarations, citations,
 Zotero metadata, Records, and provider responses as typed data. Evidence text
 cannot alter the other two layers, Session, write set, tools, or next Action.
 
@@ -306,24 +307,27 @@ reading a replacement Note or revision. Contracts cap an encoded context
 response below the bridge frame, and `LocalAgentBridgeResponse` preflights the
 complete outer envelope before it writes a frame.
 
-Continue Result schema 3 and authenticated Run Context schema 13 carry the
+Continue Result schema 4 and authenticated Run Context schema 14 carry the
 closed Material reference states `current`, `changed`, `missing`, and
-`unavailable` plus the typed Researcher State requery requirement. The stable
+`unavailable` plus the typed Researcher State requery requirement. A created
+Continue Result embeds that child Context. The stable
 Local Execution envelope persists Run and Triptych identity, complete Note
 participation, authority state, payload revision, and payload fingerprint. Its
 current private payload persists the frozen Analyze source route, active child
 handoff, and independent Zotero-binding write state. Agent change evidence is keyed directly by
 `(Run ID, Note ID)` rather than copied foreign identifiers. Authenticated Run
-Context schema 13 also carries optional typed Zotero Integration and Fidelity
-contracts. The Fidelity contract contains vault-qualified exact-read selectors
+Context schema 14 also carries a closed minimum required-Skill set and optional
+typed Fidelity contract. The Skill set always identifies Core Protocol and the
+Action Method with its frozen primary revision; it conditionally identifies
+Discussion or Zotero System Skills and contains no prose or path. The Fidelity
+contract contains vault-qualified exact-read selectors
 and expected revisions but no write capability; the Research Context provider
 loads those exact owners directly rather than resolving an ambiguous Search
-path. The Integration contract contains the exact release-managed System Skill
-and capability contract. Application
-includes it only for an Analysis target with frozen Zotero context and a
-Zotero-capable Platform Action; the adapter contains no authority or transport.
+path. Application requires the Zotero System Skill only for an Analysis target
+with frozen Zotero context and a Zotero-capable Platform Action; the requirement
+contains no authority or transport.
 All prior Result, authenticated Context, and Local Execution payload revisions
-fail closed instead of interpreting expanded continuation or adapter semantics
+fail closed instead of interpreting expanded continuation or Skill semantics
 under an old revision. A structurally valid Local Execution envelope remains
 readable for deletion scoping without authorizing that unsupported payload. If
 the envelope remains live but any current or nested payload contract is
@@ -594,8 +598,11 @@ missing, or unavailable; it transfers no bookmark, path, bytes, or source
 authority.
 
 The CLI and authenticated Agent Session remain the only Continue Research
-operation owners. The Records interface exposes no continuation command or
-credential path. Only after the next Record safely forms does that child
+operation owners. A created Continue response attaches the child locator to the
+existing Session and returns the child's complete authenticated Context,
+including its fresh minimum `required_skills`; it requires neither another
+pairing nor an initial reload. The Records interface exposes no continuation
+command or credential path. Only after the next Record safely forms does that child
 persist `ResearchContinuationLineage(.continueResearch)` with its parent Run;
 the parent relation is rebuildable. The child remains one portable Record and
 one Search result for audit, while the Records collection folds it beneath the

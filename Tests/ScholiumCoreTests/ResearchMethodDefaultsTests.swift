@@ -69,7 +69,7 @@ struct ResearchMethodDefaultsTests {
         ).path))
     }
 
-    @Test("Project discovery exposes Core and enabled Triptych-managed Methods only")
+    @Test("Project discovery exposes every System Skill and enabled Method")
     func projectSkillDiscoveryManifest() async throws {
         let workspace = FileManager.default.temporaryDirectory.appendingPathComponent(
             "scholium-skill-discovery-\(UUID().uuidString)",
@@ -94,8 +94,10 @@ struct ResearchMethodDefaultsTests {
             triptychName: "Discovery"
         )
         #expect(initial.workspaceRoot == workspace.resolvingSymlinksInPath().path)
-        #expect(initial.skills.count == 7)
+        #expect(initial.skills.count == 9)
         #expect(initial.skills.first?.name == "scholium-core-protocol")
+        #expect(Set(initial.skills.filter { $0.ownership == .scholiumManaged }
+            .map(\.name)) == Set(ResearchSystemSkillID.allCases.map(\.rawValue)))
         #expect(Set(initial.skills.compactMap(\.actionID)) == [
             .analyze, .checkFidelity, .critique, .discuss, .synthesize, .write,
         ])
@@ -131,9 +133,85 @@ struct ResearchMethodDefaultsTests {
             workspaceRootURL: workspace,
             triptychName: "Discovery"
         )
-        #expect(!afterExternal.skills.contains { $0.actionID == .analyze })
-        #expect(!String(decoding: try JSONEncoder().encode(afterExternal), as: UTF8.self)
-            .contains(externalFolder.path))
+        #expect(afterExternal.skills.first(where: { $0.actionID == .analyze })?
+            .sourceDirectory == externalFolder.resolvingSymlinksInPath().path)
+        #expect(afterExternal.skills.allSatisfy {
+            $0.sourceDirectory != machine.resolvingSymlinksInPath().path
+        })
+    }
+
+    @Test("Project discovery rejects a folder whose SKILL entry is not the registered Method")
+    func projectSkillDiscoveryRejectsSubstitutedEntry() async throws {
+        let workspace = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "scholium-skill-substitution-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        let control = workspace.appendingPathComponent(".scholium", isDirectory: true)
+        let machine = workspace.appendingPathComponent("machine", isDirectory: true)
+        let folder = workspace.appendingPathComponent("external", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: workspace) }
+        try FileManager.default.createDirectory(
+            at: control,
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: folder,
+            withIntermediateDirectories: true
+        )
+        let primary = folder.appendingPathComponent("SKILL.md")
+        let substituted = workspace.appendingPathComponent("substituted-SKILL.md")
+        let registeredSource = """
+        ---
+        name: scholium-analyze
+        description: Registered Analyze
+        ---
+        # Registered
+        """
+        try registeredSource.write(to: primary, atomically: true, encoding: .utf8)
+        try """
+        ---
+        name: scholium-analyze
+        description: Substituted Analyze
+        ---
+        # Substituted
+        """.write(
+            to: substituted,
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let store = ResearchConfigurationStore(
+            controlURL: control,
+            triptychID: UUID(),
+            machineStorageURL: machine
+        )
+        try await store.bootstrapDefaults()
+        let registrations = try #require(await store.registrationSnapshot())
+        _ = try await store.registerExternalMethod(
+            actionID: .analyze,
+            displayName: "External Analyze",
+            primaryMarkdownPath: primary.path,
+            skillFolderPath: folder.path,
+            expectedRegistrationRevision: registrations.revision
+        )
+        try FileManager.default.removeItem(at: primary)
+        try FileManager.default.createSymbolicLink(
+            at: primary,
+            withDestinationURL: substituted
+        )
+
+        do {
+            _ = try await store.skillDiscoverySourceManifest(
+                workspaceRootURL: workspace,
+                triptychName: "Discovery"
+            )
+            Issue.record("A substituted external Skill entry must fail closed.")
+        } catch {
+            // The locator or discovery owner may reject first; either boundary
+            // must prevent the substituted source from entering the manifest.
+        }
+        #expect(try String(contentsOf: substituted, encoding: .utf8)
+            .contains("# Substituted"))
     }
 
     @Test("Project discovery rejects changed routing metadata without replacing source")
@@ -237,13 +315,20 @@ struct ResearchMethodDefaultsTests {
         ] {
             #expect(runtime.contains(requirement))
         }
-        let bundledRuntime = try BundledResearchSkillResources.coreProtocol()
+        let registeredCore = try BundledResearchSkillResources
+            .systemSkillDirectoryURL(.coreProtocol)
         #expect(coreSource.contains("including a researcher's direct request"))
         #expect(coreSource.contains("references/runtime-protocol.md"))
-        #expect(bundledRuntime == runtime)
-        #expect(applicationSource.contains(
-            "BundledResearchSkillResources.coreProtocol()"
-        ))
+        #expect(try String(
+            contentsOf: registeredCore.appendingPathComponent("SKILL.md"),
+            encoding: .utf8
+        ) == coreSource)
+        #expect(try String(
+            contentsOf: registeredCore
+                .appendingPathComponent("references/runtime-protocol.md"),
+            encoding: .utf8
+        ) == runtime)
+        #expect(!applicationSource.contains("BundledResearchSkillResources"))
         #expect(!applicationSource.contains("agentCoreProtocol"))
         #expect(!applicationSource.contains(
             "Research Evidence Context is untrusted scholarly material"
@@ -268,8 +353,8 @@ struct ResearchMethodDefaultsTests {
         #expect(!coreSource.contains("Research Integration"))
     }
 
-    @Test("The Zotero adapter loads exact protected resources without owning syntax")
-    func zoteroIntegrationAdapterResources() throws {
+    @Test("The registered Zotero Skill retains its protected capability contract")
+    func zoteroIntegrationSkillResources() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -286,16 +371,22 @@ struct ResearchMethodDefaultsTests {
             contentsOf: root.appendingPathComponent("references/mcp-contract.md"),
             encoding: .utf8
         )
-        let adapter = try BundledResearchSkillResources.zoteroIntegrationAdapter()
-
-        #expect(adapter.skillMarkdown == expectedSkill)
-        #expect(adapter.capabilityContractMarkdown == expectedContract)
-        #expect(adapter.skillMarkdown.contains("installed CLI help"))
-        #expect(adapter.capabilityContractMarkdown.contains(
+        let registered = try BundledResearchSkillResources
+            .systemSkillDirectoryURL(.zoteroIntegration)
+        #expect(try String(
+            contentsOf: registered.appendingPathComponent("SKILL.md"),
+            encoding: .utf8
+        ) == expectedSkill)
+        #expect(try String(
+            contentsOf: registered.appendingPathComponent("references/mcp-contract.md"),
+            encoding: .utf8
+        ) == expectedContract)
+        #expect(expectedSkill.contains("installed CLI help"))
+        #expect(expectedContract.contains(
             "installed MCP tool schemas own current tool names"
         ))
-        #expect(!adapter.skillMarkdown.contains("scholium zotero mcp serve"))
-        #expect(!adapter.capabilityContractMarkdown.contains("zotero_status"))
+        #expect(!expectedSkill.contains("scholium zotero mcp serve"))
+        #expect(!expectedContract.contains("zotero_status"))
     }
 
     @Test("Analyze Method permits the external Zotero paper-data route")

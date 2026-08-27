@@ -822,7 +822,9 @@ extension ResearchActionRunOperationsTests {
             credential: credential,
             run: handoff.run
         )
-        #expect(context.zoteroIntegrationAdapter == nil)
+        #expect(!context.requiredSkills.contains {
+            $0.name == ResearchSystemSkillID.zoteroIntegration.rawValue
+        })
         _ = try await runtime.endResearchAgentRun(
             credential: credential,
             run: handoff.run
@@ -854,7 +856,9 @@ extension ResearchActionRunOperationsTests {
             credential: started.credential,
             run: started.receipt.run
         )
-        #expect(context.zoteroIntegrationAdapter == nil)
+        #expect(!context.requiredSkills.contains {
+            $0.name == ResearchSystemSkillID.zoteroIntegration.rawValue
+        })
         #expect(await script.requestCount() == 0)
 
         let sessions = try #require((await handle.services).researchAgentSessions)
@@ -862,7 +866,6 @@ extension ResearchActionRunOperationsTests {
             started.credential,
             run: started.receipt.run,
             requiresWrite: false,
-            claimCoreProtocol: false
         )
         let execution = try await handle.services.localResearchExecutionStore.record(
             id: authenticated.runID

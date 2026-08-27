@@ -153,6 +153,9 @@ struct ResearchAgentSessionAuthorityTests {
         #expect(handoff.agentInstructions.contains(
             "scholium agent reload --run \(handoff.run.rawValue)"
         ))
+        #expect(handoff.agentInstructions.contains(
+            "scholium workspace skill-sources --triptych \(handoff.triptychID.uuidString.lowercased())"
+        ))
         #expect(!handoff.agentInstructions.contains("scholium agent context"))
         #expect(handoff.agentInstructions.contains("Do not ask the researcher to run"))
         #expect(String(describing: handoff.pairingCode) == "<redacted pairing code>")
@@ -166,12 +169,22 @@ struct ResearchAgentSessionAuthorityTests {
             credential: credential,
             run: handoff.run
         )
-        #expect(first.coreProtocol?.hasPrefix(
-            "# Scholium Core Protocol\n\n## Task and method"
-        ) == true)
-        #expect(first.coreProtocol?.contains("## Result") == true)
-        #expect(first.method.primaryMarkdown == exactMethod)
-        #expect(first.method.skillFolderPath == methodFolder.path)
+        #expect(first.requiredSkills.map(\.name) == [
+            "scholium-core-protocol",
+            "scholium-discussion-protocol",
+            "scholium-discuss",
+        ])
+        let methodRequirement = try #require(first.requiredSkills.first {
+            $0.kind == .actionMethod
+        })
+        #expect(methodRequirement.primaryMarkdownRevision
+            == preparation.snapshot.method.primaryMarkdownRevision)
+        let contextJSON = String(
+            decoding: try JSONEncoder().encode(first),
+            as: UTF8.self
+        )
+        #expect(!contextJSON.contains(exactMethod))
+        #expect(!contextJSON.contains(methodFolder.path))
         #expect(first.resultContract == preparation.snapshot.resultContract)
         #expect(first.brief.actionID == .discuss)
 
@@ -179,8 +192,7 @@ struct ResearchAgentSessionAuthorityTests {
             credential: credential,
             run: handoff.run
         )
-        #expect(reload.coreProtocol == nil)
-        #expect(reload.method == first.method)
+        #expect(reload.requiredSkills == first.requiredSkills)
         #expect(reload.resultContract == first.resultContract)
 
         let discovered = try await handle.research.queryAgentResearchContext(
@@ -399,7 +411,7 @@ struct ResearchAgentSessionAuthorityTests {
             credential: credential,
             run: handoff.run
         )
-        #expect(afterEvidence.method == first.method)
+        #expect(afterEvidence.requiredSkills == first.requiredSkills)
         #expect(afterEvidence.resultContract == first.resultContract)
         #expect(afterEvidence.brief == first.brief)
         #expect(afterEvidence.boundedWriteSet == first.boundedWriteSet)
@@ -597,8 +609,8 @@ struct ResearchAgentSessionAuthorityTests {
         await runtime.shutdown()
     }
 
-    @Test("Only an eligible Analysis Run receives the frozen Zotero adapter")
-    func zoteroAdapterDeliveryIsConditional() async throws {
+    @Test("Only an eligible Analysis Run requires the registered Zotero Skill")
+    func zoteroSkillRequirementIsConditional() async throws {
         let fixture = try await ResearchFixture.make(analysisZoteroKey: "meta0001")
         defer { fixture.remove() }
         let script = ZoteroRequestScript(steps: [
@@ -637,10 +649,12 @@ struct ResearchAgentSessionAuthorityTests {
             credential: analysisCredential,
             run: analysisHandoff.run
         )
-        let adapter = try #require(analysisContext.zoteroIntegrationAdapter)
-        #expect(adapter.skillMarkdown.contains("Prepared Analyze Action"))
-        #expect(adapter.capabilityContractMarkdown.contains("Capability map"))
-        #expect(!adapter.skillMarkdown.contains("META0001"))
+        #expect(analysisContext.requiredSkills.contains {
+            $0.name == ResearchSystemSkillID.zoteroIntegration.rawValue
+        })
+        #expect(analysisContext.requiredSkills.contains {
+            $0.name == ResearchActionID.discuss.projectSkillName
+        })
         #expect(analysisContext.brief.capabilities.zotero)
         #expect(!analysisContext.brief.capabilities.writeInitialObject)
         #expect(analysisContext.boundedWriteSet.isEmpty)
@@ -649,8 +663,7 @@ struct ResearchAgentSessionAuthorityTests {
             credential: analysisCredential,
             run: analysisHandoff.run
         )
-        #expect(analysisReload.coreProtocol == nil)
-        #expect(analysisReload.zoteroIntegrationAdapter == adapter)
+        #expect(analysisReload.requiredSkills == analysisContext.requiredSkills)
         _ = try await runtime.endResearchAgentRun(
             credential: analysisCredential,
             run: analysisHandoff.run
@@ -679,7 +692,9 @@ struct ResearchAgentSessionAuthorityTests {
             credential: topicCredential,
             run: topicHandoff.run
         )
-        #expect(topicContext.zoteroIntegrationAdapter == nil)
+        #expect(!topicContext.requiredSkills.contains {
+            $0.name == ResearchSystemSkillID.zoteroIntegration.rawValue
+        })
         #expect(await script.requestCount() == 1)
         _ = try await runtime.endResearchAgentRun(
             credential: topicCredential,
@@ -765,13 +780,12 @@ struct ResearchAgentSessionAuthorityTests {
             now: now
         )
         #expect(firstAuthentication.runID == runID)
-        #expect(firstAuthentication.shouldDeliverCoreProtocol)
-        #expect(!(try await authority.authenticate(
+        #expect((try await authority.authenticate(
             firstCredential,
             run: first.run,
             requiresWrite: false,
             now: now
-        )).shouldDeliverCoreProtocol)
+        )).runID == runID)
 
         let replacement = try await authority.issuePairing(
             runID: runID,

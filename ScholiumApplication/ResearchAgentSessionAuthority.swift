@@ -26,7 +26,6 @@ struct ResearchAuthenticatedRun: Hashable, Sendable {
     let locator: ResearchRunLocator
     let sessionID: UUID
     let canWrite: Bool
-    let shouldDeliverCoreProtocol: Bool
 }
 
 /// Internal, non-Codable one-operation capability. It never crosses the
@@ -87,7 +86,6 @@ actor ResearchAgentSessionAuthority {
         let userID: uid_t
         let expiresAt: Date
         var runLocators: Set<ResearchRunLocator>
-        var deliveredCoreProtocol: Bool
     }
 
     private struct RunBinding: Sendable {
@@ -174,6 +172,7 @@ actor ResearchAgentSessionAuthority {
             isFinalized: false
         )
         return ResearchAgentHandoff(
+            triptychID: triptychID,
             run: locator,
             pairingCode: code,
             expiresAt: expiresAt
@@ -210,8 +209,7 @@ actor ResearchAgentSessionAuthority {
             generationDigest: generationDigest,
             userID: userID,
             expiresAt: expiry,
-            runLocators: [locator],
-            deliveredCoreProtocol: false
+            runLocators: [locator]
         )
         runs[locator] = RunBinding(
             runID: runID,
@@ -271,8 +269,7 @@ actor ResearchAgentSessionAuthority {
             generationDigest: generationDigest,
             userID: userID,
             expiresAt: expiry,
-            runLocators: [locator],
-            deliveredCoreProtocol: false
+            runLocators: [locator]
         )
         binding.activeSessionID = credential.sessionID
         runs[locator] = binding
@@ -284,13 +281,12 @@ actor ResearchAgentSessionAuthority {
         _ credential: ResearchConnectionCredential,
         run locator: ResearchRunLocator,
         requiresWrite: Bool,
-        claimCoreProtocol: Bool = true,
         allowFinalized: Bool = false,
         now: Date = Date(),
         userID: uid_t = geteuid()
     ) throws -> ResearchAuthenticatedRun {
         guard let binding = runs[locator],
-              var session = sessions[credential.sessionID],
+              let session = sessions[credential.sessionID],
               session.userID == userID,
               session.expiresAt > now,
               credential.expiresAt == session.expiresAt,
@@ -308,18 +304,12 @@ actor ResearchAgentSessionAuthority {
             }
             throw ResearchAgentSessionError.sessionRejected
         }
-        let shouldDeliverCore = claimCoreProtocol && !session.deliveredCoreProtocol
-        if shouldDeliverCore {
-            session.deliveredCoreProtocol = true
-            sessions[credential.sessionID] = session
-        }
         return ResearchAuthenticatedRun(
             runID: binding.runID,
             triptychID: binding.triptychID,
             locator: locator,
             sessionID: session.id,
-            canWrite: binding.canWrite,
-            shouldDeliverCoreProtocol: shouldDeliverCore
+            canWrite: binding.canWrite
         )
     }
 
@@ -376,7 +366,6 @@ actor ResearchAgentSessionAuthority {
             credential,
             run: parent,
             requiresWrite: false,
-            claimCoreProtocol: false,
             allowFinalized: false,
             now: now,
             userID: userID
@@ -456,7 +445,6 @@ actor ResearchAgentSessionAuthority {
             credential,
             run: run,
             requiresWrite: true,
-            claimCoreProtocol: false,
             now: now,
             userID: userID
         )
@@ -501,7 +489,6 @@ actor ResearchAgentSessionAuthority {
             credential,
             run: run,
             requiresWrite: true,
-            claimCoreProtocol: false,
             now: now,
             userID: userID
         )
@@ -541,7 +528,6 @@ actor ResearchAgentSessionAuthority {
             credential,
             run: run,
             requiresWrite: true,
-            claimCoreProtocol: false,
             now: now,
             userID: userID
         )
@@ -583,7 +569,6 @@ actor ResearchAgentSessionAuthority {
             credential,
             run: run,
             requiresWrite: true,
-            claimCoreProtocol: false,
             now: now,
             userID: userID
         )

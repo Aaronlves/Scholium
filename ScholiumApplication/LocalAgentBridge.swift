@@ -650,7 +650,7 @@ public struct LocalAgentBridgeErrorPayload: Codable, Hashable, Sendable {
 public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertible,
     CustomDebugStringConvertible
 {
-    public static let currentSchemaVersion = 23
+    public static let currentSchemaVersion = 24
 
     public let schemaVersion: Int
     public let correlationID: UUID

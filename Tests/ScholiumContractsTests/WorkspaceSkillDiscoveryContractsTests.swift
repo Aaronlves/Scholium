@@ -22,6 +22,16 @@ struct WorkspaceSkillDiscoveryContractsTests {
                     sourceDirectory: "/Users/researcher/.local/bin/ScholiumCore/skills/core",
                     ownership: .scholiumManaged
                 ),
+                try WorkspaceSkillSource(
+                    name: "scholium-discussion-protocol",
+                    sourceDirectory: "/Users/researcher/.local/bin/ScholiumCore/skills/discussion",
+                    ownership: .scholiumManaged
+                ),
+                try WorkspaceSkillSource(
+                    name: "scholium-zotero-integration",
+                    sourceDirectory: "/Users/researcher/.local/bin/ScholiumCore/skills/zotero",
+                    ownership: .scholiumManaged
+                ),
             ]
         )
 
@@ -29,7 +39,7 @@ struct WorkspaceSkillDiscoveryContractsTests {
         let object = try #require(
             JSONSerialization.jsonObject(with: data) as? [String: Any]
         )
-        #expect(object["schema_version"] as? Int == 1)
+        #expect(object["schema_version"] as? Int == 2)
         #expect(object["workspace_root"] as? String == "/Research/Value Theory")
         #expect(try JSONDecoder().decode(
             WorkspaceSkillSourceManifest.self,
@@ -66,7 +76,7 @@ struct WorkspaceSkillDiscoveryContractsTests {
         }
         let unsupported = Data("""
         {
-          "schema_version": 2,
+          "schema_version": 3,
           "triptych_id": "00000000-0000-0000-0000-000000000001",
           "triptych_name": "Discovery",
           "workspace_root": "/Research/Discovery",

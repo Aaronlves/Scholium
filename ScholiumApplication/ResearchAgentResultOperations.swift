@@ -34,7 +34,6 @@ extension WorkspaceRuntime {
             credential,
             run: run,
             requiresWrite: false,
-            claimCoreProtocol: false,
             allowFinalized: true
         )
         let handle = try await openWorkspace(id: authenticated.triptychID)
@@ -75,7 +74,6 @@ extension WorkspaceHandle {
             credential,
             run: run,
             requiresWrite: false,
-            claimCoreProtocol: false,
             allowFinalized: true
         )
         guard authenticated.triptychID == self.id else {

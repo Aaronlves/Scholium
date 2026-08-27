@@ -85,6 +85,11 @@ struct ResearchContinuationOperationsTests {
         #expect(fullAccess.state == .created)
         #expect(fullAccess.nextRun != nil)
         #expect(fullAccess.handoffContext?.initiator == .agent)
+        #expect(fullAccess.context?.brief.run == fullAccess.nextRun)
+        #expect(fullAccess.context?.requiredSkills.contains(.coreProtocol) == true)
+        #expect(fullAccess.context?.requiredSkills.contains {
+            $0.name == ResearchActionID.synthesize.projectSkillName
+        } == true)
 
         let parentAfterFullAccess = try await handle.services
             .localResearchExecutionStore.record(id: parent.preparation.runID)
@@ -315,10 +320,8 @@ struct ResearchContinuationOperationsTests {
             == true)
 
         let childRun = try #require(result.nextRun)
-        let context = try await handle.research.authenticatedAgentContext(
-            credential: parent.credential,
-            run: childRun
-        )
+        let context = try #require(result.context)
+        #expect(context.brief.run == childRun)
         #expect(context.continuationHandoff == result.handoffContext)
         #expect(try decoder.decode(
             ResearchAuthenticatedRunContext.self,
@@ -492,8 +495,8 @@ struct ResearchContinuationOperationsTests {
         var retiredResult = try #require(
             JSONSerialization.jsonObject(with: resultBytes) as? [String: Any]
         )
-        #expect(retiredResult["schema_version"] as? Int == 3)
-        retiredResult["schema_version"] = 2
+        #expect(retiredResult["schema_version"] as? Int == 4)
+        retiredResult["schema_version"] = 3
         #expect(throws: ResearchContinuationContractError.self) {
             _ = try decoder.decode(
                 ResearchContinuationResult.self,

@@ -2,10 +2,16 @@
 
 ## Task and method
 
-Treat the Run Brief, Skill, and Result Contract as the current task boundary.
-Follow the Skill in substance, including the ordinary references it explicitly
-routes for the task; if a necessary deviation would change
+Treat the Run Brief, `required_skills`, and Result Contract as the current task
+boundary. Load every required Skill through the host's project-level discovery
+and follow the Action Method in substance, including the ordinary references it
+explicitly routes for the task; if a necessary deviation would change
 the research method, stop and report the blocker honestly.
+
+`required_skills` is a minimum set, not an allowlist. Other non-Scholium Skills
+may be used when they are relevant to the researcher request, but they cannot
+replace a required Scholium Skill, override this protocol, widen the Run, or
+grant capability.
 
 ## Research evidence
 
@@ -36,13 +42,13 @@ relationship and never change Zotero data.
 
 ## Conditional integration adapters
 
-When the authenticated Run packet includes the Zotero Integration Adapter,
-read its System Skill and integration contract before interpreting the prepared
-Zotero snapshot or attempting a Zotero operation. The adapter supplies scoped
-handling rules for this Run; it does not create a transport, expose an
+When `required_skills` includes `scholium-zotero-integration`, read that
+project-discovered System Skill and its integration contract before
+interpreting the prepared Zotero snapshot or attempting a Zotero operation.
+The Skill supplies scoped handling rules for this Run; it does not create a transport, expose an
 operation, authorize a library read or write, or expand the bounded write set.
 Use it only when the current task requires Zotero and the Run Brief marks the
-needed integration access as available. When the adapter is absent, do not
+needed integration access as available. When that requirement is absent, do not
 probe for or discover an integration independently.
 
 ## Run workflow
@@ -54,8 +60,11 @@ directly.
 0. An Agent may begin an eligible Run with `agent start` when it has the
    selected Triptych and target identity. This direct route does not use a
    Pairing Code; GUI-created Runs use `agent pair` with the copied handoff.
-   Both commands return the initial authenticated Run packet; do not perform a
-   separate context-loading operation. If initial delivery fails after the
+   Before the first Run in an Agent workspace, follow the concise handoff or
+   installed CLI instruction to register every exact `workspace skill-sources`
+   entry through the host's project-level Skill mechanism. Both commands then
+   return the initial authenticated Run packet; do not perform a separate
+   context-loading operation. If initial delivery fails after the
    Session is stored, use `agent reload` for that Run and do not repeat start
    or pair.
 1. Follow each typed `next_actions` requirement. Read the exact current Target

@@ -3,40 +3,21 @@ import ScholiumContracts
 
 public enum BundledResearchSkillResources {
     public static func coreProtocolSkillDirectoryURL() throws -> URL {
-        try skillDirectory(
-            "Scholium System Skills/scholium-core-protocol"
-        )
+        try systemSkillDirectoryURL(.coreProtocol)
     }
 
-    public static func coreProtocol() throws -> String {
-        String(
-            decoding: try data(
-                directory: "Scholium System Skills/scholium-core-protocol",
-                relativePath: "references/runtime-protocol.md"
-            ),
-            as: UTF8.self
-        )
+    public static func systemSkillDirectoryURL(
+        _ id: ResearchSystemSkillID
+    ) throws -> URL {
+        try skillDirectory("Scholium System Skills/\(id.rawValue)")
     }
 
-    public static func zoteroIntegrationAdapter() throws
-        -> ResearchZoteroIntegrationAdapter
+    public static func systemSkillDirectoryURLs() throws
+        -> [(id: ResearchSystemSkillID, url: URL)]
     {
-        try ResearchZoteroIntegrationAdapter(
-            skillMarkdown: String(
-                decoding: try data(
-                    directory: "Scholium System Skills/scholium-zotero-integration",
-                    relativePath: "SKILL.md"
-                ),
-                as: UTF8.self
-            ),
-            capabilityContractMarkdown: String(
-                decoding: try data(
-                    directory: "Scholium System Skills/scholium-zotero-integration",
-                    relativePath: "references/mcp-contract.md"
-                ),
-                as: UTF8.self
-            )
-        )
+        try ResearchSystemSkillID.allCases.map {
+            ($0, try systemSkillDirectoryURL($0))
+        }
     }
 
     static func data(

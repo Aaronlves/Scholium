@@ -45,7 +45,8 @@ Registration**. The registration stores one hidden stable relation key, the
 researcher-visible name, Action binding, one primary Markdown entry path, an
 optional ordinary local Skill-folder path, and enabled state. The key is not a
 user-visible Skill ID or version. The primary Markdown entry is the method
-authority. Scholium stores and delivers its exact current text, but does not
+authority. Scholium stores it and exposes its folder only through authorized
+project discovery, but defines no
 define a package schema, version, dependency graph, resource manifest, digest,
 history, marketplace, or executable plug-in contract.
 
@@ -54,13 +55,10 @@ Portable registration contains only a Triptych-relative location or a
 machine-local marker; Application Support alone retains any absolute primary
 Method/folder path and security-scoped bookmark under the opaque registration
 key. An absolute path never enters a portable Record or copied handoff.
-After authenticated local pairing, Scholium may deliver only the frozen path
-string. It never enumerates, copies, snapshots, hashes, validates, proxies,
-uploads, explains, or executes that folder. The Agent reads any supplementary
-files through its own local file capability. Missing entry or folder paths are
-reported explicitly. An inaccessible folder never causes Scholium to invent a
-transport fallback; the Agent may continue from the delivered Skill entry or
-report the limitation.
+Workspace setup reports the exact current folder without enumerating, copying,
+snapshotting, uploading, or executing it. The host reads registered `SKILL.md`
+and routed references. Missing or inaccessible entries block external
+deployment; runtime Context substitutes neither prose nor path.
 
 **Philosophical lenses** are methodologically substantive ordinary reference
 files inside a Skill folder. `SKILL.md` explicitly routes the smallest
@@ -82,11 +80,12 @@ document, and requires affected external Skills to be selected again on that
 Mac. Portable registrations, Skill and reference files, Research Records,
 and vault files remain unchanged; I/O or unsafe storage is not silently reset.
 
-Run creation freezes the registration relation, exact Skill entry text,
-optional Skill-folder path string, and Result Contract. Later registration,
+Run creation freezes the registration relation, Skill entry/revision, optional
+folder path, and Result Contract. Runtime Context identifies only the required
+Skill name and frozen revision. Later registration,
 Skill-entry, or Profile edits affect new Runs only; Scholium does not freeze or
 track folder contents. References are read through the Agent's local file
-capability only when the frozen Skill routes them. A new Triptych begins with
+capability only when the registered Skill routes them. A new Triptych begins with
 editable current default Skills and bundled lens references. Updates never overwrite
 researcher edits. **Restore Default…** means the current app-bundled default
 and states the replacement consequence before writing.
@@ -167,8 +166,10 @@ source permits Restore or distinct creation—never recreation, overwrite,
 deletion, or retry rename.
 
 Direct Agent connection is local, provider-neutral, and process-bound. The
-copied handoff contains only an opaque Run locator, one-time **Pairing Code**,
-and CLI instructions. `pair` reads the code from standard input and returns the
+copied handoff contains only a nonauthorizing Triptych selector, Run locator,
+one-time **Pairing Code**, and CLI instructions. Before first connection, it
+requires registering each `workspace skill-sources` entry through host project
+discovery. `pair` reads the code from standard input and returns the
 Run owner's initial authenticated context; `start` returns its receipt and
 context together. Only `reload` recovers or revalidates context. The handoff
 omits research text, method, paths, fingerprints, permissions, result schema,
@@ -193,21 +194,23 @@ no relay, LAN, or public endpoint. Cloud copy is not a Session. Mechanics belong
 
 Delivery is progressive:
 
-- a new Session receives Core Protocol, capabilities, and boundary once;
-- each Run receives Brief, Method, Result Contract, and typed `next_actions`;
-  Target/Fidelity reads and terminal actions are `required`, while supporting
-  evidence, bounded Search, and writes are `when_needed`;
+- workspace setup registers all System and enabled Action Skills;
+- each Run sends Brief, minimum `required_skills`, frozen Method revision,
+  Result Contract, and typed `next_actions`—never Skill prose or path;
+  Target/Fidelity reads and terminal actions are `required`; supporting
+  evidence, Search, and writes are `when_needed`;
 - Research Context arrives only after an explicit query;
-- a specialized capability explains only its additional contract on first
-  use; and
-- ordinary calls return data, result, error, next step, current Run/Action,
-  and `reload`/`help` anchors without repeating Core Protocol.
+- conditional System Skills appear only when needed; ordinary calls do not
+  repeat Skill content.
+
+`required_skills` is not an allowlist: relevant non-Scholium Skills remain
+available but cannot replace required Skills, override Core, or widen authority.
 
 `reload` revalidates exact Target, Materials, and formal source and returns the
 frozen current packet. Drift returns `stale_run`; no later method or cached
 Context response is substituted. A read or Search call proves response delivery,
 not evidential use; only supported Context Use testimony records use.
-Local absolute paths are delivered only after authentication.
+Run Context carries no local Skill path; only the deployment manifest does.
 
 The versioned, read-only **Research Context Query/Response** contract belongs
 to Application. A query contains one or more closed clauses: Note discovery,
@@ -618,6 +621,8 @@ continuation and, after the child Record safely forms, derives its relationship
 from `continued from`. That child remains one portable Record and remains
 searchable, but the Records collection folds it beneath its parent rather than
 creating a second peer top-level row.
+A created Continue response returns the child Context and `required_skills`
+through the existing Session, without pairing or initial reload.
 
 The Record's Researcher Response accepts one short Method Feedback comment and
 the Record exposes an explicit **Improve Current Method...** action. Saving or

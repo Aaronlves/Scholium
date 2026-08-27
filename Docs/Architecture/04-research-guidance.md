@@ -184,34 +184,32 @@ replacing their workspace snapshot.
 
 ## Bundled research resources
 
-`BundledResearchSkillResources` is the one reader for release-managed Skill
-bytes. [Research Actions and Execution](02-research-actions-and-execution.md)
-owns loading and delivering the protected Core Skill and any eligible typed
-Integration Adapter during an authenticated Run. Application selects the
-adapter from frozen Run facts; bundle discovery and Agent inference do not.
-Research Guidance distinguishes those release-managed bytes from
-researcher-owned Skills and references, which contain the Action's intellectual
-procedure. Run Brief, Method context, Result Contract, adapter payload,
-capability availability, command inputs, and Research Context remain typed
-current data. Installed CLI help and tool schemas own current invocation
-syntax.
+`BundledResearchSkillResources` is the one locator for release-managed System
+Skill directories. Research Guidance distinguishes those release-managed bytes
+from researcher-owned Skills and references, which contain the Action's
+intellectual procedure. External Agent project discovery, rather than an
+authenticated Context payload, loads both kinds. Run Brief, minimum required
+Skill identities, frozen Method revision, Result Contract, capability
+availability, command inputs, and Research Context remain typed current data.
+Installed CLI help and tool schemas own current invocation syntax.
 
 `ResearchConfigurationStore` also assembles one read-only project
-Skill-source manifest from the release-managed Core Protocol and enabled
-Triptych-control Method registrations. It verifies each discoverable primary
+Skill-source manifest from every release-managed System Skill and every enabled
+current Method registration. It verifies each discoverable primary
 `SKILL.md` against the stable Action Skill name and a bounded nonempty
-description, contains every returned Method folder beneath the exact portable
-control root, and excludes machine-local Method locators. A source-only
+description and requires one available folder. An explicitly registered
+machine-local folder remains eligible because this command is the authorized
+external-workspace setup surface. A source-only
 `WorkspaceRuntime` route validates the selected portable manifest and binds the
 result to the Works-parent Triptych root without constructing a Workspace,
 inventorying research vaults, opening Search, or starting watchers. CLI
 serializes it but does not detect a host, enumerate directories, create links,
-or edit Agent configuration. The external setup Agent alone maps those exact
-sources into its current host's project-level discovery directory.
+or edit Agent configuration. The external setup Agent alone registers those
+exact sources through its current host's project-level discovery mechanism.
 
 The bundle is not a package manager or second prompt store. Research Guidance
 has no staged installer, resource preview, package validation, version
 comparison, Skill snapshot history, marketplace, per-Skill permission editor,
-or executable extension surface. Project discovery links do not change the
-current Method owner, default-restoration contract, or authenticated Run
-delivery.
+or executable extension surface. Project discovery registration does not
+change the current Method owner, default-restoration contract, or authenticated
+Run authority.

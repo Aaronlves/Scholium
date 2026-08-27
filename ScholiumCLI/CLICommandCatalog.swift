@@ -167,7 +167,7 @@ extension ScholiumCLI {
             ),
             "workspace skill-sources": .init(
                 rule: .init(pathLength: 2, options: selected),
-                help: "Usage: scholium workspace skill-sources [--triptych <selector>] --format json\n\nReports the release-managed Core Protocol and exact enabled Triptych-managed Method folders that an authorized setup Agent may link into its host's project-level Skill directory. It creates no link, scans no arbitrary folder, and exposes no machine-local Method locator."
+                help: "Usage: scholium workspace skill-sources [--triptych <selector>] --format json\n\nReports every release-managed System Skill and exact enabled Method folder that an authorized setup Agent may register through its host's project-level Skill mechanism. It creates no link and scans no arbitrary folder."
             ),
             "workspace attention": .init(
                 rule: .init(

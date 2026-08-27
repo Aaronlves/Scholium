@@ -111,7 +111,6 @@ extension WorkspaceRuntime {
             credential,
             run: run,
             requiresWrite: true,
-            claimCoreProtocol: false
         )
         let handle = try await openWorkspace(id: authenticated.triptychID)
         return try await handle.extendResearchWriteSet(
@@ -133,7 +132,6 @@ extension WorkspaceRuntime {
             credential,
             run: run,
             requiresWrite: true,
-            claimCoreProtocol: false
         )
         let handle = try await openWorkspace(id: authenticated.triptychID)
         return try await handle.writeResearchDocument(
@@ -155,7 +153,6 @@ extension WorkspaceRuntime {
             credential,
             run: run,
             requiresWrite: true,
-            claimCoreProtocol: false
         )
         let handle = try await openWorkspace(id: authenticated.triptychID)
         return try await handle.writeResearchZoteroBinding(
@@ -177,7 +174,6 @@ extension WorkspaceRuntime {
             credential,
             run: run,
             requiresWrite: true,
-            claimCoreProtocol: false
         )
         let handle = try await openWorkspace(id: authenticated.triptychID)
         return try await handle.resolveResearchWriteConflict(
@@ -1756,7 +1752,6 @@ extension WorkspaceHandle {
             credential,
             run: run,
             requiresWrite: requiresWrite,
-            claimCoreProtocol: false
         )
         guard authenticated.triptychID == self.id else {
             throw ResearchAgentSessionError.sessionRejected

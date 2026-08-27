@@ -19,9 +19,9 @@ public enum WorkspaceSkillDiscoveryError: LocalizedError, Hashable, Sendable {
 }
 
 extension ResearchConfigurationStore {
-    /// Returns only exact, currently enabled Triptych-managed Method folders
-    /// plus the release-managed Core Protocol. It never enumerates registered
-    /// folders and never exposes machine-local Method locators before a Run.
+    /// Returns the release-managed System Skills plus every exact, currently
+    /// enabled Method folder. It never enumerates folder contents; an
+    /// authorized setup Agent maps only these sources into project discovery.
     public func skillDiscoverySourceManifest(
         workspaceRootURL: URL,
         triptychName: String
@@ -44,16 +44,17 @@ extension ResearchConfigurationStore {
             throw ResearchConfigurationStoreError.missingRegistrations
         }
 
-        var sources = [try WorkspaceSkillSource(
-            name: "scholium-core-protocol",
-            sourceDirectory: try BundledResearchSkillResources
-                .coreProtocolSkillDirectoryURL().path,
-            ownership: .scholiumManaged
-        )]
+        var sources = try BundledResearchSkillResources.systemSkillDirectoryURLs()
+            .map { source in
+                try WorkspaceSkillSource(
+                    name: source.id.rawValue,
+                    sourceDirectory: source.url.path,
+                    ownership: .scholiumManaged
+                )
+            }
 
         for registration in registrations.document.registrations
             where registration.isEnabled
-                && registration.skillFolder?.kind == .triptychControl
         {
             let method = try methodSnapshot(for: registration.actionID)
             guard let folderPath = method.skillFolderPath,
@@ -64,14 +65,24 @@ extension ResearchConfigurationStore {
             }
             let folder = URL(fileURLWithPath: folderPath, isDirectory: true)
                 .resolvingSymlinksInPath().standardizedFileURL
-            guard folder.path.hasPrefix(actualControl.path + "/") else {
-                throw WorkspaceSkillDiscoveryError.unavailableMethodFolder(
-                    registration.actionID
+            let discoveryName = registration.actionID.projectSkillName
+            let entry = folder.appendingPathComponent("SKILL.md")
+                .standardizedFileURL
+            let entryValues = try? entry.resourceValues(
+                forKeys: [.isRegularFileKey, .isSymbolicLinkKey]
+            )
+            guard entry.deletingLastPathComponent() == folder,
+                  entryValues?.isRegularFile == true,
+                  entryValues?.isSymbolicLink != true,
+                  let entrySource = try? String(contentsOf: entry, encoding: .utf8),
+                  entrySource == method.primaryMarkdownSource else {
+                throw WorkspaceSkillDiscoveryError.invalidMethodMetadata(
+                    actionID: registration.actionID,
+                    reason: "The registered folder's SKILL.md must be the exact current primary Method."
                 )
             }
-            let discoveryName = Self.discoveryName(for: registration.actionID)
             try Self.validateDiscoveryMetadata(
-                method.primaryMarkdownSource,
+                entrySource,
                 expectedName: discoveryName,
                 actionID: registration.actionID
             )
@@ -89,17 +100,6 @@ extension ResearchConfigurationStore {
             workspaceRoot: workspaceRoot.path,
             skills: sources
         )
-    }
-
-    private static func discoveryName(for actionID: ResearchActionID) -> String {
-        switch actionID {
-        case .discuss: "scholium-discuss"
-        case .analyze: "scholium-analyze"
-        case .synthesize: "scholium-synthesize"
-        case .write: "scholium-write"
-        case .critique: "scholium-critique"
-        case .checkFidelity: "scholium-content-fidelity"
-        }
     }
 
     private static func validateDiscoveryMetadata(

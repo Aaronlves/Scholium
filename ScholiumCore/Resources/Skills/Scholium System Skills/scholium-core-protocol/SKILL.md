@@ -24,13 +24,14 @@ research read, write, Session, Run, or reusable authority.
 ## Runtime contract
 
 Read `references/runtime-protocol.md` completely for every Scholium-mediated
-Research Run. Scholium returns that exact protected resource once after local
-authentication. It is the single content source for stable always-on Agent
-instructions and the authenticated Run workflow.
+Research Run. This project-discovered Skill is the single content source for
+stable always-on Agent instructions and the authenticated Run workflow;
+authenticated CLI responses identify required Skills but do not transmit Skill
+prose or source paths.
 
-The current Run Brief, Skill, Result Contract, bounded write-set
-view, and Research Context carry changing task facts. Do not copy those facts
-into this Skill.
+The current Run Brief, required Skill identities and Method revision, Result
+Contract, bounded write-set view, and Research Context carry changing task
+facts. Do not copy those facts into this Skill.
 
 ## Conditional mechanics
 

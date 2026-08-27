@@ -656,15 +656,18 @@ public struct ResearchPairingCode: RawRepresentable, Hashable, Sendable,
 public struct ResearchAgentHandoff: Hashable, Sendable, CustomStringConvertible,
     CustomDebugStringConvertible
 {
+    public let triptychID: UUID
     public let run: ResearchRunLocator
     public let pairingCode: ResearchPairingCode
     public let expiresAt: Date
 
     public init(
+        triptychID: UUID,
         run: ResearchRunLocator,
         pairingCode: ResearchPairingCode,
         expiresAt: Date
     ) {
+        self.triptychID = triptychID
         self.run = run
         self.pairingCode = pairingCode
         self.expiresAt = expiresAt
@@ -675,7 +678,7 @@ public struct ResearchAgentHandoff: Hashable, Sendable, CustomStringConvertible,
         Scholium Run: \(run.rawValue)
         Pairing Code: \(pairingCode.rawValue)
 
-        Agent: use the installed `scholium` CLI yourself. Run `scholium agent pair --run \(run.rawValue)` and enter the Pairing Code above when the command asks through standard input. Pair returns the initial authenticated Run context. If that delivery fails after pairing succeeds, recover it with `scholium agent reload --run \(run.rawValue)`; do not pair again. Do not ask the researcher to run these commands.
+        Agent: use the installed `scholium` CLI yourself. If this Agent workspace has not been initialized for Scholium, run `scholium workspace skill-sources --triptych \(triptychID.uuidString.lowercased()) --format json`, register the returned Skills through the host's project-level Skill mechanism, and reload Skill discovery if the host requires it. Then run `scholium agent pair --run \(run.rawValue)` and enter the Pairing Code above through standard input. Pair returns the authenticated Run context and its minimum required Skills. If context delivery fails after pairing succeeds, recover it with `scholium agent reload --run \(run.rawValue)`; do not pair again. Do not ask the researcher to run these commands.
         """
     }
 
@@ -843,62 +846,101 @@ public struct ResearchRunBrief: Codable, Hashable, Sendable {
     }
 }
 
-public struct ResearchMethodContext: Codable, Hashable, Sendable {
-    public let displayName: String
-    public let primaryMarkdown: String
-    /// Delivered only after authentication. Scholium records the selected
-    /// folder path but does not enumerate, snapshot, or own its contents.
-    public let skillFolderPath: String?
-
-    public init(snapshot: ResearchMethodSnapshot) {
-        displayName = snapshot.registration.displayName
-        primaryMarkdown = snapshot.primaryMarkdownSource
-        skillFolderPath = snapshot.skillFolderPath
-    }
-
-    private enum CodingKeys: String, CodingKey, CaseIterable {
-        case displayName
-        case primaryMarkdown
-        case skillFolderPath
-    }
-
-    public init(from decoder: Decoder) throws {
-        try ResearchAgentConnectionCoding.rejectUnknownFields(
-            decoder,
-            allowed: CodingKeys.self
-        )
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        displayName = try container.decode(String.self, forKey: .displayName)
-        primaryMarkdown = try container.decode(String.self, forKey: .primaryMarkdown)
-        skillFolderPath = try container.decodeIfPresent(
-            String.self,
-            forKey: .skillFolderPath
-        )
-    }
+public enum ResearchSystemSkillID: String, Codable, CaseIterable, Hashable,
+    Sendable
+{
+    case coreProtocol = "scholium-core-protocol"
+    case discussionProtocol = "scholium-discussion-protocol"
+    case zoteroIntegration = "scholium-zotero-integration"
 }
 
-/// Protected, release-managed instructions for the optional Zotero adapter.
-/// Delivery explains how to use an already-authorized integration; it grants
-/// no capability, transport, library access, or write authority.
-public struct ResearchZoteroIntegrationAdapter: Codable, Hashable, Sendable {
-    public let skillMarkdown: String
-    public let capabilityContractMarkdown: String
+public enum ResearchRequiredSkillKind: String, Codable, Hashable, Sendable {
+    case coreProtocol = "core_protocol"
+    case systemAdapter = "system_adapter"
+    case actionMethod = "action_method"
+}
+
+/// One Skill the external Agent host must already expose through project-level
+/// discovery. This is a minimum required set, never an allowlist: other
+/// non-Scholium Skills remain available within the researcher request and the
+/// protected Run boundary. A Skill requirement grants no capability.
+public struct ResearchRequiredSkill: Codable, Hashable, Sendable {
+    public let name: String
+    public let kind: ResearchRequiredSkillKind
+    public let actionID: ResearchActionID?
+    public let displayName: String?
+    public let primaryMarkdownRevision: DocumentFingerprint?
+
+    public static let coreProtocol = try! Self(
+        name: ResearchSystemSkillID.coreProtocol.rawValue,
+        kind: .coreProtocol
+    )
+
+    public static func systemAdapter(_ id: ResearchSystemSkillID) throws -> Self {
+        try Self(name: id.rawValue, kind: .systemAdapter)
+    }
+
+    public static func actionMethod(_ snapshot: ResearchMethodSnapshot) throws -> Self {
+        try Self(
+            name: snapshot.registration.actionID.projectSkillName,
+            kind: .actionMethod,
+            actionID: snapshot.registration.actionID,
+            displayName: snapshot.registration.displayName,
+            primaryMarkdownRevision: snapshot.primaryMarkdownRevision
+        )
+    }
 
     public init(
-        skillMarkdown: String,
-        capabilityContractMarkdown: String
+        name: String,
+        kind: ResearchRequiredSkillKind,
+        actionID: ResearchActionID? = nil,
+        displayName: String? = nil,
+        primaryMarkdownRevision: DocumentFingerprint? = nil
     ) throws {
-        guard Self.isValid(skillMarkdown),
-              Self.isValid(capabilityContractMarkdown) else {
+        guard !name.isEmpty, name.utf8.count <= 128,
+              name.first != "-", name.last != "-",
+              name.unicodeScalars.allSatisfy({ scalar in
+                  (scalar.value >= 0x61 && scalar.value <= 0x7A)
+                      || (scalar.value >= 0x30 && scalar.value <= 0x39)
+                      || scalar.value == 0x2D
+              }) else {
             throw ResearchAgentConnectionContractError.invalidHandoff
         }
-        self.skillMarkdown = skillMarkdown
-        self.capabilityContractMarkdown = capabilityContractMarkdown
+        switch kind {
+        case .coreProtocol:
+            guard name == ResearchSystemSkillID.coreProtocol.rawValue,
+                  actionID == nil, displayName == nil,
+                  primaryMarkdownRevision == nil else {
+                throw ResearchAgentConnectionContractError.invalidHandoff
+            }
+        case .systemAdapter:
+            guard let system = ResearchSystemSkillID(rawValue: name),
+                  system != .coreProtocol,
+                  actionID == nil, displayName == nil,
+                  primaryMarkdownRevision == nil else {
+                throw ResearchAgentConnectionContractError.invalidHandoff
+            }
+        case .actionMethod:
+            guard let actionID, name == actionID.projectSkillName,
+                  let displayName,
+                  !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  displayName.utf8.count <= 256,
+                  primaryMarkdownRevision != nil else {
+                throw ResearchAgentConnectionContractError.invalidHandoff
+            }
+        }
+        self.name = name
+        self.kind = kind
+        self.actionID = actionID
+        self.displayName = displayName
+        self.primaryMarkdownRevision = primaryMarkdownRevision
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
-        case skillMarkdown = "skill_markdown"
-        case capabilityContractMarkdown = "capability_contract_markdown"
+        case name, kind
+        case actionID = "action_id"
+        case displayName = "display_name"
+        case primaryMarkdownRevision = "primary_markdown_revision"
     }
 
     public init(from decoder: Decoder) throws {
@@ -908,17 +950,15 @@ public struct ResearchZoteroIntegrationAdapter: Codable, Hashable, Sendable {
         )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         try self.init(
-            skillMarkdown: container.decode(String.self, forKey: .skillMarkdown),
-            capabilityContractMarkdown: container.decode(
-                String.self,
-                forKey: .capabilityContractMarkdown
+            name: container.decode(String.self, forKey: .name),
+            kind: container.decode(ResearchRequiredSkillKind.self, forKey: .kind),
+            actionID: container.decodeIfPresent(ResearchActionID.self, forKey: .actionID),
+            displayName: container.decodeIfPresent(String.self, forKey: .displayName),
+            primaryMarkdownRevision: container.decodeIfPresent(
+                DocumentFingerprint.self,
+                forKey: .primaryMarkdownRevision
             )
         )
-    }
-
-    private static func isValid(_ markdown: String) -> Bool {
-        !markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && markdown.utf8.count <= 1_048_576
     }
 }
 
@@ -1074,16 +1114,13 @@ public struct ResearchFidelityRunContract: Codable, Hashable, Sendable {
 }
 
 public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 13
+    public static let currentSchemaVersion = 14
 
     public let schemaVersion: Int
-    /// Present exactly once for a Connection Session, never on ordinary reload.
-    public let coreProtocol: String?
     public let brief: ResearchRunBrief
-    public let method: ResearchMethodContext
-    /// Present only for an eligible Analysis Run whose immutable Action
-    /// snapshot contains Zotero bibliographic context.
-    public let zoteroIntegrationAdapter: ResearchZoteroIntegrationAdapter?
+    /// Minimum project-discovered Skill set for this Run. It does not restrict
+    /// other non-Scholium Skills and carries no instruction prose or paths.
+    public let requiredSkills: [ResearchRequiredSkill]
     public let resultContract: ResearchResultContract
     /// Present only for Check Fidelity. It names the exact checks and any
     /// check that must remain unavailable because Scholium lacks formal source
@@ -1105,10 +1142,8 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
     public let nextActions: [AgentCommandAction]
 
     public init(
-        coreProtocol: String?,
         brief: ResearchRunBrief,
-        method: ResearchMethodContext,
-        zoteroIntegrationAdapter: ResearchZoteroIntegrationAdapter? = nil,
+        requiredSkills: [ResearchRequiredSkill],
         resultContract: ResearchResultContract,
         fidelityContract: ResearchFidelityRunContract? = nil,
         boundedWriteSet: [ResearchBoundedWriteSetViewEntry],
@@ -1116,16 +1151,31 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
         discussionResponseContract: DialogueResponseContract? = nil,
         nextActions: [AgentCommandAction] = []
     ) throws {
-        guard zoteroIntegrationAdapter == nil
-                || (brief.initialObjectRole == .analysis
-                    && brief.capabilities.zotero) else {
+        guard Set(requiredSkills.map(\.name)).count == requiredSkills.count,
+              requiredSkills.filter({ $0.kind == .coreProtocol }).count == 1,
+              requiredSkills.filter({
+                  $0.kind == .actionMethod && $0.actionID == brief.actionID
+              }).count == 1,
+              requiredSkills.filter({ $0.kind == .actionMethod }).count == 1,
+              requiredSkills.contains(.coreProtocol),
+              requiredSkills.contains(where: {
+                  $0.kind == .systemAdapter
+                      && $0.name == ResearchSystemSkillID.discussionProtocol.rawValue
+              }) == brief.capabilities.discussionReply,
+              !requiredSkills.contains(where: {
+                  $0.kind == .systemAdapter
+                      && $0.name == ResearchSystemSkillID.zoteroIntegration.rawValue
+              }) || (brief.initialObjectRole == .analysis
+                  && brief.capabilities.zotero) else {
             throw ResearchAgentConnectionContractError.invalidHandoff
         }
         schemaVersion = Self.currentSchemaVersion
-        self.coreProtocol = coreProtocol
         self.brief = brief
-        self.method = method
-        self.zoteroIntegrationAdapter = zoteroIntegrationAdapter
+        self.requiredSkills = requiredSkills.sorted {
+            let left = Self.skillOrder($0)
+            let right = Self.skillOrder($1)
+            return left == right ? $0.name < $1.name : left < right
+        }
         self.resultContract = resultContract
         guard (fidelityContract != nil) == (brief.actionID == .checkFidelity) else {
             throw ResearchAgentConnectionContractError.invalidHandoff
@@ -1150,9 +1200,8 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case schemaVersion = "schema_version"
-        case coreProtocol = "core_protocol"
-        case brief, method
-        case zoteroIntegrationAdapter = "zotero_integration_adapter"
+        case brief
+        case requiredSkills = "required_skills"
         case resultContract = "result_contract"
         case fidelityContract = "fidelity_contract"
         case discussionResponseContract = "discussion_response_contract"
@@ -1180,15 +1229,10 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
             throw ResearchAgentConnectionContractError.invalidHandoff
         }
         try self.init(
-            coreProtocol: try container.decodeIfPresent(
-                String.self,
-                forKey: .coreProtocol
-            ),
             brief: try container.decode(ResearchRunBrief.self, forKey: .brief),
-            method: try container.decode(ResearchMethodContext.self, forKey: .method),
-            zoteroIntegrationAdapter: try container.decodeIfPresent(
-                ResearchZoteroIntegrationAdapter.self,
-                forKey: .zoteroIntegrationAdapter
+            requiredSkills: try container.decode(
+                [ResearchRequiredSkill].self,
+                forKey: .requiredSkills
             ),
             resultContract: try container.decode(
                 ResearchResultContract.self,
@@ -1212,6 +1256,14 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
                 forKey: .nextActions
             )
         )
+    }
+
+    private static func skillOrder(_ skill: ResearchRequiredSkill) -> Int {
+        switch skill.kind {
+        case .coreProtocol: 0
+        case .systemAdapter: 1
+        case .actionMethod: 2
+        }
     }
 }
 

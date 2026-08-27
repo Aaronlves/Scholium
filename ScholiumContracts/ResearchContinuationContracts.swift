@@ -469,28 +469,34 @@ public enum ResearchContinuationResultState: String, Codable, Hashable, Sendable
 }
 
 public struct ResearchContinuationResult: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 3
+    public static let currentSchemaVersion = 4
 
     public let schemaVersion: Int
     public let state: ResearchContinuationResultState
     public let nextRun: ResearchRunLocator?
     public let handoffContext: ResearchContinuationHandoffContext?
+    public let context: ResearchAuthenticatedRunContext?
     public let message: String
 
     public init(
         state: ResearchContinuationResultState,
         nextRun: ResearchRunLocator? = nil,
         handoffContext: ResearchContinuationHandoffContext? = nil,
+        context: ResearchAuthenticatedRunContext? = nil,
         message: String
     ) throws {
-        guard (state == .created) == (nextRun != nil && handoffContext != nil),
-              state == .created || (nextRun == nil && handoffContext == nil) else {
+        guard (state == .created)
+                == (nextRun != nil && handoffContext != nil && context != nil),
+              state == .created
+                || (nextRun == nil && handoffContext == nil && context == nil),
+              context?.brief.run == nextRun else {
             throw ResearchContinuationContractError.invalidResult
         }
         schemaVersion = Self.currentSchemaVersion
         self.state = state
         self.nextRun = nextRun
         self.handoffContext = handoffContext
+        self.context = context
         self.message = try ResearchContinuationValidation.text(
             message,
             maximumUTF8Count: 1_024
@@ -502,6 +508,7 @@ public struct ResearchContinuationResult: Codable, Hashable, Sendable {
         case state
         case nextRun = "next_run"
         case handoffContext = "handoff_context"
+        case context
         case message
     }
 
@@ -528,6 +535,10 @@ public struct ResearchContinuationResult: Codable, Hashable, Sendable {
             handoffContext: container.decodeIfPresent(
                 ResearchContinuationHandoffContext.self,
                 forKey: .handoffContext
+            ),
+            context: container.decodeIfPresent(
+                ResearchAuthenticatedRunContext.self,
+                forKey: .context
             ),
             message: container.decode(String.self, forKey: .message)
         )

@@ -762,6 +762,7 @@ struct ResearchActionControllerTests {
                 ))
                 handoffCount += 1
                 return ResearchAgentHandoff(
+                    triptychID: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
                     run: ResearchRunLocator(rawValue: "controllerfixturelocator")!,
                     pairingCode: code,
                     expiresAt: .distantFuture
@@ -965,6 +966,7 @@ struct ResearchActionControllerTests {
 
     private func testHandoff(runID: UUID) throws -> ResearchAgentHandoff {
         ResearchAgentHandoff(
+            triptychID: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
             run: ResearchRunLocator(rawValue: "controllerfixturelocator")!,
             pairingCode: ResearchPairingCode(
                 rawValue: "23456789ABCDEFGHJKLMNPQR"

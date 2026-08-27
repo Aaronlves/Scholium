@@ -46,6 +46,20 @@ public enum ResearchActionID: String, Codable, CaseIterable, Hashable, Sendable,
 
     public var writesTarget: Bool { requiresAgentChangeEvidence }
 
+    /// Stable project-discovery name for the one registered Method Skill that
+    /// supplies this Action's intellectual procedure. It identifies a Skill
+    /// source; it grants no Run or mutation authority.
+    public var projectSkillName: String {
+        switch self {
+        case .discuss: "scholium-discuss"
+        case .analyze: "scholium-analyze"
+        case .synthesize: "scholium-synthesize"
+        case .write: "scholium-write"
+        case .critique: "scholium-critique"
+        case .checkFidelity: "scholium-content-fidelity"
+        }
+    }
+
     public var description: String { rawValue }
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()

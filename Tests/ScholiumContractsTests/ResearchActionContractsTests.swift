@@ -75,17 +75,17 @@ struct ResearchActionContractsTests {
             )
         }
 
-        let methodContext = ResearchMethodContext(snapshot: snapshot.method)
-        var methodContextObject = try #require(
+        let requiredSkill = try ResearchRequiredSkill.actionMethod(snapshot.method)
+        var requiredSkillObject = try #require(
             JSONSerialization.jsonObject(
-                with: JSONEncoder().encode(methodContext)
+                with: JSONEncoder().encode(requiredSkill)
             ) as? [String: Any]
         )
-        methodContextObject["practices"] = []
+        requiredSkillObject["practices"] = []
         #expect(throws: ResearchAgentConnectionContractError.self) {
             _ = try JSONDecoder().decode(
-                ResearchMethodContext.self,
-                from: JSONSerialization.data(withJSONObject: methodContextObject)
+                ResearchRequiredSkill.self,
+                from: JSONSerialization.data(withJSONObject: requiredSkillObject)
             )
         }
         let retiredCompressedIdentity = Data(

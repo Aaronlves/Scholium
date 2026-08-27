@@ -43,13 +43,15 @@ fallback consults this tree.
 ## Protected reference resources
 
 `Scholium System Skills` owns the protected Core workflow plus the distinct
-Discussion and Zotero adapters. Typed Application/CLI contracts own current
-identity, provenance, Session, bounded-write, and Result fields. The exact
-first-authentication Core Protocol is
-`scholium-core-protocol/references/runtime-protocol.md`; Application loads that
-resource verbatim and embeds no second prompt. Platform contracts and current
-Application state remain the runtime authority, so Skill text cannot grant
-scope, capability, or write permission.
+Discussion and Zotero adapters. An external Agent workspace registers those
+release-managed folders and the current Action Method folders through its
+host's project-level Skill mechanism. Typed Application/CLI contracts own
+current identity, required Skill names and frozen Method revision, provenance,
+Session, bounded-write, and Result fields; they transmit no Skill prose or
+source path. The exact Core Protocol remains
+`scholium-core-protocol/references/runtime-protocol.md`. Platform contracts and
+current Application state remain the runtime authority, so Skill registration
+or text cannot grant scope, capability, or write permission.
 
 Each default Skill's `references/` directory directly contains its
 methodologically substantive philosophical lenses, and that Skill's

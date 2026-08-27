@@ -1012,7 +1012,6 @@ private func testFidelityContext(
         primaryMarkdownSource: "# Fidelity\n"
     )
     return try ResearchAuthenticatedRunContext(
-        coreProtocol: nil,
         brief: ResearchRunBrief(
             run: run,
             actionID: .checkFidelity,
@@ -1032,7 +1031,10 @@ private func testFidelityContext(
                 extendWriteSet: false
             )
         ),
-        method: ResearchMethodContext(snapshot: method),
+        requiredSkills: [
+            .coreProtocol,
+            try .actionMethod(method),
+        ],
         resultContract: ResearchResultContract(
             profile: profile,
             registrationKey: registration.key,
