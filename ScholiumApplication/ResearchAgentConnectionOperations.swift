@@ -9,6 +9,7 @@ struct WorkspaceResearchAgentConnectionDependencies: Sendable {
     let researchAgentSessions: ResearchAgentSessionAuthority?
     let controlStore: TriptychControlStore
     let transactionRecoveryStore: TriptychMutationRecoveryStore
+    let searchIndex: TriptychSearchIndex
 }
 
 extension WorkspaceServices {
@@ -19,7 +20,8 @@ extension WorkspaceServices {
             creationReservationStore: agentAnalysisCreationReservationStore,
             researchAgentSessions: researchAgentSessions,
             controlStore: controlStore,
-            transactionRecoveryStore: transactionRecoveryStore
+            transactionRecoveryStore: transactionRecoveryStore,
+            searchIndex: searchIndex
         )
     }
 }
@@ -1581,6 +1583,10 @@ extension WorkspaceHandle {
             requiredSkills.append(try .systemAdapter(.zoteroIntegration))
         }
         requiredSkills.append(try .actionMethod(action.method))
+        let recommendedReading = try await authenticatedRecommendedReading(
+            for: record,
+            action: action
+        )
         return try ResearchAuthenticatedRunContext(
             brief: ResearchRunBrief(
                 run: run,
@@ -1599,10 +1605,38 @@ extension WorkspaceHandle {
             ),
             continuationHandoff: record.snapshot.continuationHandoff,
             discussionResponseContract: discussionResponseContract,
+            recommendedReading: recommendedReading,
             nextActions: try await authenticatedAgentNextActions(
                 for: record,
                 action: action,
-                run: run
+                run: run,
+                recommendedReading: recommendedReading
+            )
+        )
+    }
+
+    private func authenticatedRecommendedReading(
+        for record: LocalResearchExecutionRecord,
+        action: ResearchActionSnapshot
+    ) async throws -> ResearchRecommendedReadingDirectory? {
+        guard action.target.role == .work,
+              action.actionID == .write || action.actionID == .critique else {
+            return nil
+        }
+        let source = try await loadDocument(action.target.note)
+        guard source.fingerprint == action.target.fingerprint else {
+            throw ResearchAgentConnectionError.runStale(.targetChanged)
+        }
+        let searchIndex = researchAgentConnectionDependencies.searchIndex
+        let coordinator = RecommendedReadingCoordinator { request in
+            try await searchIndex.relatedContent(request)
+        }
+        return try await coordinator.directory(
+            for: action,
+            source: source,
+            requestID: Self.stableAgentUUID(
+                runID: record.id,
+                label: "recommended-reading"
             )
         )
     }
@@ -1830,7 +1864,8 @@ extension WorkspaceHandle {
     private func authenticatedAgentNextActions(
         for record: LocalResearchExecutionRecord,
         action: ResearchActionSnapshot,
-        run: ResearchRunLocator
+        run: ResearchRunLocator,
+        recommendedReading: ResearchRecommendedReadingDirectory?
     ) async throws -> [AgentCommandAction] {
         var actions = try await authenticatedEvidenceActions(
             for: record,
@@ -1865,6 +1900,18 @@ extension WorkspaceHandle {
             ])
             return actions
         }
+        let recommendedReadingActions = try Self.recommendedReadingActions(
+            recommendedReading,
+            runID: record.id,
+            run: run
+        )
+        if !recommendedReadingActions.isEmpty {
+            let genericSearchIndex = max(0, actions.count - 1)
+            actions.insert(
+                contentsOf: recommendedReadingActions,
+                at: genericSearchIndex
+            )
+        }
         actions.append(contentsOf: try Self.authenticatedWriteActions(
             record.boundedWriteSet.entries,
             run: run
@@ -1874,6 +1921,59 @@ extension WorkspaceHandle {
             action: action,
             run: run
         ))
+        return actions
+    }
+
+    private static func recommendedReadingActions(
+        _ directory: ResearchRecommendedReadingDirectory?,
+        runID: UUID,
+        run: ResearchRunLocator
+    ) throws -> [AgentCommandAction] {
+        guard let directory,
+              directory.state == .current,
+              !directory.candidates.isEmpty else { return [] }
+        let clauses = try directory.candidates.enumerated().map {
+            index, candidate in
+            try ResearchContextClause(
+                id: stableAgentUUID(
+                    runID: runID,
+                    label: "recommended-reading:\(index):\(candidate.note.vaultID.uuidString.lowercased()):\(candidate.note.relativePath)"
+                ),
+                kind: .readNote,
+                note: candidate.note,
+                expectedFingerprint: candidate.fingerprint,
+                limit: 1,
+                useEligibility: .contextUse
+            )
+        }
+        var actions: [AgentCommandAction] = []
+        for start in stride(
+            from: 0,
+            to: clauses.count,
+            by: ResearchContextRequest.maximumClauses
+        ) {
+            let end = min(
+                start + ResearchContextRequest.maximumClauses,
+                clauses.count
+            )
+            let request = try ResearchContextRequest(
+                id: stableAgentUUID(
+                    runID: runID,
+                    label: "recommended-reading-request:\(start)"
+                ),
+                clauses: Array(clauses[start..<end])
+            )
+            actions.append(AgentCommandAction(
+                kind: .query,
+                requirement: .whenNeeded,
+                label: "Read the recommended Analyses and Topics when the Method needs them",
+                command: [
+                    "scholium", "agent", "query", "--run",
+                    run.rawValue, "--from", "-",
+                ],
+                inputTemplate: try agentContextRequestTemplate(request)
+            ))
+        }
         return actions
     }
 

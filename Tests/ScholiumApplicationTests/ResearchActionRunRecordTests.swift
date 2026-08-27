@@ -81,6 +81,40 @@ extension ResearchActionRunOperationsTests {
                     ) == true
             })
 
+            let expectsRecommendedReading = actionID == .write
+                || actionID == .critique
+            #expect((context.recommendedReading != nil)
+                == expectsRecommendedReading)
+            if expectsRecommendedReading {
+                let directory = try #require(context.recommendedReading)
+                #expect(directory.state == .current)
+                #expect(!directory.candidates.isEmpty)
+                #expect(directory.candidates.allSatisfy {
+                    $0.role == .analysis || $0.role == .topic
+                })
+                let readActions = evidenceQueries.filter {
+                    $0.label.contains("recommended Analyses and Topics")
+                }
+                #expect(!readActions.isEmpty)
+                let requests = try readActions.map { action in
+                    try JSONDecoder().decode(
+                        ResearchContextRequest.self,
+                        from: Data(try #require(action.inputTemplate).utf8)
+                    )
+                }
+                let clauses = requests.flatMap(\.clauses)
+                #expect(clauses.allSatisfy {
+                    $0.kind == .readNote
+                        && $0.note != nil
+                        && $0.expectedFingerprint != nil
+                        && $0.useEligibility == .contextUse
+                })
+                #expect(Set(clauses.compactMap(\.note))
+                    == Set(directory.candidates.map(\.note)))
+                #expect(Set(clauses.compactMap(\.expectedFingerprint))
+                    == Set(directory.candidates.map(\.fingerprint)))
+            }
+
             if actionID == .discuss {
                 #expect(context.nextActions.suffix(2).map { $0.kind } == [
                     AgentCommandActionKind.reply,

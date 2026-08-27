@@ -4,6 +4,57 @@ import Testing
 
 @Suite("Phase-one Research Skill ownership contracts")
 struct PhaseOneOwnershipContractsTests {
+    @Test("Recommended Reading is a strict non-source directory")
+    func recommendedReadingDirectoryContract() throws {
+        let candidate = try ResearchRecommendedReadingCandidate(
+            note: VaultQualifiedNoteID(
+                vaultID: UUID(),
+                relativePath: "Value.md"
+            ),
+            role: .analysis,
+            title: "Value Analysis",
+            fingerprint: DocumentFingerprint(content: "# Value\n"),
+            matchedFields: [.title, .body],
+            matchedSeedTerms: ["value"]
+        )
+        let directory = try ResearchRecommendedReadingDirectory(
+            seedFingerprint: DocumentFingerprint(content: "# Work\nValue"),
+            freshnessToken: SearchFreshnessToken("triptych:test:1"),
+            state: .current,
+            candidates: [candidate],
+            hasMore: false
+        )
+        let encoded = try JSONEncoder().encode(directory)
+        let text = String(decoding: encoded, as: UTF8.self)
+        #expect(!text.contains("source"))
+        #expect(!text.contains("summary"))
+        #expect(!text.contains("score"))
+        #expect(try JSONDecoder().decode(
+            ResearchRecommendedReadingDirectory.self,
+            from: encoded
+        ) == directory)
+
+        #expect(throws: ResearchAgentConnectionContractError.self) {
+            _ = try ResearchRecommendedReadingDirectory(
+                seedFingerprint: directory.seedFingerprint,
+                freshnessToken: directory.freshnessToken,
+                state: .current,
+                candidates: [],
+                hasMore: false
+            )
+        }
+        var object = try #require(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        object["candidate_source"] = "forbidden"
+        #expect(throws: ResearchAgentConnectionContractError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchRecommendedReadingDirectory.self,
+                from: JSONSerialization.data(withJSONObject: object)
+            )
+        }
+    }
+
     @Test("Authenticated Run context rejects retired schemas and undeclared authority")
     func authenticatedRunContextCleanCutover() {
         #expect(throws: ResearchAgentConnectionContractError.self) {

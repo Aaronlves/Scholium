@@ -582,6 +582,118 @@ public actor TriptychSearchIndex {
         }
     }
 
+    /// Retrieves explanatory Analysis/Topic reading leads from one ephemeral
+    /// Work source snapshot. This is not query parsing: it reuses the current
+    /// Note FTS generation and its BM25 field weights without creating a Saved
+    /// Search, second index, or durable seed.
+    public func relatedContent(
+        _ request: RelatedContentRequest
+    ) throws -> RelatedContentResponse {
+        try database.readTransaction {
+            try Task.checkCancellation()
+            let readGeneration = try generation()
+            let availability = responseAvailability(for: readGeneration)
+            let freshness = readGeneration.map(SearchFreshnessToken.triptych)
+                ?? SearchFreshnessToken(
+                    "triptych:\(triptychID.uuidString.lowercased()):unavailable"
+                )
+
+            guard case .current(let currentGeneration) = availability,
+                  currentGeneration.sequence > 0 else {
+                return RelatedContentResponse(
+                    requestID: request.id,
+                    seedFingerprint: request.seed.fingerprint,
+                    freshnessToken: freshness,
+                    availability: availability,
+                    state: availability.lastGoodGeneration == nil
+                        ? .unavailable
+                        : .stale,
+                    candidates: [],
+                    hasMore: false
+                )
+            }
+            guard request.limit > 0,
+                  !request.seed.source.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                  ).isEmpty,
+                  request.seed.source.utf16.count
+                    <= RelatedContentContract.maximumSeedUTF16Count,
+                  let descriptor = try vaultDescriptor(
+                    request.seed.noteID.vaultID
+                  ),
+                  descriptor.role == .draftProject else {
+                return RelatedContentResponse(
+                    requestID: request.id,
+                    seedFingerprint: request.seed.fingerprint,
+                    freshnessToken: freshness,
+                    availability: availability,
+                    state: .invalidSeed,
+                    candidates: [],
+                    hasMore: false
+                )
+            }
+
+            let document = NoteDocument(
+                relativePath: request.seed.noteID.relativePath,
+                rawContent: request.seed.source
+            )
+            let profile = WorkflowProfileResolver.resolve(
+                vaultRole: descriptor.role
+            )
+            let projection = SearchDocumentProjection(
+                document: document,
+                profile: profile
+            ).applyingNoteMetadata(
+                request.seed.metadata,
+                profile: profile,
+                source: document.rawContent
+            )
+            let terms = RelatedContentSeedTermExtractor.terms(
+                in: projection,
+                limit: RelatedContentContract.maximumSeedTerms
+            )
+            guard !terms.isEmpty else {
+                return RelatedContentResponse(
+                    requestID: request.id,
+                    seedFingerprint: request.seed.fingerprint,
+                    freshnessToken: freshness,
+                    availability: availability,
+                    state: .invalidSeed,
+                    candidates: [],
+                    hasMore: false
+                )
+            }
+
+            let candidates = try relatedContentCandidates(
+                terms: terms,
+                excluding: request.seed.noteID,
+                limit: request.limit + 1
+            )
+            let hasMore = candidates.count > request.limit
+            let results = candidates.prefix(request.limit).map { candidate in
+                RelatedContentCandidate(
+                    note: candidate.document.noteID,
+                    vaultRole: candidate.document.vaultRole,
+                    title: candidate.document.title,
+                    fingerprint: candidate.document.fingerprint,
+                    lexicalReason: RelatedContentSeedTermExtractor.reason(
+                        candidate: candidate,
+                        terms: terms
+                    )
+                )
+            }
+            return RelatedContentResponse(
+                requestID: request.id,
+                seedFingerprint: request.seed.fingerprint,
+                freshnessToken: freshness,
+                availability: availability,
+                state: results.isEmpty ? .empty : .current,
+                candidates: Array(results),
+                hasMore: hasMore
+            )
+        }
+    }
+
     private func searchIndex(
         request: SearchRequest,
         ast: SearchQueryAST,
@@ -695,6 +807,50 @@ public actor TriptychSearchIndex {
             results: hits.map(SearchResult.note),
             hasMore: hasMore
         )
+    }
+
+    private func relatedContentCandidates(
+        terms: [String],
+        excluding seed: VaultQualifiedNoteID,
+        limit: Int
+    ) throws -> [SearchCandidate] {
+        let expression = terms.map { term in
+            let escaped = term.replacingOccurrences(of: "\"", with: "\"\"")
+            return "\"\(escaped)\""
+        }.joined(separator: " OR ")
+        var result: [SearchCandidate] = []
+        try database.query(
+            """
+            SELECT d.id,
+                   bm25(search_fts, 0.0, 3.0, 8.0, 7.0, 6.0, 5.0, 6.0, 4.0, 5.0, 2.0, 2.0, 1.0) AS lexical_rank
+            FROM search_fts
+            JOIN search_documents d ON d.id = search_fts.document_id
+            WHERE search_fts MATCH ?
+              AND d.role IN (?, ?)
+              AND NOT (d.vault_id = ? AND d.relative_path = ?)
+            ORDER BY lexical_rank, d.normalized_title, d.role_order,
+                     d.path_key, d.relative_path
+            LIMIT ?;
+            """,
+            bindings: [
+                .text(expression),
+                .text(VaultRole.sourceCorpus.rawValue),
+                .text(VaultRole.topicKnowledge.rawValue),
+                .text(seed.vaultID.uuidString.lowercased()),
+                .text(seed.relativePath),
+                .int(limit),
+            ]
+        ) { row in
+            try Task.checkCancellation()
+            guard let document = try self.loadDocument(rowID: row.int(at: 0))
+            else { return }
+            result.append(SearchCandidate(
+                document: document,
+                identityPriority: 10,
+                lexicalRank: row.double(at: 1)
+            ))
+        }
+        return result
     }
 
     private func searchCurrentNote(
@@ -1906,6 +2062,131 @@ private struct SearchCandidate {
             return lhs.document.pathKey < rhs.document.pathKey
         }
         return lhs.document.relativePath < rhs.document.relativePath
+    }
+}
+
+private enum RelatedContentSeedTermExtractor {
+    private static let ignoredLatinTerms: Set<String> = [
+        "a", "an", "and", "are", "as", "at", "be", "been", "being", "but",
+        "by", "for", "from", "had", "has", "have", "if", "in", "is", "it",
+        "its", "not", "of", "on", "or", "that", "the", "these", "this",
+        "those", "to", "was", "we", "were", "with",
+    ]
+
+    static func terms(
+        in projection: SearchDocumentProjection,
+        limit: Int
+    ) -> [String] {
+        guard limit > 0 else { return [] }
+        var result: [String] = []
+        var seen = Set<String>()
+
+        func appendDistinct(_ values: [String], maximum: Int) {
+            var inserted = 0
+            for value in values where result.count < limit && inserted < maximum {
+                guard seen.insert(value).inserted else { continue }
+                result.append(value)
+                inserted += 1
+            }
+        }
+
+        appendDistinct(tokens(in: projection.title), maximum: 12)
+        appendDistinct(tokens(in: projection.summary ?? ""), maximum: 16)
+        appendDistinct(
+            projection.tags.flatMap(tokens(in:)),
+            maximum: 12
+        )
+        appendDistinct(
+            projection.headings.flatMap(tokens(in:)),
+            maximum: 16
+        )
+
+        var bodyCounts: [String: (count: Int, first: Int)] = [:]
+        for (index, token) in tokens(in: projection.body).enumerated() {
+            let existing = bodyCounts[token]
+            bodyCounts[token] = (
+                count: min(8, (existing?.count ?? 0) + 1),
+                first: existing?.first ?? index
+            )
+        }
+        let orderedBody = bodyCounts.sorted { left, right in
+            if left.value.count != right.value.count {
+                return left.value.count > right.value.count
+            }
+            if left.value.first != right.value.first {
+                return left.value.first < right.value.first
+            }
+            return left.key < right.key
+        }.map(\.key)
+        appendDistinct(orderedBody, maximum: limit)
+        return result
+    }
+
+    static func reason(
+        candidate: SearchCandidate,
+        terms: [String]
+    ) -> RelatedContentLexicalReason {
+        var fields: [SearchMatchedField] = []
+        var matchedTerms: [String] = []
+        for term in terms {
+            let value = SearchLexicalValue.term(term)
+            let matchingSegments = candidate.document.segments.filter {
+                !SearchMatcher.occurrences(
+                    of: value,
+                    in: $0.normalizedText
+                ).isEmpty
+            }
+            guard !matchingSegments.isEmpty else { continue }
+            if matchedTerms.count < 8 { matchedTerms.append(term) }
+            for segment in matchingSegments where !fields.contains(segment.field) {
+                fields.append(segment.field)
+            }
+        }
+        return RelatedContentLexicalReason(
+            matchedFields: fields,
+            matchedSeedTerms: matchedTerms
+        )
+    }
+
+    private static func tokens(in value: String) -> [String] {
+        let normalized = SearchTextNormalization.normalize(value)
+        var result: [String] = []
+        var current = ""
+        var currentIsCJK: Bool?
+
+        func finish() {
+            guard !current.isEmpty else { return }
+            let candidates = currentIsCJK == true
+                ? SearchTokenization.queryTokens(for: current)
+                : [current]
+            for candidate in candidates {
+                let token = SearchTextNormalization.normalize(candidate)
+                let containsCJK = SearchTokenization.containsCJK(token)
+                guard !token.isEmpty,
+                      token.utf8.count <= 128,
+                      containsCJK || token.count > 1,
+                      containsCJK || !ignoredLatinTerms.contains(token) else {
+                    continue
+                }
+                result.append(token)
+            }
+            current = ""
+            currentIsCJK = nil
+        }
+
+        for scalar in normalized.unicodeScalars {
+            let isCJK = SearchTokenization.isCJK(scalar)
+            let isToken = CharacterSet.alphanumerics.contains(scalar)
+            guard isCJK || isToken else {
+                finish()
+                continue
+            }
+            if let currentIsCJK, currentIsCJK != isCJK { finish() }
+            currentIsCJK = isCJK
+            current.unicodeScalars.append(scalar)
+        }
+        finish()
+        return result
     }
 }
 

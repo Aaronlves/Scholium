@@ -1115,8 +1115,167 @@ public struct ResearchFidelityRunContract: Codable, Hashable, Sendable {
     }
 }
 
+public struct ResearchRecommendedReadingCandidate: Codable, Hashable, Sendable {
+    public let note: VaultQualifiedNoteID
+    public let role: ResearchActionTargetRole
+    public let title: String
+    public let fingerprint: DocumentFingerprint
+    public let matchedFields: [SearchMatchedField]
+    public let matchedSeedTerms: [String]
+
+    public init(
+        note: VaultQualifiedNoteID,
+        role: ResearchActionTargetRole,
+        title: String,
+        fingerprint: DocumentFingerprint,
+        matchedFields: [SearchMatchedField],
+        matchedSeedTerms: [String]
+    ) throws {
+        guard role == .analysis || role == .topic,
+              !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !matchedFields.isEmpty,
+              !matchedSeedTerms.isEmpty else {
+            throw ResearchAgentConnectionContractError.invalidHandoff
+        }
+        self.note = note
+        self.role = role
+        self.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.fingerprint = fingerprint
+        self.matchedFields = matchedFields
+        self.matchedSeedTerms = matchedSeedTerms
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case note, role, title, fingerprint
+        case matchedFields = "matched_fields"
+        case matchedSeedTerms = "matched_seed_terms"
+    }
+
+    public init(from decoder: Decoder) throws {
+        try ResearchAgentConnectionCoding.rejectUnknownFields(
+            decoder,
+            allowed: CodingKeys.self
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            note: container.decode(VaultQualifiedNoteID.self, forKey: .note),
+            role: container.decode(ResearchActionTargetRole.self, forKey: .role),
+            title: container.decode(String.self, forKey: .title),
+            fingerprint: container.decode(DocumentFingerprint.self, forKey: .fingerprint),
+            matchedFields: container.decode(
+                [SearchMatchedField].self,
+                forKey: .matchedFields
+            ),
+            matchedSeedTerms: container.decode(
+                [String].self,
+                forKey: .matchedSeedTerms
+            )
+        )
+    }
+}
+
+/// A non-evidential discovery directory. It contains no Note source or
+/// generated summary; exact source remains behind an explicit Research Context
+/// query, and directory delivery never proves reading or Context Use.
+public struct ResearchRecommendedReadingDirectory: Codable, Hashable, Sendable {
+    public static let currentSchemaVersion = 1
+
+    public let schemaVersion: Int
+    public let retrievalContractVersion: Int
+    public let rankingPolicyVersion: Int
+    public let seedFingerprint: DocumentFingerprint
+    public let freshnessToken: SearchFreshnessToken
+    public let state: RelatedContentResultState
+    public let candidates: [ResearchRecommendedReadingCandidate]
+    public let hasMore: Bool
+    public let limitation: String?
+
+    public init(
+        retrievalContractVersion: Int = RelatedContentContract.currentVersion,
+        rankingPolicyVersion: Int = RelatedContentContract.rankingPolicyVersion,
+        seedFingerprint: DocumentFingerprint,
+        freshnessToken: SearchFreshnessToken,
+        state: RelatedContentResultState,
+        candidates: [ResearchRecommendedReadingCandidate],
+        hasMore: Bool,
+        limitation: String? = nil
+    ) throws {
+        let hasExecutableCandidates = state == .current
+        guard retrievalContractVersion == RelatedContentContract.currentVersion,
+              rankingPolicyVersion == RelatedContentContract.rankingPolicyVersion,
+              candidates.count <= RelatedContentContract.maximumCandidates,
+              Set(candidates.map(\.note)).count == candidates.count,
+              hasExecutableCandidates == !candidates.isEmpty,
+              (!hasMore || hasExecutableCandidates),
+              ((state == .stale || state == .unavailable || state == .invalidSeed)
+                == (limitation != nil)) else {
+            throw ResearchAgentConnectionContractError.invalidHandoff
+        }
+        schemaVersion = Self.currentSchemaVersion
+        self.retrievalContractVersion = retrievalContractVersion
+        self.rankingPolicyVersion = rankingPolicyVersion
+        self.seedFingerprint = seedFingerprint
+        self.freshnessToken = freshnessToken
+        self.state = state
+        self.candidates = candidates
+        self.hasMore = hasMore
+        self.limitation = limitation
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case schemaVersion = "schema_version"
+        case retrievalContractVersion = "retrieval_contract_version"
+        case rankingPolicyVersion = "ranking_policy_version"
+        case seedFingerprint = "seed_fingerprint"
+        case freshnessToken = "freshness_token"
+        case state, candidates
+        case hasMore = "has_more"
+        case limitation
+    }
+
+    public init(from decoder: Decoder) throws {
+        try ResearchAgentConnectionCoding.rejectUnknownFields(
+            decoder,
+            allowed: CodingKeys.self
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        guard try container.decode(Int.self, forKey: .schemaVersion)
+                == Self.currentSchemaVersion else {
+            throw ResearchAgentConnectionContractError.unsupportedSchemaVersion
+        }
+        try self.init(
+            retrievalContractVersion: container.decode(
+                Int.self,
+                forKey: .retrievalContractVersion
+            ),
+            rankingPolicyVersion: container.decode(
+                Int.self,
+                forKey: .rankingPolicyVersion
+            ),
+            seedFingerprint: container.decode(
+                DocumentFingerprint.self,
+                forKey: .seedFingerprint
+            ),
+            freshnessToken: container.decode(
+                SearchFreshnessToken.self,
+                forKey: .freshnessToken
+            ),
+            state: container.decode(
+                RelatedContentResultState.self,
+                forKey: .state
+            ),
+            candidates: container.decode(
+                [ResearchRecommendedReadingCandidate].self,
+                forKey: .candidates
+            ),
+            hasMore: container.decode(Bool.self, forKey: .hasMore),
+            limitation: container.decodeIfPresent(String.self, forKey: .limitation)
+        )
+    }
+}
+
 public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 14
+    public static let currentSchemaVersion = 15
 
     public let schemaVersion: Int
     public let brief: ResearchRunBrief
@@ -1138,6 +1297,7 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
     /// and states needed to address the protected write route.
     public let boundedWriteSet: [ResearchBoundedWriteSetViewEntry]
     public let continuationHandoff: ResearchContinuationHandoffContext?
+    public let recommendedReading: ResearchRecommendedReadingDirectory?
     /// Shell-safe, typed next operations. Fidelity includes a complete
     /// illustrative Result JSON shape so the Agent supplies judgments rather
     /// than reverse-engineering the wire contract.
@@ -1151,6 +1311,7 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
         boundedWriteSet: [ResearchBoundedWriteSetViewEntry],
         continuationHandoff: ResearchContinuationHandoffContext? = nil,
         discussionResponseContract: DialogueResponseContract? = nil,
+        recommendedReading: ResearchRecommendedReadingDirectory? = nil,
         nextActions: [AgentCommandAction] = []
     ) throws {
         guard Set(requiredSkills.map(\.name)).count == requiredSkills.count,
@@ -1197,6 +1358,12 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
             return $0.relativePath < $1.relativePath
         }
         self.continuationHandoff = continuationHandoff
+        let isRecommendedReadingAction = brief.initialObjectRole == .work
+            && (brief.actionID == .write || brief.actionID == .critique)
+        guard (recommendedReading != nil) == isRecommendedReadingAction else {
+            throw ResearchAgentConnectionContractError.invalidHandoff
+        }
+        self.recommendedReading = recommendedReading
         self.nextActions = nextActions
     }
 
@@ -1209,6 +1376,7 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
         case discussionResponseContract = "discussion_response_contract"
         case boundedWriteSet = "bounded_write_set"
         case continuationHandoff = "continuation_handoff"
+        case recommendedReading = "recommended_reading"
         case nextActions = "next_actions"
     }
 
@@ -1252,6 +1420,10 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
             discussionResponseContract: try container.decodeIfPresent(
                 DialogueResponseContract.self,
                 forKey: .discussionResponseContract
+            ),
+            recommendedReading: try container.decodeIfPresent(
+                ResearchRecommendedReadingDirectory.self,
+                forKey: .recommendedReading
             ),
             nextActions: try container.decode(
                 [AgentCommandAction].self,

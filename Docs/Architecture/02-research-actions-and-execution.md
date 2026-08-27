@@ -239,6 +239,19 @@ the complete frozen contract retains optional fields. Query execution itself
 does not create Context Use testimony. CLI help describes those typed contracts
 but does not maintain a second template owner.
 
+For Work-targeting Write and Critique, authenticated Run Context schema 15 also
+contains `recommended_reading`. `RecommendedReadingCoordinator` owns only
+Action eligibility and delivery shaping. It loads the already-revalidated
+exact Work source, supplies one ephemeral `RelatedContentSeedSnapshot` to
+`TriptychSearchIndex.relatedContent`, maps only Analysis/Topic candidates into
+the Agent directory, and chunks current candidate fingerprints into ordinary
+schema-4 exact-read Research Context requests. `TriptychSearchIndex` remains the
+sole lexical projection and rank owner; contract 1 reuses its current Note FTS
+database and creates no second index, parser, Saved Search, source cache, or
+persistent recommendation state. Retrieval failure becomes a typed unavailable
+directory while the pre-existing bounded Search action remains in the packet.
+Direct start, pairing, and `reload` all call this same Application path.
+
 Agent-facing material is serialized under an explicit evidence channel.
 `taskDirective` contains public Action, researcher request, safe capability
 facts, current Result Contract, and the minimum required Skill identities plus
@@ -307,7 +320,7 @@ reading a replacement Note or revision. Contracts cap an encoded context
 response below the bridge frame, and `LocalAgentBridgeResponse` preflights the
 complete outer envelope before it writes a frame.
 
-Continue Result schema 4 and authenticated Run Context schema 14 carry the
+Continue Result schema 4 and authenticated Run Context schema 15 carry the
 closed Material reference states `current`, `changed`, `missing`, and
 `unavailable` plus the typed Researcher State requery requirement. A created
 Continue Result embeds that child Context. The stable

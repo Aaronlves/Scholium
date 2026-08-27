@@ -1,9 +1,9 @@
 # Scholium Agent Recommended Reading 与 Works 动态推荐提案
 
-> 状态：待审议产品与架构提案  
+> 状态：Agent-only lexical 第一切片已进入正式规范并完成本地实现；多渠道排序与 Works 动态消费者仍是提案
 > 日期：2026 年 8 月 27 日  
 > 范围：先为 Work-targeting Agent Action 提供 Analyses／Topics 推荐阅读，再让同一候选 owner 支持 Works 写作中的动态推荐  
-> 权威边界：本文不是 [SCHOLIUM_SPEC.md](../../Docs/SCHOLIUM_SPEC.md)、[IMPLEMENTATION_ARCHITECTURE.md](../../Docs/IMPLEMENTATION_ARCHITECTURE.md) 或 [IMPLEMENTATION_STATUS.md](../../Docs/IMPLEMENTATION_STATUS.md)；它不表示功能已获批准或已实现。
+> 权威边界：本文不是 [SCHOLIUM_SPEC.md](../../Docs/SCHOLIUM_SPEC.md)、[IMPLEMENTATION_ARCHITECTURE.md](../../Docs/IMPLEMENTATION_ARCHITECTURE.md) 或 [IMPLEMENTATION_STATUS.md](../../Docs/IMPLEMENTATION_STATUS.md)。三者分别拥有正式目标、结构与当前证据；本文只保留已采纳设计的解释和未采纳扩展。
 
 ## 1. 决策摘要
 
@@ -45,21 +45,19 @@ Scholium 应在 Agent 开始处理 Work 之前，根据当前 Work、selected pa
 - 当前 App 已能在不 flush 或 save 的情况下，从 CodeMirror 取得绑定 editor session 与 revision 的精确内存 source snapshot，供 This Note Search 使用，见 [`ScholiumApp.swift`](../../Scholium/App/ScholiumApp.swift)。
 - `summary` 与 `keywords` 是 Analysis、Topic 和 Work 的唯一共享 canonical authored YAML 字段；其他未知 YAML 只无损保留，见 [Metadata and Critique](../../Docs/Specification/11-metadata-and-critique.md)。
 
-### 3.2 尚缺的能力
+### 3.2 第一切片后尚缺的能力
 
-当前没有：
+当前已具备 Search-owned Related-Content Retrieval contract 1、Analyses／Topics restriction、Agent directory、chunked exact-read actions 与 Application coordinator。仍未具备：
 
-- 从一段 Works 文本直接召回 Analyses／Topics 的 typed related-content operation；
-- 仅限 Analyses／Topics 的内部 Search corpus restriction；
-- 为 Agent 初始上下文生成的 Recommended Reading directory；
-- 将候选转换为批量 exact-read `next_action` 的 Application owner；
-- 以 Works 未保存 editor snapshot 作为候选 seed 的交付中立合同；
+- direct Connection、exact title／alias mention 等独立解释渠道及其配额；
+- selected passage 与 research request 对 frozen Work seed 的独立作用；
+- 以 Works 未保存 editor snapshot 驱动的消费者、取消合同和界面；
 - 能证明推荐减少额外 Search 但不降低必要阅读召回的评测基线。
 
 ### 3.3 不能伪装成已有能力的边界
 
 - 现行 Search 的自由文本语法是 space-as-AND。把完整 Works 段落直接填进 `SearchRequest.query` 不是可接受的 related-content 实现。
-- 现行 Search 明确拒绝 `role` query，也没有 Selected Roles 可见 scope。Analyses／Topics restriction 必须是 Application 绑定、Search owner 执行的 typed corpus restriction，不是隐藏 query token。
+- 现行 Search 明确拒绝 `role` query，也没有 Selected Roles 可见 scope。Related-Content contract 1 的 Analyses／Topics restriction 是 Search owner 执行的 typed corpus restriction，不是隐藏 query token。
 - Research Context 目前只在 Agent 显式 query 后返回证据；本提案不改为无条件全文注入。初始上下文只交付候选目录和可执行 read request，原文仍在 Agent 执行该 request 后由 Research Context 返回。
 - vector search、embeddings、AI query interpretation／ranking、automatic relation extraction、multi-hop expansion 和 context assembly 目前均为 deferred。本提案不能在未作 canonical decision 时将它们描述为实现基础。
 
@@ -67,12 +65,12 @@ Scholium 应在 Agent 开始处理 Work 之前，根据当前 Work、selected pa
 
 ### 4.1 第一切片：Work-targeting Agent Actions
 
-第一切片只用于以 Work 为 target 且学术任务可以从外部研究材料受益的 Actions。建议先限于 **Write** 和 **Critique**；Discuss、Check Fidelity 与非 Work target 在有独立证据前不自动扩张。
+第一切片只用于以 Work 为 target 的 **Write** 和 **Critique**；Discuss、Check Fidelity 与非 Work target 在有独立证据前不自动扩张。
 
 Agent 获得初始 authenticated Run Context 时，同时获得：
 
 1. 一份 typed `recommended_reading` directory；
-2. 一个 `when_needed` 的 **Read the recommended Analyses and Topics** `next_action`；
+2. 一个或多个 `when_needed` 的 **Read the recommended Analyses and Topics** `next_action`，按现有 clause limit 分组；
 3. 当候选为 Partial、Unavailable 或 Empty 时，一条明确的现有 Search 后续路线。
 
 `recommended_reading` 只告诉 Agent 哪些 Note 值得先读以及为什么，不携带 Note 全文或机器生成摘要。`next_action` 将所有 current candidates 编码为现成的 Research Context exact-read clauses；Agent 可执行整个 batch，也可依目录只读其中一部分。
@@ -282,7 +280,7 @@ Response 不包含内部数值分数、机器生成摘要、候选全文、absol
 
 ## 12. 渐进实施顺序
 
-### Phase 0 — Canonical decision
+### Phase 0 — Canonical decision（已完成）
 
 在任何实现前，先批准：
 
@@ -292,20 +290,19 @@ Response 不包含内部数值分数、机器生成摘要、候选全文、absol
 - 同一候选合同可在后续接受 ephemeral Works editor seed；
 - 推荐不建立读取、使用、支持或研究者接受。
 
-批准后才能更新 owning canonical chapters；本文本身不完成该决策。
+Owning canonical chapters 已完成该窄切片决策；本文不取代它们。
 
-### Phase 1 — Search-owned retrieval contract
+### Phase 1 — Search-owned lexical retrieval contract（已完成）
 
 先用 disposable synthetic Triptych 建立 Related-Content Retrieval 的纯合同、clean-rebuild 与 incremental-update 夹具：
 
 - seed text → Analyses／Topics lexical candidates；
-- role restriction、source mapping、currentness、cancellation 和独立 channel budgets；
-- exact title／alias mention 不被 lexical cutoff 丢失；
+- role restriction、currentness、cancellation 和 bounded result budget；
 - 无结果、无效 seed、stale generation 和 provider unavailable 失败关闭。
 
-本阶段没有 Agent 或 UI 集成，也不编写第二索引。
+当前实现复用现有 Note FTS，没有第二索引；独立 title／alias 与 Connection channels 留给后续评测。
 
-### Phase 2 — Agent end-to-end slice
+### Phase 2 — Agent end-to-end slice（已完成本地实现与 owning tests）
 
 将 Coordinator 接入 Write／Critique Run context，增加 `recommended_reading` 与 ready-to-send batch exact-read `next_action`。同一切片覆盖 GUI pairing、direct start、reload、Session replacement、End、Continue、Context Use 和 App／CLI parity。
 
@@ -358,25 +355,23 @@ Response 不包含内部数值分数、机器生成摘要、候选全文、absol
 
 Agent effectiveness 不替代 Works UI 验收，UI 可用性也不替代 Agent 的研究质量。
 
-## 14. 需要修改的正式权威
+## 14. 已更新的正式权威
 
-若提案获批准，应在一次明确的 canonical decision 中更新：
+本次窄切片已经更新：
 
 1. [Research Actions and Workflows](../../Docs/Specification/03-research-actions-and-workflows.md)：为 Work-targeting Write／Critique 的 authenticated Context 增加非证据性 recommendation directory 和 exact-read `next_action`；保留“原文只在显式 Research Context query 后交付”与 Context Use 规则。
 2. [Connect, Search, and Recovery](../../Docs/Specification/04-connect-search-and-recovery.md)：增加与普通 query grammar 分开的 Related-Content Retrieval、Analyses／Topics corpus restriction、seed limits、ranking、explanation、freshness 和 App／CLI 一致性边界；继续 deferred vector／AI ranking 和无预算 context assembly。
-3. [Integrations, Onboarding, and Boundaries](../../Docs/Specification/05-integrations-onboarding-and-boundaries.md)：继续明确推荐不是 durable memory object、handoff packet 或 ontology。
-4. [Implementation Architecture](../../Docs/IMPLEMENTATION_ARCHITECTURE.md)：在 Search owner 与 Research Action owner 的现有边界内记录 Related-Content Retrieval 与 `RecommendedReadingCoordinator`，不新建 runtime 或持久 store。
-5. Works 界面位置获批准时，再更新 [Document and Research Interface](../../Docs/Specification/07-document-and-research-interface.md) 与 [Accessibility and Adaptation](../../Docs/Specification/09-accessibility-and-adaptation.md)；不在 Agent-only 第一切片中预建界面规则。
+3. [Implementation Architecture](../../Docs/IMPLEMENTATION_ARCHITECTURE.md)：在 Search owner 与 Research Action owner 的现有边界内记录 Related-Content Retrieval 与 `RecommendedReadingCoordinator`，不新建 runtime 或持久 store。
+
+Works 界面位置获批准时，才更新 [Document and Research Interface](../../Docs/Specification/07-document-and-research-interface.md) 与 [Accessibility and Adaptation](../../Docs/Specification/09-accessibility-and-adaptation.md)；Agent-only 第一切片不预建界面规则。
 
 ## 15. 未决定问题
 
-1. 第一切片是否确认只覆盖 Work-targeting Write 和 Critique？
-2. Agent directory 的 item cap、各 channel 配额和 exact-read 总字节 budget 应如何从夹具数据确定？
-3. `liveWork` 在没有 selection 时应以当前 Markdown block、最近稳定段落，还是受限滑动窗口为 seed？
-4. exact title／alias mention 应是 Related-Content Retrieval 的确定性通道，还是复用另一个现有 identity resolver 后由 Search response 统一交付？
-5. Agent 是否应默认收到一个完整 batch read request，还是按 channel 拆成多个 `when_needed` next actions？
-6. Works UI 应与 Agent 使用同一完整 response，还是由同一 owner 在更小表示预算下取子集？
-7. 哪一组真实的哲学 Works／Analyses／Topics 任务可以作为人类 gold set，同时不使用私人研究库？
+1. direct Connection、exact title／alias 与 lexical channel 的独立配额应如何由 gold fixtures 决定？
+2. `liveWork` 在没有 selection 时应以当前 Markdown block、最近稳定段落，还是受限滑动窗口为 seed？
+3. exact title／alias mention 应由 Related-Content Retrieval 直接拥有，还是复用现有 identity resolver 后统一交付？
+4. Works UI 应与 Agent 使用同一完整 response，还是由同一 owner 在更小表示预算下取子集？
+5. 哪一组非私人哲学 Works／Analyses／Topics 任务可作为人类 gold set？
 
 ## 16. 相似机制与适用限制
 

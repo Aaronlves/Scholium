@@ -175,6 +175,28 @@ normalized title, fixed Analyses/Topics/Works order, and normalized path break
 ties. Exact identity candidates cannot be lost to a lexical cutoff. Public
 results explain the matched field and rank reason without exposing internal
 scores.
+
+Search also owns separately versioned **Related-Content Retrieval contract 1**.
+It accepts one bounded, ephemeral exact Work source snapshot and returns an
+ordered directory restricted to Analyses and Topics. This operation is not a
+visible Search query: it adds no scope, provider, `role:` token, implicit OR,
+Saved Search, or alternate parser. Search derives a bounded set of normalized
+terms from the same Markdown and authored/managed Metadata projection, queries
+the existing Note FTS generation with its current field weights, and returns
+candidate identity, role, title, fingerprint, matched fields, normalized seed
+terms, generation freshness, availability, and truncation—never an internal
+score, candidate source, or generated summary.
+
+Related-content results are executable only against a Current complete Search
+generation. Empty, Invalid Seed, Stale, and Unavailable are distinct; stale or
+unavailable generated state yields no candidate that can be turned into an
+exact-read request. The source seed lives only for the request and is not
+indexed, logged, persisted, or reconstructed into writable Markdown. Contract
+1 is consumed only by Agent Recommended Reading for Work-targeting Write and
+Critique. Its delivery-neutral seed shape leaves room for a later exact unsaved
+Works source snapshot, but no Works editor consumer or interface behavior is
+defined by this chapter.
+
 Ordinary cross-provider Search caps at 100 rows and reports only `N Results` or
 `N+ Results`; it does not perform an expensive exact total count. The dedicated
 Research Records collection is a bounded exception within the same parser and
@@ -249,7 +271,7 @@ Future fields or providers require a versioned typed clause, discriminated
 result identity, provider capability-table entry, source/freshness contract,
 and App/CLI parity. This is an extension boundary, not a plugin framework.
 Structured-field contains/ranges/nested paths, Record arbitrary ranges, `section:`,
-OR, vector search, embeddings, AI query interpretation or ranking,
+user-authored OR, vector search, embeddings, AI query interpretation or ranking,
 automatic relation extraction, multi-hop expansion, context assembly, and
 chat-style Search remain deferred. **Vector-Link** means only the explicit
 researcher-visible relation markers in §12.

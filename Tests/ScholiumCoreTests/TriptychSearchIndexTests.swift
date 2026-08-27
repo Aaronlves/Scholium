@@ -6,6 +6,117 @@ import Testing
 
 @Suite("Triptych Search v9 index")
 struct TriptychSearchIndexTests {
+    @Test("Related content uses an ephemeral Work seed and returns only explained Analyses and Topics")
+    func relatedContentRestrictsCorpusAndTracksSeedSource() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let other = RegisteredVault(
+            name: "Other",
+            role: .other,
+            canonicalPath: "/fixtures/other"
+        )
+        let index = try TriptychSearchIndex(
+            databaseURL: fixture.databaseURL,
+            triptychID: fixture.triptychID,
+            vaults: [fixture.analyses, fixture.topics, fixture.works, other]
+        )
+        let documents = [
+            fixture.item(
+                vault: fixture.analyses,
+                path: "Fittingness.md",
+                source: "# Fittingness Analysis\n\nFittingness gives reasons about value."
+            ),
+            fixture.item(
+                vault: fixture.topics,
+                path: "Reasons.md",
+                source: "# Normative Reasons\n\nReasons and fittingness are distinct."
+            ),
+            fixture.item(
+                vault: fixture.analyses,
+                path: "Consequentialism.md",
+                source: "# Consequentialism\n\nConsequentialism evaluates outcomes."
+            ),
+            fixture.item(
+                vault: fixture.works,
+                path: "Another Work.md",
+                source: "# Another Work\n\nFittingness and reasons."
+            ),
+            fixture.item(
+                vault: other,
+                path: "Other.md",
+                source: "# Other\n\nFittingness and reasons."
+            ),
+        ]
+        _ = try await index.synchronize(documents)
+
+        let workID = VaultQualifiedNoteID(
+            vaultID: fixture.works.id,
+            relativePath: "Live Draft.md"
+        )
+        let first = try await index.relatedContent(RelatedContentRequest(
+            seed: RelatedContentSeedSnapshot(
+                noteID: workID,
+                source: "# Draft on fittingness\n\nFittingness and normative reasons shape value."
+            )
+        ))
+        #expect(first.state == .current)
+        #expect(Set(first.candidates.map(\.note.relativePath)) == [
+            "Fittingness.md", "Reasons.md",
+        ])
+        #expect(first.candidates.allSatisfy {
+            $0.vaultRole == .sourceCorpus || $0.vaultRole == .topicKnowledge
+        })
+        #expect(first.candidates.allSatisfy {
+            !$0.lexicalReason.matchedFields.isEmpty
+                && !$0.lexicalReason.matchedSeedTerms.isEmpty
+        })
+
+        let revised = try await index.relatedContent(RelatedContentRequest(
+            seed: RelatedContentSeedSnapshot(
+                noteID: workID,
+                source: "# Consequentialism\n\nConsequentialism and outcomes."
+            )
+        ))
+        #expect(revised.state == .current)
+        #expect(revised.candidates.map(\.note.relativePath) == [
+            "Consequentialism.md",
+        ])
+        #expect(revised.seedFingerprint != first.seedFingerprint)
+
+        var updatedDocuments = documents
+        updatedDocuments[0] = fixture.item(
+            vault: fixture.analyses,
+            path: "Fittingness.md",
+            source: "# Revised Analysis\n\nA different subject."
+        )
+        _ = try await index.synchronize(updatedDocuments)
+        let incremental = try await index.relatedContent(RelatedContentRequest(
+            seed: RelatedContentSeedSnapshot(
+                noteID: workID,
+                source: "# Draft on fittingness\n\nFittingness and normative reasons shape value."
+            )
+        ))
+        let cleanIndex = try TriptychSearchIndex(
+            databaseURL: fixture.root.appendingPathComponent("clean-related.sqlite"),
+            triptychID: fixture.triptychID,
+            vaults: [fixture.analyses, fixture.topics, fixture.works, other]
+        )
+        _ = try await cleanIndex.synchronize(updatedDocuments)
+        let clean = try await cleanIndex.relatedContent(RelatedContentRequest(
+            seed: RelatedContentSeedSnapshot(
+                noteID: workID,
+                source: "# Draft on fittingness\n\nFittingness and normative reasons shape value."
+            )
+        ))
+        #expect(incremental.candidates == clean.candidates)
+
+        let invalid = try await index.relatedContent(RelatedContentRequest(
+            seed: RelatedContentSeedSnapshot(noteID: workID, source: " \n")
+        ))
+        #expect(invalid.state == .invalidSeed)
+        #expect(invalid.candidates.isEmpty)
+    }
+
     @Test("One corpus ranks exact identity before lexical results and applies vault scope")
     func unifiedCorpusAndScope() async throws {
         let fixture = try Fixture()
