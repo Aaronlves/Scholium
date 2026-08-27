@@ -1547,7 +1547,7 @@ private struct ResearchMethodImprovementHandoffSheet: View {
         Pairing Code: \(handoff.pairingCode.rawValue)
 
         Agent: use the installed `scholium` CLI yourself.
-        If this Agent workspace has not been initialized for Scholium, first register every source returned by `scholium workspace skill-sources --triptych \(handoff.triptychID.uuidString.lowercased()) --format json` through the host's project-level Skill mechanism and reload discovery if required.
+        If this workspace is not initialized for Scholium, run `scholium workspace skill-sources --triptych \(handoff.triptychID.uuidString.lowercased()) --format json` and register every returned source as a project Skill.
         1. Run `scholium agent pair --run \(handoff.run.rawValue)` and enter the Pairing Code above through standard input.
         2. Run `scholium agent method-context --run \(handoff.run.rawValue)` to receive the exact researcher comment, frozen Skill entry, and revision.
         3. Decide whether the issue concerns the Skill rather than execution, material, provider, request, or preference. Submit at most one exact SKILL.md replacement, or an explicit no-change/unavailable diagnosis, with `scholium agent improve-method --run \(handoff.run.rawValue) --from <json|->`.

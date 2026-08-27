@@ -678,7 +678,9 @@ public struct ResearchAgentHandoff: Hashable, Sendable, CustomStringConvertible,
         Scholium Run: \(run.rawValue)
         Pairing Code: \(pairingCode.rawValue)
 
-        Agent: use the installed `scholium` CLI yourself. If this Agent workspace has not been initialized for Scholium, run `scholium workspace skill-sources --triptych \(triptychID.uuidString.lowercased()) --format json`, register the returned Skills through the host's project-level Skill mechanism, and reload Skill discovery if the host requires it. Then run `scholium agent pair --run \(run.rawValue)` and enter the Pairing Code above through standard input. Pair returns the authenticated Run context and its minimum required Skills. If context delivery fails after pairing succeeds, recover it with `scholium agent reload --run \(run.rawValue)`; do not pair again. Do not ask the researcher to run these commands.
+        Agent: use the installed `scholium` CLI yourself.
+        If this workspace is not initialized for Scholium, run `scholium workspace skill-sources --triptych \(triptychID.uuidString.lowercased()) --format json` and register every returned source as a project Skill.
+        Run `scholium agent pair --run \(run.rawValue)` and enter the Pairing Code through standard input. Use the returned Run context. If it is not delivered, run `scholium agent reload --run \(run.rawValue)` instead of pairing again. Do not ask the researcher to run these commands.
         """
     }
 

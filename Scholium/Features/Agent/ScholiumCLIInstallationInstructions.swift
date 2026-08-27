@@ -5,33 +5,15 @@ import ScholiumContracts
 enum ScholiumCLIInstallationInstructions {
     static var text: String {
         """
-        Install or update the compatible Scholium CLI from Scholium's official release.
+        Use the compatible Scholium CLI at `$HOME/.local/bin/scholium`.
 
-        You are authorized to download only this archive:
+        If `version --format json` and `doctor --format json` do not confirm `product=Scholium` and `cli_version=\(ScholiumProductIdentity.marketingVersion)`, install the official archive. Ignore other version fields.
         \(ScholiumCLIDistribution.downloadURL)
 
-        You may install only these two release-owned items under $HOME/.local/bin:
-        - scholium
-        - Scholium_ScholiumCore.bundle
+        Run the archive's `install.sh`. It may install only `scholium` and `Scholium_ScholiumCore.bundle` under `$HOME/.local/bin`.
+        Do not use `sudo`, edit PATH, shell profiles, global Agent configuration, or macOS quarantine metadata, or use another download source.
 
-        Do not use sudo. Do not edit PATH, shell profiles, global Agent configuration, or macOS quarantine metadata. The separate project-preparation instructions may authorize exact project-local files and links.
-
-        1. First run:
-           $HOME/.local/bin/scholium version --format json
-           $HOME/.local/bin/scholium doctor --format json
-           If the version command succeeds, accept it only when `product` is `Scholium` and `cli_version` is `\(ScholiumProductIdentity.marketingVersion)`. Ignore additional JSON fields. If both commands succeed, keep the existing installation and skip to step 3.
-        2. Otherwise install the official archive:
-           scholium_cli_setup="$(mktemp -d)"
-           curl --fail --location --output "$scholium_cli_setup/Scholium-CLI.zip" "\(ScholiumCLIDistribution.downloadURL)"
-           ditto -x -k "$scholium_cli_setup/Scholium-CLI.zip" "$scholium_cli_setup"
-           "$scholium_cli_setup/Scholium-CLI/install.sh"
-           rm -rf "$scholium_cli_setup"
-        3. Verify the installed CLI with its absolute path:
-           $HOME/.local/bin/scholium version --format json
-           $HOME/.local/bin/scholium doctor --format json
-           $HOME/.local/bin/scholium help agent
-
-        If a command fails, stop and report the exact command and error. Do not weaken macOS protections or substitute another download source.
+        Then run `$HOME/.local/bin/scholium version --format json`, `doctor --format json`, and `help agent`. Stop and report any failure.
         """
     }
 }

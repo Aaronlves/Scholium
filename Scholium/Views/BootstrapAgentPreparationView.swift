@@ -182,26 +182,15 @@ enum BootstrapAgentPreparationPrompt {
         let root = triptychRootURL.resolvingSymlinksInPath()
             .standardizedFileURL.path(percentEncoded: false)
         return """
-        Prepare an external Agent project for Scholium.
-
-        Project root and workspace root (use this exact same folder):
+        Prepare this folder as an external Agent project for Scholium:
         \(root)
 
-        CLI installation authorization:
         \(ScholiumCLIInstallationInstructions.text)
 
-        Project preparation:
-        1. Open or create a separate Agent project whose project root and workspace root are both the exact folder above.
-        2. Inspect this root and its ancestors for applicable AGENTS.md and CLAUDE.md instructions before creating anything.
-        3. Obtain Scholium's exact project Skill sources with:
-           $HOME/.local/bin/scholium workspace skill-sources --format json
-           Register every returned source through this host's project-level Skill mechanism. Do not substitute, rewrite, or scan for another Scholium Skill. Reload Skill discovery if the host requires it.
-        4. If no applicable AGENTS.md exists, generate its exact candidate with the manifest's triptych_id and workspace_root:
-           $HOME/.local/bin/scholium workspace bootstrap --triptych <triptych_id> --target <workspace_root>
-           Create it only when no existing instruction applies; never overwrite, merge, or shadow an instruction file.
-        5. Confirm the host discovers every returned Skill name. Do not read Triptych research files or request a pairing code during setup. A later direct Run uses `scholium agent start`; a GUI-created Run begins from its copied handoff.
+        Use that exact folder as both project root and workspace root, and follow its applicable AGENTS.md or CLAUDE.md. If no AGENTS.md applies, use the candidate returned by:
+        $HOME/.local/bin/scholium workspace bootstrap --triptych <triptych_id> --target <workspace_root>
 
-        Finish by reporting either Ready with the Agent host, project root, CLI result, instruction-file path, and confirmed Skill names, or one precise blocker.
+        Run `$HOME/.local/bin/scholium workspace skill-sources --format json` and register every returned source as a project Skill. Confirm the CLI and returned Skill names are available. Do not begin research or pair during setup. Report Ready or the blocker.
         """
     }
 }
