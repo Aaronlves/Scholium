@@ -250,7 +250,7 @@ struct ResearchContextContractsTests {
         #expect(try roundTrip(response).availability == .invalidQuery)
     }
 
-    @Test("Research Context schema 4 rejects Search structured match reasons")
+    @Test("Research Context schema 5 rejects Search structured match reasons")
     func structuredSearchReasonsFailClosed() throws {
         let fixture = Fixture()
         #expect(throws: ResearchContextContractError.self) {

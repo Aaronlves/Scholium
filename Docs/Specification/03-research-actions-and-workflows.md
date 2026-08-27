@@ -199,10 +199,11 @@ Delivery is progressive:
   Result Contract, and typed `next_actions`—never Skill prose or path;
   Target/Fidelity reads and terminal actions are `required`; supporting
   evidence, Search, and writes are `when_needed`;
-- Work-targeting Write/Critique also sends non-evidential Analysis/Topic
-  **Recommended Reading** plus `when_needed` exact-read actions. Recommendation,
-  delivery, reading, and Context Use remain distinct; failure preserves Search.
-  No Works UI or persistent recommendation state is authorized;
+- Write/Critique sends Analysis/Topic **Recommended Reading**; Topic
+  Synthesize sends Analysis-only. Reasons lead to reads; recommendation,
+  Materials, and Context Use remain distinct;
+- Search-capable Runs offer when-needed exact-name related Notes, dynamically
+  ordered for those seeds;
 - Research Context arrives only after an explicit query;
 - conditional System Skills appear only when needed; ordinary calls do not
   repeat Skill content.

@@ -8,6 +8,14 @@ extension ScholiumCLI {
         return arguments[index + 1]
     }
 
+    static func options(_ name: String, in arguments: [String]) -> [String] {
+        arguments.indices.compactMap { index in
+            guard arguments[index] == name,
+                  arguments.indices.contains(index + 1) else { return nil }
+            return arguments[index + 1]
+        }
+    }
+
     static func printHelp() throws {
         try printHelp(path: [], format: .text)
     }
@@ -182,7 +190,7 @@ extension ScholiumCLI {
                 usage: "scholium agent start --triptych <selector> --from <json|->",
                 inputContract: "ResearchAgentStartRequest schema \(ResearchAgentStartRequest.currentSchemaVersion)",
                 input: "Strict JSON fields: schema_version, action_id, exactly one of existing target {vault_id, relative_path} or the unchanged new_analysis payload returned by agent preflight-analysis, optional source_route=researcher_provided only for an existing Analysis, and academic_inputs containing every required current Profile field. Each academic input is a typed freeText, singleChoice, or multipleChoice value. Optional Settings preferences grant no authority and cannot invalidate creation; replay requires the exact complete start payload.",
-                output: "AgentStartReport with the ResearchAgentStartReceipt and initial ResearchAuthenticatedRunContext. The context identifies the minimum required project-discovered Skills; Work-targeting Write/Critique also includes non-source Recommended Reading and exact-read actions. It contains no Skill prose or local source path. The Session credential is stored in protected local state and is not printed.",
+                output: "AgentStartReport with the ResearchAgentStartReceipt and initial ResearchAuthenticatedRunContext. The context identifies the minimum required project-discovered Skills; Work Write/Critique includes Analysis/Topic Recommended Reading, while Topic Synthesize includes Analysis-only Recommended Reading. It contains no Skill prose or local source path. The Session credential is stored in protected local state and is not printed.",
                 nextSteps: [
                     "Before the first Scholium Run in this workspace, run scholium workspace skill-sources --triptych <selector> --format json and register every returned source as a project Skill",
                     "Run agent preflight-analysis first for every new Analysis",
@@ -195,7 +203,7 @@ extension ScholiumCLI {
                 usage: "scholium agent pair --run <locator>",
                 inputContract: "ResearchPairingCode on standard input",
                 input: "When prompted, enter the one-time Pairing Code from the current handoff. Do not put it in an argument, URL, file, or log.",
-                output: "AgentPairingReport with paired=true, the Run locator, context_kind, and the Run owner's initial ResearchAuthenticatedRunContext or ResearchMethodImprovementContext. Action context identifies the minimum required project-discovered Skills; Work-targeting Write/Critique also includes non-source Recommended Reading and exact-read actions. It contains no Skill prose or local source path. The exchanged Session credential is stored in protected local state and is not printed.",
+                output: "AgentPairingReport with paired=true, the Run locator, context_kind, and the Run owner's initial ResearchAuthenticatedRunContext or ResearchMethodImprovementContext. Action context identifies the minimum required project-discovered Skills and any role-bounded Recommended Reading. It contains no Skill prose or local source path. The exchanged Session credential is stored in protected local state and is not printed.",
                 nextSteps: [
                     "Follow the handoff's conditional first-workspace Skill registration instruction before pairing",
                     "Apply every returned required_skills entry, then continue with the current evidence actions, Bounded Write Set, and Result Contract; other non-Scholium Skills remain available within the Run boundary",
@@ -207,7 +215,7 @@ extension ScholiumCLI {
                 usage: "scholium agent reload --run <locator>",
                 inputContract: "Authenticated Run locator; no JSON body",
                 input: "Use the current Run locator. No earlier Research Context response is accepted as input or replayed.",
-                output: "The current ResearchAuthenticatedRunContext, or ResearchMethodImprovementContext for an improvement Run. Action context includes the same minimum required_skills plus typed required/when-needed evidence actions including Search, exact current boundaries, and only required Result fields in its fillable template. Work-targeting Write/Critique recomputes non-source Recommended Reading from the exact frozen Work. A changed target, Material, formal source, feedback, or Method returns a structured error instead of a usable context.",
+                output: "The current ResearchAuthenticatedRunContext, or ResearchMethodImprovementContext for an improvement Run. Action context includes minimum required_skills plus typed evidence actions. Work Write/Critique recomputes Analysis/Topic Recommended Reading; Topic Synthesize recomputes Analysis-only reading. A changed target, Material, formal source, feedback, or Method returns a structured error instead of a usable context.",
                 nextSteps: [
                     "Follow the returned current state and run the applicable agent command",
                     "On stale_run, stop this Run; do not retry a write or Result against the changed boundary",
@@ -221,11 +229,30 @@ extension ScholiumCLI {
                 ),
                 usage: "scholium agent query --run <locator> --from <json|->",
                 inputContract: "ResearchContextRequest schema \(ResearchContextRequest.currentSchemaVersion)",
-                input: "Strict snake-case JSON fields: schema_version, id, clauses (1...\(ResearchContextRequest.maximumClauses)). Every clause has schema_version, id, kind [\(contextClauses)], scope=triptych, limit 1...\(ResearchContextClause.maximumLimit), use_eligibility, and only the fields allowed by its closed kind. Ordinary read_note uses query; a Fidelity inspection request supplied by Scholium instead uses exact note {vault_id, relative_path} plus expected_fingerprint. Send supplied inspection requests unchanged; do not reconstruct identity or fingerprints.",
-                output: "ResearchContextResponse schema \(ResearchContextResponse.currentSchemaVersion) with one visible availability, items, limitations, and optional stateless continuation cursor for every requested clause.",
+                input: "Strict snake-case JSON fields: schema_version, id, clauses (1...\(ResearchContextRequest.maximumClauses)). Every clause has schema_version, id, kind [\(contextClauses)], scope=triptych, limit, use_eligibility, and only its closed fields. read_note uses query or an Application-supplied exact note plus fingerprint; related_notes uses note_names and reference_only. Send supplied inspection requests unchanged.",
+                output: "ResearchContextResponse schema \(ResearchContextResponse.currentSchemaVersion) with per-clause availability, items or a dynamically ordered related_notes result, limitations, and read-only continuation where applicable.",
                 nextSteps: [
                     "Repeat scholium agent query with a narrower request when needed",
                     "Use the returned context in the current Method, then continue to the applicable write or Result command",
+                ]
+            ),
+            "agent related": AgentCLICommandHelp(
+                rule: .init(
+                    pathLength: 2,
+                    options: [
+                        "--run": .value,
+                        "--note": .repeatableValue,
+                        "--limit": .value,
+                    ]
+                ),
+                usage: "scholium agent related --run <locator> --note <exact-name-or-path> [--note <exact-name-or-path> ...] [--limit <1...8>]",
+                inputContract: "Run-scoped related_notes clause in ResearchContextRequest schema \(ResearchContextRequest.currentSchemaVersion)",
+                input: "Supply one to \(ResearchContextClause.maximumRelatedNoteNames) exact current Triptych Note titles, aliases, filenames, relative paths, or stable identities. Ambiguous or missing names are never guessed. The names are ephemeral retrieval seeds and grant no additional scope.",
+                output: "ResearchContextResponse schema \(ResearchContextResponse.currentSchemaVersion). The related_notes outcome resolves the supplied seeds and dynamically orders current Analysis/Topic candidates by multi-seed coverage, direct Connection, exact title/alias mention, and Search-owned lexical order. It exposes typed reasons but no score or Note source.",
+                nextSteps: [
+                    "Inspect the ordered candidates and their per-seed reasons",
+                    "Use scholium agent query with an exact read request before relying on candidate source",
+                    "Do not treat recommendation, delivery, or reading as Materials or Context Use",
                 ]
             ),
             "agent discuss-reply": AgentCLICommandHelp(

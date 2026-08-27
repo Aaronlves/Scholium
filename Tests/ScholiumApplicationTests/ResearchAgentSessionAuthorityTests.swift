@@ -230,7 +230,7 @@ struct ResearchAgentSessionAuthorityTests {
         #expect(structured.availability == .invalidQuery)
         #expect(structured.items.isEmpty)
         #expect(structured.outcomes.first?.limitations.contains {
-            $0.contains("Research Context schema 4")
+            $0.contains("Research Context schema 5")
         } == true)
 
         let properties = try await handle.research.queryAgentResearchContext(
@@ -551,6 +551,9 @@ struct ResearchAgentSessionAuthorityTests {
             workspace: researcherStateSnapshot,
             access: ResearchContextOwnerAccess(
                 search: { _ in
+                    throw ResearchAgentSessionTestFailure.unexpectedOwnerAccess
+                },
+                relatedNotes: { _, _, _ in
                     throw ResearchAgentSessionTestFailure.unexpectedOwnerAccess
                 },
                 loadDocument: { _ in

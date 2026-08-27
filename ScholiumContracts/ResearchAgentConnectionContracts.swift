@@ -1115,40 +1115,89 @@ public struct ResearchFidelityRunContract: Codable, Hashable, Sendable {
     }
 }
 
+public enum ResearchRecommendedReadingConnectionDirection: String, Codable,
+    Hashable, Sendable
+{
+    case fromTarget = "from_target"
+    case toTarget = "to_target"
+    case undirected
+}
+
+public struct ResearchRecommendedReadingConnectionReason: Codable, Hashable,
+    Sendable
+{
+    public let direction: ResearchRecommendedReadingConnectionDirection
+    public let predicate: RelationshipPredicate
+    public let sourceNote: VaultQualifiedNoteID
+    public let locator: SourceLocator
+    public let vectorKind: VectorLinkKind?
+    public let insideSelectedPassage: Bool
+
+    public init(
+        direction: ResearchRecommendedReadingConnectionDirection,
+        predicate: RelationshipPredicate,
+        sourceNote: VaultQualifiedNoteID,
+        locator: SourceLocator,
+        vectorKind: VectorLinkKind?,
+        insideSelectedPassage: Bool
+    ) throws {
+        guard locator.file == sourceNote.relativePath else {
+            throw ResearchAgentConnectionContractError.invalidHandoff
+        }
+        self.direction = direction
+        self.predicate = predicate
+        self.sourceNote = sourceNote
+        self.locator = locator
+        self.vectorKind = vectorKind
+        self.insideSelectedPassage = insideSelectedPassage
+    }
+}
+
+public enum ResearchRecommendedReadingReason: Codable, Hashable, Sendable {
+    case directConnection(ResearchRecommendedReadingConnectionReason)
+    case identityMention(RelatedContentIdentityMentionReason)
+    case lexicalOverlap(RelatedContentLexicalReason)
+}
+
 public struct ResearchRecommendedReadingCandidate: Codable, Hashable, Sendable {
     public let note: VaultQualifiedNoteID
     public let role: ResearchActionTargetRole
     public let title: String
     public let fingerprint: DocumentFingerprint
-    public let matchedFields: [SearchMatchedField]
-    public let matchedSeedTerms: [String]
+    public let reasons: [ResearchRecommendedReadingReason]
 
     public init(
         note: VaultQualifiedNoteID,
         role: ResearchActionTargetRole,
         title: String,
         fingerprint: DocumentFingerprint,
-        matchedFields: [SearchMatchedField],
-        matchedSeedTerms: [String]
+        reasons: [ResearchRecommendedReadingReason]
     ) throws {
         guard role == .analysis || role == .topic,
               !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              !matchedFields.isEmpty,
-              !matchedSeedTerms.isEmpty else {
+              !reasons.isEmpty,
+              Set(reasons).count == reasons.count else {
             throw ResearchAgentConnectionContractError.invalidHandoff
         }
         self.note = note
         self.role = role
         self.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
         self.fingerprint = fingerprint
-        self.matchedFields = matchedFields
-        self.matchedSeedTerms = matchedSeedTerms
+        self.reasons = reasons.filter {
+            if case .directConnection = $0 { return true }
+            return false
+        } + reasons.filter {
+            if case .identityMention = $0 { return true }
+            return false
+        } + reasons.filter {
+            if case .lexicalOverlap = $0 { return true }
+            return false
+        }
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case note, role, title, fingerprint
-        case matchedFields = "matched_fields"
-        case matchedSeedTerms = "matched_seed_terms"
+        case reasons
     }
 
     public init(from decoder: Decoder) throws {
@@ -1162,23 +1211,20 @@ public struct ResearchRecommendedReadingCandidate: Codable, Hashable, Sendable {
             role: container.decode(ResearchActionTargetRole.self, forKey: .role),
             title: container.decode(String.self, forKey: .title),
             fingerprint: container.decode(DocumentFingerprint.self, forKey: .fingerprint),
-            matchedFields: container.decode(
-                [SearchMatchedField].self,
-                forKey: .matchedFields
-            ),
-            matchedSeedTerms: container.decode(
-                [String].self,
-                forKey: .matchedSeedTerms
+            reasons: container.decode(
+                [ResearchRecommendedReadingReason].self,
+                forKey: .reasons
             )
         )
     }
+
 }
 
 /// A non-evidential discovery directory. It contains no Note source or
 /// generated summary; exact source remains behind an explicit Research Context
 /// query, and directory delivery never proves reading or Context Use.
 public struct ResearchRecommendedReadingDirectory: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 3
 
     public let schemaVersion: Int
     public let retrievalContractVersion: Int
@@ -1200,14 +1246,16 @@ public struct ResearchRecommendedReadingDirectory: Codable, Hashable, Sendable {
         hasMore: Bool,
         limitation: String? = nil
     ) throws {
-        let hasExecutableCandidates = state == .current
+        let mayHaveExecutableCandidates = state == .current || state == .partial
         guard retrievalContractVersion == RelatedContentContract.currentVersion,
               rankingPolicyVersion == RelatedContentContract.rankingPolicyVersion,
               candidates.count <= RelatedContentContract.maximumCandidates,
               Set(candidates.map(\.note)).count == candidates.count,
-              hasExecutableCandidates == !candidates.isEmpty,
-              (!hasMore || hasExecutableCandidates),
-              ((state == .stale || state == .unavailable || state == .invalidSeed)
+              (state != .current || !candidates.isEmpty),
+              (mayHaveExecutableCandidates || candidates.isEmpty),
+              (!hasMore || mayHaveExecutableCandidates),
+              ((state == .partial || state == .stale
+                || state == .unavailable || state == .invalidSeed)
                 == (limitation != nil)) else {
             throw ResearchAgentConnectionContractError.invalidHandoff
         }
@@ -1275,7 +1323,7 @@ public struct ResearchRecommendedReadingDirectory: Codable, Hashable, Sendable {
 }
 
 public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 15
+    public static let currentSchemaVersion = 17
 
     public let schemaVersion: Int
     public let brief: ResearchRunBrief
@@ -1358,8 +1406,10 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
             return $0.relativePath < $1.relativePath
         }
         self.continuationHandoff = continuationHandoff
-        let isRecommendedReadingAction = brief.initialObjectRole == .work
-            && (brief.actionID == .write || brief.actionID == .critique)
+        let isRecommendedReadingAction = (brief.initialObjectRole == .work
+            && (brief.actionID == .write || brief.actionID == .critique))
+            || (brief.initialObjectRole == .topic
+                && brief.actionID == .synthesize)
         guard (recommendedReading != nil) == isRecommendedReadingAction else {
             throw ResearchAgentConnectionContractError.invalidHandoff
         }

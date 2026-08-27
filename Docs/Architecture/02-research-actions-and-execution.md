@@ -239,18 +239,25 @@ the complete frozen contract retains optional fields. Query execution itself
 does not create Context Use testimony. CLI help describes those typed contracts
 but does not maintain a second template owner.
 
-For Work-targeting Write and Critique, authenticated Run Context schema 15 also
-contains `recommended_reading`. `RecommendedReadingCoordinator` owns only
-Action eligibility and delivery shaping. It loads the already-revalidated
-exact Work source, supplies one ephemeral `RelatedContentSeedSnapshot` to
-`TriptychSearchIndex.relatedContent`, maps only Analysis/Topic candidates into
-the Agent directory, and chunks current candidate fingerprints into ordinary
-schema-4 exact-read Research Context requests. `TriptychSearchIndex` remains the
-sole lexical projection and rank owner; contract 1 reuses its current Note FTS
-database and creates no second index, parser, Saved Search, source cache, or
-persistent recommendation state. Retrieval failure becomes a typed unavailable
-directory while the pre-existing bounded Search action remains in the packet.
-Direct start, pairing, and `reload` all call this same Application path.
+Authenticated Run Context schema 17 gives Work Write/Critique Analysis/Topic
+`recommended_reading` and Topic Synthesize Analysis-only reading.
+`RecommendedReadingCoordinator` owns only
+Action eligibility and delivery shaping. It loads the already-revalidated exact
+target source and frozen selected passage/research request, asks Graph for current
+direct Connections, and supplies one ephemeral `RelatedContentSeedSnapshot` to
+`TriptychSearchIndex.relatedContent`. Graph owns direction, predicate, and
+locator; Search contract 3 independently owns exact title/alias mention,
+candidate-role restriction, and focus-weighted lexical ranking over the
+existing Note FTS. The coordinator
+applies fixed per-channel quotas, merges identical Note fingerprints while
+retaining all typed reasons, and chunks executable candidates into ordinary
+schema-4 exact-read requests. It creates no second index, parser, Saved Search,
+source cache, or persistent recommendation state. Channel failure forms Partial
+or Unavailable while bounded Search remains. Direct start, pairing, and
+`reload` all call this same path. A `related_notes` Research Context clause
+resolves one to four exact names through the current catalog and reuses the
+coordinator per seed; Application combines those owner-ranked results without
+persisting a score. `agent related` is its declarative CLI adapter.
 
 Agent-facing material is serialized under an explicit evidence channel.
 `taskDirective` contains public Action, researcher request, safe capability
@@ -288,18 +295,18 @@ adapter can only convert an already returned owner value into the closed Source
 Reference Envelope; it cannot fill unknown actor/locator/revision, add a
 confidence score, or broaden scope.
 
-Research Context request schema 4 contains only closed clause schema 4 values
+Research Context request schema 5 contains only closed clause schema 5 values
 and uses snake-case Agent input keys throughout.
 The nested clause version changes with its closed kind and legal-shape set; a
 schema 1 clause therefore cannot silently acquire Material inspection. The
 Application validates the clause's legal query shape and platform capability,
-then dispatches every clause through its current owner. Response schema 4
+then dispatches every clause through its current owner. Response schema 5
 retains one ordered outcome for every requested clause, with Current, Partial,
 Stale, Unavailable, or Invalid Query availability and explicit limitations.
 Owner failures become their clause's Unavailable outcome; they do not erase
 other outcomes or masquerade as an empty current channel.
 
-Response schema 4 also copies the Note result's closed `NoteSearchMatchReason`
+Response schema 5 also copies the Note result's closed `NoteSearchMatchReason`
 values from that same Search response. The Application adapter does not
 reconstruct them: authored YAML provenance retains exact source ranges,
 managed Metadata explicitly has none, and
@@ -307,7 +314,7 @@ direct-relation provenance retains relation, direction, anchor, target, and
 explicit Markdown occurrences. A coarse direct-relation or Metadata retrieval
 reason without the corresponding typed match is rejected.
 Search contract 10's structured `callout:` and `has:` match reasons are not
-admitted into Research Context schema 4: those queries return Invalid Query at
+admitted into Research Context schema 5: those queries return Invalid Query at
 this boundary instead of being flattened into a lexical Source Reference.
 
 Exact Note/section reads use a lossless UTF-8 page with a source-range locator.
@@ -320,7 +327,7 @@ reading a replacement Note or revision. Contracts cap an encoded context
 response below the bridge frame, and `LocalAgentBridgeResponse` preflights the
 complete outer envelope before it writes a frame.
 
-Continue Result schema 4 and authenticated Run Context schema 15 carry the
+Continue Result schema 4 and authenticated Run Context schema 17 carry the
 closed Material reference states `current`, `changed`, `missing`, and
 `unavailable` plus the typed Researcher State requery requirement. A created
 Continue Result embeds that child Context. The stable
@@ -329,7 +336,7 @@ participation, authority state, payload revision, and payload fingerprint. Its
 current private payload persists the frozen Analyze source route, active child
 handoff, and independent Zotero-binding write state. Agent change evidence is keyed directly by
 `(Run ID, Note ID)` rather than copied foreign identifiers. Authenticated Run
-Context schema 14 also carries a closed minimum required-Skill set and optional
+Context schema 17 also carries a closed minimum required-Skill set and optional
 typed Fidelity contract. The Skill set always identifies Core Protocol and the
 Action Method with its frozen primary revision; it conditionally identifies
 Discussion or Zotero System Skills and contains no prose or path. The Fidelity

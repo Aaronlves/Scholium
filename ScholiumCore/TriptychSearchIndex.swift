@@ -583,7 +583,7 @@ public actor TriptychSearchIndex {
     }
 
     /// Retrieves explanatory Analysis/Topic reading leads from one ephemeral
-    /// Work source snapshot. This is not query parsing: it reuses the current
+    /// source Note snapshot. This is not query parsing: it reuses the current
     /// Note FTS generation and its BM25 field weights without creating a Saved
     /// Search, second index, or durable seed.
     public func relatedContent(
@@ -608,28 +608,42 @@ public actor TriptychSearchIndex {
                     state: availability.lastGoodGeneration == nil
                         ? .unavailable
                         : .stale,
-                    candidates: [],
-                    hasMore: false
+                    identityCandidates: [],
+                    lexicalCandidates: [],
+                    identityHasMore: false,
+                    lexicalHasMore: false
                 )
             }
-            guard request.limit > 0,
+            guard request.identityLimit > 0 || request.lexicalLimit > 0,
+                  !request.candidateRoles.isEmpty,
                   !request.seed.source.trimmingCharacters(
                     in: .whitespacesAndNewlines
                   ).isEmpty,
                   request.seed.source.utf16.count
                     <= RelatedContentContract.maximumSeedUTF16Count,
+                  request.seed.focuses.allSatisfy({ focus in
+                    focus.kind != .sourceNote
+                        && !focus.text.trimmingCharacters(
+                            in: .whitespacesAndNewlines
+                        ).isEmpty
+                        && focus.text.utf16.count
+                            <= RelatedContentContract.maximumFocusUTF16Count
+                  }),
                   let descriptor = try vaultDescriptor(
                     request.seed.noteID.vaultID
                   ),
-                  descriptor.role == .draftProject else {
+                  [.sourceCorpus, .topicKnowledge, .draftProject]
+                    .contains(descriptor.role) else {
                 return RelatedContentResponse(
                     requestID: request.id,
                     seedFingerprint: request.seed.fingerprint,
                     freshnessToken: freshness,
                     availability: availability,
                     state: .invalidSeed,
-                    candidates: [],
-                    hasMore: false
+                    identityCandidates: [],
+                    lexicalCandidates: [],
+                    identityHasMore: false,
+                    lexicalHasMore: false
                 )
             }
 
@@ -648,48 +662,66 @@ public actor TriptychSearchIndex {
                 profile: profile,
                 source: document.rawContent
             )
-            let terms = RelatedContentSeedTermExtractor.terms(
-                in: projection,
-                limit: RelatedContentContract.maximumSeedTerms
+            let material = RelatedContentSeedMaterial(
+                projection: projection,
+                focuses: request.seed.focuses
             )
-            guard !terms.isEmpty else {
+            guard !material.combinedTerms.isEmpty else {
                 return RelatedContentResponse(
                     requestID: request.id,
                     seedFingerprint: request.seed.fingerprint,
                     freshnessToken: freshness,
                     availability: availability,
                     state: .invalidSeed,
-                    candidates: [],
-                    hasMore: false
+                    identityCandidates: [],
+                    lexicalCandidates: [],
+                    identityHasMore: false,
+                    lexicalHasMore: false
                 )
             }
 
-            let candidates = try relatedContentCandidates(
-                terms: terms,
+            let identity = try relatedIdentityCandidates(
+                material: material,
                 excluding: request.seed.noteID,
-                limit: request.limit + 1
+                candidateRoles: request.candidateRoles,
+                limit: request.identityLimit
             )
-            let hasMore = candidates.count > request.limit
-            let results = candidates.prefix(request.limit).map { candidate in
+            let lexicalPool = try relatedContentCandidates(
+                terms: material.combinedTerms,
+                excluding: request.seed.noteID,
+                candidateRoles: request.candidateRoles,
+                limit: RelatedContentContract.maximumLexicalCandidatePool
+            )
+            let lexical = lexicalPool.compactMap { candidate -> RelatedLexicalCandidate? in
+                let reason = material.lexicalReason(for: candidate)
+                guard !reason.seedMatches.isEmpty else { return nil }
+                return RelatedLexicalCandidate(
+                    candidate: candidate,
+                    reason: reason
+                )
+            }.sorted(by: RelatedLexicalCandidate.precedes)
+            let lexicalHasMore = lexical.count > request.lexicalLimit
+            let lexicalResults = lexical.prefix(request.lexicalLimit).map { item in
                 RelatedContentCandidate(
-                    note: candidate.document.noteID,
-                    vaultRole: candidate.document.vaultRole,
-                    title: candidate.document.title,
-                    fingerprint: candidate.document.fingerprint,
-                    lexicalReason: RelatedContentSeedTermExtractor.reason(
-                        candidate: candidate,
-                        terms: terms
-                    )
+                    note: item.candidate.document.noteID,
+                    vaultRole: item.candidate.document.vaultRole,
+                    title: item.candidate.document.title,
+                    fingerprint: item.candidate.document.fingerprint,
+                    reason: .lexicalOverlap(item.reason)
                 )
             }
+            let hasCandidates = !identity.candidates.isEmpty
+                || !lexicalResults.isEmpty
             return RelatedContentResponse(
                 requestID: request.id,
                 seedFingerprint: request.seed.fingerprint,
                 freshnessToken: freshness,
                 availability: availability,
-                state: results.isEmpty ? .empty : .current,
-                candidates: Array(results),
-                hasMore: hasMore
+                state: hasCandidates ? .current : .empty,
+                identityCandidates: identity.candidates,
+                lexicalCandidates: Array(lexicalResults),
+                identityHasMore: identity.hasMore,
+                lexicalHasMore: lexicalHasMore
             )
         }
     }
@@ -809,15 +841,68 @@ public actor TriptychSearchIndex {
         )
     }
 
+    private func relatedIdentityCandidates(
+        material: RelatedContentSeedMaterial,
+        excluding seed: VaultQualifiedNoteID,
+        candidateRoles: [RelatedContentCandidateRole],
+        limit: Int
+    ) throws -> (candidates: [RelatedContentCandidate], hasMore: Bool) {
+        guard limit > 0 else { return ([], false) }
+        let rolePlaceholders = candidateRoles.map { _ in "?" }
+            .joined(separator: ", ")
+        var matches: [RelatedIdentityCandidate] = []
+        try database.query(
+            """
+            SELECT d.id
+            FROM search_documents d
+            WHERE d.role IN (\(rolePlaceholders))
+              AND NOT (d.vault_id = ? AND d.relative_path = ?)
+            ORDER BY d.normalized_title, d.role_order, d.path_key,
+                     d.relative_path;
+            """,
+            bindings: candidateRoles.map {
+                .text($0.vaultRole.rawValue)
+            } + [
+                .text(seed.vaultID.uuidString.lowercased()),
+                .text(seed.relativePath),
+            ]
+        ) { row in
+            try Task.checkCancellation()
+            guard let document = try self.loadDocument(rowID: row.int(at: 0)),
+                  let reason = material.identityMentionReason(for: document)
+            else { return }
+            matches.append(RelatedIdentityCandidate(
+                document: document,
+                reason: reason
+            ))
+        }
+        matches.sort(by: RelatedIdentityCandidate.precedes)
+        return (
+            matches.prefix(limit).map { item in
+                RelatedContentCandidate(
+                    note: item.document.noteID,
+                    vaultRole: item.document.vaultRole,
+                    title: item.document.title,
+                    fingerprint: item.document.fingerprint,
+                    reason: .identityMention(item.reason)
+                )
+            },
+            matches.count > limit
+        )
+    }
+
     private func relatedContentCandidates(
         terms: [String],
         excluding seed: VaultQualifiedNoteID,
+        candidateRoles: [RelatedContentCandidateRole],
         limit: Int
     ) throws -> [SearchCandidate] {
         let expression = terms.map { term in
             let escaped = term.replacingOccurrences(of: "\"", with: "\"\"")
             return "\"\(escaped)\""
         }.joined(separator: " OR ")
+        let rolePlaceholders = candidateRoles.map { _ in "?" }
+            .joined(separator: ", ")
         var result: [SearchCandidate] = []
         try database.query(
             """
@@ -826,7 +911,7 @@ public actor TriptychSearchIndex {
             FROM search_fts
             JOIN search_documents d ON d.id = search_fts.document_id
             WHERE search_fts MATCH ?
-              AND d.role IN (?, ?)
+              AND d.role IN (\(rolePlaceholders))
               AND NOT (d.vault_id = ? AND d.relative_path = ?)
             ORDER BY lexical_rank, d.normalized_title, d.role_order,
                      d.path_key, d.relative_path
@@ -834,8 +919,9 @@ public actor TriptychSearchIndex {
             """,
             bindings: [
                 .text(expression),
-                .text(VaultRole.sourceCorpus.rawValue),
-                .text(VaultRole.topicKnowledge.rawValue),
+            ] + candidateRoles.map {
+                .text($0.vaultRole.rawValue)
+            } + [
                 .text(seed.vaultID.uuidString.lowercased()),
                 .text(seed.relativePath),
                 .int(limit),
@@ -2065,6 +2151,218 @@ private struct SearchCandidate {
     }
 }
 
+private struct RelatedIdentityCandidate {
+    let document: StoredSearchDocument
+    let reason: RelatedContentIdentityMentionReason
+
+    static func precedes(_ lhs: Self, _ rhs: Self) -> Bool {
+        let left = minimumMentionOrder(lhs.reason.mentions)
+        let right = minimumMentionOrder(rhs.reason.mentions)
+        if left.0 != right.0 { return left.0 < right.0 }
+        if left.1 != right.1 { return left.1 < right.1 }
+        return documentPrecedes(lhs.document, rhs.document)
+    }
+
+    private static func minimumMentionOrder(
+        _ mentions: [RelatedContentIdentityMention]
+    ) -> (Int, Int) {
+        mentions.map(mentionOrder).reduce((Int.max, Int.max)) { current, next in
+            if next.0 != current.0 { return next.0 < current.0 ? next : current }
+            return next.1 < current.1 ? next : current
+        }
+    }
+
+    private static func mentionOrder(
+        _ mention: RelatedContentIdentityMention
+    ) -> (Int, Int) {
+        (
+            RelatedContentSeedKind.rankingOrder.firstIndex(
+                of: mention.seedKind
+            ) ?? Int.max,
+            mention.identityKind == .title ? 0 : 1
+        )
+    }
+
+    private static func documentPrecedes(
+        _ lhs: StoredSearchDocument,
+        _ rhs: StoredSearchDocument
+    ) -> Bool {
+        if lhs.normalizedTitle != rhs.normalizedTitle {
+            return lhs.normalizedTitle < rhs.normalizedTitle
+        }
+        if lhs.roleOrder != rhs.roleOrder { return lhs.roleOrder < rhs.roleOrder }
+        if lhs.pathKey != rhs.pathKey { return lhs.pathKey < rhs.pathKey }
+        return lhs.relativePath < rhs.relativePath
+    }
+}
+
+private struct RelatedLexicalCandidate {
+    let candidate: SearchCandidate
+    let reason: RelatedContentLexicalReason
+
+    static func precedes(_ lhs: Self, _ rhs: Self) -> Bool {
+        for kind in RelatedContentSeedKind.rankingOrder {
+            let left = lhs.matchCount(kind)
+            let right = rhs.matchCount(kind)
+            if left != right { return left > right }
+        }
+        return SearchCandidate.precedes(lhs.candidate, rhs.candidate)
+    }
+
+    private func matchCount(_ kind: RelatedContentSeedKind) -> Int {
+        reason.seedMatches.first { $0.seedKind == kind }?.terms.count ?? 0
+    }
+}
+
+private struct RelatedContentSeedSegment {
+    let kind: RelatedContentSeedKind
+    let field: SearchMatchedField?
+    let normalizedText: String
+}
+
+private struct RelatedContentSeedTermGroup {
+    let kind: RelatedContentSeedKind
+    let terms: [String]
+}
+
+private struct RelatedContentSeedMaterial {
+    let segments: [RelatedContentSeedSegment]
+    let termGroups: [RelatedContentSeedTermGroup]
+    let combinedTerms: [String]
+
+    init(
+        projection: SearchDocumentProjection,
+        focuses: [RelatedContentSeedFocus]
+    ) {
+        let sourceFields: Set<SearchMatchedField> = [
+            .title, .heading, .summary, .body, .callout, .footnote, .tag,
+        ]
+        var segments = focuses.map {
+            RelatedContentSeedSegment(
+                kind: $0.kind,
+                field: nil,
+                normalizedText: SearchTextNormalization.normalize($0.text)
+            )
+        }
+        segments.append(contentsOf: projection.segments.compactMap { segment in
+            guard sourceFields.contains(segment.field) else { return nil }
+            return RelatedContentSeedSegment(
+                kind: .sourceNote,
+                field: segment.field,
+                normalizedText: segment.normalizedText
+            )
+        })
+        self.segments = segments
+
+        var groups: [RelatedContentSeedTermGroup] = focuses.map {
+            RelatedContentSeedTermGroup(
+                kind: $0.kind,
+                terms: RelatedContentSeedTermExtractor.terms(
+                    in: $0.text,
+                    limit: RelatedContentContract.maximumFocusSeedTerms
+                )
+            )
+        }
+        groups.append(RelatedContentSeedTermGroup(
+            kind: .sourceNote,
+            terms: RelatedContentSeedTermExtractor.terms(
+                in: projection,
+                limit: RelatedContentContract.maximumSourceSeedTerms
+            )
+        ))
+        termGroups = groups
+
+        var terms: [String] = []
+        var seen = Set<String>()
+        for kind in RelatedContentSeedKind.rankingOrder {
+            for term in groups.first(where: { $0.kind == kind })?.terms ?? []
+                where terms.count
+                    < RelatedContentContract.maximumCombinedSeedTerms {
+                if seen.insert(term).inserted { terms.append(term) }
+            }
+        }
+        combinedTerms = terms
+    }
+
+    func identityMentionReason(
+        for document: StoredSearchDocument
+    ) -> RelatedContentIdentityMentionReason? {
+        var identities: [(RelatedContentIdentityKind, String)] = []
+        if !document.titleUsesFilenameFallback {
+            identities.append((.title, document.title))
+        }
+        identities.append(contentsOf: document.aliases.map { (.alias, $0) })
+        var mentions: [RelatedContentIdentityMention] = []
+        var seen = Set<RelatedContentIdentityMention>()
+        for (identityKind, identity) in identities {
+            let value = SearchLexicalValue.phrase(identity)
+            for segment in segments where !SearchMatcher.occurrences(
+                of: value,
+                in: segment.normalizedText
+            ).isEmpty {
+                let mention = RelatedContentIdentityMention(
+                    seedKind: segment.kind,
+                    identityKind: identityKind,
+                    matchedIdentity: identity,
+                    seedField: segment.field
+                )
+                if seen.insert(mention).inserted { mentions.append(mention) }
+            }
+        }
+        mentions.sort { lhs, rhs in
+            let leftKind = RelatedContentSeedKind.rankingOrder.firstIndex(
+                of: lhs.seedKind
+            ) ?? Int.max
+            let rightKind = RelatedContentSeedKind.rankingOrder.firstIndex(
+                of: rhs.seedKind
+            ) ?? Int.max
+            if leftKind != rightKind { return leftKind < rightKind }
+            if lhs.identityKind != rhs.identityKind {
+                return lhs.identityKind == .title
+            }
+            return (lhs.seedField?.rawValue ?? "", lhs.matchedIdentity)
+                < (rhs.seedField?.rawValue ?? "", rhs.matchedIdentity)
+        }
+        return mentions.isEmpty
+            ? nil
+            : RelatedContentIdentityMentionReason(mentions: mentions)
+    }
+
+    func lexicalReason(
+        for candidate: SearchCandidate
+    ) -> RelatedContentLexicalReason {
+        var fields: [SearchMatchedField] = []
+        var seedMatches: [RelatedContentSeedTermMatch] = []
+        for group in termGroups {
+            var matches: [String] = []
+            for term in group.terms {
+                let value = SearchLexicalValue.term(term)
+                let matchingSegments = candidate.document.segments.filter {
+                    !SearchMatcher.occurrences(
+                        of: value,
+                        in: $0.normalizedText
+                    ).isEmpty
+                }
+                guard !matchingSegments.isEmpty else { continue }
+                if matches.count < 8 { matches.append(term) }
+                for segment in matchingSegments where !fields.contains(segment.field) {
+                    fields.append(segment.field)
+                }
+            }
+            if !matches.isEmpty {
+                seedMatches.append(RelatedContentSeedTermMatch(
+                    seedKind: group.kind,
+                    terms: matches
+                ))
+            }
+        }
+        return RelatedContentLexicalReason(
+            matchedFields: fields,
+            seedMatches: seedMatches
+        )
+    }
+}
+
 private enum RelatedContentSeedTermExtractor {
     private static let ignoredLatinTerms: Set<String> = [
         "a", "an", "and", "are", "as", "at", "be", "been", "being", "but",
@@ -2122,30 +2420,14 @@ private enum RelatedContentSeedTermExtractor {
         return result
     }
 
-    static func reason(
-        candidate: SearchCandidate,
-        terms: [String]
-    ) -> RelatedContentLexicalReason {
-        var fields: [SearchMatchedField] = []
-        var matchedTerms: [String] = []
-        for term in terms {
-            let value = SearchLexicalValue.term(term)
-            let matchingSegments = candidate.document.segments.filter {
-                !SearchMatcher.occurrences(
-                    of: value,
-                    in: $0.normalizedText
-                ).isEmpty
-            }
-            guard !matchingSegments.isEmpty else { continue }
-            if matchedTerms.count < 8 { matchedTerms.append(term) }
-            for segment in matchingSegments where !fields.contains(segment.field) {
-                fields.append(segment.field)
-            }
+    static func terms(in value: String, limit: Int) -> [String] {
+        guard limit > 0 else { return [] }
+        var result: [String] = []
+        var seen = Set<String>()
+        for token in tokens(in: value) where result.count < limit {
+            if seen.insert(token).inserted { result.append(token) }
         }
-        return RelatedContentLexicalReason(
-            matchedFields: fields,
-            matchedSeedTerms: matchedTerms
-        )
+        return result
     }
 
     private static func tokens(in value: String) -> [String] {

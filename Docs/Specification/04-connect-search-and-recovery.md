@@ -176,26 +176,51 @@ ties. Exact identity candidates cannot be lost to a lexical cutoff. Public
 results explain the matched field and rank reason without exposing internal
 scores.
 
-Search also owns separately versioned **Related-Content Retrieval contract 1**.
-It accepts one bounded, ephemeral exact Work source snapshot and returns an
-ordered directory restricted to Analyses and Topics. This operation is not a
-visible Search query: it adds no scope, provider, `role:` token, implicit OR,
-Saved Search, or alternate parser. Search derives a bounded set of normalized
-terms from the same Markdown and authored/managed Metadata projection, queries
-the existing Note FTS generation with its current field weights, and returns
-candidate identity, role, title, fingerprint, matched fields, normalized seed
-terms, generation freshness, availability, and truncation—never an internal
-score, candidate source, or generated summary.
+Search also owns separately versioned **Related-Content Retrieval contract 3**.
+It accepts one bounded, ephemeral exact Analysis, Topic, or Work source plus optional frozen
+selected-passage and research-request focus text, and returns Analysis/Topic
+candidates restricted by a typed candidate-role set. Exact title/alias has an
+independent three-candidate quota and records identity kind, seed kind, and
+Work field when applicable. Lexical overlap has an independent four-candidate
+quota and records matched candidate fields plus normalized terms grouped by
+selected passage, research request, and source Note. Its internal ordering first
+compares selected-passage matches, then research-request matches, then whole-
+Note matches, and finally the existing BM25/title/role/path order; no numeric
+score enters the response.
+
+This operation is not a visible Search query: it adds no scope, provider,
+`role:` token, user-authored OR, Saved Search, or alternate parser. Both
+channels reuse the same Markdown/Metadata projection, Note FTS generation,
+normalization, candidate source fingerprints, cancellation, and stable ties.
+The response preserves each channel and truncation separately—never candidate
+source, a generated summary, or a synthesized philosophical relation.
+
+Agent Recommended Reading adds one Graph-owned direct-Connection channel with
+an independent four-candidate quota only when Graph and Search share the same
+complete source manifest. It preserves direction or undirectedness, predicate,
+source Note, locator, Vector-Link kind, and whether the authored occurrence lies
+inside the selected passage. Application combines channels in fixed
+Connection, identity-mention, lexical order, deduplicates Note identity while
+retaining every typed reason, and caps the directory at eight. A Connection
+does not assert that its predicate is true or that the candidate is evidence.
 
 Related-content results are executable only against a Current complete Search
 generation. Empty, Invalid Seed, Stale, and Unavailable are distinct; stale or
 unavailable generated state yields no candidate that can be turned into an
 exact-read request. The source seed lives only for the request and is not
 indexed, logged, persisted, or reconstructed into writable Markdown. Contract
-1 is consumed only by Agent Recommended Reading for Work-targeting Write and
-Critique. Its delivery-neutral seed shape leaves room for a later exact unsaved
-Works source snapshot, but no Works editor consumer or interface behavior is
-defined by this chapter.
+3 gives Work Write/Critique Analysis/Topic candidates and Topic Synthesize
+Analysis-only candidates. Its delivery-neutral seed shape leaves room for a
+later exact unsaved Works source snapshot, but no Works editor consumer or
+interface behavior is defined by this chapter.
+
+Every Search-capable authenticated Run also offers `agent related` over one to
+four exact current Triptych Note names. Application fails closed for missing or
+ambiguous identities, runs the same channels independently for each resolved
+source, excludes the seeds, then dynamically orders combined candidates by
+matched-seed count, direct Connection, exact identity, owner-provided rank, and
+stable identity ties. The response retains reasons per seed but exposes no
+score or source. It creates no Materials or Context Use.
 
 Ordinary cross-provider Search caps at 100 rows and reports only `N Results` or
 `N+ Results`; it does not perform an expensive exact total count. The dedicated

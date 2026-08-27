@@ -1619,8 +1619,11 @@ extension WorkspaceHandle {
         for record: LocalResearchExecutionRecord,
         action: ResearchActionSnapshot
     ) async throws -> ResearchRecommendedReadingDirectory? {
-        guard action.target.role == .work,
-              action.actionID == .write || action.actionID == .critique else {
+        let isWorkReading = action.target.role == .work
+            && (action.actionID == .write || action.actionID == .critique)
+        let isTopicSynthesis = action.target.role == .topic
+            && action.actionID == .synthesize
+        guard isWorkReading || isTopicSynthesis else {
             return nil
         }
         let source = try await loadDocument(action.target.note)
@@ -1633,7 +1636,9 @@ extension WorkspaceHandle {
         }
         return try await coordinator.directory(
             for: action,
+            request: record.snapshot.request,
             source: source,
+            workspace: currentSnapshot,
             requestID: Self.stableAgentUUID(
                 runID: record.id,
                 label: "recommended-reading"
@@ -1719,6 +1724,26 @@ extension WorkspaceHandle {
                         throw ResearchAgentConnectionError.runUnavailable
                     }
                     return try await self.search(request)
+                },
+                relatedNotes: { [weak self] requestID, noteNames, limit in
+                    guard let self else {
+                        throw ResearchAgentConnectionError.runUnavailable
+                    }
+                    return try await RecommendedReadingCoordinator(
+                        retrieve: { [weak self] request in
+                            guard let self else {
+                                throw ResearchAgentConnectionError.runUnavailable
+                            }
+                            return try await self
+                                .researchAgentConnectionDependencies.searchIndex
+                                .relatedContent(request)
+                        }
+                    ).relatedNotes(
+                        named: noteNames,
+                        limit: limit,
+                        workspace: self.currentSnapshot,
+                        requestID: requestID
+                    )
                 },
                 loadDocument: { [weak self] note in
                     guard let self else {
@@ -1872,6 +1897,18 @@ extension WorkspaceHandle {
             action: action,
             run: run
         )
+        if try requiredPlatformAction(action.actionID).operations.contains(.search) {
+            actions.append(AgentCommandAction(
+                kind: .query,
+                requirement: .whenNeeded,
+                label: "Dynamically rank related Analyses and Topics for one or more exact Note names",
+                command: [
+                    "scholium", "agent", "related", "--run",
+                    run.rawValue, "--note",
+                    "REPLACE_WITH_EXACT_NOTE_NAME_OR_PATH",
+                ]
+            ))
+        }
         if action.actionID == .discuss {
             actions.append(contentsOf: [
                 AgentCommandAction(
@@ -1947,6 +1984,10 @@ extension WorkspaceHandle {
             )
         }
         var actions: [AgentCommandAction] = []
+        let readingLabel = directory.candidates.allSatisfy {
+            $0.role == .analysis
+        } ? "Read the recommended Analyses when the Method needs them"
+          : "Read the recommended Analyses and Topics when the Method needs them"
         for start in stride(
             from: 0,
             to: clauses.count,
@@ -1966,7 +2007,7 @@ extension WorkspaceHandle {
             actions.append(AgentCommandAction(
                 kind: .query,
                 requirement: .whenNeeded,
-                label: "Read the recommended Analyses and Topics when the Method needs them",
+                label: readingLabel,
                 command: [
                     "scholium", "agent", "query", "--run",
                     run.rawValue, "--from", "-",
@@ -2368,7 +2409,7 @@ extension WorkspaceHandle {
         let operations = Set(platform.operations)
         for clause in request.clauses {
             let permitted = switch clause.kind {
-            case .discoverNote: operations.contains(.search)
+            case .discoverNote, .relatedNotes: operations.contains(.search)
             case .readNote: operations.contains(.read)
             case .inspectRelations: operations.contains(.inspectRelations)
             case .inspectMetadata: operations.contains(.inspectMetadata)

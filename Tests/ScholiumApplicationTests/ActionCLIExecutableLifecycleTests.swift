@@ -1155,6 +1155,26 @@ struct ActionCLIExecutableLifecycleTests {
             policyRevision: DocumentFingerprint(content: "full-access"),
             expiresAt: Date().addingTimeInterval(600)
         )
+        let entryRevision = try #require(entry.expectedRevision)
+        let relatedSeeds = [
+            try ResearchRelatedNotesResolvedSeed(
+                inputName: "Agency",
+                note: entry.note,
+                role: .topic,
+                title: "Agency",
+                fingerprint: entryRevision
+            ),
+            try ResearchRelatedNotesResolvedSeed(
+                inputName: "Draft Argument",
+                note: VaultQualifiedNoteID(
+                    vaultID: UUID(),
+                    relativePath: "Draft Argument.md"
+                ),
+                role: .work,
+                title: "Draft Argument",
+                fingerprint: DocumentFingerprint(content: "draft")
+            ),
+        ]
         let server = try LocalAgentBridgeServer(
             applicationSupportURL: bridgeContainer
         ) { request in
@@ -1176,6 +1196,37 @@ struct ActionCLIExecutableLifecycleTests {
                 return .context(try Self.minimalContext(
                     run: run,
                     actionID: .write
+                ))
+            case .query:
+                guard request.credential == credential,
+                      let contextRequest = request.contextRequest,
+                      contextRequest.clauses.count == 1,
+                      let clause = contextRequest.clauses.first,
+                      clause.kind == .relatedNotes,
+                      clause.noteNames == ["Agency", "Draft Argument"],
+                      clause.limit == 5 else {
+                    throw LocalAgentBridgeError.permissionDenied
+                }
+                let query = try ResearchContextQuery(
+                    request: contextRequest,
+                    runID: UUID(),
+                    triptychID: UUID()
+                )
+                let related = try ResearchRelatedNotesResult(
+                    state: .empty,
+                    resolvedSeeds: relatedSeeds,
+                    unresolvedNames: [],
+                    candidates: [],
+                    hasMore: false
+                )
+                return .researchContext(try ResearchContextResponse(
+                    query: query,
+                    outcomes: [try ResearchContextClauseOutcome(
+                        clause: clause,
+                        availability: .current,
+                        items: [],
+                        relatedNotes: related
+                    )]
                 ))
             case .extendWriteSet:
                 guard request.credential == credential,
@@ -1225,7 +1276,7 @@ struct ActionCLIExecutableLifecycleTests {
                     target: ResearchBoundedWriteSetViewEntry(analysisEntry),
                     message: "The portable Zotero binding committed and read back."
                 ))
-            case .revokeSession, .query, .discussionReply, .discussionFinish,
+            case .revokeSession, .discussionReply, .discussionFinish,
                     .resolveWriteConflict, .submitResult,
                     .continueResearch, .methodImprovementContext,
                     .submitMethodImprovement, .end:
@@ -1242,6 +1293,17 @@ struct ActionCLIExecutableLifecycleTests {
             stdin: Data((code.rawValue + "\n").utf8),
             environment: environment
         )
+        let related = try cli.run(
+            [
+                "agent", "related", "--run", run.rawValue,
+                "--note", "Agency", "--note", "Draft Argument",
+                "--limit", "5",
+            ],
+            environment: environment
+        )
+        let relatedOutput = String(decoding: related.stdout, as: UTF8.self)
+        #expect(relatedOutput.contains("\"kind\" : \"related_notes\""))
+        #expect(relatedOutput.contains("Draft Argument"))
         let extensionJSON = try JSONSerialization.data(withJSONObject: [
             "schema_version": ResearchWriteSetExtensionIntent.currentSchemaVersion,
             "targets": [[
@@ -1367,7 +1429,7 @@ struct ActionCLIExecutableLifecycleTests {
         #expect(Set(observedBindingIDs.values).count == 1)
     }
 
-    @Test("The real CLI exposes Search v9 plus direct fingerprinted Record retrieval")
+    @Test("The real CLI exposes current Search plus direct fingerprinted Record retrieval")
     func searchV7Contract() async throws {
         guard let binaryPath = ProcessInfo.processInfo.environment[
             "SCHOLIUM_ACTION_CLI_BINARY"
@@ -2929,6 +2991,22 @@ struct ActionCLIExecutableLifecycleTests {
             registration: registration,
             primaryMarkdownSource: "# Fixture Method\n"
         )
+        let recommendedReading: ResearchRecommendedReadingDirectory?
+        if actionID == .synthesize || actionID == .write
+            || actionID == .critique {
+            recommendedReading = try ResearchRecommendedReadingDirectory(
+                seedFingerprint: DocumentFingerprint(content: "fixture Work"),
+                freshnessToken: SearchFreshnessToken(
+                    "related-content:unavailable"
+                ),
+                state: .unavailable,
+                candidates: [],
+                hasMore: false,
+                limitation: "Recommended Reading is unavailable in this isolated CLI fixture."
+            )
+        } else {
+            recommendedReading = nil
+        }
         return try ResearchAuthenticatedRunContext(
             brief: ResearchRunBrief(
                 run: run,
@@ -2955,7 +3033,8 @@ struct ActionCLIExecutableLifecycleTests {
                 registrationKey: registration.key,
                 profileRevision: try profile.contentRevision()
             ),
-            boundedWriteSet: []
+            boundedWriteSet: [],
+            recommendedReading: recommendedReading
         )
     }
 

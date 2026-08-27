@@ -80,20 +80,51 @@ extension ResearchActionRunOperationsTests {
                         "REPLACE_WITH_BOUNDED_SEARCH_QUERY"
                     ) == true
             })
+            #expect(evidenceQueries.contains {
+                $0.requirement == .whenNeeded
+                    && $0.label.contains("Dynamically rank related")
+                    && $0.command.contains("related")
+                    && $0.command.contains("--note")
+            })
 
-            let expectsRecommendedReading = actionID == .write
-                || actionID == .critique
+            let expectsRecommendedReading = actionID == .synthesize
+                || actionID == .write || actionID == .critique
             #expect((context.recommendedReading != nil)
                 == expectsRecommendedReading)
             if expectsRecommendedReading {
                 let directory = try #require(context.recommendedReading)
                 #expect(directory.state == .current)
                 #expect(!directory.candidates.isEmpty)
-                #expect(directory.candidates.allSatisfy {
-                    $0.role == .analysis || $0.role == .topic
-                })
+                if actionID == .synthesize {
+                    #expect(directory.candidates.allSatisfy {
+                        $0.role == .analysis
+                    })
+                } else {
+                    #expect(directory.candidates.allSatisfy {
+                        $0.role == .analysis || $0.role == .topic
+                    })
+                }
+                let analysisCandidate = try #require(
+                    directory.candidates.first {
+                        $0.note == fixture.analysisID
+                    }
+                )
+                if actionID == .write || actionID == .critique {
+                    #expect(analysisCandidate.reasons.contains {
+                        if case .directConnection = $0 { return true }
+                        return false
+                    })
+                    #expect(analysisCandidate.reasons.contains {
+                        if case .identityMention = $0 { return true }
+                        return false
+                    })
+                    #expect(analysisCandidate.reasons.contains {
+                        if case .lexicalOverlap = $0 { return true }
+                        return false
+                    })
+                }
                 let readActions = evidenceQueries.filter {
-                    $0.label.contains("recommended Analyses and Topics")
+                    $0.label.contains("recommended Analyses")
                 }
                 #expect(!readActions.isEmpty)
                 let requests = try readActions.map { action in
@@ -180,6 +211,141 @@ extension ResearchActionRunOperationsTests {
                 run: handoff.run
             )
         }
+        await runtime.shutdown()
+    }
+
+    @Test("Recommended Reading preserves selected-passage and research-request seed reasons")
+    func recommendedReadingUsesFrozenTaskFocus() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let work = actionNote(try await researchActionTarget(
+            fixture.workID,
+            role: .work,
+            handle: handle
+        ))
+        let source = try await handle.documents.load(fixture.workID)
+        let selection = try commentAnchor(
+            in: source,
+            quotation: "A claim requiring Critique"
+        )
+        let requestID = try #require(
+            ResearchAcademicFieldID(rawValue: "research-request")
+        )
+        let preparation = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .critique,
+                target: work,
+                platformInputs: ResearchActionPlatformInputs(
+                    passage: selection
+                ),
+                academicValues: [
+                    requestID: .freeText("Compare the draft with Agency."),
+                ]
+            )
+        )
+        let handoff = try await handle.research.issueAgentHandoff(
+            runID: preparation.runID
+        )
+        let credential = try await handle.research.pairAgent(
+            run: handoff.run,
+            pairingCode: handoff.pairingCode
+        )
+        let context = try await runtime.researchAgentContext(
+            credential: credential,
+            run: handoff.run
+        )
+        let directory = try #require(context.recommendedReading)
+        let analysis = try #require(directory.candidates.first {
+            $0.note == fixture.analysisID
+        })
+        #expect(analysis.reasons.contains { reason in
+            guard case .lexicalOverlap(let lexical) = reason else { return false }
+            return lexical.seedMatches.contains {
+                $0.seedKind == .selectedPassage && $0.terms.contains("claim")
+            }
+        })
+        let topic = try #require(directory.candidates.first {
+            $0.note == fixture.topicID
+        })
+        #expect(topic.reasons.contains { reason in
+            guard case .identityMention(let identity) = reason else { return false }
+            return identity.mentions.contains {
+                $0.seedKind == .researchRequest
+                    && $0.identityKind == .title
+                    && $0.matchedIdentity == "Agency"
+            }
+        })
+
+        _ = try await runtime.endResearchAgentRun(
+            credential: credential,
+            run: handoff.run
+        )
+        await runtime.shutdown()
+    }
+
+    @Test("Agent related-Note query dynamically ranks candidates across exact seeds")
+    func agentRelatedNotesRanksAcrossSeeds() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let topic = actionNote(try await researchActionTarget(
+            fixture.topicID,
+            role: .topic,
+            handle: handle
+        ))
+        let preparation = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .synthesize,
+                target: topic
+            )
+        )
+        let handoff = try await handle.research.issueAgentHandoff(
+            runID: preparation.runID
+        )
+        let credential = try await handle.research.pairAgent(
+            run: handoff.run,
+            pairingCode: handoff.pairingCode
+        )
+        let clause = try ResearchContextClause(
+            kind: .relatedNotes,
+            noteNames: ["Agency", "Draft Argument"],
+            limit: 8,
+            useEligibility: .referenceOnly
+        )
+        let response = try await runtime.queryResearchContext(
+            credential: credential,
+            run: handoff.run,
+            request: ResearchContextRequest(clauses: [clause])
+        )
+        let outcome = try #require(response.outcomes.first)
+        let related = try #require(outcome.relatedNotes)
+        #expect(related.state == .current)
+        #expect(related.resolvedSeeds.map(\.inputName) == [
+            "Agency", "Draft Argument",
+        ])
+        let first = try #require(related.candidates.first)
+        #expect(first.note == fixture.analysisID)
+        #expect(first.matches.count == 2)
+        #expect(Set(first.matches.map(\.seed.note)) == [
+            fixture.topicID, fixture.workID,
+        ])
+        #expect(first.matches.allSatisfy { match in
+            match.reasons.contains {
+                if case .directConnection = $0 { return true }
+                return false
+            }
+        })
+        #expect(response.items.isEmpty)
+
+        _ = try await runtime.endResearchAgentRun(
+            credential: credential,
+            run: handoff.run
+        )
         await runtime.shutdown()
     }
 

@@ -14,8 +14,13 @@ struct PhaseOneOwnershipContractsTests {
             role: .analysis,
             title: "Value Analysis",
             fingerprint: DocumentFingerprint(content: "# Value\n"),
-            matchedFields: [.title, .body],
-            matchedSeedTerms: ["value"]
+            reasons: [.lexicalOverlap(RelatedContentLexicalReason(
+                matchedFields: [.title, .body],
+                seedMatches: [RelatedContentSeedTermMatch(
+                    seedKind: .sourceNote,
+                    terms: ["value"]
+                )]
+            ))]
         )
         let directory = try ResearchRecommendedReadingDirectory(
             seedFingerprint: DocumentFingerprint(content: "# Work\nValue"),
@@ -26,7 +31,7 @@ struct PhaseOneOwnershipContractsTests {
         )
         let encoded = try JSONEncoder().encode(directory)
         let text = String(decoding: encoded, as: UTF8.self)
-        #expect(!text.contains("source"))
+        #expect(!text.contains("# Value"))
         #expect(!text.contains("summary"))
         #expect(!text.contains("score"))
         #expect(try JSONDecoder().decode(
@@ -51,6 +56,75 @@ struct PhaseOneOwnershipContractsTests {
             _ = try JSONDecoder().decode(
                 ResearchRecommendedReadingDirectory.self,
                 from: JSONSerialization.data(withJSONObject: object)
+            )
+        }
+    }
+
+    @Test("Related Notes is a strict dynamically ordered non-source result")
+    func relatedNotesResultContract() throws {
+        let seed = try ResearchRelatedNotesResolvedSeed(
+            inputName: "Agency",
+            note: VaultQualifiedNoteID(
+                vaultID: UUID(),
+                relativePath: "Agency.md"
+            ),
+            role: .topic,
+            title: "Agency",
+            fingerprint: DocumentFingerprint(content: "# Agency\n")
+        )
+        let candidate = try ResearchRelatedNotesCandidate(
+            note: VaultQualifiedNoteID(
+                vaultID: UUID(),
+                relativePath: "Analysis.md"
+            ),
+            role: .analysis,
+            title: "Analysis",
+            fingerprint: DocumentFingerprint(content: "# Analysis\n"),
+            matches: [try ResearchRelatedNotesSeedMatch(
+                seed: seed,
+                reasons: [.identityMention(
+                    RelatedContentIdentityMentionReason(mentions: [
+                        RelatedContentIdentityMention(
+                            seedKind: .sourceNote,
+                            identityKind: .title,
+                            matchedIdentity: "Analysis",
+                            seedField: .body
+                        ),
+                    ])
+                )]
+            )]
+        )
+        let result = try ResearchRelatedNotesResult(
+            state: .current,
+            resolvedSeeds: [seed],
+            unresolvedNames: [],
+            candidates: [candidate],
+            hasMore: false
+        )
+        let encoded = try JSONEncoder().encode(result)
+        let text = String(decoding: encoded, as: UTF8.self)
+        #expect(!text.contains("# Analysis"))
+        #expect(!text.contains("score"))
+        #expect(try JSONDecoder().decode(
+            ResearchRelatedNotesResult.self,
+            from: encoded
+        ) == result)
+
+        var object = try #require(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        object["candidate_source"] = "forbidden"
+        #expect(throws: ResearchAgentConnectionContractError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchRelatedNotesResult.self,
+                from: JSONSerialization.data(withJSONObject: object)
+            )
+        }
+        #expect(throws: ResearchContextContractError.self) {
+            _ = try ResearchContextClause(
+                kind: .relatedNotes,
+                noteNames: ["Agency", "agency"],
+                useEligibility: .referenceOnly
             )
         }
     }

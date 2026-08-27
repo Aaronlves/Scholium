@@ -6,6 +6,7 @@ extension ScholiumCLI {
         let repeatable: Bool
 
         static let value = Self(takesValue: true, repeatable: false)
+        static let repeatableValue = Self(takesValue: true, repeatable: true)
         static let flag = Self(takesValue: false, repeatable: false)
     }
 

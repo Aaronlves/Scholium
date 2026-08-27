@@ -126,6 +126,35 @@ extension ScholiumCLI {
             try writeAgentJSON(response)
             return
         }
+        if arguments.first == "related" {
+            guard let rawRun = option("--run", in: arguments),
+                  let run = ResearchRunLocator(rawValue: rawRun) else {
+                throw commandUsageError("agent related")
+            }
+            let noteNames = options("--note", in: arguments)
+            let limitText = option("--limit", in: arguments) ?? "8"
+            guard !noteNames.isEmpty,
+                  noteNames.count <= ResearchContextClause.maximumRelatedNoteNames,
+                  let limit = Int(limitText),
+                  (1...RelatedContentContract.maximumCandidates).contains(limit) else {
+                throw commandUsageError("agent related")
+            }
+            let clause = try ResearchContextClause(
+                kind: .relatedNotes,
+                noteNames: noteNames,
+                limit: limit,
+                useEligibility: .referenceOnly
+            )
+            let request = try ResearchContextRequest(clauses: [clause])
+            let credential = try credentialStore.load(for: run)
+            let response = try await operations.query(
+                run: run,
+                credential: credential,
+                request: request
+            )
+            try writeAgentJSON(response)
+            return
+        }
         if arguments.first == "discuss-reply" {
             guard let rawRun = option("--run", in: arguments),
                   let run = ResearchRunLocator(rawValue: rawRun),

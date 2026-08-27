@@ -116,11 +116,15 @@
   typed match reasons; Saved Searches; completion; and Explain Query.
   Note completion receives scope-authorized property keys and controlled values
   without creating a second query interpretation.
-- Related-Content Retrieval contract 1 accepts an ephemeral exact Work source,
-  reuses the current Note FTS projection and field weights, and returns only
-  fingerprinted Analysis/Topic candidates with matched fields and normalized
-  seed terms. Invalid, stale, unavailable, and empty results remain distinct;
-  no seed, response, score, source text, or recommendation cache is persisted.
+- Related-Content Retrieval contract 3 accepts an ephemeral exact Triptych Note
+  plus bounded selected-passage and research-request focuses. Search returns
+  separate exact title/alias and lexical Analysis/Topic channels; lexical
+  ordering prefers selected-passage matches, then research-request matches,
+  then whole-Note matches before existing field and BM25 ordering. A typed role
+  restriction makes Topic Synthesize Analysis-only. Graph owns a separate
+  direct-Connection channel. Invalid, partial, stale, unavailable,
+  and empty results remain distinct; no seed, response, score, source text, or
+  recommendation cache is persisted.
 - An undecodable Saved Search file can be explicitly archived byte-exactly and
   reset without changing a valid concurrent replacement or any vault.
 - This Note searches the live editor snapshot. Other results remain bound to
@@ -182,12 +186,17 @@
   non-Discuss Result submission. Result templates omit optional academic fields
   while the frozen Result Contract retains them. Calling a query does not itself
   prove Context Use.
-- Authenticated Context schema 15 gives Work-targeting Write and Critique Runs
+- Authenticated Context schema 17 gives Work Write and Critique Runs
   a non-evidential `recommended_reading` directory computed from their exact
-  current Work source. Current Analysis/Topic candidates receive chunked,
-  ready-to-send exact-read queries; stale or unavailable recommendation retains
-  the ordinary Search action and no executable candidate. Other Actions have no
-  recommendation directory. There is no Works editor consumer or UI.
+  current Work source, selected passage, and research request. Application
+  merges direct Connection, exact title/alias mention, and weighted lexical
+  channels in fixed order while retaining every typed reason. Current
+  Analysis/Topic candidates receive chunked, ready-to-send exact-read queries;
+  stale or unavailable recommendation retains ordinary Search and no executable
+  candidate. Topic Synthesize receives Analysis-only candidates. Search-capable
+  Runs can call `agent related` with one to four exact names; Application
+  dynamically combines per-seed channel ranks and returns typed reasons without
+  source or score. There is no Works consumer or UI.
 - A staged Analyze or other write Result completes after the Action's own
   transaction and Method checks. Analyze performs one bounded fidelity
   self-check inside its Method and records unresolved or unavailable limits in

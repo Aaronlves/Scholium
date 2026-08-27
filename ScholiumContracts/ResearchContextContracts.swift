@@ -748,6 +748,7 @@ public struct SourceReferenceEnvelope: Codable, Hashable, Identifiable, Sendable
 
 public enum ResearchContextClauseKind: String, Codable, CaseIterable, Hashable, Sendable {
     case discoverNote = "discover_note"
+    case relatedNotes = "related_notes"
     case readNote = "read_note"
     case inspectRelations = "inspect_relations"
     case inspectMetadata = "inspect_metadata"
@@ -757,7 +758,8 @@ public enum ResearchContextClauseKind: String, Codable, CaseIterable, Hashable, 
 
     public var sourceKind: ResearchContextSourceKind {
         switch self {
-        case .discoverNote, .readNote, .inspectRelations, .inspectMetadata: .note
+        case .discoverNote, .relatedNotes, .readNote, .inspectRelations,
+                .inspectMetadata: .note
         case .inspectRecords: .record
         case .inspectMaterials: .material
         case .inspectResearcherState: .researcherState
@@ -849,14 +851,19 @@ public struct ResearchContextPageCursor: Codable, Hashable, Sendable {
 /// product, Run, Triptych, or authorization scope; Application binds those
 /// facts after authenticating the request.
 public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 4
+    public static let currentSchemaVersion = 5
     public static let maximumLimit = 20
+    public static let maximumRelatedNoteNames = 4
 
     public let schemaVersion: Int
     public let id: UUID
     public let kind: ResearchContextClauseKind
     public let scope: ResearchContextClauseScope
     public let query: String?
+    /// Exact current Triptych identities to use as ephemeral related-content
+    /// seeds. Application resolves every name without guessing; these values
+    /// grant no scope or source authority.
+    public let noteNames: [String]?
     /// Application-derived exact selector for a Run-frozen Note. Agent-authored
     /// discovery continues to use query; a Fidelity inspection packet uses
     /// this vault-qualified identity plus expectedFingerprint so same-path
@@ -872,6 +879,7 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
         id: UUID = UUID(),
         kind: ResearchContextClauseKind,
         query: String? = nil,
+        noteNames: [String]? = nil,
         note: VaultQualifiedNoteID? = nil,
         expectedFingerprint: DocumentFingerprint? = nil,
         sectionHeading: String? = nil,
@@ -885,6 +893,7 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
             kind: kind,
             scope: .triptych,
             query: query,
+            noteNames: noteNames,
             note: note,
             expectedFingerprint: expectedFingerprint,
             sectionHeading: sectionHeading,
@@ -900,6 +909,7 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
         kind: ResearchContextClauseKind,
         scope: ResearchContextClauseScope,
         query: String?,
+        noteNames: [String]?,
         note: VaultQualifiedNoteID?,
         expectedFingerprint: DocumentFingerprint?,
         sectionHeading: String?,
@@ -921,18 +931,38 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
         let normalizedHeading = try sectionHeading.map {
             try ResearchContextValidation.text($0, maximumUTF8Count: 1_024, field: "sectionHeading")
         }
+        let normalizedNoteNames = try noteNames.map {
+            try ResearchContextValidation.texts(
+                $0,
+                maximumCount: Self.maximumRelatedNoteNames,
+                maximumUTF8Count: 512,
+                field: "noteNames"
+            )
+        }
         let hasQuery = normalizedQuery != nil
         let clauseIsValid: Bool = switch kind {
         case .discoverNote, .inspectRelations, .inspectMetadata, .inspectRecords:
             hasQuery && note == nil && expectedFingerprint == nil
                 && normalizedHeading == nil && cursor == nil
+                && normalizedNoteNames == nil
+        case .relatedNotes:
+            !hasQuery && note == nil && expectedFingerprint == nil
+                && normalizedHeading == nil && cursor == nil
+                && normalizedNoteNames?.isEmpty == false
+                && Set(normalizedNoteNames?.map {
+                    SearchTextNormalization.normalize($0)
+                } ?? []).count == normalizedNoteNames?.count
+                && limit <= RelatedContentContract.maximumCandidates
+                && useEligibility == .referenceOnly
         case .readNote:
             ((hasQuery && note == nil && expectedFingerprint == nil)
                 || (!hasQuery && note != nil && expectedFingerprint != nil))
                 && cursor.map { $0.clauseID == id } != false
+                && normalizedNoteNames == nil
         case .inspectMaterials, .inspectResearcherState:
             !hasQuery && note == nil && expectedFingerprint == nil
                 && normalizedHeading == nil && cursor == nil
+                && normalizedNoteNames == nil
         }
         guard clauseIsValid else { throw ResearchContextContractError.invalidQuery }
         self.schemaVersion = schemaVersion
@@ -940,6 +970,7 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
         self.kind = kind
         self.scope = scope
         self.query = normalizedQuery
+        self.noteNames = normalizedNoteNames
         self.note = note
         self.expectedFingerprint = expectedFingerprint
         self.sectionHeading = normalizedHeading
@@ -951,6 +982,7 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case schemaVersion = "schema_version"
         case id, kind, scope, query, note
+        case noteNames = "note_names"
         case expectedFingerprint = "expected_fingerprint"
         case sectionHeading = "section_heading"
         case limit
@@ -967,6 +999,7 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
             kind: try container.decode(ResearchContextClauseKind.self, forKey: .kind),
             scope: try container.decode(ResearchContextClauseScope.self, forKey: .scope),
             query: try container.decodeIfPresent(String.self, forKey: .query),
+            noteNames: try container.decodeIfPresent([String].self, forKey: .noteNames),
             note: try container.decodeIfPresent(
                 VaultQualifiedNoteID.self,
                 forKey: .note
@@ -986,7 +1019,7 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
 /// Agent-facing request. Run and Triptych authority are deliberately absent:
 /// the authenticated Application boundary supplies them before provider work.
 public struct ResearchContextRequest: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 4
+    public static let currentSchemaVersion = 5
     public static let maximumClauses = 4
 
     public let schemaVersion: Int
@@ -1029,7 +1062,7 @@ public struct ResearchContextRequest: Codable, Hashable, Identifiable, Sendable 
 }
 
 public struct ResearchContextQuery: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 3
+    public static let currentSchemaVersion = 4
 
     public let schemaVersion: Int
     public let id: UUID
@@ -1060,6 +1093,7 @@ public struct ResearchContextQuery: Codable, Hashable, Identifiable, Sendable {
             clause.kind.rawValue,
             clause.scope.rawValue,
             clause.query ?? "",
+            clause.noteNames?.joined(separator: "\u{001E}") ?? "",
             clause.sectionHeading ?? "",
             String(clause.limit),
             clause.useEligibility.rawValue,
@@ -1326,6 +1360,7 @@ public struct ResearchContextClauseOutcome: Codable, Hashable, Sendable {
     public let kind: ResearchContextClauseKind
     public let availability: ResearchContextAvailability
     public let items: [ResearchContextResponseItem]
+    public let relatedNotes: ResearchRelatedNotesResult?
     public let limitations: [String]
     public let hasMore: Bool
     public let nextCursor: ResearchContextPageCursor?
@@ -1334,22 +1369,29 @@ public struct ResearchContextClauseOutcome: Codable, Hashable, Sendable {
         clause: ResearchContextClause,
         availability: ResearchContextAvailability,
         items: [ResearchContextResponseItem],
+        relatedNotes: ResearchRelatedNotesResult? = nil,
         limitations: [String] = [],
         hasMore: Bool = false,
         nextCursor: ResearchContextPageCursor? = nil
     ) throws {
+        let isRelatedNotes = clause.kind == .relatedNotes
         guard items.count <= clause.limit,
               items.allSatisfy({ $0.clauseID == clause.id && $0.sourceReference.sourceKind == clause.kind.sourceKind }),
               Set(items.map(\.id)).count == items.count,
               !([.unavailable, .invalidQuery].contains(availability) && !items.isEmpty),
               hasMore == (nextCursor != nil),
-              (nextCursor.map { $0.clauseID == clause.id && clause.kind == .readNote } != false) else {
+              (nextCursor.map { $0.clauseID == clause.id && clause.kind == .readNote } != false),
+              isRelatedNotes == (relatedNotes != nil),
+              (!isRelatedNotes || items.isEmpty),
+              relatedNotes.map({ Self.availability(for: $0.state) == availability })
+                != false else {
             throw ResearchContextContractError.invalidResponse
         }
         clauseID = clause.id
         kind = clause.kind
         self.availability = availability
         self.items = items
+        self.relatedNotes = relatedNotes
         self.limitations = try ResearchContextValidation.texts(
             limitations,
             maximumCount: 16,
@@ -1361,7 +1403,8 @@ public struct ResearchContextClauseOutcome: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
-        case clauseID, kind, availability, items, limitations, hasMore, nextCursor
+        case clauseID, kind, availability, items, relatedNotes, limitations,
+             hasMore, nextCursor
     }
 
     public init(from decoder: Decoder) throws {
@@ -1370,6 +1413,14 @@ public struct ResearchContextClauseOutcome: Codable, Hashable, Sendable {
         let clauseID = try container.decode(UUID.self, forKey: .clauseID)
         let kind = try container.decode(ResearchContextClauseKind.self, forKey: .kind)
         let items = try container.decode([ResearchContextResponseItem].self, forKey: .items)
+        let relatedNotes = try container.decodeIfPresent(
+            ResearchRelatedNotesResult.self,
+            forKey: .relatedNotes
+        )
+        let availability = try container.decode(
+            ResearchContextAvailability.self,
+            forKey: .availability
+        )
         let hasMore = try container.decode(Bool.self, forKey: .hasMore)
         let nextCursor = try container.decodeIfPresent(ResearchContextPageCursor.self, forKey: .nextCursor)
         guard items.allSatisfy({ $0.clauseID == clauseID && $0.sourceReference.sourceKind == kind.sourceKind }),
@@ -1377,13 +1428,19 @@ public struct ResearchContextClauseOutcome: Codable, Hashable, Sendable {
               Set(items.map(\.id)).count == items.count,
               hasMore == (nextCursor != nil),
               (nextCursor.map { $0.clauseID == clauseID && kind == .readNote } != false),
-              !([.unavailable, .invalidQuery].contains(try container.decode(ResearchContextAvailability.self, forKey: .availability)) && !items.isEmpty) else {
+              !([.unavailable, .invalidQuery].contains(availability)
+                  && !items.isEmpty),
+              (kind == .relatedNotes) == (relatedNotes != nil),
+              (kind != .relatedNotes || items.isEmpty),
+              relatedNotes.map({ Self.availability(for: $0.state)
+                  == availability }) != false else {
             throw ResearchContextContractError.invalidResponse
         }
         self.clauseID = clauseID
         self.kind = kind
-        availability = try container.decode(ResearchContextAvailability.self, forKey: .availability)
+        self.availability = availability
         self.items = items
+        self.relatedNotes = relatedNotes
         limitations = try ResearchContextValidation.texts(
             try container.decode([String].self, forKey: .limitations),
             maximumCount: 16,
@@ -1393,10 +1450,22 @@ public struct ResearchContextClauseOutcome: Codable, Hashable, Sendable {
         self.hasMore = hasMore
         self.nextCursor = nextCursor
     }
+
+    private static func availability(
+        for state: RelatedContentResultState
+    ) -> ResearchContextAvailability {
+        switch state {
+        case .current, .empty: .current
+        case .partial: .partial
+        case .stale: .stale
+        case .unavailable: .unavailable
+        case .invalidSeed: .invalidQuery
+        }
+    }
 }
 
 public struct ResearchContextResponse: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 4
+    public static let currentSchemaVersion = 5
     /// Leaves a material margin below the 1 MiB local-bridge frame for its
     /// envelope, error fields, and future transport metadata.
     public static let maximumEncodedByteCount = 768 * 1_024

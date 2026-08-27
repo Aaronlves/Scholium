@@ -5,6 +5,11 @@ import ScholiumContracts
 /// closures and cannot discover another Workspace or widen Search scope.
 struct ResearchContextOwnerAccess: Sendable {
     let search: @Sendable (SearchRequest) async throws -> SearchResponse
+    let relatedNotes: @Sendable (
+        UUID,
+        [String],
+        Int
+    ) async throws -> ResearchRelatedNotesResult
     let loadDocument: @Sendable (VaultQualifiedNoteID) async throws -> NoteDocument
     /// This closure is already narrowed to the authenticated Run's selected
     /// source binding. A provider cannot use it to enumerate another source.
@@ -137,6 +142,24 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                         workspace: workspace,
                         access: access
                     )
+                case .relatedNotes:
+                    guard let noteNames = clause.noteNames else {
+                        throw ResearchContextContractError.invalidQuery
+                    }
+                    let result = try await access.relatedNotes(
+                        clause.id,
+                        noteNames,
+                        min(
+                            clause.limit,
+                            RelatedContentContract.maximumCandidates
+                        )
+                    )
+                    outcome = ProviderOutcome(
+                        availability: Self.contextAvailability(result.state),
+                        items: [],
+                        limitations: result.limitation.map { [$0] } ?? [],
+                        relatedNotes: result
+                    )
                 case .inspectRecords:
                     outcome = try await recordItems(query: query, clause: clause, access: access)
                 case .inspectMaterials:
@@ -163,6 +186,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                     clause: clause,
                     availability: outcome.availability,
                     items: outcome.items,
+                    relatedNotes: outcome.relatedNotes,
                     limitations: outcome.limitations,
                     hasMore: outcome.nextCursor != nil,
                     nextCursor: outcome.nextCursor
@@ -171,10 +195,21 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                 throw CancellationError()
             } catch {
                 let message = "This Research Context clause could not be completed by its current owner: \(String(describing: error))."
+                let relatedNotes = clause.kind == .relatedNotes
+                    ? try ResearchRelatedNotesResult(
+                        state: .unavailable,
+                        resolvedSeeds: [],
+                        unresolvedNames: clause.noteNames ?? [],
+                        candidates: [],
+                        hasMore: false,
+                        limitation: message
+                    )
+                    : nil
                 outcomes.append(try ResearchContextClauseOutcome(
                     clause: clause,
                     availability: .unavailable,
                     items: [],
+                    relatedNotes: relatedNotes,
                     limitations: [message]
                 ))
                 limitations.append(message)
@@ -244,7 +279,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                 availability: .invalidQuery,
                 items: [],
                 limitations: [
-                    "Structured Search filters are unavailable in Research Context schema 4."
+                    "Structured Search filters are unavailable in Research Context schema 5."
                 ]
             )
         }
@@ -1023,6 +1058,18 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
         }
     }
 
+    private static func contextAvailability(
+        _ state: RelatedContentResultState
+    ) -> ResearchContextAvailability {
+        switch state {
+        case .current, .empty: .current
+        case .partial: .partial
+        case .stale: .stale
+        case .unavailable: .unavailable
+        case .invalidSeed: .invalidQuery
+        }
+    }
+
     private func contextCurrentness(
         _ availability: ResearchContextAvailability
     ) -> ResearchContextCurrentness {
@@ -1070,7 +1117,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
         switch clause.kind {
         case .inspectRelations: .directRelation
         case .inspectMetadata: .propertyPresence
-        case .discoverNote, .readNote, .inspectRecords, .inspectMaterials,
+        case .discoverNote, .relatedNotes, .readNote, .inspectRecords, .inspectMaterials,
                 .inspectResearcherState:
             try retrievalReason(result)
         }
@@ -1085,7 +1132,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
             { if case .relationship = $0 { return true }; return false }
         case .inspectMetadata:
             { if case .property = $0 { return true }; return false }
-        case .discoverNote, .readNote, .inspectRecords, .inspectMaterials,
+        case .discoverNote, .relatedNotes, .readNote, .inspectRecords, .inspectMaterials,
                 .inspectResearcherState:
             { _ in false }
         }
@@ -1194,17 +1241,20 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
         let items: [ResearchContextResponseItem]
         let limitations: [String]
         let nextCursor: ResearchContextPageCursor?
+        let relatedNotes: ResearchRelatedNotesResult?
 
         init(
             availability: ResearchContextAvailability,
             items: [ResearchContextResponseItem],
             limitations: [String],
-            nextCursor: ResearchContextPageCursor? = nil
+            nextCursor: ResearchContextPageCursor? = nil,
+            relatedNotes: ResearchRelatedNotesResult? = nil
         ) {
             self.availability = availability
             self.items = items
             self.limitations = limitations
             self.nextCursor = nextCursor
+            self.relatedNotes = relatedNotes
         }
     }
 

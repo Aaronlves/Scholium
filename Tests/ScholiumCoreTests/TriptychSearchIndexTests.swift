@@ -4,9 +4,9 @@ import SQLite3
 import Testing
 @testable import ScholiumCore
 
-@Suite("Triptych Search v9 index")
+@Suite("Triptych Search index")
 struct TriptychSearchIndexTests {
-    @Test("Related content uses an ephemeral Work seed and returns only explained Analyses and Topics")
+    @Test("Related content separates role-bounded identity and weighted lexical channels over an ephemeral source Note")
     func relatedContentRestrictsCorpusAndTracksSeedSource() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
@@ -19,6 +19,16 @@ struct TriptychSearchIndexTests {
             databaseURL: fixture.databaseURL,
             triptychID: fixture.triptychID,
             vaults: [fixture.analyses, fixture.topics, fixture.works, other]
+        )
+        let outcomeRecord = NoteMetadataRecord(
+            noteID: UUID(),
+            fields: ["aliases": .array([.string("Consequentialism")])]
+        )
+        let outcomeMetadata = NoteMetadataSnapshot(
+            record: outcomeRecord,
+            revision: DocumentFingerprint(
+                data: try outcomeRecord.encodedPortableData()
+            )
         )
         let documents = [
             fixture.item(
@@ -33,8 +43,14 @@ struct TriptychSearchIndexTests {
             ),
             fixture.item(
                 vault: fixture.analyses,
-                path: "Consequentialism.md",
-                source: "# Consequentialism\n\nConsequentialism evaluates outcomes."
+                path: "Particularism.md",
+                source: "# Particularism Analysis\n\nParticularism evaluates reasons."
+            ),
+            fixture.item(
+                vault: fixture.topics,
+                path: "Outcome Theory.md",
+                source: "# Outcome Theory\n\nOutcome theory evaluates consequences.",
+                metadata: outcomeMetadata
             ),
             fixture.item(
                 vault: fixture.works,
@@ -56,30 +72,83 @@ struct TriptychSearchIndexTests {
         let first = try await index.relatedContent(RelatedContentRequest(
             seed: RelatedContentSeedSnapshot(
                 noteID: workID,
-                source: "# Draft on fittingness\n\nFittingness and normative reasons shape value."
+                source: "# Draft on fittingness\n\nFittingness and Normative Reasons shape value.",
+                focuses: [
+                    RelatedContentSeedFocus(
+                        kind: .selectedPassage,
+                        text: "Particularism changes the dispute."
+                    ),
+                    RelatedContentSeedFocus(
+                        kind: .researchRequest,
+                        text: "Compare Consequentialism with outcomes."
+                    ),
+                ]
             )
         ))
         #expect(first.state == .current)
-        #expect(Set(first.candidates.map(\.note.relativePath)) == [
-            "Fittingness.md", "Reasons.md",
+        #expect(Set(first.identityCandidates.map(\.note.relativePath)) == [
+            "Reasons.md", "Outcome Theory.md",
         ])
-        #expect(first.candidates.allSatisfy {
+        #expect((first.identityCandidates + first.lexicalCandidates).allSatisfy {
             $0.vaultRole == .sourceCorpus || $0.vaultRole == .topicKnowledge
         })
-        #expect(first.candidates.allSatisfy {
-            !$0.lexicalReason.matchedFields.isEmpty
-                && !$0.lexicalReason.matchedSeedTerms.isEmpty
+        let reasonsIdentity = try #require(first.identityCandidates.first {
+            $0.note.relativePath == "Reasons.md"
         })
+        guard case .identityMention(let reasonsMention) = reasonsIdentity.reason else {
+            Issue.record("Expected an independent title mention reason")
+            return
+        }
+        #expect(reasonsMention.mentions.contains {
+            $0.identityKind == .title && $0.seedKind == .sourceNote
+        })
+        let outcomeIdentity = try #require(first.identityCandidates.first {
+            $0.note.relativePath == "Outcome Theory.md"
+        })
+        guard case .identityMention(let outcomeMention) = outcomeIdentity.reason else {
+            Issue.record("Expected an independent alias mention reason")
+            return
+        }
+        #expect(outcomeMention.mentions.contains {
+            $0.identityKind == .alias && $0.seedKind == .researchRequest
+        })
+        #expect(Array(first.lexicalCandidates.map(\.note.relativePath).prefix(2)) == [
+            "Particularism.md", "Outcome Theory.md",
+        ])
+        guard case .lexicalOverlap(let selectedReason) =
+            first.lexicalCandidates[0].reason else {
+            Issue.record("Expected weighted lexical overlap")
+            return
+        }
+        #expect(selectedReason.seedMatches.first?.seedKind == .selectedPassage)
+
+        let analysisOnly = try await index.relatedContent(
+            RelatedContentRequest(
+                seed: RelatedContentSeedSnapshot(
+                    noteID: VaultQualifiedNoteID(
+                        vaultID: fixture.topics.id,
+                        relativePath: "Live Topic.md"
+                    ),
+                    source: "# Normative Reasons\n\nFittingness and Particularism."
+                ),
+                candidateRoles: [.analysis]
+            )
+        )
+        #expect(analysisOnly.state == .current)
+        #expect((analysisOnly.identityCandidates
+            + analysisOnly.lexicalCandidates).allSatisfy {
+                $0.vaultRole == .sourceCorpus
+            })
 
         let revised = try await index.relatedContent(RelatedContentRequest(
             seed: RelatedContentSeedSnapshot(
                 noteID: workID,
-                source: "# Consequentialism\n\nConsequentialism and outcomes."
+                source: "# Outcome Theory\n\nConsequentialism and outcomes."
             )
         ))
         #expect(revised.state == .current)
-        #expect(revised.candidates.map(\.note.relativePath) == [
-            "Consequentialism.md",
+        #expect(revised.identityCandidates.map(\.note.relativePath) == [
+            "Outcome Theory.md",
         ])
         #expect(revised.seedFingerprint != first.seedFingerprint)
 
@@ -108,13 +177,15 @@ struct TriptychSearchIndexTests {
                 source: "# Draft on fittingness\n\nFittingness and normative reasons shape value."
             )
         ))
-        #expect(incremental.candidates == clean.candidates)
+        #expect(incremental.identityCandidates == clean.identityCandidates)
+        #expect(incremental.lexicalCandidates == clean.lexicalCandidates)
 
         let invalid = try await index.relatedContent(RelatedContentRequest(
             seed: RelatedContentSeedSnapshot(noteID: workID, source: " \n")
         ))
         #expect(invalid.state == .invalidSeed)
-        #expect(invalid.candidates.isEmpty)
+        #expect(invalid.identityCandidates.isEmpty)
+        #expect(invalid.lexicalCandidates.isEmpty)
     }
 
     @Test("One corpus ranks exact identity before lexical results and applies vault scope")
@@ -817,13 +888,15 @@ struct TriptychSearchIndexTests {
             vault: RegisteredVault,
             path: String,
             source: String,
-            broken: Bool = false
+            broken: Bool = false,
+            metadata: NoteMetadataSnapshot? = nil
         ) -> SearchIndexDocument {
             SearchIndexDocument(
                 vaultID: vault.id,
                 vaultName: vault.name,
                 vaultRole: vault.role,
                 document: NoteDocument(relativePath: path, rawContent: source),
+                metadata: metadata,
                 hasBrokenLink: broken
             )
         }
