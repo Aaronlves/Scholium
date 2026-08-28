@@ -993,6 +993,11 @@ enum WorkspaceSnapshotBuilder {
             let record = recordsByID[execution.id]
             if record != nil { return nil }
             let entryStates = execution.boundedWriteSet.entries.map(\.state)
+            let hasCommittedWrite = execution.documentWriteRecords.contains {
+                $0.state == .committed
+            } || execution.zoteroBindingWriteRecords.contains {
+                $0.state == .committed
+            }
             let state: WorkspaceResearchActivityState
             let repairReason: WorkspaceResearchActivityRepairReason?
 
@@ -1013,7 +1018,11 @@ enum WorkspaceSnapshotBuilder {
                 repairReason = .recordUnavailable
             } else if execution.completion?.state == .cancelled {
                 return nil
+            } else if hasCommittedWrite {
+                state = .running
+                repairReason = .resultRequired
             } else if !execution.documentWriteRecords.isEmpty
+                || !execution.zoteroBindingWriteRecords.isEmpty
                 || execution.resultPayload != nil {
                 state = .running
                 repairReason = nil

@@ -1,5 +1,9 @@
 # Critique method
 
+The checks below support judgment; they are not a scoring rubric or the
+Critique's argumentative order. Build the assessment around the few issues that
+most affect the Work's central philosophical purpose.
+
 ## Establish the object
 
 Bind the assessment to the supplied Work revision and whole-Work or passage scope. Reconstruct the relevant claim and its role before evaluating it.
@@ -65,7 +69,8 @@ The locator identifies an earlier version when the Work fingerprint has changed;
 
 ## Default output form
 
-Use these sections in order unless the active researcher-owned Method explicitly replaces the form:
+Use the warranted sections below in this order unless the active
+researcher-owned Method replaces the form:
 
 1. Overall Assessment
 2. Strengths
@@ -76,4 +81,7 @@ Use these sections in order unless the active researcher-owned Method explicitly
 7. Specific Findings
 8. Materials Consulted and Limitations
 
-An empty or inapplicable section may say briefly that no warranted content was established. Do not create praise, criticism, source confidence, or priorities merely to complete the form.
+Overall Assessment supplies the controlling judgment. Omit an inapplicable
+optional section rather than recording an empty status. Do not create praise,
+criticism, source confidence, or priorities merely to complete the form, and do
+not restate one concern in several sections.

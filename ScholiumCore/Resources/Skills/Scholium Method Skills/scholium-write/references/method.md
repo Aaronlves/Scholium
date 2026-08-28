@@ -1,5 +1,9 @@
 # Write method
 
+The stages below govern revision judgment and verification, not the Work's
+visible organization. Preserve or create the argumentative, interpretive, or
+expository movement appropriate to the Work itself.
+
 ## 1. Preserve the controlling commitment
 
 Identify the Work's governing question, claim, and local function of the authorized passage. Separate the researcher's commitment from exposition of other views and from candidate agent language. If the request would change a load-bearing commitment without explicit authority, stop and return the choice.

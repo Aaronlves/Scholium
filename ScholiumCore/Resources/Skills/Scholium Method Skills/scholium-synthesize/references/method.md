@@ -1,5 +1,10 @@
 # Synthesize method
 
+The numbered stages below govern selection, integration, and validation. They
+are not Topic headings. The saved Topic follows its philosophical problem and
+conceptual or dialectical structure rather than the order in which Materials
+were inspected.
+
 ## 1. Establish the conceptual home and coverage
 
 Read the current Topic before routing new material. Identify its governing question, distinctions, live positions, objections, and unresolved structure. If the requested material has no genuine role here, leave the Topic unchanged and explain why.

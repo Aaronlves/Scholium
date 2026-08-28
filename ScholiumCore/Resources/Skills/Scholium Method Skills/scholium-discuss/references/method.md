@@ -1,5 +1,9 @@
 # Discuss method
 
+The sequence below guides the reasoning behind a turn; it is not the response's
+visible structure. Compose the answer as a natural philosophical exchange whose
+shape follows the live issue.
+
 1. State the live philosophical issue in terms that preserve the researcher's wording where possible.
 2. Distinguish claims, definitions, premises, inferences, examples, objections, replies, and background assumptions. Trace which commitments a candidate view depends on, what follows from it, and which nearby possibilities remain live; mark agent-derived implications as reconstructions.
 3. Ask a question only when the answer materially changes the next step; otherwise advance the strongest useful line directly.

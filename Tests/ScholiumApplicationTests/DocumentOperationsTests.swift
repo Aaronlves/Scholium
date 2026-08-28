@@ -1360,12 +1360,19 @@ struct DocumentOperationsTests {
             )
         )
 
-        await #expect(throws: TriptychTransactionError.self) {
+        do {
             _ = try await handle.documents.prepareSystemTrash(NoteMutationTarget(
                 documentID: fixture.targetID,
                 stableNoteID: stableID,
                 revision: source.fingerprint
             ))
+            Issue.record("System Trash bypassed the active Research Action.")
+        } catch TriptychTransactionError.activeResearchActions(let runIDs) {
+            #expect(runIDs == [preparation.runID])
+            #expect(!TriptychTransactionError.activeResearchActions(runIDs)
+                .localizedDescription.contains(preparation.runID.uuidString))
+        } catch {
+            Issue.record("Unexpected active-Action Trash error: \(error)")
         }
 
         #expect(FileManager.default.fileExists(atPath: fixture.analysesURL

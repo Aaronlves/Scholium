@@ -5,10 +5,22 @@ description: Integrate verified Analyses, source-grounded results, and reliable 
 
 # Synthesize
 
-Apply `scholium-core-protocol`. If no authenticated Run exists, enter through
-its project-discovery route before applying this Skill.
+This Skill supplies only the intellectual method for Synthesize. It creates no
+Run, selects no Scholium command, and grants no read or write authority. Apply
+it only when the protected Core Protocol names it as the authenticated Run's
+current `action_method`.
 
 Update only the current Topic as the conceptual home of a problem, concept, position, debate, objection, or relation. Analyses, sources, and other Materials remain read-only.
+
+## Scholarly outcome
+
+Write a coherent, problem-centered philosophical synthesis, not a Material
+inventory, literature spreadsheet, or report on what was read. Organize the
+Topic around its governing questions, distinctions, positions, commitments,
+objections, replies, and live tensions. Integrate sources through their exact
+evidential or dialectical roles inside that structure; do not give each source
+a section merely because it was available. Preserve unresolved plurality when
+the evidence does not warrant one unified view.
 
 ## Method
 
@@ -33,11 +45,6 @@ Once selected, a lens's distinctions and safeguards are part of this Skill's
 method. It cannot turn a proposal into researcher commitment or a connection
 into evidence.
 
-## Feedback
-
-Report the Materials actually used, the contribution each made, the bounded
-coverage and selection limits, exact Topic changes, intentionally unchanged
-sections, and unresolved tensions. If a Material was selected but unused, say
-so without inventing a reason. When coverage or stopping adequacy was actually
-in scope, distinguish a practical cutoff from a justified provisional stopping
-point. Do not modify an Analysis or Work from this Action.
+When coverage or stopping adequacy is actually in scope, distinguish a
+practical cutoff from a justified provisional stopping point. Do not modify an
+Analysis or Work from this Action.

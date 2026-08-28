@@ -327,12 +327,14 @@ struct ResearchActionPanelView: View {
             }
             Spacer()
             statusRecoveryAction
-            if canEndStatusAction {
+            if controller.canResumePreparedRun {
                 Button {
                     copyNewHandoff()
                 } label: {
                     handoffButtonLabel(
-                        title: "Copy New Handoff",
+                        title: controller.statusActivity?.repairReason == .resultRequired
+                            ? "Copy Resume Handoff"
+                            : "Copy New Handoff",
                         isPending: pendingHandoff == .copyNew
                     )
                 }
@@ -357,7 +359,7 @@ struct ResearchActionPanelView: View {
         case .sourceConflict:
             Button("Return to Document", action: dismissFromCurrentInput)
                 .disabled(controller.isBusy)
-        case .sourceChanged, .none:
+        case .sourceChanged, .resultRequired, .none:
             EmptyView()
         }
     }
@@ -380,11 +382,19 @@ struct ResearchActionPanelView: View {
                 bundle: .module
             )
         case .running:
-            String(
-                localized: "The Agent has started this Action.",
-                table: "Localizable",
-                bundle: .module
-            )
+            if activity.repairReason == .resultRequired {
+                String(
+                    localized: "Agent changes are saved. Resume this Action so the Agent can submit its Research Result.",
+                    table: "Localizable",
+                    bundle: .module
+                )
+            } else {
+                String(
+                    localized: "The Agent has started this Action.",
+                    table: "Localizable",
+                    bundle: .module
+                )
+            }
         case .needsAttention:
             String(
                 localized: "This Action needs recovery before it can continue.",
@@ -395,7 +405,8 @@ struct ResearchActionPanelView: View {
     }
 
     private func statusSymbol(for activity: WorkspaceResearchActivity) -> String {
-        switch activity.state {
+        if activity.repairReason == .resultRequired { return "doc.text" }
+        return switch activity.state {
         case .waitingForAgent: "clock"
         case .running: "arrow.triangle.2.circlepath"
         case .needsAttention: "exclamationmark.triangle"
@@ -403,7 +414,7 @@ struct ResearchActionPanelView: View {
     }
 
     private var canEndStatusAction: Bool {
-        controller.canCancelPreparedRun
+        controller.canEndPreparedRun
     }
 
     @ViewBuilder
@@ -857,7 +868,7 @@ struct ResearchActionPanelView: View {
                         .scholiumForeground(.attention)
                 }
                 if let handoff = controller.agentHandoff,
-                   controller.canCancelPreparedRun {
+                   controller.canResumePreparedRun {
                     Divider()
                     HStack(
                         alignment: .firstTextBaseline,
@@ -899,7 +910,7 @@ struct ResearchActionPanelView: View {
                     || controller.phase == .cancelling
             )
             .accessibilityIdentifier("scholium.researchAction.dismiss")
-            if controller.canCancelPreparedRun {
+            if controller.canEndPreparedRun {
                 Button("End Action…", role: .destructive) {
                     confirmsEndAction = true
                 }
@@ -907,7 +918,7 @@ struct ResearchActionPanelView: View {
                 .accessibilityIdentifier("scholium.researchAction.endAction")
             }
             Spacer()
-            if controller.preparation == nil || controller.canCancelPreparedRun {
+            if controller.preparation == nil || controller.canResumePreparedRun {
                 Button {
                     beginHandoff(.copy)
                 } label: {
@@ -939,7 +950,7 @@ struct ResearchActionPanelView: View {
         pendingDismissalFocusDisposition = .currentInput
         handoffErrorMessage = nil
         if let agentHandoff = controller.agentHandoff,
-           controller.canCancelPreparedRun,
+           controller.canResumePreparedRun,
            !controller.isBusy {
             performHandoff(instructions: agentHandoff.agentInstructions)
             return
@@ -968,7 +979,7 @@ struct ResearchActionPanelView: View {
 
     private func copyNewHandoff() {
         pendingDismissalFocusDisposition = .currentInput
-        guard controller.canCancelPreparedRun,
+        guard controller.canResumePreparedRun,
               pendingHandoff == nil,
               !controller.isBusy else { return }
         pendingHandoff = .copyNew
@@ -1037,7 +1048,7 @@ struct ResearchActionPanelView: View {
 
     private var canCopyInstructions: Bool {
         guard pendingHandoff == nil, !controller.isBusy else { return false }
-        return controller.canCancelPreparedRun || controller.canPrepare
+        return controller.canResumePreparedRun || controller.canPrepare
     }
 
     private func selectorIsRequired(_ selector: PlatformActionSelector) -> Bool {

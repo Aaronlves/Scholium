@@ -2875,11 +2875,33 @@ struct ActionCLIExecutableLifecycleTests {
     ) throws {
         let registeredCore = deployedSkills
             .appendingPathComponent("scholium-core-protocol", isDirectory: true)
-            .appendingPathComponent("references/runtime-protocol.md")
-        let receivedCore = try String(contentsOf: registeredCore, encoding: .utf8)
+        let protocolFiles = [
+            "SKILL.md",
+            "references/runtime-kernel.md",
+            "references/project-entry.md",
+            "references/active-run.md",
+            "references/mutation-recovery.md",
+            "references/completion.md",
+            "references/workspace-bootstrap.md",
+            "references/analyze-result.md",
+            "references/synthesize-result.md",
+            "references/write-result.md",
+            "references/critique-result.md",
+            "references/check-fidelity-result.md",
+            "references/discuss-result.md",
+        ]
+        let receivedCore = try protocolFiles.map { relativePath in
+            try String(
+                contentsOf: registeredCore.appendingPathComponent(relativePath),
+                encoding: .utf8
+            )
+        }.joined(separator: "\n")
         let normalizedCore = receivedCore
             .split(whereSeparator: { $0.isWhitespace })
             .joined(separator: " ")
+        #expect(normalizedCore.contains(
+            "state-gated protocol modules, not Agent-selected Modes"
+        ))
         #expect(normalizedCore.contains(
             "Follow each typed `next_actions` requirement."
         ))
@@ -2888,6 +2910,14 @@ struct ActionCLIExecutableLifecycleTests {
         ))
         #expect(normalizedCore.contains(
             "a finalized Result needs no extra end operation"
+        ))
+        #expect(!FileManager.default.fileExists(
+            atPath: registeredCore
+                .appendingPathComponent("references/runtime-protocol.md").path
+        ))
+        #expect(!FileManager.default.fileExists(
+            atPath: registeredCore
+                .appendingPathComponent("references/mixed-mode.md").path
         ))
 
         let skillName = actionID.projectSkillName

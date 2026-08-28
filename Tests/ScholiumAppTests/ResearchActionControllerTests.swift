@@ -932,8 +932,20 @@ struct ResearchActionControllerTests {
 
         controller.regenerateHandoff()
         await waitUntil { controller.phase == .failed }
-        #expect(controller.canCancelPreparedRun)
+        #expect(controller.canEndPreparedRun)
+        #expect(controller.canResumePreparedRun)
         #expect(controller.agentHandoff == nil)
+
+        controller.receive(activities: [researchActivity(
+            runID: runID,
+            actionID: action.id,
+            targetNoteID: target.noteID,
+            state: .running,
+            repairReason: .resultRequired,
+            updatedAt: 20
+        )])
+        #expect(!controller.canEndPreparedRun)
+        #expect(controller.canResumePreparedRun)
 
         controller.retryHandoff()
         await waitUntil { controller.phase == .prepared }

@@ -68,6 +68,15 @@ title, filename, alias, or transclusion creates a second product relation.
 Bundled defaults keep a bounded lens subset directly in each applicable
 Skill's `references/` directory. Those references are release-managed parts of
 their owning Skills, not an independently installed catalog or shared library.
+The exact Action Method may change scholarly procedure, emphasis, organization,
+and content only. It does not route System Skills or define commands, tools,
+permissions, executable operations, Run lifecycle, Result serialization, or
+recovery; Application contracts and Core Protocol retain those owners. Before
+authentication, the request or official handoff routes project entry and an
+explicit researcher request routes workspace bootstrap. After authentication,
+current Run state, typed `next_actions`, and operation responses alone select
+Core's Run references. This is progressive System-protocol disclosure, not a
+philosophical Mode or another state owner.
 
 Scholium's method-improvement Run edits only the exact registered `SKILL.md`.
 References remain editable through ordinary filesystem tools. Exact-revision

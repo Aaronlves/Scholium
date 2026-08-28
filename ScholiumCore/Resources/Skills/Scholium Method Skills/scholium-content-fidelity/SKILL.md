@@ -5,10 +5,21 @@ description: Check one exact Analysis, Topic, or Work revision for source, conce
 
 # Content Fidelity
 
-Apply `scholium-core-protocol`. If no authenticated Run exists, enter through
-its project-discovery route before applying this Skill.
+This Skill supplies only the intellectual method for Check Fidelity. It creates
+no Run, selects no Scholium command, and grants no read or write authority.
+Apply it only when the protected Core Protocol names it as the authenticated
+Run's current `action_method`.
 
 Audit the exact Target revision read-only. This method checks whether content remains faithful to its claimed basis; it does not supply a peer Critique, improve prose, or certify truth.
+
+## Scholarly outcome
+
+Return a claim-centered philosophical accuracy judgment, not a verification
+log or checklist dump. Organize findings around the exact disputed claim,
+concept, inference, interpretation, source role, or citation and explain the
+smallest defect that matters. Keep a clean pass concise; when several findings
+share one underlying error, state that relation without duplicating the same
+diagnosis.
 
 ## Checks
 
@@ -32,6 +43,9 @@ Skill, not separate authority objects. Read the smallest applicable set:
 Once selected, a lens's evidential distinctions and safeguards are part of
 the check; it cannot widen the selected Content or Citations scope.
 
-## Outcome
+## Boundary
 
-Report findings against the checked revision and evidence set. State access limits and distinguish verified, provisional, disputed, and unavailable claims. Do not edit the Target, mutate citations, or convert the result into researcher acceptance.
+Keep every finding bound to the checked revision and evidence set. Preserve
+access limits and distinguish verified, provisional, disputed, and unavailable
+claims. Do not edit the Target, mutate citations, or convert the result into
+researcher acceptance.

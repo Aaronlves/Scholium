@@ -1,5 +1,10 @@
 # Analyze method
 
+The three passes below govern inquiry and verification. They are not an output
+template. The saved Analysis should follow the source's philosophical problem,
+argumentative movement, and thematic structure rather than narrating these
+passes or allocating one section to every checklist item.
+
 ## Pass 1: establish the evidence boundary
 
 Identify the accessible source unit, authorship, edition or version, pagination scheme, and missing parts. Verify load-bearing quotations and locators against the text. Separate the author's own view from positions reported, quoted, or criticized.
@@ -81,4 +86,13 @@ only when the researcher explicitly initiates it for an exact revision.
 
 ## Update discipline
 
-Integrate only source-facing results into the current Analysis. Preserve exact citations and evidential qualifiers. A prospective cross-source or problem-centered result belongs in agent feedback until a separate Synthesize Action is authorized.
+Integrate source-facing results and only warranted, explicitly attributed
+relations to inspected researcher Works into the current Analysis. Preserve
+exact citations and evidential qualifiers. Prefer connected philosophical prose
+with source-specific headings; use tables, inventories, and premise lists only
+when they materially clarify the source's structure. Exclude tool use, command
+history, hashes, access routes, and verification narration from the Analysis
+body unless a source limitation changes what its claims can support. A
+warranted relation to an inspected Work remains an attributed analytic bridge,
+not an edit or researcher commitment. Broader cross-source or problem-centered
+synthesis belongs in feedback until a separate Synthesize Action is authorized.

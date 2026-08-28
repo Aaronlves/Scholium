@@ -4,7 +4,12 @@
 
 Preserve speaker, sequence, and the supplied timestamp or revision identity. Do not rewrite a researcher turn to make the exchange appear more coherent. A passage anchor is focal context, not evidence that the researcher endorses the quoted text.
 
-Require the immutable request-time response contract for every current Discussion. Persist its identity with the exchange, but leave Academic Outcome, selected-module composition, concision, and Comment presentation to the ordinary Discuss Method. A later Triptych default never changes an existing Discussion.
+Require the immutable request-time response contract for every current
+Discussion. Persist its identity with the exchange and apply
+`response-contract.md` to Academic Outcome, selected-module composition,
+concision, and Comment presentation. The ordinary Discuss Method supplies the
+philosophical work, not the response shape. A later Triptych default never
+changes an existing Discussion.
 
 ## Drift and missing Notes
 

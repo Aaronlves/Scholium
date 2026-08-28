@@ -199,6 +199,13 @@ struct LocalAgentBridgeTests {
         #expect(expired.code == .sessionExpired)
         #expect(expired.message.contains("copy a new handoff"))
 
+        let unfinished = LocalAgentBridgeWireCoding.errorPayload(
+            ResearchActionRunContractError.activeResultRequired
+        )
+        #expect(unfinished.code == .operationFailed)
+        #expect(unfinished.message.contains("copy the resume handoff"))
+        #expect(unfinished.message.contains("do not start another Run"))
+
         let replayConflict = LocalAgentBridgeWireCoding.errorPayload(
             ResearchAgentConnectionError.newAnalysisReplayConflict
         )

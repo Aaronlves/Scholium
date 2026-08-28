@@ -37,6 +37,46 @@ private final class ResearchRecordProviderState {
 @Suite("Research Record browser")
 @MainActor
 struct ResearchRecordBrowserModelTests {
+    @Test("Legacy synthetic Agent feedback is hidden when an academic Result owns the same prose")
+    func legacySyntheticResultStatementIsHidden() throws {
+        let profile = try #require(
+            ResearchAcademicProfileCatalog.defaultProfiles.first {
+                $0.actionID == .analyze
+            }
+        )
+        let sourceReconstruction = try #require(
+            profile.academicResultFields.first {
+                $0.fieldID.rawValue == "source-reconstruction"
+            }
+        )
+        let result = try PortableResearchAcademicFieldResult(
+            definition: sourceReconstruction,
+            value: .freeText("The argument map was reviewed.")
+        )
+        let legacy = try makeAction(
+            id: UUID(),
+            noteID: UUID(),
+            title: "Legacy Analyze",
+            finishedAt: Date(timeIntervalSince1970: 100),
+            academicResults: [result]
+        )
+
+        #expect(
+            ResearchRecordStatementProjection.displayedStatements(in: legacy)
+                .isEmpty
+        )
+        let distinct = try makeAction(
+            id: UUID(),
+            noteID: UUID(),
+            title: "Distinct feedback",
+            finishedAt: Date(timeIntervalSince1970: 100)
+        )
+        #expect(
+            ResearchRecordStatementProjection.displayedStatements(in: distinct)
+                == distinct.statements
+        )
+    }
+
     @Test("Created changes retain provenance without entering before-source comparison")
     func createdChangesAreNotComparable() throws {
         let modified = try PortableResearchConfirmedChange(

@@ -20,4 +20,6 @@ Persist exactly the attributed researcher and agent turns accepted by the suppli
 
 Agent feedback remains first-person testimony. It may identify consulted Materials, uncertainty, an inability to establish a claim, or a proposed failure diagnosis. It may recommend preserving a lesson; the researcher alone decides whether and how to do so.
 
-Read `references/record-contract.md` when composing the final attributed turn or handling an anchor that has drifted.
+Read `references/response-contract.md` before composing every Agent turn. Read
+`references/record-contract.md` when composing the final attributed turn or
+handling an anchor that has drifted.

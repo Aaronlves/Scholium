@@ -33,7 +33,6 @@ enum BundledResearchMethodDefaults {
             resources: [
                 "SKILL.md",
                 "references/method.md",
-                "references/response-contract.md",
                 "references/Argument-Reconstructionist.md",
                 "references/Conceptual-Analyst.md",
                 "references/Dialectical-Partner.md",

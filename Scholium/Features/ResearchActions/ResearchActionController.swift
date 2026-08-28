@@ -104,6 +104,7 @@ final class ResearchActionController: ObservableObject {
     @Published private(set) var pendingCancellationBarrierCount = 0
     @Published private(set) var endingActivityRunIDs: Set<UUID> = []
     @Published private(set) var statusActivity: WorkspaceResearchActivity?
+    @Published private(set) var resultRequiredRunIDs: Set<UUID> = []
 
     @Published var textValues: [String: String] = [:]
     @Published var choiceValues: [String: Set<String>] = [:]
@@ -145,7 +146,14 @@ final class ResearchActionController: ObservableObject {
         activeActionID.flatMap(PlatformActionCatalog.definition)
     }
 
-    var canCancelPreparedRun: Bool {
+    var canEndPreparedRun: Bool {
+        guard let preparation else { return false }
+        return preparation.state == .prepared
+            && resultRecord == nil
+            && !resultRequiredRunIDs.contains(preparation.runID)
+    }
+
+    var canResumePreparedRun: Bool {
         preparation?.state == .prepared && resultRecord == nil
     }
 
@@ -178,12 +186,16 @@ final class ResearchActionController: ObservableObject {
     }
 
     func receive(activities: [WorkspaceResearchActivity]) {
-        guard let runID = statusActivity?.runID else { return }
-        guard let activity = activities.first(where: { $0.runID == runID }) else {
-            phase = .cancelled
-            return
+        resultRequiredRunIDs = Set(activities.compactMap { activity in
+            activity.repairReason == .resultRequired ? activity.runID : nil
+        })
+        if let runID = statusActivity?.runID {
+            guard let activity = activities.first(where: { $0.runID == runID }) else {
+                phase = .cancelled
+                return
+            }
+            statusActivity = activity
         }
-        statusActivity = activity
     }
 
     func unbind() {
@@ -546,6 +558,27 @@ final class ResearchActionController: ObservableObject {
                 resultRecord = nil
                 continuationRecords = []
                 phase = .cancelled
+            } catch let error as ResearchActionRunContractError {
+                if case .committedWritesRequireCompletion = error,
+                   accepts(token) {
+                    resultRequiredRunIDs.insert(runID)
+                    phase = .prepared
+                    errorMessage = String(
+                        localized: "Agent changes are saved. Resume this Action so the Agent can submit its Research Result.",
+                        table: "Localizable",
+                        bundle: .module
+                    )
+                } else if accepts(token) {
+                    phase = .failed
+                    errorMessage = error.localizedDescription
+                } else {
+                    recordCancellationRecovery(
+                        runID: runID,
+                        error: error,
+                        cancel: client.cancel
+                    )
+                    finishPendingCancellationBarrier()
+                }
             } catch {
                 if accepts(token) {
                     phase = .failed
@@ -679,6 +712,11 @@ final class ResearchActionController: ObservableObject {
         error: Error,
         cancel: @escaping @MainActor (UUID) async throws -> Void
     ) {
+        if case ResearchActionRunContractError.committedWritesRequireCompletion = error {
+            resultRequiredRunIDs.insert(runID)
+            clearCancellationRecovery(runID: runID)
+            return
+        }
         let recovery = ResearchActionCancellationRecovery(
             runID: runID,
             errorMessage: error.localizedDescription

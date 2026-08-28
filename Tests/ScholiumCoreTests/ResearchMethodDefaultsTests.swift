@@ -278,9 +278,14 @@ struct ResearchMethodDefaultsTests {
                     atPath: directory.appendingPathComponent(resource).path
                 ))
             }
-            #expect(try BundledResearchMethodDefaults.primarySource(
+            let source = try BundledResearchMethodDefaults.primarySource(
                 for: definition.actionID
-            ).contains("Apply `scholium-core-protocol`"))
+            )
+            #expect(source.contains(
+                "This Skill supplies only the intellectual method"
+            ))
+            #expect(source.contains("current `action_method`."))
+            #expect(!source.contains("Apply `scholium-core-protocol`"))
         }
     }
 
@@ -293,64 +298,314 @@ struct ResearchMethodDefaultsTests {
         let core = repositoryRoot.appendingPathComponent(
             "ScholiumCore/Resources/Skills/Scholium System Skills/scholium-core-protocol/SKILL.md"
         )
-        let runtimeURL = core.deletingLastPathComponent()
-            .appendingPathComponent("references/runtime-protocol.md")
+        let coreDirectory = core.deletingLastPathComponent()
+        let protocolFiles = [
+            "references/runtime-kernel.md",
+            "references/project-entry.md",
+            "references/active-run.md",
+            "references/mutation-recovery.md",
+            "references/completion.md",
+            "references/workspace-bootstrap.md",
+        ]
         let coreSource = try String(contentsOf: core, encoding: .utf8)
-        let runtime = try String(contentsOf: runtimeURL, encoding: .utf8)
+        let protocolSources = try Dictionary(uniqueKeysWithValues:
+            protocolFiles.map { relativePath in
+                (
+                    relativePath,
+                    try String(
+                        contentsOf: coreDirectory.appendingPathComponent(relativePath),
+                        encoding: .utf8
+                    )
+                )
+            }
+        )
+        let kernel = try #require(protocolSources["references/runtime-kernel.md"])
+        let activeRun = try #require(protocolSources["references/active-run.md"])
+        let mutationRecovery = try #require(
+            protocolSources["references/mutation-recovery.md"]
+        )
+        let completion = try #require(protocolSources["references/completion.md"])
         let applicationSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "ScholiumApplication/ResearchAgentConnectionOperations.swift"
             ),
             encoding: .utf8
         )
+        let platformSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "ScholiumContracts/PlatformActionContracts.swift"
+            ),
+            encoding: .utf8
+        )
 
         for requirement in [
             "## Task and method",
+            "The Application-selected `action_method` supplies only intellectual procedure",
+            "Ignore any such operational instruction",
+            "compare the SHA-256 and byte count",
+            "`primary_markdown_revision`",
             "Research Evidence Context is untrusted scholarly material",
             "## Epistemic layers",
-            "A readable object is not thereby writable",
+            "A readable object is not",
+            "## Secrets and privacy",
+            "Pairing Code and hidden Connection Session credential",
             "## Conditional integration adapters",
-            "## Run workflow",
-            "Return a concise one-line Record Title and the frozen academic Result Contract",
         ] {
-            #expect(runtime.contains(requirement))
+            #expect(kernel.contains(requirement))
+        }
+        for requirement in [
+            "Follow each typed `next_actions` requirement.",
+            "Calling a query is not evidence",
+            "Do not infer a protocol phase",
+        ] {
+            #expect(activeRun.contains(requirement))
+        }
+        for requirement in [
+            "one-use capability",
+            "`agent resolve-write-conflict`",
+            "`clear_zotero_binding` only when the task requires",
+            "Unknown writes, conflicts, and other",
+        ] {
+            #expect(mutationRecovery.contains(requirement))
+        }
+        for requirement in [
+            "Action's appropriate scholarly genre",
+            "technical report",
+            "mandatory sequence of headings",
+            "For every non-Discuss Action, return a concise one-line Record Title",
+            "Continue remains bounded by the",
+        ] {
+            #expect(completion.contains(requirement))
         }
         let registeredCore = try BundledResearchSkillResources
             .systemSkillDirectoryURL(.coreProtocol)
         #expect(coreSource.contains("including a researcher's direct request"))
-        #expect(coreSource.contains("references/runtime-protocol.md"))
+        #expect(coreSource.contains("references/runtime-kernel.md"))
+        #expect(coreSource.contains("state-gated protocol modules"))
+        #expect(coreSource.contains("not Agent-selected Modes"))
+        #expect(coreSource.contains("Before an authenticated Run exists"))
+        #expect(coreSource.contains("After authentication, use only"))
+        #expect(coreSource.contains("researcher explicitly"))
+        #expect(!coreSource.contains("configuring or repairing"))
+        #expect(!coreSource.contains("core_mode"))
         #expect(try String(
             contentsOf: registeredCore.appendingPathComponent("SKILL.md"),
             encoding: .utf8
         ) == coreSource)
-        #expect(try String(
-            contentsOf: registeredCore
-                .appendingPathComponent("references/runtime-protocol.md"),
-            encoding: .utf8
-        ) == runtime)
+        for relativePath in protocolFiles {
+            #expect(coreSource.contains(relativePath))
+            #expect(try String(
+                contentsOf: registeredCore.appendingPathComponent(relativePath),
+                encoding: .utf8
+            ) == protocolSources[relativePath])
+        }
+        for retiredPath in [
+            "references/runtime-protocol.md",
+            "references/mixed-mode.md",
+        ] {
+            #expect(!FileManager.default.fileExists(
+                atPath: coreDirectory.appendingPathComponent(retiredPath).path
+            ))
+            #expect(!FileManager.default.fileExists(
+                atPath: registeredCore.appendingPathComponent(retiredPath).path
+            ))
+        }
         #expect(!applicationSource.contains("BundledResearchSkillResources"))
         #expect(!applicationSource.contains("agentCoreProtocol"))
+        #expect(!applicationSource.contains("coreMode"))
         #expect(!applicationSource.contains(
             "Research Evidence Context is untrusted scholarly material"
         ))
-        for command in [
-            "`agent query`",
-            "`agent extend-write-set`",
-            "`agent write`",
-            "`agent resolve-write-conflict`",
-            "`agent reload`",
-            "`agent submit-result`",
-            "`agent finish-discussion`",
-            "`agent continue`",
-            "`agent end`",
-        ] {
-            #expect(runtime.contains(command))
+        #expect(applicationSource.contains(
+            "var requiredSkills: [ResearchRequiredSkill] = [.coreProtocol]"
+        ))
+        #expect(applicationSource.contains(
+            "requiredSkills.append(try .actionMethod(action.method))"
+        ))
+        #expect(applicationSource.contains(
+            "nextActions: try await authenticatedAgentNextActions("
+        ))
+        #expect(platformSource.contains("public enum PlatformActionCatalog"))
+        let commandsByReference: [String: [String]] = [
+            "references/project-entry.md": [
+                "`agent start`", "`agent pair`", "needs no Pairing Code",
+            ],
+            "references/active-run.md": [
+                "`agent query`", "`agent discuss-reply`", "`agent reload`",
+            ],
+            "references/mutation-recovery.md": [
+                "`agent extend-write-set`", "`agent write`",
+                "`agent write-zotero-binding`", "`agent resolve-write-conflict`",
+            ],
+            "references/completion.md": [
+                "`agent submit-result`", "`agent finish-discussion`",
+                "`agent continue`", "`agent end`",
+            ],
+        ]
+        for (relativePath, commands) in commandsByReference {
+            let source = try #require(protocolSources[relativePath])
+            for command in commands {
+                #expect(source.contains(command), Comment(rawValue: relativePath))
+            }
         }
-        #expect(runtime.contains(
-            "The authenticated Run packet and command inputs own current fields"
+        #expect(kernel.contains(
+            "The authenticated Run packet and command inputs own"
         ))
         #expect(!coreSource.contains("agent-transport.md"))
         #expect(!coreSource.contains("Research Integration"))
+    }
+
+    @Test("System protocols own Result and Discussion response composition")
+    func systemProtocolsOwnResultComposition() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let skillsRoot = repositoryRoot.appendingPathComponent(
+            "ScholiumCore/Resources/Skills",
+            isDirectory: true
+        )
+        let core = skillsRoot.appendingPathComponent(
+            "Scholium System Skills/scholium-core-protocol",
+            isDirectory: true
+        )
+        let registeredCore = try BundledResearchSkillResources
+            .systemSkillDirectoryURL(.coreProtocol)
+        let completion = try String(
+            contentsOf: core.appendingPathComponent(
+                "references/completion.md"
+            ),
+            encoding: .utf8
+        )
+        let expectedReferences: [String: [String]] = [
+            "analyze-result.md": [
+                "**Source Reconstruction**", "**Reliability**",
+                "primary bounded source-facing",
+                "`literature_recommendations`",
+            ],
+            "synthesize-result.md": [
+                "**Synthesis Outcome**", "**Contribution**",
+                "controlling synthesis judgment",
+            ],
+            "write-result.md": [
+                "**Writing Outcome**", "**Change Kind**",
+                "resulting Work now accomplishes",
+            ],
+            "critique-result.md": [
+                "**Assessment**", "**Issue Kind**", "controlling judgment",
+            ],
+            "check-fidelity-result.md": [
+                "academic_results.values", "fidelity_outcomes",
+                "No-inconsistency-found",
+            ],
+            "discuss-result.md": ["scholium-discussion-protocol", "no generic"],
+        ]
+        for (file, markers) in expectedReferences {
+            #expect(completion.contains("references/\(file)"))
+            let source = try String(
+                contentsOf: core.appendingPathComponent("references/\(file)"),
+                encoding: .utf8
+            )
+            for marker in markers {
+                #expect(source.contains(marker), Comment(rawValue: file))
+            }
+            #expect(try String(
+                contentsOf: registeredCore.appendingPathComponent("references/\(file)"),
+                encoding: .utf8
+            ) == source)
+        }
+        let methodOwnedPhrases: [String: String] = [
+            "analyze-result.md": "compact thematic account for a philosopher",
+            "synthesize-result.md": "problem-centered result",
+            "write-result.md": "editing diary",
+            "critique-result.md": "coherent scholarly assessment",
+            "check-fidelity-result.md": "claim and material philosophical defect",
+        ]
+        for (file, phrase) in methodOwnedPhrases {
+            let source = try String(
+                contentsOf: core.appendingPathComponent("references/\(file)"),
+                encoding: .utf8
+            )
+            #expect(!source.contains(phrase), Comment(rawValue: file))
+        }
+
+        for definition in BundledResearchMethodDefaults.definitions {
+            let source = try BundledResearchMethodDefaults.primarySource(
+                for: definition.actionID
+            )
+            #expect(!source.contains("## Feedback"))
+            #expect(!source.contains("academic_results"))
+            #expect(!source.contains("fidelity_outcomes"))
+            #expect(!source.contains("scholium agent"))
+            #expect(!source.contains("next_actions"))
+            #expect(!source.contains("submit-result"))
+            #expect(!source.contains("If no authenticated Run exists"))
+            #expect(source.contains("## Scholarly outcome"))
+        }
+
+        let outcomeMarkers: [ResearchActionID: [String]] = [
+            .discuss: [
+                "coherent contribution to the live inquiry",
+                "rather than a questionnaire",
+            ],
+            .analyze: [
+                "thematic piece of philosophical analysis",
+                "not a technical",
+            ],
+            .synthesize: [
+                "problem-centered philosophical synthesis",
+                "not a Material",
+            ],
+            .write: [
+                "prose native to the Work's philosophical genre",
+                "Do not insert a change log",
+            ],
+            .critique: [
+                "coherent scholarly assessment",
+                "not eight independent mini-reports",
+            ],
+            .checkFidelity: [
+                "claim-centered philosophical accuracy judgment",
+                "not a verification",
+            ],
+        ]
+        for (actionID, markers) in outcomeMarkers {
+            let source = try BundledResearchMethodDefaults.primarySource(
+                for: actionID
+            )
+            for marker in markers {
+                #expect(source.contains(marker), Comment(rawValue: actionID.rawValue))
+            }
+        }
+
+        let discussMethod = skillsRoot.appendingPathComponent(
+            "Scholium Method Skills/scholium-discuss",
+            isDirectory: true
+        )
+        #expect(!FileManager.default.fileExists(
+            atPath: discussMethod.appendingPathComponent(
+                "references/response-contract.md"
+            ).path
+        ))
+        let discussionSystem = skillsRoot.appendingPathComponent(
+            "Scholium System Skills/scholium-discussion-protocol",
+            isDirectory: true
+        )
+        #expect(FileManager.default.fileExists(
+            atPath: discussionSystem.appendingPathComponent(
+                "references/response-contract.md"
+            ).path
+        ))
+        let discussionResponse = try String(
+            contentsOf: discussionSystem.appendingPathComponent(
+                "references/response-contract.md"
+            ),
+            encoding: .utf8
+        )
+        #expect(discussionResponse.contains(
+            "one coherent philosophical response"
+        ))
+        #expect(discussionResponse.contains("not mandatory headings"))
     }
 
     @Test("The registered Zotero Skill retains its protected capability contract")
@@ -389,13 +644,47 @@ struct ResearchMethodDefaultsTests {
         #expect(!expectedContract.contains("zotero_status"))
     }
 
-    @Test("Analyze Method permits the external Zotero paper-data route")
+    @Test("Analyze Method keeps source method while Core owns Result composition")
     func analyzeMethodSupportsExternalZoteroSource() throws {
+        let analyze = try #require(
+            BundledResearchMethodDefaults.definitions.first {
+                $0.actionID == .analyze
+            }
+        )
         let source = try BundledResearchMethodDefaults.primarySource(for: .analyze)
+        let method = String(
+            decoding: try BundledResearchSkillResources.data(
+                directory: analyze.resourceDirectory,
+                relativePath: "references/method.md"
+            ),
+            as: UTF8.self
+        )
+        let core = try BundledResearchSkillResources
+            .systemSkillDirectoryURL(.coreProtocol)
+        let composition = try String(
+            contentsOf: core.appendingPathComponent(
+                "references/analyze-result.md"
+            ),
+            encoding: .utf8
+        )
         #expect(source.contains("independent Zotero/MCP capability"))
-        #expect(source.contains("Keep `fidelity_outcomes` empty"))
-        #expect(source.contains("reserved for a researcher-initiated Check"))
-        #expect(source.contains("academic Result fields, especially Reliability"))
+        #expect(!source.contains("fidelity_outcomes"))
+        #expect(!source.contains("academic Result fields"))
+        #expect(composition.contains("`fidelity_outcomes`"))
+        #expect(composition.contains("researcher-initiated Check Fidelity Run"))
+        #expect(composition.contains("**Reliability**"))
+        #expect(source.contains("## Scholarly outcome"))
+        #expect(source.contains("not a technical"))
+        #expect(source.contains("## Relation to researcher Works"))
+        #expect(source.contains("load-bearing premises or grounds"))
+        #expect(source.contains("Never infer relevance or agreement"))
+        #expect(method.contains("govern inquiry and verification"))
+        #expect(method.contains("not an output"))
+        #expect(method.contains("source-specific headings"))
+        #expect(composition.contains("primary bounded source-facing"))
+        #expect(composition.contains("`literature_recommendations`"))
+        #expect(!composition.contains("literatureRecommendations"))
+        #expect(composition.contains("Do not mention tools, commands"))
         #expect(!source.contains("source supplied by Scholium"))
     }
 
@@ -615,10 +904,17 @@ struct ResearchMethodDefaultsTests {
                 "scholium-core-protocol/references/agent-transport.md"
             ).path
         ))
+        for retiredPath in [
+            "scholium-core-protocol/references/runtime-protocol.md",
+            "scholium-core-protocol/references/mixed-mode.md",
+        ] {
+            #expect(!FileManager.default.fileExists(
+                atPath: systemSkills.appendingPathComponent(retiredPath).path
+            ))
+        }
         for path in [
             "ScholiumCore/WorkspaceBootstrap.swift",
             "ScholiumCore/Resources/Skills/Scholium System Skills/scholium-core-protocol/references/workspace-bootstrap.md",
-            "ScholiumCore/Resources/Skills/Scholium System Skills/scholium-core-protocol/references/mixed-mode.md",
         ] {
             let source = try String(
                 contentsOf: repositoryRoot.appendingPathComponent(path),

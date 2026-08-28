@@ -363,6 +363,7 @@ public enum WorkspaceResearchActivityRepairReason: String, Hashable, Sendable {
     case sourceChanged
     case recoveryRequired
     case recordUnavailable
+    case resultRequired
 }
 
 public enum WorkspaceNoteReviewStatus: String, Hashable, Sendable {

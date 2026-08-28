@@ -207,11 +207,24 @@ An external Agent workspace registers every exact System and current Method
 source returned by `WorkspaceSkillDiscovery` through its host's project-level
 Skill mechanism before connecting a Run. `ScholiumCore` owns the release-managed
 System Skill folders; `ResearchConfigurationStore` owns current Method
-resolution. Each allowed Run receives one Run Brief, minimum
+resolution. Core Protocol always routes one protected runtime kernel. Its entry
+uses the current request or official handoff for project entry and an explicit
+researcher request for workspace bootstrap. After authentication, only
+Application-owned state, typed `next_actions`, and operation responses route
+active-Run, mutation/recovery, and completion references; no Core mode or
+second state field exists. Completion
+routes exactly one per-Action Result reference. Core and those references own
+Result-field composition; Method Skills own intellectual procedure and never
+restate the submission form. Discussion Protocol separately owns
+attributed-turn response composition because Discuss has no generic Result
+body. Application-selected `required_skills` and Core Protocol route the exact
+Action Method; Method prose cannot select System Skills, commands, operations,
+authority, lifecycle, or recovery. Each allowed Run receives one Run Brief, minimum
 `ResearchRequiredSkill` set, frozen Action Method revision, and Result Contract,
 with no Skill prose or source path. Run Brief contains current task/object/state,
 safe capability availability and next action, not a dump or summary of research
-materials. Result Contract
+materials. Core requires the host-loaded Method entry to match the frozen
+SHA-256 and byte count before the Agent applies it. Result Contract
 marks Agent academic fields versus Application machine fields. `reload`
 reconstructs this packet from the frozen Run, revalidates exact Target,
 Materials, and formal source owners, and returns typed `stale_run` rather than
@@ -445,6 +458,9 @@ Result finalization, while unknown writes and recovery duties block End.
 Agent submission contains the required one-line Record Title, the frozen
 contract's academic fields, explicit blocked state where applicable, and
 optional Source Reference Envelopes plus testimony for Context Use.
+Core Protocol's state-gated completion reference loads exactly one
+current-Action Result reference before submission; the frozen Profile remains
+field authority and the Method remains scholarly-method authority.
 Application validates field presence/type/cardinality/exclusive choices and
 that each claimed reference is current, in Run-readable scope, and has one
 authoritative owner, revision, and locator. Agent use remains testimony;

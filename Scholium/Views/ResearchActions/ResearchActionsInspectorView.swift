@@ -215,6 +215,13 @@ struct ResearchActionActivityPresentation: Equatable {
     }
 
     var stateTitle: String {
+        if primary.repairReason == .resultRequired {
+            return String(
+                localized: "Waiting for Result",
+                table: "Localizable",
+                bundle: .module
+            )
+        }
         switch primary.state {
         case .waitingForAgent:
             return String(
@@ -238,19 +245,23 @@ struct ResearchActionActivityPresentation: Equatable {
     }
 
     var detail: String? {
+        if let repairReason = primary.repairReason {
+            return repairReason.interfaceRepairDescription
+        }
         guard primary.state == .needsAttention else { return nil }
-        let repair = primary.repairReason?.interfaceRepairDescription
-            ?? String(
+        return String(
                 localized: "Open the Action status to review recovery.",
                 table: "Localizable",
                 bundle: .module
             )
-        return repair
     }
 
-    var showsProgress: Bool { primary.state == .running }
+    var showsProgress: Bool {
+        primary.state == .running && primary.repairReason != .resultRequired
+    }
     var showsDirectEnd: Bool {
-        primary.state == .waitingForAgent || primary.state == .running
+        (primary.state == .waitingForAgent || primary.state == .running)
+            && primary.repairReason != .resultRequired
     }
 
     private static func priority(_ state: WorkspaceResearchActivityState) -> Int {
@@ -286,6 +297,12 @@ extension WorkspaceResearchActivityRepairReason {
         case .recordUnavailable:
             String(
                 localized: "Retry Refresh to recover the completed Research Record.",
+                table: "Localizable",
+                bundle: .module
+            )
+        case .resultRequired:
+            String(
+                localized: "Agent changes are saved. Resume this Action so the Agent can submit its Research Result.",
                 table: "Localizable",
                 bundle: .module
             )

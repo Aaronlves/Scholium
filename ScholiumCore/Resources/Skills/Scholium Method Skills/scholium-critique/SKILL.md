@@ -5,10 +5,21 @@ description: Critique an exact Work or passage as an attributed, read-only schol
 
 # Critique
 
-Apply `scholium-core-protocol`. If no authenticated Run exists, enter through
-its project-discovery route before applying this Skill.
+This Skill supplies only the intellectual method for Critique. It creates no
+Run, selects no Scholium command, and grants no read or write authority. Apply
+it only when the protected Core Protocol names it as the authenticated Run's
+current `action_method`.
 
 Assess the exact current Work revision independently. The Work and all Materials remain read-only; findings become attributed feedback, not silent edits or application facts.
+
+## Scholarly outcome
+
+Write a coherent scholarly assessment centered on the Work's controlling claim,
+method, and most load-bearing strengths and pressures. Lead with the assessment
+and its reasons; organize concerns by the philosophical issue they create, not
+by the order of inspection or a generic quality checklist. The default form is
+a review container, not eight independent mini-reports, and must not cause the
+same judgment to be repeated under several headings.
 
 ## Method
 
@@ -19,7 +30,12 @@ For passage scope, identify the exact target, issue, significance, research
 basis, and recommendation without issuing an unsupported verdict on the whole
 Work.
 
-Use the bundled default form unless the researcher-owned active Method explicitly supplies another valid form: Overall Assessment; Strengths; Major Concerns; Source Support; Objections and Alternatives; Revision Priorities; Specific Findings; and Materials Consulted and Limitations. Do not manufacture content merely to fill a section.
+Use the bundled default form unless the researcher-owned active Method
+explicitly supplies another valid form: Overall Assessment; Strengths; Major
+Concerns; Source Support; Objections and Alternatives; Revision Priorities;
+Specific Findings; and Materials Consulted and Limitations. Preserve the order
+of sections actually warranted; do not manufacture filler for an inapplicable
+section.
 
 Distinguish what Analyses, Topics, and sources report, support, dispute, or leave uncertain from your own reconstruction and evaluation. Neutral links and transitive paths are not evidence. Distinguish exposition, argument, objection, reply, and researcher commitment.
 
@@ -41,9 +57,13 @@ for the assessed Work:
 Once selected, a lens's safeguards are part of the Critique method. No lens
 may add evidence, change the read-only boundary, or manufacture a finding.
 
-## Boundary and feedback
+## Boundary
 
-Never modify the Work. If a finding warrants change, recommend a separately authorized Write phase. Report Materials actually consulted, access limits, and uncertainty. Each Specific Finding follows the exact locator contract in `references/method.md`. Traced, Untraced, Disputed, and Beyond Sources are attributed agent judgments, never Scholium statuses.
+Never modify the Work. If a finding warrants change, recommend a separately
+authorized Write phase. Materials actually consulted, access limits, and
+uncertainty constrain the assessment. Each Specific Finding follows the exact
+locator contract in `references/method.md`. Traced, Untraced, Disputed, and
+Beyond Sources are attributed agent judgments, never Scholium statuses.
 
 Critique may identify which research burdens are or are not discharged in the
 checked scope. It never certifies originality, publishability, doctoral level,

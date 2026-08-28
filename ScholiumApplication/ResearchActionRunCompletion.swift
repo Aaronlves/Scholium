@@ -677,14 +677,6 @@ extension ResearchActionRunCoordinator {
         }
         let discrepancies: [PortableResearchDiscrepancy] = []
 
-        let feedback = try PortableResearchStatement(
-            id: completion.runID,
-            author: .agent,
-            kind: .agentFeedback,
-            attribution: "Agent",
-            text: completion.summary,
-            createdAt: completion.completedAt
-        )
         let academicResults = try actionSnapshot.resultContract.academicFields.map {
             definition in
             try PortableResearchAcademicFieldResult(
@@ -799,7 +791,7 @@ extension ResearchActionRunCoordinator {
             continuationLineage: snapshot.continuationLineage,
             primaryNoteID: actionSnapshot.target.noteID,
             participatingNotes: participatingNotes,
-            statements: [feedback],
+            statements: [],
             resultDisposition: resultPayload.disposition,
             academicResults: academicResults,
             contextUseReport: resultPayload.contextUseReport,

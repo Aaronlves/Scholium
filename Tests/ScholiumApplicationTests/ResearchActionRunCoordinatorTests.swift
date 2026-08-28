@@ -907,6 +907,7 @@ struct ResearchActionCoordinatorTests {
         #expect(record.analysisSourceRoute == .researcherProvided)
         #expect(record.sourceReference == nil)
         #expect(record.zoteroBibliographicContext == nil)
+        #expect(record.statements.isEmpty)
 
         _ = try await runtime.endResearchAgentRun(
             credential: retried.credential,

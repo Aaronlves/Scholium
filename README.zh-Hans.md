@@ -277,9 +277,10 @@ Record owner 及其准确指纹，不创建 Note dossier。修改已有笔记时
 
 安装后的 `scholium agent` 命令让外部 Agent 通过仅限回环地址的本机桥，与一个由研究者
 创建的 Run 配对、获取结构化上下文、申请有界写入、提交一个结果、继续研究并结束
-Run。配对码只通过标准输入读取；Scholium 不会启动或监管 Agent。Agent Run 流程由
-认证后返回的 [Core Protocol](ScholiumCore/Resources/Skills/Scholium%20System%20Skills/scholium-core-protocol/references/runtime-protocol.md)
-唯一拥有，当前 CLI 语法由安装版本的命令帮助拥有。可选 Zotero 传输见
+Run。配对码只通过标准输入读取；Scholium 不会启动或监管 Agent。通过项目级发现加载的
+[Core Protocol](ScholiumCore/Resources/Skills/Scholium%20System%20Skills/scholium-core-protocol/SKILL.md)
+治理进入流程，并由认证上下文再次识别以统一拥有 Agent Run 流程；当前 CLI 语法由安装版本的
+命令帮助拥有。可选 Zotero 传输见
 [Zotero MCP](Docs/ZOTERO_MCP.md)。
 
 ## 存储与安全

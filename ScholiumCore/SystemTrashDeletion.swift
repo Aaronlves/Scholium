@@ -819,10 +819,7 @@ public actor NoteSystemTrashDeletionCoordinator {
         guard let localExecutionStore else { return }
         let runIDs = try await localExecutionStore.activeExecutionIDs(containing: noteIDs)
         guard runIDs.isEmpty else {
-            throw TriptychTransactionError.preflightFailed(
-                note: nil,
-                detail: "Finish, cancel, or recover the active Research Action before moving its participating Note to the system Trash. Active Run IDs: \(runIDs.map(\.uuidString).joined(separator: ", "))."
-            )
+            throw TriptychTransactionError.activeResearchActions(runIDs)
         }
     }
 }

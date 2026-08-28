@@ -2105,13 +2105,15 @@ private struct ResearchRecordWorkspaceView: View {
                             context: context
                         )
                     }
-                    ScholiumStructuralRule()
-                    ResearchRecordStatementSection(
-                        statements: record.statements,
-                        focusedStatementID: model.focusedStatementID,
-                        primaryParticipant: primaryParticipant,
-                        openNote: context.openNote
-                    )
+                    if !displayedStatements.isEmpty {
+                        ScholiumStructuralRule()
+                        ResearchRecordStatementSection(
+                            statements: displayedStatements,
+                            focusedStatementID: model.focusedStatementID,
+                            primaryParticipant: primaryParticipant,
+                            openNote: context.openNote
+                        )
+                    }
                     if hasContinuity {
                         ScholiumStructuralRule()
                         ResearchRecordContinuitySection(record: record, model: model)
@@ -2144,6 +2146,10 @@ private struct ResearchRecordWorkspaceView: View {
                 proxy.scrollTo(statementID, anchor: .center)
             }
         }
+    }
+
+    private var displayedStatements: [PortableResearchStatement] {
+        ResearchRecordStatementProjection.displayedStatements(in: record)
     }
 
     private var evidenceRail: some View {
@@ -3258,6 +3264,27 @@ private struct ResearchRecordParticipantSection: View {
     }
 }
 
+enum ResearchRecordStatementProjection {
+    static func displayedStatements(
+        in record: PortableResearchRecord
+    ) -> [PortableResearchStatement] {
+        guard record.kind == .action else { return record.statements }
+        let freeTextResults: Set<String> = Set(
+            record.academicResults.compactMap { result -> String? in
+                guard case .freeText(let text) = result.value else { return nil }
+                return text
+            }
+        )
+        return record.statements.filter { statement in
+            !(statement.id == record.id
+                && statement.author == .agent
+                && statement.kind == .agentFeedback
+                && statement.attribution == "Agent"
+                && freeTextResults.contains(statement.text))
+        }
+    }
+}
+
 private struct ResearchRecordStatementSection: View {
     let statements: [PortableResearchStatement]
     let focusedStatementID: UUID?
@@ -3270,44 +3297,38 @@ private struct ResearchRecordStatementSection: View {
                 .scholiumApparatusHeadingStyle()
                 .accessibilityHeading(.h2)
                 .accessibilityIdentifier("scholium.researchRecord.attributedHeading")
-            if statements.isEmpty {
-                Text("No attributed prose was recorded.")
-                    .font(ScholiumTypography.interface(.compact))
-                    .scholiumForeground(.mutedText)
-            } else {
-                ForEach(statements) { statement in
-                    ResearchRecordStatementView(
-                        statementID: statement.id,
-                        attribution: statement.attribution,
-                        author: statement.author,
-                        text: statement.text,
-                        createdAt: statement.createdAt,
-                        lineReference: statement.lineReference,
-                        primaryParticipant: primaryParticipant,
-                        openNote: openNote
+            ForEach(statements) { statement in
+                ResearchRecordStatementView(
+                    statementID: statement.id,
+                    attribution: statement.attribution,
+                    author: statement.author,
+                    text: statement.text,
+                    createdAt: statement.createdAt,
+                    lineReference: statement.lineReference,
+                    primaryParticipant: primaryParticipant,
+                    openNote: openNote
+                )
+                .id(statement.id)
+                .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
+                .background(
+                    statement.id == focusedStatementID
+                        ? ScholiumColorRole.raisedSurfaceBackground.color
+                        : Color.clear,
+                    in: RoundedRectangle(
+                        cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                        style: .continuous
                     )
-                    .id(statement.id)
-                    .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
-                    .background(
-                        statement.id == focusedStatementID
-                            ? ScholiumColorRole.raisedSurfaceBackground.color
-                            : Color.clear,
-                        in: RoundedRectangle(
-                            cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                            style: .continuous
+                )
+                .accessibilityAddTraits(
+                    statement.id == focusedStatementID ? .isSelected : []
+                )
+                if statement.id != statements.last?.id {
+                    ScholiumStructuralRule()
+                        .padding(
+                            .leading,
+                            ScholiumMetrics.ResearchRecords.statementAttributionWidth
+                                + ScholiumMetrics.ResearchRecords.statementColumnGap
                         )
-                    )
-                    .accessibilityAddTraits(
-                        statement.id == focusedStatementID ? .isSelected : []
-                    )
-                    if statement.id != statements.last?.id {
-                        ScholiumStructuralRule()
-                            .padding(
-                                .leading,
-                                ScholiumMetrics.ResearchRecords.statementAttributionWidth
-                                    + ScholiumMetrics.ResearchRecords.statementColumnGap
-                            )
-                    }
                 }
             }
         }

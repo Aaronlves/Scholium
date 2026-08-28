@@ -749,25 +749,12 @@ extension ResearchActionRunOperationsTests {
         // to prove lineage wins the tie, while keeping that timestamp after
         // both preparations so each portable record remains temporally valid.
         let submittedAt = Date().addingTimeInterval(60)
-        await #expect(throws: PortableResearchRecordError.self) {
-            _ = try await completeTestActionRun(handle: handle, submission:
-                ResearchActionRunCompletionSubmission(
-                    runID: protectedRun.runID,
-                    confirmationToken: protectedRun.snapshot.confirmationToken,
-                    recordTitle: try ResearchRecordTitle("Test research result"),
-                    actuallyUsedMaterialNoteIDs: [analysis.noteID],
-                    summary: "I read /Users/researcher/private/source.pdf.",
-                    didModifyTarget: false,
-                    submittedAt: submittedAt
-                )
-            )
-        }
         let submission = ResearchActionRunCompletionSubmission(
             runID: protectedRun.runID,
             confirmationToken: protectedRun.snapshot.confirmationToken,
             recordTitle: try ResearchRecordTitle("Test research result"),
             actuallyUsedMaterialNoteIDs: [analysis.noteID],
-            summary: "No Topic change was warranted by the selected information.",
+            summary: "I read /Users/researcher/private/source.pdf.",
             didModifyTarget: false,
             submittedAt: submittedAt
         )
@@ -836,6 +823,7 @@ extension ResearchActionRunOperationsTests {
         )])
         #expect(portable.confirmedChanges.isEmpty)
         #expect(portable.discrepancies.isEmpty)
+        #expect(portable.statements.isEmpty)
         let localEnvelope = try #require(
             JSONSerialization.jsonObject(with: localData) as? [String: Any]
         )
@@ -846,6 +834,7 @@ extension ResearchActionRunOperationsTests {
         let localSource = String(decoding: localPayload, as: UTF8.self)
         let portableSource = String(decoding: portableData, as: UTF8.self)
         #expect(localSource.contains("prepared_instructions"))
+        #expect(!portableSource.contains("/Users/researcher/private/source.pdf"))
         for forbidden in [
             "prepared_instructions", "activity_key", "confirmationToken",
             "function", "prompt", "bookmark", "absolute_path", "token_count",
@@ -1282,7 +1271,7 @@ extension ResearchActionRunOperationsTests {
         let protectedRun = try await handle.research.actionRunDetails(
             id: action.runID
         )
-        #expect(protectedRun.instructions.contains("omit the optional field"))
+        #expect(!protectedRun.instructions.contains("## Feedback"))
 
         let receipt = try await submitTestAgentResult(
             for: protectedRun,

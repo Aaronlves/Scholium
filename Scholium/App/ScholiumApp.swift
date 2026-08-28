@@ -3921,6 +3921,66 @@ final class WindowModel: ObservableObject {
         )
     }
 
+    /// Routes a blocked file operation to the existing Action status surface.
+    /// The Run identity remains an internal lookup key; the researcher sees
+    /// the participating Note and the one executable recovery path.
+    func openResearchActionRecovery(runIDs: [UUID]) {
+        let requestedRunIDs = Set(runIDs)
+        let activities = researchController.records?.activities.filter {
+            requestedRunIDs.contains($0.runID)
+        } ?? []
+        guard let activity = ResearchActionActivityPresentation.make(
+            activities: activities
+        )?.primary else {
+            showToast(
+                TriptychTransactionError.activeResearchActions(runIDs)
+                    .localizedDescription,
+                kind: .warning
+            )
+            return
+        }
+        if currentResearchActionTarget?.noteID == activity.targetNoteID {
+            openResearchActionStatus(activity)
+            return
+        }
+        guard let reference = workspaceCatalog?.notes.first(where: {
+            $0.reference.stableNoteID.flatMap(UUID.init(uuidString:))
+                == activity.targetNoteID
+        })?.reference else {
+            showToast(
+                String(
+                    localized: "Open the participating Note, then choose its active Action to continue recovery.",
+                    table: "Localizable",
+                    bundle: .module
+                ),
+                kind: .warning
+            )
+            return
+        }
+        enqueueDocumentTransition(
+            preservingCurrentEditorState: false,
+            { [weak self] in
+                guard let self else { return }
+                try await self.activateWorkspaceReference(
+                    reference,
+                    tabActivation: .place(.replaceSelected)
+                )
+                guard let target = self.currentResearchActionTarget,
+                      target.noteID == activity.targetNoteID else {
+                    throw WindowNavigationError.noteUnavailable(
+                        reference.relativePath
+                    )
+                }
+                await self.researchController.actions.refreshAvailability(
+                    for: target
+                )
+            },
+            didSucceed: { [weak self] in
+                self?.openResearchActionStatus(activity)
+            }
+        )
+    }
+
     func requestDiscussionPresentation(_ discussionID: UUID) {
         let requestID = UUID()
         discussionPresentationRequestID = requestID

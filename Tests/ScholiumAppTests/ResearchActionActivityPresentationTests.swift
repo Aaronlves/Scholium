@@ -59,6 +59,23 @@ struct ResearchActionActivityPresentationTests {
         #expect(running.showsProgress)
     }
 
+    @Test("Committed changes require Result instead of direct End")
+    func resultRequiredRecovery() throws {
+        let presentation = try #require(
+            ResearchActionActivityPresentation.make(activities: [activity(
+                targetNoteID: UUID(),
+                state: .running,
+                repairReason: .resultRequired,
+                updatedAt: 10
+            )])
+        )
+
+        #expect(presentation.stateTitle == "Waiting for Result")
+        #expect(presentation.detail?.contains("submit its Research Result") == true)
+        #expect(!presentation.showsProgress)
+        #expect(!presentation.showsDirectEnd)
+    }
+
     @Test("An active status remains reachable while Action availability is unavailable")
     func activeStatusSurvivesAvailabilityFailure() throws {
         let targetNoteID = UUID()

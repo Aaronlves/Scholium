@@ -40,15 +40,16 @@ text, single-choice, or multi-choice values and may be excluded, optional, or
 required. A Profile cannot declare Search, reading, Metadata, Zotero,
 mutation, recovery, roles, operations, or permission.
 
-Each available Action resolves exactly one enabled **Research Skill
-Registration**. The registration stores one hidden stable relation key, the
-researcher-visible name, Action binding, one primary Markdown entry path, an
-optional ordinary local Skill-folder path, and enabled state. The key is not a
-user-visible Skill ID or version. The primary Markdown entry is the method
-authority. Scholium stores it and exposes its folder only through authorized
-project discovery, but defines no
-define a package schema, version, dependency graph, resource manifest, digest,
-history, marketplace, or executable plug-in contract.
+Each available Action resolves one enabled **Research Skill Registration** with
+a hidden relation key, visible name, Action, primary Markdown entry, optional
+folder, and enabled state. The entry is the academic Method authority: edits
+may change intellectual procedure and content, but never select Actions or
+System Skills, grant operations or permissions, or alter lifecycle, Result,
+conflict, or recovery. Operational prose is nonauthorizing; `required_skills`,
+System Skills, and typed contracts retain those owners. Scholium exposes the folder
+only through authorized project discovery and defines no package schema,
+version, dependency graph, manifest, digest, history, marketplace, or plug-in
+contract.
 
 The optional Skill folder is ordinary researcher-owned filesystem content.
 Portable registration contains only a Triptych-relative location or a
@@ -60,16 +61,10 @@ snapshotting, uploading, or executing it. The host reads registered `SKILL.md`
 and routed references. Missing or inaccessible entries block external
 deployment; runtime Context substitutes neither prose nor path.
 
-**Philosophical lenses** are methodologically substantive ordinary reference
-files inside a Skill folder. `SKILL.md` explicitly routes the smallest
-task-relevant lens set and states when a selected lens's evidential
-distinctions and safeguards become part of the Skill's method. A lens may
-combine a perspective, procedure, and criterion, but it is not a second
-product object: Scholium creates no lens catalog, registration, resolver,
-snapshot field, Settings destination, Record field, or dependency graph.
-Reference files never enter research Connections, grant capability, create
-evidence, or override the researcher request or platform safety. Scholium does
-not infer lens selection from Wikilinks or filenames.
+**Philosophical lenses** are substantive ordinary references routed explicitly
+by `SKILL.md` only when relevant. They may refine perspective, procedure, and
+criteria but create no catalog, registration, dependency, capability, evidence,
+Connection, or safety override; filenames and Wikilinks select nothing.
 Pre-cutover `.scholium/practices` bytes remain untouched and nonauthorizing;
 Scholium neither reads nor migrates them.
 
@@ -80,9 +75,9 @@ document, and requires affected external Skills to be selected again on that
 Mac. Portable registrations, Skill and reference files, Research Records,
 and vault files remain unchanged; I/O or unsafe storage is not silently reset.
 
-Run creation freezes the registration relation, Skill entry/revision, optional
-folder path, and Result Contract. Runtime Context identifies only the required
-Skill name and frozen revision. Later registration,
+Run creation freezes relation, Skill entry/revision, folder path, and Result
+Contract. Context gives required Skill and frozen revision; the Agent verifies
+loaded bytes before use. Later registration,
 Skill-entry, or Profile edits affect new Runs only; Scholium does not freeze or
 track folder contents. References are read through the Agent's local file
 capability only when the registered Skill routes them. A new Triptych begins with
@@ -125,17 +120,18 @@ resolved by the material itself.
 ### 8.2 Agent entry, local pairing, layered delivery, and Research Context
 
 GUI preparation and Agent-originated `agent start` share one Run contract. GUI
-offers the one-time Pairing Code below;
-direct start supplies Triptych, Action, target, and all typed Profile inputs,
-then receives a Session directly. Both routes use only `scholium agent` and share
-Context, writes, Result, continuation, End, conflict, and recovery. A write Result becomes final after its own transaction
-and Result validation converge without preparing or attaching a Check Fidelity
-child. Analyze performs
-its bounded source/content fidelity self-check through its registered Method
-before submission. **Check Fidelity** remains a separate read-only Action
-prepared only when the researcher explicitly initiates that Action for an exact
-revision. Raw UUIDs authorize nothing, and no Result completion invents a
-second Run or child lineage.
+uses the one-time Pairing Code below; direct start supplies Triptych, Action,
+target, and typed Profile inputs, then receives a Session. Both use only
+`scholium agent` and share Context, writes, Result, continuation, End, conflict,
+and recovery. A write Result becomes final when its transaction and validation
+converge, without a Check Fidelity child. Analyze performs its registered
+Method's bounded source/content fidelity self-check before submission.
+**Check Fidelity** remains a researcher-initiated, exact-revision, read-only
+Action. Raw UUIDs authorize nothing; completion creates no second Run.
+
+Confirmed Target changes without a Research Record remain the same Run's
+obligation. Scholium refuses another Run; status offers a fresh handoff and
+withholds End until Result submission.
 
 For Discuss, Session exposes frozen `DialogueResponseContract` and
 `agent discuss-reply`, appending one attributed Agent turn keyed by
@@ -199,6 +195,9 @@ Delivery is progressive:
   Result Contract, and typed `next_actions`—never Skill prose or path;
   Target/Fidelity reads and terminal actions are `required`; supporting
   evidence, Search, and writes are `when_needed`;
+- Core always loads its kernel; request or handoff gates pre-auth entry, while
+  Run state and `next_actions` gate authenticated references. Neither creates
+  an Agent-selected mode or capability;
 - Write/Critique sends Analysis/Topic **Recommended Reading**; Topic
   Synthesize sends Analysis-only. Reasons lead to reads; recommendation,
   Materials, and Context Use remain distinct;
@@ -419,9 +418,10 @@ facts. Action-specific defaults refine the same model:
 | Critique | Assessment | Issue Kind: interpretation / argument / source use / objection-reply / alternative / other / no material issue; the last is exclusive | Significance; Recommendation |
 | Check Fidelity | Finding | Status: no inconsistency found in checked scope / inconsistency found / unable to verify | Suggested Correction |
 
-Substantive durable interpretation, evaluation, synthesis, or integration must
-include enough public reasons and material limitations for later research
-judgment. This is not hidden chain-of-thought or a universal basis field.
+Durable interpretation, evaluation, synthesis, or integration follows the
+Action's philosophical genre rather than a technical process report and gives
+enough public reasons and material limitations for later judgment. This is not
+hidden chain-of-thought or a universal basis field.
 Write Records do not duplicate long target prose; Discussion turns themselves
 may supply the public reasons. Structure validation proves only contract
 validity, never method understanding, evidential sufficiency, quality, or task
@@ -691,18 +691,20 @@ system-Trash recovery is owned by
    evidence.
 2. Use **Analyze** to create, extend, correct, clarify, reorganize, or leave
    warranted content unchanged.
-3. Analyze reconstructs before critical pressure, identifies the operative
-   method when material, and applies relevant success conditions rather than a
-   universal argument template. Source-explicit claims, reconstruction,
-   charitable repair, Agent criticism, rival definitions, objections, replies,
-   implications, and residual pressure retain their actual status.
+3. Analyze reconstructs before criticism and preserves the status of source
+   claims, reconstruction, repair, objections, replies, implications, and Agent
+   evaluation. Its thematic writing follows the source's problem, central
+   intervention, argument or operative structure—not process, checklist, Result
+   fields, or mandatory Method/lens headings.
 4. If a Scholium-owned local source cannot be reopened, Analyze returns a
-   bounded access failure and cannot simulate source analysis from the
-   Analysis note alone. On the external Zotero route, unavailable MCP,
-   missing attachments, extraction failure, or incomplete pagination narrows
-   the result and remains an explicit limitation; metadata alone never
-   substitutes for the paper.
-5. Use Discussion for comments. Analyze performs its own bounded fidelity
+   bounded failure rather than simulate from the Analysis note. Unavailable
+   external retrieval, attachments, extraction, or pagination narrows the
+   result; metadata never substitutes for source text.
+5. Analyze may relate a relevant Work to an exact question, thesis, argument,
+   section, or burden. Ownership, links, and vocabulary
+   prove neither relevance nor commitment; Analyze attributes the relation and
+   leaves the Work unchanged.
+6. Use Discussion for comments. Analyze performs its own bounded fidelity
    self-check; use Check Fidelity for an exact revision only when the
    researcher explicitly initiates it, and let the researcher decide whether a
    Topic or Work should change.

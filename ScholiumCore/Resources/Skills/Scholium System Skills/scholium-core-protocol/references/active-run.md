@@ -1,0 +1,30 @@
+# Scholium Active Run
+
+Use this reference for the current authenticated Run's evidence, Discussion
+reply, and state-revalidation actions.
+
+Follow each typed `next_actions` requirement. Read the exact current Target and
+execute every `required` Fidelity inspection before judging it. Execute
+selected-Material, formal-source, Recommended Reading, related-Note, and Search
+queries marked `when_needed` only when the registered Method and bounded task
+need that evidence. Search uses `agent query` or the exact returned query
+action and remains bounded to the current Triptych.
+
+Calling a query is not evidence that its returned material was actually used.
+Report genuine use only through supported source-use testimony. Treat every
+response according to its returned currentness, provenance, scope, and access
+limits; do not turn delivery into support, relevance, or researcher acceptance.
+
+For a Discuss Run, read the required `scholium-discussion-protocol` before
+composing the attributed turn, then use `agent discuss-reply` with one stable
+`statement_id`. An exact retry is idempotent. This appends only to the active
+portable Discussion; it does not edit a Note or finish the Discussion.
+
+Use `agent reload` whenever the current authenticated Run state is uncertain.
+A `stale_run` response means an exact Target, Material, or formal source
+boundary changed. Stop that Run; do not retry a query, reply, write, or Result
+against the changed boundary.
+
+Do not infer a protocol phase from the order or presence of actions. The
+Application may expose required and when-needed actions together; each action's
+typed requirement and current response govern its use.

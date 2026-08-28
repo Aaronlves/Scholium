@@ -1495,6 +1495,14 @@ enum LocalAgentBridgeWireCoding {
             code = .invalidRequest
         default: code = .operationFailed
         }
+        if case ResearchActionRunContractError.activeResultRequired = error {
+            return LocalAgentBridgeErrorPayload(
+                code: .operationFailed,
+                message: "This Note already has saved Agent changes awaiting a Research Result. In Scholium, copy the resume handoff for that active Action; do not start another Run.",
+                recovery: (error as? any AgentCommandErrorCodeProviding)?
+                    .agentCommandRecovery
+            )
+        }
         let message = switch code {
         case .unavailable: "Scholium is unavailable."
         case .invalidFrame: "The bridge frame was invalid."

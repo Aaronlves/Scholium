@@ -213,6 +213,7 @@ public struct TriptychMoveCommit: Hashable, Sendable {
 public enum TriptychTransactionError: LocalizedError, Sendable {
     case invalidPlan(String)
     case preflightFailed(note: VaultQualifiedNoteID?, detail: String)
+    case activeResearchActions([UUID])
     case transactionRolledBack(String)
     case recoveryRequired(TriptychMutationRecoveryRecord)
     case recoveryPersistenceFailed(TriptychMutationRecoveryRecord, String)
@@ -226,6 +227,8 @@ public enum TriptychTransactionError: LocalizedError, Sendable {
                 return "Scholium did not change any files because \(note.relativePath) failed preflight: \(detail)"
             }
             return "Scholium did not change any files because preflight failed: \(detail)"
+        case .activeResearchActions:
+            return "Finish or recover the active Research Action before moving its participating Note to the system Trash. Scholium did not change any files."
         case .transactionRolledBack(let detail):
             return "The operation failed and Scholium restored the affected files: \(detail)"
         case .recoveryRequired(let record):

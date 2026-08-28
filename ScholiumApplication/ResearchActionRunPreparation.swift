@@ -426,6 +426,21 @@ extension ResearchActionRunCoordinator {
         }
 
         let runID = runIDOverride ?? commentOnlyDiscussion?.id ?? UUID()
+        let activeRunIDs = try await dependencies.localExecutionStore
+            .activeExecutionIDs(containing: [request.target.noteID])
+        for activeRunID in activeRunIDs where activeRunID != runID {
+            guard let active = try await dependencies.localExecutionStore
+                .recordIfPresent(id: activeRunID),
+                  active.snapshot.request.target.noteID == request.target.noteID,
+                  active.completion == nil else { continue }
+            let hasCommittedWrite = active.documentWriteRecords.contains {
+                $0.state == .committed
+            } || active.zoteroBindingWriteRecords.contains {
+                $0.state == .committed
+            }
+            guard hasCommittedWrite else { continue }
+            throw ResearchActionRunContractError.activeResultRequired
+        }
         // Every existing Note that a Run may change receives one exact,
         // Run-bound starting revision before Agent access. This is direct
         // change evidence, not a general version history.

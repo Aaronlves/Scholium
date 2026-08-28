@@ -5,10 +5,21 @@ description: Draft or revise the current Work while preserving researcher author
 
 # Write
 
-Apply `scholium-core-protocol`. If no authenticated Run exists, enter through
-its project-discovery route before applying this Skill.
+This Skill supplies only the intellectual method for Write. It creates no Run,
+selects no Scholium command, and grants no read or write authority. Apply it
+only when the protected Core Protocol names it as the authenticated Run's
+current `action_method`.
 
 Modify only the current Work Target within the exact authorized scope. Treat Analyses, Topics, sources, Critiques, Comments, and Discussion turns as read-only inputs.
+
+## Scholarly outcome
+
+Produce prose native to the Work's philosophical genre, audience, stage, and
+researcher voice. Let sections and paragraphs perform substantive work—state,
+interpret, distinguish, argue, object, reply, concede, or draw a bounded
+implication—instead of narrating the writing task. Do not insert a change log,
+method checklist, evidence inventory, or Agent self-report into the Work unless
+that material is itself part of the researcher's intended text.
 
 ## Method
 
@@ -23,6 +34,12 @@ authorizes an alternative argument.
 Keep exposition, argument, objection, reply, and researcher commitment distinct. Do not turn a reported source view, agent recommendation, or unresolved possibility into the researcher's voice. Stabilize concepts, method, contribution burden, and inferential structure before polishing prose.
 
 When writing responds to feedback or Critique, read `references/feedback.md`. Decide each relevant item explicitly before editing; never treat agent or human feedback as automatically accepted.
+
+After an authorized edit, reread the saved Work and verify that the intended
+change, preserved thesis, source roles, and unresolved burdens remain accurate.
+Do not claim that a separate Fidelity audit passed unless the researcher
+explicitly initiated Check Fidelity; fluent prose is not evidence that the Work
+is original, publishable, or complete.
 
 ## Philosophical lenses
 
@@ -41,7 +58,3 @@ for the authorized writing operation:
 
 Once selected, a lens's safeguards are part of this Skill's method. It cannot
 widen the authorized range or silently change the researcher's thesis.
-
-## Feedback
-
-Report exact changes, intentionally unchanged material, feedback dispositions when applicable, Materials actually used, and any remaining source, methodological, contribution, or philosophical risk. Reread the saved Work and return the required completion evidence. Do not claim that a separate Fidelity audit passed unless the researcher explicitly initiated Check Fidelity; a fluent draft is not evidence that the Work is original, publishable, or complete.

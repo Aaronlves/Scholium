@@ -798,7 +798,11 @@ struct ContentView: View {
                 appState.folderFileRequest = $0
             },
             requestFolderSystemTrash: {
-                try await appState.libraryMutationController.prepareFolderSystemTrash($0)
+                do {
+                    try await appState.libraryMutationController.prepareFolderSystemTrash($0)
+                } catch TriptychTransactionError.activeResearchActions(let runIDs) {
+                    appState.openResearchActionRecovery(runIDs: runIDs)
+                }
             },
             copyRelativePath: { path in
                 do {
@@ -816,7 +820,11 @@ struct ContentView: View {
             },
             revealNote: { appState.showInFinder($0) },
             requestSystemTrash: {
-                try await appState.libraryMutationController.prepareNoteSystemTrash($0)
+                do {
+                    try await appState.libraryMutationController.prepareNoteSystemTrash($0)
+                } catch TriptychTransactionError.activeResearchActions(let runIDs) {
+                    appState.openResearchActionRecovery(runIDs: runIDs)
+                }
             },
             revealCurrentVault: { appState.revealVaultInFinder() },
             openSettings: { openSettings() },

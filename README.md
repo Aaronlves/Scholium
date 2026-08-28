@@ -354,9 +354,10 @@ context, request bounded writes, submit one result, continue research, and end
 the Run through a loopback-only bridge. `agent start` stores the protected
 Session credential locally and needs no Pairing Code. Pairing the GUI-created
 route still reads the one-time code through standard input;
-Scholium does not launch or supervise the Agent. The authenticated
-[Core Protocol](ScholiumCore/Resources/Skills/Scholium%20System%20Skills/scholium-core-protocol/references/runtime-protocol.md)
-owns the Agent Run workflow; installed command help owns current CLI syntax.
+Scholium does not launch or supervise the Agent. The project-discovered
+[Core Protocol](ScholiumCore/Resources/Skills/Scholium%20System%20Skills/scholium-core-protocol/SKILL.md)
+governs entry and is identified again by authenticated context for the Agent
+Run workflow; installed command help owns current CLI syntax.
 See [Zotero MCP](Docs/ZOTERO_MCP.md) for the optional first-party Zotero
 transport.
 

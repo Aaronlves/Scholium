@@ -170,6 +170,29 @@ extension ResearchActionRunOperationsTests {
             handle: handle
         )
         #expect(write.state == .committed)
+        let activity = try #require(
+            try await handle.refresh().research.activities.first {
+                $0.runID == analyze.runID
+            }
+        )
+        #expect(activity.state == .running)
+        #expect(activity.repairReason == .resultRequired)
+        let updatedTarget = try await researchActionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+
+        do {
+            _ = try await handle.research.prepareActionRun(
+                ResearchActionRunRequest(actionID: .analyze, target: updatedTarget)
+            )
+            Issue.record("A second Run bypassed the unfinished Research Result.")
+        } catch ResearchActionRunContractError.activeResultRequired {
+            // Expected: confirmed changes keep their provenance on one Run.
+        } catch {
+            Issue.record("Unexpected overlapping Run error: \(error)")
+        }
 
         let completion = try await completeTestActionRun(
             handle: handle,
