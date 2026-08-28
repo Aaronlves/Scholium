@@ -1490,6 +1490,7 @@ enum LocalAgentBridgeWireCoding {
              DocumentCreationError.invalidMetadata,
              DocumentCreationError.invalidAuthoredYAML,
              DocumentCreationError.inapplicableAnalysisProperty,
+             is ResearchAgentResultContractError,
              is DecodingError:
             code = .invalidRequest
         default: code = .operationFailed
@@ -1497,7 +1498,9 @@ enum LocalAgentBridgeWireCoding {
         let message = switch code {
         case .unavailable: "Scholium is unavailable."
         case .invalidFrame: "The bridge frame was invalid."
-        case .invalidRequest: "The bridge request was invalid."
+        case .invalidRequest:
+            (error as? ResearchAgentResultContractError)?.localizedDescription
+                ?? "The bridge request was invalid."
         case .unsupportedVersion: "The bridge schema version is unsupported."
         case .permissionDenied: "The bridge request was not authorized."
         case .sessionExpired:

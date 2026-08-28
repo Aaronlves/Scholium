@@ -104,6 +104,28 @@ struct ResearchAgentResultContractsTests {
         }
     }
 
+    @Test("Correctable Result contract errors preserve the same Run recovery boundary")
+    func correctableResultContractRecovery() {
+        let fidelityError = ResearchAgentResultContractError
+            .fidelityOutcomesNotPermitted(.analyze)
+        #expect(fidelityError.agentCommandErrorCode == "invalid_request")
+        #expect(fidelityError.localizedDescription.contains("fidelity_outcomes"))
+        #expect(fidelityError.localizedDescription.contains("analyze"))
+        #expect(fidelityError.agentCommandRecovery == AgentOperationRecovery(
+            safeToRetry: true,
+            mustReuseRequestIdentity: true,
+            nextStep: .correctRequest
+        ))
+
+        let attached = ResearchAgentResultContractError.resultAlreadySubmitted
+        #expect(attached.agentCommandErrorCode == "invalid_request")
+        #expect(attached.agentCommandRecovery == AgentOperationRecovery(
+            safeToRetry: false,
+            mustReuseRequestIdentity: true,
+            nextStep: .inspectOriginalRequestState
+        ))
+    }
+
     @Test("Fidelity attachment receipts and source constraints are strict and nonauthorizing")
     func strictFidelityAttachmentContracts() throws {
         let note = VaultQualifiedNoteID(

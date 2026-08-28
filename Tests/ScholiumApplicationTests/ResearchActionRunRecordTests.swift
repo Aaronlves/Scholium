@@ -175,6 +175,8 @@ extension ResearchActionRunOperationsTests {
                 #expect(object["record_title"] as? String != nil)
                 #expect((object["context_use_claims"] as? [Any])?.isEmpty == true)
                 #expect(object["fidelity_outcomes"] as? [Any] != nil)
+                #expect(result.label.contains("fidelity_outcomes empty")
+                    == (actionID != .checkFidelity))
                 let academicResults = try #require(
                     object["academic_results"] as? [String: Any]
                 )

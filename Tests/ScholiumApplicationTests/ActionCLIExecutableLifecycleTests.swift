@@ -121,7 +121,7 @@ struct ActionCLIExecutableLifecycleTests {
             )
         )))
         defer { Task { await runtime.shutdown() } }
-        _ = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
 
         let server = try LocalAgentBridgeServer(
             applicationSupportURL: bridgeContainer
@@ -347,6 +347,66 @@ struct ActionCLIExecutableLifecycleTests {
                 action: simulation.action,
                 context: started.context
             )
+            if simulation.action == .analyze {
+                let recordsBeforeInvalid = try await handle.research
+                    .finishedResearchRecords(noteID: simulation.target.noteID)
+                let invalid = try ResearchAgentResultSubmission(
+                    recordTitle: submission.recordTitle,
+                    disposition: submission.disposition,
+                    academicResults: submission.academicResults,
+                    contextUseClaims: submission.contextUseClaims,
+                    fidelityOutcomes: [
+                        FidelityCheckOutcome(
+                            check: .content,
+                            state: .passed,
+                            summary: "The external Analyze simulation completed its bounded content self-check."
+                        ),
+                        FidelityCheckOutcome(
+                            check: .citations,
+                            state: .passed,
+                            summary: "The external Analyze simulation completed its bounded citation self-check."
+                        ),
+                    ],
+                    literatureRecommendations: submission.literatureRecommendations
+                )
+                let failure = try cli.runExpectingFailure(
+                    ["agent", "submit-result", "--run", started.receipt.run.rawValue,
+                     "--from", "-"],
+                    stdin: try Self.encoder().encode(invalid),
+                    environment: environment
+                )
+                let report = try #require(
+                    JSONSerialization.jsonObject(with: failure.stderr)
+                        as? [String: Any]
+                )
+                #expect(report["code"] as? String == "invalid_request")
+                #expect((report["message"] as? String)?.contains(
+                    "fidelity_outcomes"
+                ) == true)
+                let recovery = try #require(
+                    report["recovery"] as? [String: Any]
+                )
+                #expect(recovery["safe_to_retry"] as? Bool == true)
+                #expect(recovery["must_reuse_request_identity"] as? Bool == true)
+                #expect(recovery["next_step"] as? String == "correct_request")
+                let recordsAfterInvalid = try await handle.research
+                    .finishedResearchRecords(noteID: simulation.target.noteID)
+                #expect(recordsAfterInvalid == recordsBeforeInvalid)
+                let reload = try cli.run(
+                    ["agent", "reload", "--run", started.receipt.run.rawValue],
+                    environment: environment
+                )
+                let reloaded = try Self.decoder().decode(
+                    ResearchAuthenticatedRunContext.self,
+                    from: reload.stdout
+                )
+                #expect(reloaded.brief.run == started.receipt.run)
+                #expect(reloaded.brief.state == .prepared)
+                #expect(String(
+                    decoding: try Data(contentsOf: targetURL),
+                    as: UTF8.self
+                ).contains("external-cli-analyze-write"))
+            }
             let resultOutput = try cli.run(
                 ["agent", "submit-result", "--run", started.receipt.run.rawValue,
                  "--from", "-"],

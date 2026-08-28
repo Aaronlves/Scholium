@@ -393,6 +393,9 @@ struct ResearchMethodDefaultsTests {
     func analyzeMethodSupportsExternalZoteroSource() throws {
         let source = try BundledResearchMethodDefaults.primarySource(for: .analyze)
         #expect(source.contains("independent Zotero/MCP capability"))
+        #expect(source.contains("Keep `fidelity_outcomes` empty"))
+        #expect(source.contains("reserved for a researcher-initiated Check"))
+        #expect(source.contains("academic Result fields, especially Reliability"))
         #expect(!source.contains("source supplied by Scholium"))
     }
 

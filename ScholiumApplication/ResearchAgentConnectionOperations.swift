@@ -2144,12 +2144,20 @@ extension WorkspaceHandle {
         if action.actionID == .analyze {
             completeTemplate["literature_recommendations"] = []
         }
+        let resultLabel: String
+        if action.actionID == .checkFidelity {
+            resultLabel = derivesDefaultAcademicResults
+                ? "Submit the attributed Fidelity outcomes; Scholium derives the default aggregate Finding fields"
+                : "Submit the attributed Fidelity outcomes and this Run's frozen academic Result Contract"
+        } else if action.actionID == .analyze {
+            resultLabel = "Submit the frozen Analyze Result; keep fidelity_outcomes empty and report Method self-check limits through the academic Result"
+        } else {
+            resultLabel = "Submit this Action's frozen academic Result Contract; keep fidelity_outcomes empty"
+        }
         return AgentCommandAction(
             kind: .submitResult,
             requirement: .required,
-            label: action.actionID == .checkFidelity && derivesDefaultAcademicResults
-                ? "Submit the attributed Fidelity outcomes; Scholium derives the default aggregate Finding fields"
-                : "Submit this Action's frozen academic Result Contract",
+            label: resultLabel,
             command: [
                 "scholium", "agent", "submit-result", "--run",
                 run.rawValue, "--from", "-",

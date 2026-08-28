@@ -341,7 +341,9 @@ extension WorkspaceHandle {
                 }
             }
         } else if !submission.fidelityOutcomes.isEmpty {
-            throw ResearchAgentResultContractError.invalidSubmission
+            throw ResearchAgentResultContractError.fidelityOutcomesNotPermitted(
+                action.actionID
+            )
         }
     }
 

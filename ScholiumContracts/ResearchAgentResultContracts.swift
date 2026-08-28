@@ -316,10 +316,13 @@ public struct ResearchAgentResultReceipt: Codable, Hashable, Sendable {
     }
 }
 
-public enum ResearchAgentResultContractError: LocalizedError, Hashable, Sendable {
+public enum ResearchAgentResultContractError: LocalizedError, Hashable, Sendable,
+    AgentCommandErrorCodeProviding
+{
     case unsupportedSchemaVersion
     case invalidSubmission
     case invalidContextUse
+    case fidelityOutcomesNotPermitted(ResearchActionID)
     case resultAlreadySubmitted
 
     public var errorDescription: String? {
@@ -330,8 +333,30 @@ public enum ResearchAgentResultContractError: LocalizedError, Hashable, Sendable
             "The Agent Result does not match its bounded contract."
         case .invalidContextUse:
             "The Context Use claim is invalid or outside this Run."
+        case .fidelityOutcomesNotPermitted(let actionID):
+            "The Agent Result field fidelity_outcomes is reserved for Check Fidelity and must be empty for the \(actionID.rawValue) Action. If its Method performed a bounded self-check, record the relevant limits in the academic Result fields or limitations, then resubmit the same Run."
         case .resultAlreadySubmitted:
             "A different Agent Result is already attached to this Run."
+        }
+    }
+
+    public var agentCommandErrorCode: String { "invalid_request" }
+
+    public var agentCommandRecovery: AgentOperationRecovery? {
+        switch self {
+        case .resultAlreadySubmitted:
+            AgentOperationRecovery(
+                safeToRetry: false,
+                mustReuseRequestIdentity: true,
+                nextStep: .inspectOriginalRequestState
+            )
+        case .unsupportedSchemaVersion, .invalidSubmission, .invalidContextUse,
+             .fidelityOutcomesNotPermitted:
+            AgentOperationRecovery(
+                safeToRetry: true,
+                mustReuseRequestIdentity: true,
+                nextStep: .correctRequest
+            )
         }
     }
 }

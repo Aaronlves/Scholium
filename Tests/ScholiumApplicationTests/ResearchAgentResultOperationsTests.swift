@@ -605,6 +605,84 @@ struct ResearchAgentResultOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("A committed Analyze write keeps its Run repairable after invalid Fidelity fields")
+    func committedAnalyzeWriteRepairsInvalidFidelityResult() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let prepared = try await preparedAnalysis(handle: handle, fixture: fixture)
+        let marker = "Committed before Result contract repair."
+        let write = try await handle.research.writeAgentDocument(
+            credential: prepared.credential,
+            run: prepared.handoff.run,
+            intent: try ResearchDocumentWriteIntent(
+                role: .analysis,
+                relativePath: prepared.preparation.snapshot.target
+                    .note.relativePath,
+                content: "# Analysis\n\n\(marker)\n"
+            )
+        )
+        #expect(write.state == .committed)
+        let writtenDocument = try await handle.documents.load(fixture.analysisID)
+        #expect(writtenDocument.body.contains(marker))
+
+        let invalid = try analysisSubmission(
+            preparation: prepared.preparation,
+            contextUseClaims: [],
+            fidelityOutcomes: [FidelityCheckOutcome(
+                check: .content,
+                state: .passed,
+                summary: "The Analyze Method self-check found no issue in the fixture."
+            )]
+        )
+        do {
+            _ = try await handle.research.submitAgentResult(
+                credential: prepared.credential,
+                run: prepared.handoff.run,
+                submission: invalid
+            )
+            Issue.record("Expected Analyze to reject formal Fidelity outcomes.")
+        } catch let error as ResearchAgentResultContractError {
+            #expect(error == .fidelityOutcomesNotPermitted(.analyze))
+        }
+
+        let afterInvalid = try await handle.services.localResearchExecutionStore
+            .record(id: prepared.preparation.runID)
+        #expect(afterInvalid.resultPayload == nil)
+        #expect(afterInvalid.completion == nil)
+        #expect(afterInvalid.documentWriteRecords.contains {
+            $0.state == .committed
+        })
+        #expect(try await handle.research.finishedResearchRecords(noteID: nil)
+            .allSatisfy { $0.id != prepared.preparation.runID })
+        let reloaded = try await handle.research.authenticatedAgentContext(
+            credential: prepared.credential,
+            run: prepared.handoff.run
+        )
+        #expect(reloaded.brief.run == prepared.handoff.run)
+
+        let corrected = try analysisSubmission(
+            preparation: prepared.preparation,
+            contextUseClaims: []
+        )
+        let receipt = try await handle.research.submitAgentResult(
+            credential: prepared.credential,
+            run: prepared.handoff.run,
+            submission: corrected
+        )
+        #expect(receipt.state == .finalized)
+        #expect(receipt.recordFormed)
+        let records = try await handle.research.finishedResearchRecords(noteID: nil)
+            .filter { $0.id == prepared.preparation.runID }
+        #expect(records.count == 1)
+        let record = try #require(records.first)
+        #expect(record.confirmedChanges.contains(where: { change in
+            change.endingRevision == writtenDocument.fingerprint
+        }))
+        await runtime.shutdown()
+    }
+
     @Test("Researcher-state Context Use preserves content and verifies its current owner")
     func verifiedResearcherStateContextUse() async throws {
         let fixture = try await ResearchFixture.make()
@@ -822,7 +900,8 @@ struct ResearchAgentResultOperationsTests {
 
     private func analysisSubmission(
         preparation: ResearchActionPreparation,
-        contextUseClaims: [ResearchContextUseClaim]
+        contextUseClaims: [ResearchContextUseClaim],
+        fidelityOutcomes: [FidelityCheckOutcome] = []
     ) throws -> ResearchAgentResultSubmission {
         try ResearchAgentResultSubmission(
             recordTitle: ResearchRecordTitle("Source Material lineage fixture"),
@@ -837,6 +916,7 @@ struct ResearchAgentResultOperationsTests {
                 definitions: preparation.snapshot.resultContract.academicFields
             ),
             contextUseClaims: contextUseClaims,
+            fidelityOutcomes: fidelityOutcomes,
             literatureRecommendations: []
         )
     }

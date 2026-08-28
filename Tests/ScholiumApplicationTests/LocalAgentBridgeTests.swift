@@ -212,6 +212,25 @@ struct LocalAgentBridgeTests {
         )
         #expect(invalidAuthored.code == .invalidRequest)
 
+        let invalidResult = LocalAgentBridgeWireCoding.errorPayload(
+            ResearchAgentResultContractError
+                .fidelityOutcomesNotPermitted(.analyze)
+        )
+        #expect(invalidResult.code == .invalidRequest)
+        #expect(invalidResult.message.contains("fidelity_outcomes"))
+        #expect(invalidResult.message.contains("resubmit the same Run"))
+        #expect(invalidResult.recovery.safeToRetry)
+        #expect(invalidResult.recovery.mustReuseRequestIdentity)
+        #expect(invalidResult.recovery.nextStep == .correctRequest)
+
+        let attachedResult = LocalAgentBridgeWireCoding.errorPayload(
+            ResearchAgentResultContractError.resultAlreadySubmitted
+        )
+        #expect(attachedResult.code == .invalidRequest)
+        #expect(!attachedResult.recovery.safeToRetry)
+        #expect(attachedResult.recovery.mustReuseRequestIdentity)
+        #expect(attachedResult.recovery.nextStep == .inspectOriginalRequestState)
+
         let pathOccupied = LocalAgentBridgeWireCoding.errorPayload(
             ResearchAgentConnectionError.analysisPathOccupied
         )
