@@ -751,7 +751,7 @@ extension WorkspaceHandle {
                 case .sourceChanged:
                     return (
                         .changed,
-                        "The selected source Material changed after the parent Run used it."
+                        "The selected source Material changed after the parent Run froze it."
                     )
                 case .missingBinding, .sourceMissing, .zoteroAttachmentMissing:
                     return (
@@ -816,6 +816,51 @@ extension WorkspaceHandle {
         case .analysis: .sourceCorpus
         case .topic: .topicKnowledge
         case .work: .draftProject
+        }
+    }
+
+    private static func locator(
+        _ locator: ResearchContextSourceLocator,
+        isValidIn source: String
+    ) -> Bool {
+        locator.isValid(in: source)
+    }
+
+    private static func objectRole(_ role: VaultRole) -> ResearchContextObjectRole? {
+        switch role {
+        case .sourceCorpus: .analysis
+        case .topicKnowledge: .topic
+        case .draftProject: .work
+        case .other: nil
+        }
+    }
+
+    private static func evidentialLayer(_ role: VaultRole) -> EvidentialLayer {
+        switch role {
+        case .sourceCorpus: .paperAnalysis
+        case .topicKnowledge, .other: .topicNote
+        case .draftProject: .draftProse
+        }
+    }
+
+    private static func actorClass(
+        _ author: PortableResearchStatementAuthor
+    ) -> ResearchContextActorClass {
+        switch author {
+        case .researcher: .researcher
+        case .agent: .agent
+        }
+    }
+
+    private static func isNoteRetrievalReason(
+        _ reason: ResearchContextRetrievalReason
+    ) -> Bool {
+        switch reason {
+        case .lexical, .canonicalSummary, .propertyPresence, .directRelation,
+             .exactRead:
+            true
+        case .recordSearch, .explicitSelection, .researcherState:
+            false
         }
     }
 

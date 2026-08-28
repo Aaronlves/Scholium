@@ -76,11 +76,9 @@ extension ResearchActionRunCoordinator {
         }
         if let existing = stored.completion,
            [.unverified, .stale].contains(existing.state),
-           (existing.literatureRecommendations != submission.literatureRecommendations
-               || existing.actuallyUsedMaterialNoteIDs
-                    != submission.actuallyUsedMaterialNoteIDs) {
+           existing.literatureRecommendations != submission.literatureRecommendations {
             throw ResearchActionRunContractError.invalidCompletion(
-                "A completion retry cannot replace the Action's recorded recommendation or Material-use testimony."
+                "A completion retry cannot replace the Action's recorded recommendation."
             )
         }
         // A prepared Analyze never outlives its exact source authority. Check
@@ -182,18 +180,6 @@ extension ResearchActionRunCoordinator {
                 material,
                 expected: material.fingerprint,
                 host: host
-            )
-        }
-        if submission.actuallyUsedMaterialNoteIDs == nil {
-            throw ResearchActionRunContractError.invalidCompletion(
-                "A current Action completion must explicitly report the Materials actually used, including an empty report."
-            )
-        }
-        let actuallyUsedMaterialNoteIDs = submission.actuallyUsedMaterialNoteIDs ?? []
-        guard Set(actuallyUsedMaterialNoteIDs).count == actuallyUsedMaterialNoteIDs.count,
-              Set(actuallyUsedMaterialNoteIDs).isSubset(of: materialIDs) else {
-            throw ResearchActionRunContractError.invalidCompletion(
-                "Actually-used Material identities must be a distinct subset of the prepared Material set."
             )
         }
         let targetChanged = finalTargetFingerprint
@@ -381,7 +367,6 @@ extension ResearchActionRunCoordinator {
             recordTitle: stored.completion?.recordTitle ?? submission.recordTitle,
             targetFingerprint: finalTargetFingerprint,
             materialFingerprints: finalMaterialFingerprints,
-            actuallyUsedMaterialNoteIDs: submission.actuallyUsedMaterialNoteIDs,
             summary: stored.completion?.summary ?? submission.summary,
             didModifyTarget: didConfirmTargetWrite,
             fidelityOutcomes: outcomes,
@@ -451,7 +436,6 @@ extension ResearchActionRunCoordinator {
             recordTitle: completion.recordTitle,
             targetFingerprint: completion.targetFingerprint,
             materialFingerprints: completion.materialFingerprints,
-            actuallyUsedMaterialNoteIDs: completion.actuallyUsedMaterialNoteIDs,
             summary: completion.summary,
             didModifyTarget: completion.didModifyTarget,
             fidelityOutcomes: completion.fidelityOutcomes,
@@ -686,51 +670,9 @@ extension ResearchActionRunCoordinator {
                 ]
             )
         }
-        let materialsByID = Dictionary(
-            uniqueKeysWithValues: snapshot.request.materials.map { ($0.noteID, $0) }
-        )
-        guard let actuallyUsedMaterialNoteIDs = completion.actuallyUsedMaterialNoteIDs else {
-            throw ResearchActionRunContractError.invalidCompletion(
-                "A current Action completion has no explicit actually-used Material report."
-            )
-        }
-        let actuallyUsedMaterials = try actuallyUsedMaterialNoteIDs
-            .map { noteID -> PortableResearchMaterialUse in
-                guard let material = materialsByID[noteID] else {
-                    throw ResearchActionRunContractError.invalidCompletion(
-                        "A recorded actually-used Material is outside the frozen request."
-                    )
-                }
-                let role: ResearchActionTargetRole = switch material.role {
-                case .analysis: .analysis
-                case .topic: .topic
-                case .work: .work
-                }
-                return try PortableResearchMaterialUse(
-                    noteID: material.noteID,
-                    note: material.note,
-                    role: role,
-                    title: material.title,
-                    revision: material.fingerprint
-                )
-            }
         var participantIDs: Set<UUID> = [actionSnapshot.target.noteID]
+        participantIDs.formUnion(snapshot.request.materials.map(\.noteID))
         participantIDs.formUnion(changes.map(\.noteID))
-        participantIDs.formUnion(actuallyUsedMaterials.map(\.noteID))
-        for entry in resultPayload.contextUseReport?.entries ?? []
-            where entry.sourceReference.owner.kind == .note {
-            let owner = entry.sourceReference.owner
-            guard owner.triptychID == workspaceID,
-                  let stableID = UUID(uuidString: owner.stableObjectIdentity),
-                  let note = noteSnapshots[stableID],
-                  note.note.vaultID == owner.vaultID,
-                  note.note.relativePath == owner.relativePath else {
-                throw ResearchActionRunContractError.invalidCompletion(
-                    "An actually-used Note reference is outside the frozen Action authority."
-                )
-            }
-            participantIDs.insert(note.noteID)
-        }
         let participatingNotes = try participantIDs.map { noteID in
             guard let note = noteSnapshots[noteID] else {
                 throw ResearchActionRunContractError.invalidCompletion(
@@ -783,7 +725,7 @@ extension ResearchActionRunCoordinator {
             triptychID: workspaceID,
             title: completion.recordTitle,
             kind: .action,
-            action: ResearchActionRecordIdentity(snapshot: actionSnapshot),
+            action: try ResearchActionRecordIdentity(snapshot: actionSnapshot),
             method: try PortableResearchMethodReference(snapshot: actionSnapshot),
             sourceReference: snapshot.sourceReference,
             zoteroBibliographicContext: snapshot.zoteroBibliographicContext,
@@ -794,8 +736,6 @@ extension ResearchActionRunCoordinator {
             statements: [],
             resultDisposition: resultPayload.disposition,
             academicResults: academicResults,
-            contextUseReport: resultPayload.contextUseReport,
-            actuallyUsedMaterials: actuallyUsedMaterials,
             fidelityCompletion: try portableFidelityCompletion(for: completion),
             confirmedChanges: changes,
             discrepancies: discrepancies,
@@ -876,7 +816,6 @@ extension ResearchActionRunCoordinator {
                     recordTitle: completion.recordTitle,
                     targetFingerprint: completion.targetFingerprint,
                     materialFingerprints: completion.materialFingerprints,
-                    actuallyUsedMaterialNoteIDs: completion.actuallyUsedMaterialNoteIDs,
                     summary: completion.summary,
                     didModifyTarget: completion.didModifyTarget,
                     fidelityOutcomes: completion.fidelityOutcomes,
@@ -908,18 +847,6 @@ extension ResearchActionRunCoordinator {
 
             guard Set(completion.materialFingerprints.keys)
                     == Set(snapshot.request.materials.map(\.noteID)) else {
-                return false
-            }
-            let actuallyUsedIDs: [UUID]
-            if let reported = completion.actuallyUsedMaterialNoteIDs {
-                actuallyUsedIDs = reported
-            } else {
-                return false
-            }
-            guard Set(actuallyUsedIDs).count == actuallyUsedIDs.count,
-                  Set(actuallyUsedIDs).isSubset(
-                    of: Set(snapshot.request.materials.map(\.noteID))
-                  ) else {
                 return false
             }
             for material in snapshot.request.materials {

@@ -114,7 +114,7 @@ enum ResearchDiscussionFactory {
             id: snapshot.runID,
             triptychID: triptychID,
             primaryNoteID: request.target.noteID,
-            action: ResearchActionRecordIdentity(snapshot: action),
+            action: try ResearchActionRecordIdentity(snapshot: action),
             method: try PortableResearchMethodReference(snapshot: action),
             participatingNotes: participants,
             statements: [statement],

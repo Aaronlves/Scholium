@@ -20,7 +20,6 @@ If an anchor no longer maps to the current Note, retain the quoted excerpt and i
 Conclude with only information useful to the researcher:
 
 - the bounded academic result;
-- Materials actually consulted;
 - consequential uncertainty or unresolved pressure;
 - any proposed next Action or failure diagnosis.
 

@@ -1831,8 +1831,7 @@ extension WorkspaceHandle {
                     kind: .readNote,
                     note: target.note,
                     expectedFingerprint: target.fingerprint,
-                    limit: 1,
-                    useEligibility: .contextUse
+                    limit: 1
                 )
             }
         var supportingClauses: [ResearchContextClause] = try
@@ -1845,8 +1844,7 @@ extension WorkspaceHandle {
                     kind: .readNote,
                     note: material.note,
                     expectedFingerprint: material.fingerprint,
-                    limit: 1,
-                    useEligibility: .contextUse
+                    limit: 1
                 )
             }
         if includeSourceMaterial {
@@ -1856,8 +1854,7 @@ extension WorkspaceHandle {
                     label: "formal-source-material"
                 ),
                 kind: .inspectMaterials,
-                limit: 1,
-                useEligibility: .contextUse
+                limit: 1
             ))
         }
         var requests: [ResearchContextRequest] = []
@@ -1979,8 +1976,7 @@ extension WorkspaceHandle {
                 kind: .readNote,
                 note: candidate.note,
                 expectedFingerprint: candidate.fingerprint,
-                limit: 1,
-                useEligibility: .contextUse
+                limit: 1
             )
         }
         var actions: [AgentCommandAction] = []
@@ -2055,8 +2051,7 @@ extension WorkspaceHandle {
                 id: Self.stableAgentUUID(runID: record.id, label: "search-clause"),
                 kind: .discoverNote,
                 query: "REPLACE_WITH_BOUNDED_SEARCH_QUERY",
-                limit: 8,
-                useEligibility: .contextUse
+                limit: 8
             )]
         )
         actions.append(AgentCommandAction(
@@ -2137,7 +2132,6 @@ extension WorkspaceHandle {
             ),
             "disposition": "completed",
             "academic_results": ["values": academicValues],
-            "context_use_claims": [],
             "fidelity_outcomes": outcomes,
         ]
         var completeTemplate = template

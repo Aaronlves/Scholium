@@ -24,7 +24,11 @@ the evidence does not warrant one unified view.
 
 ## Method
 
-Read `references/method.md`. Begin from the Topic's current question and structure, then determine what each actually consulted Material contributes. Integrate only warranted additions, corrections, qualifications, or reopenings. Do not create author- or source-centered sections merely because a Material was selected.
+Read `references/method.md`. Begin from the Topic's current question and
+structure, then determine what the relevant inspected materials contribute.
+Integrate only warranted additions, corrections, qualifications, or reopenings.
+Do not create author- or source-centered sections merely because a Material was
+selected or read.
 
 Preserve source authority, philosophical settlement, and the researcher's commitment as separate dimensions. Links and search results support navigation only. State source roles only when the inspected material establishes them.
 

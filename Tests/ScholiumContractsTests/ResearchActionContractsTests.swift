@@ -163,15 +163,33 @@ struct ResearchActionContractsTests {
 
     @Test("Portable Records project only the versioned public Action identity")
     func recordIdentity() throws {
-        let identity = ResearchActionRecordIdentity(
+        let identity = try ResearchActionRecordIdentity(
             snapshot: try makeSnapshot(definition: .analyze, role: .analysis)
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let data = try encoder.encode(identity)
         let encoded = String(decoding: data, as: UTF8.self)
-        #expect(encoded == #"{"action_id":"analyze","schema_version":1}"#)
+        #expect(encoded == #"{"action_id":"analyze","material_note_ids":[],"schema_version":2}"#)
         #expect(!encoded.contains("function"))
+    }
+
+    @Test("Portable Action identity retains explicit frozen Materials without source-use testimony")
+    func recordIdentityRetainsMaterials() throws {
+        let first = UUID(uuidString: "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA")!
+        let second = UUID(uuidString: "BBBBBBBB-BBBB-4BBB-8BBB-BBBBBBBBBBBB")!
+        let identity = try ResearchActionRecordIdentity(
+            actionID: .synthesize,
+            materialNoteIDs: [second, first]
+        )
+
+        #expect(identity.materialNoteIDs == [first, second])
+        #expect(throws: ResearchActionContractError.self) {
+            _ = try ResearchActionRecordIdentity(
+                actionID: .synthesize,
+                materialNoteIDs: [first, first]
+            )
+        }
     }
 
     private func makeSnapshot(

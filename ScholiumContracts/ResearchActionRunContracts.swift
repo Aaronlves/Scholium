@@ -482,7 +482,7 @@ public struct ResearchActionRunSnapshot: Codable, Hashable, Sendable {
     public let continuationHandoff: ResearchContinuationHandoffContext?
     /// Machine-local preparation evidence for a researcher-requested
     /// Resynthesize child. It never enters the portable Research Record.
-    public let resynthesisContext: MaterialChangedSinceUseAttentionContext?
+    public let resynthesisContext: SynthesisMaterialChangedAttentionContext?
     public let confirmationToken: UUID
     public let preparedAt: Date
 
@@ -541,7 +541,7 @@ public struct ResearchActionRunSnapshot: Codable, Hashable, Sendable {
                 forKey: .continuationHandoff
             ),
             resynthesisContext: try container.decodeIfPresent(
-                MaterialChangedSinceUseAttentionContext.self,
+                SynthesisMaterialChangedAttentionContext.self,
                 forKey: .resynthesisContext
             ),
             confirmationToken: try container.decode(
@@ -563,7 +563,7 @@ public struct ResearchActionRunSnapshot: Codable, Hashable, Sendable {
         citationStyle: String? = nil,
         continuationLineage: ResearchContinuationLineage? = nil,
         continuationHandoff: ResearchContinuationHandoffContext? = nil,
-        resynthesisContext: MaterialChangedSinceUseAttentionContext? = nil,
+        resynthesisContext: SynthesisMaterialChangedAttentionContext? = nil,
         confirmationToken: UUID = UUID(),
         preparedAt: Date = Date()
     ) throws {
@@ -718,10 +718,6 @@ public struct ResearchActionRunCompletionSubmission: Codable, Hashable, Sendable
     /// omits this value because Scholium reads every frozen target itself.
     public let finalTargetFingerprint: DocumentFingerprint?
     public let finalMaterialFingerprints: [UUID: DocumentFingerprint]
-    /// Stable IDs the agent reports actually using. Application validation
-    /// intersects this testimony with the frozen Material set and exact
-    /// revisions before it can enter a portable Research Record.
-    public let actuallyUsedMaterialNoteIDs: [UUID]?
     public let summary: String
     public let didModifyTarget: Bool
     public let fidelityOutcomes: [FidelityCheckOutcome]
@@ -738,7 +734,6 @@ public struct ResearchActionRunCompletionSubmission: Codable, Hashable, Sendable
         recordTitle: ResearchRecordTitle,
         finalTargetFingerprint: DocumentFingerprint? = nil,
         finalMaterialFingerprints: [UUID: DocumentFingerprint] = [:],
-        actuallyUsedMaterialNoteIDs: [UUID]? = [],
         summary: String,
         didModifyTarget: Bool,
         fidelityOutcomes: [FidelityCheckOutcome] = [],
@@ -752,9 +747,6 @@ public struct ResearchActionRunCompletionSubmission: Codable, Hashable, Sendable
         self.recordTitle = recordTitle
         self.finalTargetFingerprint = finalTargetFingerprint
         self.finalMaterialFingerprints = finalMaterialFingerprints
-        self.actuallyUsedMaterialNoteIDs = actuallyUsedMaterialNoteIDs?.sorted {
-            $0.uuidString < $1.uuidString
-        }
         self.summary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
         self.didModifyTarget = didModifyTarget
         self.fidelityOutcomes = fidelityOutcomes
@@ -776,7 +768,6 @@ public struct ResearchActionRunCompletion: Codable, Hashable, Sendable {
     public let recordTitle: ResearchRecordTitle
     public let targetFingerprint: DocumentFingerprint
     public let materialFingerprints: [UUID: DocumentFingerprint]
-    public let actuallyUsedMaterialNoteIDs: [UUID]?
     public let summary: String
     public let didModifyTarget: Bool
     public let fidelityOutcomes: [FidelityCheckOutcome]
@@ -802,7 +793,6 @@ public struct ResearchActionRunCompletion: Codable, Hashable, Sendable {
         recordTitle: ResearchRecordTitle,
         targetFingerprint: DocumentFingerprint,
         materialFingerprints: [UUID: DocumentFingerprint],
-        actuallyUsedMaterialNoteIDs: [UUID]? = [],
         summary: String,
         didModifyTarget: Bool,
         fidelityOutcomes: [FidelityCheckOutcome],
@@ -821,9 +811,6 @@ public struct ResearchActionRunCompletion: Codable, Hashable, Sendable {
         self.recordTitle = recordTitle
         self.targetFingerprint = targetFingerprint
         self.materialFingerprints = materialFingerprints
-        self.actuallyUsedMaterialNoteIDs = actuallyUsedMaterialNoteIDs?.sorted {
-            $0.uuidString < $1.uuidString
-        }
         self.summary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
         self.didModifyTarget = didModifyTarget
         self.fidelityOutcomes = fidelityOutcomes

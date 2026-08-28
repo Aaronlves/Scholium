@@ -33,7 +33,7 @@ Work.
 Use the bundled default form unless the researcher-owned active Method
 explicitly supplies another valid form: Overall Assessment; Strengths; Major
 Concerns; Source Support; Objections and Alternatives; Revision Priorities;
-Specific Findings; and Materials Consulted and Limitations. Preserve the order
+Specific Findings; and Evidence Limits when material. Preserve the order
 of sections actually warranted; do not manufacture filler for an inapplicable
 section.
 
@@ -60,8 +60,8 @@ may add evidence, change the read-only boundary, or manufacture a finding.
 ## Boundary
 
 Never modify the Work. If a finding warrants change, recommend a separately
-authorized Write phase. Materials actually consulted, access limits, and
-uncertainty constrain the assessment. Each Specific Finding follows the exact
+authorized Write phase. Access limits and uncertainty constrain the assessment,
+but the Critique does not inventory what was read. Each Specific Finding follows the exact
 locator contract in `references/method.md`. Traced, Untraced, Disputed, and
 Beyond Sources are attributed agent judgments, never Scholium statuses.
 

@@ -1827,7 +1827,7 @@ struct ResearchRecordV1StoresTests {
             triptychID: UUID(uuidString: "BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB")!,
             title: ResearchRecordTitle("No source change was needed"),
             kind: .action,
-            action: ResearchActionRecordIdentity(snapshot: action),
+            action: try ResearchActionRecordIdentity(snapshot: action),
             method: try PortableResearchMethodReference(snapshot: action),
             sourceReference: actionID == .analyze
                 ? try ResearchSourceReference(

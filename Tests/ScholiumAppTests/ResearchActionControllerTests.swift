@@ -84,7 +84,7 @@ struct ResearchActionControllerTests {
             path: "Analysis.md",
             role: .analysis
         )
-        let context = MaterialChangedSinceUseAttentionContext(
+        let context = SynthesisMaterialChangedAttentionContext(
             triptychID: UUID(),
             recordID: UUID(),
             topicNoteID: topic.noteID,
@@ -99,7 +99,7 @@ struct ResearchActionControllerTests {
             recordedRevision: DocumentFingerprint(content: "recorded"),
             currentRevision: material.fingerprint
         )
-        var capturedContext: MaterialChangedSinceUseAttentionContext?
+        var capturedContext: SynthesisMaterialChangedAttentionContext?
         var capturedRequest: ResearchActionExecutionRequest?
         let controller = ResearchActionController()
         controller.bind(ResearchActionClient(
@@ -1100,7 +1100,7 @@ struct ResearchActionControllerTests {
             triptychID: UUID(uuidString: "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC")!,
             title: try ResearchRecordTitle("Controller test result"),
             kind: .action,
-            action: ResearchActionRecordIdentity(snapshot: snapshot),
+            action: try ResearchActionRecordIdentity(snapshot: snapshot),
             method: PortableResearchMethodReference(snapshot: snapshot),
             continuationLineage: continuationLineage,
             primaryNoteID: target.noteID,

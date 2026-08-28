@@ -514,7 +514,7 @@ struct AttentionQueueRow: View {
     @ViewBuilder
     private var actions: some View {
         Button("Inspect", action: inspect)
-        if item.materialChangedSinceUse != nil {
+        if item.synthesisMaterialChanged != nil {
             Button("Resynthesize", action: resynthesize)
             Button("Leave Unchanged", action: leaveUnchanged)
         } else {

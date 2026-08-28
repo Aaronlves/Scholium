@@ -98,5 +98,5 @@ an Analysis Run carries the matching Zotero binding, the external Agent may
 use this transport and its returned attachment pointer to retrieve the paper
 data it needs; Scholium does not proxy, cache, or automatically copy that
 content. Source analysis and citation formatting remain separate scholarly
-work, and the Agent must report the exact material and extraction limits it
-actually used.
+work. The Agent states material access or extraction limits when they constrain
+what the academic result can support; Scholium retains no reading history.

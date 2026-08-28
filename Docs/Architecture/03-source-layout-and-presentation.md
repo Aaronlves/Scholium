@@ -149,7 +149,7 @@ divider. Both plane backgrounds extend behind the transparent toolbar while
 their scroll content remains inside the AppKit safe area. Reading owns the
 finalized result, attributed record, continuity relation, Reading Lead links,
 and the progressive Researcher Response. The fixed Evidence rail presents
-Changes, Effects, Context Used, Participants, then Technical Details. The
+Changes, Effects, Participants, then Technical Details. The
 Response opens one Evaluation-first, optionally expanded Method-Feedback-second
 editor whose single Save Response operation is atomic. Changes reads exact
 current source state and opens the shared comparison without writing Review. One
@@ -157,9 +157,7 @@ default-closed Technical Details group
 owns schema, identity, and exact revision hashes; confirmed Research Record deletion
 remains in the Record header. Record
 detail is the sole finalized-result, Evaluation, and Method Feedback processing
-route; the parent Action presentation contains none of those subtrees. A Context Used Note or
-Record entry is interactive only when its current exact destination resolves;
-otherwise its exact locator and testimony remain selectable and noninteractive.
+route; the parent Action presentation contains none of those subtrees.
 
 The attached comparison shell and unified exact-diff presentation are shared
 with Document Conflict, while each workflow retains its own inputs and
@@ -247,12 +245,12 @@ destination session and Source List commit together, while staged failure
 retains the prior workspace and reports through the existing toast path.
 Explicit refresh continues to use the content-loading/error presentation.
 
-Snapshot assembly derives Material Changed Since Use only from the latest
-completed Synthesize Action record for a Topic/Material pair whose
-agent-reported, Application-validated actually-used set contains that Analysis.
-It compares the recorded exact revision with the current active, resolved
-Analysis revision; selected-but-unused, deleted-record, tombstoned, deleted,
-and identity-unresolved inputs create no condition. Each item ID also
+Snapshot assembly derives Synthesis Material Changed only from the latest
+completed Synthesize Action Record for a Topic and an Analysis retained as an
+explicit frozen Material participant. It compares that participant's recorded
+starting revision with the current active, resolved Analysis revision;
+dynamically read, deleted-Record, tombstoned, deleted, and identity-unresolved
+inputs create no condition. Each item ID also
 distinguishes its affected Topic. The dismissal key includes the Triptych and
 binds only Material identity, recorded revision, and current revision within
 it. Inspect opens the current Analysis; Resynthesize rechecks that latest

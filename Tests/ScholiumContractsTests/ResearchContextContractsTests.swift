@@ -9,8 +9,7 @@ struct ResearchContextContractsTests {
         let clause = try ResearchContextClause(
             kind: .readNote,
             query: "path:Inheritance.md",
-            sectionHeading: "Objections",
-            useEligibility: .contextUse
+            sectionHeading: "Objections"
         )
         let request = try ResearchContextRequest(clauses: [clause])
         let query = try ResearchContextQuery(
@@ -38,7 +37,7 @@ struct ResearchContextContractsTests {
         #expect(encodedClause["schema_version"] as? Int
             == ResearchContextClause.currentSchemaVersion)
         #expect(encodedClause["section_heading"] as? String == "Objections")
-        #expect(encodedClause["use_eligibility"] as? String == "context_use")
+        #expect(encodedClause["use_eligibility"] == nil)
         #expect(encodedClause["schemaVersion"] == nil)
 
         var obsolete = object
@@ -59,20 +58,15 @@ struct ResearchContextContractsTests {
         #expect(throws: ResearchContextContractError.self) {
             _ = try ResearchContextClause(
                 kind: .inspectResearcherState,
-                query: "invented query",
-                useEligibility: .referenceOnly
+                query: "invented query"
             )
         }
         #expect(throws: ResearchContextContractError.self) {
             _ = try ResearchContextClause(
-                kind: .discoverNote,
-                useEligibility: .referenceOnly
+                kind: .discoverNote
             )
         }
-        let material = try ResearchContextClause(
-            kind: .inspectMaterials,
-            useEligibility: .contextUse
-        )
+        let material = try ResearchContextClause(kind: .inspectMaterials)
         let materialBytes = try JSONEncoder().encode(material)
         var retiredMaterial = try #require(
             JSONSerialization.jsonObject(with: materialBytes) as? [String: Any]
@@ -90,14 +84,12 @@ struct ResearchContextContractsTests {
         #expect(throws: ResearchContextContractError.self) {
             _ = try ResearchContextClause(
                 kind: .inspectMaterials,
-                query: "generic material search is forbidden",
-                useEligibility: .contextUse
+                query: "generic material search is forbidden"
             )
         }
         let clause = try ResearchContextClause(
             kind: .readNote,
-            query: "path:Inheritance.md",
-            useEligibility: .contextUse
+            query: "path:Inheritance.md"
         )
         let cursor = try ResearchContextPageCursor(
             clauseID: UUID(),
@@ -121,7 +113,6 @@ struct ResearchContextContractsTests {
                 id: clause.id,
                 kind: .readNote,
                 query: clause.query,
-                useEligibility: .contextUse,
                 cursor: cursor
             )
         }
@@ -150,13 +141,11 @@ struct ResearchContextContractsTests {
         let fixture = Fixture()
         let discover = try ResearchContextClause(
             kind: .discoverNote,
-            query: "inheritance",
-            useEligibility: .referenceOnly
+            query: "inheritance"
         )
         let read = try ResearchContextClause(
             kind: .readNote,
-            query: "path:Inheritance.md",
-            useEligibility: .contextUse
+            query: "path:Inheritance.md"
         )
         let query = try ResearchContextQuery(
             request: ResearchContextRequest(clauses: [discover, read]),
@@ -168,8 +157,7 @@ struct ResearchContextContractsTests {
             sourceReference: try fixture.noteEnvelope(locator: .wholeObject),
             title: "Inheritance",
             contentKind: .searchSnippet,
-            semanticContent: "A discovery lead.",
-            contextUseEligibility: .referenceOnly
+            semanticContent: "A discovery lead."
         )
         let range = SearchSourceRange(
             utf16LowerBound: 0,
@@ -184,8 +172,7 @@ struct ResearchContextContractsTests {
             sourceReference: try fixture.noteEnvelope(locator: .sourceRange(range)),
             title: "Inheritance",
             contentKind: .noteDocument,
-            exactSource: try ResearchContextExactSource(content: "current\n"),
-            contextUseEligibility: .contextUse
+            exactSource: try ResearchContextExactSource(content: "current\n")
         )
         let response = try ResearchContextResponse(
             query: query,
@@ -219,9 +206,23 @@ struct ResearchContextContractsTests {
         )
         #expect(response.availability == .partial)
         #expect(response.items == [semantic, exact])
+        #expect(semantic.evidenceEligibility == .referenceOnly)
+        #expect(exact.evidenceEligibility == .researchEvidence)
         let encoded = try JSONEncoder().encode(response)
         #expect(encoded.count <= ResearchContextResponse.maximumEncodedByteCount)
         #expect(try roundTrip(response) == response)
+
+        var tamperedExact = try #require(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(exact))
+                as? [String: Any]
+        )
+        tamperedExact["evidence_eligibility"] = "reference_only"
+        #expect(throws: ResearchContextContractError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchContextResponseItem.self,
+                from: JSONSerialization.data(withJSONObject: tamperedExact)
+            )
+        }
     }
 
     @Test("Invalid Query remains visible in global availability")
@@ -229,8 +230,7 @@ struct ResearchContextContractsTests {
         let fixture = Fixture()
         let clause = try ResearchContextClause(
             kind: .discoverNote,
-            query: "malformed:",
-            useEligibility: .referenceOnly
+            query: "malformed:"
         )
         let query = try ResearchContextQuery(
             request: ResearchContextRequest(clauses: [clause]),
@@ -250,7 +250,7 @@ struct ResearchContextContractsTests {
         #expect(try roundTrip(response).availability == .invalidQuery)
     }
 
-    @Test("Research Context schema 5 rejects Search structured match reasons")
+    @Test("Research Context schema 6 rejects Search structured match reasons")
     func structuredSearchReasonsFailClosed() throws {
         let fixture = Fixture()
         #expect(throws: ResearchContextContractError.self) {
@@ -260,7 +260,6 @@ struct ResearchContextContractsTests {
                 title: "Inheritance",
                 contentKind: .searchSnippet,
                 semanticContent: "A structured discovery lead.",
-                contextUseEligibility: .referenceOnly,
                 noteMatchReasons: [.structured(SearchStructuredMatch(
                     field: .has,
                     value: "broken-link",
@@ -281,10 +280,7 @@ struct ResearchContextContractsTests {
             displayName: "Bound Source.pdf",
             fingerprint: DocumentFingerprint(content: "source bytes")
         )
-        let clause = try ResearchContextClause(
-            kind: .inspectMaterials,
-            useEligibility: .contextUse
-        )
+        let clause = try ResearchContextClause(kind: .inspectMaterials)
         let query = try ResearchContextQuery(
             request: ResearchContextRequest(clauses: [clause]),
             runID: fixture.runID,
@@ -316,8 +312,7 @@ struct ResearchContextContractsTests {
             sourceReference: envelope,
             title: source.displayName,
             contentKind: .sourceMaterial,
-            materialContent: try ResearchContextMaterialContent(source: source),
-            contextUseEligibility: .contextUse
+            materialContent: try ResearchContextMaterialContent(source: source)
         )
         let response = try ResearchContextResponse(
             query: query,
@@ -332,6 +327,7 @@ struct ResearchContextContractsTests {
         let encoded = String(decoding: try JSONEncoder().encode(response), as: UTF8.self)
         #expect(encoded.contains("PARENT01"))
         #expect(encoded.contains("ATTACH02"))
+        #expect(encoded.contains("\"evidence_eligibility\":\"research_evidence\""))
         #expect(!encoded.contains("file://"))
         #expect(!encoded.contains("bookmark"))
 
@@ -346,8 +342,7 @@ struct ResearchContextContractsTests {
                 sourceReference: envelope,
                 title: mismatched.displayName,
                 contentKind: .sourceMaterial,
-                materialContent: try ResearchContextMaterialContent(source: mismatched),
-                contextUseEligibility: .contextUse
+                materialContent: try ResearchContextMaterialContent(source: mismatched)
             )
         }
     }
@@ -358,8 +353,7 @@ struct ResearchContextContractsTests {
         let clause = try ResearchContextClause(
             kind: .discoverNote,
             query: "inheritance",
-            limit: ResearchContextClause.maximumLimit,
-            useEligibility: .referenceOnly
+            limit: ResearchContextClause.maximumLimit
         )
         let query = try ResearchContextQuery(
             request: ResearchContextRequest(clauses: [clause]),
@@ -371,8 +365,7 @@ struct ResearchContextContractsTests {
             sourceReference: try fixture.noteEnvelope(locator: .wholeObject),
             title: "Inheritance",
             contentKind: .searchSnippet,
-            semanticContent: "A discovery lead.",
-            contextUseEligibility: .referenceOnly
+            semanticContent: "A discovery lead."
         )
         let response = try ResearchContextResponse(
             query: query,
@@ -407,8 +400,7 @@ struct ResearchContextContractsTests {
                 sourceReference: try fixture.noteEnvelope(locator: .wholeObject),
                 title: "Inheritance",
                 contentKind: .searchSnippet,
-                semanticContent: "A discovery lead.",
-                contextUseEligibility: .referenceOnly
+                semanticContent: "A discovery lead."
             )
             return try #require(JSONSerialization.jsonObject(
                 with: JSONEncoder().encode(item)

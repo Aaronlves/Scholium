@@ -27,7 +27,7 @@ ResearchActionRunCoordinator (Application; one WorkspaceHandle isolation domain)
 `ScholiumContracts` owns public Action identity, initial object/material/source
 references, flat academic Profile/Result Contract types, Run/Session-safe
 request and response values, Bounded Write Set entries, Source Reference
-Envelope, Context Use Report, result/evaluation schemas, structured errors, and
+Envelope, result/evaluation schemas, structured errors, and
 fingerprints. Contracts contain no SwiftUI layout, absolute path, bookmark,
 socket location, provider implementation, repository, or hidden secret.
 
@@ -248,11 +248,11 @@ other Action receives exact-Target read, optional selected-evidence and Search
 queries, each ready writable member, and a strict Result template. Each action
 carries `required` or `when_needed`; Check Fidelity marks all frozen inspection
 requests required. Result templates include only required academic fields while
-the complete frozen contract retains optional fields. Query execution itself
-does not create Context Use testimony. CLI help describes those typed contracts
+the complete frozen contract retains optional fields. Query execution creates
+no reading-history or source-use field. CLI help describes those typed contracts
 but does not maintain a second template owner.
 
-Authenticated Run Context schema 17 gives Work Write/Critique Analysis/Topic
+Authenticated Run Context schema 18 gives Work Write/Critique Analysis/Topic
 `recommended_reading` and Topic Synthesize Analysis-only reading.
 `RecommendedReadingCoordinator` owns only
 Action eligibility and delivery shaping. It loads the already-revalidated exact
@@ -308,18 +308,21 @@ adapter can only convert an already returned owner value into the closed Source
 Reference Envelope; it cannot fill unknown actor/locator/revision, add a
 confidence score, or broaden scope.
 
-Research Context request schema 5 contains only closed clause schema 5 values
-and uses snake-case Agent input keys throughout.
+Research Context request schema 6 contains only closed clause schema 6 values
+and uses snake-case Agent input keys throughout. Neither request nor clause
+carries an Agent-selected evidence-eligibility field. Each response item
+instead carries Application-derived `research_evidence` or `reference_only`
+from its closed content kind and current owner state.
 The nested clause version changes with its closed kind and legal-shape set; a
 schema 1 clause therefore cannot silently acquire Material inspection. The
 Application validates the clause's legal query shape and platform capability,
-then dispatches every clause through its current owner. Response schema 5
+then dispatches every clause through its current owner. Response schema 6
 retains one ordered outcome for every requested clause, with Current, Partial,
 Stale, Unavailable, or Invalid Query availability and explicit limitations.
 Owner failures become their clause's Unavailable outcome; they do not erase
 other outcomes or masquerade as an empty current channel.
 
-Response schema 5 also copies the Note result's closed `NoteSearchMatchReason`
+Response schema 6 also copies the Note result's closed `NoteSearchMatchReason`
 values from that same Search response. The Application adapter does not
 reconstruct them: authored YAML provenance retains exact source ranges,
 managed Metadata explicitly has none, and
@@ -327,7 +330,7 @@ direct-relation provenance retains relation, direction, anchor, target, and
 explicit Markdown occurrences. A coarse direct-relation or Metadata retrieval
 reason without the corresponding typed match is rejected.
 Search contract 10's structured `callout:` and `has:` match reasons are not
-admitted into Research Context schema 5: those queries return Invalid Query at
+admitted into Research Context schema 6: those queries return Invalid Query at
 this boundary instead of being flattened into a lexical Source Reference.
 
 Exact Note/section reads use a lossless UTF-8 page with a source-range locator.
@@ -340,7 +343,7 @@ reading a replacement Note or revision. Contracts cap an encoded context
 response below the bridge frame, and `LocalAgentBridgeResponse` preflights the
 complete outer envelope before it writes a frame.
 
-Continue Result schema 4 and authenticated Run Context schema 17 carry the
+Continue Result schema 4 and authenticated Run Context schema 18 carry the
 closed Material reference states `current`, `changed`, `missing`, and
 `unavailable` plus the typed Researcher State requery requirement. A created
 Continue Result embeds that child Context. The stable
@@ -349,7 +352,7 @@ participation, authority state, payload revision, and payload fingerprint. Its
 current private payload persists the frozen Analyze source route, active child
 handoff, and independent Zotero-binding write state. Agent change evidence is keyed directly by
 `(Run ID, Note ID)` rather than copied foreign identifiers. Authenticated Run
-Context schema 17 also carries a closed minimum required-Skill set and optional
+Context schema 18 also carries a closed minimum required-Skill set and optional
 typed Fidelity contract. The Skill set always identifies Core Protocol and the
 Action Method with its frozen primary revision; it conditionally identifies
 Discussion or Zotero System Skills and contains no prose or path. The Fidelity
@@ -374,10 +377,9 @@ change therefore invalidates old references without claiming that already
 delivered text can be retracted. Response bytes remain in memory only and are
 neither Run state nor Record content. Session authority retains no Source
 Reference registry or delivery history. A response-local reference ID is only a
-correlation value. Context Use and Continue Research instead authenticate the
-submitting Run, require its authorized scope, and re-read the current owner to
-validate identity, revision, locator, and owner-specific provenance fields
-before persistence or handoff.
+correlation value. Continue Research authenticates the submitting Run, requires
+its authorized scope, and re-reads the current owner to validate identity,
+revision, locator, and owner-specific provenance fields before handoff.
 
 Continue never calls the Researcher State provider as a handoff owner and never
 copies a parent-Run Researcher State envelope into the child. Application
@@ -396,12 +398,11 @@ nonprivate summary candidate. Its mechanism bypasses production Search, checks
 the candidate against the authorized Workspace snapshot, and returns current,
 stale, unavailable, or invalid-query outcomes through the same response
 contract. Focused tests compare its provenance and currentness to production
-summary discovery, reject guessed
-writer attribution during Context Use, retain the verified reference in the
-Record, and re-resolve it through Continue Research. This fixture is test-only:
+summary discovery, reject guessed writer attribution, keep query delivery out
+of the Record, and re-resolve an explicit handoff through Continue Research. This fixture is test-only:
 it owns no runtime fallback, parser, ranker, index, or persistent state.
-Production and test providers cannot change Run, permission, Record, Context
-Use, or continuation contracts.
+Production and test providers cannot change Run, permission, Record,
+Application-derived evidence eligibility, or continuation contracts.
 
 ## Bounded multi-document mutation
 
@@ -456,17 +457,17 @@ Result finalization, while unknown writes and recovery duties block End.
 ## Result submission and finalization
 
 Agent submission contains the required one-line Record Title, the frozen
-contract's academic fields, explicit blocked state where applicable, and
-optional Source Reference Envelopes plus testimony for Context Use.
+contract's academic fields, explicit blocked state where applicable, formal
+Fidelity outcomes, and Analyze-only literature recommendations.
 Core Protocol's state-gated completion reference loads exactly one
 current-Action Result reference before submission; the frozen Profile remains
 field authority and the Method remains scholarly-method authority.
 Application validates field presence/type/cardinality/exclusive choices and
-that each claimed reference is current, in Run-readable scope, and has one
-authoritative owner, revision, and locator. Agent use remains testimony;
-Application validation is a separate machine fact and does not claim delivery
-history proves use. An invalid field returns field-level repair without mutating
-the Record or write set.
+that every explicit source reference carried by an Action-specific payload is
+current, in Run-readable scope, and has one authoritative owner, revision, and
+locator. Query and delivery history is neither submitted nor interpreted as
+reliance. An invalid field returns field-level repair without mutating the
+Record or write set.
 
 The Run stores one `ResearchResultPayload` partitioned into Record Title, Agent
 academic fields, and machine fields. For write Actions, submission may precede final transaction
@@ -481,7 +482,7 @@ Record; a different payload fails closed. An interrupted committed
 source/finalization gap is repaired from the Run and transaction evidence
 unless a Record deletion tombstone forbids recreation.
 
-`PortableResearchRecordStore` owns strict schema-13 Records, including the
+`PortableResearchRecordStore` owns strict schema-15 Records, including the
 frozen Record Title, explicit Analyze source route, exact source-byte
 fingerprints, and researcher-owned
 Response. The same store owns schema-1 `PortableResearchNoteReview` files as
@@ -489,8 +490,16 @@ the single cumulative portable Note Review boundary. Analyze recommendation
 mutation and atomic Response replacement use one revision-safe replacement
 primitive under portable coordination and lock, distinguish pre-commit refusal
 from post-commit uncertainty, and read back before success. Record schemas 1
-through 10 have no decoder or mutation route; their bytes remain
-untouched and nonauthorizing when encountered.
+through 14 have no decoder or mutation route; their bytes remain untouched and
+nonauthorizing when encountered.
+
+Schema 15 contains no source-use report or actually-used Materials list.
+Action participants are the Target, every explicit frozen Material, and every
+Note with a confirmed Agent change; dynamically queried Notes never become
+participants. In-text citations remain optional authored academic content and
+are not reconstructed from query or delivery history. The Action identity
+retains the Application-established frozen Material Note IDs so projections
+never confuse a confirmed-change-only participant with a selected Material.
 
 The researcher CLI's `record list` and `record read` adapters consume one
 complete immutable `WorkspaceResearchSnapshot`; they never scan portable JSON
@@ -498,7 +507,7 @@ or construct another Record index. List validates the stable Note UUID against
 the current catalog or the snapshot's historical participants, filters the
 Record-owned `participatingNotes`, and emits the snapshot's complete source
 manifest plus exact Record fingerprints. Read selects one exact Record UUID and
-returns the decoded schema-13 value with its same-snapshot fingerprint. Either
+returns the decoded schema-15 value with its same-snapshot fingerprint. Either
 adapter refuses an incomplete projection or missing fingerprint and exposes no
 Record mutation use case.
 
@@ -542,7 +551,7 @@ source replacement triggers refresh even when readback is uncertain.
 
 `WorkspaceSnapshotBuilder` derives `WorkspaceResearchSnapshot.activities`,
 `noteReviewStates`, and `resultArrivals` from current Local Execution payloads, exact
-schema-13 Record reads, and schema-1 Note Reviews. The projections
+schema-15 Record reads, and schema-1 Note Reviews. The projections
 contain only Run, Action, target stable Note ID, one interface state, optional
 Record ID/finalized-result fingerprint, a closed public repair reason, and time. It
 omits pairing codes, Session secrets, source bytes, prompts,
@@ -558,7 +567,7 @@ continuation, cancellation, and recovery. It contains no finalized Result,
 Evaluation, or Method Feedback subtree. The Records detail is the sole current
 result-reading surface: its reading plane owns the progressive combined
 Researcher Response editor, while its Evidence rail owns Changes, Effects,
-Context Used, Participants, and Technical Details. Its shared exact-comparison
+Participants, and Technical Details. Its shared exact-comparison
 sheet supports whole-document direct Undo only when the feature model holds the
 validated window-lifetime grant. The Document conflict route supplies different
 inputs and operations to the same pure folding-diff presentation without
@@ -700,10 +709,10 @@ route: current Scholium source, external Zotero, or `researcher_provided`.
 Completion revalidates the first, requires the frozen context for the second,
 and accepts the third only while both source reference and Zotero context remain
 absent. Selecting the third suppresses any existing Zotero snapshot and adapter
-for that Run without changing the portable relationship. Schema-11 Records
+for that Run without changing the portable relationship. Schema-15 Records
 retain that route without fabricating a source claim;
-the external Agent remains responsible for reporting the exact paper data it
-actually retrieved and every access limitation. When a researcher explicitly
+the external Agent narrows the scholarly result to the paper data available to
+it and states only access limitations that materially constrain support. When a researcher explicitly
 starts Check Fidelity without a formal revision-bound source envelope—
 including `researcher_provided` and external Zotero retrieval—the Fidelity
 skill reports Citation `unavailable`; Analyze's own self-check applies the

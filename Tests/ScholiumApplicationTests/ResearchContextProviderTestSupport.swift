@@ -104,9 +104,6 @@ struct FixtureSummaryResearchContextProvider: ResearchContextProviding {
                 title: title,
                 contentKind: .searchSnippet,
                 semanticContent: summary,
-                contextUseEligibility:
-                    clause.useEligibility == .contextUse && isCurrent
-                        ? .contextUse : .referenceOnly,
                 noteMatchReasons: [.lexical]
             )
             return try ResearchContextClauseOutcome(

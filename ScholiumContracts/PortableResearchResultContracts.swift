@@ -503,8 +503,6 @@ public extension PortableResearchRecord {
             statements: statements,
             resultDisposition: resultDisposition,
             academicResults: academicResults,
-            contextUseReport: contextUseReport,
-            actuallyUsedMaterials: actuallyUsedMaterials,
             fidelityCompletion: fidelityCompletion,
             confirmedChanges: confirmedChanges,
             discrepancies: discrepancies,
@@ -536,8 +534,6 @@ private struct PortableResearchFinalizedResultPartition: Encodable {
     let statements: [PortableResearchStatement]
     let resultDisposition: ResearchAgentResultDisposition
     let academicResults: [PortableResearchAcademicFieldResult]
-    let contextUseReport: ContextUseReport?
-    let actuallyUsedMaterials: [PortableResearchMaterialUse]
     let fidelityCompletion: PortableResearchFidelityCompletion
     let confirmedChanges: [PortableResearchConfirmedChange]
     let discrepancies: [PortableResearchDiscrepancy]

@@ -83,8 +83,8 @@ struct AttentionPresentationStateTests {
         #expect(Set(AttentionIssueGroup.structureAndConnections.kinds) == Set([
             .possibleOrphan, .brokenConnection, .ambiguousConnection,
         ]))
-        #expect(Set(AttentionIssueGroup.revisionAndReliance.kinds) == Set([
-            .changedSinceSettled, .materialChangedSinceUse,
+        #expect(Set(AttentionIssueGroup.revisionAndResearch.kinds) == Set([
+            .changedSinceSettled, .synthesisMaterialChanged,
         ]))
     }
 

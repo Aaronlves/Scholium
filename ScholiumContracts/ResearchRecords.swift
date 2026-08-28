@@ -921,7 +921,7 @@ public enum CritiqueDocumentContract {
         Target fingerprint, Target heading or Target line, and Target quotation
         when available. Scholium uses those explicit fields for source navigation. -->
 
-        ## Materials Consulted and Limitations
+        ## Evidence Limits
         """ + "\n"
     }
 

@@ -200,7 +200,7 @@ Delivery is progressive:
   an Agent-selected mode or capability;
 - Write/Critique sends Analysis/Topic **Recommended Reading**; Topic
   Synthesize sends Analysis-only. Reasons lead to reads; recommendation,
-  Materials, and Context Use remain distinct;
+  explicit Material selection, and reading remain distinct;
 - Search-capable Runs offer when-needed exact-name related Notes, dynamically
   ordered for those seeds;
 - Research Context arrives only after an explicit query;
@@ -213,7 +213,8 @@ available but cannot replace required Skills, override Core, or widen authority.
 `reload` revalidates exact Target, Materials, and formal source and returns the
 frozen current packet. Drift returns `stale_run`; no later method or cached
 Context response is substituted. A read or Search call proves response delivery,
-not evidential use; only supported Context Use testimony records use.
+not evidential use. Scholium requests, infers, and persists no reading history
+or source-use testimony.
 Run Context carries no local Skill path; only the deployment manifest does.
 
 The versioned, read-only **Research Context Query/Response** contract belongs
@@ -225,9 +226,10 @@ return only the path-free source binding explicitly selected and frozen for the
 authenticated Run, together with that Run's existing Zotero bibliographic
 snapshot when present. It is not Material discovery or generalized Zotero
 search. Each clause fixes Triptych scope, its legal query or section selector,
-an item limit, and whether the returned material may be proposed for Context
-Use. A query cannot choose a provider, source-kind/purpose cross-product, Run,
-Triptych, or authorization scope. Application binds current Run, Session,
+and an item limit. The Agent does not declare evidential eligibility;
+Application derives each item's eligibility from content kind and currentness. A query
+cannot choose a provider, source-kind/purpose cross-product, Run, Triptych, or
+authorization scope. Application binds current Run, Session,
 Triptych, authorized scope, and generation before provider execution. Research
 Context composes the one Search capability, exact Note/section read, explicit
 direct Relations, canonical Metadata, Research Records, the current Run's
@@ -269,15 +271,14 @@ not permission or storage state.
 
 The Source Reference Envelope's response-local ID is correlation only, not
 authority. Scholium retains no process registry of previously delivered
-references. Context Use and Continue Research submissions remain bound to an
-authenticated Run, must carry that Run's authorized scope, and recheck the
-current authoritative owner, revision, and locator before any reference is
-recorded or handed forward. A Material reference is valid only when it matches
+references. Continue Research submissions remain bound to an authenticated
+Run, must carry that Run's authorized scope, and recheck the current
+authoritative owner, revision, and locator before a reference is handed
+forward. A Material reference is valid only when it matches
 the Run-frozen `ResearchSourceReference` and the existing source-access owner
 can reopen the same identity and fingerprint; bookmarks, absolute paths,
 source bytes, and provider-local metadata never enter the envelope. These checks
-establish a current referent, not that delivery itself caused use; actual use
-remains explicit Agent testimony.
+establish a current referent, not reading, reliance, support, or citation.
 
 Researcher state is only an ephemeral typed read view over existing owners.
 The maximum meanings are narrow: exact-fingerprint Settle means that revision
@@ -434,16 +435,15 @@ the sole durable result object. The Action row derives its state from the Run
 and Record and opens that Record only after an explicit researcher action.
 Private interruption evidence reconciles to the same result and Record.
 
-An applicable result may include one bounded **Context Use Report**. The Agent
-identifies only references that actually affected its result; Scholium verifies
-that each reference belongs to the Run's readable scope and retains the Source
-Reference Envelope plus separate Agent-use testimony and machine-validation
-facts for the current owner, revision, and locator. Search hits, selection,
-expansion, or delivery do not imply use, and Scholium does not infer them from
-process history. The Record never retains unused candidates, query, ranking,
-provider-internal ID,
-complete response, context assembly, prompt, read count, click, dwell, or tool
-trace.
+The Agent may read task-relevant Notes and sources through bounded queries.
+Results and Records contain no source-use report, actually-used Materials list,
+or reading history; delivery implies neither reliance nor support. In-text
+citations are optional: include when useful and supported, never merely to
+prove reading. Absence never blocks completion. A researcher-initiated
+Citations Fidelity check evaluates only citations in scope. The Record retains
+no candidates, query or ranking data,
+provider-internal ID, complete response, context assembly, prompt, read count,
+click, dwell, or tool trace.
 
 Section 6 owns system-Trash deletion: whole finished Records and
 Discussions are removed after every source moves; external disappearance
@@ -494,10 +494,11 @@ calling newer source reviewed. Review means neither acceptance, truth,
 adoption, Settle, nor fidelity.
 
 Only confirmed Agent changes create Review work. The origin always participates
-in its one Record; other Notes require Action target, confirmed change, verified
-Context Use or actual Material use, or Discussion participation. Each Note
-projects the same one-Run/one-Record identity. Origin-only or used-only links do
-not need Review. A no-change Action finalizes, ends, and emits one deduplicated
+in its one Record; other Notes participate only when they were explicit frozen
+Materials, received a confirmed change, or joined a Discussion. Dynamically
+read Notes never become Record participants merely because they were delivered.
+Each Note projects the same one-Run/one-Record identity. Participant-only links
+do not need Review. A no-change Action finalizes, ends, and emits one deduplicated
 Result-arrived notice without another decision.
 
 Agent edits are already authoritative source when the Result arrives. A
@@ -537,7 +538,7 @@ Portable Records remain one strict closed schema under
 portable owner stores one current cumulative Note Review fact per Note,
 separate from Record bytes and excluded from finalized-result identity. A Record
 retains its frozen Record Title, attributed researcher and Agent statements, participating exact Note
-revisions, Action, minimal method provenance, Context Use Report, confirmed
+revisions, Action, minimal method provenance, confirmed
 changes, discrepancies, Fidelity completion, the explicit Analyze source route,
 Analyze-only Literature
 Recommendations, and current Researcher Response. Researcher Response is
@@ -717,7 +718,7 @@ Neither field is a completion grade.
 
 ## 10. Topics workflow
 
-1. Create or update a Topic from material actually used, preserving
+1. Create or update a Topic from warranted inspected material, preserving
    disagreement, limitations, and uncertainty.
 2. Use **Discuss** for read-only conceptual and dialectical work.
 3. Use **Synthesize** to integrate warranted material into the current Topic;
@@ -773,8 +774,8 @@ the Skill entry, optional folder path, and explicit default restoration belong.
 
 The default Assessment follows Section 8.4 and may present Overall Assessment,
 Strengths, Major Concerns, Source Support, Objections and Alternatives,
-Revision Priorities, Specific Findings, and Materials/Limitations without
-duplicating one judgment across fields. Findings may be **Traced**,
+Revision Priorities, Specific Findings, and Evidence Limits when material,
+without duplicating one judgment across fields. Findings may be **Traced**,
 **Untraced**, **Disputed**, or **Beyond Sources**--Agent judgments, never
 Scholium statuses or Work qualification.
 

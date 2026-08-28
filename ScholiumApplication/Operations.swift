@@ -843,7 +843,7 @@ public actor ResearchOperations:
 
     public func prepareResynthesis(
         _ request: ResearchActionExecutionRequest,
-        context: MaterialChangedSinceUseAttentionContext
+        context: SynthesisMaterialChangedAttentionContext
     ) async throws -> ResearchActionPreparation {
         let handle = try await reference.requireHandle()
         return try await handle.prepareResearchResynthesis(

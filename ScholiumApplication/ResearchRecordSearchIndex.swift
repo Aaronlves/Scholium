@@ -435,9 +435,6 @@ struct ResearchRecordSearchIndex: Sendable {
                 )
             }
         })
-        segments.append(contentsOf: record.actuallyUsedMaterials.flatMap {
-            [segment(.material, $0.title), segment(.material, $0.role.rawValue)]
-        })
         return Entry(
             record: record,
             fingerprint: fingerprint,
@@ -580,7 +577,6 @@ struct ResearchRecordSearchIndex: Sendable {
         case .participant: "Matched participating Note"
         case .researcherStatement: "Matched an attributed researcher statement"
         case .agentStatement: "Matched an attributed Agent statement"
-        case .material: "Matched an actually-used Material"
         case .sourceReference: "Matched the recorded source reference"
         }
     }

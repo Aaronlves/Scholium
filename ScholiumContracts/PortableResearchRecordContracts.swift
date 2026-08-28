@@ -360,66 +360,6 @@ public struct PortableResearchMethodReference: Codable, Hashable, Sendable {
     }
 }
 
-/// A Material appears here only when an attributed agent report says it was
-/// actually used. Selection alone never creates this value.
-public struct PortableResearchMaterialUse: Codable, Hashable, Identifiable, Sendable {
-    public let noteID: UUID
-    public let note: VaultQualifiedNoteID
-    public let role: ResearchActionTargetRole
-    public let title: String
-    public let revision: DocumentFingerprint
-
-    public var id: UUID { noteID }
-
-    public init(
-        noteID: UUID,
-        note: VaultQualifiedNoteID,
-        role: ResearchActionTargetRole,
-        title: String,
-        revision: DocumentFingerprint
-    ) throws {
-        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty,
-              title.utf8.count <= 1_024,
-              !PortableResearchRecordValidation.containsAbsolutePath(title),
-              PortableResearchRecordValidation.isValidNote(note),
-              PortableResearchRecordValidation.isValidFingerprint(revision) else {
-            throw PortableResearchRecordError.invalidMaterialUse
-        }
-        self.noteID = noteID
-        self.note = note
-        self.role = role
-        self.title = title
-        self.revision = revision
-    }
-
-    private enum CodingKeys: String, CodingKey, CaseIterable {
-        case noteID = "note_id"
-        case note, role, title, revision
-    }
-
-    public init(from decoder: Decoder) throws {
-        try PortableResearchRecordValidation.rejectUnknownFields(
-            in: decoder,
-            allowed: CodingKeys.allCases.map(\.stringValue)
-        )
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        try self.init(
-            noteID: container.decode(UUID.self, forKey: .noteID),
-            note: container.decode(
-                PortableResearchStrictNoteID.self,
-                forKey: .note
-            ).value,
-            role: container.decode(ResearchActionTargetRole.self, forKey: .role),
-            title: container.decode(String.self, forKey: .title),
-            revision: container.decode(
-                PortableResearchStrictFingerprint.self,
-                forKey: .revision
-            ).value
-        )
-    }
-}
-
 public enum PortableResearchConfirmedChangeKind: String, Codable, Hashable, Sendable {
     case created
     case modified
@@ -570,7 +510,7 @@ public enum PortableResearchFidelityCompletion: String, Codable, Hashable, Senda
 /// validated nonconversational Action. It deliberately has no generic metadata
 /// dictionary, so machine-local execution fields cannot leak through encoding.
 public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 13
+    public static let currentSchemaVersion = 15
 
     public let schemaVersion: Int
     public let id: UUID
@@ -592,8 +532,6 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
     public let statements: [PortableResearchStatement]
     public let resultDisposition: ResearchAgentResultDisposition
     public let academicResults: [PortableResearchAcademicFieldResult]
-    public let contextUseReport: ContextUseReport?
-    public let actuallyUsedMaterials: [PortableResearchMaterialUse]
     public let fidelityCompletion: PortableResearchFidelityCompletion
     public let confirmedChanges: [PortableResearchConfirmedChange]
     public let discrepancies: [PortableResearchDiscrepancy]
@@ -619,8 +557,6 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         statements: [PortableResearchStatement],
         resultDisposition: ResearchAgentResultDisposition = .completed,
         academicResults: [PortableResearchAcademicFieldResult] = [],
-        contextUseReport: ContextUseReport? = nil,
-        actuallyUsedMaterials: [PortableResearchMaterialUse] = [],
         fidelityCompletion: PortableResearchFidelityCompletion,
         confirmedChanges: [PortableResearchConfirmedChange] = [],
         discrepancies: [PortableResearchDiscrepancy] = [],
@@ -638,6 +574,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         let discrepancyIDs = discrepancies.map(\.id)
         let recommendationIDs = literatureRecommendations.map(\.id)
         let academicFieldIDs = academicResults.map(\.id)
+        let materialNoteIDs = action.map { Set($0.materialNoteIDs) } ?? []
         guard startedAt.timeIntervalSinceReferenceDate.isFinite,
               finishedAt.timeIntervalSinceReferenceDate.isFinite,
               finishedAt >= startedAt,
@@ -645,7 +582,6 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
               participatingNotes.count <= 256,
               statements.count <= 4_096,
               academicResults.count <= 24,
-              actuallyUsedMaterials.count <= 256,
               confirmedChanges.count <= 256,
               discrepancies.count <= 256,
               literatureRecommendations.count <= 256,
@@ -663,17 +599,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
                       ordinal: ordinal
                   )
               }),
-              Set(actuallyUsedMaterials.map(\.noteID)).count == actuallyUsedMaterials.count,
               Set(confirmedChanges.map(\.noteID)).count == confirmedChanges.count,
-              actuallyUsedMaterials.allSatisfy({ material in
-                  guard let participant = participatingByID[material.noteID] else {
-                      return false
-                  }
-                  return participant.note == material.note
-                      && participant.role == material.role
-                      && participant.title == material.title
-                      && participant.startingRevision == material.revision
-              }),
               confirmedChanges.allSatisfy({ change in
                   guard let participant = participatingByID[change.noteID] else {
                       return false
@@ -686,14 +612,8 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
               discrepancies.allSatisfy({ discrepancy in
                   participatingByID[discrepancy.noteID] != nil
               }),
-              contextUseReport.map({ report in
-                  report.runID == id && report.triptychID == triptychID
-                      && report.entries.allSatisfy({ entry in
-                          !PortableResearchRecordValidation.containsAbsolutePath(
-                              entry.testimony
-                          )
-                      })
-              }) ?? true,
+              materialNoteIDs.isSubset(of: Set(participatingByID.keys)),
+              primaryNoteID.map({ !materialNoteIDs.contains($0) }) ?? true,
               (action == nil) == (method == nil) else {
             throw PortableResearchRecordError.invalidRecord
         }
@@ -718,7 +638,6 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
                   participatingByID[primaryNoteID] != nil,
                   !statements.isEmpty,
                   continuationLineage == nil,
-                  actuallyUsedMaterials.isEmpty,
                   fidelityCompletion == .notApplicable,
                   confirmedChanges.isEmpty,
                   researcherEvaluation == nil,
@@ -746,10 +665,6 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         self.statements = statements
         self.resultDisposition = resultDisposition
         self.academicResults = academicResults
-        self.contextUseReport = contextUseReport
-        self.actuallyUsedMaterials = actuallyUsedMaterials.sorted {
-            $0.noteID.uuidString < $1.noteID.uuidString
-        }
         self.fidelityCompletion = fidelityCompletion
         self.confirmedChanges = confirmedChanges.sorted {
             $0.noteID.uuidString < $1.noteID.uuidString
@@ -780,8 +695,6 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         case statements
         case resultDisposition = "result_disposition"
         case academicResults = "academic_results"
-        case contextUseReport = "context_use_report"
-        case actuallyUsedMaterials = "actually_used_materials"
         case fidelityCompletion = "fidelity_completion"
         case confirmedChanges = "confirmed_changes"
         case discrepancies
@@ -849,14 +762,6 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
                 [PortableResearchAcademicFieldResult].self,
                 forKey: .academicResults
             ),
-            contextUseReport: container.decodeIfPresent(
-                ContextUseReport.self,
-                forKey: .contextUseReport
-            ),
-            actuallyUsedMaterials: container.decode(
-                [PortableResearchMaterialUse].self,
-                forKey: .actuallyUsedMaterials
-            ),
             fidelityCompletion: container.decode(
                 PortableResearchFidelityCompletion.self,
                 forKey: .fidelityCompletion
@@ -914,7 +819,6 @@ public enum PortableResearchRecordError: LocalizedError, Hashable, Sendable {
     case invalidStatement
     case invalidNoteRevision
     case invalidMethodReference
-    case invalidMaterialUse
     case invalidConfirmedChange
     case invalidRecordTitle
     case invalidRecord
@@ -931,8 +835,6 @@ public enum PortableResearchRecordError: LocalizedError, Hashable, Sendable {
             "The portable Research Record contains an invalid note revision."
         case .invalidMethodReference:
             "The portable Research Record contains an invalid Method reference."
-        case .invalidMaterialUse:
-            "The portable Research Record contains an invalid actually-used Material."
         case .invalidConfirmedChange:
             "The portable Research Record contains an invalid confirmed change."
         case .invalidRecordTitle:

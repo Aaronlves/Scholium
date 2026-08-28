@@ -120,7 +120,7 @@
   fixed-header, scrolling-body, fixed-action layout while retaining separate
   workflow state and dimensions.
 - Record reading detail shows progressive Researcher Response; its Evidence
-  rail shows Changes, Effects, Context Used, Participants, and Technical
+  rail shows Changes, Effects, Participants, and Technical
   Details without repeating the Changes count under Effects. The Response
   heading shares the reading plane's content baseline. One combined editor
   atomically saves Evaluation and optional Method

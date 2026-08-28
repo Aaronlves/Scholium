@@ -52,12 +52,7 @@ struct InterfaceUtilityOwnershipTests {
         let shared = try slice(
             browser,
             from: "private struct ResearchRecordPreviewedEvidenceSection<",
-            until: "private struct ResearchRecordContextUseSection: View {"
-        )
-        let contextUse = try slice(
-            browser,
-            from: "private struct ResearchRecordContextUseSection: View {",
-            until: "private enum ResearchContextUseDestination {"
+            until: "private struct ResearchRecordParticipantSection: View {"
         )
         let participants = try slice(
             browser,
@@ -73,7 +68,7 @@ struct InterfaceUtilityOwnershipTests {
         #expect(shared.contains("completeContent { isShowingAll = false }"))
         #expect(shared.contains("if wasShowingAll && !isShowingAll"))
 
-        for consumer in [contextUse, participants] {
+        for consumer in [participants] {
             #expect(consumer.contains("ResearchRecordPreviewedEvidenceSection("))
             #expect(consumer.contains("dismissPopover: dismissPopover"))
             #expect(!consumer.contains("@State private var isShowingAll"))

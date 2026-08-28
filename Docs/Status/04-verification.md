@@ -473,7 +473,7 @@ fixtures execute all six Actions, required exact reads, bounded Search, owner-
 routed initial Action/Method context, reload-only initial-delivery recovery,
 required-only Result templates, Continue after Result, and exact expired-
 credential pruning while preserving malformed and symlink entries. Query calls
-create no Context Use claim. The same signed CLI simulation proves every
+create no durable reading history. The same signed CLI simulation proves every
 Action's first start output contains the exact bundled Core runtime protocol and
 exact Action-specific `SKILL.md` plus its installed folder; reload omits Core
 while retaining that Method. This is disposable local engineering evidence, not
@@ -510,8 +510,8 @@ The current-Run Material lineage cutover passed 57 focused tests across nine
 owning Contracts, Application, and architecture-boundary suites with Xcode 27
 beta and Swift 6.4. The tests cover the closed `inspect_materials` clause,
 path-free typed source and Zotero response data, canonical Material-envelope
-revalidation for Context Use including a source change between inspection and
-Result submission, current/changed/missing/unavailable continuation checks,
+revalidation including a source change between inspection and Result
+submission, current/changed/missing/unavailable continuation checks,
 schema cutovers and round trips through Continue Result, authenticated Run
 Context, bridge, and Local Execution, source-access containment, process-bound
 Session regressions, and module/import ownership.
@@ -521,6 +521,20 @@ disposable fixtures. It does not prove checkout-external App/CLI installation,
 production installed user-local bridge behavior, human accessibility, sustained research use, or
 philosophical quality.
 
+On 2026-08-29, the low-burden Research Context and Record-provenance cutover
+passed 48 focused Contracts tests and 72 focused Application tests. The tests
+prove App-derived evidence eligibility, retirement of Agent-declared
+eligibility and reading-history fields, explicit frozen Material Note IDs,
+changed-only participant exclusion from Synthesis Material Attention, and one
+authenticated Run reading multiple Notes across pagination before finalizing a
+target-only Record. The complete repository gate then passed 206 editor, 467
+Core, 3 Core-performance, 153 Contracts, 287 Application, 16 bridge, 1
+architecture-measurement, 670 App, and 16 executable-CLI tests, plus Debug and
+Release builds and the sandboxed App-to-CLI probe. The UI-test target separately
+completed `build-for-testing` with Xcode 27. This is disposable local automated
+evidence; it does not establish live-Zotero behavior, philosophical quality, or
+human acceptance.
+
 The subsequent Researcher State continuation cutover passed 44 focused tests
 across eight owning Contracts, Application, Core-store, bridge, and architecture suites
 with the same toolchain. The tests prove that a parent-Run state reference is
@@ -528,7 +542,7 @@ removed from child handoff items and reference checks, a typed requery
 requirement survives Result, bridge, authenticated Context, and Local Execution
 round trips, and the child query receives its own Run scope and the current
 replacement Settlement. They also retain the source-family continuation and
-Context Use regressions and reject retired outer schemas.
+Research Context regressions and reject retired outer schemas.
 
 This establishes requery rather than state handoff for the current target-Note
 view. It does not prove that the view is complete, that a researcher judgment
@@ -545,9 +559,9 @@ fixed-query mismatch remains an Invalid Query rather than returning an
 unrelated candidate. The current item matches production summary discovery on
 owner, unknown actor,
 role, fingerprint, exact match range, Run/Triptych scope, currentness,
-evidential layer, and retrieval reason; guessed researcher authorship fails
-Context Use, while the valid reference survives Record and Continue Research
-revalidation without persisting provider or query identity.
+evidential layer, and retrieval reason. Query delivery persists neither guessed
+researcher authorship nor provider/query identity, while an explicit handoff
+reference survives Continue Research revalidation.
 
 This proves provider-neutral semantics for one deliberately different
 nontrivial fixture mechanism, not the quality of a second production retrieval

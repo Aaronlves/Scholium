@@ -70,7 +70,7 @@ public struct WorkspaceCatalogNote: Codable, Hashable, Identifiable, Sendable {
 public enum AttentionQueueKind: String, Codable, CaseIterable, Sendable {
     case possibleOrphan = "possible_orphan"
     case changedSinceSettled = "changed_since_settled"
-    case materialChangedSinceUse = "material_changed_since_use"
+    case synthesisMaterialChanged = "synthesis_material_changed"
     case malformedMetadata = "malformed_metadata"
     case brokenConnection = "broken_connection"
     case ambiguousConnection = "ambiguous_connection"
@@ -80,7 +80,7 @@ public enum AttentionQueueKind: String, Codable, CaseIterable, Sendable {
         switch self {
         case .possibleOrphan: "Possible Orphan"
         case .changedSinceSettled: "Changed Since Settled"
-        case .materialChangedSinceUse: "Material Changed Since Use"
+        case .synthesisMaterialChanged: "Synthesis Material Changed"
         case .malformedMetadata: "Malformed Metadata"
         case .brokenConnection: "Broken Connection"
         case .ambiguousConnection: "Ambiguous Connection"
@@ -99,7 +99,7 @@ public enum AttentionSeverity: String, Codable, Sendable {
 /// prepare a possible child phase. Item identity distinguishes affected
 /// Topics, while dismissal identity deliberately omits both Topic and record
 /// so the researcher decision binds only the Material and revision pair.
-public struct MaterialChangedSinceUseAttentionContext: Codable, Hashable, Sendable {
+public struct SynthesisMaterialChangedAttentionContext: Codable, Hashable, Sendable {
     public let triptychID: UUID
     public let recordID: UUID
     public let topicNoteID: UUID
@@ -128,7 +128,7 @@ public struct MaterialChangedSinceUseAttentionContext: Codable, Hashable, Sendab
 
     fileprivate var itemID: String {
         [
-            AttentionQueueKind.materialChangedSinceUse.rawValue,
+            AttentionQueueKind.synthesisMaterialChanged.rawValue,
             triptychID.uuidString.lowercased(),
             topicNoteID.uuidString.lowercased(),
             materialNoteID.uuidString.lowercased(),
@@ -141,7 +141,7 @@ public struct MaterialChangedSinceUseAttentionContext: Codable, Hashable, Sendab
 
     fileprivate var dismissalID: String {
         [
-            AttentionQueueKind.materialChangedSinceUse.rawValue,
+            AttentionQueueKind.synthesisMaterialChanged.rawValue,
             triptychID.uuidString.lowercased(),
             materialNoteID.uuidString.lowercased(),
             recordedRevision.sha256,
@@ -159,7 +159,7 @@ public struct AttentionQueueItem: Codable, Hashable, Identifiable, Sendable {
     public let note: VaultNoteReference
     public let message: String
     public let locator: SourceLocator?
-    public let materialChangedSinceUse: MaterialChangedSinceUseAttentionContext?
+    public let synthesisMaterialChanged: SynthesisMaterialChangedAttentionContext?
 
     public init(
         kind: AttentionQueueKind,
@@ -167,16 +167,16 @@ public struct AttentionQueueItem: Codable, Hashable, Identifiable, Sendable {
         note: VaultNoteReference,
         message: String,
         locator: SourceLocator? = nil,
-        materialChangedSinceUse: MaterialChangedSinceUseAttentionContext? = nil
+        synthesisMaterialChanged: SynthesisMaterialChangedAttentionContext? = nil
     ) {
-        id = materialChangedSinceUse?.itemID
+        id = synthesisMaterialChanged?.itemID
             ?? "\(kind.rawValue):\(note.id):\(locator?.line ?? 0):\(message)"
         self.kind = kind
         self.severity = severity
         self.note = note
         self.message = message
         self.locator = locator
-        self.materialChangedSinceUse = materialChangedSinceUse
+        self.synthesisMaterialChanged = synthesisMaterialChanged
     }
 }
 
@@ -230,7 +230,7 @@ public struct AttentionDismissalLedger: Codable, Hashable, Sendable {
     }
 
     public func isDismissed(_ item: AttentionQueueItem, at date: Date = Date()) -> Bool {
-        if let dismissalID = item.materialChangedSinceUse?.dismissalID,
+        if let dismissalID = item.synthesisMaterialChanged?.dismissalID,
            revisionBoundItemIDs.contains(dismissalID) {
             return true
         }
@@ -262,8 +262,8 @@ public struct AttentionDismissalLedger: Codable, Hashable, Sendable {
     /// identity and therefore becomes visible without mutating this ledger or
     /// the portable Research Record.
     public mutating func leaveUnchanged(_ item: AttentionQueueItem) {
-        guard item.kind == .materialChangedSinceUse,
-              let dismissalID = item.materialChangedSinceUse?.dismissalID else { return }
+        guard item.kind == .synthesisMaterialChanged,
+              let dismissalID = item.synthesisMaterialChanged?.dismissalID else { return }
         revisionBoundItemIDs = Array(
             Set(revisionBoundItemIDs + [dismissalID])
         ).sorted()

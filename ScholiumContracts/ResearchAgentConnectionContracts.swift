@@ -1222,7 +1222,7 @@ public struct ResearchRecommendedReadingCandidate: Codable, Hashable, Sendable {
 
 /// A non-evidential discovery directory. It contains no Note source or
 /// generated summary; exact source remains behind an explicit Research Context
-/// query, and directory delivery never proves reading or Context Use.
+/// query, and directory delivery never proves reading, reliance, or support.
 public struct ResearchRecommendedReadingDirectory: Codable, Hashable, Sendable {
     public static let currentSchemaVersion = 3
 
@@ -1323,7 +1323,7 @@ public struct ResearchRecommendedReadingDirectory: Codable, Hashable, Sendable {
 }
 
 public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 17
+    public static let currentSchemaVersion = 18
 
     public let schemaVersion: Int
     public let brief: ResearchRunBrief

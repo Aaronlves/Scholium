@@ -10,13 +10,14 @@ were inspected.
 Read the current Topic before routing new material. Identify its governing question, distinctions, live positions, objections, and unresolved structure. If the requested material has no genuine role here, leave the Topic unchanged and explain why.
 
 State whether the task concerns only the supplied project materials or makes a
-field-facing coverage claim. Record the actual selection basis, known
-exclusions, languages or traditions when material, and likely selection bias.
-Do not present project coverage as literature coverage.
+field-facing coverage claim. Qualify the resulting prose when known exclusions,
+languages or traditions, or likely selection bias materially limit that claim.
+Do not turn these limits into a reading inventory, and do not present project
+coverage as literature coverage.
 
 ## 2. Classify contributions by evidence
 
-For each actually inspected Material, determine whether it:
+For each relevant inspected Material, determine whether it:
 
 - adds a missing concept, argument, case, or distinction;
 - corrects an attribution or reconstruction;

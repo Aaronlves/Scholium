@@ -1435,7 +1435,7 @@ struct ResearchRecordBrowserModelTests {
             triptychID: UUID(uuidString: "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC")!,
             title: ResearchRecordTitle(title),
             kind: .action,
-            action: ResearchActionRecordIdentity(actionID: .analyze),
+            action: try ResearchActionRecordIdentity(actionID: .analyze),
             method: method,
             sourceReference: try ResearchSourceReference(
                 identity: .localFile(id: id),
@@ -1494,7 +1494,7 @@ struct ResearchRecordBrowserModelTests {
             triptychID: UUID(uuidString: "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC")!,
             title: ResearchRecordTitle(title),
             kind: .action,
-            action: ResearchActionRecordIdentity(actionID: .synthesize),
+            action: try ResearchActionRecordIdentity(actionID: .synthesize),
             method: method,
             participatingNotes: [note],
             statements: [

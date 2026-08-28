@@ -6,14 +6,17 @@ reply, and state-revalidation actions.
 Follow each typed `next_actions` requirement. Read the exact current Target and
 execute every `required` Fidelity inspection before judging it. Execute
 selected-Material, formal-source, Recommended Reading, related-Note, and Search
-queries marked `when_needed` only when the registered Method and bounded task
-need that evidence. Search uses `agent query` or the exact returned query
-action and remains bounded to the current Triptych.
+queries marked `when_needed` whenever the registered Method and research
+question can benefit from that evidence. Use repeated bounded queries when a
+substantial literature set is warranted; do not stop at a small arbitrary
+count merely to minimize reading. Search uses `agent query` or the exact
+returned query action and remains bounded to the current Triptych.
 
-Calling a query is not evidence that its returned material was actually used.
-Report genuine use only through supported source-use testimony. Treat every
-response according to its returned currentness, provenance, scope, and access
-limits; do not turn delivery into support, relevance, or researcher acceptance.
+Calling a query is not evidence that returned material was read, relied on, or
+supports the Result. Scholium does not request, infer, or persist reading
+history or source-use testimony. Treat every response according to its returned
+currentness, provenance, scope, and access limits; do not turn delivery into
+support, relevance, or researcher acceptance.
 
 For a Discuss Run, read the required `scholium-discussion-protocol` before
 composing the attributed turn, then use `agent discuss-reply` with one stable

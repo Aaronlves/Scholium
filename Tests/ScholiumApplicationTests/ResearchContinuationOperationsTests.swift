@@ -336,7 +336,6 @@ struct ResearchContinuationOperationsTests {
             request: try ResearchContextRequest(
                 clauses: [try ResearchContextClause(
                     kind: .inspectResearcherState,
-                    useEligibility: .contextUse
                 )]
             )
         )
@@ -596,7 +595,6 @@ struct ResearchContinuationOperationsTests {
                 clauses: [try ResearchContextClause(
                     kind: .readNote,
                     query: "path:Agency.md",
-                    useEligibility: .contextUse
                 )]
             )
         )
@@ -658,7 +656,6 @@ struct ResearchContinuationOperationsTests {
             request: try ResearchContextRequest(
                 clauses: [try ResearchContextClause(
                     kind: .inspectMaterials,
-                    useEligibility: .contextUse
                 )]
             )
         )
@@ -681,10 +678,6 @@ struct ResearchContinuationOperationsTests {
             submission: ResearchAgentResultSubmission(
                 recordTitle: try ResearchRecordTitle("Material continuation fixture"),
                 academicResults: values,
-                contextUseClaims: [try ResearchContextUseClaim(
-                    sourceReference: materialReference,
-                    testimony: "The exact source constrained the reconstruction."
-                )],
                 literatureRecommendations: []
             )
         )
@@ -732,7 +725,6 @@ struct ResearchContinuationOperationsTests {
             request: try ResearchContextRequest(
                 clauses: [try ResearchContextClause(
                     kind: .inspectResearcherState,
-                    useEligibility: .contextUse
                 )]
             )
         )
@@ -753,11 +745,7 @@ struct ResearchContinuationOperationsTests {
             run: handoff.run,
             submission: ResearchAgentResultSubmission(
                 recordTitle: try ResearchRecordTitle("Researcher State continuation fixture"),
-                academicResults: values,
-                contextUseClaims: [try ResearchContextUseClaim(
-                    sourceReference: reference,
-                    testimony: "The earlier exact Settlement constrained the parent synthesis."
-                )]
+                academicResults: values
             )
         )
         #expect(receipt.state == .finalized)

@@ -251,11 +251,11 @@ struct WorkspaceCatalogTests {
         let recorded = DocumentFingerprint(content: "recorded")
         func item(recordID: UUID, current: String) -> AttentionQueueItem {
             AttentionQueueItem(
-                kind: .materialChangedSinceUse,
+                kind: .synthesisMaterialChanged,
                 severity: .warning,
                 note: topic,
-                message: "The actually-used Analysis revision changed.",
-                materialChangedSinceUse: MaterialChangedSinceUseAttentionContext(
+                message: "A selected Analysis revision changed.",
+                synthesisMaterialChanged: SynthesisMaterialChangedAttentionContext(
                     triptychID: triptychID,
                     recordID: recordID,
                     topicNoteID: topicID,
@@ -272,7 +272,7 @@ struct WorkspaceCatalogTests {
         let laterRevision = item(recordID: UUID(), current: "current-two")
         let otherTopicID = UUID()
         let otherTopic = AttentionQueueItem(
-            kind: .materialChangedSinceUse,
+            kind: .synthesisMaterialChanged,
             severity: .warning,
             note: VaultNoteReference(
                 vaultID: topic.vaultID,
@@ -281,8 +281,8 @@ struct WorkspaceCatalogTests {
                 relativePath: "Other Topic.md",
                 stableNoteID: otherTopicID.uuidString.lowercased()
             ),
-            message: "The same actually-used Analysis revision changed.",
-            materialChangedSinceUse: MaterialChangedSinceUseAttentionContext(
+            message: "The same selected Analysis revision changed.",
+            synthesisMaterialChanged: SynthesisMaterialChangedAttentionContext(
                 triptychID: triptychID,
                 recordID: UUID(),
                 topicNoteID: otherTopicID,
@@ -293,11 +293,11 @@ struct WorkspaceCatalogTests {
             )
         )
         let otherTriptych = AttentionQueueItem(
-            kind: .materialChangedSinceUse,
+            kind: .synthesisMaterialChanged,
             severity: .warning,
             note: topic,
             message: "A copied Triptych owns an independent decision.",
-            materialChangedSinceUse: MaterialChangedSinceUseAttentionContext(
+            synthesisMaterialChanged: SynthesisMaterialChangedAttentionContext(
                 triptychID: UUID(),
                 recordID: UUID(),
                 topicNoteID: topicID,

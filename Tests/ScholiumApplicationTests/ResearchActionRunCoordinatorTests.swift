@@ -1061,7 +1061,6 @@ struct ResearchActionCoordinatorTests {
                 recordTitle: submission.recordTitle,
                 disposition: .completed,
                 academicResults: testAcademicResults(for: action),
-                contextUseReport: nil,
                 fidelityOutcomes: submission.fidelityOutcomes,
                 literatureRecommendations: nil,
                 submittedAt: submission.submittedAt

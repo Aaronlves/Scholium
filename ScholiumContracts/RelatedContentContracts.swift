@@ -246,7 +246,7 @@ public struct ResearchRelatedNotesCandidate: Codable, Hashable, Sendable {
 
 /// Run-scoped dynamic related-Note output. Candidate order is meaningful but
 /// no internal numeric score is exposed. The result carries no Note source and
-/// does not establish Material selection, reading, or Context Use.
+/// does not establish Material selection, reading, reliance, or support.
 public struct ResearchRelatedNotesResult: Codable, Hashable, Sendable {
     public static let currentSchemaVersion = 1
 

@@ -17,7 +17,7 @@ public struct PortableResearchRecordStoreIssue: Hashable, Identifiable, Sendable
 
 /// One decoded portable Record bound to the exact persisted JSON bytes from
 /// which it was read. The fingerprint is derived evidence only: it is never
-/// written into the schema-5 Record or reconstructed from a re-encoding.
+/// written into the schema-15 Record or reconstructed from a re-encoding.
 public struct PortableResearchRecordRevision: Hashable, Identifiable, Sendable {
     public let record: PortableResearchRecord
     public let fingerprint: DocumentFingerprint
@@ -1553,7 +1553,6 @@ public actor PortableResearchRecordStore {
               record.sourceReference == nil,
               record.primaryNoteID == discussion.primaryNoteID,
               record.statements == discussion.statements,
-              record.actuallyUsedMaterials.isEmpty,
               record.confirmedChanges.isEmpty,
               record.discrepancies.isEmpty,
               record.literatureRecommendations.isEmpty,
@@ -1594,8 +1593,6 @@ public actor PortableResearchRecordStore {
             statements: record.statements,
             resultDisposition: record.resultDisposition,
             academicResults: record.academicResults,
-            contextUseReport: record.contextUseReport,
-            actuallyUsedMaterials: record.actuallyUsedMaterials,
             fidelityCompletion: record.fidelityCompletion,
             confirmedChanges: record.confirmedChanges,
             discrepancies: record.discrepancies,
@@ -1628,8 +1625,6 @@ public actor PortableResearchRecordStore {
             statements: record.statements,
             resultDisposition: record.resultDisposition,
             academicResults: record.academicResults,
-            contextUseReport: record.contextUseReport,
-            actuallyUsedMaterials: record.actuallyUsedMaterials,
             fidelityCompletion: record.fidelityCompletion,
             confirmedChanges: record.confirmedChanges,
             discrepancies: record.discrepancies,

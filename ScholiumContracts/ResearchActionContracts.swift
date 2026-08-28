@@ -319,23 +319,41 @@ public struct ResearchActionSnapshot: Codable, Hashable, Sendable {
 /// policy. The portable store adopts this value during its later cutover;
 /// legacy pre-Action records remain outside this contract.
 public struct ResearchActionRecordIdentity: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let actionID: ResearchActionID
+    /// Application-established identities selected as frozen Materials when
+    /// this Action was prepared. This is invocation provenance, not reading
+    /// history, reliance, or Agent-authored source-use testimony.
+    public let materialNoteIDs: [UUID]
 
-    public init(actionID: ResearchActionID) {
+    public init(
+        actionID: ResearchActionID,
+        materialNoteIDs: [UUID] = []
+    ) throws {
+        guard materialNoteIDs.count <= 256,
+              Set(materialNoteIDs).count == materialNoteIDs.count else {
+            throw ResearchActionContractError.invalidRecordIdentity
+        }
         schemaVersion = Self.currentSchemaVersion
         self.actionID = actionID
+        self.materialNoteIDs = materialNoteIDs.sorted {
+            $0.uuidString < $1.uuidString
+        }
     }
 
-    public init(snapshot: ResearchActionSnapshot) {
-        self.init(actionID: snapshot.actionID)
+    public init(snapshot: ResearchActionSnapshot) throws {
+        try self.init(
+            actionID: snapshot.actionID,
+            materialNoteIDs: snapshot.platformInputs.focalNotes.map(\.noteID)
+        )
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case schemaVersion = "schema_version"
         case actionID = "action_id"
+        case materialNoteIDs = "material_note_ids"
     }
 
     public init(from decoder: Decoder) throws {
@@ -350,14 +368,17 @@ public struct ResearchActionRecordIdentity: Codable, Hashable, Sendable {
                 schemaVersion
             )
         }
-        self.schemaVersion = schemaVersion
-        actionID = try container.decode(ResearchActionID.self, forKey: .actionID)
+        try self.init(
+            actionID: container.decode(ResearchActionID.self, forKey: .actionID),
+            materialNoteIDs: container.decode([UUID].self, forKey: .materialNoteIDs)
+        )
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(schemaVersion, forKey: .schemaVersion)
         try container.encode(actionID, forKey: .actionID)
+        try container.encode(materialNoteIDs, forKey: .materialNoteIDs)
     }
 }
 
@@ -368,6 +389,7 @@ public enum ResearchActionContractError: LocalizedError, Hashable, Sendable {
     )
     case unsupportedSchemaVersion(Int)
     case unsupportedRecordIdentitySchemaVersion(Int)
+    case invalidRecordIdentity
 
     public var errorDescription: String? {
         switch self {
@@ -377,6 +399,8 @@ public enum ResearchActionContractError: LocalizedError, Hashable, Sendable {
             "Unsupported Research Action snapshot schema version \(version)."
         case .unsupportedRecordIdentitySchemaVersion(let version):
             "Unsupported Research Action record identity schema version \(version)."
+        case .invalidRecordIdentity:
+            "The Research Action record identity is invalid."
         }
     }
 }

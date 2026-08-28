@@ -5,148 +5,75 @@ import Testing
 
 @Suite("Authenticated Agent Result Application boundary", .serialized)
 struct ResearchAgentResultOperationsTests {
-    @Test("Context Use revalidates Run scope and current owner without process issuance state")
-    func verifiedContextUseAndIdempotentResult() async throws {
+    @Test("Broad Research Context reading finalizes without reading-history testimony")
+    func broadReadingAndIdempotentResult() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
+        let supplementalParagraph = "A supplemental argument distinguishes the claim, its support, and one unresolved objection.\n"
+        let supplementalSource = "# Supplemental Analysis\n\n"
+            + String(repeating: supplementalParagraph, count: 4_000)
+        try Data(supplementalSource.utf8).write(
+            to: fixture.analysesURL.appendingPathComponent("Supplemental Analysis.md"),
+            options: .atomic
+        )
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
 
         let first = try await preparedSynthesis(handle: handle, fixture: fixture)
+        let agencyClause = try ResearchContextClause(
+            kind: .readNote,
+            query: "path:Agency.md",
+            sectionHeading: "Agency"
+        )
+        let supplementalClause = try ResearchContextClause(
+            kind: .readNote,
+            query: "path:\"Supplemental Analysis.md\""
+        )
+        let broadRequest = try ResearchContextRequest(
+            clauses: [agencyClause, supplementalClause]
+        )
         let response = try await handle.research.queryAgentResearchContext(
             credential: first.credential,
             run: first.handoff.run,
-            request: try ResearchContextRequest(
-                clauses: [try ResearchContextClause(
-                    kind: .readNote,
-                    query: "path:Agency.md",
-                    sectionHeading: "Agency",
-                    useEligibility: .contextUse
-                )]
+            request: broadRequest
+        )
+        #expect(response.outcomes.count == 2)
+        #expect(response.items.allSatisfy {
+            $0.sourceReference.currentness == .current
+                && $0.evidenceEligibility == .researchEvidence
+        })
+        let firstSupplementalOutcome = try #require(
+            response.outcomes.first { $0.clauseID == supplementalClause.id }
+        )
+        var deliveredSupplemental = try #require(
+            firstSupplementalOutcome.items.first?.exactSource?.content
+        )
+        var cursor = firstSupplementalOutcome.nextCursor
+        while let pageCursor = cursor {
+            let continuationClause = try ResearchContextClause(
+                id: supplementalClause.id,
+                kind: .readNote,
+                query: supplementalClause.query,
+                cursor: pageCursor
             )
-        )
-        let reference = try #require(response.items.first?.sourceReference)
-        let wrongRevision = try SourceReferenceEnvelope(
-            id: reference.id,
-            sourceKind: reference.sourceKind,
-            owner: reference.owner,
-            actorClass: reference.actorClass,
-            objectRole: reference.objectRole,
-            vaultRole: reference.vaultRole,
-            fingerprint: DocumentFingerprint(content: "wrong revision"),
-            locator: reference.locator,
-            authorizedScope: reference.authorizedScope,
-            currentness: reference.currentness,
-            evidentialLayer: reference.evidentialLayer,
-            retrievalReason: reference.retrievalReason,
-            materialLimitations: reference.materialLimitations
-        )
-        let wrongSubmission = try submission(
-            preparation: first.preparation,
-            outcome: "A claim with the wrong source revision must fail.",
-            contextUseClaims: [try ResearchContextUseClaim(
-                sourceReference: wrongRevision,
-                testimony: "This purportedly affected the synthesis."
-            )]
-        )
-        await #expect(throws: ResearchAgentResultContractError.self) {
-            _ = try await handle.research.submitAgentResult(
+            let continuation = try await handle.research.queryAgentResearchContext(
                 credential: first.credential,
                 run: first.handoff.run,
-                submission: wrongSubmission
-            )
-        }
-
-        let wrongScope = try SourceReferenceEnvelope(
-            sourceKind: reference.sourceKind,
-            owner: reference.owner,
-            actorClass: reference.actorClass,
-            objectRole: reference.objectRole,
-            vaultRole: reference.vaultRole,
-            fingerprint: reference.fingerprint,
-            locator: reference.locator,
-            authorizedScope: .triptych(
-                runID: UUID(),
-                triptychID: reference.authorizedScope.triptychID
-            ),
-            currentness: reference.currentness,
-            evidentialLayer: reference.evidentialLayer,
-            retrievalReason: reference.retrievalReason,
-            materialLimitations: reference.materialLimitations
-        )
-        await #expect(throws: ResearchAgentResultContractError.self) {
-            _ = try await handle.research.submitAgentResult(
-                credential: first.credential,
-                run: first.handoff.run,
-                submission: try submission(
-                    preparation: first.preparation,
-                    outcome: "A reference from another Run must fail.",
-                    contextUseClaims: [try ResearchContextUseClaim(
-                        sourceReference: wrongScope,
-                        testimony: "This purportedly affected the synthesis."
-                    )]
+                request: try ResearchContextRequest(
+                    id: broadRequest.id,
+                    clauses: [continuationClause]
                 )
             )
-        }
-
-        let invalidLocator = try SourceReferenceEnvelope(
-            sourceKind: reference.sourceKind,
-            owner: reference.owner,
-            actorClass: reference.actorClass,
-            objectRole: reference.objectRole,
-            vaultRole: reference.vaultRole,
-            fingerprint: reference.fingerprint,
-            locator: .sourceRange(SearchSourceRange(
-                utf16LowerBound: 0,
-                utf16UpperBound: 1_000_000,
-                line: 1,
-                column: 1,
-                endLine: 1,
-                endColumn: 1
-            )),
-            authorizedScope: reference.authorizedScope,
-            currentness: reference.currentness,
-            evidentialLayer: reference.evidentialLayer,
-            retrievalReason: reference.retrievalReason,
-            materialLimitations: reference.materialLimitations
-        )
-        await #expect(throws: ResearchAgentResultContractError.self) {
-            _ = try await handle.research.submitAgentResult(
-                credential: first.credential,
-                run: first.handoff.run,
-                submission: try submission(
-                    preparation: first.preparation,
-                    outcome: "A locator outside the current source must fail.",
-                    contextUseClaims: [try ResearchContextUseClaim(
-                        sourceReference: invalidLocator,
-                        testimony: "This purportedly affected the synthesis."
-                    )]
-                )
+            let outcome = try #require(continuation.outcomes.first)
+            deliveredSupplemental += try #require(
+                outcome.items.first?.exactSource?.content
             )
+            cursor = outcome.nextCursor
         }
-
-        let currentReferenceWithNewResponseID = try SourceReferenceEnvelope(
-            sourceKind: reference.sourceKind,
-            owner: reference.owner,
-            actorClass: reference.actorClass,
-            objectRole: reference.objectRole,
-            vaultRole: reference.vaultRole,
-            fingerprint: reference.fingerprint,
-            locator: reference.locator,
-            authorizedScope: reference.authorizedScope,
-            currentness: reference.currentness,
-            evidentialLayer: reference.evidentialLayer,
-            retrievalReason: reference.retrievalReason,
-            materialLimitations: reference.materialLimitations
-        )
-        #expect(currentReferenceWithNewResponseID.id != reference.id)
+        #expect(deliveredSupplemental == supplementalSource)
         let validSubmission = try submission(
             preparation: first.preparation,
-            outcome: "The current Topic passage supports a qualified synthesis.",
-            contextUseClaims: [try ResearchContextUseClaim(
-                sourceReference: currentReferenceWithNewResponseID,
-                testimony: "The current Topic passage constrained the qualified synthesis."
-            )]
+            outcome: "The current Topic passage supports a qualified synthesis."
         )
         let receipt = try await handle.research.submitAgentResult(
             credential: first.credential,
@@ -163,12 +90,12 @@ struct ResearchAgentResultOperationsTests {
         let record = try await handle.services.portableResearchRecordStore.record(
             id: first.preparation.runID
         )
-        let contextEntry = try #require(record.contextUseReport?.entries.first)
-        #expect(Set(contextEntry.verificationFacts) == [
-            .authoritativeOwnerRead, .revisionMatched, .locatorResolved,
+        #expect(record.participatingNotes.map(\.noteID) == [
+            first.preparation.snapshot.target.noteID,
         ])
-        #expect(contextEntry.sourceReference == currentReferenceWithNewResponseID)
-        #expect(record.actuallyUsedMaterials.isEmpty)
+        let recordText = String(decoding: try JSONEncoder().encode(record), as: UTF8.self)
+        #expect(!recordText.contains("context_use_report"))
+        #expect(!recordText.contains("actually_used_materials"))
 
         let different = try submission(
             preparation: first.preparation,
@@ -191,7 +118,6 @@ struct ResearchAgentResultOperationsTests {
                     kind: .readNote,
                     query: "path:Agency.md",
                     sectionHeading: "Agency",
-                    useEligibility: .contextUse
                 )]
             )
         )
@@ -205,12 +131,11 @@ struct ResearchAgentResultOperationsTests {
         )
         let secondRecord = try await handle.services.portableResearchRecordStore
             .record(id: second.preparation.runID)
-        #expect(secondRecord.contextUseReport == nil)
-        #expect(secondRecord.actuallyUsedMaterials.isEmpty)
+        #expect(secondRecord.participatingNotes.count == 1)
         await runtime.shutdown()
     }
 
-    @Test("A nonempty alternate provider preserves summary provenance through Context Use, Record, and Continue")
+    @Test("A nonempty alternate provider preserves summary provenance through query and Continue")
     func alternateProviderUsesSharedSemantics() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
@@ -256,7 +181,6 @@ struct ResearchAgentResultOperationsTests {
         let clause = try ResearchContextClause(
             kind: .discoverNote,
             query: "summary:providerneutralfixture",
-            useEligibility: .contextUse
         )
         let request = try ResearchContextRequest(clauses: [clause])
         let fixedQuery = try #require(clause.query)
@@ -304,7 +228,7 @@ struct ResearchAgentResultOperationsTests {
         #expect(replacementItem.contentKind == .searchSnippet)
         #expect(replacementItem.semanticContent == summary)
         #expect(replacementItem.noteMatchReasons == [.lexical])
-        #expect(replacementItem.contextUseEligibility == .contextUse)
+        #expect(replacementItem.evidenceEligibility == .referenceOnly)
         #expect(replacementItem.sourceReference.sourceKind
             == productionItem.sourceReference.sourceKind)
         #expect(replacementItem.sourceReference.owner
@@ -338,7 +262,7 @@ struct ResearchAgentResultOperationsTests {
         )
         #expect(stale.availability == .stale)
         #expect(stale.items.first?.sourceReference.currentness == .stale)
-        #expect(stale.items.first?.contextUseEligibility == .referenceOnly)
+        #expect(stale.items.first?.evidenceEligibility == .referenceOnly)
         let unavailable = try await handle.authenticatedResearchContext(
             credential: prepared.credential,
             run: prepared.handoff.run,
@@ -357,7 +281,6 @@ struct ResearchAgentResultOperationsTests {
                 clauses: [try ResearchContextClause(
                     kind: .discoverNote,
                     query: "summary:a-different-fixed-query",
-                    useEligibility: .contextUse
                 )]
             ),
             provider: provider(.current)
@@ -365,60 +288,25 @@ struct ResearchAgentResultOperationsTests {
         #expect(invalid.availability == .invalidQuery)
         #expect(invalid.items.isEmpty)
 
-        let forgedWriter = try SourceReferenceEnvelope(
-            id: replacementItem.sourceReference.id,
-            sourceKind: replacementItem.sourceReference.sourceKind,
-            owner: replacementItem.sourceReference.owner,
-            actorClass: .researcher,
-            objectRole: replacementItem.sourceReference.objectRole,
-            vaultRole: replacementItem.sourceReference.vaultRole,
-            fingerprint: replacementItem.sourceReference.fingerprint,
-            locator: replacementItem.sourceReference.locator,
-            authorizedScope: replacementItem.sourceReference.authorizedScope,
-            currentness: replacementItem.sourceReference.currentness,
-            evidentialLayer: replacementItem.sourceReference.evidentialLayer,
-            retrievalReason: replacementItem.sourceReference.retrievalReason,
-            materialLimitations: replacementItem.sourceReference.materialLimitations
-        )
-        await #expect(throws: ResearchAgentResultContractError.self) {
-            _ = try await handle.research.submitAgentResult(
-                credential: prepared.credential,
-                run: prepared.handoff.run,
-                submission: try submission(
-                    preparation: prepared.preparation,
-                    outcome: "A guessed summary writer must not enter the Record.",
-                    contextUseClaims: [try ResearchContextUseClaim(
-                        sourceReference: forgedWriter,
-                        testimony: "This false researcher attribution must fail."
-                    )]
-                )
-            )
-        }
-
         let receipt = try await handle.research.submitAgentResult(
             credential: prepared.credential,
             run: prepared.handoff.run,
             submission: try submission(
                 preparation: prepared.preparation,
-                outcome: "The current summary led to the exact Topic revision.",
-                contextUseClaims: [try ResearchContextUseClaim(
-                    sourceReference: replacementItem.sourceReference,
-                    testimony: "The summary led was expanded into the current Topic before use."
-                )]
+                outcome: "The current summary led to the exact Topic revision."
             )
         )
         #expect(receipt.state == .finalized)
         let record = try await handle.services.portableResearchRecordStore.record(
             id: prepared.preparation.runID
         )
-        #expect(record.contextUseReport?.entries.first?.sourceReference
-            == replacementItem.sourceReference)
         let recordText = String(
             decoding: try JSONEncoder().encode(record),
             as: UTF8.self
         )
         #expect(!recordText.contains("FixtureSummaryResearchContextProvider"))
         #expect(!recordText.contains("summary:providerneutralfixture"))
+        #expect(!recordText.contains("context_use_report"))
 
         var policy = try await handle.research.collaborationPolicy()
         policy = try await handle.research.saveCollaborationPolicy(
@@ -452,8 +340,8 @@ struct ResearchAgentResultOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Current Run source Material and Zotero metadata use one revalidated Context lineage")
-    func verifiedSourceMaterialContextUse() async throws {
+    @Test("Current Run source Material and Zotero metadata remain revalidated without reading history")
+    func verifiedSourceMaterialContext() async throws {
         let fixture = try await ResearchFixture.make(analysisZoteroKey: "META0001")
         defer { fixture.remove() }
         let script = ZoteroRequestScript(steps: [
@@ -473,7 +361,6 @@ struct ResearchAgentResultOperationsTests {
             request: try ResearchContextRequest(
                 clauses: [try ResearchContextClause(
                     kind: .inspectMaterials,
-                    useEligibility: .contextUse
                 )]
             )
         )
@@ -486,7 +373,7 @@ struct ResearchAgentResultOperationsTests {
         )
         #expect(outcome.availability == .current)
         #expect(item.contentKind == .sourceMaterial)
-        #expect(item.contextUseEligibility == .contextUse)
+        #expect(item.evidenceEligibility == .researchEvidence)
         #expect(item.materialContent?.source == frozen)
         #expect(item.materialContent?.zoteroBibliographicContext?.metadata?.title
             == "Fittingness")
@@ -498,50 +385,15 @@ struct ResearchAgentResultOperationsTests {
             $0.contains("cannot alter Method Context")
         })
 
-        let forgedLimitations = try SourceReferenceEnvelope(
-            id: item.sourceReference.id,
-            sourceKind: item.sourceReference.sourceKind,
-            owner: item.sourceReference.owner,
-            actorClass: item.sourceReference.actorClass,
-            objectRole: item.sourceReference.objectRole,
-            vaultRole: item.sourceReference.vaultRole,
-            fingerprint: item.sourceReference.fingerprint,
-            locator: item.sourceReference.locator,
-            authorizedScope: item.sourceReference.authorizedScope,
-            currentness: item.sourceReference.currentness,
-            evidentialLayer: item.sourceReference.evidentialLayer,
-            retrievalReason: item.sourceReference.retrievalReason,
-            materialLimitations: [
-                "Forged provider prose must not replace Application-owned Material provenance."
-            ]
-        )
-        await #expect(throws: ResearchAgentResultContractError.self) {
-            _ = try await handle.research.submitAgentResult(
-                credential: prepared.credential,
-                run: prepared.handoff.run,
-                submission: try analysisSubmission(
-                    preparation: prepared.preparation,
-                    contextUseClaims: [try ResearchContextUseClaim(
-                        sourceReference: forgedLimitations,
-                        testimony: "This forged Material reference must fail."
-                    )]
-                )
-            )
-        }
-
         let originalSource = try Data(contentsOf: fixture.analysisSourceURL)
         try Data("Changed after inspect_materials and before Result submission.".utf8)
             .write(to: fixture.analysisSourceURL)
-        await #expect(throws: ResearchAgentResultContractError.self) {
+        await #expect(throws: ResearchActionRunContractError.self) {
             _ = try await handle.research.submitAgentResult(
                 credential: prepared.credential,
                 run: prepared.handoff.run,
                 submission: try analysisSubmission(
-                    preparation: prepared.preparation,
-                    contextUseClaims: [try ResearchContextUseClaim(
-                        sourceReference: item.sourceReference,
-                        testimony: "A source changed after inspection must fail revalidation."
-                    )]
+                    preparation: prepared.preparation
                 )
             )
         }
@@ -551,25 +403,16 @@ struct ResearchAgentResultOperationsTests {
             credential: prepared.credential,
             run: prepared.handoff.run,
             submission: try analysisSubmission(
-                preparation: prepared.preparation,
-                contextUseClaims: [try ResearchContextUseClaim(
-                    sourceReference: item.sourceReference,
-                    testimony: "The exact selected source constrained the reconstruction."
-                )]
+                preparation: prepared.preparation
             )
         )
         #expect(receipt.state == .finalized)
         let record = try await handle.services.portableResearchRecordStore.record(
             id: prepared.preparation.runID
         )
-        let entry = try #require(record.contextUseReport?.entries.first)
-        #expect(entry.sourceReference == item.sourceReference)
-        #expect(Set(entry.verificationFacts) == [
-            .authoritativeOwnerRead,
-            .revisionMatched,
-            .locatorResolved,
-        ])
         #expect(record.sourceReference == frozen)
+        let recordText = String(decoding: try JSONEncoder().encode(record), as: UTF8.self)
+        #expect(!recordText.contains("context_use_report"))
         #expect(await script.requestCount() == 1)
         await runtime.shutdown()
     }
@@ -597,7 +440,6 @@ struct ResearchAgentResultOperationsTests {
                 request: try ResearchContextRequest(
                     clauses: [try ResearchContextClause(
                         kind: .inspectMaterials,
-                        useEligibility: .contextUse
                     )]
                 )
             )
@@ -629,7 +471,6 @@ struct ResearchAgentResultOperationsTests {
 
         let invalid = try analysisSubmission(
             preparation: prepared.preparation,
-            contextUseClaims: [],
             fidelityOutcomes: [FidelityCheckOutcome(
                 check: .content,
                 state: .passed,
@@ -662,10 +503,7 @@ struct ResearchAgentResultOperationsTests {
         )
         #expect(reloaded.brief.run == prepared.handoff.run)
 
-        let corrected = try analysisSubmission(
-            preparation: prepared.preparation,
-            contextUseClaims: []
-        )
+        let corrected = try analysisSubmission(preparation: prepared.preparation)
         let receipt = try await handle.research.submitAgentResult(
             credential: prepared.credential,
             run: prepared.handoff.run,
@@ -683,8 +521,8 @@ struct ResearchAgentResultOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Researcher-state Context Use preserves content and verifies its current owner")
-    func verifiedResearcherStateContextUse() async throws {
+    @Test("Researcher-state reads remain current query data and stay out of the Record")
+    func researcherStateReadingIsTransient() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
@@ -707,7 +545,6 @@ struct ResearchAgentResultOperationsTests {
             request: try ResearchContextRequest(
                 clauses: [try ResearchContextClause(
                     kind: .inspectResearcherState,
-                    useEligibility: .contextUse
                 )]
             )
         )
@@ -725,27 +562,12 @@ struct ResearchAgentResultOperationsTests {
             expectedRevision: target.fingerprint,
             rationale: "A later researcher decision replaced the earlier settlement."
         )
-        await #expect(throws: ResearchAgentResultContractError.self) {
-            _ = try await handle.research.submitAgentResult(
-                credential: prepared.credential,
-                run: prepared.handoff.run,
-                submission: try submission(
-                    preparation: prepared.preparation,
-                    outcome: "A superseded researcher-state owner must not be recorded as current.",
-                    contextUseClaims: [try ResearchContextUseClaim(
-                        sourceReference: item.sourceReference,
-                        testimony: "This reference was replaced before submission."
-                    )]
-                )
-            )
-        }
         let refreshedResponse = try await handle.research.queryAgentResearchContext(
             credential: prepared.credential,
             run: prepared.handoff.run,
             request: try ResearchContextRequest(
                 clauses: [try ResearchContextClause(
                     kind: .inspectResearcherState,
-                    useEligibility: .contextUse
                 )]
             )
         )
@@ -759,28 +581,20 @@ struct ResearchAgentResultOperationsTests {
             run: prepared.handoff.run,
             submission: try submission(
                 preparation: prepared.preparation,
-                outcome: "The settled revision constrained this synthesis.",
-                contextUseClaims: [try ResearchContextUseClaim(
-                    sourceReference: currentItem.sourceReference,
-                    testimony: "The researcher's current-use decision constrained the synthesis."
-                )]
+                outcome: "The current settlement informed this synthesis."
             )
         )
         #expect(receipt.state == .finalized)
         let record = try await handle.services.portableResearchRecordStore.record(
             id: prepared.preparation.runID
         )
-        let entry = try #require(record.contextUseReport?.entries.first)
-        #expect(entry.sourceReference == currentItem.sourceReference)
-        #expect(Set(entry.verificationFacts) == [
-            .authoritativeOwnerRead,
-            .revisionMatched,
-            .locatorResolved,
-        ])
+        let recordText = String(decoding: try JSONEncoder().encode(record), as: UTF8.self)
+        #expect(!recordText.contains("researcher_state"))
+        #expect(!recordText.contains("context_use_report"))
         await runtime.shutdown()
     }
 
-    @Test("Instruction-shaped prior Agent Results remain attributed Record evidence and cannot poison a new Run")
+    @Test("Instruction-shaped prior Agent Result text cannot poison a new Run")
     func instructionShapedRecordIsNonAuthorizingEvidence() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
@@ -812,17 +626,11 @@ struct ResearchAgentResultOperationsTests {
                 clauses: [try ResearchContextClause(
                     kind: .inspectRecords,
                     query: "kind:record memory-poisoning-sentinel",
-                    useEligibility: .referenceOnly
                 )]
             )
         )
         #expect(response.availability == .current)
-        #expect(response.items.contains { item in
-            item.contentKind == .recordStatement
-                && item.semanticContent?.contains(marker) == true
-                && item.sourceReference.actorClass == .agent
-                && item.sourceReference.evidentialLayer == .researchRecord
-        })
+        #expect(response.items.isEmpty)
 
         let after = try await handle.research.authenticatedAgentContext(
             credential: second.credential,
@@ -900,7 +708,6 @@ struct ResearchAgentResultOperationsTests {
 
     private func analysisSubmission(
         preparation: ResearchActionPreparation,
-        contextUseClaims: [ResearchContextUseClaim],
         fidelityOutcomes: [FidelityCheckOutcome] = []
     ) throws -> ResearchAgentResultSubmission {
         try ResearchAgentResultSubmission(
@@ -915,7 +722,6 @@ struct ResearchAgentResultOperationsTests {
                 ],
                 definitions: preparation.snapshot.resultContract.academicFields
             ),
-            contextUseClaims: contextUseClaims,
             fidelityOutcomes: fidelityOutcomes,
             literatureRecommendations: []
         )
@@ -924,8 +730,7 @@ struct ResearchAgentResultOperationsTests {
     private func submission(
         preparation: ResearchActionPreparation,
         outcome: String,
-        recordTitle: String? = nil,
-        contextUseClaims: [ResearchContextUseClaim] = []
+        recordTitle: String? = nil
     ) throws -> ResearchAgentResultSubmission {
         try ResearchAgentResultSubmission(
             recordTitle: ResearchRecordTitle(recordTitle ?? String(outcome.prefix(80))),
@@ -935,8 +740,7 @@ struct ResearchAgentResultOperationsTests {
                     "contribution": .multipleChoice(["qualifies"]),
                 ],
                 definitions: preparation.snapshot.resultContract.academicFields
-            ),
-            contextUseClaims: contextUseClaims
+            )
         )
     }
 }

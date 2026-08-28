@@ -79,7 +79,7 @@ researcher-owned Method replaces the form:
 5. Objections and Alternatives
 6. Revision Priorities
 7. Specific Findings
-8. Materials Consulted and Limitations
+8. Evidence Limits
 
 Overall Assessment supplies the controlling judgment. Omit an inapplicable
 optional section rather than recording an empty status. Do not create praise,

@@ -138,7 +138,6 @@ extension ResearchActionRunOperationsTests {
                     $0.kind == .readNote
                         && $0.note != nil
                         && $0.expectedFingerprint != nil
-                        && $0.useEligibility == .contextUse
                 })
                 #expect(Set(clauses.compactMap(\.note))
                     == Set(directory.candidates.map(\.note)))
@@ -173,7 +172,7 @@ extension ResearchActionRunOperationsTests {
                 #expect(object["schema_version"] as? Int
                     == ResearchAgentResultSubmission.currentSchemaVersion)
                 #expect(object["record_title"] as? String != nil)
-                #expect((object["context_use_claims"] as? [Any])?.isEmpty == true)
+                #expect(object["context_use_claims"] == nil)
                 #expect(object["fidelity_outcomes"] as? [Any] != nil)
                 #expect(result.label.contains("fidelity_outcomes empty")
                     == (actionID != .checkFidelity))
@@ -317,7 +316,6 @@ extension ResearchActionRunOperationsTests {
             kind: .relatedNotes,
             noteNames: ["Agency", "Draft Argument"],
             limit: 8,
-            useEligibility: .referenceOnly
         )
         let response = try await runtime.queryResearchContext(
             credential: credential,
@@ -753,7 +751,6 @@ extension ResearchActionRunOperationsTests {
             runID: protectedRun.runID,
             confirmationToken: protectedRun.snapshot.confirmationToken,
             recordTitle: try ResearchRecordTitle("Test research result"),
-            actuallyUsedMaterialNoteIDs: [analysis.noteID],
             summary: "I read /Users/researcher/private/source.pdf.",
             didModifyTarget: false,
             submittedAt: submittedAt
@@ -766,7 +763,6 @@ extension ResearchActionRunOperationsTests {
             throw error
         }
         #expect(completed.state == .complete)
-        #expect(completed.actuallyUsedMaterialNoteIDs == [analysis.noteID])
         let repeated: ResearchActionRunCompletion
         do {
             repeated = try await completeTestActionRun(handle: handle, submission: submission)
@@ -781,7 +777,6 @@ extension ResearchActionRunOperationsTests {
                     runID: protectedRun.runID,
                     confirmationToken: protectedRun.snapshot.confirmationToken,
                     recordTitle: try ResearchRecordTitle("Test research result"),
-                    actuallyUsedMaterialNoteIDs: [analysis.noteID],
                     summary: "No Topic change was warranted by the selected information.",
                     didModifyTarget: false,
                     submittedAt: submittedAt.addingTimeInterval(0.000_1)
@@ -808,19 +803,13 @@ extension ResearchActionRunOperationsTests {
         }
         #expect(portable.id == action.runID)
         #expect(portable.action?.actionID == .synthesize)
+        #expect(portable.action?.materialNoteIDs == [analysis.noteID])
         #expect(portable.fidelityCompletion == .notRequired)
         #expect(portable.primaryNoteID == topic.noteID)
         #expect(Set(portable.participatingNotes.map(\.noteID)) == [
             topic.noteID,
             analysis.noteID,
         ])
-        #expect(portable.actuallyUsedMaterials == [try PortableResearchMaterialUse(
-            noteID: analysis.noteID,
-            note: analysis.note,
-            role: .analysis,
-            title: analysis.title,
-            revision: analysis.fingerprint
-        )])
         #expect(portable.confirmedChanges.isEmpty)
         #expect(portable.discrepancies.isEmpty)
         #expect(portable.statements.isEmpty)
@@ -853,17 +842,17 @@ extension ResearchActionRunOperationsTests {
         )
         let changed = try await handle.refresh()
         let attention = try #require(changed.discovery.catalog.attention.first {
-            $0.kind == .materialChangedSinceUse
+            $0.kind == .synthesisMaterialChanged
         })
         #expect(attention.note.stableNoteID == topic.noteID.uuidString.lowercased())
-        #expect(attention.materialChangedSinceUse?.recordID == portable.id)
-        #expect(attention.materialChangedSinceUse?.materialNoteID == analysis.noteID)
-        #expect(attention.materialChangedSinceUse?.recordedRevision == analysis.fingerprint)
-        #expect(attention.materialChangedSinceUse?.currentRevision != analysis.fingerprint)
+        #expect(attention.synthesisMaterialChanged?.recordID == portable.id)
+        #expect(attention.synthesisMaterialChanged?.materialNoteID == analysis.noteID)
+        #expect(attention.synthesisMaterialChanged?.recordedRevision == analysis.fingerprint)
+        #expect(attention.synthesisMaterialChanged?.currentRevision != analysis.fingerprint)
         #expect(!attention.message.lowercased().contains("wrong"))
         #expect(!attention.message.lowercased().contains("outdated"))
 
-        let attentionContext = try #require(attention.materialChangedSinceUse)
+        let attentionContext = try #require(attention.synthesisMaterialChanged)
         let refreshedTopic = try await researchActionTarget(
             fixture.topicID,
             role: .topic,
@@ -896,7 +885,7 @@ extension ResearchActionRunOperationsTests {
 
         let rebuilt = try await handle.refresh()
         #expect(rebuilt.discovery.catalog.attention.first {
-            $0.kind == .materialChangedSinceUse
+            $0.kind == .synthesisMaterialChanged
         }?.id == attention.id)
         #expect(try await handle.documents.load(fixture.topicID).sourceBytes == topicBytes)
         #expect(try Data(contentsOf: portableURL) == portableData)
@@ -906,15 +895,14 @@ extension ResearchActionRunOperationsTests {
                 runID: child.runID,
                 confirmationToken: child.snapshot.confirmationToken,
                 recordTitle: try ResearchRecordTitle("Test research result"),
-                actuallyUsedMaterialNoteIDs: [refreshedAnalysis.noteID],
-                summary: "The current Analysis revision was used without changing the Topic.",
+                summary: "The current Analysis revision warranted no Topic change.",
                 didModifyTarget: false,
                 submittedAt: submittedAt
             )
         )
         let afterNewerSynthesis = try await handle.refresh()
         #expect(!afterNewerSynthesis.discovery.catalog.attention.contains {
-            $0.kind == .materialChangedSinceUse
+            $0.kind == .synthesisMaterialChanged
         })
         await #expect(throws: ResearchActionExecutionContractError.self) {
             _ = try await handle.research.prepareResynthesis(
@@ -927,12 +915,20 @@ extension ResearchActionRunOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Selected but unused Materials never create synthesis Attention")
-    func unusedSynthesisMaterialDoesNotCreateAttention() async throws {
+    @Test("A changed-only Analysis participant never becomes a Synthesis Material warning")
+    func changedOnlyAnalysisParticipantDoesNotCreateSynthesisAttention() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let currentPolicy = try await handle.research.collaborationPolicy()
+        _ = try await handle.research.saveCollaborationPolicy(
+            ResearchCollaborationPolicyDocument(
+                triptychID: fixture.assignment.id,
+                policy: .fullAccess
+            ),
+            expectedRevision: currentPolicy.revision
+        )
         let topic = try await researchActionTarget(
             fixture.topicID,
             role: .topic,
@@ -943,78 +939,61 @@ extension ResearchActionRunOperationsTests {
             role: .analysis,
             handle: handle
         )
-        let preparation = try await handle.research.prepareAction(
+        let action = try await handle.research.prepareAction(
             try await actionRequest(
                 handle: handle,
                 actionID: .synthesize,
-                target: actionNote(topic),
-                platformInputs: try ResearchActionPlatformInputs(
-                    focalNotes: [actionNote(analysis)]
-                )
+                target: actionNote(topic)
             )
         )
-        let run = try await handle.research.actionRunDetails(id: preparation.runID)
-        let submittedAt = Date()
-        for invalid in [[UUID()], [analysis.noteID, analysis.noteID]] {
-            await #expect(throws: ResearchActionRunContractError.self) {
-                _ = try await completeTestActionRun(handle: handle, submission:
-                    ResearchActionRunCompletionSubmission(
-                        runID: run.runID,
-                        confirmationToken: run.snapshot.confirmationToken,
-                        recordTitle: try ResearchRecordTitle("Test research result"),
-                        actuallyUsedMaterialNoteIDs: invalid,
-                        summary: "Invalid actually-used testimony.",
-                        didModifyTarget: false,
-                        submittedAt: submittedAt
-                    )
-                )
-            }
-        }
+        let run = try await handle.research.actionRunDetails(id: action.runID)
+        let client = try await connectTestResearchAgent(to: run, handle: handle)
+        let extensionResult = try await handle.research.extendAgentWriteSet(
+            credential: client.credential,
+            run: client.run,
+            intent: try ResearchWriteSetExtensionIntent(
+                targets: [try ResearchWriteSetTargetSelector(
+                    role: .analysis,
+                    relativePath: "Analysis.md",
+                    operations: [.modifyMarkdown]
+                )],
+                academicReason: "Correct an Analysis without selecting it as Synthesis material."
+            )
+        )
+        #expect(extensionResult.state == .allowedSubset)
+        let write = try await handle.research.writeAgentDocument(
+            credential: client.credential,
+            run: client.run,
+            intent: try ResearchDocumentWriteIntent(
+                role: .analysis,
+                relativePath: "Analysis.md",
+                content: "# Analysis\n\nChanged through the bounded write set only.\n"
+            )
+        )
+        #expect(write.state == .committed)
+        _ = try await submitTestAgentResult(
+            makeTestAgentResultSubmission(for: run),
+            client: client,
+            handle: handle
+        )
 
-        await #expect(throws: ResearchActionRunContractError.self) {
-            _ = try await completeTestActionRun(handle: handle, submission:
-                ResearchActionRunCompletionSubmission(
-                    runID: run.runID,
-                    confirmationToken: run.snapshot.confirmationToken,
-                    recordTitle: try ResearchRecordTitle("Test research result"),
-                    actuallyUsedMaterialNoteIDs: nil,
-                    summary: "The Material-use report was omitted.",
-                    didModifyTarget: false,
-                    submittedAt: submittedAt
-                )
-            )
-        }
+        let record = try await handle.services.portableResearchRecordStore.record(
+            id: action.runID
+        )
+        #expect(record.action?.materialNoteIDs.isEmpty == true)
+        #expect(record.confirmedChanges.map(\.noteID) == [analysis.noteID])
+        #expect(Set(record.participatingNotes.map(\.noteID)) == [
+            topic.noteID,
+            analysis.noteID,
+        ])
 
-        let completed = try await completeTestActionRun(handle: handle, submission:
-            ResearchActionRunCompletionSubmission(
-                runID: run.runID,
-                confirmationToken: run.snapshot.confirmationToken,
-                recordTitle: try ResearchRecordTitle("Test research result"),
-                summary: "The selected Analysis was not used.",
-                didModifyTarget: false,
-                submittedAt: submittedAt
-            )
-        )
-        #expect(completed.actuallyUsedMaterialNoteIDs == [])
-        let portableURL = fixture.rootURL
-            .appendingPathComponent(
-                ".scholium/research-records/v1/records",
-                isDirectory: true
-            )
-            .appendingPathComponent(preparation.runID.uuidString.lowercased() + ".json")
-        let portable = try JSONDecoder.scholium.decode(
-            PortableResearchRecord.self,
-            from: Data(contentsOf: portableURL)
-        )
-        #expect(portable.actuallyUsedMaterials.isEmpty)
-        #expect(portable.fidelityCompletion == .notRequired)
-        try Data("# Analysis\n\nChanged but unused.\n".utf8).write(
+        try Data("# Analysis\n\nChanged again after the completed Run.\n".utf8).write(
             to: fixture.analysesURL.appendingPathComponent("Analysis.md"),
             options: .atomic
         )
         let refreshed = try await handle.refresh()
         #expect(!refreshed.discovery.catalog.attention.contains {
-            $0.kind == .materialChangedSinceUse
+            $0.kind == .synthesisMaterialChanged
         })
         await runtime.shutdown()
     }
@@ -1057,7 +1036,6 @@ extension ResearchActionRunOperationsTests {
             ).completion
         )
         #expect(completion.state == .unverified)
-        #expect(completion.actuallyUsedMaterialNoteIDs == [])
 
         let portableURL = fixture.rootURL
             .appendingPathComponent(
@@ -1070,7 +1048,6 @@ extension ResearchActionRunOperationsTests {
             from: Data(contentsOf: portableURL)
         )
         #expect(portable.fidelityCompletion == .unverified)
-        #expect(portable.actuallyUsedMaterials.isEmpty)
         await runtime.shutdown()
     }
 
@@ -1122,8 +1099,8 @@ extension ResearchActionRunOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Multiple used Materials derive independently and disappear on whole Record deletion")
-    func multipleUsedMaterialsRespectRecordExistence() async throws {
+    @Test("Multiple selected Materials derive independently and disappear on whole Record deletion")
+    func multipleSelectedMaterialsRespectRecordExistence() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let secondURL = fixture.analysesURL.appendingPathComponent("Second.md")
@@ -1167,8 +1144,7 @@ extension ResearchActionRunOperationsTests {
                 runID: run.runID,
                 confirmationToken: run.snapshot.confirmationToken,
                 recordTitle: try ResearchRecordTitle("Test research result"),
-                actuallyUsedMaterialNoteIDs: [first.noteID, second.noteID],
-                summary: "Both Analyses were used.",
+                summary: "Both selected Analyses were assessed.",
                 didModifyTarget: false
             )
         )
@@ -1183,7 +1159,7 @@ extension ResearchActionRunOperationsTests {
         )
         var refreshed = try await handle.refresh()
         #expect(refreshed.discovery.catalog.attention.filter {
-            $0.kind == .materialChangedSinceUse
+            $0.kind == .synthesisMaterialChanged
         }.count == 2)
 
         try await handle.research.deleteResearchRecordPermanently(
@@ -1191,7 +1167,7 @@ extension ResearchActionRunOperationsTests {
         )
         refreshed = try await handle.refresh()
         #expect(!refreshed.discovery.catalog.attention.contains {
-            $0.kind == .materialChangedSinceUse
+            $0.kind == .synthesisMaterialChanged
         })
         await runtime.shutdown()
     }

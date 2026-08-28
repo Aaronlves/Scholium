@@ -1144,53 +1144,8 @@ extension ScholiumUITests {
             )
         }
 
-        func material(
-            _ identity: QAStoredNoteIdentity,
-            role: String,
-            title: String,
-            revision: [String: Any]? = nil,
-            recordedRelativePath: String? = nil
-        ) -> [String: Any] {
-            [
-                "note_id": identity.noteID.uuidString,
-                "note": [
-                    "vaultID": identity.vaultID.uuidString,
-                    "relativePath": recordedRelativePath ?? identity.relativePath,
-                ],
-                "role": role,
-                "title": title,
-                "revision": revision ?? identity.fingerprint,
-            ]
-        }
-
-        var usedMaterials: [[String: Any]] = [
-            createsSynthesisAttention
-                ? material(analysis, role: "analysis", title: "QA Autosave A")
-                : material(
-                    topic,
-                    role: "topic",
-                    title: "QA Topic",
-                    revision: topicStartingRevision,
-                    recordedRelativePath: "Historical/QA Topic Before Rename.md"
-                ),
-        ]
-        if hasEvidenceOverflow {
-            usedMaterials = [
-                material(analysis, role: "analysis", title: "QA Autosave A"),
-                material(
-                    topic,
-                    role: "topic",
-                    title: "QA Topic",
-                    revision: topicStartingRevision,
-                    recordedRelativePath: "Historical/QA Topic Before Rename.md"
-                ),
-                material(secondAnalysis, role: "analysis", title: "QA Autosave B"),
-                material(work, role: "work", title: "QA Work"),
-            ]
-        }
-
         var portableRecord: [String: Any] = [
-            "schema_version": 13,
+            "schema_version": 15,
             "id": recordID.uuidString,
             "triptych_id": triptychID.uuidString,
             "record_title": createsSynthesisAttention
@@ -1198,8 +1153,11 @@ extension ScholiumUITests {
                 : "Emotional fittingness and practical attention",
             "kind": "action",
             "action": [
-                "schema_version": 1,
+                "schema_version": 2,
                 "action_id": createsSynthesisAttention ? "synthesize" : "analyze",
+                "material_note_ids": createsSynthesisAttention
+                    ? [analysis.noteID.uuidString]
+                    : [],
             ],
             "method": [
                 "registration_key": createsSynthesisAttention
@@ -1231,7 +1189,6 @@ extension ScholiumUITests {
             ],
             "result_disposition": "completed",
             "academic_results": [],
-            "actually_used_materials": usedMaterials,
             "fidelity_completion": "unverified",
             "confirmed_changes": [],
             "discrepancies": [],
@@ -1376,15 +1333,23 @@ extension ScholiumUITests {
                 "\(seed.recordID.uuidString.lowercased()):agent-result"
             )
             let profileRevision = qaFingerprint("QA bounded Synthesize Profile")
+            let materialNoteIDs = try seed.participants.compactMap {
+                participant -> String? in
+                guard participant.role == "analysis" else { return nil }
+                return try XCTUnwrap(
+                    identities[participant.relativePath]
+                ).noteID.uuidString
+            }
             let record: [String: Any] = [
-                "schema_version": 13,
+                "schema_version": 15,
                 "id": seed.recordID.uuidString,
                 "triptych_id": triptychID.uuidString,
                 "record_title": seed.title,
                 "kind": "action",
                 "action": [
-                    "schema_version": 1,
+                    "schema_version": 2,
                     "action_id": "synthesize",
+                    "material_note_ids": materialNoteIDs,
                 ],
                 "method": [
                     "registration_key": "10000000-0000-0000-0000-000000000003",
@@ -1403,7 +1368,6 @@ extension ScholiumUITests {
                 ]],
                 "result_disposition": "completed",
                 "academic_results": [],
-                "actually_used_materials": [],
                 "fidelity_completion": "unverified",
                 "confirmed_changes": confirmedChanges,
                 "discrepancies": [],
@@ -1864,7 +1828,7 @@ extension ScholiumUITests {
             - Target line: 105
             - Target quotation: "[[QA Topic]]"
 
-            ## Materials Consulted and Limitations
+            ## Evidence Limits
 
             Synthetic QA fixture only.
             """ + "\n",

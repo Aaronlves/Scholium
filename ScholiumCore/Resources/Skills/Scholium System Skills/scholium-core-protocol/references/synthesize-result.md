@@ -12,6 +12,7 @@ Use the frozen Synthesize Result Contract. For the current default fields:
 - **Next Step**, when present, contains only a bounded next research decision
   or investigation warranted by the synthesis.
 
-Material identities, actual use testimony, and exact changed documents travel
-through their typed inputs or Application provenance, not as repeated academic
-prose. Do not narrate searches, reads, comparison stages, or file changes.
+Explicit frozen Material identities and exact changed documents travel through
+Application provenance, not as repeated academic prose. Reading history and
+source-use testimony are not submitted. Do not narrate searches, reads,
+comparison stages, or file changes.

@@ -499,7 +499,7 @@ struct ResearchOverviewView: View {
         switch kind {
         case .possibleOrphan: "Possible Orphan"
         case .changedSinceSettled: "Changed Since Settled"
-        case .materialChangedSinceUse: "Material Changed Since Use"
+        case .synthesisMaterialChanged: "Synthesis Material Changed"
         case .malformedMetadata: "Malformed Metadata"
         case .brokenConnection: "Broken Connection"
         case .ambiguousConnection: "Ambiguous Connection"

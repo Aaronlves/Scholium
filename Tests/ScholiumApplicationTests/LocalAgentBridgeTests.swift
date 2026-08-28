@@ -1020,7 +1020,6 @@ private func testFidelityContext(
             note: target.note,
             expectedFingerprint: target.fingerprint,
             limit: 1,
-            useEligibility: .contextUse
         ),
     ])
     let profile = try #require(
@@ -1090,7 +1089,6 @@ private func maximumExactSourceContextResponse() throws -> ResearchContextRespon
     let clause = try ResearchContextClause(
         kind: .readNote,
         query: "path:Maximum.md",
-        useEligibility: .contextUse
     )
     let query = try ResearchContextQuery(
         request: ResearchContextRequest(clauses: [clause]),
@@ -1127,7 +1125,6 @@ private func maximumExactSourceContextResponse() throws -> ResearchContextRespon
         title: "Maximum",
         contentKind: .noteDocument,
         exactSource: try ResearchContextExactSource(content: source),
-        contextUseEligibility: .contextUse
     )
     return try ResearchContextResponse(
         query: query,

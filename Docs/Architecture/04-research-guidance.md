@@ -111,7 +111,10 @@ current Run belongs to Research Actions and Execution.
 The citation document stores one optional code-catalog identifier such as APA
 7. It is an integration setting, not a Skill, reference, permission, or
 executable component. Citation checking resolves it at preparation and fails
-closed when a requested check has no configured style.
+closed when a requested check has no configured style. Ordinary Actions never
+require a citation or treat citation absence as incomplete; a researcher-
+initiated Citations Fidelity check evaluates only citations present in its
+selected scope.
 
 ## Settings and configuration transactions
 

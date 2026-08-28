@@ -142,7 +142,7 @@ retained-memory series fails closed.
 RDF-1 is the frozen deterministic 800-Note fixture for Library, Search, Review,
 Edit, large CJK source, folders, links, and malformed-frontmatter coverage.
 Research Record provider fixtures remain separate generated inputs with strict
-current-schema attribution, participants, actually-used Materials, calendar
+current-schema attribution, participants, optional citations, calendar
 boundaries, and exact fingerprints. All are disposable test data, never
 research source or product authority. Their generator, manifest, and runner
 ownership belong to [Documents and Editor](../Architecture/06-documents-and-editor.md#documents-and-codemirror).

@@ -735,13 +735,12 @@ public enum ResearchMachineResultFieldID: String, Codable, CaseIterable,
     case sourceReferences = "source_references"
     case actualWrites = "actual_writes"
     case recovery
-    case contextUse = "context_use"
 
     public var purpose: ResearchMachineResultPurpose {
         switch self {
         case .actualWrites, .recovery:
             .safetyAndRecovery
-        case .sourceReferences, .contextUse, .method:
+        case .sourceReferences, .method:
             .researchContinuity
         case .run, .action, .initialObject, .startedAt, .completedAt:
             .researcherJudgment
@@ -752,7 +751,7 @@ public enum ResearchMachineResultFieldID: String, Codable, CaseIterable,
 /// Frozen once per Run. Agent fields remain separate from fields Scholium can
 /// derive and prefill from its actual machine state.
 public struct ResearchResultContract: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let actionID: ResearchActionID

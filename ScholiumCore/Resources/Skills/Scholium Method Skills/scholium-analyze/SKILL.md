@@ -97,7 +97,8 @@ Before treating the Analysis work as complete, perform one bounded fidelity
 self-check against the exact
 saved Analysis revision and the source data actually inspected. Check source
 attribution, conceptual and argumentative reconstruction, evidential roles,
-and citations when source evidence permits. Preserve every material unresolved
+and any citations that actually appear when source evidence permits. Preserve
+every material unresolved
 issue or unavailable check in the scholarly outcome. This self-check is part
 of the Analyze method; it does not create, attach, or require a separate Check
 Fidelity Action or child Run.

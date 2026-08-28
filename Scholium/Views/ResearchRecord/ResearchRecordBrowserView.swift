@@ -2159,7 +2159,7 @@ private struct ResearchRecordWorkspaceView: View {
                     Text("Record Evidence")
                         .font(ScholiumTypography.scholarly(.sectionTitle))
                         .accessibilityHeading(.h1)
-                    Text("Inspect confirmed source changes, context, participants, and technical provenance.")
+                    Text("Inspect confirmed source changes, participants, and technical provenance.")
                         .font(ScholiumTypography.interface(.compact))
                         .scholiumForeground(.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -2183,15 +2183,6 @@ private struct ResearchRecordWorkspaceView: View {
                     fidelityCompletion: record.fidelityCompletion,
                     discrepancies: record.discrepancies,
                     participants: record.participatingNotes
-                )
-
-                ScholiumStructuralRule()
-                ResearchRecordContextUseSection(
-                    entries: record.contextUseReport?.entries ?? [],
-                    materials: record.actuallyUsedMaterials,
-                    primaryNoteID: record.primaryNoteID,
-                    model: model,
-                    context: context
                 )
 
                 ScholiumStructuralRule()
@@ -2656,8 +2647,7 @@ private struct ResearchRecordEvidenceCollectionPopover<Content: View>: View {
     }
 }
 
-/// Context Used and Participants share one bounded progressive-disclosure
-/// lifecycle while retaining their own ordering, rows, and navigation.
+/// Bounded evidence collections share one progressive-disclosure lifecycle.
 private struct ResearchRecordPreviewedEvidenceSection<
     PreviewContent: View,
     CompleteContent: View
@@ -2738,252 +2728,6 @@ private struct ResearchRecordPreviewedEvidenceSection<
     private var hasMore: Bool {
         count > previewLimit
     }
-}
-
-private struct ResearchRecordContextUseSection: View {
-    let entries: [ContextUseEntry]
-    let materials: [PortableResearchMaterialUse]
-    let primaryNoteID: UUID?
-    let model: ResearchRecordBrowserModel
-    let context: ResearchRecordBrowserContext
-
-    var body: some View {
-        ResearchRecordPreviewedEvidenceSection(
-            title: "CONTEXT USED",
-            count: itemCount,
-            headerIdentifier: "scholium.researchRecord.contextUseHeader",
-            accessibilityHint: "Show every recorded Context item",
-            popoverTitle: "Context Used",
-            popoverIdentifier: "scholium.researchRecord.contextUsePopover"
-        ) { previewLimit in
-            if entries.isEmpty && materials.isEmpty {
-                ResearchRecordEvidenceEntry(
-                    symbol: "text.quote",
-                    title: "No verified context use",
-                    body: "Selection or delivery was not treated as scholarly use.",
-                    identifier: "scholium.researchRecord.contextUse.empty"
-                )
-            } else if !entries.isEmpty {
-                ForEach(Array(orderedEntries.prefix(previewLimit))) { entry in
-                    entryView(entry, identifierSuffix: nil)
-                }
-            } else {
-                ForEach(Array(orderedMaterials.prefix(previewLimit))) { material in
-                    materialView(material, identifierSuffix: nil)
-                }
-            }
-        } completeContent: { dismissPopover in
-            if !entries.isEmpty {
-                ForEach(orderedEntries) { entry in
-                    entryView(
-                        entry,
-                        identifierSuffix: ".all",
-                        focusPresentation: .native,
-                        dismissPopover: dismissPopover
-                    )
-                }
-            } else {
-                ForEach(orderedMaterials) { material in
-                    materialView(
-                        material,
-                        identifierSuffix: ".all",
-                        focusPresentation: .native,
-                        dismissPopover: dismissPopover
-                    )
-                }
-            }
-        }
-    }
-
-    private var itemCount: Int {
-        entries.isEmpty ? materials.count : entries.count
-    }
-
-    /// The Action's focal Note leads, followed by other actionable scholarly
-    /// sources. Exact but unresolved references remain in the complete set.
-    private var orderedEntries: [ContextUseEntry] {
-        entries.enumerated()
-            .sorted { left, right in
-                let leftRank = contextRank(left.element)
-                let rightRank = contextRank(right.element)
-                return leftRank == rightRank
-                    ? left.offset < right.offset
-                    : leftRank < rightRank
-            }
-            .map(\.element)
-    }
-
-    private var orderedMaterials: [PortableResearchMaterialUse] {
-        materials.sorted { left, right in
-            let leftRank = materialRank(left)
-            let rightRank = materialRank(right)
-            if leftRank != rightRank { return leftRank < rightRank }
-            if left.role != right.role {
-                return roleRank(left.role) < roleRank(right.role)
-            }
-            return left.noteID.uuidString < right.noteID.uuidString
-        }
-    }
-
-    private func contextRank(_ entry: ContextUseEntry) -> Int {
-        guard let destination = destination(for: entry) else { return 2 }
-        guard case .note(let noteID, _, _) = destination else { return 1 }
-        return noteID == primaryNoteID ? 0 : 1
-    }
-
-    private func materialRank(_ material: PortableResearchMaterialUse) -> Int {
-        material.noteID == primaryNoteID ? 0 : 1
-    }
-
-    private func roleRank(_ role: ResearchActionTargetRole) -> Int {
-        switch role {
-        case .topic: 0
-        case .analysis: 1
-        case .work: 2
-        }
-    }
-
-    private func entryView(
-        _ entry: ContextUseEntry,
-        identifierSuffix: String?,
-        focusPresentation: ScholiumActivationFocusPresentation = .contentSurface,
-        dismissPopover: (() -> Void)? = nil
-    ) -> some View {
-        ResearchRecordContextUseEntryView(
-            entry: entry,
-            destination: destination(for: entry),
-            identifierSuffix: identifierSuffix,
-            focusPresentation: focusPresentation,
-            open: { destination in
-                dismissPopover?()
-                open(destination)
-            }
-        )
-    }
-
-    private func materialView(
-        _ material: PortableResearchMaterialUse,
-        identifierSuffix: String?,
-        focusPresentation: ScholiumActivationFocusPresentation = .contentSurface,
-        dismissPopover: (() -> Void)? = nil
-    ) -> some View {
-        ResearchRecordEvidenceEntry(
-            symbol: "text.quote",
-            title: material.title,
-            metadata: [material.role.interfaceTitle, "Agent-reported use"],
-            focusPresentation: focusPresentation,
-            identifier:
-                "scholium.researchRecord.material.\(material.noteID.uuidString)\(identifierSuffix ?? "")",
-            accessibilityHint: "Open this reported research material",
-            action: {
-                dismissPopover?()
-                context.openNote(material.noteID, material.note, nil)
-            }
-        )
-    }
-
-    private func open(_ destination: ResearchContextUseDestination) {
-        switch destination {
-        case .note(let noteID, let note, let line):
-            context.openNote(noteID, note, line)
-        case .record(let recordID, let statementID):
-            model.openRecord(id: recordID, statementID: statementID)
-        }
-    }
-
-    private func destination(for entry: ContextUseEntry) -> ResearchContextUseDestination? {
-        let source = entry.sourceReference
-        switch source.owner.kind {
-        case .note:
-            guard let noteID = UUID(uuidString: source.owner.stableObjectIdentity),
-                let vaultID = source.owner.vaultID,
-                let relativePath = source.owner.relativePath
-            else { return nil }
-            return .note(
-                noteID,
-                VaultQualifiedNoteID(vaultID: vaultID, relativePath: relativePath),
-                source.locator.sourceRange?.line
-            )
-        case .record:
-            guard let recordID = source.owner.recordID,
-                model.record(id: recordID) != nil
-            else { return nil }
-            return .record(recordID, source.locator.statementID)
-        case .material, .researcherState:
-            return nil
-        }
-    }
-
-}
-
-private enum ResearchContextUseDestination {
-    case note(UUID, VaultQualifiedNoteID, Int?)
-    case record(UUID, UUID?)
-}
-
-private struct ResearchRecordContextUseEntryView: View {
-    let entry: ContextUseEntry
-    let destination: ResearchContextUseDestination?
-    let identifierSuffix: String?
-    let focusPresentation: ScholiumActivationFocusPresentation
-    let open: (ResearchContextUseDestination) -> Void
-
-    var body: some View {
-        ResearchRecordEvidenceEntry(
-            symbol: "text.quote",
-            title: title,
-            metadata: [locatorDescription],
-            tertiary: entry.testimony,
-            focusPresentation: focusPresentation,
-            identifier:
-                "scholium.researchRecord.contextUse.\(entry.id.uuidString)\(identifierSuffix ?? "")",
-            accessibilityHint: destination == nil
-                ? nil
-                : "Open the exact recorded evidence context",
-            action: destination.map { destination in
-                { open(destination) }
-            }
-        )
-    }
-
-    private var title: String {
-        let source = entry.sourceReference
-        switch source.owner.kind {
-        case .note:
-            guard let relativePath = source.owner.relativePath else { return "Recorded Note" }
-            return URL(fileURLWithPath: relativePath).deletingPathExtension().lastPathComponent
-        case .record:
-            return
-                "Research Record \(source.owner.recordID?.uuidString.lowercased().prefix(8) ?? "")"
-        case .material:
-            return "Source Material"
-        case .researcherState:
-            return "Researcher State"
-        }
-    }
-
-    private var locatorDescription: String {
-        let locator = entry.sourceReference.locator
-        return switch locator.kind {
-        case .sourceRange:
-            if let range = locator.sourceRange {
-                range.line == range.endLine
-                    ? "Line \(range.line)"
-                    : "Lines \(range.line)–\(range.endLine)"
-            } else {
-                "Recorded source range"
-            }
-        case .recordStatement:
-            "Attributed statement \(locator.statementID?.uuidString.lowercased().prefix(8) ?? "")"
-        case .materialLocator:
-            locator.materialLocator ?? "Recorded material locator"
-        case .wholeObject:
-            "Whole recorded object"
-        case .unknown:
-            "Exact locator unavailable"
-        }
-    }
-
 }
 
 private struct ResearchRecordLiteratureRecommendationsSection: View {

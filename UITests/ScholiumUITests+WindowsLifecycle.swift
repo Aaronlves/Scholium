@@ -417,7 +417,7 @@ extension ScholiumUITests {
         ].firstMatch
         XCTAssertTrue(kindPicker.waitForExistence(timeout: 5))
         kindPicker.click()
-        let materialChanged = app.menuItems["Material Changed Since Use"].firstMatch
+        let materialChanged = app.menuItems["Synthesis Material Changed"].firstMatch
         XCTAssertTrue(materialChanged.waitForExistence(timeout: 3))
         materialChanged.click()
         let attentionItem = attentionPopover.descendants(matching: .any).matching(

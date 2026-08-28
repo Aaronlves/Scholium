@@ -124,7 +124,6 @@ struct PhaseOneOwnershipContractsTests {
             _ = try ResearchContextClause(
                 kind: .relatedNotes,
                 noteNames: ["Agency", "agency"],
-                useEligibility: .referenceOnly
             )
         }
     }
@@ -272,6 +271,22 @@ struct PhaseOneOwnershipContractsTests {
         #expect(result.machineFields.allSatisfy { _ in true })
         #expect(result.machineFields.contains { $0.purpose == .safetyAndRecovery })
         #expect(result.machineFields.contains { $0.purpose == .researchContinuity })
+
+        let resultData = try JSONEncoder().encode(result)
+        let resultJSON = String(decoding: resultData, as: UTF8.self)
+        #expect(result.schemaVersion == 2)
+        #expect(!resultJSON.contains("context_use"))
+
+        var unsupportedObject = try #require(
+            JSONSerialization.jsonObject(with: resultData) as? [String: Any]
+        )
+        unsupportedObject["schemaVersion"] = 1
+        #expect(throws: ResearchAcademicProfileError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchResultContract.self,
+                from: JSONSerialization.data(withJSONObject: unsupportedObject)
+            )
+        }
 
         let profileJSON = String(
             decoding: try JSONEncoder().encode(profile),

@@ -374,7 +374,7 @@ struct ResearchRecordsTests {
         ### Beyond Sources — Quotation locator
         - Target quotation: A uniquely quoted claim appears here.
 
-        ## Materials Consulted and Limitations
+        ## Evidence Limits
         """
         let critique = NoteDocument(relativePath: "Critiques/Paper Critique.md", rawContent: critiqueSource)
         let findings = CritiqueDocumentContract.findings(in: critique)

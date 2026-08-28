@@ -202,7 +202,6 @@ struct ResearchAgentSessionAuthorityTests {
                 clauses: [try ResearchContextClause(
                     kind: .discoverNote,
                     query: "Agency",
-                    useEligibility: .referenceOnly
                 )]
             )
         )
@@ -223,14 +222,13 @@ struct ResearchAgentSessionAuthorityTests {
                 clauses: [try ResearchContextClause(
                     kind: .discoverNote,
                     query: "has:broken-link",
-                    useEligibility: .referenceOnly
                 )]
             )
         )
         #expect(structured.availability == .invalidQuery)
         #expect(structured.items.isEmpty)
         #expect(structured.outcomes.first?.limitations.contains {
-            $0.contains("Research Context schema 5")
+            $0.contains("Research Context schema 6")
         } == true)
 
         let properties = try await handle.research.queryAgentResearchContext(
@@ -240,7 +238,6 @@ struct ResearchAgentSessionAuthorityTests {
                 clauses: [try ResearchContextClause(
                     kind: .inspectMetadata,
                     query: "property:aliases",
-                    useEligibility: .referenceOnly
                 )]
             )
         )
@@ -260,7 +257,6 @@ struct ResearchAgentSessionAuthorityTests {
                 clauses: [try ResearchContextClause(
                     kind: .inspectRelations,
                     query: "from-note:Agency relation:supports",
-                    useEligibility: .referenceOnly
                 )]
             )
         )
@@ -277,7 +273,6 @@ struct ResearchAgentSessionAuthorityTests {
             kind: .readNote,
             query: "path:Agency.md",
             sectionHeading: "Agency",
-            useEligibility: .contextUse
         )
         let readRequest = try ResearchContextRequest(clauses: [readClause])
         let read = try await handle.research.queryAgentResearchContext(
@@ -302,7 +297,6 @@ struct ResearchAgentSessionAuthorityTests {
                 kind: .readNote,
                 query: "path:Agency.md",
                 sectionHeading: "Agency",
-                useEligibility: .contextUse,
                 cursor: pageCursor
             )
             let continuation = try await handle.research.queryAgentResearchContext(
@@ -341,7 +335,6 @@ struct ResearchAgentSessionAuthorityTests {
                     kind: .readNote,
                     query: "path:Agency.md",
                     sectionHeading: "Agency",
-                    useEligibility: .contextUse,
                     cursor: forgedPageDigestCursor
                 )]
             )
@@ -353,7 +346,7 @@ struct ResearchAgentSessionAuthorityTests {
             kind: .readNote,
             query: "path:Agency.md",
             sectionHeading: "Agency",
-            useEligibility: .referenceOnly,
+            limit: readClause.limit - 1,
             cursor: firstCursor
         )
         let alteredRequest = try await handle.research.queryAgentResearchContext(
@@ -386,7 +379,6 @@ struct ResearchAgentSessionAuthorityTests {
                         kind: .readNote,
                         query: "path:Agency.md",
                         sectionHeading: "Agency",
-                        useEligibility: .contextUse,
                         cursor: firstCursor
                     )]
                 )
@@ -423,7 +415,6 @@ struct ResearchAgentSessionAuthorityTests {
                 clauses: [try ResearchContextClause(
                     kind: .discoverNote,
                     query: "current question",
-                    useEligibility: .referenceOnly
                 )]
             ),
             provider: EmptyResearchContextProvider()
@@ -457,7 +448,7 @@ struct ResearchAgentSessionAuthorityTests {
         let activeDiscussion = try PortableResearchDiscussion(
             triptychID: fixture.assignment.id,
             primaryNoteID: target.noteID,
-            action: ResearchActionRecordIdentity(actionID: .synthesize),
+            action: try ResearchActionRecordIdentity(actionID: .synthesize),
             method: PortableResearchMethodReference(snapshot: actionSnapshot),
             participatingNotes: [participant],
             statements: [researcherStatement],
@@ -468,7 +459,7 @@ struct ResearchAgentSessionAuthorityTests {
             triptychID: fixture.assignment.id,
             title: try ResearchRecordTitle("One bounded synthesis"),
             kind: .action,
-            action: ResearchActionRecordIdentity(actionID: .synthesize),
+            action: try ResearchActionRecordIdentity(actionID: .synthesize),
             method: PortableResearchMethodReference(snapshot: actionSnapshot),
             primaryNoteID: target.noteID,
             participatingNotes: [participant],
@@ -536,7 +527,6 @@ struct ResearchAgentSessionAuthorityTests {
             request: ResearchContextRequest(clauses: [try ResearchContextClause(
                 kind: .inspectResearcherState,
                 limit: 20,
-                useEligibility: .contextUse
             )]),
             runID: preparation.runID,
             triptychID: fixture.assignment.id

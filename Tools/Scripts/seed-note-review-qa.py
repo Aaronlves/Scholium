@@ -159,7 +159,6 @@ def make_record(
                 "ending_revision": work["fingerprint"],
             }
         )
-    actual_materials: list[dict[str, Any]] = []
     if uses_analysis:
         participants.append(
             participant(
@@ -168,18 +167,6 @@ def make_record(
                 "QA Autosave A",
                 analysis["fingerprint"],
             )
-        )
-        actual_materials.append(
-            {
-                "note_id": str(UUID(analysis["id"])),
-                "note": {
-                    "vaultID": str(UUID(analysis["vaultID"])),
-                    "relativePath": analysis["relativePath"],
-                },
-                "role": "analysis",
-                "title": "QA Autosave A",
-                "revision": analysis["fingerprint"],
-            }
         )
 
     started = datetime(2026, 8, 1, 8, 0, tzinfo=timezone.utc) + timedelta(
@@ -204,12 +191,18 @@ def make_record(
         else "no source change"
     )
     record: dict[str, Any] = {
-        "schema_version": 8,
+        "schema_version": 15,
         "id": record_id,
         "triptych_id": triptych_id,
         "record_title": f"QA {ordinal:03d} · {change_label}",
         "kind": "action",
-        "action": {"schema_version": 1, "action_id": "synthesize"},
+        "action": {
+            "schema_version": 2,
+            "action_id": "synthesize",
+            "material_note_ids": (
+                [str(UUID(analysis["id"]))] if uses_analysis else []
+            ),
+        },
         "method": {
             "registration_key": "10000000-0000-0000-0000-000000000003",
             "display_name": "Synthesize",
@@ -229,7 +222,6 @@ def make_record(
         ],
         "result_disposition": "completed",
         "academic_results": [],
-        "actually_used_materials": actual_materials,
         "fidelity_completion": "completed" if ordinal % 3 == 0 else "unverified",
         "confirmed_changes": confirmed_changes,
         "discrepancies": [],

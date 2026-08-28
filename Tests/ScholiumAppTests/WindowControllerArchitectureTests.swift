@@ -2462,14 +2462,14 @@ struct WindowControllerArchitectureTests {
             "ResearchRecordResearcherResponseSection(",
             "ResearchRecordChangesSection(",
             "ResearchRecordEvidenceSection(",
-            "ResearchRecordContextUseSection(",
             "ResearchRecordParticipantSection(",
             "ResearchRecordTechnicalDetails(record: record)",
         ].compactMap { recordBrowser.range(of: $0)?.lowerBound }
-        #expect(fixedOrder.count == 6)
+        #expect(fixedOrder.count == 5)
         #expect(zip(fixedOrder, fixedOrder.dropFirst()).allSatisfy {
             $0.0 < $0.1
         })
+        #expect(!recordBrowser.contains("ResearchRecordContextUseSection"))
 
         let overviewOrder = [
             "                attentionSection",

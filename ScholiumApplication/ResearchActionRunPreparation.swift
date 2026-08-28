@@ -321,7 +321,7 @@ extension ResearchActionRunCoordinator {
         runIDOverride: UUID? = nil,
         continuationLineage: ResearchContinuationLineage? = nil,
         continuationHandoff: ResearchContinuationHandoffContext? = nil,
-        resynthesisContext: MaterialChangedSinceUseAttentionContext? = nil,
+        resynthesisContext: SynthesisMaterialChangedAttentionContext? = nil,
         requiresAgentChangeEvidence: Bool = true,
         allowsResearcherProvidedSource: Bool = false,
         expectedZoteroBinding: AnalysisZoteroBinding? = nil,

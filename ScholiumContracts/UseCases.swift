@@ -334,7 +334,7 @@ public protocol ResearchActionUseCases: Sendable {
 
     func prepareResynthesis(
         _ request: ResearchActionExecutionRequest,
-        context: MaterialChangedSinceUseAttentionContext
+        context: SynthesisMaterialChangedAttentionContext
     ) async throws -> ResearchActionPreparation
 }
 

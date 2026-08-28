@@ -354,7 +354,6 @@ struct ActionCLIExecutableLifecycleTests {
                     recordTitle: submission.recordTitle,
                     disposition: submission.disposition,
                     academicResults: submission.academicResults,
-                    contextUseClaims: submission.contextUseClaims,
                     fidelityOutcomes: [
                         FidelityCheckOutcome(
                             check: .content,
@@ -2906,7 +2905,7 @@ struct ActionCLIExecutableLifecycleTests {
             "Follow each typed `next_actions` requirement."
         ))
         #expect(normalizedCore.contains(
-            "Calling a query is not evidence that its returned material was actually used"
+            "Calling a query is not evidence that returned material was read, relied on, or supports the Result"
         ))
         #expect(normalizedCore.contains(
             "a finalized Result needs no extra end operation"

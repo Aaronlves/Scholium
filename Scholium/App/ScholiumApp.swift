@@ -3492,8 +3492,8 @@ final class WindowModel: ObservableObject {
     /// Topic/Analysis revision condition. Preparation remains fail-closed at
     /// the Application boundary if either source or record changed meanwhile.
     func requestResynthesis(_ item: AttentionQueueItem) {
-        guard item.kind == .materialChangedSinceUse,
-              let context = item.materialChangedSinceUse else { return }
+        guard item.kind == .synthesisMaterialChanged,
+              let context = item.synthesisMaterialChanged else { return }
         enqueueDocumentTransition(preservingCurrentEditorState: false, { [weak self] in
             guard let self else { return }
             try await self.activateWorkspaceReference(
@@ -3754,7 +3754,7 @@ final class WindowModel: ObservableObject {
         _ actionID: ResearchActionID,
         selection: CommentAnchor? = nil,
         initialMaterialNoteIDs: Set<UUID> = [],
-        resynthesisContext: MaterialChangedSinceUseAttentionContext? = nil
+        resynthesisContext: SynthesisMaterialChangedAttentionContext? = nil
     ) {
         guard let initialTarget = currentResearchActionTarget else { return }
         if actionID == .discuss,

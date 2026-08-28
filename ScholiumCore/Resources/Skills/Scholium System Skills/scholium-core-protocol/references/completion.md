@@ -59,3 +59,10 @@ not a second result, source title, or process narration. Scholium already
 attributes the Result, so do not add first-person process testimony merely to
 establish attribution. Discuss instead follows its routed System Protocol and
 has no generic Result submission.
+
+Use in-text citations when they materially help a reader locate, distinguish,
+or evaluate support and the available evidence can sustain them. Do not add a
+citation merely to prove that something was read, and do not treat an otherwise
+warranted result as incomplete solely because it contains no citation. A
+researcher-initiated Citations Fidelity check evaluates only citations that
+actually appear in the selected scope.

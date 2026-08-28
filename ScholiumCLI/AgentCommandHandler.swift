@@ -142,8 +142,7 @@ extension ScholiumCLI {
             let clause = try ResearchContextClause(
                 kind: .relatedNotes,
                 noteNames: noteNames,
-                limit: limit,
-                useEligibility: .referenceOnly
+                limit: limit
             )
             let request = try ResearchContextRequest(clauses: [clause])
             let credential = try credentialStore.load(for: run)

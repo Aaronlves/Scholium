@@ -146,9 +146,8 @@ six or twenty-nine local calendar days. `note` resolves the ordinary stable
 Note identity; `action` matches the retained public Action identity and `skill`
 matches only the exact retained Method display name; `participant` requires an
 attributed statement from that speaker.
-Unfielded terms search the frozen Record Title, Action, Skill, participant Note titles,
-attributed statements, and Application-validated actually-used Material
-titles. Note-only fields, Metadata, and relation clauses fail with a provider-
+Unfielded terms search the frozen Record Title, Action, Skill, participant Note
+titles, and attributed statements. Note-only fields, Metadata, and relation clauses fail with a provider-
 mismatch diagnostic.
 
 One result row always represents one provider object. Record results are one
@@ -220,7 +219,7 @@ ambiguous identities, runs the same channels independently for each resolved
 source, excludes the seeds, then dynamically orders combined candidates by
 matched-seed count, direct Connection, exact identity, owner-provided rank, and
 stable identity ties. The response retains reasons per seed but exposes no
-score or source. It creates no Materials or Context Use.
+score or source. It creates no Material selection or reading history.
 
 Ordinary cross-provider Search caps at 100 rows and reports only `N Results` or
 `N+ Results`; it does not perform an expensive exact total count. The dedicated
@@ -315,11 +314,11 @@ report a **Possible Orphan** only when a Note has no resolved incoming or
 outgoing connection. A neutral, same-vault, or cross-vault connection is
 sufficient to prevent that condition; Attention does not require an explicit
 Vector Link or cross-vault relation. It may also report Changed Since Settled,
-Broken Connections, malformed metadata, unresolved identity, or **Material
-Changed Since Use**.
+Broken Connections, malformed metadata, unresolved identity, or **Synthesis
+Material Changed**.
 The latter requires one completed Synthesize record whose
-agent-reported actually used Analysis set and exact recorded revision were
-validated; selecting a Material is insufficient. If that Analysis later
+explicit frozen Analysis participant and exact recorded revision were
+validated; dynamically reading an Analysis is insufficient. If that Analysis later
 changes, Attention may offer **Inspect**, **Resynthesize**, and **Leave
 Unchanged**. Dismissal binds the material identity and revision pair, so a later
 change may appear again.

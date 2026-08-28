@@ -14,7 +14,6 @@ public enum RecordSearchMatchedField: String, Codable, Hashable, Sendable {
     case participant
     case researcherStatement = "researcher_statement"
     case agentStatement = "agent_statement"
-    case material
     case sourceReference = "source_reference"
 }
 

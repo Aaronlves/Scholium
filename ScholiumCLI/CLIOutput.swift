@@ -229,7 +229,7 @@ extension ScholiumCLI {
                 ),
                 usage: "scholium agent query --run <locator> --from <json|->",
                 inputContract: "ResearchContextRequest schema \(ResearchContextRequest.currentSchemaVersion)",
-                input: "Strict snake-case JSON fields: schema_version, id, clauses (1...\(ResearchContextRequest.maximumClauses)). Every clause has schema_version, id, kind [\(contextClauses)], scope=triptych, limit, use_eligibility, and only its closed fields. read_note uses query or an Application-supplied exact note plus fingerprint; related_notes uses note_names and reference_only. Send supplied inspection requests unchanged.",
+                input: "Strict snake-case JSON fields: schema_version, id, clauses (1...\(ResearchContextRequest.maximumClauses)). Every clause has schema_version, id, kind [\(contextClauses)], scope=triptych, limit, and only its closed fields. read_note uses query or an Application-supplied exact note plus fingerprint; related_notes uses note_names. Scholium derives each response item's evidence eligibility. Send supplied inspection requests unchanged.",
                 output: "ResearchContextResponse schema \(ResearchContextResponse.currentSchemaVersion) with per-clause availability, items or a dynamically ordered related_notes result, limitations, and read-only continuation where applicable.",
                 nextSteps: [
                     "Repeat scholium agent query with a narrower request when needed",
@@ -252,7 +252,7 @@ extension ScholiumCLI {
                 nextSteps: [
                     "Inspect the ordered candidates and their per-seed reasons",
                     "Use scholium agent query with an exact read request before relying on candidate source",
-                    "Do not treat recommendation, delivery, or reading as Materials or Context Use",
+                    "Do not treat recommendation or delivery as reliance or support",
                 ]
             ),
             "agent discuss-reply": AgentCLICommandHelp(
@@ -345,7 +345,7 @@ extension ScholiumCLI {
                 ),
                 usage: "scholium agent submit-result --run <locator> --from <json|->",
                 inputContract: "ResearchAgentResultSubmission schema \(ResearchAgentResultSubmission.currentSchemaVersion) plus the current Run result_contract",
-                input: "Strict JSON fields: schema_version, record_title, disposition [completed, blocked], academic_results filled exactly from result_contract, context_use_claims with returned source_reference envelopes and testimony, fidelity_outcomes, and optional literature_recommendations only when the contract permits them. For every non-Check Fidelity Action, fidelity_outcomes must be []: any bounded Method self-check belongs in that Action's academic Result fields or limitations and does not create formal Fidelity evidence. Every Check Fidelity outcome requires check [content, citations], state [passed, issues_found, unavailable], a nonempty attributed summary, and findings as an array of strings. passed requires empty findings; issues_found requires at least one finding; unavailable must be used for each fidelity_contract.required_unavailable_checks. For the default Check Fidelity profile, submit academic_results {values:{}} because Scholium derives the aggregate Finding fields from outcomes; a researcher-customized profile remains explicit in the returned template. The authenticated context next_actions supplies the complete strict template. record_title is the concise, one-line Record identity, not a duplicate academic result.",
+                input: "Strict JSON fields: schema_version, record_title, disposition [completed, blocked], academic_results filled exactly from result_contract, fidelity_outcomes, and optional literature_recommendations only when the contract permits them. Reading history and source-use testimony are not submitted. In-text citations remain part of the academic prose when the Agent judges them useful; citation absence alone is not a completion failure. For every non-Check Fidelity Action, fidelity_outcomes must be []: any bounded Method self-check belongs in that Action's academic Result fields or limitations and does not create formal Fidelity evidence. Every Check Fidelity outcome requires check [content, citations], state [passed, issues_found, unavailable], a nonempty attributed summary, and findings as an array of strings. passed requires empty findings; issues_found requires at least one finding; unavailable must be used for each fidelity_contract.required_unavailable_checks. For the default Check Fidelity profile, submit academic_results {values:{}} because Scholium derives the aggregate Finding fields from outcomes; a researcher-customized profile remains explicit in the returned template. The authenticated context next_actions supplies the complete strict template. record_title is the concise, one-line Record identity, not a duplicate academic result.",
                 output: "ResearchAgentResultReceipt with disposition, finalization state, whether a portable Record was formed, and a message.",
                 nextSteps: [
                     "scholium agent continue --run <locator> --from <json|-> only for a distinct next Action",

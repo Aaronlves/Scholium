@@ -50,8 +50,8 @@ struct ResearchRecordSearchIndexTests {
         #expect(triptych.results.map(\.recordID) == [fixture.otherVaultRecordID])
     }
 
-    @Test("Unfielded clauses search attribution, source, and actually-used material without duplicating a Record")
-    func unfieldedAttributionMaterialsAndOneRow() throws {
+    @Test("Unfielded clauses search attribution, source, and participants without duplicating a Record")
+    func unfieldedAttributionParticipantsAndOneRow() throws {
         let fixture = try Fixture()
 
         let andQuery = try fixture.search(
@@ -68,8 +68,8 @@ struct ResearchRecordSearchIndexTests {
         #expect(andQuery.results[0].matchedFields.contains(.sourceReference))
         #expect(attribution.results[0].statementAuthor == .researcher)
         #expect(attribution.results[0].statementID == fixture.researcherStatementID)
-        #expect(used.results[0].matchedFields.contains(.material))
-        #expect(!selectedOnly.results[0].matchedFields.contains(.material))
+        #expect(used.results[0].matchedFields.contains(.participant))
+        #expect(selectedOnly.results[0].matchedFields.contains(.participant))
         #expect(repeated.results.map(\.recordID) == [fixture.historicalRecordID])
     }
 
@@ -232,7 +232,7 @@ private extension ResearchRecordSearchIndexTests {
                 triptychID: triptychID,
                 title: try ResearchRecordTitle("A contested dialectical objection"),
                 kind: .action,
-                action: ResearchActionRecordIdentity(actionID: .synthesize),
+                action: try ResearchActionRecordIdentity(actionID: .synthesize),
                 method: method,
                 sourceReference: try ResearchSourceReference(
                     identity: .localFile(id: historicalRecordID),
@@ -242,13 +242,6 @@ private extension ResearchRecordSearchIndexTests {
                 primaryNoteID: alpha.noteID,
                 participatingNotes: [alpha, used, selectedOnly],
                 statements: [researcherStatement, agentStatement],
-                actuallyUsedMaterials: [try PortableResearchMaterialUse(
-                    noteID: used.noteID,
-                    note: used.note,
-                    role: used.role,
-                    title: used.title,
-                    revision: used.startingRevision
-                )],
                 fidelityCompletion: .notRequired,
                 startedAt: historicalFinished.addingTimeInterval(-120),
                 finishedAt: historicalFinished
@@ -434,7 +427,7 @@ private extension ResearchRecordSearchIndexTests {
                 triptychID: triptychID,
                 title: try ResearchRecordTitle(String(text.prefix(80))),
                 kind: .action,
-                action: ResearchActionRecordIdentity(actionID: .synthesize),
+                action: try ResearchActionRecordIdentity(actionID: .synthesize),
                 method: method,
                 primaryNoteID: note.noteID,
                 participatingNotes: [note],

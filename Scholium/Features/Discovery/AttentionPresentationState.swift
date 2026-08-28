@@ -5,7 +5,7 @@ import Foundation
 enum AttentionIssueGroup: String, CaseIterable, Identifiable, Sendable {
     case identityAndMetadata
     case structureAndConnections
-    case revisionAndReliance
+    case revisionAndResearch
 
     var id: String { rawValue }
 
@@ -13,7 +13,7 @@ enum AttentionIssueGroup: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .identityAndMetadata: "Identity & Metadata"
         case .structureAndConnections: "Structure & Connections"
-        case .revisionAndReliance: "Revision & Reliance"
+        case .revisionAndResearch: "Revision & Research"
         }
     }
 
@@ -23,8 +23,8 @@ enum AttentionIssueGroup: String, CaseIterable, Identifiable, Sendable {
             [.malformedMetadata, .unresolvedIdentity]
         case .structureAndConnections:
             [.possibleOrphan, .brokenConnection, .ambiguousConnection]
-        case .revisionAndReliance:
-            [.changedSinceSettled, .materialChangedSinceUse]
+        case .revisionAndResearch:
+            [.changedSinceSettled, .synthesisMaterialChanged]
         }
     }
 

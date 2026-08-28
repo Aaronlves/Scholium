@@ -553,7 +553,6 @@ func testAcademicResults(
 func makeTestAgentResultSubmission(
     for preparation: ResearchActionRunPreparation,
     disposition: ResearchAgentResultDisposition = .completed,
-    contextUseClaims: [ResearchContextUseClaim] = [],
     fidelityOutcomes: [FidelityCheckOutcome] = [],
     literatureRecommendations: [ResearchLiteratureRecommendationSubmission]? = nil
 ) throws -> ResearchAgentResultSubmission {
@@ -570,7 +569,6 @@ func makeTestAgentResultSubmission(
         recordTitle: ResearchRecordTitle("Test research result"),
         disposition: disposition,
         academicResults: academicResults,
-        contextUseClaims: contextUseClaims,
         fidelityOutcomes: fidelityOutcomes,
         literatureRecommendations: literatureRecommendations
     )
@@ -592,7 +590,6 @@ func submitTestAgentResult(
     for preparation: ResearchActionRunPreparation,
     handle: WorkspaceHandle,
     disposition: ResearchAgentResultDisposition = .completed,
-    contextUseClaims: [ResearchContextUseClaim] = [],
     fidelityOutcomes: [FidelityCheckOutcome] = [],
     literatureRecommendations: [ResearchLiteratureRecommendationSubmission]? = nil
 ) async throws -> ResearchAgentResultReceipt {
@@ -604,7 +601,6 @@ func submitTestAgentResult(
         makeTestAgentResultSubmission(
             for: preparation,
             disposition: disposition,
-            contextUseClaims: contextUseClaims,
             fidelityOutcomes: fidelityOutcomes,
             literatureRecommendations: literatureRecommendations
         ),
@@ -638,7 +634,6 @@ func completeTestActionRun(
             recordTitle: submission.recordTitle,
             disposition: .completed,
             academicResults: academicResults,
-            contextUseReport: nil,
             fidelityOutcomes: submission.fidelityOutcomes,
             literatureRecommendations: submission.literatureRecommendations,
             submittedAt: submission.submittedAt

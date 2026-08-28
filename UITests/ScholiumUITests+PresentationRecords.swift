@@ -1386,7 +1386,7 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func testResearchRecordEvidencePreviewPopoverKeyboardAndDismissal() throws {
+    func testResearchRecordParticipantPreviewPopoverKeyboardAndDismissal() throws {
         app.terminate()
         let fixture = try seedResearchRecordFixture(hasEvidenceOverflow: true)
         sessionID = UUID()
@@ -1423,9 +1423,6 @@ extension ScholiumUITests {
         XCTAssertTrue(evidenceScroll.waitForExistence(timeout: 5))
         let participantsHeader = recordWindow.buttons[
             "scholium.researchRecord.participantsHeader"
-        ]
-        let contextUseHeader = recordWindow.buttons[
-            "scholium.researchRecord.contextUseHeader"
         ]
         scrollUntilHittable(participantsHeader, in: evidenceScroll)
 
@@ -1466,25 +1463,6 @@ extension ScholiumUITests {
             "A native outside click must dismiss the Participant popover."
         )
 
-        scrollUntilHittable(contextUseHeader, in: evidenceScroll)
-        contextUseHeader.click()
-        let contextPopover = app.descendants(matching: .any)[
-            "scholium.researchRecord.contextUsePopover"
-        ]
-        XCTAssertTrue(contextPopover.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.descendants(matching: .any)[
-            "scholium.researchRecord.material.\(overflowWorkID.uuidString).all"
-        ].exists)
-        let firstContextRow = app.buttons[
-            "scholium.researchRecord.material.\(fixture.analysisNoteID.uuidString).all"
-        ]
-        XCTAssertTrue(firstContextRow.waitForExistence(timeout: 5))
-        XCTAssertFalse(keyboardFocus.evaluate(with: firstContextRow))
-        app.typeKey(.escape, modifierFlags: [])
-        XCTAssertTrue(waitUntil(timeout: 5) { !contextPopover.exists })
-        XCTAssertTrue(waitUntil(timeout: 3) {
-            keyboardFocus.evaluate(with: contextUseHeader)
-        })
     }
 
     @MainActor
@@ -1590,14 +1568,10 @@ extension ScholiumUITests {
         let participantsHeader = recordWindow.buttons[
             "scholium.researchRecord.participantsHeader"
         ]
-        let contextUseHeader = recordWindow.buttons[
-            "scholium.researchRecord.contextUseHeader"
-        ]
         let responseEditor = recordWindow.buttons[
             "scholium.researchRecord.response.add"
         ]
         XCTAssertTrue(participantsHeader.exists)
-        XCTAssertTrue(contextUseHeader.exists)
         let effectsHeader = recordWindow.descendants(matching: .any)[
             "scholium.researchRecord.effectsHeader"
         ]
@@ -1606,9 +1580,7 @@ extension ScholiumUITests {
             "scholium.researchRecord.effects.result"
         ].exists)
         XCTAssertTrue(responseEditor.exists)
-        XCTAssertEqual(participantsHeader.frame.minX, contextUseHeader.frame.minX, accuracy: 1)
         XCTAssertEqual(participantsHeader.frame.minX, effectsHeader.frame.minX, accuracy: 1)
-        XCTAssertEqual(participantsHeader.frame.height, contextUseHeader.frame.height, accuracy: 1)
         XCTAssertEqual(participantsHeader.frame.height, effectsHeader.frame.height, accuracy: 1)
 
         let overflowWorkID = try XCTUnwrap(fixture.overflowParticipantNoteIDs.last)
@@ -1642,25 +1614,6 @@ extension ScholiumUITests {
         )
         app.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(waitUntil(timeout: 5) { !participantPopover.exists })
-
-        contextUseHeader.click()
-        let contextPopover = app.descendants(matching: .any)[
-            "scholium.researchRecord.contextUsePopover"
-        ]
-        XCTAssertTrue(contextPopover.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.descendants(matching: .any)[
-            "scholium.researchRecord.material.\(overflowWorkID.uuidString).all"
-        ].exists)
-        let firstContextPopoverRow = app.buttons[
-            "scholium.researchRecord.material.\(fixture.analysisNoteID.uuidString).all"
-        ]
-        XCTAssertTrue(firstContextPopoverRow.waitForExistence(timeout: 5))
-        XCTAssertFalse(
-            keyboardFocus.evaluate(with: firstContextPopoverRow),
-            "Pointer opening must not paint keyboard focus on the first Context Used row."
-        )
-        app.typeKey(.escape, modifierFlags: [])
-        XCTAssertTrue(waitUntil(timeout: 5) { !contextPopover.exists })
 
         scrollUntilHittable(responseEditor, in: detailScroll)
         responseEditor.click()

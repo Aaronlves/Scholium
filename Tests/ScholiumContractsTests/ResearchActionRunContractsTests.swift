@@ -49,51 +49,25 @@ struct ResearchActionRunContractsTests {
         ) == resynthesis)
     }
 
-    @Test("Actually-used Material testimony preserves explicit empty and retained missing states")
-    func actuallyUsedMaterialTestimonyCompatibility() throws {
-        let first = UUID()
-        let second = UUID()
+    @Test("Completion submissions contain no reading-history testimony")
+    func completionOmitsReadingHistory() throws {
         let submission = ResearchActionRunCompletionSubmission(
             runID: UUID(),
             confirmationToken: UUID(),
-            recordTitle: try ResearchRecordTitle("Used selected analyses"),
-            actuallyUsedMaterialNoteIDs: [second, first],
-            summary: "Used both selected analyses.",
+            recordTitle: try ResearchRecordTitle("Bounded synthesis"),
+            summary: "The synthesis addresses its declared question.",
             didModifyTarget: false
         )
         let data = try JSONEncoder().encode(submission)
-        #expect(submission.actuallyUsedMaterialNoteIDs == [first, second].sorted {
-            $0.uuidString < $1.uuidString
-        })
         #expect(try JSONDecoder().decode(
             ResearchActionRunCompletionSubmission.self,
             from: data
         ) == submission)
-
-        let explicitlyEmpty = ResearchActionRunCompletionSubmission(
-            runID: UUID(),
-            confirmationToken: UUID(),
-            recordTitle: try ResearchRecordTitle("No selected material used"),
-            actuallyUsedMaterialNoteIDs: [],
-            summary: "No selected Material was actually used.",
-            didModifyTarget: false
-        )
-        let emptyData = try JSONEncoder().encode(explicitlyEmpty)
-        let emptyObject = try #require(
-            JSONSerialization.jsonObject(with: emptyData) as? [String: Any]
-        )
-        #expect(explicitlyEmpty.actuallyUsedMaterialNoteIDs == [])
-        #expect((emptyObject["actuallyUsedMaterialNoteIDs"] as? [String]) == [])
-
-        var legacy = try #require(
+        let object = try #require(
             JSONSerialization.jsonObject(with: data) as? [String: Any]
         )
-        legacy.removeValue(forKey: "actuallyUsedMaterialNoteIDs")
-        let decodedLegacy = try JSONDecoder().decode(
-            ResearchActionRunCompletionSubmission.self,
-            from: JSONSerialization.data(withJSONObject: legacy)
-        )
-        #expect(decodedLegacy.actuallyUsedMaterialNoteIDs == nil)
+        #expect(object["actuallyUsedMaterialNoteIDs"] == nil)
+        #expect(object["contextUseReport"] == nil)
     }
 
     @Test("Action roles, write authority, change evidence, and Fidelity requirements are explicit")

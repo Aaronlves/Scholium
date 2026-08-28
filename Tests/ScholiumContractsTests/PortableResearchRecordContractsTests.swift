@@ -87,13 +87,13 @@ struct PortableResearchRecordContractsTests {
 
         #expect(Set(object.keys) == [
             "schema_version", "id", "triptych_id", "record_title", "kind", "action", "method",
-            "participating_notes", "statements", "actually_used_materials",
+            "participating_notes", "statements",
             "fidelity_completion", "confirmed_changes", "discrepancies",
             "literature_recommendations", "started_at", "finished_at",
             "primary_note_id", "result_disposition",
             "academic_results",
         ])
-        #expect(object["schema_version"] as? Int == 13)
+        #expect(object["schema_version"] as? Int == 15)
         #expect(object["record_title"] as? String == "The remaining pressure")
         #expect(object["fidelity_completion"] as? String == "not_required")
         let changes = try #require(object["confirmed_changes"] as? [[String: Any]])
@@ -113,8 +113,8 @@ struct PortableResearchRecordContractsTests {
         ) == record)
     }
 
-    @Test("Schema 13 requires a frozen title and rejects every retired schema")
-    func schemaSevenIsStrict() throws {
+    @Test("Schema 15 requires a frozen title and rejects every retired schema")
+    func currentSchemaIsStrict() throws {
         for invalidTitle in ["", "line one\nline two", "/Users/researcher/private.md"] {
             #expect(throws: PortableResearchRecordError.self) {
                 _ = try ResearchRecordTitle(invalidTitle)
@@ -164,17 +164,6 @@ struct PortableResearchRecordContractsTests {
             JSONSerialization.jsonObject(with: encoded) as? [String: Any]
         )
         object.removeValue(forKey: "literature_recommendations")
-        #expect(throws: (any Error).self) {
-            _ = try JSONDecoder.scholium.decode(
-                PortableResearchRecord.self,
-                from: JSONSerialization.data(withJSONObject: object)
-            )
-        }
-
-        object = try #require(
-            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
-        )
-        object.removeValue(forKey: "actually_used_materials")
         #expect(throws: (any Error).self) {
             _ = try JSONDecoder.scholium.decode(
                 PortableResearchRecord.self,
@@ -269,41 +258,6 @@ struct PortableResearchRecordContractsTests {
                 PortableResearchRecord.self,
                 from: JSONSerialization.data(withJSONObject: object)
             )
-        }
-    }
-
-    @Test("Actually-used Materials must match their portable participant facts")
-    func actuallyUsedMaterialsMatchParticipants() throws {
-        let record = try makeRecord(includeMaterialUse: true)
-        var object = try #require(
-            JSONSerialization.jsonObject(
-                with: JSONEncoder.scholium.encode(record)
-            ) as? [String: Any]
-        )
-        var materials = try #require(
-            object["actually_used_materials"] as? [[String: Any]]
-        )
-        var material = try #require(materials.first)
-
-        for (key, replacement) in [
-            ("role", "work"),
-            ("title", "Contradictory title"),
-            ("note", [
-                "vaultID": UUID().uuidString,
-                "relativePath": "Analysis.md",
-            ]),
-        ] as [(String, Any)] {
-            let original = material[key]
-            material[key] = replacement
-            materials[0] = material
-            object["actually_used_materials"] = materials
-            #expect(throws: PortableResearchRecordError.self) {
-                _ = try JSONDecoder.scholium.decode(
-                    PortableResearchRecord.self,
-                    from: JSONSerialization.data(withJSONObject: object)
-                )
-            }
-            material[key] = original
         }
     }
 
@@ -461,14 +415,17 @@ struct PortableResearchRecordContractsTests {
         ) == reference)
     }
 
-    @Test("Actually-used Materials cannot be inferred from participating notes")
-    func materialUseRemainsExplicit() throws {
-        let record = try makeRecord()
-        #expect(record.participatingNotes.count == 1)
-        #expect(record.actuallyUsedMaterials.isEmpty)
+    @Test("Explicit Materials are participants without recording reading history")
+    func materialParticipationHasNoUseReport() throws {
+        let record = try makeRecord(includeMaterialParticipant: true)
+        #expect(record.participatingNotes.count == 2)
+        #expect(record.action?.materialNoteIDs.count == 1)
+        let source = String(decoding: try JSONEncoder.scholium.encode(record), as: UTF8.self)
+        #expect(!source.contains("actually_used_materials"))
+        #expect(!source.contains("context_use_report"))
     }
 
-    @Test("Changes and Material use must match participating Note revisions")
+    @Test("Changes must match participating Note revisions")
     func evidenceMustMatchParticipants() throws {
         let snapshot = try makeActionSnapshot()
         let ending = DocumentFingerprint(content: "# Topic\nRevised")
@@ -484,31 +441,9 @@ struct PortableResearchRecordContractsTests {
         #expect(throws: PortableResearchRecordError.self) {
             _ = try PortableResearchRecord(
                 triptychID: UUID(),
-                title: try ResearchRecordTitle("Invalid material use"),
-                kind: .action,
-                action: ResearchActionRecordIdentity(snapshot: snapshot),
-                method: try PortableResearchMethodReference(snapshot: snapshot),
-                participatingNotes: [participant],
-                statements: [],
-                actuallyUsedMaterials: [try PortableResearchMaterialUse(
-                    noteID: participant.noteID,
-                    note: participant.note,
-                    role: participant.role,
-                    title: participant.title,
-                    revision: DocumentFingerprint(content: "a different revision")
-                )],
-                fidelityCompletion: .notRequired,
-                startedAt: Date(timeIntervalSince1970: 10),
-                finishedAt: Date(timeIntervalSince1970: 20)
-            )
-        }
-
-        #expect(throws: PortableResearchRecordError.self) {
-            _ = try PortableResearchRecord(
-                triptychID: UUID(),
                 title: try ResearchRecordTitle("Invalid confirmed change"),
                 kind: .action,
-                action: ResearchActionRecordIdentity(snapshot: snapshot),
+                action: try ResearchActionRecordIdentity(snapshot: snapshot),
                 method: try PortableResearchMethodReference(snapshot: snapshot),
                 participatingNotes: [participant],
                 statements: [],
@@ -588,8 +523,6 @@ struct PortableResearchRecordContractsTests {
             statements: base.statements,
             resultDisposition: base.resultDisposition,
             academicResults: base.academicResults,
-            contextUseReport: base.contextUseReport,
-            actuallyUsedMaterials: base.actuallyUsedMaterials,
             fidelityCompletion: base.fidelityCompletion,
             confirmedChanges: base.confirmedChanges,
             discrepancies: base.discrepancies,
@@ -793,7 +726,7 @@ struct PortableResearchRecordContractsTests {
 
     private func makeRecord(
         sourceReference: ResearchSourceReference? = nil,
-        includeMaterialUse: Bool = false,
+        includeMaterialParticipant: Bool = false,
         fidelityCompletion: PortableResearchFidelityCompletion = .notRequired
     ) throws -> PortableResearchRecord {
         let snapshot = try makeActionSnapshot()
@@ -829,25 +762,20 @@ struct PortableResearchRecordContractsTests {
             startingRevision: analysisRevision,
             endingRevision: analysisRevision
         )
-        let materialUse = try PortableResearchMaterialUse(
-            noteID: analysisID,
-            note: analysisNote,
-            role: .analysis,
-            title: "Analysis",
-            revision: analysisRevision
-        )
         return try PortableResearchRecord(
             id: UUID(uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA")!,
             triptychID: UUID(uuidString: "BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB")!,
             title: try ResearchRecordTitle("The remaining pressure"),
             kind: .action,
-            action: ResearchActionRecordIdentity(snapshot: snapshot),
+            action: try ResearchActionRecordIdentity(
+                actionID: snapshot.actionID,
+                materialNoteIDs: includeMaterialParticipant ? [analysisID] : []
+            ),
             method: try PortableResearchMethodReference(snapshot: snapshot),
             sourceReference: sourceReference,
             primaryNoteID: snapshot.target.noteID,
-            participatingNotes: includeMaterialUse ? [note, analysisParticipant] : [note],
+            participatingNotes: includeMaterialParticipant ? [note, analysisParticipant] : [note],
             statements: [feedback],
-            actuallyUsedMaterials: includeMaterialUse ? [materialUse] : [],
             fidelityCompletion: fidelityCompletion,
             confirmedChanges: [try PortableResearchConfirmedChange(
                 noteID: snapshot.target.noteID,
@@ -875,7 +803,7 @@ struct PortableResearchRecordContractsTests {
             triptychID: base.triptychID,
             title: base.title,
             kind: base.kind,
-            action: ResearchActionRecordIdentity(actionID: .analyze),
+            action: try ResearchActionRecordIdentity(actionID: .analyze),
             method: base.method,
             sourceReference: base.sourceReference,
             analysisSourceRoute: .scholiumSource,
@@ -883,7 +811,6 @@ struct PortableResearchRecordContractsTests {
             primaryNoteID: base.primaryNoteID,
             participatingNotes: base.participatingNotes,
             statements: base.statements,
-            actuallyUsedMaterials: base.actuallyUsedMaterials,
             fidelityCompletion: base.fidelityCompletion,
             confirmedChanges: base.confirmedChanges,
             discrepancies: base.discrepancies,

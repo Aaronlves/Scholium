@@ -143,10 +143,10 @@ final class AttentionPopoverSession: ObservableObject {
 
     func inspect(_ item: AttentionQueueItem) {
         dismiss()
-        let reference = item.materialChangedSinceUse?.material ?? item.note
+        let reference = item.synthesisMaterialChanged?.material ?? item.note
         discoveryController.requestOpen(
             reference,
-            sourceLocator: item.materialChangedSinceUse == nil ? item.locator : nil
+            sourceLocator: item.synthesisMaterialChanged == nil ? item.locator : nil
         )
     }
 

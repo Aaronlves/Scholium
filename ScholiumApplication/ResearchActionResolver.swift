@@ -112,7 +112,7 @@ extension WorkspaceHandle {
 
     func prepareResearchResynthesis(
         _ request: ResearchActionExecutionRequest,
-        context: MaterialChangedSinceUseAttentionContext
+        context: SynthesisMaterialChangedAttentionContext
     ) async throws -> ResearchActionPreparation {
         try requireCompleteWorkspace()
         guard request.actionID == .synthesize,
@@ -133,16 +133,16 @@ extension WorkspaceHandle {
               record.participatingNotes.contains(where: {
                   $0.noteID == context.topicNoteID && $0.role == .topic
               }),
-              record.actuallyUsedMaterials.contains(where: {
+              record.participatingNotes.contains(where: {
                   $0.noteID == context.materialNoteID
                       && $0.role == .analysis
-                      && $0.revision == context.recordedRevision
+                      && $0.startingRevision == context.recordedRevision
               }) else {
             throw ResearchActionExecutionContractError.staleResolution
         }
         let recordListing = try await researchActionResolverDependencies
             .portableResearchRecordStore.listing()
-        guard WorkspaceSnapshotBuilder.isLatestSynthesisMaterialUse(
+        guard WorkspaceSnapshotBuilder.isLatestSynthesisMaterial(
             recordID: context.recordID,
             topicNoteID: context.topicNoteID,
             materialNoteID: context.materialNoteID,

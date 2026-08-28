@@ -1778,8 +1778,6 @@ public actor LocalResearchExecutionStore {
               existing.materialFingerprints == replacement.materialFingerprints,
               existing.summary == replacement.summary,
               existing.didModifyTarget == replacement.didModifyTarget,
-              existing.actuallyUsedMaterialNoteIDs
-                == replacement.actuallyUsedMaterialNoteIDs,
               existing.literatureRecommendations
                 == replacement.literatureRecommendations,
               existing.completedAt == replacement.completedAt,

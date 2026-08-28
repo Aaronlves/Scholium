@@ -113,8 +113,6 @@ extension WorkspaceHandle {
                             recordTitle: existing.recordTitle,
                             finalTargetFingerprint: completion.targetFingerprint,
                             finalMaterialFingerprints: completion.materialFingerprints,
-                            actuallyUsedMaterialNoteIDs:
-                                completion.actuallyUsedMaterialNoteIDs,
                             summary: completion.summary,
                             didModifyTarget: completion.didModifyTarget,
                             fidelityOutcomes: existing.fidelityOutcomes,
@@ -151,12 +149,6 @@ extension WorkspaceHandle {
             requiredUnavailableChecks:
                 fidelityContract?.requiredUnavailableChecks ?? []
         )
-        let contextUseReport = try await verifiedContextUseReport(
-            claims: submission.contextUseClaims,
-            runID: authenticated.runID,
-            triptychID: authenticated.triptychID,
-            snapshot: stored.snapshot
-        )
         let submittedAt = stored.resultPayload?.submittedAt ?? Date()
         let payload = try ResearchRunResultPayload(
             runID: authenticated.runID,
@@ -164,7 +156,6 @@ extension WorkspaceHandle {
             recordTitle: submission.recordTitle,
             disposition: submission.disposition,
             academicResults: academicResults,
-            contextUseReport: contextUseReport,
             fidelityOutcomes: submission.fidelityOutcomes,
             literatureRecommendations: submission.literatureRecommendations,
             submittedAt: submittedAt
@@ -184,16 +175,12 @@ extension WorkspaceHandle {
             }
             materialFingerprints[material.noteID] = current.fingerprint
         }
-        let actuallyUsedMaterialIDs = contextUseReport.map {
-            actuallyUsedMaterialIDs(from: $0, in: stored.snapshot.request.materials)
-        } ?? []
         let completionSubmission = ResearchActionRunCompletionSubmission(
             runID: authenticated.runID,
             confirmationToken: stored.snapshot.confirmationToken,
             recordTitle: submission.recordTitle,
             finalTargetFingerprint: target.fingerprint,
             finalMaterialFingerprints: materialFingerprints,
-            actuallyUsedMaterialNoteIDs: actuallyUsedMaterialIDs,
             summary: resultSummary(
                 academicResults,
                 contract: action.resultContract,
@@ -347,154 +334,6 @@ extension WorkspaceHandle {
         }
     }
 
-    private func verifiedContextUseReport(
-        claims: [ResearchContextUseClaim],
-        runID: UUID,
-        triptychID: UUID,
-        snapshot: ResearchActionRunSnapshot
-    ) async throws -> ContextUseReport? {
-        guard !claims.isEmpty else { return nil }
-        var entries: [ContextUseEntry] = []
-        for claim in claims {
-            let reference = claim.sourceReference
-            guard reference.authorizedScope.runID == runID,
-                  reference.authorizedScope.triptychID == triptychID,
-                  reference.owner.triptychID == triptychID,
-                  reference.currentness == .current else {
-                throw ResearchAgentResultContractError.invalidContextUse
-            }
-            let facts: [ContextUseVerificationFact]
-            switch reference.sourceKind {
-            case .note:
-                facts = try await verifyNoteReference(reference)
-            case .record:
-                facts = try await verifyRecordReference(reference)
-            case .material:
-                facts = try await verifyMaterialReference(
-                    reference,
-                    snapshot: snapshot
-                )
-            case .researcherState:
-                guard try FoundationResearchContextProvider()
-                    .isCurrentResearcherStateReference(
-                        reference,
-                        action: snapshot.actionSnapshot,
-                        workspace: currentSnapshot
-                    ) else {
-                    throw ResearchAgentResultContractError.invalidContextUse
-                }
-                facts = [
-                    .authoritativeOwnerRead,
-                    .revisionMatched,
-                    .locatorResolved,
-                ]
-            }
-            entries.append(try ContextUseEntry(
-                sourceReference: reference,
-                verificationFacts: facts,
-                testimony: claim.testimony
-            ))
-        }
-        return try ContextUseReport(
-            runID: runID,
-            triptychID: triptychID,
-            entries: entries
-        )
-    }
-
-    private func verifyNoteReference(
-        _ reference: SourceReferenceEnvelope
-    ) async throws -> [ContextUseVerificationFact] {
-        guard reference.owner.kind == .note,
-              let vaultID = reference.owner.vaultID,
-              let relativePath = reference.owner.relativePath else {
-            throw ResearchAgentResultContractError.invalidContextUse
-        }
-        let noteID = VaultQualifiedNoteID(vaultID: vaultID, relativePath: relativePath)
-        guard let snapshot = currentSnapshot.document(id: noteID),
-              let stableID = snapshot.stableIdentity.resolvedID,
-              reference.owner.stableObjectIdentity
-                == stableID.uuidString.lowercased(),
-              reference.fingerprint == snapshot.fingerprint,
-              reference.vaultRole == snapshot.vaultRole,
-              reference.objectRole == Self.objectRole(snapshot.vaultRole),
-              reference.actorClass == .unknown,
-              reference.evidentialLayer == Self.evidentialLayer(snapshot.vaultRole),
-              Self.isNoteRetrievalReason(reference.retrievalReason)
-        else {
-            throw ResearchAgentResultContractError.invalidContextUse
-        }
-        let document = try await loadDocument(noteID)
-        guard document.fingerprint == snapshot.fingerprint,
-              Self.locator(reference.locator, isValidIn: document.rawContent) else {
-            throw ResearchAgentResultContractError.invalidContextUse
-        }
-        return [.authoritativeOwnerRead, .revisionMatched, .locatorResolved]
-    }
-
-    private func verifyMaterialReference(
-        _ reference: SourceReferenceEnvelope,
-        snapshot: ResearchActionRunSnapshot
-    ) async throws -> [ContextUseVerificationFact] {
-        guard let frozen = snapshot.sourceReference,
-              ResearchContextMaterialProjection.isCurrentReference(
-                reference,
-                source: frozen,
-                zoteroBibliographicContext:
-                    snapshot.zoteroBibliographicContext,
-                runID: snapshot.runID,
-                triptychID: self.id
-              ) else {
-            throw ResearchAgentResultContractError.invalidContextUse
-        }
-        let status = await researchAgentResultDependencies.researchSourceAccessStore.status(
-            analysisNoteID: snapshot.request.target.noteID
-        )
-        guard status.state == .available,
-              status.reference == frozen else {
-            throw ResearchAgentResultContractError.invalidContextUse
-        }
-        return [.authoritativeOwnerRead, .revisionMatched, .locatorResolved]
-    }
-
-    private func verifyRecordReference(
-        _ reference: SourceReferenceEnvelope
-    ) async throws -> [ContextUseVerificationFact] {
-        guard reference.owner.kind == .record,
-              let recordID = reference.owner.recordID,
-              reference.owner.stableObjectIdentity
-                == recordID.uuidString.lowercased(),
-              reference.objectRole == .researchRecord,
-              reference.vaultRole == nil,
-              reference.evidentialLayer == .researchRecord,
-              reference.retrievalReason == .recordSearch else {
-            throw ResearchAgentResultContractError.invalidContextUse
-        }
-        let listing = try await researchAgentResultDependencies.portableResearchRecordStore.listing()
-        guard listing.issues.isEmpty,
-              let revision = listing.revisions.first(where: { $0.id == recordID }),
-              reference.fingerprint == revision.fingerprint else {
-            throw ResearchAgentResultContractError.invalidContextUse
-        }
-        switch reference.locator.kind {
-        case .recordStatement:
-            guard let statementID = reference.locator.statementID,
-                  let statement = revision.record.statements.first(where: {
-                      $0.id == statementID
-                  }),
-                  reference.actorClass == Self.actorClass(statement.author) else {
-                throw ResearchAgentResultContractError.invalidContextUse
-            }
-        case .wholeObject:
-            guard reference.actorClass == .unknown else {
-                throw ResearchAgentResultContractError.invalidContextUse
-            }
-        case .sourceRange, .materialLocator, .unknown:
-            throw ResearchAgentResultContractError.invalidContextUse
-        }
-        return [.authoritativeOwnerRead, .revisionMatched, .locatorResolved]
-    }
-
     private func exactCurrentNote(
         _ target: ResearchActionNoteSnapshot
     ) async throws -> NoteDocument {
@@ -516,25 +355,6 @@ extension WorkspaceHandle {
             throw ResearchActionRunContractError.targetIdentityChanged
         }
         return try await loadDocument(material.note)
-    }
-
-    private func actuallyUsedMaterialIDs(
-        from report: ContextUseReport,
-        in materials: [ResearchActionNoteSnapshot]
-    ) -> [UUID] {
-        let byStableIdentity = Dictionary(uniqueKeysWithValues: materials.map {
-            ($0.noteID.uuidString.lowercased(), $0)
-        })
-        return Set(report.entries.compactMap { entry -> UUID? in
-            guard entry.sourceReference.sourceKind == .note,
-                  let material = byStableIdentity[
-                    entry.sourceReference.owner.stableObjectIdentity
-                  ],
-                  entry.sourceReference.fingerprint == material.fingerprint else {
-                return nil
-            }
-            return material.noteID
-        }).sorted { $0.uuidString < $1.uuidString }
     }
 
     private func resultSummary(
@@ -599,13 +419,6 @@ extension WorkspaceHandle {
         }
     }
 
-    static func locator(
-        _ locator: ResearchContextSourceLocator,
-        isValidIn source: String
-    ) -> Bool {
-        locator.isValid(in: source)
-    }
-
     private static func vaultRole(_ role: ResearchActionTargetRole) -> VaultRole {
         switch role {
         case .analysis: .sourceCorpus
@@ -614,41 +427,4 @@ extension WorkspaceHandle {
         }
     }
 
-    static func objectRole(_ role: VaultRole) -> ResearchContextObjectRole? {
-        switch role {
-        case .sourceCorpus: .analysis
-        case .topicKnowledge: .topic
-        case .draftProject: .work
-        case .other: nil
-        }
-    }
-
-    static func evidentialLayer(_ role: VaultRole) -> EvidentialLayer {
-        switch role {
-        case .sourceCorpus: .paperAnalysis
-        case .topicKnowledge, .other: .topicNote
-        case .draftProject: .draftProse
-        }
-    }
-
-    static func actorClass(
-        _ author: PortableResearchStatementAuthor
-    ) -> ResearchContextActorClass {
-        switch author {
-        case .researcher: .researcher
-        case .agent: .agent
-        }
-    }
-
-    static func isNoteRetrievalReason(
-        _ reason: ResearchContextRetrievalReason
-    ) -> Bool {
-        switch reason {
-        case .lexical, .canonicalSummary, .propertyPresence, .directRelation,
-             .exactRead:
-            true
-        case .recordSearch, .explicitSelection, .researcherState:
-            false
-        }
-    }
 }

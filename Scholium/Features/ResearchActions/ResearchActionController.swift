@@ -19,7 +19,7 @@ struct ResearchActionClient {
     ) async throws -> ResearchSourceReference
     let prepare: @MainActor (
         ResearchActionExecutionRequest,
-        MaterialChangedSinceUseAttentionContext?
+        SynthesisMaterialChangedAttentionContext?
     ) async throws -> ResearchActionPreparation
     let actionRun: @MainActor (UUID) async throws -> ResearchActionPreparation
     let handoff: @MainActor (UUID) async throws -> ResearchAgentHandoff
@@ -31,7 +31,7 @@ struct ResearchActionClient {
         materialCandidates: @escaping @MainActor (ResearchActionNoteSnapshot, ResearchActionDefinition) async throws -> [ResearchActionNoteSnapshot],
         sourceAccess: @escaping @MainActor (ResearchActionNoteSnapshot) async throws -> ResearchSourceAccessStatus,
         bindLocalSource: @escaping @MainActor (ResearchActionNoteSnapshot, URL) async throws -> ResearchSourceReference,
-        prepare: @escaping @MainActor (ResearchActionExecutionRequest, MaterialChangedSinceUseAttentionContext?) async throws -> ResearchActionPreparation,
+        prepare: @escaping @MainActor (ResearchActionExecutionRequest, SynthesisMaterialChangedAttentionContext?) async throws -> ResearchActionPreparation,
         actionRun: @escaping @MainActor (UUID) async throws -> ResearchActionPreparation = { _ in
             throw ResearchActionExecutionContractError.staleResolution
         },
@@ -113,7 +113,7 @@ final class ResearchActionController: ObservableObject {
     @Published var usesPassage = true
 
     private var passage: CommentAnchor?
-    private var resynthesisContext: MaterialChangedSinceUseAttentionContext?
+    private var resynthesisContext: SynthesisMaterialChangedAttentionContext?
     private var client: ResearchActionClient?
     private var generation: UInt64 = 0
     private var availabilityGeneration: UInt64 = 0
@@ -288,7 +288,7 @@ final class ResearchActionController: ObservableObject {
         selection: CommentAnchor?,
         initialInstruction: String? = nil,
         initialMaterialNoteIDs: Set<UUID> = [],
-        resynthesisContext: MaterialChangedSinceUseAttentionContext? = nil,
+        resynthesisContext: SynthesisMaterialChangedAttentionContext? = nil,
         presentationID: UUID
     ) -> Bool {
         guard phase != .preparing, !hasCancellationBarrier else { return false }

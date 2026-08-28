@@ -269,13 +269,12 @@
   Back restores the retained collection. Evidence Shown/Hidden is a current
   value; hiding removes the rail from the active tree without disturbing the
   reading order.
-- Record detail reads author before attributed prose. Participants and Context
-  Used disclose totals and become controls only when a complete popover exists;
-  dismissal returns focus to the heading. Unresolved provenance remains
-  selectable and noninteractive.
+- Record detail reads author before attributed prose. Participants disclose the
+  total and become a control only when a complete popover exists; dismissal
+  returns focus to the heading.
 - The reading plane exposes Researcher Response before the Evidence rail. The
-  rail reads Changes, Effects, Context Used, Participants, and Technical
-  Details in that order at minimum width and enlarged mixed-script settings.
+  rail reads Changes, Effects, Participants, and Technical Details in that
+  order at minimum width and enlarged mixed-script settings.
   Compare Changes exposes document
   disclosure state, selected complete documents, changed rows, folded unchanged
   counts, and per-document undo outcomes; focus returns to the Result or

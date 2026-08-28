@@ -2978,6 +2978,16 @@
         }
       }
     },
+    "Agent changes are saved. Resume this Action so the Agent can submit its Research Result." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 的更改已保存。恢复此操作，以便 Agent 提交其研究结果。"
+          }
+        }
+      }
+    },
     "Agent changes ask for permission every time by default. You can change this later in Research Guidance Settings." : {
       "localizations" : {
         "zh-Hans" : {
@@ -5485,16 +5495,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已完成"
-          }
-        }
-      }
-    },
-    "CONTEXT USED" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "所用语境"
           }
         }
       }
@@ -8731,16 +8731,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "内容缩进"
-          }
-        }
-      }
-    },
-    "Context Used" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "使用的上下文"
           }
         }
       }
@@ -15370,12 +15360,12 @@
         }
       }
     },
-    "Inspect confirmed source changes, context, participants, and technical provenance." : {
+    "Inspect confirmed source changes, participants, and technical provenance." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "检查已确认的源文本更改、上下文、参与文档和技术溯源。"
+            "value" : "检查已确认的源文本更改、参与文档和技术溯源。"
           }
         }
       }
@@ -17479,18 +17469,18 @@
         }
       }
     },
-    "Material Changed Since Use" : {
+    "Synthesis Material Changed" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Material Changed Since Use"
+            "value" : "Synthesis Material Changed"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "材料在使用后已更改"
+            "value" : "综合所选材料已更改"
           }
         }
       }
@@ -21092,16 +21082,6 @@
         }
       }
     },
-    "Open the exact recorded evidence context" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "打开记录中对应的准确证据上下文"
-          }
-        }
-      }
-    },
     "Open the exact source line" : {
       "localizations" : {
         "en" : {
@@ -21150,6 +21130,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "打开上级研究记录"
+          }
+        }
+      }
+    },
+    "Open the participating Note, then choose its active Action to continue recovery." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开参与文档，然后选择其当前操作以继续恢复。"
           }
         }
       }
@@ -21226,16 +21216,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在当前工作区打开此参与笔记"
-          }
-        }
-      }
-    },
-    "Open this reported research material" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "打开此项已报告的研究材料"
           }
         }
       }
@@ -27582,18 +27562,18 @@
         }
       }
     },
-    "Revision & Reliance" : {
+    "Revision & Research" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Revision & Reliance"
+            "value" : "Revision & Research"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "修订与依赖"
+            "value" : "修订与研究"
           }
         }
       }
@@ -30342,22 +30322,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "显示所有参与的笔记"
-          }
-        }
-      }
-    },
-    "Show every recorded Context item" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Show every recorded Context item"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "显示所有已记录的上下文条目"
           }
         }
       }
@@ -36240,16 +36204,6 @@
         }
       }
     },
-    "Verified Context Use" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已核验的上下文使用"
-          }
-        }
-      }
-    },
     "Verify the candidate is current and remove its completed recovery record" : {
       "localizations" : {
         "zh-Hans" : {
@@ -36434,6 +36388,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在等待 Agent"
+          }
+        }
+      }
+    },
+    "Waiting for Result" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在等待结果"
           }
         }
       }

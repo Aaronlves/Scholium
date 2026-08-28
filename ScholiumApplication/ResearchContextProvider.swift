@@ -279,7 +279,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                 availability: .invalidQuery,
                 items: [],
                 limitations: [
-                    "Structured Search filters are unavailable in Research Context schema 5."
+                    "Structured Search filters are unavailable in Research Context schema 6."
                 ]
             )
         }
@@ -287,9 +287,6 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
         let currentness = contextCurrentness(availability)
         var items: [ResearchContextResponseItem] = []
         var limitations: [String] = []
-        let eligibleUse = clause.useEligibility == .contextUse && currentness == .current
-            ? ResearchContextUseEligibility.contextUse
-            : .referenceOnly
         if clause.kind == .readNote {
             return try await exactNotePage(
                 query: query,
@@ -357,7 +354,6 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                 title: note.title,
                 contentKind: .searchSnippet,
                 semanticContent: note.snippet,
-                contextUseEligibility: eligibleUse,
                 noteMatchReasons: matchReasons
             ))
         }
@@ -565,9 +561,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                     metadata: snapshot.metadata
                 ).title,
                 contentKind: clause.sectionHeading == nil ? .noteDocument : .noteSection,
-                exactSource: exactSource,
-                contextUseEligibility: clause.useEligibility == .contextUse && currentness == .current
-                    ? .contextUse : .referenceOnly
+                exactSource: exactSource
             )],
             limitations: limitations,
             nextCursor: nextCursor
@@ -638,8 +632,6 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
         }
         let availability = contextAvailability(response.availability)
         let currentness = contextCurrentness(availability)
-        let useEligibility: ResearchContextUseEligibility = clause.useEligibility == .contextUse
-            && currentness == .current ? .contextUse : .referenceOnly
         let items = try response.results.prefix(clause.limit).map { result in
             guard case .record(let record) = result else {
                 throw ResearchContextContractError.invalidResponse
@@ -673,8 +665,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                 sourceReference: envelope,
                 title: record.context,
                 contentKind: .recordStatement,
-                semanticContent: record.snippet,
-                contextUseEligibility: useEligibility
+                semanticContent: record.snippet
             )
         }
         return ProviderOutcome(
@@ -766,10 +757,6 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
             triptychID: query.triptychID,
             currentness: currentness
         )
-        let eligibility: ResearchContextUseEligibility =
-            clause.useEligibility == .contextUse && currentness == .current
-                ? .contextUse
-                : .referenceOnly
         return ProviderOutcome(
             availability: availability,
             items: [try ResearchContextResponseItem(
@@ -780,8 +767,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                 materialContent: try ResearchContextMaterialContent(
                     source: frozen,
                     zoteroBibliographicContext: run.zoteroBibliographicContext
-                ),
-                contextUseEligibility: eligibility
+                )
             )],
             limitations: limitations
         )
@@ -963,8 +949,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
         }
         let clause = try ResearchContextClause(
             kind: .inspectResearcherState,
-            limit: ResearchContextClause.maximumLimit,
-            useEligibility: .contextUse
+            limit: ResearchContextClause.maximumLimit
         )
         let query = try ResearchContextQuery(
             request: ResearchContextRequest(id: UUID(), clauses: [clause]),
@@ -1029,9 +1014,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
             sourceReference: envelope,
             title: title,
             contentKind: .researcherState,
-            semanticContent: content,
-            contextUseEligibility: clause.useEligibility == .contextUse && currentness == .current
-                ? .contextUse : .referenceOnly
+            semanticContent: content
         )
     }
 

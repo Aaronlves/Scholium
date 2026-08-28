@@ -72,7 +72,8 @@ struct ResearchAgentResultContractsTests {
             JSONSerialization.jsonObject(with: data) as? [String: Any]
         )
         #expect(object["record_title"] as? String == "A bounded result")
-        #expect(object["schema_version"] as? Int == 2)
+        #expect(object["schema_version"] as? Int == 3)
+        #expect(object["context_use_claims"] == nil)
         object["session_secret"] = "must-not-be-accepted"
         #expect(throws: ResearchAgentResultContractError.self) {
             _ = try JSONDecoder().decode(
@@ -145,7 +146,6 @@ struct ResearchAgentResultContractsTests {
                 note: target.note,
                 expectedFingerprint: target.fingerprint,
                 limit: 1,
-                useEligibility: .contextUse
             ),
         ])
 
@@ -203,7 +203,6 @@ struct ResearchAgentResultContractsTests {
                 recordTitle: ResearchRecordTitle("Stored result"),
                 disposition: .completed,
                 academicResults: academicResults,
-                contextUseReport: nil,
                 fidelityOutcomes: [],
                 literatureRecommendations: nil,
                 submittedAt: Date(timeIntervalSince1970: 1)

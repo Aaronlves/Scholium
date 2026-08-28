@@ -3220,7 +3220,7 @@ struct FrontendArchitectureTests {
         )
         let evidencePopoverEnd = try #require(
             browser.range(
-                of: "private struct ResearchRecordContextUseSection: View {",
+                of: "private struct ResearchRecordPreviewedEvidenceSection<",
                 range: evidencePopoverStart.upperBound..<browser.endIndex
             )
         )
@@ -3232,6 +3232,8 @@ struct FrontendArchitectureTests {
         #expect(evidencePopover.contains(".focusEffectDisabled()"))
         #expect(evidencePopover.contains(".focused($isScrollFocused)"))
         #expect(evidencePopover.contains(".defaultFocus($isScrollFocused, true)"))
+        #expect(!browser.contains("ResearchRecordContextUseSection"))
+        #expect(!browser.contains("Context Used"))
         #expect(!browser.contains("ResearchRecordCollectionRowMainButtonStyle"))
         #expect(browser.contains("ScholiumContentControlButtonStyle("))
         #expect(browser.contains("ScholiumShape.researchRecordCollectionRowCornerRadius"))
@@ -3611,7 +3613,6 @@ struct FrontendArchitectureTests {
             "let bodyText: String?",
             "Text(bodyText)\n                        .font(ScholiumTypography.interface(.compact))",
             "Text(\"No researcher note has been added.\")\n                    .font(ScholiumTypography.interface(.compact))",
-            "Text(\"No attributed prose was recorded.\")\n                    .font(ScholiumTypography.interface(.compact))",
         ] {
             #expect(browser.contains(requiredSupportingPresentation))
         }

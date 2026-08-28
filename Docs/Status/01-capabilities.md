@@ -185,8 +185,12 @@
   needed, Discuss reply/finish, each ready bounded write when needed, and every
   non-Discuss Result submission. Result templates omit optional academic fields
   while the frozen Result Contract retains them. Calling a query does not itself
-  prove Context Use.
-- Authenticated Context schema 17 gives Work Write and Critique Runs
+  prove reliance or support and creates no reading history or source-use testimony.
+- Research Context request/response schema 6 removes Agent-authored eligibility
+  from every query clause. Application derives each response item's
+  `research_evidence` or `reference_only` status from exact content kind and
+  currentness; old request fields and earlier schemas fail closed.
+- Authenticated Context schema 18 gives Work Write and Critique Runs
   a non-evidential `recommended_reading` directory computed from their exact
   current Work source, selected passage, and research request. Application
   merges direct Connection, exact title/alias mention, and weighted lexical
@@ -299,7 +303,8 @@
   Linked reconciliation coordinates source mutation, performs a final joint
   readback, and treats an already-settled write as cleanup-only. Unlinked
   records never claim Agent reconciliation.
-- Result submission validates the frozen academic contract and Context Use;
+- Result submission validates the frozen academic contract and any formal
+  Fidelity outcomes;
   Application adds machine facts from actual transaction outcomes. Finalization
   is idempotent and waits for writes and recovery duties to converge. Continue
   Research creates a separate Run, rechecks selected source Materials as
@@ -309,7 +314,7 @@
 - An explicitly researcher-started `researcher_provided` Check Fidelity Run
   exposes the exact checks plus a typed Citation constraint. Without a formal
   source envelope, Citation must be `unavailable`; Note YAML URLs remain
-  authored metadata. The Fidelity Run forms its own schema-13 Record with
+  authored metadata. The Fidelity Run forms its own schema-15 Record with
   explicit unverified evidence rather than a fabricated source claim; Analyze
   records the same limitation through its bounded self-check without creating
   a parent/child Fidelity pair.
@@ -328,14 +333,17 @@
 
 ## Records, guidance, and integrations
 
-- Comments, attributed Discussion turns, completed Action results, Context Use,
-  confirmed effects, discrepancies, Fidelity outcome, Literature
+- Comments, attributed Discussion turns, completed Action results, explicit
+  frozen Material participants, confirmed effects, discrepancies, Fidelity outcome, Literature
   Recommendations, and atomic Researcher Response persist through strict
-  schema-13 Records. Analyze Records retain one explicit Scholium-source,
+  schema-15 Records. Dynamic reading and source-use testimony are not persisted;
+  the Action identity retains only Application-established frozen Material Note
+  IDs so selected Materials remain distinct from confirmed-change-only
+  participants. In-text citations remain optional academic content. Analyze Records retain one explicit Scholium-source,
   external-Zotero, or researcher-provided route without inventing source
   evidence. One cumulative schema-1 portable Note Review per Note owns
   exact observed revision, time, and covered `(Record ID, Note ID)` activities.
-  Schema-13 Records reject every other schema, including schemas 11 and 12; unsupported
+  Schema-14 Records reject every earlier schema; unsupported
   files remain byte-unchanged, unread, and nonauthorizing. Credentials,
   prompts, absolute paths, raw transport logs, and token counts are excluded.
 - Confirmed Agent change comparison uses one exact byte-diff owner shared with

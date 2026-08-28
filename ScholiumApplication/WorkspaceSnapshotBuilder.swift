@@ -619,7 +619,7 @@ enum WorkspaceSnapshotBuilder {
                 )
             }
         }
-        let materialChangedSinceUseAttention = Self.materialChangedSinceUseAttention(
+        let synthesisMaterialChangedAttention = Self.synthesisMaterialChangedAttention(
             records: finishedResearchRecordListing.records,
             loadedVaults: loadedVaults
         )
@@ -645,7 +645,7 @@ enum WorkspaceSnapshotBuilder {
             documents: documentsByVault,
             semanticDocuments: semanticDocuments,
             settlementStates: settlementStates,
-            additionalAttention: materialChangedSinceUseAttention,
+            additionalAttention: synthesisMaterialChangedAttention,
             graph: graph,
             stableNoteIDs: stableNoteIDs,
             noteMetadataByID: noteMetadataByID,
@@ -882,22 +882,22 @@ enum WorkspaceSnapshotBuilder {
         let fingerprint: DocumentFingerprint
     }
 
-    private struct MaterialUseKey: Hashable {
+    private struct SynthesisMaterialKey: Hashable {
         let topicNoteID: UUID
         let materialNoteID: UUID
     }
 
-    private struct RecordedMaterialUse {
+    private struct RecordedSynthesisMaterial {
         let record: PortableResearchRecord
-        let material: PortableResearchMaterialUse
+        let material: PortableResearchNoteRevision
     }
 
-    /// Selects the same one current portable-use fact for snapshot derivation
-    /// and click-time revalidation. Tombstones and internally inconsistent
-    /// participant/material pairs never qualify as validated use evidence.
-    private static func latestSynthesisMaterialUses(
+    /// Selects the latest explicit frozen Analysis Material for snapshot
+    /// derivation and click-time revalidation. Confirmed-change-only
+    /// participants, reading history, and inferred use never participate.
+    private static func latestSynthesisMaterials(
         records: [PortableResearchRecord]
-    ) -> [MaterialUseKey: RecordedMaterialUse] {
+    ) -> [SynthesisMaterialKey: RecordedSynthesisMaterial] {
         let recordsByID = Dictionary(
             uniqueKeysWithValues: records.map { ($0.id, $0) }
         )
@@ -918,32 +918,24 @@ enum WorkspaceSnapshotBuilder {
             }
             return false
         }
-        var latestByUse: [MaterialUseKey: RecordedMaterialUse] = [:]
+        var latestByMaterial: [SynthesisMaterialKey: RecordedSynthesisMaterial] = [:]
         for record in records where record.kind == .action
             && record.action?.actionID == .synthesize {
-            guard let topicNoteID = record.primaryNoteID,
+            guard let action = record.action,
+                  let topicNoteID = record.primaryNoteID,
                   record.participatingNotes.contains(where: {
                       $0.noteID == topicNoteID
                           && $0.role == .topic
                   }) else { continue }
-            let participantsByID = Dictionary(
-                uniqueKeysWithValues: record.participatingNotes.map {
-                    ($0.noteID, $0)
-                }
-            )
-            for material in record.actuallyUsedMaterials where material.role == .analysis {
-                guard let participant = participantsByID[material.noteID],
-                      participant.role == .analysis,
-                      participant.note == material.note,
-                      participant.title == material.title,
-                      participant.startingRevision == material.revision else {
-                    continue
-                }
-                let key = MaterialUseKey(
+            let materialNoteIDs = Set(action.materialNoteIDs)
+            for material in record.participatingNotes
+                where materialNoteIDs.contains(material.noteID)
+                    && material.role == .analysis {
+                let key = SynthesisMaterialKey(
                     topicNoteID: topicNoteID,
                     materialNoteID: material.noteID
                 )
-                if let existing = latestByUse[key] {
+                if let existing = latestByMaterial[key] {
                     let candidateSupersedesExisting = descends(
                         record,
                         from: existing.record.id
@@ -961,22 +953,22 @@ enum WorkspaceSnapshotBuilder {
                         continue
                     }
                 }
-                latestByUse[key] = RecordedMaterialUse(
+                latestByMaterial[key] = RecordedSynthesisMaterial(
                     record: record,
                     material: material
                 )
             }
         }
-        return latestByUse
+        return latestByMaterial
     }
 
-    static func isLatestSynthesisMaterialUse(
+    static func isLatestSynthesisMaterial(
         recordID: UUID,
         topicNoteID: UUID,
         materialNoteID: UUID,
         records: [PortableResearchRecord]
     ) -> Bool {
-        latestSynthesisMaterialUses(records: records)[MaterialUseKey(
+        latestSynthesisMaterials(records: records)[SynthesisMaterialKey(
             topicNoteID: topicNoteID,
             materialNoteID: materialNoteID
         )]?.record.id == recordID
@@ -1106,10 +1098,10 @@ enum WorkspaceSnapshotBuilder {
         }.sorted { $0.noteID.uuidString < $1.noteID.uuidString }
     }
 
-    /// Rebuilds the latest completed Synthesize use relationship for each
-    /// Topic/Analysis pair. Selected-but-unused, deleted, tombstoned, or
-    /// identity-unresolved Materials cannot create a condition.
-    private static func materialChangedSinceUseAttention(
+    /// Rebuilds the latest completed Synthesize participation relationship for
+    /// each Topic/Analysis pair. Dynamically read, deleted, tombstoned, or
+    /// identity-unresolved Notes cannot create a condition.
+    private static func synthesisMaterialChangedAttention(
         records: [PortableResearchRecord],
         loadedVaults: [LoadedVault]
     ) -> [AttentionQueueItem] {
@@ -1144,31 +1136,31 @@ enum WorkspaceSnapshotBuilder {
             }
         }
 
-        let latestByUse = latestSynthesisMaterialUses(records: records)
+        let latestByMaterial = latestSynthesisMaterials(records: records)
 
-        return latestByUse.compactMap { key, use in
+        return latestByMaterial.compactMap { key, recorded in
             guard let topic = currentByNoteID[key.topicNoteID],
                   topic.role == .topic,
                   let material = currentByNoteID[key.materialNoteID],
                   material.role == .analysis,
-                  material.fingerprint != use.material.revision else {
+                  material.fingerprint != recorded.material.startingRevision else {
                 return nil
             }
-            let context = MaterialChangedSinceUseAttentionContext(
-                triptychID: use.record.triptychID,
-                recordID: use.record.id,
+            let context = SynthesisMaterialChangedAttentionContext(
+                triptychID: recorded.record.triptychID,
+                recordID: recorded.record.id,
                 topicNoteID: topic.noteID,
                 materialNoteID: material.noteID,
                 material: material.reference,
-                recordedRevision: use.material.revision,
+                recordedRevision: recorded.material.startingRevision,
                 currentRevision: material.fingerprint
             )
             return AttentionQueueItem(
-                kind: .materialChangedSinceUse,
+                kind: .synthesisMaterialChanged,
                 severity: .warning,
                 note: topic.reference,
-                message: "Used Analysis changed after Synthesize",
-                materialChangedSinceUse: context
+                message: "A selected Analysis changed after Synthesize",
+                synthesisMaterialChanged: context
             )
         }.sorted { $0.id < $1.id }
     }

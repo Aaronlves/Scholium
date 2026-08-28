@@ -275,7 +275,7 @@ extension ResearchActionRunCoordinator {
             return sections.joined(separator: "\n")
         }
         sections += [
-            "Use the authenticated Agent Run context for the frozen Result Contract. Submit one concise Record Title together with its academic fields and explicit source-use testimony using scholium agent submit-result --run <locator> --from <file|->. The Record Title is a one-line identity for the finished record, not a duplicate academic result or process summary. Scholium supplies current identity, revision, write, and recovery facts; do not transcribe machine identifiers or fingerprints.",
+            "Use the authenticated Agent Run context for the frozen Result Contract. Submit one concise Record Title together with its academic fields using scholium agent submit-result --run <locator> --from <file|->. The Record Title is a one-line identity for the finished record, not a duplicate academic result or process summary. Scholium supplies current identity, revision, write, and recovery facts; do not transcribe machine identifiers, fingerprints, reading history, or source-use testimony.",
             "Recover the current authenticated Run Brief with scholium agent reload --run <locator>. Reload does not replay earlier Research Context responses.",
             "End this authenticated Run with scholium agent end --run <locator>. Closing a researcher sheet does not end the Run.",
         ]
@@ -305,7 +305,6 @@ extension ResearchActionRunCoordinator {
             recordTitle: completion.recordTitle,
             targetFingerprint: completion.targetFingerprint,
             materialFingerprints: completion.materialFingerprints,
-            actuallyUsedMaterialNoteIDs: completion.actuallyUsedMaterialNoteIDs,
             summary: completion.summary,
             didModifyTarget: completion.didModifyTarget,
             fidelityOutcomes: completion.fidelityOutcomes,

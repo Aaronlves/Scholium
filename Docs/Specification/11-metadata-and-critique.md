@@ -163,7 +163,8 @@ alternatives, and priorities. These are conditional burdens relative to the
 Work's genre, scope, and inspected evidence, not a score or universal method.
 For a selected passage it identifies the exact target, issue, significance,
 research basis, and recommendation without judging the whole Work. It records
-the Materials actually consulted, access limits, and uncertainty. It never
+material access limits and uncertainty when they constrain the assessment, but
+does not inventory what the Agent read. It never
 certifies novelty, publishability, doctoral level, field completeness, or
 researcher competence. Any Traced, Untraced, Disputed, or Beyond Sources label
 remains an attributed agent judgment, never a Scholium status.
