@@ -279,6 +279,13 @@ the frozen Method revision; `researchEvidence` contains Markdown, YAML declarati
 Zotero metadata, Records, and provider responses as typed data. Evidence text
 cannot alter the other two layers, Session, write set, tools, or next Action.
 
+Result and Researcher Response prose remains an opaque exact string throughout
+Agent submission, strict schema-15 decoding, Record validation, hashing,
+persistence, CLI reading, Search projection, and replacement. No Core or
+Application operation parses scholarly markup, resolves a Record-authored
+link, or reconstructs source from a rendered value. Presentation may derive a
+read-only projection only after the complete portable Record has been accepted.
+
 ## Research Context
 
 `ResearchContextUseCases` authenticates Session/Run, resolves authorized

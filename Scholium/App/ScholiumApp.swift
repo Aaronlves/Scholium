@@ -383,6 +383,7 @@ private struct ScholiumResearchRecordsRoot: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var recordLoadIssues: [String] = []
+    @State private var proseNavigation = ResearchRecordProseNavigation.empty
 
     init(
         workspaceStore: WorkspaceStore,
@@ -440,11 +441,13 @@ private struct ScholiumResearchRecordsRoot: View {
                 fingerprints: snapshot.research.finishedResearchRecordFingerprints
             )
             recordLoadIssues = researchRecordIssues(in: snapshot)
+            proseNavigation = ResearchRecordProseNavigation(snapshot: snapshot)
         }
         .onReceive(workspaceStore.$workspaceActivations) { activations in
             guard let activation = activations[triptychID] else { return }
             capabilities = activation.capabilities
             recordLoadIssues = researchRecordIssues(in: activation.snapshot)
+            proseNavigation = ResearchRecordProseNavigation(snapshot: activation.snapshot)
             if isPrepared {
                 browserModel.receive(
                     triptychID: triptychID,
@@ -474,6 +477,7 @@ private struct ScholiumResearchRecordsRoot: View {
                 model: browserModel,
                 loadIssues: recordLoadIssues,
                 context: ResearchRecordBrowserContext(
+                    proseNavigation: proseNavigation,
                     setRecommendationDisposition: { recordID, recommendationID, status in
                         try await capabilities.research.records
                             .setResearchRecordRecommendationDisposition(
@@ -573,11 +577,13 @@ private struct ScholiumResearchRecordsRoot: View {
                 records = snapshot.research.finishedResearchRecords
                 fingerprints = snapshot.research.finishedResearchRecordFingerprints
                 recordLoadIssues = researchRecordIssues(in: snapshot)
+                proseNavigation = ResearchRecordProseNavigation(snapshot: snapshot)
             } else {
                 let research = try await capabilities.research.records.snapshot()
                 records = research.finishedResearchRecords
                 fingerprints = research.finishedResearchRecordFingerprints
                 recordLoadIssues = []
+                proseNavigation = .empty
             }
             browserModel.prepareForOpen(
                 triptychID: triptychID,

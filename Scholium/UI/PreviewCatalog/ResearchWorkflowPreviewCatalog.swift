@@ -110,6 +110,7 @@ private struct ResearchResultReviewProof: View {
             model: model,
             loadIssues: [],
             context: ResearchRecordBrowserContext(
+                proseNavigation: fixture.proseNavigation,
                 setRecommendationDisposition: { _, _, _ in fixture.record },
                 setRecommendationNote: { _, _, _ in fixture.record },
                 saveResponse: { _, _, _, _, _ in fixture.record },
@@ -150,6 +151,7 @@ private struct ResearchResultReviewProofFixture {
     let changeState: ResearchRecordChangeState
     let comparisons: [UUID: ExactSourceComparison]
     let startingRevisions: [UUID: DocumentFingerprint]
+    let proseNavigation: ResearchRecordProseNavigation
 
     init() throws {
         let triptychID = UUID(uuidString: "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC")!
@@ -214,7 +216,7 @@ private struct ResearchResultReviewProofFixture {
                     author: .agent,
                     kind: .agentFeedback,
                     attribution: "Agent",
-                    text: "The revision separates salience from authority and narrows the objection without treating the cited material as direct support.",
+                    text: "# Argument\n\nThe revision **separates** salience from *authority* and narrows the objection. See [[Practical Option-Space#Practical option-space|the revised reply]]; [[Unavailable Paper]] remains visibly unresolved.\n\n> The cited material is not thereby direct support.",
                     createdAt: finishedAt
                 )
             ],
@@ -274,6 +276,25 @@ private struct ResearchResultReviewProofFixture {
             topicID: topicStartRevision,
             workID: workStartRevision
         ]
+        proseNavigation = ResearchRecordProseNavigation(
+            catalog: [
+                LinkCatalogNote(
+                    vaultID: topic.note.vaultID,
+                    document: NoteDocument(
+                        relativePath: topic.note.relativePath,
+                        rawContent: String(decoding: topicEnding, as: UTF8.self)
+                    )
+                ),
+                LinkCatalogNote(
+                    vaultID: work.note.vaultID,
+                    document: NoteDocument(
+                        relativePath: work.note.relativePath,
+                        rawContent: String(decoding: workEnding, as: UTF8.self)
+                    )
+                ),
+            ],
+            stableNoteIDs: [topic.note: topicID, work.note: workID]
+        )
     }
 }
 

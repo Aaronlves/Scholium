@@ -112,9 +112,14 @@ struct ResearchRecordResearcherResponseSection: View {
                         .font(ScholiumTypography.interface(.compact))
                         .scholiumForeground(.secondaryText)
                     if let note = evaluation.note {
-                        Text(note)
-                            .font(ScholiumTypography.scholarly(.body))
-                            .textSelection(.enabled)
+                        ResearchRecordProseView(
+                            source: note,
+                            sourceNote: context.proseNavigation.currentLocation(
+                                for: record.researchRecordContextParticipant
+                            ),
+                            navigation: context.proseNavigation,
+                            openNote: context.openNote
+                        )
                     }
                 }
                 .accessibilityIdentifier(
@@ -126,9 +131,14 @@ struct ResearchRecordResearcherResponseSection: View {
                     Text("Method Feedback")
                         .font(ScholiumTypography.interface(.sectionTitle))
                         .accessibilityHeading(.h3)
-                    Text(feedback.text)
-                        .font(ScholiumTypography.scholarly(.body))
-                        .textSelection(.enabled)
+                    ResearchRecordProseView(
+                        source: feedback.text,
+                        sourceNote: context.proseNavigation.currentLocation(
+                            for: record.researchRecordContextParticipant
+                        ),
+                        navigation: context.proseNavigation,
+                        openNote: context.openNote
+                    )
                 }
                 .accessibilityIdentifier(
                     "scholium.researchRecord.response.methodFeedback"

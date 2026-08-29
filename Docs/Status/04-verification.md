@@ -508,17 +508,16 @@ disposable fixtures. It does not prove checkout-external App/CLI installation,
 production installed user-local bridge behavior, human accessibility, sustained research use, or
 philosophical quality.
 
-On 2026-08-29, the low-burden Research Context and Record-provenance cutover
-passed 48 focused Contracts tests and 72 focused Application tests. The tests
-prove App-derived evidence eligibility, retirement of Agent-declared
-eligibility and reading-history fields, explicit frozen Material Note IDs,
-changed-only participant exclusion from Synthesis Material Attention, and one
-authenticated Run reading multiple Notes across pagination before finalizing a
-target-only Record. The complete gate passed 206 editor, 467 Core, 3
-performance, 153 Contracts, 287 Application, 16 bridge, 1 architecture, 670
-App, and 16 CLI tests; Debug, Release, sandbox bridge, and UI
-`build-for-testing` also passed. This is disposable automated evidence, not
-human acceptance.
+On 2026-08-29, low-burden Research Context passed 48 focused Contracts and 72
+Application tests; Record markup passed 8 Contracts and 3 App projection tests.
+Together they prove App-owned evidence eligibility, retired reading histories,
+exact Record strings, Unicode offsets, closed markup, current-location
+Wikilinks, and literal fail-closed behavior without new relations. The complete
+gate passed 206 editor, 468 Core, 3 performance, 161 Contracts, 287
+Application, 16 bridge, 1 architecture, 673 App, and 16 real-CLI tests, plus
+symbol-graph ownership, sandbox bridge, and Release. Synthetic Dark QA visually
+confirmed rendered and unresolved links and the quote boundary. This is not
+human, Light/contrast, release-package, or real-vault acceptance.
 
 On 2026-08-29, six fresh-Agent quality baselines passed on disposable
 Triptychs. Analyze used live Zotero; Synthesize wrote one Topic; Write revised

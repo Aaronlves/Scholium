@@ -280,6 +280,27 @@ rows align one fixed authorship track with one Serif academic-prose track.
 Researcher and Agent use distinct semantic
 colors and symbols with visible role labels; generic response-kind labels do not
 repeat the author. Records metadata uses spacing and alignment, never middots.
+Free-text Research Result fields, attributed statements, saved Researcher
+Response prose, and Reading Lead reason, uncertainty, and researcher note use
+a limited read-only scholarly markup projection over §8.4's exact text fields.
+The closed subset is ATX/Setext headings, strong, emphasis, inline code,
+ordinary ordered/unordered lists, block quotations, safe `http`/`https` links,
+Markdown internal links, and full Note/heading/block Wikilinks with optional
+display text. Every source heading level appears as the same bold body-sized
+section lead. Embeds, images, task lists, tables, callouts, HTML, code blocks,
+strikethrough, highlighting, and every other extension show exact literal
+source instead of disappearing or invoking the Document renderer. There is no
+live preview, source-mode toggle, or Record markup editor. The projection never
+normalizes the stored string, strict validation, fingerprint, Search, or CLI
+value.
+
+Safe web links use the system route. A uniquely resolved Markdown internal
+link or full Wikilink opens its current Note, heading, or block through the
+same-Triptych Workspace route. Resolution uses the current Workspace catalog,
+not frozen Record provenance. Missing, ambiguous, unavailable, or stable-
+identity-unresolved links retain their exact authored syntax and do nothing.
+The Record window never publishes these presentation links to Connections,
+backlinks, Search relations, Evidence, or participant state.
 The auxiliary window's Scope remains **This Note / Triptych**. A Record result
 found through global **This Vault** Search still opens this existing Triptych-
 keyed window, reapplies its **Triptych** Scope, selects Records View and the

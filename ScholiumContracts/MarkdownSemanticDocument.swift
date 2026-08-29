@@ -453,6 +453,47 @@ public struct MarkdownSemanticDocument: Codable, Hashable, Sendable {
 }
 
 public enum MarkdownSemanticParser {
+    /// Parses links in a standalone prose fragment without allowing a leading
+    /// `---` sequence to be reinterpreted as Note frontmatter. Returned spans
+    /// are relative to the exact fragment supplied by the caller.
+    package static func links(inFragment source: String) -> [LinkOccurrence] {
+        let prefix = "\n"
+        let document = NoteDocument(
+            relativePath: "research-record-fragment.md",
+            rawContent: prefix + source
+        )
+        return parse(document).links.compactMap { occurrence in
+            guard occurrence.span.utf8LowerBound >= prefix.utf8.count,
+                occurrence.span.utf16LowerBound >= prefix.utf16.count
+            else { return nil }
+            return LinkOccurrence(
+                syntax: occurrence.syntax,
+                target: occurrence.target,
+                alias: occurrence.alias,
+                fragment: occurrence.fragment,
+                relationship: occurrence.relationship,
+                vectorKind: occurrence.vectorKind,
+                isExternal: occurrence.isExternal,
+                span: SourceSpan(
+                    utf8LowerBound: occurrence.span.utf8LowerBound - prefix.utf8.count,
+                    utf8UpperBound: occurrence.span.utf8UpperBound - prefix.utf8.count,
+                    utf16LowerBound: occurrence.span.utf16LowerBound - prefix.utf16.count,
+                    utf16UpperBound: occurrence.span.utf16UpperBound - prefix.utf16.count,
+                    start: SourcePosition(
+                        line: occurrence.span.start.line - 1,
+                        utf8Column: occurrence.span.start.utf8Column,
+                        utf16Column: occurrence.span.start.utf16Column
+                    ),
+                    end: SourcePosition(
+                        line: occurrence.span.end.line - 1,
+                        utf8Column: occurrence.span.end.utf8Column,
+                        utf16Column: occurrence.span.end.utf16Column
+                    )
+                )
+            )
+        }
+    }
+
     public static func parse(_ document: NoteDocument) -> MarkdownSemanticDocument {
         let diagnosesLegacyRelationArrows = true
         let sourceMapper = SemanticSourceMapper(document.rawContent)

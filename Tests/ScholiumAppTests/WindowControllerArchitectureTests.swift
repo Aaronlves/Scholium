@@ -2453,7 +2453,11 @@ struct WindowControllerArchitectureTests {
         ] {
             #expect(!actionPanel.contains(removedActionSurface))
         }
-        #expect(recordBrowser.contains("ResearchFinalizedResultView(record: record)"))
+        #expect(
+            recordBrowser.contains(
+                "ResearchFinalizedResultView(record: record, context: context)"
+            )
+        )
         #expect(recordBrowser.contains("ResearchRecordResearcherResponseSection("))
         #expect(recordBrowser.contains("ResearchRecordChangesSection("))
         #expect(!recordBrowser.contains("ResearchRecordChangeDecisionSection("))

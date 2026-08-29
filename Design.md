@@ -66,6 +66,17 @@ the neutral capsule. Record authorship pairs Researcher Accent with `person`
 and `agentAuthorship` with `sparkle`; Context uses `text.quote` so it cannot be
 confused with a Participant document.
 
+Record academic prose uses the 13pt Scholarly body role. Its limited read-only
+markup adds no Document-style heading scale: every authored heading is the same
+body-sized Bold section lead. Strong and emphasis select the matching Alegreya
+face, inline code and literal unsupported syntax use 12pt Exact, lists retain
+quiet textual markers, and block quotations use one 2pt Accent leading rule.
+All resolved links use Accent plus an underline. Wikilinks additionally use
+the quiet raised-surface inline field; unresolved or
+ambiguous links show exact source in secondary Exact text. These inline fields
+do not become capsules, badges, cards, relation colors, hover-only controls, or
+Evidence semantics.
+
 ### 19.2 Typography and color
 
 Family communicates content kind; size communicates hierarchy. The two axes are

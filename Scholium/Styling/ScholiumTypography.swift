@@ -199,6 +199,30 @@ enum ScholiumTypography {
         return tabularDigits ? font.monospacedDigit() : font
     }
 
+    static func scholarlyInline(
+        bold: Bool = false,
+        italic: Bool = false
+    ) -> Font {
+        ScholiumTypeface.scholarly(
+            size: 13,
+            relativeTo: .body,
+            bold: bold,
+            italic: italic
+        )
+    }
+
+    static func exactInline(
+        bold: Bool = false,
+        italic: Bool = false
+    ) -> Font {
+        ScholiumTypeface.exact(
+            size: 12,
+            relativeTo: .body,
+            bold: bold,
+            italic: italic
+        )
+    }
+
     static func exact(_ role: ExactRole) -> Font {
         switch role {
         case .body:

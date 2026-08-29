@@ -89,6 +89,18 @@ public struct LinkDestination: Codable, Hashable, Sendable {
     public let kind: LinkDestinationKind
     public let fragment: String?
     public let span: SourceSpan?
+
+    public init(
+        note: VaultQualifiedNoteID,
+        kind: LinkDestinationKind,
+        fragment: String?,
+        span: SourceSpan?
+    ) {
+        self.note = note
+        self.kind = kind
+        self.fragment = fragment
+        self.span = span
+    }
 }
 
 public struct LinkGraphEdge: Codable, Hashable, Sendable {
@@ -179,6 +191,70 @@ public enum LinkResolutionScope: String, Codable, Hashable, Sendable {
     /// Prefer the source vault, then resolve only a unique match elsewhere in
     /// the configured Triptych. Scholium never guesses between vaults.
     case workspace
+}
+
+/// A navigation-only resolution for one authored link target. It carries no
+/// relationship meaning and never creates a Graph edge.
+public enum LinkNavigationResolution: Hashable, Sendable {
+    case resolved(LinkDestination)
+    case ambiguous([VaultQualifiedNoteID])
+    case missingNote
+    case missingHeading
+    case ambiguousHeading
+    case missingBlock
+}
+
+/// Reusable immutable lookup state for consumers that need the same
+/// fail-closed Note, heading, and block resolution as the Link Graph without
+/// publishing an outgoing or incoming relationship.
+public struct LinkResolutionCatalog: Sendable {
+    private let notesByID: [VaultQualifiedNoteID: LinkCatalogNote]
+    private let index: LinkGraphBuilder.ResolutionIndex
+
+    public init(catalog: [LinkCatalogNote]) {
+        notesByID = Dictionary(uniqueKeysWithValues: catalog.map { ($0.id, $0) })
+        index = LinkGraphBuilder.ResolutionIndex(catalog: catalog)
+    }
+
+    public func resolveNavigation(
+        target: String,
+        fragment: String?,
+        from source: VaultQualifiedNoteID,
+        scope: LinkResolutionScope = .sourceVault
+    ) -> LinkNavigationResolution {
+        let resolution = index.resolve(target, from: source, scope: scope)
+        switch resolution {
+        case .unresolved, .broken:
+            return .missingNote
+        case .ambiguous(let candidates):
+            return .ambiguous(candidates)
+        case .resolved(let id):
+            guard let note = notesByID[id] else { return .missingNote }
+            guard let fragment, !fragment.isEmpty else {
+                return .resolved(
+                    LinkDestination(note: id, kind: .note, fragment: nil, span: nil)
+                )
+            }
+            if fragment.hasPrefix("^") {
+                let key = String(fragment.dropFirst())
+                guard let span = note.blockAnchors[key] else { return .missingBlock }
+                return .resolved(
+                    LinkDestination(note: id, kind: .block, fragment: fragment, span: span)
+                )
+            }
+
+            let sought = LinkGraphBuilder.normalizedHeading(fragment)
+            let matches = note.headings.filter {
+                LinkGraphBuilder.normalizedHeading($0.text) == sought
+            }
+            guard matches.count == 1, let match = matches.first else {
+                return matches.isEmpty ? .missingHeading : .ambiguousHeading
+            }
+            return .resolved(
+                LinkDestination(note: id, kind: .heading, fragment: fragment, span: match.span)
+            )
+        }
+    }
 }
 
 public enum LinkGraphBuilder {
@@ -344,8 +420,8 @@ public enum LinkGraphBuilder {
         )
     }
 
-    struct ResolutionIndex {
-        private struct FolderStem: Hashable {
+    struct ResolutionIndex: Sendable {
+        private struct FolderStem: Hashable, Sendable {
             let folder: String
             let stem: String
         }
@@ -586,7 +662,7 @@ public enum LinkGraphBuilder {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private static func normalizedHeading(_ value: String) -> String {
+    fileprivate static func normalizedHeading(_ value: String) -> String {
         normalizedLookupName(value.removingPercentEncoding ?? value)
             .replacingOccurrences(of: #"[^\p{L}\p{N}]+"#, with: "-", options: .regularExpression)
             .trimmingCharacters(in: CharacterSet(charactersIn: "-"))

@@ -163,6 +163,12 @@
   rail. Reading Lead detail uses one reading flow with independent handled
   state, complete citation, bibliographic and discovery facts, reason,
   uncertainty, researcher note, source, parent, and technical identity.
+- Free-text Result, attributed statement, saved Response, and Reading Lead prose
+  now render a limited native scholarly-markup projection. All heading markers
+  flatten to one bold section lead; emphasis, strong, inline code, ordinary
+  lists, quotations, safe web links, and full Note/heading/block Wikilinks are
+  supported. Unsupported syntax and unresolved internal links remain exact
+  literal text, with no live preview or relation projection.
 - Record deletion, Response editing, folding comparison,
   evidence popovers, unresolved provenance, and recommendation handling retain
   named keyboard and accessibility routes. Native Response and comparison

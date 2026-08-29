@@ -367,6 +367,11 @@
 - The Triptych-keyed Research Records window and Search consume the same Record
   provider. Reading Leads are a rebuildable projection of recommendation
   occurrences; handling and researcher notes update the parent Record.
+- Strict schema-15 prose strings now remain byte-for-byte opaque through
+  submission, validation, storage, hashing, Search, and CLI reading while a
+  disposable Contracts projection recognizes the closed Record scholarly-
+  markup subset. Navigation reuses current fail-closed Note/heading/block
+  lookup without emitting Connections or another durable relation owner.
 - The standalone CLI can list every finished Record related to one exact stable
   Note UUID and read one complete Record by UUID. Both routes use one complete
   immutable Record projection, return exact portable-byte fingerprints, and

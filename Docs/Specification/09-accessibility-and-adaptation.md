@@ -272,6 +272,13 @@
 - Record detail reads author before attributed prose. Participants disclose the
   total and become a control only when a complete popover exists; dismissal
   returns focus to the heading.
+- Rendered Record headings expose one consistent level-three heading role even
+  when the authored marker used another level. Strong, emphasis, inline code,
+  list, and quotation distinctions remain available without color alone.
+  Resolved web and internal links use native attributed-text link semantics,
+  keyboard focus, VoiceOver labels, and the ordinary activation route rather
+  than a pointer-only gesture. Missing or ambiguous internal destinations read
+  as their exact literal authored syntax and expose no false action.
 - The reading plane exposes Researcher Response before the Evidence rail. The
   rail reads Changes, Effects, Participants, and Technical Details in that
   order at minimum width and enlarged mixed-script settings.

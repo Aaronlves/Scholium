@@ -4,6 +4,7 @@ import ScholiumResearchRecordsFeature
 import SwiftUI
 
 struct ResearchRecordBrowserContext {
+    let proseNavigation: ResearchRecordProseNavigation
     let setRecommendationDisposition:
         @MainActor (
             UUID,
@@ -1640,9 +1641,14 @@ private struct ResearchLiteratureRecommendationDetailView: View {
             Text("WHY IT WAS RECOMMENDED")
                 .scholiumApparatusHeadingStyle()
                 .accessibilityHeading(.h2)
-            Text(occurrence.recommendation.reason)
-                .font(ScholiumTypography.scholarly(.body))
-                .textSelection(.enabled)
+            ResearchRecordProseView(
+                source: occurrence.recommendation.reason,
+                sourceNote: context.proseNavigation.currentLocation(
+                    for: occurrence.parentRecord.researchRecordContextParticipant
+                ),
+                navigation: context.proseNavigation,
+                openNote: context.openNote
+            )
             if let uncertainty = occurrence.recommendation.uncertainty {
                 VStack(
                     alignment: .leading,
@@ -1651,10 +1657,14 @@ private struct ResearchLiteratureRecommendationDetailView: View {
                     Text("UNCERTAINTY")
                         .font(ScholiumTypography.interface(.small, emphasis: .strong))
                         .scholiumForeground(.secondaryText)
-                    Text(uncertainty)
-                        .font(ScholiumTypography.scholarly(.body))
-                        .scholiumForeground(.secondaryText)
-                        .textSelection(.enabled)
+                    ResearchRecordProseView(
+                        source: uncertainty,
+                        sourceNote: context.proseNavigation.currentLocation(
+                            for: occurrence.parentRecord.researchRecordContextParticipant
+                        ),
+                        navigation: context.proseNavigation,
+                        openNote: context.openNote
+                    )
                 }
             }
         }
@@ -1671,9 +1681,14 @@ private struct ResearchLiteratureRecommendationDetailView: View {
                 isEditingNote = true
             }
             if let note = occurrence.recommendation.disposition.researcherNote {
-                Text(note)
-                    .font(ScholiumTypography.scholarly(.body))
-                    .textSelection(.enabled)
+                ResearchRecordProseView(
+                    source: note,
+                    sourceNote: context.proseNavigation.currentLocation(
+                        for: occurrence.parentRecord.researchRecordContextParticipant
+                    ),
+                    navigation: context.proseNavigation,
+                    openNote: context.openNote
+                )
             } else {
                 Text("No researcher note has been added.")
                     .font(ScholiumTypography.interface(.compact))
@@ -2096,7 +2111,7 @@ private struct ResearchRecordWorkspaceView: View {
                         confirmsPermanentDeletion: $confirmsPermanentDeletion
                     )
                     ScholiumStructuralRule()
-                    ResearchFinalizedResultView(record: record)
+                    ResearchFinalizedResultView(record: record, context: context)
                     if record.kind == .action {
                         ScholiumStructuralRule()
                         ResearchRecordResearcherResponseSection(
@@ -2111,6 +2126,7 @@ private struct ResearchRecordWorkspaceView: View {
                             statements: displayedStatements,
                             focusedStatementID: model.focusedStatementID,
                             primaryParticipant: primaryParticipant,
+                            proseNavigation: context.proseNavigation,
                             openNote: context.openNote
                         )
                     }
@@ -3033,6 +3049,7 @@ private struct ResearchRecordStatementSection: View {
     let statements: [PortableResearchStatement]
     let focusedStatementID: UUID?
     let primaryParticipant: PortableResearchNoteRevision?
+    let proseNavigation: ResearchRecordProseNavigation
     let openNote: @MainActor (UUID, VaultQualifiedNoteID, Int?) -> Void
 
     var body: some View {
@@ -3050,6 +3067,7 @@ private struct ResearchRecordStatementSection: View {
                     createdAt: statement.createdAt,
                     lineReference: statement.lineReference,
                     primaryParticipant: primaryParticipant,
+                    proseNavigation: proseNavigation,
                     openNote: openNote
                 )
                 .id(statement.id)
@@ -3087,6 +3105,7 @@ private struct ResearchRecordStatementView: View {
     let createdAt: Date
     let lineReference: ResearchLineReference?
     let primaryParticipant: PortableResearchNoteRevision?
+    let proseNavigation: ResearchRecordProseNavigation
     let openNote: @MainActor (UUID, VaultQualifiedNoteID, Int?) -> Void
 
     var body: some View {
@@ -3124,12 +3143,12 @@ private struct ResearchRecordStatementView: View {
             )
 
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                Text(text)
-                    .font(ScholiumTypography.scholarly(.body))
-                    .scholiumForeground(.primaryText)
-                    .lineSpacing(ScholiumGrid.Spacing.labelAccessoryGap)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
+                ResearchRecordProseView(
+                    source: text,
+                    sourceNote: proseNavigation.currentLocation(for: primaryParticipant),
+                    navigation: proseNavigation,
+                    openNote: openNote
+                )
                 if let lineReference, let primaryParticipant {
                     ResearchRecordActionButton(
                         "Open Lines \(lineReference.line)–\(lineReference.endLine)",

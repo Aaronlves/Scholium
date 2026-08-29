@@ -22,6 +22,9 @@ native presentation, interface composition, and localization.
   deterministic source transformations, immutable snapshots, events, and
   delivery-safe errors. It has no filesystem, database, network, UI, watcher,
   store, or global mutable authority.
+  `ResearchRecordProseProjection` derives the closed read-only scholarly-markup
+  block/inline model, while `LinkResolutionCatalog` reuses fail-closed Note,
+  heading, and block lookup without building a Graph edge.
 - `ScholiumCore` contains internal I/O and persistence implementations plus the
   app-default method resource bundle; it is not a public SwiftPM product.
 - `ScholiumApplication` contains runtime configuration and pooling, capability
@@ -158,6 +161,16 @@ owns schema, identity, and exact revision hashes; confirmed Research Record dele
 remains in the Record header. Record
 detail is the sole finalized-result, Evaluation, and Method Feedback processing
 route; the parent Action presentation contains none of those subtrees.
+
+`ResearchRecordProseView` converts only the closed Contracts projection into
+native SwiftUI attributed text. It intercepts internal attributed-link URLs
+through `OpenURLAction`, then calls the existing same-Triptych Note-opening
+closure. `ScholiumResearchRecordsRoot` rebuilds one immutable navigation catalog
+from each current `WorkspaceSnapshot` and maps only resolved portable Note
+identities to destinations. Missing or ambiguous resolution remains literal;
+safe web URLs retain the system action. This disposable state is neither the
+Record parser nor a Graph, Search, backlink, participant, Evidence, or source
+owner.
 
 The attached comparison shell and unified exact-diff presentation are shared
 with Document Conflict, while each workflow retains its own inputs and
