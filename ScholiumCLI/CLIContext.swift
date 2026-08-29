@@ -12,10 +12,24 @@ struct CLIContext: Sendable {
 
     static func make() async throws -> CLIContext {
         let homeURL = ScholiumPaths.cliHomeURL()
-        let applicationSupportURL = if ProcessInfo.processInfo.environment["SCHOLIUM_HOME"] != nil {
-            homeURL.appendingPathComponent("ApplicationSupport", isDirectory: true)
+        let applicationSupportURL: URL
+        if ProcessInfo.processInfo.environment["SCHOLIUM_HOME"] != nil {
+            // `doctor` and other read-only commands may be the first process
+            // to touch an isolated Home. Establish the same private parent
+            // boundary used by the bearer-Session store before the runtime
+            // creates any descendants with FileManager's default mode.
+            // Otherwise the recommended `doctor` -> `agent start` sequence
+            // leaves ApplicationSupport at 0755 and correctly makes the
+            // credential store fail closed on the later start.
+            try ScholiumPaths.ensurePrivateDirectory(at: homeURL)
+            let support = homeURL.appendingPathComponent(
+                "ApplicationSupport",
+                isDirectory: true
+            )
+            try ScholiumPaths.ensurePrivateDirectory(at: support)
+            applicationSupportURL = support
         } else {
-            try ScholiumPaths.sharedApplicationSupportURL()
+            applicationSupportURL = try ScholiumPaths.sharedApplicationSupportURL()
         }
         let registryStorageURL = try ScholiumPaths.workspaceRegistryURL()
         let runtime = try await WorkspaceRuntime.snapshot(

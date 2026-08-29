@@ -713,6 +713,24 @@ struct ActionCLIExecutableLifecycleTests {
         let environment = [
             "SCHOLIUM_AGENT_BRIDGE_CONTAINER": bridgeContainer.path,
         ]
+        let doctor = try cli.run(
+            ["doctor", "--format", "json"],
+            environment: environment
+        )
+        let doctorObject = try #require(
+            JSONSerialization.jsonObject(with: doctor.stdout) as? [String: Any]
+        )
+        #expect(doctorObject["schema_version"] as? Int == 1)
+        let applicationSupportURL = freshAgentHome.appendingPathComponent(
+            "ApplicationSupport",
+            isDirectory: true
+        )
+        let applicationSupportMode = try #require(
+            FileManager.default.attributesOfItem(
+                atPath: applicationSupportURL.path
+            )[.posixPermissions] as? NSNumber
+        ).intValue
+        #expect(applicationSupportMode == 0o700)
         let unknown = try cli.runExpectingFailure(
             [
                 "agent", "preflight-analysis", "--triptych",

@@ -487,6 +487,16 @@ struct ResearchMethodDefaultsTests {
             "synthesize-result.md": [
                 "**Synthesis Outcome**", "**Contribution**",
                 "controlling synthesis judgment",
+                "independent explanatory axes",
+                "independent standards or subdimensions",
+                "makes a previously closed",
+                "settled issue live again",
+                "bounded epistemic scope",
+                "final validated Topic hierarchy",
+                "source-by-source recap",
+                "Keep separate tensions separate",
+                "cross-cutting overlay",
+                "synonym-like pairing",
             ],
             "write-result.md": [
                 "**Writing Outcome**", "**Change Kind**",
@@ -751,6 +761,24 @@ struct ResearchMethodDefaultsTests {
         #expect(synthesisMethod.contains("**insufficient basis:**"))
         #expect(synthesisMethod.contains("Without inspected change history"))
         #expect(synthesisMethod.contains("Never infer complete literature coverage"))
+        #expect(synthesisMethod.contains("Compare on explicit axes"))
+        #expect(synthesisMethod.contains("cross-cutting process"))
+        #expect(synthesisMethod.contains("source-sensitive terminology map"))
+        #expect(synthesisMethod.contains("axis map before proposing configurations"))
+        #expect(synthesisMethod.contains("number of Analysis Notes"))
+        #expect(synthesisMethod.contains("two private validation matrices"))
+        #expect(synthesisMethod.contains("one row per proposed peer architecture"))
+        #expect(synthesisMethod.contains("controlling level cannot"))
+        #expect(synthesisMethod.contains("remain a peer item"))
+        #expect(synthesisMethod.contains("term-relation matrix"))
+        #expect(synthesisMethod.contains("equivalence, subtype, grounding"))
+        #expect(synthesisMethod.contains("source establishes equivalence"))
+        #expect(synthesisMethod.contains("every concluding list"))
+        #expect(synthesisMethod.contains("source-domain or case limitation"))
+        #expect(synthesisMethod.contains("declared count, or Result compression"))
+        #expect(synthesisMethod.contains("binary before a"))
+        #expect(synthesisMethod.contains("bridge between the relevant terms"))
+        #expect(synthesisMethod.contains("Analysis or Analyses as workflow objects"))
 
         let critique = try BundledResearchMethodDefaults.primarySource(for: .critique)
         #expect(critique.contains("For passage scope"))

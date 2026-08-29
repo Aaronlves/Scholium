@@ -15,6 +15,12 @@ languages or traditions, or likely selection bias materially limit that claim.
 Do not turn these limits into a reading inventory, and do not present project
 coverage as literature coverage.
 
+Express the boundary as a scholarly limit on the map itself. A durable Topic
+does not narrate the Action, pass, number of Analysis Notes, what was read or
+checked, inherited locators, independent reverification, or a stopping-status
+procedure. Prefer direct formulations such as “this project-bounded map does
+not establish field coverage.”
+
 ## 2. Classify contributions by evidence
 
 For each relevant inspected Material, determine whether it:
@@ -29,6 +35,19 @@ Do not infer these roles from keyword overlap, backlinks, or selection alone.
 Before comparing Materials, check whether their questions, terms, methods, and
 levels of analysis are sufficiently commensurable. Preserve a material
 asymmetry rather than manufacturing agreement or disagreement.
+
+Compare on explicit axes. Do not turn a cross-cutting process, explanatory
+model, method, or constraint into one member of a taxonomy whose other members
+answer a different question. When two contributions operate at different
+levels, state whether they are compatible, constraining, or independent before
+grouping them; sharing an opponent or practical effect is not enough.
+
+Build a source-sensitive terminology map when the same word carries different
+standards, levels, or roles across Materials. Preserve those uses explicitly;
+do not let one unqualified umbrella term silently alternate among them. Build
+the axis map before proposing configurations. Present a cross-cutting model as
+an overlay or constraint unless every listed configuration answers the same
+questions on the same axes.
 
 ## 3. Integrate minimally
 
@@ -72,7 +91,37 @@ counter-search, use insufficient basis rather than a saturation judgment.
 
 ## 5. Validate
 
-Reread the Topic and check that source-facing statements remain traceable,
-agent evaluation remains attributed, coverage is not overstated, and the
-update has not silently converted a candidate into the researcher's settled
-view.
+Before saving, build two private validation matrices; do not place them in the
+Topic. First, make an axis matrix with one row per proposed peer architecture
+or configuration and the same columns for carrier, standard, reasons or
+agency, and epistemic consequence. A row that is only an overlay, constraint,
+analogy, process model, or unknown at the list's controlling level cannot
+remain a peer item; move it outside the peer list and state how it crosses the
+eligible rows. Second, make a term-relation matrix for every proposed paired or
+umbrella expression. Classify each relation as equivalence, subtype, grounding,
+contrast, or unestablished, with its source basis. Use a slash, “or,” or a
+synonym-like pairing only when the relevant source establishes equivalence.
+
+For every controlling synthesis claim, also record its source-domain or case
+qualification and whether it is source-stated, cross-source reconstruction, or
+agent evaluation. Use the matrices to reread the opening, explanatory body,
+every concluding list or configuration, and the proposed Result summary.
+
+Do not save while any of these failures remains:
+
+- one term silently changes standard, level, or source-relative meaning;
+- a claim loses the source-domain or case limitation that controls its reach;
+- a list presents architectures, cross-cutting models, normative standards, or
+  epistemic consequences as peer alternatives at different levels;
+- an opening, conclusion, declared count, or Result compression drops a
+  distinction that does material work in the body;
+- a cross-source comparison assumes identity, opposition, or a binary before a
+  bridge between the relevant terms has been established;
+- source-facing statements are untraceable, agent evaluation is unattributed,
+  coverage is overstated, or a candidate has become researcher settlement.
+
+If a source argues that two dimensions are related, state the relation without
+treating it as identity unless the evidence warrants that stronger claim.
+Delete workflow narration from the durable Topic. Do not name an Action, pass,
+Analysis or Analyses as workflow objects, read/check/reverification activity,
+or stopping procedure unless that workflow itself is the philosophical target.

@@ -434,19 +434,6 @@ visual acceptance.
 
 ## Focused Agent-inheritance evidence
 
-On 2026-08-21, the App-gate correction replaced three obsolete native-toolbar
-source assertions with checks against the current AppKit toolbar owner and
-updated the shared Research Record browser fixture plus its one Record-copy
-site to preserve schema 11's explicit Scholium-source Analysis route. The
-120-test Frontend-architecture and Research-Record-browser selection and the
-complete 652-test App target passed. The complete repository gate then passed
-documentation and shipped-resource validation; 199 Web editor tests and
-reproducible bundles; 439 Core tests plus 3 performance tests; 147 Contracts
-tests; 257 Application tests, 14 bridge tests, and 1 architecture measurement;
-all 652 App tests; the public symbol-graph guard; all 12 signed executable CLI
-lifecycles; the sandboxed App-to-standalone-CLI bridge probe; and the optimized
-Release build. No production schema validation or Agent requirement changed.
-
 On 2026-08-21, the Analyze/Fidelity boundary was decoupled. Focused contract
 tests and the product build verify that a completed Analyze or other write does
 not enter `awaiting_fidelity`, invoke `agent prepare-fidelity`, or require a
@@ -538,6 +525,19 @@ disposable Triptych: one write, one schema-15 Record, and terminal execution
 without post-Result End. Independent source review passed its hard gate with
 high philosophical quality, no material defect, and two minor findings. This
 accepts only the first clean Analyze baseline.
+
+On 2026-08-29, a fresh Agent also completed one bounded Synthesize: one Topic
+write, one schema-15 Record, unchanged Analysis and
+Work Notes, and terminal execution without End or Cancel cleanup. A separate
+reviewer checked the exact Topic and Record against four Analysis revisions and
+the four source PDFs. The hard gate passed with no critical or material defect
+and three minor findings concerning one local term relation, limited Record
+field duplication, and one evidence-packet path. This accepts one
+project-bounded Synthesize baseline, not field coverage or sustained Method
+adequacy. During setup, an explicit `SCHOLIUM_HOME` first touched by `doctor`
+exposed a private-directory ordering defect; the CLI now establishes its Home
+and Application Support parents at mode `0700`, and the focused real-executable
+`doctor`-before-start lifecycle regression passed.
 
 The subsequent Researcher State continuation cutover passed 44 focused tests
 across eight owning Contracts, Application, Core-store, bridge, and architecture suites
