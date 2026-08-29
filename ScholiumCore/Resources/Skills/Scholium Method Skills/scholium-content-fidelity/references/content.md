@@ -32,6 +32,41 @@ For each material statement distinguish:
 
 Then test terminology, scope, modality, premise and inference structure, objection and reply roles, source role, locator, and visible uncertainty. Do not assimilate a source's distinct terms to local vocabulary without an explicit bridge.
 
+## Check local semantic consistency
+
+Compare each load-bearing term, distinction, polarity, modality, and thesis
+status with its definition and repeated uses elsewhere in the exact Target.
+Attend especially to paired or negated formulations whose surface fluency can
+hide a reversal, and to summaries, headings, introductions, and conclusions
+that strengthen or weaken the body. A contradiction that the Target itself
+settles can be established from that revision without external source access;
+use sources only when deciding which formulation is faithful to a
+source-specific claim.
+
+Treat researcher-authored front matter summaries and other authored synopsis
+fields as claims about the Target, not as disposable index metadata. Always
+compare their controlling thesis and modality with the body's introduction,
+argument, qualifications, and conclusion before finalizing the check, even
+when source-dependent findings are also available.
+
+Prefer the least demanding coherent reading that the wording and context
+permit. Ambiguity, compression, or failure to establish every pairwise
+distinction is not by itself a material inconsistency. Report a stronger defect
+only when the problematic reading is required by the exact claim, its stated
+basis, or its argumentative role.
+
+Preserve the difference between a source-supported reconstruction and the
+Target's own explicitly marked proposal, conditional argument, or hypothesis.
+The cited sources' failure to establish that proposal is not a fidelity defect
+when the Target acknowledges the gap and supplies or requests its own bridge.
+If a local conclusion overstates what that bridge has established, correct
+only that support or modality claim; do not replace the proposal with the
+weaker source-supported position.
+
+Track quantificational force. A claim that several listed standards are not
+all one relation does not assert that every pair differs. Require pairwise
+support only when the Target makes the pairwise claim.
+
 ## Calibrate by claim type
 
 Use only the checks that fit the material:

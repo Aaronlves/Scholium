@@ -520,21 +520,23 @@ App, and 16 CLI tests; Debug, Release, sandbox bridge, and UI
 `build-for-testing` also passed. This is disposable automated evidence, not
 human acceptance.
 
-On 2026-08-29, five fresh-Agent quality baselines passed on disposable
+On 2026-08-29, six fresh-Agent quality baselines passed on disposable
 Triptychs. Analyze used live Zotero; Synthesize wrote one Topic; Write revised
-one Work; Critique read one Work, four Analyses, and one Topic; and Discuss
-preserved one Researcher and one Agent turn. Each formed one schema-15 Record
-and terminal execution. Analyze, Synthesize, and Write made their one expected
-Note write; Critique and Discuss made none. Discuss used Finish and revoked its
-Session without post-Finish End. Independent source-PDF reviews found no
-critical or material defect and respectively two, three, one, one, and two
-minor findings. Write's minors were one request-preserved stale YAML summary
-and one reversed `functional appropriateness` phrase; Discuss's concerned a
-compressed explanatory-priority bridge. These runs accept one baseline per
-Action, not field coverage or sustained Method adequacy. Synthesize setup also
-exposed a private-directory ordering defect for an explicit `SCHOLIUM_HOME`;
-the CLI now creates private parents before use, and its focused lifecycle
-regression passed.
+one Work; Critique, Discuss, and Check Fidelity remained read-only. Check
+Fidelity inspected the exact Work, Topic, four Analyses, and two prior Records,
+then found the planted YAML/body thesis conflict and reversed `functional
+appropriateness` phrase. Each Action formed one schema-15 Record and terminal
+execution; Discuss used Finish without post-Finish End. Independent source-PDF
+reviews found no critical or material defect in the accepted runs and
+respectively two, three, one, one, two, and one minor findings. Two earlier
+Check Fidelity attempts failed by alternately missing one planted issue and
+overgrading coherent proposal or group readings; the general Method now treats
+authored front matter as Target claims, preserves explicit proposals, and
+tracks quantificational force, while Core requires a result-centered title.
+These runs accept one baseline per Action, not field coverage or sustained
+Method adequacy. Synthesize setup also exposed and fixed private-directory
+ordering for an explicit `SCHOLIUM_HOME`; its focused lifecycle regression
+passed.
 
 The subsequent Researcher State continuation cutover passed 44 focused tests
 across eight owning Contracts, Application, Core-store, bridge, and architecture suites

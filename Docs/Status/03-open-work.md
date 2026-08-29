@@ -60,12 +60,10 @@
   projection, replay conflict, expired Session, and outcome-unknown transport.
   Automated disposable fixtures do not establish that the recovery wording or
   researcher branch choice is usable.
-- Repeat clean current-schema, independent source-fidelity and philosophical-
-  quality review for Check Fidelity, then conduct sustained real research use
-  across the bundled Methods. One live-Zotero Analyze, one bounded Synthesize,
-  one read-only Critique, one read-only Discuss, and one bounded Write baseline
-  passed on 2026-08-29; they do not establish the remaining Method, field
-  coverage, or sustained academic adequacy. Keep analyst-supplied
+- Conduct sustained real research use across the bundled Methods. One clean
+  current-schema, independently reviewed baseline for each of the six Actions
+  passed on 2026-08-29; they do not establish field coverage or sustained
+  academic adequacy. Keep analyst-supplied
   illustrations explicit and make recommendation locators cover every source
   role claimed in their rationale without hard-coding one paper's content.
 - Complete human accessibility and enlarged mixed-script acceptance for

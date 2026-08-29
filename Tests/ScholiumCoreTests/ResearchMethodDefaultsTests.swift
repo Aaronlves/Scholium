@@ -507,7 +507,7 @@ struct ResearchMethodDefaultsTests {
             ],
             "check-fidelity-result.md": [
                 "academic_results.values", "fidelity_outcomes",
-                "No-inconsistency-found",
+                "No-inconsistency-found", "controlling fidelity judgment",
             ],
             "discuss-result.md": ["scholium-discussion-protocol", "no generic"],
         ]
@@ -588,6 +588,24 @@ struct ResearchMethodDefaultsTests {
                 #expect(source.contains(marker), Comment(rawValue: actionID.rawValue))
             }
         }
+
+        let contentFidelity = String(
+            decoding: try BundledResearchSkillResources.data(
+                directory: "Scholium Method Skills/scholium-content-fidelity",
+                relativePath: "references/content.md"
+            ),
+            as: UTF8.self
+        )
+        #expect(contentFidelity.contains("Check local semantic consistency"))
+        #expect(contentFidelity.contains("paired or negated formulations"))
+        #expect(contentFidelity.contains("least demanding coherent reading"))
+        #expect(contentFidelity.contains(
+            "researcher-authored front matter summaries"
+        ))
+        #expect(contentFidelity.contains(
+            "Target's own explicitly marked proposal"
+        ))
+        #expect(contentFidelity.contains("Track quantificational force"))
 
         let discussMethod = skillsRoot.appendingPathComponent(
             "Scholium Method Skills/scholium-discuss",

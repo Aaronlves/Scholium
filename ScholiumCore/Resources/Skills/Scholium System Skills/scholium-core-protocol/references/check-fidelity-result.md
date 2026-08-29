@@ -6,6 +6,9 @@ Submit the exact attributed `fidelity_outcomes`; Scholium derives **Finding**,
 mixed or unavailable checks. For a researcher-customized Profile, follow the
 explicit academic fields in the returned fillable template instead.
 
+Make the Record Title name the checked result or controlling fidelity judgment,
+not the Check Fidelity process followed by the Target title.
+
 Every outcome remains bound to the checked revision, selected check, evidence,
 and actual access limit. Do not repeat the verification sequence, tools, or the
 same underlying defect as extra academic prose. No-inconsistency-found means
