@@ -520,24 +520,24 @@ App, and 16 CLI tests; Debug, Release, sandbox bridge, and UI
 `build-for-testing` also passed. This is disposable automated evidence, not
 human acceptance.
 
-On 2026-08-29, one fresh Agent completed a clean live-Zotero Analyze on a
-disposable Triptych: one write, one schema-15 Record, and terminal execution
-without post-Result End. Independent source review passed its hard gate with
-high philosophical quality, no material defect, and two minor findings. This
-accepts only the first clean Analyze baseline.
-
-On 2026-08-29, a fresh Agent also completed one bounded Synthesize: one Topic
-write, one schema-15 Record, unchanged Analysis and
-Work Notes, and terminal execution without End or Cancel cleanup. A separate
-reviewer checked the exact Topic and Record against four Analysis revisions and
-the four source PDFs. The hard gate passed with no critical or material defect
-and three minor findings concerning one local term relation, limited Record
-field duplication, and one evidence-packet path. This accepts one
-project-bounded Synthesize baseline, not field coverage or sustained Method
-adequacy. During setup, an explicit `SCHOLIUM_HOME` first touched by `doctor`
-exposed a private-directory ordering defect; the CLI now establishes its Home
-and Application Support parents at mode `0700`, and the focused real-executable
-`doctor`-before-start lifecycle regression passed.
+On 2026-08-29, three fresh-Agent quality baselines passed on disposable
+Triptychs. Analyze used live Zotero and produced one write, one schema-15
+Record, and terminal execution; its independent source review found no material
+defect and two minor findings. Synthesize produced one Topic write and one
+schema-15 Record while Analysis and Work Notes stayed unchanged; review against
+the four source PDFs found no critical or material defect and three minor
+findings. Critique read the exact Work plus four Analyses and one Topic,
+performed no Note mutation or document write, and finalized one schema-15
+Record without post-Result End. A reviewer spot-checked the
+source PDFs; philosophy, Method/Core, and lifecycle passed with no critical or
+material defect, while one minor noted Assessment/Significance repetition.
+These runs accept one
+clean Analyze, one project-bounded Synthesize, and one read-only Critique
+baseline, not field coverage or sustained Method adequacy. Synthesize setup also
+exposed a private-directory ordering defect when `doctor` first touched an
+explicit `SCHOLIUM_HOME`; the CLI now creates its Home and Application Support
+parents at mode `0700`, and the focused real-executable lifecycle regression
+passed.
 
 The subsequent Researcher State continuation cutover passed 44 focused tests
 across eight owning Contracts, Application, Core-store, bridge, and architecture suites

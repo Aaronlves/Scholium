@@ -61,9 +61,9 @@
   Automated disposable fixtures do not establish that the recovery wording or
   researcher branch choice is usable.
 - Repeat clean current-schema, independent source-fidelity and philosophical-
-  quality review for Critique, Discuss, Write, and Check Fidelity, then conduct
-  sustained real research use across the bundled Methods. One live-Zotero
-  Analyze baseline and one bounded Synthesize baseline passed on 2026-08-29;
+  quality review for Discuss, Write, and Check Fidelity, then conduct sustained
+  real research use across the bundled Methods. One live-Zotero Analyze, one
+  bounded Synthesize, and one read-only Critique baseline passed on 2026-08-29;
   they do not establish the remaining Methods, field coverage, or sustained
   academic adequacy. Keep analyst-supplied
   illustrations explicit and make recommendation locators cover every source
