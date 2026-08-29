@@ -10,9 +10,14 @@ FIXTURE_SOURCE="${SCHOLIUM_TEST_VAULTS:-${ROOT}/.build/test-vaults}"
 FIXTURE_COPY="${QA_ROOT}/fixtures"
 SETTINGS_FIXTURE="${ROOT}/Tools/Fixtures/qa-triptych-settings-v8.json"
 QA_HOME="${QA_ROOT}/home"
+REQUIRE_CLEAN_RESEARCH_STATE="${SCHOLIUM_QA_REQUIRE_CLEAN_RESEARCH_STATE:-0}"
 
 [[ -d "${FIXTURE_SOURCE}" ]] || { print -u2 "Missing fixture vault root: ${FIXTURE_SOURCE}"; exit 1; }
 [[ -f "${SETTINGS_FIXTURE}" ]] || { print -u2 "Missing current QA Settings fixture: ${SETTINGS_FIXTURE}"; exit 1; }
+if [[ "${REQUIRE_CLEAN_RESEARCH_STATE}" == "1" && -e "${FIXTURE_SOURCE}/.scholium" ]]; then
+  print -u2 "A clean Research Action QA source must not contain portable .scholium state."
+  exit 1
+fi
 
 terminate_qa_instances() {
   pkill -f "${APP}/Contents/MacOS/Scholium" 2>/dev/null || true
@@ -61,6 +66,16 @@ fi
 # disposable copy; unsupported source fixture bytes remain untouched.
 mkdir -p "${FIXTURE_COPY}/.scholium"
 cp "${SETTINGS_FIXTURE}" "${FIXTURE_COPY}/.scholium/settings.json"
+if [[ "${REQUIRE_CLEAN_RESEARCH_STATE}" == "1" ]]; then
+  unexpected_portable_state="$(
+    find "${FIXTURE_COPY}/.scholium" -mindepth 1 -maxdepth 1 \
+      ! -name settings.json -print -quit
+  )"
+  [[ -z "${unexpected_portable_state}" ]] || {
+    print -u2 "Clean Research Action QA staging produced unexpected portable state: ${unexpected_portable_state}"
+    exit 1
+  }
+fi
 # Authoring utilities such as generate_fixtures.py are deliberately neither
 # copied nor executed.
 

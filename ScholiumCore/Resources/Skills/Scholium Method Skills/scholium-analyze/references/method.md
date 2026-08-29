@@ -78,6 +78,10 @@ present philosophical truth. Distinguish internal criticism on the source's
 own terms from an external standard.
 
 Attribute this pressure-testing to the agent. Do not turn it into a claim about what the author intended or what the researcher believes.
+In the saved Analysis, mark the first transition from reconstruction to
+analyst-supplied evaluation through direct wording or a source-specific
+heading. Do not rely on the Research Record's field structure to make that
+boundary visible.
 
 This final source review is the Analyze method's bounded fidelity self-check.
 Run it against the exact saved revision before submission. It does not create

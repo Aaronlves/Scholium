@@ -527,13 +527,17 @@ prove App-derived evidence eligibility, retirement of Agent-declared
 eligibility and reading-history fields, explicit frozen Material Note IDs,
 changed-only participant exclusion from Synthesis Material Attention, and one
 authenticated Run reading multiple Notes across pagination before finalizing a
-target-only Record. The complete repository gate then passed 206 editor, 467
-Core, 3 Core-performance, 153 Contracts, 287 Application, 16 bridge, 1
-architecture-measurement, 670 App, and 16 executable-CLI tests, plus Debug and
-Release builds and the sandboxed App-to-CLI probe. The UI-test target separately
-completed `build-for-testing` with Xcode 27. This is disposable local automated
-evidence; it does not establish live-Zotero behavior, philosophical quality, or
+target-only Record. The complete gate passed 206 editor, 467 Core, 3
+performance, 153 Contracts, 287 Application, 16 bridge, 1 architecture, 670
+App, and 16 CLI tests; Debug, Release, sandbox bridge, and UI
+`build-for-testing` also passed. This is disposable automated evidence, not
 human acceptance.
+
+On 2026-08-29, one fresh Agent completed a clean live-Zotero Analyze on a
+disposable Triptych: one write, one schema-15 Record, and terminal execution
+without post-Result End. Independent source review passed its hard gate with
+high philosophical quality, no material defect, and two minor findings. This
+accepts only the first clean Analyze baseline.
 
 The subsequent Researcher State continuation cutover passed 44 focused tests
 across eight owning Contracts, Application, Core-store, bridge, and architecture suites

@@ -16,11 +16,19 @@ Use the frozen Analyze Result Contract. For the current default fields:
 - **Further Research**, when present, contains only distinct questions or
   directions warranted by this analysis.
 
+Compare every populated field before submission and remove a conclusion,
+qualification, or proposed response that another field already carries. A
+Source Reconstruction reports the source-facing result; it does not preview an
+Agent Evaluation or Further Research entry.
+
 Record a material source-access limit once in Reliability. Add a short
 qualification to Source Reconstruction only when the limit changes what the
 reconstruction can support. Put source-grounded reading leads only in the
 structured `literature_recommendations` input and omit it when there are none.
-Do not mention tools, commands, access routes, hashes, saved-file checks, or
-other Application-owned process facts merely to demonstrate diligence.
+In a recommendation's uncertainty, state the scholarly evidence limit—such as
+that the recommended work itself was not inspected—without naming a provider,
+search, tool, or access route. Do not mention tools, commands, access routes,
+hashes, saved-file checks, or other Application-owned process facts merely to
+demonstrate diligence.
 Analyze submits no `fidelity_outcomes`; those belong only to an explicitly
 researcher-initiated Check Fidelity Run.

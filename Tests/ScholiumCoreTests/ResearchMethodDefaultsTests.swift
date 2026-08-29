@@ -373,6 +373,7 @@ struct ResearchMethodDefaultsTests {
             "technical report",
             "mandatory sequence of headings",
             "For every non-Discuss Action, return a concise one-line Record Title",
+            "does not license blending",
             "Continue remains bounded by the",
         ] {
             #expect(completion.contains(requirement))
@@ -681,9 +682,14 @@ struct ResearchMethodDefaultsTests {
         #expect(method.contains("govern inquiry and verification"))
         #expect(method.contains("not an output"))
         #expect(method.contains("source-specific headings"))
+        #expect(method.contains("mark the first transition from reconstruction"))
+        #expect(method.contains("Do not rely on the Research Record's field structure"))
         #expect(composition.contains("primary bounded source-facing"))
         #expect(composition.contains("`literature_recommendations`"))
         #expect(!composition.contains("literatureRecommendations"))
+        #expect(composition.contains("Compare every populated field"))
+        #expect(composition.contains("recommended work itself was not inspected"))
+        #expect(composition.contains("without naming a provider"))
         #expect(composition.contains("Do not mention tools, commands"))
         #expect(!source.contains("source supplied by Scholium"))
     }
@@ -832,6 +838,22 @@ struct ResearchMethodDefaultsTests {
         #expect(conceptualAnalyst.contains("Change-impact map"))
         #expect(conceptualAnalyst.contains("authorization to rewrite every"))
         #expect(conceptualAnalyst.contains("biconditional"))
+        #expect(conceptualAnalyst.contains("same target, competing accounts"))
+        #expect(conceptualAnalyst.contains("converting labels into options"))
+        let conceptualDefinitions = BundledResearchMethodDefaults.definitions.filter {
+            $0.resources.contains("references/Conceptual-Analyst.md")
+        }
+        #expect(conceptualDefinitions.count == 5)
+        for definition in conceptualDefinitions {
+            let copy = String(
+                decoding: try BundledResearchSkillResources.data(
+                    directory: definition.resourceDirectory,
+                    relativePath: "references/Conceptual-Analyst.md"
+                ),
+                as: UTF8.self
+            )
+            #expect(copy == conceptualAnalyst)
+        }
         let argumentReconstructionist = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "ScholiumCore/Resources/Skills/Scholium Method Skills/scholium-analyze/references/Argument-Reconstructionist.md"
@@ -881,6 +903,62 @@ struct ResearchMethodDefaultsTests {
             }
         }
         #expect(checkedMarkdownResources > 0)
+    }
+
+    @Test("Research Action quality QA starts clean and keeps its reviewer rubric isolated")
+    func researchActionQualityFixtureIsClean() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let fixture = repositoryRoot.appendingPathComponent(
+            "Tools/Fixtures/research-action-quality-v1",
+            isDirectory: true
+        )
+        for relativePath in ["01-analyses", "02-topics", "03-works"] {
+            var isDirectory: ObjCBool = false
+            #expect(FileManager.default.fileExists(
+                atPath: fixture.appendingPathComponent(relativePath).path,
+                isDirectory: &isDirectory
+            ))
+            #expect(isDirectory.boolValue)
+        }
+        #expect(!FileManager.default.fileExists(
+            atPath: fixture.appendingPathComponent(".scholium").path
+        ))
+
+        let performer = try String(
+            contentsOf: fixture.appendingPathComponent("performer-case.md"),
+            encoding: .utf8
+        )
+        let reviewer = try String(
+            contentsOf: fixture.appendingPathComponent("reviewer-rubric.md"),
+            encoding: .utf8
+        )
+        #expect(performer.contains("## Raw researcher request template"))
+        #expect(performer.contains("No private researcher vault"))
+        #expect(!performer.contains("## Hard gates"))
+        #expect(reviewer.contains("## Hard gates"))
+        #expect(reviewer.contains("Give this rubric only to a fresh reviewer"))
+        #expect(reviewer.contains("different accounts of it, or genuine alternatives"))
+        #expect(reviewer.contains("tool narration"))
+
+        let builder = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Tools/Scripts/build-qa-app.sh"
+            ),
+            encoding: .utf8
+        )
+        let qualityBuilder = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Tools/Scripts/build-research-action-quality-qa.sh"
+            ),
+            encoding: .utf8
+        )
+        #expect(builder.contains("SCHOLIUM_QA_REQUIRE_CLEAN_RESEARCH_STATE"))
+        #expect(builder.contains("must not contain portable .scholium state"))
+        #expect(qualityBuilder.contains("research-action-quality-v1"))
+        #expect(qualityBuilder.contains("SCHOLIUM_QA_REQUIRE_CLEAN_RESEARCH_STATE=1"))
     }
 
     @Test("No parallel Research Integration prompt owner remains")

@@ -60,9 +60,13 @@
   projection, replay conflict, expired Session, and outcome-unknown transport.
   Automated disposable fixtures do not establish that the recovery wording or
   researcher branch choice is usable.
-- Conduct sustained real research use and an independent source-fidelity and
-  philosophical-quality review of bundled Methods. Contract conformance does
-  not establish academic adequacy.
+- Repeat clean current-schema, independent source-fidelity and philosophical-
+  quality review for Synthesize, Critique, Discuss, Write, and Check Fidelity,
+  then conduct sustained real research use across the bundled Methods. One
+  live-Zotero Analyze baseline passed on 2026-08-29; it does not establish the
+  other Methods or sustained academic adequacy. Keep analyst-supplied
+  illustrations explicit and make recommendation locators cover every source
+  role claimed in their rationale without hard-coding one paper's content.
 - Complete human accessibility and enlarged mixed-script acceptance for
   handoff, permission, results, evaluation, continuation, and recovery.
 

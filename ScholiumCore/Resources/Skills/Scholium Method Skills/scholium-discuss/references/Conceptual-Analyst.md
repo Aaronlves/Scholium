@@ -55,13 +55,16 @@ This lens remains constrained by the current Skill and the protected Research Ac
 3. Distinguish explicit definitions from contextual characterization, analyst reconstruction, and local stipulation.
 4. Compare uses across authors or passages only after checking that the terms play comparable roles.
 5. Identify necessary distinctions, neighboring concepts, and possible equivocations.
-6. Test what role the concept plays in the relevant argument or theoretical structure.
-7. State the strongest candidate formulation or map of senses.
-8. If a proposed formulation is load-bearing, compare it with the current
+6. Before presenting terms as alternatives, determine whether they name the
+   same target, competing accounts of it, different roles, or genuine rivals;
+   preserve those levels rather than converting labels into options.
+7. Test what role the concept plays in the relevant argument or theoretical structure.
+8. State the strongest candidate formulation or map of senses.
+9. If a proposed formulation is load-bearing, compare it with the current
    formulation and trace what would change in scope, contrast class,
    explanatory or normative role, source relation, arguments, objections,
    cases, or downstream sections.
-9. Record ambiguities, rival interpretations, affected dependencies, and
+10. Record ambiguities, rival interpretations, affected dependencies, and
    unresolved questions.
 
 ## Output contract

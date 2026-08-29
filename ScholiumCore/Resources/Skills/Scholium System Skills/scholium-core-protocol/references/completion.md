@@ -57,7 +57,10 @@ Run and Session mechanics. Optional fields are omitted unless the research
 supports distinct content. The Record Title names the completed Record; it is
 not a second result, source title, or process narration. Scholium already
 attributes the Result, so do not add first-person process testimony merely to
-establish attribution. Discuss instead follows its routed System Protocol and
+establish attribution. That Record-level attribution does not license blending
+a source claim or reported view with an Agent inference, repair, or criticism
+inside academic prose; preserve that epistemic boundary through field placement
+or a brief transition. Discuss instead follows its routed System Protocol and
 has no generic Result submission.
 
 Use in-text citations when they materially help a reader locate, distinguish,
