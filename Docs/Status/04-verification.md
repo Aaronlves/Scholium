@@ -520,21 +520,21 @@ App, and 16 CLI tests; Debug, Release, sandbox bridge, and UI
 `build-for-testing` also passed. This is disposable automated evidence, not
 human acceptance.
 
-On 2026-08-29, four fresh-Agent quality baselines passed on disposable
-Triptychs. Analyze used live Zotero, Synthesize wrote one Topic, Critique read
-the exact Work plus four Analyses and one Topic, and Discuss preserved one
-Researcher opening and one Agent turn. Each formed one schema-15 Record and
-terminal execution. Analyze and Synthesize made their single expected Note
-write; Critique and Discuss made none. Discuss used Finish, revoked its Session,
-and required no post-Finish End. Independent reviews, including source-PDF
-checks, found no critical or material defect and respectively two, three, one,
-and one minor findings. Discuss's minor finding concerned a compressed bridge
-from carrier-account incompleteness to response-level explanatory priority.
-These runs accept one baseline per Action, not field coverage or sustained
-Method adequacy. Synthesize setup also exposed a private-directory ordering
-defect when `doctor` first touched an explicit `SCHOLIUM_HOME`; the CLI now
-creates its Home and Application Support parents at mode `0700`, and the focused
-real-executable lifecycle regression passed.
+On 2026-08-29, five fresh-Agent quality baselines passed on disposable
+Triptychs. Analyze used live Zotero; Synthesize wrote one Topic; Write revised
+one Work; Critique read one Work, four Analyses, and one Topic; and Discuss
+preserved one Researcher and one Agent turn. Each formed one schema-15 Record
+and terminal execution. Analyze, Synthesize, and Write made their one expected
+Note write; Critique and Discuss made none. Discuss used Finish and revoked its
+Session without post-Finish End. Independent source-PDF reviews found no
+critical or material defect and respectively two, three, one, one, and two
+minor findings. Write's minors were one request-preserved stale YAML summary
+and one reversed `functional appropriateness` phrase; Discuss's concerned a
+compressed explanatory-priority bridge. These runs accept one baseline per
+Action, not field coverage or sustained Method adequacy. Synthesize setup also
+exposed a private-directory ordering defect for an explicit `SCHOLIUM_HOME`;
+the CLI now creates private parents before use, and its focused lifecycle
+regression passed.
 
 The subsequent Researcher State continuation cutover passed 44 focused tests
 across eight owning Contracts, Application, Core-store, bridge, and architecture suites
