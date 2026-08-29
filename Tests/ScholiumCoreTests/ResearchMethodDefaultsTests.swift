@@ -439,7 +439,7 @@ struct ResearchMethodDefaultsTests {
                 "`agent write-zotero-binding`", "`agent resolve-write-conflict`",
             ],
             "references/completion.md": [
-                "`agent submit-result`", "`agent finish-discussion`",
+                "`agent submit-result`", "`agent discuss-reply`",
                 "`agent continue`", "`agent end`",
             ],
         ]

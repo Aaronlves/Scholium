@@ -106,27 +106,23 @@ extension ResearchActionRunOperationsTests {
         await #expect(throws: ResearchActionRunContractError.self) {
             _ = try await completeTestActionRun(handle: handle, submission: incomplete)
         }
-        _ = try await handle.research.appendDiscussionStatement(
+        let record = try await handle.research.replyToDiscussionAndFinish(
             discussionID: preparation.runID,
-            author: .agent,
+            statementID: UUID(),
             attribution: "Research Agent",
             text: "The requested change requires a separately authorized Analyze Action."
         )
-        let completed = try await completeTestActionRun(handle: handle, submission: incomplete)
+        let completed = try #require(
+            try await handle.services.localResearchExecutionStore
+                .recordIfPresent(id: preparation.runID)?.completion
+        )
         #expect(completed.state == .complete)
         #expect(!completed.didModifyTarget)
         let activeAfterCompletion = try await handle.research.activeDiscussions(noteID: nil)
         let recordsAfterCompletion = try await handle.research.finishedResearchRecords(noteID: nil)
-        #expect(recordsAfterCompletion.allSatisfy { $0.id != preparation.runID })
-        #expect(try await handle.snapshot().research.activeDiscussions.contains {
-            $0.id == preparation.runID && !$0.awaitsAgentReply
-        })
-        #expect(activeAfterCompletion.contains {
-            $0.id == preparation.runID && !$0.awaitsAgentReply
-        })
-        let record = try await handle.research.finishProtectedDiscussion(runID: preparation.runID)
-        let repeated = try await handle.research.finishProtectedDiscussion(runID: preparation.runID)
-        #expect(record == repeated)
+        #expect(recordsAfterCompletion.contains { $0.id == preparation.runID })
+        #expect(try await handle.snapshot().research.activeDiscussions.isEmpty)
+        #expect(activeAfterCompletion.isEmpty)
         #expect(record.kind == .discussion)
         #expect(record.statements.count == 2)
         await #expect(throws: PortableResearcherResponseMutationError.recordUnavailable) {
@@ -165,7 +161,7 @@ extension ResearchActionRunOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Authenticated Discuss replies are idempotent and remain bounded")
+    @Test("Authenticated Discuss reply atomically forms one idempotent Record")
     func authenticatedAgentDiscussionReplyIsIdempotent() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
@@ -200,15 +196,10 @@ extension ResearchActionRunOperationsTests {
             run: handoff.run
         )
         #expect(context.brief.capabilities.discussionReply)
-        #expect(context.brief.capabilities.discussionFinish)
         #expect(context.discussionResponseContract != nil)
-
-        await #expect(throws: ResearchActionRunContractError.self) {
-            _ = try await runtime.finishResearchAgentDiscussion(
-                credential: credential,
-                run: handoff.run
-            )
-        }
+        #expect(try await handle.research.activeDiscussion(
+            id: preparation.runID
+        ).awaitsAgentReply)
 
         let request = try ResearchAgentDiscussionReplyRequest(
             statementID: UUID(uuidString: "00000000-0000-4000-8000-000000000903")!,
@@ -221,17 +212,23 @@ extension ResearchActionRunOperationsTests {
             request: request
         )
         #expect(first.state == .recorded)
+        #expect(first.recordFormed)
         let repeated = try await runtime.replyToResearchAgentDiscussion(
             credential: credential,
             run: handoff.run,
             request: request
         )
         #expect(repeated.state == .alreadyRecorded)
-
-        let active = try await handle.research.activeDiscussion(id: preparation.runID)
-        #expect(active.statements.count == 2)
-        #expect(active.statements.last?.author == .agent)
-        #expect(active.statements.last?.text == request.text)
+        #expect(repeated.recordFormed)
+        #expect(try await handle.research.activeDiscussions(noteID: nil).isEmpty)
+        let record = try #require(
+            try await handle.research.finishedResearchRecords(noteID: nil)
+                .first { $0.id == preparation.runID }
+        )
+        #expect(record.kind == .discussion)
+        #expect(record.statements.count == 2)
+        #expect(record.statements.last?.author == .agent)
+        #expect(record.statements.last?.text == request.text)
 
         let changed = try ResearchAgentDiscussionReplyRequest(
             statementID: request.statementID,
@@ -246,17 +243,6 @@ extension ResearchActionRunOperationsTests {
             )
         }
 
-        let finish = try await runtime.finishResearchAgentDiscussion(
-            credential: credential,
-            run: handoff.run
-        )
-        #expect(finish.finished)
-        #expect(finish.recordFormed)
-        #expect(finish.discussionID == preparation.runID)
-        #expect(try await handle.research.activeDiscussions(noteID: nil).isEmpty)
-        #expect(try await handle.research.finishedResearchRecords(noteID: nil).contains {
-            $0.id == preparation.runID && $0.kind == .discussion
-        })
         await #expect(throws: ResearchAgentSessionError.sessionRejected) {
             _ = try await handle.research.authenticatedAgentContext(
                 credential: credential,
@@ -303,14 +289,11 @@ extension ResearchActionRunOperationsTests {
             topic.noteID,
         ])
         #expect(discussion.passage == nil)
-        _ = try await handle.research.appendDiscussionStatement(
+        let record = try await handle.research.replyToDiscussionAndFinish(
             discussionID: discussion.id,
-            author: .agent,
+            statementID: UUID(),
             attribution: "Research Agent",
             text: "The Topic qualifies rather than settles the Analysis."
-        )
-        let record = try await handle.research.finishDiscussion(
-            discussionID: discussion.id
         )
 
         #expect(record.kind == .discussion)
@@ -448,13 +431,12 @@ extension ResearchActionRunOperationsTests {
         #expect(second.statements.count == 2)
         #expect(second.statements.allSatisfy { $0.author == .researcher })
         #expect(second.statements.compactMap(\.passage).count == 2)
-        _ = try await handle.research.appendDiscussionStatement(
+        let record = try await handle.research.replyToDiscussionAndFinish(
             discussionID: first.id,
-            author: .agent,
+            statementID: UUID(),
             attribution: "Research Agent",
             text: "Keep the reconstruction bounded by the stated claim."
         )
-        let record = try await handle.research.finishDiscussion(discussionID: first.id)
         #expect(record.primaryNoteID == target.noteID)
         #expect(record.statements.count == 3)
         #expect(try await handle.research.finishedResearchRecords(noteID: target.noteID)
@@ -462,7 +444,7 @@ extension ResearchActionRunOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Line Comments append without retaining selected prose or exact offsets")
+    @Test("Line Comments append with bounded selected prose and no surrounding context")
     func lineCommentsShareOneDiscussion() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
@@ -476,12 +458,14 @@ extension ResearchActionRunOperationsTests {
         let firstReference = try ResearchLineReference(
             fingerprint: target.fingerprint,
             line: 1,
-            endLine: 1
+            endLine: 1,
+            commentedText: "First selected passage."
         )
         let secondReference = try ResearchLineReference(
             fingerprint: target.fingerprint,
             line: 2,
-            endLine: 2
+            endLine: 2,
+            commentedText: "Second selected passage."
         )
 
         let first = try await handle.research.createComment(
@@ -505,7 +489,8 @@ extension ResearchActionRunOperationsTests {
         let impossibleLine = try ResearchLineReference(
             fingerprint: target.fingerprint,
             line: 10_000,
-            endLine: 10_000
+            endLine: 10_000,
+            commentedText: "Impossible selected passage."
         )
         await #expect(throws: ResearchOperationError.self) {
             _ = try await handle.research.createComment(
@@ -839,21 +824,22 @@ extension ResearchActionRunOperationsTests {
             researcherMessage: "Reply from the cooperating runtime."
         )
 
-        _ = try await secondHandle.research.appendDiscussionStatement(
+        let record = try await secondHandle.research.replyToDiscussionAndFinish(
             discussionID: discussion.id,
-            author: .agent,
+            statementID: UUID(),
             attribution: "External Research Agent",
             text: "This reply was persisted by a separate runtime."
         )
-        let reloaded = try await firstHandle.research.activeDiscussion(id: discussion.id)
-        #expect(reloaded.statements.last?.attribution == "External Research Agent")
-        #expect(reloaded.awaitsAgentReply == false)
+        #expect(try await firstHandle.research.activeDiscussions(noteID: nil).isEmpty)
+        #expect(record.statements.last?.attribution == "External Research Agent")
+        #expect(try await firstHandle.research.finishedResearchRecords(noteID: nil)
+            .contains { $0.id == discussion.id })
 
         await secondRuntime.shutdown()
         await firstRuntime.shutdown()
     }
 
-    @Test("Finishing a Discussion before run completion preserves completion evidence")
+    @Test("Agent reply forms the Record and completes the Discuss Run together")
     func finishBeforeDiscussCompletionRemainsCompletable() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
@@ -875,27 +861,17 @@ extension ResearchActionRunOperationsTests {
                 ]
             )
         )
-        _ = try await handle.research.appendDiscussionStatement(
+        let finished = try await handle.research.replyToDiscussionAndFinish(
             discussionID: preparation.runID,
-            author: .agent,
+            statementID: UUID(),
             attribution: "Research Agent",
             text: "The claim is narrower than the surrounding argument."
         )
-        let finished = try await handle.research.finishDiscussion(
-            discussionID: preparation.runID
-        )
         #expect(finished.primaryNoteID == target.noteID)
 
-        let run = try await handle.research.actionRunDetails(id: preparation.runID)
-        let completion = try await completeTestActionRun(handle: handle, submission:
-            ResearchActionRunCompletionSubmission(
-                runID: preparation.runID,
-                confirmationToken: run.snapshot.confirmationToken,
-                recordTitle: try ResearchRecordTitle("Test research result"),
-                finalTargetFingerprint: target.fingerprint,
-                summary: "A bounded reply was recorded before Finish.",
-                didModifyTarget: false
-            )
+        let completion = try #require(
+            try await handle.services.localResearchExecutionStore
+                .recordIfPresent(id: preparation.runID)?.completion
         )
         #expect(completion.state == .complete)
         #expect(try await handle.research.activeDiscussions(noteID: nil).isEmpty)

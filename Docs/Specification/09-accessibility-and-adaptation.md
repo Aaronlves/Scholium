@@ -98,6 +98,15 @@
   attached to the finalized selection. The Comment field names its line range
   and Return, Shift-Return, and Escape behavior without erasing the underlying
   selection.
+- Each current-revision Review Comment marker is an ordinary keyboard-focusable
+  button whose name states the line range and, when greater than one, Comment
+  count. Focus and pointer hover strengthen the same referenced line treatment;
+  activation opens the focused Discussion turn. The reverse line locator is
+  keyboard reachable. A stale locator names **Earlier revision** and exposes no
+  false current-location action.
+- A finished Record's visually truncated commented passage exposes its complete
+  bounded selected text as the accessibility label. It names no line and offers
+  no stale source-navigation control.
 - Edit suggestions retain document focus and one listbox selection. Up/Down
   moves, Return accepts, Escape closes, and pointer acceptance has the same
   result. Marked-text composition opens no suggestion list or forced selection.

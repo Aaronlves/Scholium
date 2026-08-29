@@ -1907,31 +1907,20 @@ extension WorkspaceHandle {
             ))
         }
         if action.actionID == .discuss {
-            actions.append(contentsOf: [
-                AgentCommandAction(
-                    kind: .reply,
-                    requirement: .required,
-                    label: "Append one attributed Agent turn to this Discussion",
-                    command: [
-                        "scholium", "agent", "discuss-reply", "--run",
-                        run.rawValue, "--from", "-",
-                    ],
-                    inputTemplate: try Self.agentJSONTemplate([
-                        "statement_id": "REPLACE_WITH_STABLE_UUID",
-                        "attribution": "REPLACE_WITH_AGENT_NAME",
-                        "text": "REPLACE_WITH_ATTRIBUTED_AGENT_TURN",
-                    ])
-                ),
-                AgentCommandAction(
-                    kind: .finish,
-                    requirement: .required,
-                    label: "Finish the Discussion after the final durable Agent turn and form its Record",
-                    command: [
-                        "scholium", "agent", "finish-discussion", "--run",
-                        run.rawValue,
-                    ]
-                ),
-            ])
+            actions.append(AgentCommandAction(
+                kind: .reply,
+                requirement: .required,
+                label: "Reply once and form this Discussion's Research Record",
+                command: [
+                    "scholium", "agent", "discuss-reply", "--run",
+                    run.rawValue, "--from", "-",
+                ],
+                inputTemplate: try Self.agentJSONTemplate([
+                    "statement_id": "REPLACE_WITH_STABLE_UUID",
+                    "attribution": "REPLACE_WITH_AGENT_NAME",
+                    "text": "REPLACE_WITH_ATTRIBUTED_AGENT_REPLY",
+                ])
+            ))
             return actions
         }
         let recommendedReadingActions = try Self.recommendedReadingActions(
@@ -2399,8 +2388,7 @@ extension WorkspaceHandle {
             writeInitialObject: operations.contains(.modifyInitialNote),
             extendWriteSet: operations.contains(.extendWriteSet),
             continueResearch: operations.contains(.continueResearch),
-            discussionReply: operations.contains(.discuss),
-            discussionFinish: operations.contains(.discuss)
+            discussionReply: operations.contains(.discuss)
         )
     }
 

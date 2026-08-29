@@ -45,7 +45,7 @@ struct CLIApplicationDelegationTests {
         #expect(sources.workspace.contains("research.activeDiscussions(noteID: nil)"))
         #expect(sources.entry.contains(#"case "discuss":"#))
         #expect(sources.workspace.contains("research.activeDiscussion(id: id)"))
-        #expect(sources.workspace.contains("research.appendDiscussionStatement("))
+        #expect(sources.workspace.contains("research.replyToDiscussionAndFinish("))
         #expect(sources.document.contains("handle.documents.load("))
         #expect(sources.document.contains("handle.documents.metadata("))
         #expect(sources.document.contains("handle.documents.saveMetadata("))

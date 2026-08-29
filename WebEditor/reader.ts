@@ -5,7 +5,9 @@ import {
   reviewContextBefore,
 } from "./review-selection-text";
 import {createReviewSelectionPresentation} from "./review-selection-presentation";
+import {createReviewCommentAnchorPresentation} from "./review-comment-anchors";
 import {
+  type ReadCommentAnchor,
   type ReadLinkPreview,
   validatedReaderConfiguration,
 } from "./reader-configuration";
@@ -37,6 +39,8 @@ type ReaderWindow = Window & {
   scholiumReviewSelection?: ReturnType<typeof createReviewSelectionPresentation>;
   scholiumMermaidReady?: Promise<void>;
   scholiumSetLinkPreviews?: (previews: ReadLinkPreview[]) => void;
+  scholiumSetCommentAnchors?: (anchors: ReadCommentAnchor[]) => boolean;
+  scholiumReviewComments?: ReturnType<typeof createReviewCommentAnchorPresentation>;
   scholiumShowCommentComposer?: () => boolean;
   scholiumSetReviewSelectionSurfaceActive?: (active: boolean) => boolean;
   scholiumResolveCommentSubmission?: (requestID: string, succeeded: boolean) => boolean;
@@ -63,7 +67,7 @@ async function initializeReader(value: unknown): Promise<void> {
   const {
     version, documentID, fingerprint, loadGeneration, commentEnabled,
     selectionEnabled, presentationCSS, userCSS, localization, linkPreviews,
-    vectorSymbols, testingEnabled,
+    commentAnchors, vectorSymbols, testingEnabled,
   } = config;
   const presentationStyle = requiredElement<HTMLStyleElement>('scholium-presentation-css');
   const userStyle = requiredElement<HTMLStyleElement>('scholium-user-css');
@@ -1071,6 +1075,18 @@ async function initializeReader(value: unknown): Promise<void> {
       submitComment();
     });
   }
+
+  const reviewDocument = requiredElement("scholium-document");
+  const commentAnchorPresentation = createReviewCommentAnchorPresentation(
+    reviewDocument,
+    localized,
+    vectorSymbols.comment ?? "",
+    anchorID => post("commentAnchorActivated", {anchorID}),
+  );
+  readerWindow.scholiumReviewComments = commentAnchorPresentation;
+  readerWindow.scholiumSetCommentAnchors = anchors =>
+    commentAnchorPresentation.setAnchors(anchors);
+  commentAnchorPresentation.setAnchors(commentAnchors);
 
   const scrollBlockRegistry = (() => {
     const root = document.getElementById('scholium-document');

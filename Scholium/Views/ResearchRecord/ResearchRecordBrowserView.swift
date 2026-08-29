@@ -3143,26 +3143,40 @@ private struct ResearchRecordStatementView: View {
             )
 
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                if let lineReference {
+                    VStack(
+                        alignment: .leading,
+                        spacing: ScholiumGrid.Spacing.labelAccessoryGap
+                    ) {
+                        Text("COMMENTED PASSAGE")
+                            .font(
+                                ScholiumTypography.interface(
+                                    .small,
+                                    emphasis: .strong
+                                )
+                            )
+                            .tracking(0.6)
+                            .scholiumForeground(.mutedText)
+                        Text(lineReference.commentedText)
+                            .font(ScholiumTypography.scholarly(.body))
+                            .scholiumForeground(.mutedText)
+                            .lineLimit(3)
+                            .truncationMode(.tail)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityLabel(
+                                "Commented passage: \(lineReference.commentedText)"
+                            )
+                            .accessibilityIdentifier(
+                                "scholium.researchRecord.commentedPassage"
+                            )
+                    }
+                }
                 ResearchRecordProseView(
                     source: text,
                     sourceNote: proseNavigation.currentLocation(for: primaryParticipant),
                     navigation: proseNavigation,
                     openNote: openNote
                 )
-                if let lineReference, let primaryParticipant {
-                    ResearchRecordActionButton(
-                        "Open Lines \(lineReference.line)–\(lineReference.endLine)",
-                        systemImage: "text.line.first.and.arrowtriangle.forward",
-                        identifier: "scholium.researchRecord.openLines"
-                    ) {
-                        openNote(
-                            primaryParticipant.noteID,
-                            primaryParticipant.note,
-                            lineReference.line
-                        )
-                    }
-                    .accessibilityHint("Open the original revision-bound Comment location")
-                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }

@@ -142,21 +142,6 @@ public actor AgentBridgeOperations: AgentBridgeUseCases {
         return receipt
     }
 
-    public func finishDiscussion(
-        run: ResearchRunLocator,
-        credential: ResearchConnectionCredential
-    ) throws -> ResearchAgentDiscussionFinishReceipt {
-        let response = try client.send(try LocalAgentBridgeRequest(
-            operation: .discussionFinish,
-            run: run,
-            credential: credential
-        ))
-        guard let receipt = response.discussionFinishReceipt else {
-            throw LocalAgentBridgeError.invalidResponse
-        }
-        return receipt
-    }
-
     public func extendWriteSet(
         run: ResearchRunLocator,
         credential: ResearchConnectionCredential,

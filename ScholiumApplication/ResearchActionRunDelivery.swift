@@ -221,7 +221,7 @@ extension ResearchActionRunCoordinator {
                 case .topic: "Synthesize"
                 case .work: "Write"
                 }
-                boundary = "The Target and Materials are read-only. Submit each Agent turn through the authenticated scholium agent discuss-reply command. If the exchange warrants a note change, begin a separately authorized \(nextAction) Action."
+                boundary = "The Target and Materials are read-only. Submit one Agent reply through the authenticated scholium agent discuss-reply command; that reply completes this Discussion as a Research Record. If the exchange warrants a note change, begin a separately authorized \(nextAction) Action."
             case .checkFidelity:
                 boundary = "The Target and Materials are read-only. Recheck every fingerprint before use and stop on drift."
         }
@@ -267,10 +267,9 @@ extension ResearchActionRunCoordinator {
         }
         if request.actionID == .discuss {
             sections += [
-                "Use scholium agent discuss-reply --run <locator> --from <json|-> for each attributed Agent turn. The strict JSON fields are statement_id, attribution, and text; generate one stable statement_id per turn and reuse the same ID and content after an outcome-unknown response.",
-                "After the final durable Agent turn, use scholium agent finish-discussion --run <locator> to finish this same Run and form its portable Discussion Record. Finish accepts no Result body, edits no Note or Metadata, grants no next Run, and does not imply researcher acceptance.",
+                "Use scholium agent discuss-reply --run <locator> --from <json|-> once for the attributed Agent response. The strict JSON fields are statement_id, attribution, and text; generate one stable statement_id and reuse the same ID and content after an outcome-unknown response. The successful reply atomically forms the portable Discussion Record and completes the Run; no separate Finish or Result submission is required.",
                 "Recover the current authenticated Run Brief with scholium agent reload --run <locator>. Reload does not replay earlier Research Context responses.",
-                "End this authenticated Run with scholium agent end --run <locator>. Closing a researcher sheet does not end the Run.",
+                "Before replying, cancel this authenticated Run with scholium agent end --run <locator> only when no Agent response will be recorded. Closing a researcher sheet does not end the Run.",
             ]
             return sections.joined(separator: "\n")
         }

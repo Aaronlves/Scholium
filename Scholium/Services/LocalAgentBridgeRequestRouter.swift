@@ -107,22 +107,6 @@ final class LocalAgentBridgeRequestRouter {
                     request: reply
                 )
             )
-        case .discussionFinish:
-            guard let run = request.run,
-                  let credential = request.credential else {
-                throw LocalAgentBridgeError.invalidRequest
-            }
-            let triptychID = try await runtime.researchAgentWorkspaceID(
-                credential: credential,
-                run: run
-            )
-            try await flushEditors(triptychID)
-            return .discussionFinish(
-                try await runtime.finishResearchAgentDiscussion(
-                    credential: credential,
-                    run: run
-                )
-            )
         case .extendWriteSet:
             guard let run = request.run,
                   let credential = request.credential,

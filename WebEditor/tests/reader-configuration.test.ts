@@ -1,5 +1,8 @@
 import {describe, expect, it} from "vitest";
-import {validatedReaderConfiguration} from "../reader-configuration";
+import {
+  validatedReadCommentAnchors,
+  validatedReaderConfiguration,
+} from "../reader-configuration";
 
 const currentConfiguration = {
   version: 1,
@@ -13,6 +16,7 @@ const currentConfiguration = {
   userCSS: "",
   localization: {strings: {Comment: "Comment"}},
   linkPreviews: [],
+  commentAnchors: [],
   vectorSymbols: {neutral: "data:image/svg+xml;base64,AA=="},
 };
 
@@ -31,5 +35,23 @@ describe("reader configuration", () => {
       ...currentConfiguration,
       linkPreviews: Array.from({length: 129}, () => ({})),
     })).toBeNull();
+  });
+
+  it("accepts bounded comment anchors and rejects ambiguous identities or ranges", () => {
+    const anchor = {
+      id: "discussion-12-14",
+      discussionID: "11111111-1111-1111-1111-111111111111",
+      statementID: "22222222-2222-2222-2222-222222222222",
+      startLine: 12,
+      endLine: 14,
+      commentCount: 2,
+    };
+    expect(validatedReadCommentAnchors([anchor])).toEqual([anchor]);
+    expect(validatedReadCommentAnchors([anchor, anchor])).toBeNull();
+    expect(validatedReadCommentAnchors([{...anchor, startLine: 0}])).toBeNull();
+    expect(validatedReadCommentAnchors([{...anchor, endLine: 11}])).toBeNull();
+    expect(validatedReadCommentAnchors([{...anchor, commentCount: 0}])).toBeNull();
+    expect(validatedReadCommentAnchors([{...anchor, id: "ambiguous token"}])).toBeNull();
+    expect(validatedReadCommentAnchors([{...anchor, statementID: "not-a-uuid"}])).toBeNull();
   });
 });

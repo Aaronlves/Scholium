@@ -626,6 +626,21 @@ Note, revision, mode, or editor generation cannot redirect it.
 If the Note later changes, the original revision-bound line location remains
 truthful and is not guessed or reattached.
 
+For an active Comment whose fingerprint still equals the current saved Note,
+Review derives a quiet Accent line treatment and one margin Comment marker for
+each active Discussion and shared inclusive line range. Multiple researcher
+Comments at that same Discussion and range share the marker and expose their
+count. Activating the marker opens the active Discussion at its most recent
+Comment for that range; the Comment's line locator returns to the current
+Review location. This bidirectional route uses only the stable Note,
+fingerprint, Discussion, statement, and recorded line range. The Comment also
+retains only its bounded rendered selection and no surrounding context; it does
+not create an exact offset anchor. When the fingerprint no
+longer matches, Review shows no marker on current prose; the Discussion labels
+the locator **Earlier revision** and offers no guessed return route. The first
+successful Agent response removes all active Review markers while preserving
+the exchange and selected passages in its Research Record.
+
 **Discuss** is the deliberate agent-interaction boundary. It automatically
 includes the current Note's existing line Comments, permits an optional
 unanchored whole-note turn and focal notes, and opens the one active Discussion
@@ -641,14 +656,18 @@ Comments and Discuss remain one Discussion model, not
 parallel archives, but adding a Comment never initiates Discuss or an agent
 handoff.
 
-Discussion begins without source mutation. It remains resumable through
-researcher turns, attributed Agent replies, and any separately authorized
-next Action. Closing its sheet retains the draft. **Finish Discussion** moves
-the complete exchange into one portable Research Record; Finish means only
-that the exchange is no longer active and implies no approval, rejection,
-truth, failure, or settlement.
+Discussion begins without source mutation. Additional Comments may join the
+same active Discussion until Agent handoff. Closing its sheet retains the
+draft. The first successful attributed Agent response atomically moves the
+complete exchange into one portable Research Record and completes the Run; the
+sheet therefore contains no manual Agent reply, Follow Up, or Finish controls.
+Explicit End preserves an unanswered exchange as a finished Record. Completion
+implies no approval, rejection, truth, failure, or settlement, and a later
+separately authorized Note change does not alter this archival rule.
 
-Scholium has no app-owned Annotation record, marginal-note store, Annotation
-action, or overlay. A researcher annotates a document authoritatively by
-editing its Markdown, including an ordinary semantic Callout when a visibly
-separate note is useful.
+Scholium has no app-owned Annotation record, marginal-note store, or Annotation
+action. The current-revision Comment marker is a read-only projection of an
+active Discussion, not an independently authored annotation or writable
+overlay. A researcher annotates a document authoritatively by editing its
+Markdown, including an ordinary semantic Callout when a visibly separate note
+is useful.

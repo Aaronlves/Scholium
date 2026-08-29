@@ -899,16 +899,19 @@ extension ScholiumCLI {
             guard !replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw CLIError.usage("Discuss reply text cannot be empty.")
             }
-            let updated = try await research.appendDiscussionStatement(
+            let statementID = UUID()
+            let record = try await research.replyToDiscussionAndFinish(
                 discussionID: id,
-                author: .agent,
+                statementID: statementID,
                 attribution: agentName,
                 text: replyText
             )
-            guard let reply = updated.statements.last, reply.author == .agent else {
+            guard record.statements.contains(where: {
+                $0.id == statementID && $0.author == .agent
+            }) else {
                 throw CLIError.unavailable("The Discuss reply was not available after persistence.")
             }
-            write("Recorded reply \(reply.id.uuidString) for Discussion \(id.uuidString).\n")
+            write("Recorded reply \(statementID.uuidString) and formed Research Record \(id.uuidString).\n")
         default:
             throw CLIError.usage("Unknown Discuss command '\(subcommand)'.")
         }

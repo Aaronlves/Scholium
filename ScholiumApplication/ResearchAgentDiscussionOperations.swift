@@ -20,9 +20,10 @@ extension WorkspaceServices {
 }
 
 extension WorkspaceRuntime {
-    /// Appends one attributed Agent turn to the active Discussion owned by
-    /// this authenticated Run. The Session authenticates the Run; it does
-    /// not become a general-purpose portable-record or filesystem token.
+    /// Atomically retains one attributed Agent turn and finishes the
+    /// Discussion owned by this authenticated Run. The Session authenticates
+    /// the Run; it does not become a general-purpose portable-record or
+    /// filesystem token.
     public func replyToResearchAgentDiscussion(
         credential: ResearchConnectionCredential,
         run: ResearchRunLocator,
@@ -35,6 +36,7 @@ extension WorkspaceRuntime {
             credential,
             run: run,
             requiresWrite: false,
+            allowFinalized: true,
         )
         let handle = try await openWorkspace(id: authenticated.triptychID)
         return try await handle.replyToResearchAgentDiscussion(
@@ -44,26 +46,6 @@ extension WorkspaceRuntime {
         )
     }
 
-    /// Finishes the current authenticated Discuss Run after at least one
-    /// durable Agent turn and forms its canonical portable Record.
-    public func finishResearchAgentDiscussion(
-        credential: ResearchConnectionCredential,
-        run: ResearchRunLocator
-    ) async throws -> ResearchAgentDiscussionFinishReceipt {
-        guard let sessions = researchAgentSessions else {
-            throw ResearchAgentConnectionError.secureRandomUnavailable
-        }
-        let authenticated = try await sessions.authenticate(
-            credential,
-            run: run,
-            requiresWrite: false,
-        )
-        let handle = try await openWorkspace(id: authenticated.triptychID)
-        return try await handle.finishResearchAgentDiscussion(
-            credential: credential,
-            run: run
-        )
-    }
 }
 
 extension WorkspaceHandle {
@@ -80,6 +62,7 @@ extension WorkspaceHandle {
             credential,
             run: run,
             requiresWrite: false,
+            allowFinalized: true,
         )
         guard authenticated.triptychID == self.id else {
             throw ResearchAgentSessionError.sessionRejected
@@ -88,7 +71,6 @@ extension WorkspaceHandle {
         guard let execution = try await researchAgentDiscussionDependencies.localResearchExecutionStore
             .recordIfPresent(id: authenticated.runID),
               execution.triptychID == self.id,
-              execution.completion == nil,
               execution.snapshot.actionSnapshot.actionID == .discuss,
               execution.discussion?.id == authenticated.runID,
               let discussionContract = execution.discussion?.responseContract,
@@ -100,22 +82,21 @@ extension WorkspaceHandle {
             snapshot: execution.snapshot,
             triptychID: self.id
         )
-        let active: PortableResearchDiscussion
-        do {
-            active = try await researchAgentDiscussionDependencies.portableResearchRecordStore
-                .activeDiscussion(id: authenticated.runID)
-        } catch ResearchRecordStoreV1Error.discussionNotFound {
-            throw ResearchAgentConnectionError.runUnavailable
-        }
-        guard ResearchDiscussionFactory.activeMatches(active, expected: expected) else {
-            throw ResearchActionRunContractError.invalidCompletion(
-                "The portable Discussion no longer matches its frozen Discuss Action."
-            )
-        }
-
-        if let existing = active.statements.first(where: {
-            $0.id == request.statementID
-        }) {
+        guard let active = try await researchAgentDiscussionDependencies
+            .portableResearchRecordStore.activeDiscussionIfPresent(
+                id: authenticated.runID
+            ) else {
+            let finished = try await researchAgentDiscussionDependencies
+                .portableResearchRecordStore.record(id: authenticated.runID)
+            guard ResearchDiscussionFactory.finishedMatches(
+                finished,
+                expected: expected
+            ),
+            let existing = finished.statements.first(where: {
+                $0.id == request.statementID
+            }) else {
+                throw ResearchAgentConnectionError.runUnavailable
+            }
             let expectedExisting = try PortableResearchStatement(
                 id: request.statementID,
                 author: .agent,
@@ -131,90 +112,59 @@ extension WorkspaceHandle {
             }
             return try ResearchAgentDiscussionReplyReceipt(
                 run: run,
-                discussionID: active.id,
+                discussionID: finished.id,
                 statementID: request.statementID,
                 state: .alreadyRecorded,
-                message: "The Agent Discussion reply was already recorded."
+                message: "The Agent reply was already recorded and the Discussion already formed its Research Record."
+            )
+        }
+        guard ResearchDiscussionFactory.activeMatches(active, expected: expected) else {
+            throw ResearchActionRunContractError.invalidCompletion(
+                "The portable Discussion no longer matches its frozen Discuss Action."
             )
         }
 
-        let statement = try PortableResearchStatement(
-            id: request.statementID,
-            author: .agent,
-            kind: .discussionTurn,
-            attribution: request.attribution,
-            text: request.text,
-            createdAt: max(Date(), active.updatedAt)
-        )
-        let stored = try await appendAgentDiscussionStatement(
-            statement,
-            to: active
-        )
+        let statement: PortableResearchStatement
+        if let existing = active.statements.first(where: {
+            $0.id == request.statementID
+        }) {
+            statement = try PortableResearchStatement(
+                id: request.statementID,
+                author: .agent,
+                kind: .discussionTurn,
+                attribution: request.attribution,
+                text: request.text,
+                createdAt: existing.createdAt
+            )
+            guard statement == existing else {
+                throw PortableResearchDiscussionError.duplicateStatement(
+                    request.statementID
+                )
+            }
+        } else {
+            statement = try PortableResearchStatement(
+                id: request.statementID,
+                author: .agent,
+                kind: .discussionTurn,
+                attribution: request.attribution,
+                text: request.text,
+                createdAt: max(Date(), active.updatedAt)
+            )
+        }
+        let commit = try await researchActionRunCoordinator
+            .finishProtectedDiscussion(
+                runID: authenticated.runID,
+                appendingAgentStatement: statement,
+                host: self
+            )
         return try ResearchAgentDiscussionReplyReceipt(
             run: run,
-            discussionID: stored.id,
+            discussionID: commit.record.id,
             statementID: request.statementID,
-            state: .recorded,
-            message: "The Agent Discussion reply was recorded."
-        )
-    }
-
-    func finishResearchAgentDiscussion(
-        credential: ResearchConnectionCredential,
-        run: ResearchRunLocator
-    ) async throws -> ResearchAgentDiscussionFinishReceipt {
-        try requireActive()
-        guard let sessions = researchAgentDiscussionDependencies.researchAgentSessions else {
-            throw ResearchAgentConnectionError.secureRandomUnavailable
-        }
-        let authenticated = try await sessions.authenticate(
-            credential,
-            run: run,
-            requiresWrite: false,
-        )
-        guard authenticated.triptychID == self.id else {
-            throw ResearchAgentSessionError.sessionRejected
-        }
-        guard let execution = try await researchAgentDiscussionDependencies
-            .localResearchExecutionStore.recordIfPresent(id: authenticated.runID),
-              execution.triptychID == self.id,
-              execution.completion == nil,
-              execution.snapshot.actionSnapshot.actionID == .discuss,
-              execution.discussion?.id == authenticated.runID else {
-            throw ResearchAgentConnectionError.runUnavailable
-        }
-
-        let expected = try ResearchDiscussionFactory.make(
-            snapshot: execution.snapshot,
-            triptychID: self.id
-        )
-        let active: PortableResearchDiscussion
-        do {
-            active = try await researchAgentDiscussionDependencies
-                .portableResearchRecordStore.activeDiscussion(id: authenticated.runID)
-        } catch ResearchRecordStoreV1Error.discussionNotFound {
-            throw ResearchAgentConnectionError.runUnavailable
-        }
-        guard ResearchDiscussionFactory.activeMatches(active, expected: expected),
-              active.statements.contains(where: {
-                  $0.author == .agent
-                      && $0.createdAt >= execution.snapshot.preparedAt
-                      && !$0.attribution.isEmpty
-                      && !$0.text.isEmpty
-              }) else {
-            throw ResearchActionRunContractError.invalidCompletion(
-                "Record at least one durable attributed Agent turn before finishing Discuss."
-            )
-        }
-
-        _ = try await researchActionRunCoordinator.finishProtectedDiscussion(
-            runID: authenticated.runID,
-            host: self
-        )
-        return try ResearchAgentDiscussionFinishReceipt(
-            run: run,
-            discussionID: active.id,
-            message: "The Discussion finished and formed one portable Research Record."
+            state: commit.replyWasAlreadyRecorded ? .alreadyRecorded : .recorded,
+            message: commit.replyWasAlreadyRecorded
+                ? "The Agent reply was already recorded and the Discussion already formed its Research Record."
+                : "The Agent reply was recorded and the Discussion formed its Research Record."
         )
     }
 }

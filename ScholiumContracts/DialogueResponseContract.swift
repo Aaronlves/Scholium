@@ -274,10 +274,10 @@ public enum DiscussResponseTransport {
         scholium discuss show \(discussionID.uuidString) --triptych \(triptychID.uuidString) --format json
         Append an attributed Agent turn through the authenticated Run with:
         scholium agent discuss-reply --run <locator> --from <json|->
-        Use one stable statement_id per turn and repeat the same statement_id,
+        Use one stable statement_id and repeat the same statement_id,
         attribution, and text after an outcome-unknown response.
-        After the final durable Agent turn, finish this same Run with:
-        scholium agent finish-discussion --run <locator>
+        A successful reply forms the Research Record and completes the
+        Discussion automatically; no separate Finish is required.
         """
     }
 }

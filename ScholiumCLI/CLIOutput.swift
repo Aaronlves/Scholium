@@ -262,23 +262,12 @@ extension ScholiumCLI {
                 ),
                 usage: "scholium agent discuss-reply --run <locator> --from <json|->",
                 inputContract: "AgentDiscussionReplyDraft",
-                input: "Strict JSON fields: statement_id (a stable UUID reused for an outcome-unknown retry), attribution, and text. The input appends one Agent-attributed turn to the active Discussion for this authenticated Discuss Run; it does not accept a local source path.",
-                output: "ResearchAgentDiscussionReplyReceipt with recorded or already_recorded state. The portable Discussion remains the scholarly owner of the turn.",
+                input: "Strict JSON fields: statement_id (a stable UUID reused for an outcome-unknown retry), attribution, and text. The input records the Agent reply and atomically completes the active Discussion as one Research Record; it does not accept a local source path.",
+                output: "ResearchAgentDiscussionReplyReceipt with recorded or already_recorded state and record_formed=true. The finished Research Record is the scholarly owner of the exchange.",
                 nextSteps: [
                     "Repeat the same statement_id and content after an uncertain result; an exact retry is idempotent",
-                    "Continue the exchange with another attributed turn, or finish it with scholium agent finish-discussion --run <locator>",
-                    "Use scholium agent end --run <locator> only to cancel the unfinished Run",
-                ]
-            ),
-            "agent finish-discussion": AgentCLICommandHelp(
-                rule: .init(pathLength: 2, options: ["--run": .value]),
-                usage: "scholium agent finish-discussion --run <locator>",
-                inputContract: "Authenticated Discuss Run locator; no JSON body",
-                input: "Use the current Discuss Run after at least one durable Agent turn. Finishing forms the canonical portable Discussion Record and revokes this Run's Session; it does not edit a Note, submit a generic Result, or imply researcher acceptance.",
-                output: "ResearchAgentDiscussionFinishReceipt with finished=true and record_formed=true. The acknowledged local Session credential is then removed.",
-                nextSteps: [
-                    "Stop using this Run locator after success",
-                    "If outcome_unknown is returned, do not retry with the revoked credential; stop and report so the researcher can inspect the Discussion and Record",
+                    "Stop using this Run after success; the reply already completed the Discussion",
+                    "Use scholium agent end --run <locator> only before replying when the unfinished Run must be cancelled",
                 ]
             ),
             "agent extend-write-set": AgentCLICommandHelp(

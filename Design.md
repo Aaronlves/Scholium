@@ -163,6 +163,19 @@ because they repeat entries.
   background `#FF9A00` with contrast-safe dark ink in Review and Edit. It is a
   syntax role, not Accent, status, authorship, Connection meaning, or a third
   researcher-configurable color input.
+- A current-revision active Comment uses a derived **Review Comment Anchor**:
+  a quiet 6% Accent wash across the source-located block, a 2px leading Accent
+  boundary, and one 28px circular `text.bubble` margin button. Hover or keyboard
+  focus strengthens the wash to 12% and the boundary to 3px. Multiple Comments
+  in one active Discussion at the same line range add a compact count to that
+  marker. Increase Contrast removes the wash and retains a 3px Accent boundary
+  plus a stronger button edge. It is not a chat card, authored highlight,
+  persistent composer, or comments-pane substitute; stale and finished
+  Discussions paint no current prose.
+- A finished Record shows a Comment's bounded selected passage as at most three
+  tail-truncated Scholarly lines in `mutedText`, without a line number,
+  surrounding context, source-jump control, border, or card surface. The
+  attributed Comment remains primary; the passage is quiet focal context.
 - Standard Markdown hyperlinks use Accent with an underline. Wikilinks and
   Vector Links use that same Accent without an underline and place one small,
   optically equal trailing upper-corner SF Symbol badge after the linked text:
@@ -512,6 +525,7 @@ the required meaning.
 | `Triptych Attention Entry` | Keeps one stable Sidebar route to the complete Triptych queue and adds the exact nonzero aggregate beside its warning symbol without imitating a notification badge. | Per-Vault counters, a bell, pulse, diagnostic owner, or Document-toolbar item. | §13, §§18.2–18.3 |
 | `Recovery Notice` | Present a persistent workflow-supplied condition, consequence, and repair or inspection action as a Document notice or Workspace banner. | A generic error or Search banner, runtime state owner, or recovery coordinator. | §§5.3, 14, 18.2, 18.6 |
 | `Document Find Bar` | Find and, in writable modes, replace literal text in the current unsaved buffer while retaining editor selection, Undo, and focus. | Research Search, a modal panel, a second text owner, or saved query history. | §13, §18.4 |
+| `Review Comment Anchor` | Shows a current Comment at its source line and opens its Discussion through one counted margin marker with keyboard and contrast states. | An authored highlight, chat card, comments pane, guessed reattachment, or annotation store. | §7.2, §18.4 |
 | `Property Group` | Uses 24pt between groups and 16pt between fields in Properties/About; names stay accessible. Help owns definitions. The fixed action slot reveals on hover/focus without reflow. Save stays emphasized. | Heading, explanation, card, rule, permission, or schema. | §§5.2, 18.4–18.5 |
 | `Content State` | Presents page or pane state with one restrained indicator, title, optional explanation, and adjacent repair action. | A runtime state owner, card, or compact inline feedback. | §§18.2–18.5, §19.9 |
 | `Bootstrap Narrative Illustration` | Frames each fixed onboarding stage while adjacent text remains complete. | A state indicator, selector, interactive diagram, tuner, or icon variant. | §16, §§19.2, 19.5 |

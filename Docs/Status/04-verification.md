@@ -524,7 +524,7 @@ Triptychs. Analyze used live Zotero; Synthesize wrote one Topic; Write revised
 one Work; Critique, Discuss, and Check Fidelity remained read-only. Check
 Fidelity inspected the exact Work, Topic, four Analyses, and two prior Records,
 then found the planted YAML/body thesis conflict and reversed `functional
-appropriateness` phrase. Each Action formed one schema-15 Record and terminal
+appropriateness` phrase. Each Action formed one schema-16 Record and terminal
 execution; Discuss used Finish without post-Finish End. Independent source-PDF
 reviews found no critical or material defect in the accepted runs and
 respectively two, three, one, one, two, and one minor findings. Two earlier

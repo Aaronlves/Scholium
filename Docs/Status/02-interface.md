@@ -67,7 +67,13 @@
 - Review owns reading, navigation, previews, and passage Comment. Edit owns
   source-preserving semantic projection, formatting, suggestions, and task
   interaction. Source exposes the complete exact text. Conflict comparison and
-  recovery remain Document-owned.
+  recovery remain Document-owned. A current-revision active line Comment stays
+  visible through a counted margin marker and quiet source-line treatment;
+  marker activation opens its focused Discussion turn, and the turn returns to
+  Review. Earlier-revision locations remain labeled and noninteractive. The
+  first Agent response forms the Record and removes the complete Discussion's
+  markers; the sheet exposes no manual Agent-name, reply, Follow Up, or Finish
+  fields.
 - Edit applies heading presentation as soon as a valid ATX marker and separator
   exist, and preflights a caret-owned blank line at its eventual prose line box
   so first input does not move the caret or surrounding source lines.
@@ -128,6 +134,9 @@
   explicitly granted whole-document recovery. Notification clicks produce the
   validated exact result route and its Records-window-lifetime direct-Undo
   grant; ordinary Records browsing does not receive the grant.
+- Finished Comment statements show only their bounded selected passage as a
+  quiet three-line `mutedText` excerpt. Record detail exposes neither the
+  revision-bound line number nor a jump to a location that may have moved.
 - Copy Handoff success closes the preparation sheet and returns focus through
   the existing Action-row focus owner. Actions project Waiting, Running, Needs
   Attention, and repair text from durable execution truth. Waiting and Running

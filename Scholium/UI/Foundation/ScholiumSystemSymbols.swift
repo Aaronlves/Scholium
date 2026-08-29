@@ -22,6 +22,7 @@ enum ScholiumSystemSymbol: String, CaseIterable, Sendable {
     case listNumber = "list.number"
     case checklist
     case textQuote = "text.quote"
+    case textBubble = "text.bubble"
     case plus
     case plusCircle = "plus.circle"
     case minusCircle = "minus.circle"

@@ -52,30 +52,18 @@ struct ResearchAgentDiscussionContractsTests {
             ResearchAgentDiscussionReplyReceipt.self,
             from: receiptData
         )
+        let receiptObject = try #require(
+            JSONSerialization.jsonObject(with: receiptData) as? [String: Any]
+        )
+        #expect(receiptObject["record_formed"] as? Bool == true)
         #expect(decodedReceipt == receipt)
 
-        let finishReceipt = try ResearchAgentDiscussionFinishReceipt(
-            run: run,
-            discussionID: receipt.discussionID,
-            message: "The Discussion was finished and its portable Record was formed."
-        )
-        let finishData = try encoder.encode(finishReceipt)
-        let finishObject = try #require(
-            JSONSerialization.jsonObject(with: finishData) as? [String: Any]
-        )
-        #expect(finishObject["finished"] as? Bool == true)
-        #expect(finishObject["record_formed"] as? Bool == true)
-        #expect(try JSONDecoder().decode(
-            ResearchAgentDiscussionFinishReceipt.self,
-            from: finishData
-        ) == finishReceipt)
-
-        var invalidFinish = finishObject
-        invalidFinish["record_formed"] = false
-        #expect(throws: ResearchAgentDiscussionFinishContractError.self) {
+        var invalidReceipt = receiptObject
+        invalidReceipt["record_formed"] = false
+        #expect(throws: ResearchAgentDiscussionReplyContractError.self) {
             _ = try JSONDecoder().decode(
-                ResearchAgentDiscussionFinishReceipt.self,
-                from: JSONSerialization.data(withJSONObject: invalidFinish)
+                ResearchAgentDiscussionReplyReceipt.self,
+                from: JSONSerialization.data(withJSONObject: invalidReceipt)
             )
         }
     }

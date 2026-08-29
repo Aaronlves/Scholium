@@ -2384,7 +2384,7 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func testLineCommentDiscussReopenAndFinish() throws {
+    func testLineCommentAgentReplyArchivesRecord() throws {
         selectDocumentMode("Review")
         let noteURL = triptychDirectory
             .appendingPathComponent("01-analyses", isDirectory: true)
@@ -2420,6 +2420,30 @@ extension ScholiumUITests {
         XCTAssertTrue(waitUntil(timeout: 5) { !comment.exists })
         XCTAssertFalse(app.descendants(matching: .any)["scholium.discussion"].exists)
         XCTAssertEqual(try Data(contentsOf: noteURL), sourceBefore)
+
+        let commentAnchor = app.buttons.matching(NSPredicate(
+            format: "label BEGINSWITH %@",
+            "Open comment at line "
+        )).firstMatch
+        XCTAssertTrue(commentAnchor.waitForExistence(timeout: 8))
+        commentAnchor.click()
+
+        var discussion = app.descendants(matching: .any)["scholium.discussion"]
+        XCTAssertTrue(discussion.waitForExistence(timeout: 8))
+        XCTAssertTrue(discussion.staticTexts["What follows from this passage?"].exists)
+        let currentLocator = discussion.descendants(matching: .any)[
+            "scholium.discussion.commentLocator.current"
+        ]
+        XCTAssertTrue(currentLocator.waitForExistence(timeout: 5))
+        XCTAssertFalse(
+            discussion.descendants(matching: .any)[
+                "scholium.discussion.commentLocator.stale"
+            ].exists
+        )
+        currentLocator.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !discussion.exists })
+        XCTAssertTrue(commentAnchor.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(timeout: 5) { commentAnchor.isHittable })
 
         let activeDirectory = triptychDirectory
             .appendingPathComponent(".scholium", isDirectory: true)
@@ -2458,45 +2482,68 @@ extension ScholiumUITests {
         XCTAssertTrue(waitUntil(timeout: 8) { copyHandoff.isEnabled })
         copyHandoff.click()
         XCTAssertTrue(waitUntil(timeout: 15) { !actionSheet.exists })
-
-        discuss.click()
-        var discussion = app.descendants(matching: .any)["scholium.discussion"]
-        XCTAssertTrue(discussion.waitForExistence(timeout: 8))
-        XCTAssertTrue(discussion.staticTexts["What follows from this passage?"].exists)
-        XCTAssertTrue(discussion.staticTexts.matching(NSPredicate(
-            format: "value BEGINSWITH %@",
-            "The Discussion is waiting for an Agent reply."
-        )).firstMatch.exists)
-        app.typeKey(.escape, modifierFlags: [])
-        XCTAssertTrue(waitUntil(timeout: 5) { !discussion.exists })
-
-        let activeFile = try XCTUnwrap(
-            FileManager.default.contentsOfDirectory(
-                at: activeDirectory,
-                includingPropertiesForKeys: nil
-            ).first { $0.pathExtension == "json" }
+        let copiedInstructions = try pasteboardText()
+        let handoffLines = copiedInstructions.components(separatedBy: .newlines)
+        let runLocator = try XCTUnwrap(
+            handoffLines.first { $0.hasPrefix("Scholium Run: ") }.map {
+                String($0.dropFirst("Scholium Run: ".count))
+            }
         )
-        let discussionID = activeFile.deletingPathExtension().lastPathComponent
-        let cliOutput = try runScholiumCLI([
-            "discuss", "reply", discussionID,
-            "--agent", "Synthetic Agent",
-            "--text", "A bounded synthetic reply.",
-        ])
-        XCTAssertTrue(cliOutput.contains("Recorded reply"))
+        let pairingCode = try XCTUnwrap(
+            handoffLines.first { $0.hasPrefix("Pairing Code: ") }.map {
+                String($0.dropFirst("Pairing Code: ".count))
+            }
+        )
 
         discuss.click()
         discussion = app.descendants(matching: .any)["scholium.discussion"]
         XCTAssertTrue(discussion.waitForExistence(timeout: 8))
-
-        let finish = discussion.descendants(matching: .any)[
+        XCTAssertTrue(discussion.staticTexts["What follows from this passage?"].exists)
+        XCTAssertTrue(discussion.staticTexts.matching(NSPredicate(
+            format: "value BEGINSWITH %@",
+            "The Discussion is waiting for one Agent reply."
+        )).firstMatch.exists)
+        XCTAssertFalse(discussion.descendants(matching: .any)[
+            "scholium.discussion.agentName"
+        ].exists)
+        XCTAssertFalse(discussion.descendants(matching: .any)[
+            "scholium.discussion.agentReply"
+        ].exists)
+        XCTAssertFalse(discussion.descendants(matching: .any)[
             "scholium.discussion.finish"
-        ]
-        XCTAssertTrue(finish.waitForExistence(timeout: 8))
-        XCTAssertTrue(discussion.staticTexts["Synthetic Agent"].exists)
-        XCTAssertTrue(discussion.staticTexts["A bounded synthetic reply."].exists)
-        finish.click()
-        XCTAssertTrue(waitUntil(timeout: 8) { !discussion.exists })
+        ].exists)
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !discussion.exists })
+
+        let activeFilesBeforeReply = try FileManager.default.contentsOfDirectory(
+            at: activeDirectory,
+            includingPropertiesForKeys: nil
+        ).filter { $0.pathExtension == "json" }
+        XCTAssertEqual(activeFilesBeforeReply.count, 1)
+        let pairingOutput = try runScholiumCLI(
+            ["agent", "pair", "--run", runLocator],
+            stdin: Data("\(pairingCode)\n".utf8)
+        )
+        XCTAssertTrue(pairingOutput.contains(runLocator))
+        let replyData = try JSONSerialization.data(withJSONObject: [
+            "statement_id": UUID().uuidString,
+            "attribution": "Synthetic Agent",
+            "text": "A bounded synthetic reply.",
+        ])
+        let cliOutput = try runScholiumCLI(
+            ["agent", "discuss-reply", "--run", runLocator, "--from", "-"],
+            stdin: replyData
+        )
+        let replyObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(cliOutput.utf8))
+                as? [String: Any]
+        )
+        XCTAssertEqual(replyObject["record_formed"] as? Bool, true)
+        XCTAssertTrue(waitUntil(timeout: 8) {
+            !self.app.descendants(matching: .any)["scholium.discussion"].exists
+        })
         XCTAssertTrue(discuss.exists)
+        XCTAssertTrue(waitUntil(timeout: 8) { !commentAnchor.exists })
         XCTAssertEqual(try Data(contentsOf: noteURL), sourceBefore)
 
         let recordRoot = triptychDirectory
@@ -2513,6 +2560,25 @@ extension ScholiumUITests {
         ).filter { $0.pathExtension == "json" }
         XCTAssertTrue(activeFiles.isEmpty)
         XCTAssertEqual(finishedFiles.count, 1)
+
+        let finishedObject = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: Data(contentsOf: finishedFiles[0])
+            ) as? [String: Any]
+        )
+        let statements = try XCTUnwrap(
+            finishedObject["statements"] as? [[String: Any]]
+        )
+        let lineReference = try XCTUnwrap(
+            statements.compactMap { $0["line_reference"] as? [String: Any] }
+                .first
+        )
+        let commentedText = try XCTUnwrap(
+            lineReference["commented_text"] as? String
+        )
+        XCTAssertFalse(commentedText.isEmpty)
+        XCTAssertNil(lineReference["context_before"])
+        XCTAssertNil(lineReference["context_after"])
 
         let recordID = try XCTUnwrap(
             UUID(uuidString: finishedFiles[0].deletingPathExtension().lastPathComponent)
@@ -2544,6 +2610,18 @@ extension ScholiumUITests {
         ].waitForExistence(timeout: 5))
         XCTAssertTrue(recordWindow.staticTexts["Synthetic Agent"].exists)
         XCTAssertTrue(recordWindow.staticTexts["A bounded synthetic reply."].exists)
+        let commentedPassage = recordWindow.descendants(matching: .any)[
+            "scholium.researchRecord.commentedPassage"
+        ]
+        XCTAssertTrue(commentedPassage.waitForExistence(timeout: 5))
+        XCTAssertTrue((
+            commentedPassage.label
+                + " "
+                + (commentedPassage.value as? String ?? "")
+        ).contains(commentedText))
+        XCTAssertFalse(recordWindow.descendants(matching: .any)[
+            "scholium.researchRecord.openLines"
+        ].exists)
         XCTAssertTrue(recordWindow.descendants(matching: .any)[
             "scholium.researchRecord.participantsHeader"
         ].exists)

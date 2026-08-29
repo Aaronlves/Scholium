@@ -399,46 +399,44 @@ extension WorkspaceHandle {
         return stored
     }
 
-    func appendDiscussionStatement(
+    func replyToDiscussionAndFinish(
         discussionID: UUID,
-        author: PortableResearchStatementAuthor,
+        statementID: UUID,
         attribution: String,
-        text: String,
-        passage: CommentAnchor? = nil
-    ) async throws -> PortableResearchDiscussion {
+        text: String
+    ) async throws -> PortableResearchRecord {
         try requireActive()
-        let discussion = try await researchWorkspaceDependencies.portableResearchRecordStore.activeDiscussion(
-            id: discussionID
-        )
-        let kind: PortableResearchStatementKind = switch author {
-        case .agent:
-            .discussionTurn
-        case .researcher:
-            discussion.statements.contains(where: { $0.author == .agent })
-                ? .researcherResponse
-                : .discussionTurn
-        }
-        let createdAt = Date()
+        let active = try await researchWorkspaceDependencies
+            .portableResearchRecordStore.activeDiscussion(id: discussionID)
         let statement = try PortableResearchStatement(
-            author: author,
-            kind: kind,
+            id: statementID,
+            author: .agent,
+            kind: .discussionTurn,
             attribution: attribution,
             text: text,
-            createdAt: createdAt,
-            passage: passage
+            createdAt: max(Date(), active.updatedAt)
         )
-        let stored = try await appendDiscussionStatement(statement, to: discussion)
-        try await refreshAfterResearchCommit("The Discussion")
-        return stored
-    }
-
-    func appendAgentDiscussionStatement(
-        _ statement: PortableResearchStatement,
-        to discussion: PortableResearchDiscussion
-    ) async throws -> PortableResearchDiscussion {
-        let stored = try await appendDiscussionStatement(statement, to: discussion)
-        try await refreshAfterResearchCommit("The Agent Discussion")
-        return stored
+        if let local = try await researchWorkspaceDependencies
+            .localResearchExecutionStore.recordIfPresent(id: discussionID) {
+            guard local.snapshot.request.actionID == .discuss else {
+                throw ResearchRecordStoreV1Error.discussionFinishConflict(
+                    discussionID
+                )
+            }
+            let commit = try await researchActionRunCoordinator
+                .finishProtectedDiscussion(
+                    runID: discussionID,
+                    appendingAgentStatement: statement,
+                    host: self
+                )
+            return commit.record
+        }
+        let record = try await finishDiscussion(
+            discussionID: discussionID,
+            appendingAgentStatement: statement
+        ).record
+        try await refreshAfterResearchCommit("The Agent Discussion reply")
+        return record
     }
 
     private func appendDiscussionStatement(
@@ -498,6 +496,34 @@ extension WorkspaceHandle {
         )
         try await refreshAfterResearchCommit("The Discussion finish")
         return stored
+    }
+
+    func finishDiscussion(
+        discussionID: UUID,
+        appendingAgentStatement statement: PortableResearchStatement
+    ) async throws -> (
+        record: PortableResearchRecord,
+        replyWasAlreadyRecorded: Bool
+    ) {
+        try requireActive()
+        let participants: [PortableResearchNoteRevision]
+        if let discussion = try await researchWorkspaceDependencies
+            .portableResearchRecordStore.activeDiscussionIfPresent(id: discussionID) {
+            participants = try await currentDiscussionParticipants(discussion)
+        } else {
+            // Exact completion retries are validated against the already
+            // finished Record by the portable store; no current source read is
+            // allowed to rewrite its frozen participant revisions.
+            participants = []
+        }
+        let commit = try await researchWorkspaceDependencies.portableResearchRecordStore
+            .finishDiscussion(
+                id: discussionID,
+                appendingAgentStatement: statement,
+                participatingNotes: participants,
+                finishedAt: max(Date(), statement.createdAt)
+            )
+        return commit
     }
 
     func validatedDiscussionStatements(

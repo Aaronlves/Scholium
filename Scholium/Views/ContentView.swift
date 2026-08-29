@@ -655,19 +655,6 @@ struct ContentView: View {
             refreshDiscussionProjection: {
                 try await appState.researchController.refreshResearchProjection()
             },
-            appendDiscussionStatement: { discussionID, author, attribution, text in
-                try await appState.researchController.appendDiscussionStatement(
-                    discussionID: discussionID,
-                    author: author,
-                    attribution: attribution,
-                    text: text
-                )
-            },
-            finishDiscussion: { discussionID in
-                try await appState.researchController.finishDiscussion(
-                    discussionID: discussionID
-                )
-            },
             endDiscussion: { discussionID in
                 try await appState.researchController.endDiscussion(id: discussionID)
             },

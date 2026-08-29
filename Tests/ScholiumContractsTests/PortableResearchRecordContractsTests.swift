@@ -4,13 +4,14 @@ import Testing
 
 @Suite("Portable Research Record contracts")
 struct PortableResearchRecordContractsTests {
-    @Test("A Comment stores only a revision-bound inclusive line range")
+    @Test("A Comment stores a bounded selection and a current-revision line range")
     func lineReferenceRoundTrip() throws {
         let fingerprint = DocumentFingerprint(content: "first\nsecond\nthird")
         let reference = try ResearchLineReference(
             fingerprint: fingerprint,
             line: 2,
-            endLine: 3
+            endLine: 3,
+            commentedText: "second\nthird"
         )
         let statement = try PortableResearchStatement(
             author: .researcher,
@@ -31,6 +32,7 @@ struct PortableResearchRecordContractsTests {
         #expect(object["passage"] == nil)
         #expect(encodedReference["line"] as? Int == 2)
         #expect(encodedReference["end_line"] as? Int == 3)
+        #expect(encodedReference["commented_text"] as? String == "second\nthird")
         #expect(encodedReference["quotation"] == nil)
         #expect(encodedReference["utf8_range"] == nil)
         #expect(try JSONDecoder.scholium.decode(
@@ -52,7 +54,16 @@ struct PortableResearchRecordContractsTests {
             _ = try ResearchLineReference(
                 fingerprint: fingerprint,
                 line: 3,
-                endLine: 2
+                endLine: 2,
+                commentedText: "third"
+            )
+        }
+        #expect(throws: PortableResearchRecordError.self) {
+            _ = try ResearchLineReference(
+                fingerprint: fingerprint,
+                line: 2,
+                endLine: 2,
+                commentedText: ""
             )
         }
         #expect(throws: PortableResearchRecordError.self) {
@@ -93,7 +104,7 @@ struct PortableResearchRecordContractsTests {
             "primary_note_id", "result_disposition",
             "academic_results",
         ])
-        #expect(object["schema_version"] as? Int == 15)
+        #expect(object["schema_version"] as? Int == 16)
         #expect(object["record_title"] as? String == "The remaining pressure")
         #expect(object["fidelity_completion"] as? String == "not_required")
         let changes = try #require(object["confirmed_changes"] as? [[String: Any]])
@@ -113,7 +124,7 @@ struct PortableResearchRecordContractsTests {
         ) == record)
     }
 
-    @Test("Schema 15 requires a frozen title and rejects every retired schema")
+    @Test("Schema 16 requires a frozen title and rejects every retired schema")
     func currentSchemaIsStrict() throws {
         for invalidTitle in ["", "line one\nline two", "/Users/researcher/private.md"] {
             #expect(throws: PortableResearchRecordError.self) {

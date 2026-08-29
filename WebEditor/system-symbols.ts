@@ -15,6 +15,7 @@ export const webSystemSymbolKeys = [
   "list-number",
   "checklist",
   "text-quote",
+  "text-bubble",
   "plus",
   "plus-circle",
   "minus-circle",

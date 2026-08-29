@@ -29,7 +29,8 @@ extension MarkdownEditorWebViewIntegrationTests {
             htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
             fingerprint: document.fingerprint.sha256,
             initialAnchor: nil,
-            initialScrollFraction: 0
+            initialScrollFraction: 0,
+            userCSS: "#scholium-document p { background-color: rgb(0, 0, 255); box-shadow: none; }"
         )
         defer {
             harness.close()
@@ -949,6 +950,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         let submission = try await harness.waitUntilCommentSubmission()
         #expect(submission.startLine == 7)
         #expect(submission.endLine == 7)
+        #expect(submission.commentedText == "target")
         #expect(submission.text == "A focused regression Comment.")
 
         let failure = try #require(try await harness.callBridgeJavaScript(
@@ -1611,6 +1613,74 @@ extension MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Review projects current Comment anchors without reloading or changing document text")
+    func reviewProjectsCurrentCommentAnchors() async throws {
+        let source = "First claim.\n\nThe commented argument is here.\n\nFinal claim.\n"
+        let document = NoteDocument(relativePath: "Comment anchors.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: document.fingerprint.sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let webViewIdentity = try harness.webViewIdentity()
+        let anchor = ReviewCommentAnchor(
+            id: "discussion-3-3",
+            discussionID: UUID(uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA")!,
+            statementID: UUID(uuidString: "BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB")!,
+            startLine: 3,
+            endLine: 3,
+            commentCount: 2
+        )
+
+        harness.updateCommentAnchors([anchor], revision: "comment-anchor-1")
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+        var snapshot: [String: Any] = [:]
+        while true {
+            snapshot = try await harness.reviewCommentAnchorSnapshot()
+            if snapshot["markerID"] as? String == anchor.id { break }
+            try #require(clock.now < deadline, "Comment anchor did not appear")
+            try await Task.sleep(for: .milliseconds(25))
+        }
+
+        #expect(snapshot["markerLabel"] as? String == "Open 2 comments at line 3")
+        #expect(snapshot["markerIsButton"] as? Bool == true)
+        #expect(snapshot["markerIsFocused"] as? Bool == true)
+        #expect(snapshot["markerIsDirectChild"] as? Bool == true)
+        #expect((snapshot["markerWidth"] as? Double ?? 0) >= 28)
+        #expect((snapshot["markerHeight"] as? Double ?? 0) >= 28)
+        #expect((snapshot["markerCountContent"] as? String ?? "").contains("2"))
+        #expect(snapshot["targetLine"] as? Int == 3)
+        #expect(snapshot["targetIsHighlighted"] as? Bool == true)
+        #expect(snapshot["targetIsActive"] as? Bool == true)
+        #expect(snapshot["targetBackground"] as? String != "rgb(0, 0, 255)")
+        #expect(snapshot["targetBackgroundImage"] as? String != "none")
+        #expect(
+            snapshot["documentText"] as? String
+                == "First claim.\nThe commented argument is here.\nFinal claim."
+        )
+        #expect(try harness.webViewIdentity() == webViewIdentity)
+
+        try await harness.activateCommentAnchor(anchor.id)
+        #expect(try await harness.waitUntilCommentAnchorOpened() == anchor)
+
+        harness.updateCommentAnchors([], revision: "comment-anchor-2")
+        let removalDeadline = clock.now.advanced(by: .seconds(3))
+        while true {
+            snapshot = try await harness.reviewCommentAnchorSnapshot()
+            if snapshot["markerID"] as? String == "" { break }
+            try #require(clock.now < removalDeadline, "Comment anchor did not clear")
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        #expect(snapshot["targetIsHighlighted"] as? Bool == false)
+        #expect(try harness.webViewIdentity() == webViewIdentity)
+        await harness.closeAndDrain()
+    }
+
     struct FootnoteInteractionSnapshot: Decodable {
         let previewTitle: String
         let originID: String
@@ -2107,9 +2177,12 @@ extension MarkdownEditorWebViewIntegrationTests {
         @Published var reachedSourceLine: Int?
         @Published var linkPreviews: [DocumentLinkPreview] = []
         @Published var linkPreviewRevision = "no-previews"
+        @Published var commentAnchors: [ReviewCommentAnchor] = []
+        @Published var commentAnchorRevision = "no-comment-anchors"
         @Published var selectionSurfaceIsActive = true
         var selection: MarkdownReviewSelection?
         var commentSubmission: PassageCommentSubmission?
+        var openedCommentAnchor: ReviewCommentAnchor?
         #if DEBUG
         @Published var testingForcesFinalizationFailure = false
         let testingScrollRestoreDelayMilliseconds: Int
@@ -2185,6 +2258,11 @@ extension MarkdownEditorWebViewIntegrationTests {
         func updateLinkPreviews(_ previews: [DocumentLinkPreview], revision: String) {
             linkPreviews = previews
             linkPreviewRevision = revision
+        }
+
+        func updateCommentAnchors(_ anchors: [ReviewCommentAnchor], revision: String) {
+            commentAnchors = anchors
+            commentAnchorRevision = revision
         }
     }
 
@@ -2458,6 +2536,71 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         func updateLinkPreviews(_ previews: [DocumentLinkPreview], revision: String) {
             sourceBox.updateLinkPreviews(previews, revision: revision)
+        }
+
+        func updateCommentAnchors(_ anchors: [ReviewCommentAnchor], revision: String) {
+            sourceBox.updateCommentAnchors(anchors, revision: revision)
+        }
+
+        func reviewCommentAnchorSnapshot() async throws -> [String: Any] {
+            guard let snapshot = try await callBridgeJavaScript(
+                """
+                const marker = document.querySelector('[data-scholium-comment-anchor]');
+                const target = document.querySelector('.scholium-review-comment-range');
+                marker?.focus({preventScroll: true});
+                const markerBounds = marker?.getBoundingClientRect();
+                const targetStyle = target ? getComputedStyle(target) : null;
+                return {
+                  presentation: window.scholiumReviewComments?.testingSnapshot() ?? null,
+                  markerID: marker?.dataset.scholiumCommentAnchor ?? '',
+                  markerLabel: marker?.getAttribute('aria-label') ?? '',
+                  markerIsButton: marker instanceof HTMLButtonElement,
+                  markerIsFocused: document.activeElement === marker,
+                  markerIsDirectChild: marker?.parentElement?.id === 'scholium-document',
+                  markerWidth: markerBounds?.width ?? 0,
+                  markerHeight: markerBounds?.height ?? 0,
+                  markerCountContent: marker
+                    ? getComputedStyle(marker, '::after').content
+                    : '',
+                  targetLine: Number(target?.dataset.sourceLine || 0),
+                  targetIsHighlighted: Boolean(target),
+                  targetIsActive: target?.classList.contains(
+                    'scholium-review-comment-range-active'
+                  ) ?? false,
+                  targetBackground: targetStyle?.backgroundColor ?? '',
+                  targetBackgroundImage: targetStyle?.backgroundImage ?? '',
+                  documentText: document.getElementById('scholium-document')?.textContent?.trim() ?? ''
+                };
+                """
+            ) as? [String: Any] else {
+                throw ReadHarnessError.invalidSnapshot
+            }
+            return snapshot
+        }
+
+        func activateCommentAnchor(_ anchorID: String) async throws {
+            let activated = try await callBridgeJavaScript(
+                """
+                const marker = document.querySelector(
+                  `[data-scholium-comment-anchor="${anchorID}"]`
+                );
+                if (!(marker instanceof HTMLButtonElement)) return false;
+                marker.click();
+                return true;
+                """,
+                arguments: ["anchorID": anchorID]
+            ) as? Bool
+            guard activated == true else { throw ReadHarnessError.invalidSnapshot }
+        }
+
+        func waitUntilCommentAnchorOpened() async throws -> ReviewCommentAnchor {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            while sourceBox.openedCommentAnchor == nil {
+                if clock.now >= deadline { throw ReadHarnessError.timedOut }
+                try await Task.sleep(for: .milliseconds(25))
+            }
+            return try #require(sourceBox.openedCommentAnchor)
         }
 
         func setSelectionSurfaceActive(_ active: Bool) {
@@ -3094,6 +3237,9 @@ extension MarkdownEditorWebViewIntegrationTests {
                 onLinkClick: { _ in },
                 onOpenExternalURL: { _ in },
                 onCommentSelection: commentHandler,
+                commentAnchors: sourceBox.commentAnchors,
+                commentAnchorRevision: sourceBox.commentAnchorRevision,
+                onOpenCommentAnchor: { sourceBox.openedCommentAnchor = $0 },
                 onSelectionChange: { sourceBox.selection = $0 },
                 selectionSurfaceIsActive: sourceBox.selectionSurfaceIsActive,
                 renderingReadinessIsAcknowledged: sourceBox.isReady,

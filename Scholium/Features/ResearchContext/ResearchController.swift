@@ -247,23 +247,6 @@ final class ResearchController: ObservableObject {
     }
 
     @discardableResult
-    func appendDiscussionStatement(
-        discussionID: UUID,
-        author: PortableResearchStatementAuthor,
-        attribution: String,
-        text: String,
-        passage: CommentAnchor? = nil
-    ) async throws -> PortableResearchDiscussion {
-        try await requireRecords().appendDiscussionStatement(
-            discussionID: discussionID,
-            author: author,
-            attribution: attribution,
-            text: text,
-            passage: passage
-        )
-    }
-
-    @discardableResult
     func finishDiscussion(discussionID: UUID) async throws -> PortableResearchRecord {
         try await requireRecords().finishDiscussion(discussionID: discussionID)
     }

@@ -905,7 +905,10 @@ extension ScholiumUITests {
         }
     }
 
-    func runScholiumCLI(_ arguments: [String]) throws -> String {
+    func runScholiumCLI(
+        _ arguments: [String],
+        stdin: Data? = nil
+    ) throws -> String {
         // The QA app keeps its live registry beneath its isolated Application
         // Support root, while an explicitly isolated CLI resolves a frozen
         // invocation registry at <SCHOLIUM_HOME>/registry. Copy that small
@@ -917,18 +920,19 @@ extension ScholiumUITests {
             .appendingPathComponent("Workspace", isDirectory: true)
         let cliRegistry = homeDirectory
             .appendingPathComponent("registry", isDirectory: true)
-        guard FileManager.default.fileExists(atPath: appRegistry.path),
-              !FileManager.default.fileExists(atPath: cliRegistry.path) else {
+        guard FileManager.default.fileExists(atPath: appRegistry.path) else {
             throw NSError(
                 domain: "ScholiumUITests.CLI",
                 code: 2,
                 userInfo: [
                     NSLocalizedDescriptionKey:
-                        "The isolated QA registry could not be snapshotted exactly once.",
+                        "The isolated QA registry is unavailable.",
                 ]
             )
         }
-        try FileManager.default.copyItem(at: appRegistry, to: cliRegistry)
+        if !FileManager.default.fileExists(atPath: cliRegistry.path) {
+            try FileManager.default.copyItem(at: appRegistry, to: cliRegistry)
+        }
 
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -947,7 +951,15 @@ extension ScholiumUITests {
         process.environment = environment
         process.standardOutput = output
         process.standardError = error
+        let input = stdin.map { _ in Pipe() }
+        if let input {
+            process.standardInput = input
+        }
         try process.run()
+        if let input, let stdin {
+            input.fileHandleForWriting.write(stdin)
+            try input.fileHandleForWriting.close()
+        }
         process.waitUntilExit()
         let stdout = String(
             decoding: output.fileHandleForReading.readDataToEndOfFile(),
@@ -1661,7 +1673,7 @@ extension ScholiumUITests {
         if name.contains("testResearchActionsRolePointerKeyboardFocusAccessibilityAndMinimumWidth")
             || name.contains("testResearchActionsVoiceOverSpeechOrder")
             || name.contains("testResearchActionsRemainUsableInLightAndDarkAppearances")
-            || name.contains("testLineCommentDiscussReopenAndFinish")
+            || name.contains("testLineCommentAgentReplyArchivesRecord")
             || name.contains("testCritiqueActionUsesTriptychWorkingMethodWithoutAdHocPrompting")
             || name.contains("testResearchActionPanelFits") {
             try resetResearchActionFixtureState()

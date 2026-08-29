@@ -280,7 +280,7 @@ Zotero metadata, Records, and provider responses as typed data. Evidence text
 cannot alter the other two layers, Session, write set, tools, or next Action.
 
 Result and Researcher Response prose remains an opaque exact string throughout
-Agent submission, strict schema-15 decoding, Record validation, hashing,
+Agent submission, strict schema-16 decoding, Record validation, hashing,
 persistence, CLI reading, Search projection, and replacement. No Core or
 Application operation parses scholarly markup, resolves a Record-authored
 link, or reconstructs source from a rendered value. Presentation may derive a
@@ -489,7 +489,7 @@ Record; a different payload fails closed. An interrupted committed
 source/finalization gap is repaired from the Run and transaction evidence
 unless a Record deletion tombstone forbids recreation.
 
-`PortableResearchRecordStore` owns strict schema-15 Records, including the
+`PortableResearchRecordStore` owns strict schema-16 Records, including the
 frozen Record Title, explicit Analyze source route, exact source-byte
 fingerprints, and researcher-owned
 Response. The same store owns schema-1 `PortableResearchNoteReview` files as
@@ -500,7 +500,7 @@ from post-commit uncertainty, and read back before success. Record schemas 1
 through 14 have no decoder or mutation route; their bytes remain untouched and
 nonauthorizing when encountered.
 
-Schema 15 contains no source-use report or actually-used Materials list.
+Schema 16 contains no source-use report or actually-used Materials list.
 Action participants are the Target, every explicit frozen Material, and every
 Note with a confirmed Agent change; dynamically queried Notes never become
 participants. In-text citations remain optional authored academic content and
@@ -514,7 +514,7 @@ or construct another Record index. List validates the stable Note UUID against
 the current catalog or the snapshot's historical participants, filters the
 Record-owned `participatingNotes`, and emits the snapshot's complete source
 manifest plus exact Record fingerprints. Read selects one exact Record UUID and
-returns the decoded schema-15 value with its same-snapshot fingerprint. Either
+returns the decoded schema-16 value with its same-snapshot fingerprint. Either
 adapter refuses an incomplete projection or missing fingerprint and exposes no
 Record mutation use case.
 
@@ -558,7 +558,7 @@ source replacement triggers refresh even when readback is uncertain.
 
 `WorkspaceSnapshotBuilder` derives `WorkspaceResearchSnapshot.activities`,
 `noteReviewStates`, and `resultArrivals` from current Local Execution payloads, exact
-schema-15 Record reads, and schema-1 Note Reviews. The projections
+schema-16 Record reads, and schema-1 Note Reviews. The projections
 contain only Run, Action, target stable Note ID, one interface state, optional
 Record ID/finalized-result fingerprint, a closed public repair reason, and time. It
 omits pairing codes, Session secrets, source bytes, prompts,
@@ -602,16 +602,18 @@ already-open Response editor retains its local draft and exposes reconciliation
 rather than substituting a different Record.
 
 `PortableResearchDiscussion` remains the single active exchange owner.
-Comments retain stable Note/fingerprint and inclusive line range without a
-passage copy. Each attributed researcher/Agent turn updates only the active
-exchange. The authenticated Agent `discuss-reply` route validates the frozen
-Discuss Run and response contract, uses a stable statement ID for outcome-
-unknown retry, and writes no Note or Metadata. Authenticated
-`finish-discussion` revalidates the same frozen Discuss Run, requires durable
-Agent response evidence, forms one Record, and revokes the Session without a
-Result body or write authority. Finish validates current participants; closing
-the sheet performs no storage action. Discussion does not use Bounded Write
-Set unless it explicitly continues into a separate write Action.
+Comments retain stable Note/fingerprint, inclusive line range, and only the
+bounded rendered selection; they retain no unselected surrounding context.
+Researcher Comments update only the active exchange. The authenticated Agent
+`discuss-reply` route validates the frozen Discuss Run and response contract,
+uses a stable statement ID for outcome-unknown retry, then commits the Agent
+response and finished Record under the portable store's one exclusive lock.
+Only after that commit does the Run coordinator idempotently persist `.complete`
+and finalize Session authority. A retry between those transitions returns the
+same Record and repairs missing Run completion; changed content fails closed.
+The route writes no Note or Metadata and accepts no Result body or separate
+Finish. Closing the sheet performs no storage action. Discussion does not use
+Bounded Write Set unless it explicitly continues into a separate write Action.
 
 Research Records presentation remains Triptych-keyed:
 

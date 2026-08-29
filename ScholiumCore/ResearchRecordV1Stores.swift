@@ -17,7 +17,7 @@ public struct PortableResearchRecordStoreIssue: Hashable, Identifiable, Sendable
 
 /// One decoded portable Record bound to the exact persisted JSON bytes from
 /// which it was read. The fingerprint is derived evidence only: it is never
-/// written into the schema-15 Record or reconstructed from a re-encoding.
+/// written into the schema-16 Record or reconstructed from a re-encoding.
 public struct PortableResearchRecordRevision: Hashable, Identifiable, Sendable {
     public let record: PortableResearchRecord
     public let fingerprint: DocumentFingerprint
@@ -1008,6 +1008,74 @@ public actor PortableResearchRecordStore {
         }
     }
 
+    /// Atomically retains one Agent reply, forms the finished Discussion
+    /// Record, and removes the active Discussion. An exact retry after any
+    /// uncertain outcome returns the same Record without creating another
+    /// statement or re-opening the Discussion.
+    @discardableResult
+    public func finishDiscussion(
+        id: UUID,
+        appendingAgentStatement statement: PortableResearchStatement,
+        participatingNotes: [PortableResearchNoteRevision],
+        finishedAt: Date = Date()
+    ) throws -> (record: PortableResearchRecord, replyWasAlreadyRecorded: Bool) {
+        guard statement.author == .agent,
+              statement.kind == .discussionTurn,
+              statement.passage == nil,
+              statement.lineReference == nil else {
+            throw PortableResearchRecordError.invalidStatement
+        }
+        return try lock.withExclusiveLock {
+            try Self.coordinateWrite(at: storageURL) {
+                _ = try requireHealthyActiveListing()
+                let discussion: PortableResearchDiscussion
+                do {
+                    discussion = try readDiscussion(id: id)
+                } catch ResearchRecordStoreV1Error.discussionNotFound(_) {
+                    let existing = try readRecord(id: id)
+                    guard existing.kind == .discussion,
+                          let retained = existing.statements.first(where: {
+                              $0.id == statement.id
+                          }),
+                          Self.sameDiscussionReply(retained, as: statement) else {
+                        throw ResearchRecordStoreV1Error.discussionFinishConflict(id)
+                    }
+                    return (existing, true)
+                }
+                try requireNoDeletionMarkers(
+                    noteIDs: Set(discussion.participatingNotes.map(\.noteID))
+                )
+
+                let canonicalStatement: PortableResearchStatement
+                let replyWasAlreadyRecorded: Bool
+                if let retained = discussion.statements.first(where: {
+                    $0.id == statement.id
+                }) {
+                    guard Self.sameDiscussionReply(retained, as: statement) else {
+                        throw PortableResearchDiscussionError.duplicateStatement(
+                            statement.id
+                        )
+                    }
+                    canonicalStatement = retained
+                    replyWasAlreadyRecorded = true
+                } else {
+                    canonicalStatement = statement
+                    replyWasAlreadyRecorded = false
+                }
+                let updated = try discussion.appending(
+                    canonicalStatement,
+                    at: max(discussion.updatedAt, canonicalStatement.createdAt)
+                )
+                let record = try finishDiscussionWithoutCoordination(
+                    updated,
+                    participatingNotes: participatingNotes,
+                    finishedAt: max(finishedAt, updated.updatedAt)
+                )
+                return (record, replyWasAlreadyRecorded)
+            }
+        }
+    }
+
     /// Atomically turns one Comment-only draft into the exact resolved
     /// Discuss Action. Concurrently appended Comments are preserved because
     /// the replacement is derived from the current file under the store lock.
@@ -1144,38 +1212,64 @@ public actor PortableResearchRecordStore {
                 try requireNoDeletionMarkers(
                     noteIDs: Set(discussion.participatingNotes.map(\.noteID))
                 )
-                let record = try discussion.finishedRecord(
+                return try finishDiscussionWithoutCoordination(
+                    discussion,
                     participatingNotes: participatingNotes,
                     finishedAt: finishedAt
                 )
-                let (canonical, data) = try Self.validatedStorageEncoding(of: record)
-                do {
-                    let readback = try storage.createExclusive(
-                        data,
-                        directory: Self.recordsDirectory,
-                        fileName: Self.fileName(id)
-                    )
-                    let stored = try Self.decode(PortableResearchRecord.self, from: readback)
-                    guard stored == canonical else {
-                        throw ResearchRecordStoreV1Error.recordIdentityMismatch(id)
-                    }
-                } catch let error as SecureRecordDirectoryError {
-                    if case .alreadyExists = error {
-                        let existing = try readRecord(id: id)
-                        guard Self.isFinished(existing, from: discussion) else {
-                            throw ResearchRecordStoreV1Error.discussionFinishConflict(id)
-                        }
-                    } else {
-                        throw Self.map(error)
-                    }
-                }
-                try storage.removeIfPresent(
-                    directory: "active",
-                    fileName: Self.fileName(id)
-                )
-                return try readRecord(id: id)
             }
         }
+    }
+
+    private func finishDiscussionWithoutCoordination(
+        _ discussion: PortableResearchDiscussion,
+        participatingNotes: [PortableResearchNoteRevision],
+        finishedAt: Date
+    ) throws -> PortableResearchRecord {
+        let id = discussion.id
+        let record = try discussion.finishedRecord(
+            participatingNotes: participatingNotes,
+            finishedAt: finishedAt
+        )
+        let (canonical, data) = try Self.validatedStorageEncoding(of: record)
+        do {
+            let readback = try storage.createExclusive(
+                data,
+                directory: Self.recordsDirectory,
+                fileName: Self.fileName(id)
+            )
+            let stored = try Self.decode(PortableResearchRecord.self, from: readback)
+            guard stored == canonical else {
+                throw ResearchRecordStoreV1Error.recordIdentityMismatch(id)
+            }
+        } catch let error as SecureRecordDirectoryError {
+            if case .alreadyExists = error {
+                let existing = try readRecord(id: id)
+                guard Self.isFinished(existing, from: discussion) else {
+                    throw ResearchRecordStoreV1Error.discussionFinishConflict(id)
+                }
+            } else {
+                throw Self.map(error)
+            }
+        }
+        try storage.removeIfPresent(
+            directory: "active",
+            fileName: Self.fileName(id)
+        )
+        return try readRecord(id: id)
+    }
+
+    private static func sameDiscussionReply(
+        _ retained: PortableResearchStatement,
+        as candidate: PortableResearchStatement
+    ) -> Bool {
+        retained.id == candidate.id
+            && retained.author == candidate.author
+            && retained.kind == candidate.kind
+            && retained.attribution == candidate.attribution
+            && retained.text == candidate.text
+            && retained.passage == candidate.passage
+            && retained.lineReference == candidate.lineReference
     }
 
     @discardableResult

@@ -169,31 +169,18 @@ extension ScholiumCLI {
                 attribution: draft.attribution,
                 text: draft.text
             )
-            let credential = try credentialStore.load(for: run)
+            let store = credentialStore
+            let credential = try store.load(for: run)
             let receipt = try await operations.replyToDiscussion(
                 run: run,
                 credential: credential,
                 request: request
             )
-            try writeAgentJSON(receipt)
-            return
-        }
-        if arguments.first == "finish-discussion" {
-            guard let rawRun = option("--run", in: arguments),
-                  let run = ResearchRunLocator(rawValue: rawRun) else {
-                throw commandUsageError("agent finish-discussion")
-            }
-            let store = credentialStore
-            let credential = try store.load(for: run)
-            let receipt = try await operations.finishDiscussion(
-                run: run,
-                credential: credential
-            )
             do {
                 try store.remove(for: run)
             } catch {
                 writeError(
-                    "scholium: warning: The Discussion finished, but its now-revoked local credential file could not be removed. Repair the protected Session store before using this Run again.\n"
+                    "scholium: warning: The Discussion formed its Research Record, but its now-finalized local credential file could not be removed. Repair the protected Session store before using this Run again.\n"
                 )
             }
             try writeAgentJSON(receipt)

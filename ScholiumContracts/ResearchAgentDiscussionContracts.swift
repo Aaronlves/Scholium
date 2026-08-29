@@ -1,8 +1,8 @@
 import Foundation
 
-/// One idempotent Agent-authored turn in the active Discussion owned by the
-/// authenticated Run. The statement ID is supplied by the Agent so an
-/// outcome-unknown retry can converge on the same portable statement.
+/// One idempotent Agent-authored reply that completes the Discussion owned by
+/// the authenticated Run. The statement ID is supplied by the Agent so an
+/// outcome-unknown retry can converge on the same portable Record.
 public struct ResearchAgentDiscussionReplyRequest: Codable, Hashable, Sendable {
     public static let currentSchemaVersion = 1
 
@@ -70,17 +70,18 @@ public enum ResearchAgentDiscussionReplyState: String, Codable, Hashable,
     case alreadyRecorded = "already_recorded"
 }
 
-/// Minimal acknowledgement for a key-authorized Discussion turn. The
-/// Discussion and its statements remain the portable scholarly owner; this
-/// receipt carries only the idempotent operation outcome.
+/// Minimal acknowledgement for the key-authorized terminal Discussion reply.
+/// The finished Record remains the portable scholarly owner; this receipt
+/// carries only the idempotent operation outcome.
 public struct ResearchAgentDiscussionReplyReceipt: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let run: ResearchRunLocator
     public let discussionID: UUID
     public let statementID: UUID
     public let state: ResearchAgentDiscussionReplyState
+    public let recordFormed: Bool
     public let message: String
 
     public init(
@@ -103,6 +104,7 @@ public struct ResearchAgentDiscussionReplyReceipt: Codable, Hashable, Sendable {
         self.discussionID = discussionID
         self.statementID = statementID
         self.state = state
+        recordFormed = true
         self.message = message
     }
 
@@ -112,6 +114,7 @@ public struct ResearchAgentDiscussionReplyReceipt: Codable, Hashable, Sendable {
         case discussionID = "discussion_id"
         case statementID = "statement_id"
         case state
+        case recordFormed = "record_formed"
         case message
     }
 
@@ -126,6 +129,9 @@ public struct ResearchAgentDiscussionReplyReceipt: Codable, Hashable, Sendable {
                 == Self.currentSchemaVersion else {
             throw ResearchAgentDiscussionReplyContractError.unsupportedSchemaVersion
         }
+        guard try container.decode(Bool.self, forKey: .recordFormed) else {
+            throw ResearchAgentDiscussionReplyContractError.invalidReply
+        }
         try self.init(
             run: container.decode(ResearchRunLocator.self, forKey: .run),
             discussionID: container.decode(UUID.self, forKey: .discussionID),
@@ -136,80 +142,6 @@ public struct ResearchAgentDiscussionReplyReceipt: Codable, Hashable, Sendable {
             ),
             message: container.decode(String.self, forKey: .message)
         )
-    }
-}
-
-/// Minimal acknowledgement that the authenticated Agent finished the active
-/// Discuss Run after at least one durable attributed Agent turn. The portable
-/// Discussion and resulting Record remain the scholarly owners.
-public struct ResearchAgentDiscussionFinishReceipt: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
-
-    public let schemaVersion: Int
-    public let run: ResearchRunLocator
-    public let discussionID: UUID
-    public let finished: Bool
-    public let recordFormed: Bool
-    public let message: String
-
-    public init(
-        run: ResearchRunLocator,
-        discussionID: UUID,
-        message: String
-    ) throws {
-        let message = message.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !message.isEmpty,
-              message.utf8.count <= 1_024,
-              !message.unicodeScalars.contains(where: {
-                  CharacterSet.controlCharacters.contains($0)
-              }) else {
-            throw ResearchAgentDiscussionFinishContractError.invalidReceipt
-        }
-        schemaVersion = Self.currentSchemaVersion
-        self.run = run
-        self.discussionID = discussionID
-        finished = true
-        recordFormed = true
-        self.message = message
-    }
-
-    private enum CodingKeys: String, CodingKey, CaseIterable {
-        case schemaVersion = "schema_version"
-        case run
-        case discussionID = "discussion_id"
-        case finished
-        case recordFormed = "record_formed"
-        case message
-    }
-
-    public init(from decoder: Decoder) throws {
-        let raw = try decoder.container(keyedBy: AnyCodingKey.self)
-        let allowed = Set(CodingKeys.allCases.map(\.stringValue))
-        guard raw.allKeys.allSatisfy({ allowed.contains($0.stringValue) }) else {
-            throw ResearchAgentDiscussionFinishContractError.invalidReceipt
-        }
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        guard try container.decode(Int.self, forKey: .schemaVersion)
-                == Self.currentSchemaVersion,
-              try container.decode(Bool.self, forKey: .finished),
-              try container.decode(Bool.self, forKey: .recordFormed) else {
-            throw ResearchAgentDiscussionFinishContractError.invalidReceipt
-        }
-        try self.init(
-            run: container.decode(ResearchRunLocator.self, forKey: .run),
-            discussionID: container.decode(UUID.self, forKey: .discussionID),
-            message: container.decode(String.self, forKey: .message)
-        )
-    }
-}
-
-public enum ResearchAgentDiscussionFinishContractError: LocalizedError,
-    Hashable, Sendable
-{
-    case invalidReceipt
-
-    public var errorDescription: String? {
-        "The Agent Discussion finish receipt is invalid."
     }
 }
 

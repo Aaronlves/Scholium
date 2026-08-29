@@ -1,8 +1,8 @@
 # Discussion record contract
 
-## Attributed turns
+## Attributed exchange
 
-Preserve speaker, sequence, and the supplied timestamp or revision identity. Do not rewrite a researcher turn to make the exchange appear more coherent. A passage anchor is focal context, not evidence that the researcher endorses the quoted text.
+Preserve the researcher Comments, their order, and the one attributed Agent response. Do not rewrite a researcher Comment to make the exchange appear more coherent. A commented passage is focal context, not evidence that the researcher endorses the quoted text.
 
 Require the immutable request-time response contract for every current
 Discussion. Persist its identity with the exchange and apply
@@ -15,7 +15,7 @@ changes an existing Discussion.
 
 If an anchor no longer maps to the current Note, retain the quoted excerpt and identify it as an earlier-revision anchor. If a focal Note is unavailable, report that limit rather than reconstructing its contents from memory.
 
-## Final agent feedback
+## Agent response
 
 Conclude with only information useful to the researcher:
 

@@ -4,9 +4,10 @@ import Foundation
 ///
 /// The containing `active/` directory establishes that this value is an
 /// unfinished Discussion. Closing its presentation does not mutate it. Only
-/// an explicit Finish operation converts it into a `PortableResearchRecord`.
+/// the first durable Agent reply or explicit researcher End converts it into a
+/// `PortableResearchRecord`.
 public struct PortableResearchDiscussion: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 3
 
     public let schemaVersion: Int
     public let id: UUID

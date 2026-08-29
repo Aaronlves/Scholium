@@ -593,21 +593,18 @@ public actor ResearchOperations:
         )
     }
 
-    @discardableResult
-    public func appendDiscussionStatement(
+    public func replyToDiscussionAndFinish(
         discussionID: UUID,
-        author: PortableResearchStatementAuthor,
+        statementID: UUID,
         attribution: String,
-        text: String,
-        passage: CommentAnchor? = nil
-    ) async throws -> PortableResearchDiscussion {
+        text: String
+    ) async throws -> PortableResearchRecord {
         let handle = try await reference.requireHandle()
-        return try await handle.appendDiscussionStatement(
+        return try await handle.replyToDiscussionAndFinish(
             discussionID: discussionID,
-            author: author,
+            statementID: statementID,
             attribution: attribution,
-            text: text,
-            passage: passage
+            text: text
         )
     }
 

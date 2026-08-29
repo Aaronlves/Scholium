@@ -281,7 +281,7 @@ identities. Structured projection joins validated Metadata with authored YAML
 and unknown YAML is not queryable. Core owns the Note
 provider's disposable SQLite schema, staging/validation/recovery, read
 transactions, cancellation, deterministic ranking, and in-memory **This Note**
-matcher. The portable Record store supplies exact decoded schema-15 Records,
+matcher. The portable Record store supplies exact decoded schema-16 Records,
 schema-1 Note Reviews, and their source-byte fingerprints; Application owns the rebuildable Record query
 projection and provider routing, authorizes visible scope before query, and is
 the only Search capability exposed to GUI and CLI. No adapter, window model, or

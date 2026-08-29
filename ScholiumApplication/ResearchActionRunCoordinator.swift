@@ -43,6 +43,13 @@ protocol ResearchActionRunCoordinatorHost: Actor {
     func revokeResearchAgentRunAccess(runID: UUID) async
     func finalizeResearchAgentRunAccess(runID: UUID) async
     func finishDiscussion(discussionID: UUID) async throws -> PortableResearchRecord
+    func finishDiscussion(
+        discussionID: UUID,
+        appendingAgentStatement: PortableResearchStatement
+    ) async throws -> (
+        record: PortableResearchRecord,
+        replyWasAlreadyRecorded: Bool
+    )
     func publishCommittedResearchActionChange(
         _ operation: String
     ) async throws -> String?
@@ -172,6 +179,103 @@ final class ResearchActionRunCoordinator: Sendable {
         let record = try await host.finishDiscussion(discussionID: runID)
         await host.finalizeResearchAgentRunAccess(runID: runID)
         return record
+    }
+
+    /// The first Agent reply is the terminal scholarly transition for a
+    /// Discuss Run. The portable store appends the reply and forms the Record
+    /// under one lock before Session authority becomes finalized.
+    func finishProtectedDiscussion<Host: ResearchActionRunCoordinatorHost>(
+        runID: UUID,
+        appendingAgentStatement statement: PortableResearchStatement,
+        host: isolated Host
+    ) async throws -> (
+        record: PortableResearchRecord,
+        replyWasAlreadyRecorded: Bool
+    ) {
+        try requireMatchingActiveHost(host)
+        let stored = try await record(runID: runID)
+        guard stored.snapshot.request.actionID == .discuss else {
+            throw ResearchActionRunContractError.invalidCompletion(
+                "Only a current portable Discussion accepts an Agent reply."
+            )
+        }
+        let expected = try ResearchDiscussionFactory.make(
+            snapshot: stored.snapshot,
+            triptychID: workspaceID
+        )
+        if let active = try await dependencies.portableResearchRecordStore
+            .activeDiscussionIfPresent(id: runID) {
+            guard ResearchDiscussionFactory.activeMatches(
+                active,
+                expected: expected
+            ) else {
+                throw ResearchActionRunContractError.invalidCompletion(
+                    "The portable Discussion no longer matches its frozen Discuss Action."
+                )
+            }
+        } else {
+            let finished = try await dependencies.portableResearchRecordStore
+                .record(id: runID)
+            guard ResearchDiscussionFactory.finishedMatches(
+                finished,
+                expected: expected
+            ) else {
+                throw ResearchActionRunContractError.invalidCompletion(
+                    "The finished Discussion no longer matches its frozen Discuss Action."
+                )
+            }
+        }
+        let commit = try await host.finishDiscussion(
+            discussionID: runID,
+            appendingAgentStatement: statement
+        )
+        if let existing = stored.completion {
+            guard existing.state == .complete,
+                  existing.actionID == .discuss else {
+                throw ResearchActionRunContractError.completionAlreadyRecorded(
+                    runID
+                )
+            }
+        } else {
+            let snapshot = stored.snapshot
+            let revisionsByID = Dictionary(
+                uniqueKeysWithValues: commit.record.participatingNotes.map {
+                    ($0.noteID, $0.endingRevision)
+                }
+            )
+            guard let targetFingerprint = revisionsByID[
+                snapshot.request.target.noteID
+            ],
+            snapshot.request.materials.allSatisfy({
+                revisionsByID[$0.noteID] != nil
+            }) else {
+                throw ResearchActionRunContractError.invalidCompletion(
+                    "The finished Discussion does not retain every frozen participant."
+                )
+            }
+            let completion = ResearchActionRunCompletion(
+                runID: runID,
+                actionID: .discuss,
+                state: .complete,
+                recordTitle: commit.record.title,
+                targetFingerprint: targetFingerprint,
+                materialFingerprints: Dictionary(
+                    uniqueKeysWithValues: snapshot.request.materials.map {
+                        ($0.noteID, revisionsByID[$0.noteID]!)
+                    }
+                ),
+                summary: "Discussion recorded.",
+                didModifyTarget: false,
+                fidelityOutcomes: [],
+                completedAt: commit.record.finishedAt
+            )
+            try await persistCompletion(completion, in: stored)
+        }
+        _ = try await host.publishCommittedResearchActionChange(
+            "The Agent Discussion reply"
+        )
+        await host.finalizeResearchAgentRunAccess(runID: runID)
+        return commit
     }
 
     private func cancel<Host: ResearchActionRunCoordinatorHost>(

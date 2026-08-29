@@ -511,7 +511,7 @@ struct ResearchRecordV1StoresTests {
         #expect(listing.issues.isEmpty)
     }
 
-    @Test("Finish moves one active Discussion into one idempotent record")
+    @Test("First Agent reply atomically moves one Discussion into one idempotent Record")
     func discussionFinishIsOneRecoverableTransition() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
@@ -519,34 +519,56 @@ struct ResearchRecordV1StoresTests {
         let discussion = try makePortableDiscussion()
         _ = try await store.createActiveDiscussion(discussion)
         let agent = try PortableResearchStatement(
+            id: UUID(uuidString: "00000000-0000-4000-8000-000000000987")!,
             author: .agent,
             kind: .discussionTurn,
             attribution: "Research Agent",
             text: "The residual pressure remains open.",
             createdAt: Date(timeIntervalSince1970: 12)
         )
-        let active = try await store.appendDiscussionStatement(
-            agent,
-            to: discussion.id,
-            at: Date(timeIntervalSince1970: 12)
-        )
-
-        let record = try await store.finishDiscussion(
+        let first = try await store.finishDiscussion(
             id: discussion.id,
-            participatingNotes: active.participatingNotes,
+            appendingAgentStatement: agent,
+            participatingNotes: discussion.participatingNotes,
             finishedAt: Date(timeIntervalSince1970: 20)
         )
         let repeated = try await store.finishDiscussion(
             id: discussion.id,
-            participatingNotes: active.participatingNotes,
+            appendingAgentStatement: try PortableResearchStatement(
+                id: agent.id,
+                author: .agent,
+                kind: .discussionTurn,
+                attribution: agent.attribution,
+                text: agent.text,
+                createdAt: Date(timeIntervalSince1970: 30)
+            ),
+            participatingNotes: [],
             finishedAt: Date(timeIntervalSince1970: 30)
         )
 
-        #expect(record == repeated)
-        #expect(record.kind == .discussion)
-        #expect(record.statements.count == 2)
+        #expect(!first.replyWasAlreadyRecorded)
+        #expect(repeated.replyWasAlreadyRecorded)
+        #expect(first.record == repeated.record)
+        #expect(first.record.kind == .discussion)
+        #expect(first.record.statements.count == 2)
         #expect(try await store.activeDiscussions().discussions.isEmpty)
-        #expect(try await store.listing().records == [record])
+        #expect(try await store.listing().records == [first.record])
+
+        await #expect(throws: ResearchRecordStoreV1Error.self) {
+            _ = try await store.finishDiscussion(
+                id: discussion.id,
+                appendingAgentStatement: try PortableResearchStatement(
+                    id: agent.id,
+                    author: .agent,
+                    kind: .discussionTurn,
+                    attribution: agent.attribution,
+                    text: "A conflicting retry.",
+                    createdAt: Date(timeIntervalSince1970: 31)
+                ),
+                participatingNotes: [],
+                finishedAt: Date(timeIntervalSince1970: 31)
+            )
+        }
     }
 
     @Test("Interrupted Discussion finish reconciles the exact active-record pair")

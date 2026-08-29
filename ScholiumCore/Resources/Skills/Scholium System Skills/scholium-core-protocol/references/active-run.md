@@ -19,9 +19,10 @@ currentness, provenance, scope, and access limits; do not turn delivery into
 support, relevance, or researcher acceptance.
 
 For a Discuss Run, read the required `scholium-discussion-protocol` before
-composing the attributed turn, then use `agent discuss-reply` with one stable
-`statement_id`. An exact retry is idempotent. This appends only to the active
-portable Discussion; it does not edit a Note or finish the Discussion.
+composing the attributed response, then use `agent discuss-reply` once with one
+stable `statement_id`. An exact retry is idempotent. A successful reply
+atomically forms the portable Research Record and completes the Discussion; it
+does not edit a Note and requires no separate Finish.
 
 Use `agent reload` whenever the current authenticated Run state is uncertain.
 A `stale_run` response means an exact Target, Material, or formal source

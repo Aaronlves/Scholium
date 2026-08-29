@@ -29,6 +29,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     var onCommentSelection: ((PassageCommentSubmission) -> Void)? = nil
     var commentComposerRequestID: UUID? = nil
     var commentResolution: PassageCommentResolution? = nil
+    var commentAnchors: [ReviewCommentAnchor] = []
+    var commentAnchorRevision: String? = nil
+    var onOpenCommentAnchor: ((ReviewCommentAnchor) -> Void)? = nil
     var onSelectionChange: ((MarkdownReviewSelection?) -> Void)? = nil
     /// Derived visibility only. Review remains the sole selection-surface
     /// owner; the coordinator transports mode changes to its retained page.
@@ -63,6 +66,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onCommentSelection: onCommentSelection,
             commentComposerRequestID: commentComposerRequestID,
             commentResolution: commentResolution,
+            commentAnchors: commentAnchors,
+            commentAnchorRevision: commentAnchorRevision,
+            onOpenCommentAnchor: onOpenCommentAnchor,
             onSelectionChange: onSelectionChange,
             selectionSurfaceIsActive: selectionSurfaceIsActive,
             renderingReadinessIsAcknowledged: renderingReadinessIsAcknowledged,
@@ -120,6 +126,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             configurationRevision: configurationRevision,
             linkPreviews: linkPreviews,
             linkPreviewRevision: linkPreviewRevision,
+            commentAnchors: commentAnchors,
+            commentAnchorRevision: commentAnchorRevision,
             in: webView
         )
         return webView
@@ -138,6 +146,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onCommentSelection: onCommentSelection,
             commentComposerRequestID: commentComposerRequestID,
             commentResolution: commentResolution,
+            commentAnchors: commentAnchors,
+            commentAnchorRevision: commentAnchorRevision,
+            onOpenCommentAnchor: onOpenCommentAnchor,
             onSelectionChange: onSelectionChange,
             selectionSurfaceIsActive: selectionSurfaceIsActive,
             renderingReadinessIsAcknowledged: renderingReadinessIsAcknowledged,
@@ -163,6 +174,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             configurationRevision: configurationRevision,
             linkPreviews: linkPreviews,
             linkPreviewRevision: linkPreviewRevision,
+            commentAnchors: commentAnchors,
+            commentAnchorRevision: commentAnchorRevision,
             in: webView
         )
     }
@@ -195,6 +208,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             "supports": ScholiumWebSymbolAssets.dataURI(for: .plus),
             "opposes": ScholiumWebSymbolAssets.dataURI(for: .minus),
             "incompatible": ScholiumWebSymbolAssets.dataURI(for: .xmark),
+            "comment": ScholiumWebSymbolAssets.dataURI(for: .textBubble),
         ]
 
         private var documentID: String
@@ -202,6 +216,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var onLinkClick: (String) -> Void
         private var onOpenExternalURL: (URL) -> Void
         private var onCommentSelection: ((PassageCommentSubmission) -> Void)?
+        private var onOpenCommentAnchor: ((ReviewCommentAnchor) -> Void)?
         private var onSelectionChange: ((MarkdownReviewSelection?) -> Void)?
         private let selectionCoordinator: SafeMarkdownReadSelectionCoordinator
         private let findCoordinator = SafeMarkdownReadFindCoordinator()
@@ -218,10 +233,16 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var loadFinalizationTask: Task<Void, Never>?
         private var sourceLineNavigationTask: Task<Void, Never>?
         private var linkPreviewUpdateTask: Task<Void, Never>?
+        private var commentAnchorUpdateTask: Task<Void, Never>?
         private var desiredLinkPreviewRevision = ""
         private var appliedLinkPreviewRevision = ""
         private var loadingLinkPreviewRevision = ""
         private var desiredLinkPreviews: [DocumentLinkPreview] = []
+        private var desiredCommentAnchorRevision = ""
+        private var appliedCommentAnchorRevision = ""
+        private var loadingCommentAnchorRevision = ""
+        private var desiredCommentAnchors: [ReviewCommentAnchor] = []
+        private var commentAnchorsByID: [String: ReviewCommentAnchor] = [:]
         private var onScrollFractionChange: ((Double) -> Void)?
 
         private var onScrollAnchorChange: ((EditorScrollAnchor) -> Void)?
@@ -248,6 +269,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onCommentSelection: ((PassageCommentSubmission) -> Void)?,
             commentComposerRequestID: UUID?,
             commentResolution: PassageCommentResolution?,
+            commentAnchors: [ReviewCommentAnchor],
+            commentAnchorRevision: String?,
+            onOpenCommentAnchor: ((ReviewCommentAnchor) -> Void)?,
             onSelectionChange: ((MarkdownReviewSelection?) -> Void)?,
             selectionSurfaceIsActive: Bool,
             renderingReadinessIsAcknowledged: Bool,
@@ -269,7 +293,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.onLinkClick = onLinkClick
             self.onOpenExternalURL = onOpenExternalURL
             self.onCommentSelection = onCommentSelection
+            self.onOpenCommentAnchor = onOpenCommentAnchor
             self.onSelectionChange = onSelectionChange
+            desiredCommentAnchors = commentAnchors
+            desiredCommentAnchorRevision = commentAnchorRevision
+                ?? Self.commentAnchorRevision(for: commentAnchors)
+            commentAnchorsByID = Self.commentAnchorsByID(commentAnchors)
             selectionCoordinator = SafeMarkdownReadSelectionCoordinator(
                 composerRequestID: commentComposerRequestID,
                 resolution: commentResolution,
@@ -299,6 +328,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             onCommentSelection: ((PassageCommentSubmission) -> Void)?,
             commentComposerRequestID: UUID?,
             commentResolution: PassageCommentResolution?,
+            commentAnchors: [ReviewCommentAnchor],
+            commentAnchorRevision: String?,
+            onOpenCommentAnchor: ((ReviewCommentAnchor) -> Void)?,
             onSelectionChange: ((MarkdownReviewSelection?) -> Void)?,
             selectionSurfaceIsActive: Bool,
             renderingReadinessIsAcknowledged: Bool,
@@ -322,6 +354,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 finalizedSignature = nil
                 appliedLinkPreviewRevision = ""
                 loadingLinkPreviewRevision = ""
+                appliedCommentAnchorRevision = ""
+                loadingCommentAnchorRevision = ""
                 lastReachedSourceLine = nil
                 pageIsReady = false
                 selectionCoordinator.resetForDocumentChange()
@@ -336,7 +370,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.onLinkClick = onLinkClick
             self.onOpenExternalURL = onOpenExternalURL
             self.onCommentSelection = onCommentSelection
+            self.onOpenCommentAnchor = onOpenCommentAnchor
             self.onSelectionChange = onSelectionChange
+            desiredCommentAnchors = commentAnchors
+            desiredCommentAnchorRevision = commentAnchorRevision
+                ?? Self.commentAnchorRevision(for: commentAnchors)
+            commentAnchorsByID = Self.commentAnchorsByID(commentAnchors)
             self.renderingReadinessIsAcknowledged = renderingReadinessIsAcknowledged
             self.onRenderingFailure = onRenderingFailure
             self.onRenderingLoading = onRenderingLoading
@@ -362,6 +401,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             )
             schedulePostLoadPositioningIfNeeded(in: webView)
             applySelectionCommandsIfNeeded(in: webView)
+            applyCommentAnchorsIfNeeded(in: webView)
             applyFindRequestIfNeeded(in: webView)
         }
 
@@ -373,11 +413,15 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             configurationRevision: String?,
             linkPreviews: [DocumentLinkPreview],
             linkPreviewRevision: String?,
+            commentAnchors: [ReviewCommentAnchor],
+            commentAnchorRevision: String?,
             in webView: WKWebView
         ) {
             let interfaceLocalization = WebKitInterfaceLocalization.current()
             let capabilitySignature = "\(onCommentSelection != nil):\(onSelectionChange != nil)"
             let previewRevision = linkPreviewRevision ?? String(linkPreviews.hashValue)
+            let anchorRevision = commentAnchorRevision
+                ?? Self.commentAnchorRevision(for: commentAnchors)
             let signature = configurationRevision.map {
                 "revision:\($0):\(capabilitySignature):\(interfaceLocalization.languageTag)"
             } ?? [
@@ -390,12 +434,16 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             ].joined(separator: ":")
             desiredLinkPreviews = linkPreviews
             desiredLinkPreviewRevision = previewRevision
+            desiredCommentAnchors = commentAnchors
+            desiredCommentAnchorRevision = anchorRevision
+            commentAnchorsByID = Self.commentAnchorsByID(commentAnchors)
             guard loadedSignature != signature else {
                 reannounceFinalizedRenderingIfNeeded(
                     signature: signature,
                     in: webView
                 )
                 applyLinkPreviewsIfNeeded(in: webView)
+                applyCommentAnchorsIfNeeded(in: webView)
                 applySelectionCommandsIfNeeded(in: webView)
                 applyFindRequestIfNeeded(in: webView)
                 return
@@ -419,6 +467,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             finalizedSignature = nil
             renderingReadinessIsAcknowledged = false
             loadingLinkPreviewRevision = previewRevision
+            loadingCommentAnchorRevision = anchorRevision
             pageIsReady = false
             selectionCoordinator.resetForDocumentChange()
             findCoordinator.resetForDocumentChange()
@@ -431,6 +480,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 presentationCSS: presentationCSS,
                 userCSS: userCSS,
                 linkPreviews: linkPreviews,
+                commentAnchors: commentAnchors,
                 includesMathRuntime: includesMathRuntime,
                 loadGeneration: loadGeneration,
                 localization: interfaceLocalization,
@@ -484,6 +534,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             presentationCSS: String,
             userCSS: String,
             linkPreviews: [DocumentLinkPreview],
+            commentAnchors: [ReviewCommentAnchor],
             includesMathRuntime: Bool,
             loadGeneration: UInt64,
             localization: WebKitInterfaceLocalization,
@@ -515,6 +566,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     commentEnabled: onCommentSelection != nil,
                     selectionEnabled: onSelectionChange != nil,
                     linkPreviews: linkPreviews,
+                    commentAnchors: commentAnchors,
                     presentationCSS: presentationCSS,
                     userCSS: userCSS,
                     localization: localization
@@ -559,6 +611,29 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                       self.activeWebView === webView,
                       self.desiredLinkPreviewRevision == revision else { return }
                 self.appliedLinkPreviewRevision = revision
+            }
+        }
+
+        private func applyCommentAnchorsIfNeeded(in webView: WKWebView) {
+            guard pageIsReady,
+                  desiredCommentAnchorRevision != appliedCommentAnchorRevision,
+                  activeWebView === webView else { return }
+            let revision = desiredCommentAnchorRevision
+            let anchors = Self.commentAnchorArguments(desiredCommentAnchors)
+            commentAnchorUpdateTask?.cancel()
+            commentAnchorUpdateTask = Task { @MainActor [weak self, weak webView] in
+                guard let self, let webView, self.activeWebView === webView else { return }
+                let result = try? await webView.callAsyncJavaScript(
+                    "return window.scholiumSetCommentAnchors?.(anchors) === true",
+                    arguments: ["anchors": anchors],
+                    in: nil,
+                    contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
+                )
+                guard !Task.isCancelled,
+                      result as? Bool == true,
+                      self.activeWebView === webView,
+                      self.desiredCommentAnchorRevision == revision else { return }
+                self.appliedCommentAnchorRevision = revision
             }
         }
 
@@ -640,8 +715,14 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     ),
                     startLine: lineRange.lowerBound,
                     endLine: lineRange.upperBound,
+                    commentedText: selection.excerpt,
                     text: comment
                 ))
+            case "commentAnchorActivated":
+                guard let anchorID = payload["anchorID"] as? String,
+                      anchorID.utf8.count <= 160,
+                      let anchor = commentAnchorsByID[anchorID] else { return }
+                onOpenCommentAnchor?(anchor)
             case "selectionChanged":
                 guard payload["text"] != nil else {
                     onSelectionChange?(nil)
@@ -699,7 +780,9 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             )
             pageIsReady = true
             appliedLinkPreviewRevision = loadingLinkPreviewRevision
+            appliedCommentAnchorRevision = loadingCommentAnchorRevision
             applyLinkPreviewsIfNeeded(in: webView)
+            applyCommentAnchorsIfNeeded(in: webView)
             applySelectionCommandsIfNeeded(in: webView)
             applyFindRequestIfNeeded(in: webView)
             let restoreClaim = scrollRestoration.claimIfReady(
@@ -1047,6 +1130,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             sourceLineNavigationTask = nil
             linkPreviewUpdateTask?.cancel()
             linkPreviewUpdateTask = nil
+            commentAnchorUpdateTask?.cancel()
+            commentAnchorUpdateTask = nil
             selectionCoordinator.cancel()
             findCoordinator.cancel()
             runtimeCoordinator.cancel()
@@ -1285,6 +1370,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let userCSS: String
             let localization: WebKitInterfaceLocalization
             let linkPreviews: [ReadLinkPreview]
+            let commentAnchors: [ReadCommentAnchor]
             let vectorSymbols: [String: String]
         }
 
@@ -1299,6 +1385,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             commentEnabled: Bool,
             selectionEnabled: Bool,
             linkPreviews: [DocumentLinkPreview],
+            commentAnchors: [ReviewCommentAnchor],
             presentationCSS: String,
             userCSS: String,
             localization: WebKitInterfaceLocalization = .current()
@@ -1335,6 +1422,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 userCSS: userCSS,
                 localization: localization,
                 linkPreviews: previews,
+                commentAnchors: commentAnchors.prefix(4_096).map(ReadCommentAnchor.init),
                 vectorSymbols: vectorSymbolDataURIs
             )
             let payload = base64JSON(configuration)
@@ -1360,6 +1448,24 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let htmlBody: String
         }
 
+        private struct ReadCommentAnchor: Encodable {
+            let id: String
+            let discussionID: String
+            let statementID: String
+            let startLine: Int
+            let endLine: Int
+            let commentCount: Int
+
+            init(_ anchor: ReviewCommentAnchor) {
+                id = anchor.id
+                discussionID = anchor.discussionID.uuidString.lowercased()
+                statementID = anchor.statementID.uuidString.lowercased()
+                startLine = anchor.startLine
+                endLine = anchor.endLine
+                commentCount = anchor.commentCount
+            }
+        }
+
         private static func linkPreviewArguments(
             _ previews: [DocumentLinkPreview]
         ) -> [[String: Any]] {
@@ -1378,6 +1484,38 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             }
         }
 
+        private static func commentAnchorArguments(
+            _ anchors: [ReviewCommentAnchor]
+        ) -> [[String: Any]] {
+            anchors.prefix(4_096).map { anchor in
+                [
+                    "id": anchor.id,
+                    "discussionID": anchor.discussionID.uuidString.lowercased(),
+                    "statementID": anchor.statementID.uuidString.lowercased(),
+                    "startLine": anchor.startLine,
+                    "endLine": anchor.endLine,
+                    "commentCount": anchor.commentCount,
+                ]
+            }
+        }
+
+        private static func commentAnchorsByID(
+            _ anchors: [ReviewCommentAnchor]
+        ) -> [String: ReviewCommentAnchor] {
+            Dictionary(
+                anchors.prefix(4_096).map { ($0.id, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
+        }
+
+        private static func commentAnchorRevision(
+            for anchors: [ReviewCommentAnchor]
+        ) -> String {
+            anchors.map { anchor in
+                "\(anchor.id):\(anchor.statementID.uuidString.lowercased()):\(anchor.commentCount)"
+            }.joined(separator: "|")
+        }
+
         private static func base64JSON<T: Encodable>(_ value: T) -> String {
             guard let data = try? JSONEncoder().encode(value) else { return "W10=" }
             return data.base64EncodedString()
@@ -1388,6 +1526,61 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         html.scholium-viewport-resize-suppresses-overlay-scrollbar { scrollbar-width: none; }
         body { font-family: Alegreya, Georgia, serif; font-size: var(--scholium-document-prose-font-size); line-height: var(--scholium-rhythm-prose-line-height); }
         \(ReviewSelectionPresentation.css)
+        .scholium-document.scholium-has-comment-anchors { position: relative; }
+        .scholium-review-comment-range {
+          background-color: color-mix(in srgb, var(--scholium-color-accent) 6%, transparent) !important;
+          background-image: linear-gradient(to right, color-mix(in srgb, var(--scholium-color-accent) 44%, var(--scholium-color-separator)) 0 2px, transparent 2px) !important;
+        }
+        .scholium-review-comment-range-active {
+          background-color: color-mix(in srgb, var(--scholium-color-accent) 12%, transparent) !important;
+          background-image: linear-gradient(to right, var(--scholium-color-accent) 0 3px, transparent 3px) !important;
+        }
+        .scholium-review-comment-range:dir(rtl) {
+          background-image: linear-gradient(to left, color-mix(in srgb, var(--scholium-color-accent) 44%, var(--scholium-color-separator)) 0 2px, transparent 2px) !important;
+        }
+        .scholium-review-comment-range-active:dir(rtl) {
+          background-image: linear-gradient(to left, var(--scholium-color-accent) 0 3px, transparent 3px) !important;
+        }
+        .scholium-review-comment-anchor {
+          appearance: none;
+          position: absolute;
+          z-index: 4;
+          box-sizing: border-box;
+          inline-size: 28px;
+          block-size: 28px;
+          padding: 5px;
+          border: 1px solid var(--scholium-color-separator);
+          border-radius: var(--scholium-corner-document-control);
+          color: var(--scholium-color-secondary-text);
+          background-color: color-mix(in srgb, var(--scholium-color-document-background) 92%, var(--scholium-color-primary-text) 8%);
+          cursor: pointer;
+        }
+        .scholium-review-comment-anchor::before {
+          content: "";
+          display: block;
+          inline-size: 100%;
+          block-size: 100%;
+          background-color: currentColor;
+          -webkit-mask: var(--scholium-comment-symbol) center / contain no-repeat;
+          mask: var(--scholium-comment-symbol) center / contain no-repeat;
+        }
+        .scholium-review-comment-anchor::after {
+          content: attr(data-comment-count);
+          position: absolute;
+          inset-block-start: -5px;
+          inset-inline-end: -5px;
+          box-sizing: border-box;
+          min-inline-size: 14px;
+          block-size: 14px;
+          padding-inline: 3px;
+          border-radius: var(--scholium-corner-inline-status);
+          color: var(--scholium-color-document-background);
+          background-color: var(--scholium-color-accent);
+          font: 600 9px/14px -apple-system, BlinkMacSystemFont, sans-serif;
+          font-variant-numeric: tabular-nums;
+          text-align: center;
+        }
+        .scholium-review-comment-anchor[data-comment-count="1"]::after { display: none; }
         #selection-actions { position: absolute; }
         .scholium-document .scholium-vector-link { display: inline; opacity: 1; visibility: visible; color: var(--scholium-color-accent); line-height: inherit; text-decoration: none; }
         .scholium-document .scholium-vector-neutral,
@@ -1411,7 +1604,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         .scholium-qa-only-control { position: absolute; inset-inline-end: 0; inset-block-end: 0; box-sizing: border-box; inline-size: 20px; block-size: 20px; padding: 0; overflow: hidden; border: 0; color: transparent; background: transparent; font: 0/0 -apple-system, BlinkMacSystemFont, sans-serif; }
         .scholium-qa-only-control:focus-visible { outline: 1px solid var(--scholium-content-focus-ring); outline-offset: 0; }
         .raw-html, .raw-html-inline { color: GrayText; }
-        @media (prefers-contrast: more) { #comment-text:focus-visible { box-shadow: inset 0 0 0 2px var(--scholium-content-focus-ring); } }
+        @media (prefers-contrast: more) {
+          #comment-text:focus-visible { box-shadow: inset 0 0 0 2px var(--scholium-content-focus-ring); }
+          .scholium-review-comment-range { background-color: transparent !important; background-image: linear-gradient(to right, var(--scholium-color-accent) 0 3px, transparent 3px) !important; }
+          .scholium-review-comment-range:dir(rtl) { background-image: linear-gradient(to left, var(--scholium-color-accent) 0 3px, transparent 3px) !important; }
+          .scholium-review-comment-anchor { border-width: 2px; border-color: var(--scholium-color-primary-text); }
+        }
         \(ScholiumWebDesignTokens.documentPresentationCSS)
         """
     }

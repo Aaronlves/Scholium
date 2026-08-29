@@ -57,32 +57,43 @@ public enum PortableResearchStatementKind: String, Codable, Hashable, Sendable {
     case researcherResponse = "researcher_response"
 }
 
-/// A lightweight researcher Comment location. It deliberately records no
-/// selected prose or exact source offsets; the fingerprint keeps the original
-/// one-based inclusive line range truthful after later edits.
+/// A lightweight researcher Comment reference. The bounded rendered selection
+/// remains readable after later source edits, while the fingerprint-bound
+/// one-based inclusive line range is only a current-revision navigation aid.
 public struct ResearchLineReference: Codable, Hashable, Sendable {
+    public static let maximumCommentedTextUTF16Count = 2_000
+
     public let fingerprint: DocumentFingerprint
     public let line: Int
     public let endLine: Int
+    public let commentedText: String
 
     public init(
         fingerprint: DocumentFingerprint,
         line: Int,
-        endLine: Int
+        endLine: Int,
+        commentedText: String
     ) throws {
+        let commentedText = commentedText.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
         guard PortableResearchRecordValidation.isValidFingerprint(fingerprint),
               line > 0,
-              endLine >= line else {
+              endLine >= line,
+              !commentedText.isEmpty,
+              commentedText.utf16.count <= Self.maximumCommentedTextUTF16Count else {
             throw PortableResearchRecordError.invalidStatement
         }
         self.fingerprint = fingerprint
         self.line = line
         self.endLine = endLine
+        self.commentedText = commentedText
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case fingerprint, line
         case endLine = "end_line"
+        case commentedText = "commented_text"
     }
 
     public init(from decoder: Decoder) throws {
@@ -97,7 +108,8 @@ public struct ResearchLineReference: Codable, Hashable, Sendable {
                 forKey: .fingerprint
             ).value,
             line: container.decode(Int.self, forKey: .line),
-            endLine: container.decode(Int.self, forKey: .endLine)
+            endLine: container.decode(Int.self, forKey: .endLine),
+            commentedText: container.decode(String.self, forKey: .commentedText)
         )
     }
 }
@@ -510,7 +522,7 @@ public enum PortableResearchFidelityCompletion: String, Codable, Hashable, Senda
 /// validated nonconversational Action. It deliberately has no generic metadata
 /// dictionary, so machine-local execution fields cannot leak through encoding.
 public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 15
+    public static let currentSchemaVersion = 16
 
     public let schemaVersion: Int
     public let id: UUID

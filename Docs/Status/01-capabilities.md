@@ -314,19 +314,18 @@
 - An explicitly researcher-started `researcher_provided` Check Fidelity Run
   exposes the exact checks plus a typed Citation constraint. Without a formal
   source envelope, Citation must be `unavailable`; Note YAML URLs remain
-  authored metadata. The Fidelity Run forms its own schema-15 Record with
+  authored metadata. The Fidelity Run forms its own schema-16 Record with
   explicit unverified evidence rather than a fabricated source claim; Analyze
   records the same limitation through its bounded self-check without creating
   a parent/child Fidelity pair.
 - Authenticated Discuss Runs expose their frozen Dialogue Response Contract and
-  the `agent discuss-reply` and `agent finish-discussion` commands. A stable
-  Agent statement ID makes reply outcome-unknown retry idempotent; the reply
-  route appends only an attributed Agent turn to the active portable
-  Discussion. After at least one such durable turn, Finish forms that Run's
-  portable Discussion Record and revokes the Session. Neither route grants
-  Note/Metadata mutation, evaluation, Undo, recovery, cross-Run, or arbitrary
-  filesystem authority, and Finish accepts no Result body or researcher
-  acceptance.
+  one `agent discuss-reply` completion command. A stable Agent statement ID
+  makes outcome-unknown retry idempotent. The first successful reply atomically
+  retains the attributed Agent response, forms the portable Discussion Record,
+  completes the same Run, and finalizes the Session. There is no separate
+  Finish or Result body. The route grants no Note/Metadata mutation,
+  evaluation, Undo, recovery, cross-Run, or arbitrary filesystem authority and
+  implies no researcher acceptance.
 - Closing an Action presentation leaves unfinished work active. End cancels a
   no-write Action; confirmed changes require Result submission so their Record
   and Review cannot be lost, while unresolved recovery blocks End.
@@ -336,7 +335,7 @@
 - Comments, attributed Discussion turns, completed Action results, explicit
   frozen Material participants, confirmed effects, discrepancies, Fidelity outcome, Literature
   Recommendations, and atomic Researcher Response persist through strict
-  schema-15 Records. Dynamic reading and source-use testimony are not persisted;
+  schema-16 Records. Dynamic reading and source-use testimony are not persisted;
   the Action identity retains only Application-established frozen Material Note
   IDs so selected Materials remain distinct from confirmed-change-only
   participants. In-text citations remain optional academic content. Analyze Records retain one explicit Scholium-source,
@@ -367,7 +366,7 @@
 - The Triptych-keyed Research Records window and Search consume the same Record
   provider. Reading Leads are a rebuildable projection of recommendation
   occurrences; handling and researcher notes update the parent Record.
-- Strict schema-15 prose strings now remain byte-for-byte opaque through
+- Strict schema-16 prose strings now remain byte-for-byte opaque through
   submission, validation, storage, hashing, Search, and CLI reading while a
   disposable Contracts projection recognizes the closed Record scholarly-
   markup subset. Navigation reuses current fail-closed Note/heading/block

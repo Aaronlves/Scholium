@@ -30783,6 +30783,10 @@ ${fence}
     "Submit Comment for QA",
     "Comment for line {start}",
     "Comment for lines {start} through {end}",
+    "Open comment at line {start}",
+    "Open comment at lines {start} through {end}",
+    "Open {count} comments at line {start}",
+    "Open {count} comments at lines {start} through {end}",
     "Could not save. Your Comment is still here.",
     "This Comment is too long to save here.",
     "Saving\u2026"

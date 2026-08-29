@@ -146,10 +146,7 @@ extension ResearchActionRunOperationsTests {
             }
 
             if actionID == .discuss {
-                #expect(context.nextActions.suffix(2).map { $0.kind } == [
-                    AgentCommandActionKind.reply,
-                    AgentCommandActionKind.finish,
-                ])
+                #expect(context.nextActions.suffix(1).map(\.kind) == [.reply])
                 let reply = try #require(context.nextActions.first {
                     $0.kind == .reply
                 })
@@ -576,26 +573,12 @@ extension ResearchActionRunOperationsTests {
                 ]
             )
         )
-        let protectedRun = try await handle.research.actionRunDetails(id: preparation.runID)
-        _ = try await handle.research.appendDiscussionStatement(
+        let record = try await handle.research.replyToDiscussionAndFinish(
             discussionID: preparation.runID,
-            author: .agent,
+            statementID: UUID(),
             attribution: "Research Agent",
             text: "The distinction remains bounded to the current Analysis."
         )
-        _ = try await completeTestActionRun(handle: handle, submission:
-            ResearchActionRunCompletionSubmission(
-                runID: preparation.runID,
-                confirmationToken: protectedRun.snapshot.confirmationToken,
-                recordTitle: try ResearchRecordTitle("Test research result"),
-                finalTargetFingerprint: analysis.fingerprint,
-                summary: "Returned one bounded clarification.",
-                didModifyTarget: false,
-                submittedAt: protectedRun.snapshot.preparedAt.addingTimeInterval(2)
-            )
-        )
-
-        let record = try await handle.research.finishProtectedDiscussion(runID: preparation.runID)
         #expect(record.kind == .discussion)
         #expect(record.action?.actionID == .discuss)
         #expect(try LegacyResearchFileCanary(url: legacyActivity) == before)
@@ -624,14 +607,6 @@ extension ResearchActionRunOperationsTests {
                 ]
             )
         )
-        let protectedRun = try await handle.research.actionRunDetails(id: preparation.runID)
-        _ = try await handle.research.appendDiscussionStatement(
-            discussionID: preparation.runID,
-            author: .agent,
-            attribution: "Research Agent",
-            text: "The reply remains attached to this exact run."
-        )
-
         let activeURL = fixture.rootURL
             .appendingPathComponent(".scholium/research-records/v1/active", isDirectory: true)
             .appendingPathComponent(preparation.runID.uuidString.lowercased() + ".json")
@@ -646,19 +621,12 @@ extension ResearchActionRunOperationsTests {
             .write(to: activeURL, options: .atomic)
 
         await #expect(throws: ResearchActionRunContractError.self) {
-            _ = try await completeTestActionRun(handle: handle, submission:
-                ResearchActionRunCompletionSubmission(
-                    runID: preparation.runID,
-                    confirmationToken: protectedRun.snapshot.confirmationToken,
-                    recordTitle: try ResearchRecordTitle("Test research result"),
-                    finalTargetFingerprint: analysis.fingerprint,
-                    summary: "A mismatched record must not complete the run.",
-                    didModifyTarget: false
-                )
+            _ = try await handle.research.replyToDiscussionAndFinish(
+                discussionID: preparation.runID,
+                statementID: UUID(),
+                attribution: "Research Agent",
+                text: "The reply remains attached to this exact run."
             )
-        }
-        await #expect(throws: ResearchActionRunContractError.self) {
-            _ = try await handle.research.finishProtectedDiscussion(runID: preparation.runID)
         }
         await #expect(throws: ResearchActionRunContractError.self) {
             _ = try await handle.research.finishDiscussion(

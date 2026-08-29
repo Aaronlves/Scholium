@@ -18,7 +18,6 @@ struct ActionCLIExecutableLifecycleTests {
         let cli = ActionCLIProcess(binaryPath: binaryPath, home: root)
         let commands = [
             "preflight-analysis", "start", "pair", "reload", "query", "discuss-reply",
-            "finish-discussion",
             "extend-write-set",
             "write", "write-zotero-binding", "resolve-write-conflict",
             "submit-result", "continue",
@@ -173,17 +172,6 @@ struct ActionCLIExecutableLifecycleTests {
                         request: reply
                     )
                 )
-            case .discussionFinish:
-                guard let run = request.run,
-                      let credential = request.credential else {
-                    throw LocalAgentBridgeError.invalidRequest
-                }
-                return .discussionFinish(
-                    try await runtime.finishResearchAgentDiscussion(
-                        credential: credential,
-                        run: run
-                    )
-                )
             case .writeDocument:
                 guard let run = request.run,
                       let credential = request.credential,
@@ -264,18 +252,12 @@ struct ActionCLIExecutableLifecycleTests {
             stdin: try Self.encoder().encode(reply),
             environment: environment
         )
-        #expect(try Self.decoder().decode(
+        let replyReceipt = try Self.decoder().decode(
             ResearchAgentDiscussionReplyReceipt.self,
             from: replyOutput.stdout
-        ).statementID == replyStatementID)
-        let finishOutput = try cli.run(
-            ["agent", "finish-discussion", "--run", discuss.receipt.run.rawValue],
-            environment: environment
         )
-        #expect(try Self.decoder().decode(
-            ResearchAgentDiscussionFinishReceipt.self,
-            from: finishOutput.stdout
-        ).recordFormed)
+        #expect(replyReceipt.statementID == replyStatementID)
+        #expect(replyReceipt.recordFormed)
 
         let simulations: [(
             action: ResearchActionID,
@@ -695,7 +677,7 @@ struct ActionCLIExecutableLifecycleTests {
                     throw LocalAgentBridgeError.permissionDenied
                 }
                 return .endReceipt(endReceipt)
-            case .pair, .revokeSession, .query, .discussionReply, .discussionFinish,
+            case .pair, .revokeSession, .query, .discussionReply,
                     .extendWriteSet, .writeZoteroBinding,
                     .resolveWriteConflict, .submitResult, .continueResearch,
                     .methodImprovementContext, .submitMethodImprovement:
@@ -944,8 +926,8 @@ struct ActionCLIExecutableLifecycleTests {
         #expect(report.context.brief.run == run)
     }
 
-    @Test("The real CLI pairs, reloads Discuss context, and removes its credential after Finish")
-    func agentPairingContextAndDiscussionFinish() async throws {
+    @Test("The real CLI pairs, reloads Discuss context, and removes its credential after the reply forms a Record")
+    func agentPairingContextAndDiscussionReplyCompletion() async throws {
         guard let binaryPath = ProcessInfo.processInfo.environment[
             "SCHOLIUM_ACTION_CLI_BINARY"
         ], !binaryPath.isEmpty else { return }
@@ -1009,8 +991,7 @@ struct ActionCLIExecutableLifecycleTests {
                     zotero: true,
                     writeInitialObject: false,
                     extendWriteSet: false,
-                    discussionReply: true,
-                    discussionFinish: true
+                    discussionReply: true
                 )
             ),
             requiredSkills: try Self.requiredSkills(for: method),
@@ -1031,10 +1012,13 @@ struct ActionCLIExecutableLifecycleTests {
                 boundedWriteSet: context.boundedWriteSet
             )
         }
-        let finishReceipt = try ResearchAgentDiscussionFinishReceipt(
+        let statementID = UUID()
+        let replyReceipt = try ResearchAgentDiscussionReplyReceipt(
             run: run,
             discussionID: UUID(),
-            message: "The Discussion finished and formed one portable Research Record."
+            statementID: statementID,
+            state: .recorded,
+            message: "The Agent reply was recorded and the Discussion formed its Research Record."
         )
         let server = try LocalAgentBridgeServer(
             applicationSupportURL: bridgeContainer
@@ -1052,12 +1036,14 @@ struct ActionCLIExecutableLifecycleTests {
                     throw LocalAgentBridgeError.permissionDenied
                 }
                 return .context(context)
-            case .discussionFinish:
-                guard request.run == run, request.credential == credential else {
+            case .discussionReply:
+                guard request.run == run,
+                      request.credential == credential,
+                      request.discussionReplyRequest?.statementID == statementID else {
                     throw LocalAgentBridgeError.permissionDenied
                 }
-                return .discussionFinish(finishReceipt)
-            case .revokeSession, .query, .discussionReply,
+                return .discussionReply(replyReceipt)
+            case .revokeSession, .query,
                     .extendWriteSet, .writeDocument, .writeZoteroBinding,
                     .resolveWriteConflict, .submitResult, .continueResearch,
                     .methodImprovementContext, .submitMethodImprovement, .end:
@@ -1152,14 +1138,18 @@ struct ActionCLIExecutableLifecycleTests {
             ofItemAtPath: credentialURL.path
         )
 
-        let finished = try cli.run(
-            ["agent", "finish-discussion", "--run", run.rawValue],
+        let reply = try cli.run(
+            ["agent", "discuss-reply", "--run", run.rawValue, "--from", "-"],
+            stdin: try Self.encoder().encode([
+                "statement_id": statementID.uuidString,
+                "attribution": "External Agent",
+                "text": "A bounded philosophical response.",
+            ]),
             environment: environment
         )
-        let finishOutput = String(decoding: finished.stdout, as: UTF8.self)
-        #expect(finishOutput.contains("\"finished\" : true"))
-        #expect(finishOutput.contains("\"record_formed\" : true"))
-        #expect(!finishOutput.contains(credential.secret))
+        let replyOutput = String(decoding: reply.stdout, as: UTF8.self)
+        #expect(replyOutput.contains("\"record_formed\" : true"))
+        #expect(!replyOutput.contains(credential.secret))
         #expect(!FileManager.default.fileExists(atPath: credentialURL.path))
     }
 
@@ -1353,7 +1343,7 @@ struct ActionCLIExecutableLifecycleTests {
                     target: ResearchBoundedWriteSetViewEntry(analysisEntry),
                     message: "The portable Zotero binding committed and read back."
                 ))
-            case .revokeSession, .discussionReply, .discussionFinish,
+            case .revokeSession, .discussionReply,
                     .resolveWriteConflict, .submitResult,
                     .continueResearch, .methodImprovementContext,
                     .submitMethodImprovement, .end:
@@ -1916,7 +1906,7 @@ struct ActionCLIExecutableLifecycleTests {
                 }
                 observed.capture(continuation: continuation)
                 return .continuation(expectedContinuation)
-            case .revokeSession, .query, .discussionReply, .discussionFinish,
+            case .revokeSession, .query, .discussionReply,
                     .extendWriteSet, .writeDocument,
                     .writeZoteroBinding,
                     .resolveWriteConflict, .methodImprovementContext,
@@ -2672,7 +2662,7 @@ struct ActionCLIExecutableLifecycleTests {
                     throw LocalAgentBridgeError.permissionDenied
                 }
                 return .endReceipt(endReceipt)
-            case .revokeSession, .query, .discussionReply, .discussionFinish,
+            case .revokeSession, .query, .discussionReply,
                     .extendWriteSet, .writeDocument,
                     .writeZoteroBinding,
                     .resolveWriteConflict, .submitResult, .continueResearch:
@@ -3502,14 +3492,11 @@ private struct ActionCLIFixture {
             passage: nil,
             researcherMessage: "Inspect the synthetic Analysis Record."
         )
-        _ = try await handle.research.appendDiscussionStatement(
+        let record = try await handle.research.replyToDiscussionAndFinish(
             discussionID: discussion.id,
-            author: .agent,
+            statementID: UUID(),
             attribution: "Research Agent",
             text: "The synthetic Analysis retains one exact finished Record."
-        )
-        let record = try await handle.research.finishDiscussion(
-            discussionID: discussion.id
         )
         await runtime.shutdown()
         return Self(

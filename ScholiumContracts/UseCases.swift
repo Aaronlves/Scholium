@@ -198,13 +198,12 @@ public protocol ResearchRecordUseCases: Sendable {
         lineReference: ResearchLineReference,
         researcherMessage: String
     ) async throws -> PortableResearchDiscussion
-    func appendDiscussionStatement(
+    func replyToDiscussionAndFinish(
         discussionID: UUID,
-        author: PortableResearchStatementAuthor,
+        statementID: UUID,
         attribution: String,
-        text: String,
-        passage: CommentAnchor?
-    ) async throws -> PortableResearchDiscussion
+        text: String
+    ) async throws -> PortableResearchRecord
     func finishDiscussion(discussionID: UUID) async throws -> PortableResearchRecord
     func finishedResearchRecords(noteID: UUID?) async throws -> [PortableResearchRecord]
     func saveResearcherResponse(
@@ -467,10 +466,6 @@ public protocol AgentBridgeUseCases: Sendable {
         credential: ResearchConnectionCredential,
         request: ResearchAgentDiscussionReplyRequest
     ) async throws -> ResearchAgentDiscussionReplyReceipt
-    func finishDiscussion(
-        run: ResearchRunLocator,
-        credential: ResearchConnectionCredential
-    ) async throws -> ResearchAgentDiscussionFinishReceipt
     func extendWriteSet(
         run: ResearchRunLocator,
         credential: ResearchConnectionCredential,

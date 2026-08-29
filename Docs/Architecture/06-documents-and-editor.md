@@ -394,25 +394,22 @@ Live/Source also use CodeMirror's native snapshot. Reconstruction freezes a
 handoff anchor, and delayed restoration requires the same document or Review-load
 generation. It never depends only on throttle-prone animation frames.
 
-Written annotation is authoritative Markdown, including an ordinary semantic
-Callout when a separate visible note is useful; Scholium owns no parallel
-annotation store or CodeMirror margin widget. Review and Edit own separate
-transient selection toolbars: Review exposes only the in-place Comment
-textarea, while Edit exposes common Markdown formatting, including the
-source-owned Markdown Comment wrapper, and no Review Comment composer. Return
-saves and closes a Review Comment, Shift-Return inserts a line, and Escape
-cancels. Source exposes neither toolbar. Native `ScholiumSystemSymbol` names
-are the single icon catalog; `ScholiumWebSymbolAssets` renders those symbols
-once and injects data-URI CSS masks for the Edit toolbar and Review/Edit Vector
-Links, so WebKit owns no duplicate SVG drawings. Saving appends a line-only
-researcher statement to the current active Discussion without opening a sheet,
-copying instructions, or contacting an agent. Discuss later collects and
-presents these statements; its agent request identifies their lines but never
-sends retained selected prose.
+Markdown owns written annotation, including semantic Callouts; Scholium has no
+parallel store or margin widget. Review exposes the transient Comment field;
+Edit exposes Markdown formatting and its source-owned Comment wrapper; Source
+exposes neither. Return saves, Shift-Return inserts a line, and Escape cancels.
+`ScholiumSystemSymbol` is the icon catalog; `ScholiumWebSymbolAssets` injects
+its data-URI masks into the WebKit surfaces. Saving appends a Discussion
+statement with current-revision lines, the bounded rendered selection, and no
+surrounding context. `NoteContentView` emits matching-fingerprint anchors by
+Discussion and range. `review-comment-anchors` maps DOM; buttons open
+statements and return to their line. Updates are dynamic; mismatches emit no
+anchor. Finished Records use selected text and omit the unstable line locator.
 
 Transient surfaces do no whole-Note work. Review extracts at most a 2,000-unit
-excerpt and two 80-unit contexts from native Range boundaries and reuses the
-Mermaid-protection inventory. Edit caches document, selection, and Text Style;
+excerpt and two 80-unit contexts from native Range boundaries. Context serves
+only transient range resolution and is discarded before persistence. Edit caches document,
+selection, and Text Style;
 equivalent updates write no DOM, while geometry changes still remeasure. One
 keyed CodeMirror measure replaces earlier requests; a 50 ms same-path watchdog
 covers throttled animation frames, and the bar stays hidden until positioned.

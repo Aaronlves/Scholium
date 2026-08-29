@@ -3870,12 +3870,6 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        let note = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Note/NoteContentView.swift"
-            ),
-            encoding: .utf8
-        )
         let review = try String(
             contentsOf: repository.appendingPathComponent(
                 "Scholium/Views/Note/SafeMarkdownReadWebView.swift"
@@ -3909,7 +3903,6 @@ struct FrontendArchitectureTests {
         #expect(search.contains("ScholiumShape.searchOverlayCornerRadius"))
         #expect(bootstrap.contains("ScholiumShape.editorialPanelCornerRadius"))
         #expect(frontmatter.contains("ScholiumShape.editorialTextEditorCornerRadius"))
-        #expect(note.contains("ScholiumShape.editorialTextEditorCornerRadius"))
         #expect(review.contains("var(--scholium-corner-editorial-text-editor)"))
     }
 

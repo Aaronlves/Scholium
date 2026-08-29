@@ -278,7 +278,7 @@ extension ScholiumCLI {
                         "--text": .value, "--from": .value,
                     ]
                 ),
-                help: "Usage: scholium discuss reply <discussion-id> --agent <name> (--text <reply> | --from <file|->) [--triptych <selector>]\n\nThis is a researcher-operated manual attribution route. External Agents must use the authenticated scholium agent discuss-reply command."
+                help: "Usage: scholium discuss reply <discussion-id> --agent <name> (--text <reply> | --from <file|->) [--triptych <selector>]\n\nThis researcher-operated attribution route records one Agent reply and atomically forms the Discussion's Research Record. External Agents must use the authenticated scholium agent discuss-reply command."
             ),
             "zotero mcp": .init(
                 rule: .init(pathLength: 2, options: ["--probe": .flag, "--format": .value]),

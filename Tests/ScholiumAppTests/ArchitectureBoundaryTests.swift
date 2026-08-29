@@ -137,7 +137,7 @@ struct ArchitectureBoundaryTests {
         #expect(!store.contains("switch request.operation"))
         #expect(router.contains("final class LocalAgentBridgeRequestRouter"))
         #expect(router.contains("switch request.operation"))
-        #expect(router.components(separatedBy: "case .").count - 1 == 17)
+        #expect(router.components(separatedBy: "case .").count - 1 == 16)
         #expect(!router.contains("LocalAgentBridgeServer("))
     }
 

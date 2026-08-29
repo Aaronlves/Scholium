@@ -323,11 +323,215 @@
   }
 
   // reader-configuration.ts
+  var commentAnchorToken = /^[A-Za-z0-9._:-]+$/;
+  var uuidToken = /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/;
+  function validatedReadCommentAnchors(value) {
+    if (!Array.isArray(value) || value.length > 4096) return null;
+    const anchors = [];
+    const identifiers = /* @__PURE__ */ new Set();
+    for (const candidate of value) {
+      if (!candidate || typeof candidate !== "object") return null;
+      const anchor = candidate;
+      if (typeof anchor.id !== "string" || !anchor.id || anchor.id.length > 160 || !commentAnchorToken.test(anchor.id) || typeof anchor.discussionID !== "string" || !anchor.discussionID || anchor.discussionID.length > 64 || !uuidToken.test(anchor.discussionID) || typeof anchor.statementID !== "string" || !anchor.statementID || anchor.statementID.length > 64 || !uuidToken.test(anchor.statementID) || !Number.isSafeInteger(anchor.startLine) || Number(anchor.startLine) < 1 || !Number.isSafeInteger(anchor.endLine) || Number(anchor.endLine) < Number(anchor.startLine) || !Number.isSafeInteger(anchor.commentCount) || Number(anchor.commentCount) < 1 || Number(anchor.commentCount) > 4096 || identifiers.has(anchor.id)) return null;
+      identifiers.add(anchor.id);
+      anchors.push(anchor);
+    }
+    return anchors;
+  }
   function validatedReaderConfiguration(value) {
     if (!value || typeof value !== "object") return null;
     const config = value;
-    if (config.version !== 1 || typeof config.documentID !== "string" || !config.documentID || config.documentID.length > 4096 || typeof config.fingerprint !== "string" || !config.fingerprint || config.fingerprint.length > 256 || !Number.isSafeInteger(config.loadGeneration) || Number(config.loadGeneration) < 0 || typeof config.commentEnabled !== "boolean" || typeof config.selectionEnabled !== "boolean" || typeof config.testingEnabled !== "boolean" || typeof config.presentationCSS !== "string" || typeof config.userCSS !== "string" || !config.localization || typeof config.localization !== "object" || !config.localization.strings || typeof config.localization.strings !== "object" || !Array.isArray(config.linkPreviews) || config.linkPreviews.length > 128 || !config.vectorSymbols || typeof config.vectorSymbols !== "object") return null;
+    if (config.version !== 1 || typeof config.documentID !== "string" || !config.documentID || config.documentID.length > 4096 || typeof config.fingerprint !== "string" || !config.fingerprint || config.fingerprint.length > 256 || !Number.isSafeInteger(config.loadGeneration) || Number(config.loadGeneration) < 0 || typeof config.commentEnabled !== "boolean" || typeof config.selectionEnabled !== "boolean" || typeof config.testingEnabled !== "boolean" || typeof config.presentationCSS !== "string" || typeof config.userCSS !== "string" || !config.localization || typeof config.localization !== "object" || !config.localization.strings || typeof config.localization.strings !== "object" || !Array.isArray(config.linkPreviews) || config.linkPreviews.length > 128 || validatedReadCommentAnchors(config.commentAnchors) === null || !config.vectorSymbols || typeof config.vectorSymbols !== "object") return null;
     return config;
+  }
+
+  // review-comment-anchors.ts
+  function sourceLocatedBlocks(root) {
+    const blocks = [];
+    for (const element of root.querySelectorAll("[data-source-line]")) {
+      if (element.closest(".scholium-embedded-note-body, .scholium-preview-body")) continue;
+      if (element.closest('[data-scholium-protected="mermaid"]')) continue;
+      const style = getComputedStyle(element);
+      if (style.display === "inline" || style.display === "contents" || style.display === "none" || style.visibility === "hidden") continue;
+      const startLine = Number(element.dataset.sourceLine);
+      const endLine = Number(element.dataset.sourceEndLine || element.dataset.sourceLine);
+      if (!Number.isSafeInteger(startLine) || startLine < 1 || !Number.isSafeInteger(endLine) || endLine < startLine) continue;
+      let depth = 0;
+      let parent = element.parentElement;
+      while (parent && parent !== root) {
+        depth += 1;
+        parent = parent.parentElement;
+      }
+      blocks.push({ element, startLine, endLine, depth });
+    }
+    return blocks;
+  }
+  function blocksForAnchor(blocks, anchor) {
+    const overlapping = blocks.filter(
+      (block) => block.startLine <= anchor.endLine && block.endLine >= anchor.startLine
+    );
+    const leaves = overlapping.filter((candidate) => !overlapping.some(
+      (other) => other !== candidate && candidate.element.contains(other.element)
+    ));
+    return (leaves.length ? leaves : overlapping).sort((left, right) => {
+      const order = left.element.compareDocumentPosition(right.element);
+      if (order & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+      if (order & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+      const leftSpan = left.endLine - left.startLine;
+      const rightSpan = right.endLine - right.startLine;
+      return leftSpan - rightSpan || right.depth - left.depth;
+    });
+  }
+  function markerLabel(anchor, localized) {
+    if (anchor.commentCount === 1) {
+      return anchor.startLine === anchor.endLine ? localized("Open comment at line {start}", { start: anchor.startLine }) : localized("Open comment at lines {start} through {end}", {
+        start: anchor.startLine,
+        end: anchor.endLine
+      });
+    }
+    return anchor.startLine === anchor.endLine ? localized("Open {count} comments at line {start}", {
+      count: anchor.commentCount,
+      start: anchor.startLine
+    }) : localized("Open {count} comments at lines {start} through {end}", {
+      count: anchor.commentCount,
+      start: anchor.startLine,
+      end: anchor.endLine
+    });
+  }
+  function createReviewCommentAnchorPresentation(root, localized, commentSymbol, activate) {
+    let anchors = [];
+    let resizeObserver;
+    let layoutFrame = 0;
+    const clear = () => {
+      cancelAnimationFrame(layoutFrame);
+      layoutFrame = 0;
+      for (const marker of root.querySelectorAll(
+        ":scope > [data-scholium-comment-anchor]"
+      )) marker.remove();
+      for (const block of root.querySelectorAll(
+        ".scholium-review-comment-range, .scholium-review-comment-range-active"
+      )) {
+        block.classList.remove(
+          "scholium-review-comment-range",
+          "scholium-review-comment-range-active"
+        );
+        delete block.dataset.scholiumCommentAnchorTarget;
+      }
+      root.classList.remove("scholium-has-comment-anchors");
+    };
+    const layout = () => {
+      layoutFrame = 0;
+      const rootBounds = root.getBoundingClientRect();
+      const rootStyle = getComputedStyle(root);
+      const contentLeft = Number.parseFloat(rootStyle.paddingLeft) || 0;
+      const contentRight = rootBounds.width - (Number.parseFloat(rootStyle.paddingRight) || 0);
+      let priorMarkerBottom = -Infinity;
+      for (const marker of root.querySelectorAll(
+        ":scope > [data-scholium-comment-anchor]"
+      )) {
+        const anchorID = marker.dataset.scholiumCommentAnchor;
+        const target = anchorID ? root.querySelector(
+          `[data-scholium-comment-anchor-target~="${CSS.escape(anchorID)}"]`
+        ) : null;
+        if (!target) {
+          marker.hidden = true;
+          continue;
+        }
+        marker.hidden = false;
+        const targetBounds = target.getBoundingClientRect();
+        const markerBounds = marker.getBoundingClientRect();
+        const markerWidth = Math.max(20, markerBounds.width);
+        const markerHeight = Math.max(20, markerBounds.height);
+        const preferredLeft = rootStyle.direction === "rtl" ? contentLeft - markerWidth - 4 : contentRight + 4;
+        const left = Math.max(
+          2,
+          Math.min(preferredLeft, rootBounds.width - markerWidth - 2)
+        );
+        const top = Math.max(
+          0,
+          targetBounds.top - rootBounds.top,
+          priorMarkerBottom + 3
+        );
+        marker.style.left = `${left}px`;
+        marker.style.top = `${top}px`;
+        priorMarkerBottom = top + markerHeight;
+      }
+    };
+    const scheduleLayout = () => {
+      cancelAnimationFrame(layoutFrame);
+      layoutFrame = requestAnimationFrame(layout);
+    };
+    const setActive = (anchorID, active) => {
+      for (const block of root.querySelectorAll(
+        `[data-scholium-comment-anchor-target~="${CSS.escape(anchorID)}"]`
+      )) block.classList.toggle("scholium-review-comment-range-active", active);
+    };
+    const render = () => {
+      clear();
+      if (!anchors.length) return;
+      const blocks = sourceLocatedBlocks(root);
+      for (const anchor of [...anchors].sort(
+        (left, right) => left.startLine - right.startLine || left.endLine - right.endLine || left.id.localeCompare(right.id)
+      )) {
+        const located = blocksForAnchor(blocks, anchor);
+        if (!located.length) continue;
+        for (const block of located) {
+          block.element.classList.add("scholium-review-comment-range");
+          const existing = block.element.dataset.scholiumCommentAnchorTarget;
+          block.element.dataset.scholiumCommentAnchorTarget = existing ? `${existing} ${anchor.id}` : anchor.id;
+        }
+        const marker = document.createElement("button");
+        marker.type = "button";
+        marker.className = "scholium-review-comment-anchor scholium-selection-control";
+        marker.dataset.scholiumCommentAnchor = anchor.id;
+        marker.dataset.commentCount = String(anchor.commentCount);
+        const label = markerLabel(anchor, localized);
+        marker.setAttribute("aria-label", label);
+        marker.title = label;
+        marker.style.setProperty("--scholium-comment-symbol", `url("${commentSymbol}")`);
+        marker.addEventListener("pointerenter", () => setActive(anchor.id, true));
+        marker.addEventListener("pointerleave", () => setActive(anchor.id, false));
+        marker.addEventListener("focusin", () => setActive(anchor.id, true));
+        marker.addEventListener("focusout", () => setActive(anchor.id, false));
+        marker.addEventListener("click", () => activate(anchor.id));
+        const firstTopLevel = (() => {
+          let element = located[0].element;
+          while (element.parentElement && element.parentElement !== root) {
+            element = element.parentElement;
+          }
+          return element;
+        })();
+        root.insertBefore(marker, firstTopLevel);
+      }
+      root.classList.add("scholium-has-comment-anchors");
+      scheduleLayout();
+    };
+    window.addEventListener("resize", scheduleLayout);
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(scheduleLayout);
+      resizeObserver.observe(root);
+    }
+    return {
+      setAnchors(value) {
+        const validated = validatedReadCommentAnchors(value);
+        if (!validated) return false;
+        anchors = validated;
+        render();
+        return true;
+      },
+      testingSnapshot() {
+        return {
+          anchorCount: anchors.length,
+          markerCount: root.querySelectorAll(
+            ":scope > [data-scholium-comment-anchor]"
+          ).length,
+          highlightedBlockCount: root.querySelectorAll(
+            ".scholium-review-comment-range"
+          ).length,
+          resizeObserverInstalled: Boolean(resizeObserver)
+        };
+      }
+    };
   }
 
   // reader.ts
@@ -351,6 +555,7 @@
       userCSS,
       localization,
       linkPreviews,
+      commentAnchors,
       vectorSymbols,
       testingEnabled
     } = config;
@@ -1074,8 +1279,8 @@
       return true;
     };
     if (selectionEnabled) {
-      const reviewDocument = document.getElementById("scholium-document");
-      const reviewMermaidElements = reviewDocument ? [...reviewDocument.querySelectorAll('[data-scholium-protected="mermaid"]')] : [];
+      const reviewDocument2 = document.getElementById("scholium-document");
+      const reviewMermaidElements = reviewDocument2 ? [...reviewDocument2.querySelectorAll('[data-scholium-protected="mermaid"]')] : [];
       const repositionReviewSelectionActions = () => {
         if (!reviewSelectionSurfaceActive || reviewPointerSelectionActive || !commentSelectionRange || selectionActions.hidden) return;
         positionSelectionActions(commentSelectionRange.getBoundingClientRect());
@@ -1110,7 +1315,7 @@
         }
         if (!commentComposer.hidden) return;
         const selection = window.getSelection();
-        const main = reviewDocument;
+        const main = reviewDocument2;
         reviewSelectionPresentation.update(selection, main);
         if (reviewPointerSelectionActive) {
           selectionActions.hidden = true;
@@ -1162,7 +1367,7 @@
         positionSelectionActions(rect);
       };
       document.addEventListener("selectionchange", updateSelectionActions);
-      reviewDocument?.addEventListener("pointerdown", (event) => {
+      reviewDocument2?.addEventListener("pointerdown", (event) => {
         if (!reviewSelectionSurfaceActive || event.button !== 0) return;
         if (!commentComposer.hidden && !cancelComment(false, true)) {
           event.preventDefault();
@@ -1274,6 +1479,16 @@
         submitComment();
       });
     }
+    const reviewDocument = requiredElement("scholium-document");
+    const commentAnchorPresentation = createReviewCommentAnchorPresentation(
+      reviewDocument,
+      localized,
+      vectorSymbols.comment ?? "",
+      (anchorID) => post("commentAnchorActivated", { anchorID })
+    );
+    readerWindow.scholiumReviewComments = commentAnchorPresentation;
+    readerWindow.scholiumSetCommentAnchors = (anchors) => commentAnchorPresentation.setAnchors(anchors);
+    commentAnchorPresentation.setAnchors(commentAnchors);
     const scrollBlockRegistry = (() => {
       const root = document.getElementById("scholium-document");
       const entries = [];

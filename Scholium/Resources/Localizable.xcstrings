@@ -3056,22 +3056,6 @@
         }
       }
     },
-    "Agent reply" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Agent reply"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Agent 回应"
-          }
-        }
-      }
-    },
     "Agent response" : {
       "localizations" : {
         "en" : {
@@ -5489,6 +5473,16 @@
         }
       }
     },
+    "COMMENTED PASSAGE" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "被评论的段落"
+          }
+        }
+      }
+    },
     "COMPLETED" : {
       "localizations" : {
         "zh-Hans" : {
@@ -7869,6 +7863,38 @@
         }
       }
     },
+    "Comment at line %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Comment at line %lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 %lld 行的评论"
+          }
+        }
+      }
+    },
+    "Comment at lines %lld–%lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Comment at lines %1$lld–%2$lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 %1$lld–%2$lld 行的评论"
+          }
+        }
+      }
+    },
     "Comment on Selection" : {
       "localizations" : {
         "zh-Hans" : {
@@ -7891,6 +7917,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "评论所选内容…"
+          }
+        }
+      }
+    },
+    "Commented passage: %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "被评论的段落：%@"
           }
         }
       }
@@ -11987,6 +12023,22 @@
         }
       }
     },
+    "Earlier revision · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Earlier revision · %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "较早版本 · %@"
+          }
+        }
+      }
+    },
     "Edit" : {
       "localizations" : {
         "en" : {
@@ -13604,22 +13656,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "完成"
-          }
-        }
-      }
-    },
-    "Finish Discussion" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Finish Discussion"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "结束讨论"
           }
         }
       }
@@ -17465,22 +17501,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "材料"
-          }
-        }
-      }
-    },
-    "Synthesis Material Changed" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Synthesis Material Changed"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "综合所选材料已更改"
           }
         }
       }
@@ -23822,22 +23842,6 @@
         }
       }
     },
-    "Record Agent Reply" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Record Agent Reply"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "记录 Agent 回应"
-          }
-        }
-      }
-    },
     "Record Agent Response" : {
       "localizations" : {
         "en" : {
@@ -26998,6 +27002,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "返回记录"
+          }
+        }
+      }
+    },
+    "Returns to the comment's current Note location" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Returns to the comment's current Note location"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "返回评论在当前笔记中的位置"
           }
         }
       }
@@ -31550,6 +31570,22 @@
         }
       }
     },
+    "Synthesis Material Changed" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Synthesis Material Changed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "综合所选材料已更改"
+          }
+        }
+      }
+    },
     "Synthesize" : {
       "localizations" : {
         "en" : {
@@ -31986,12 +32022,12 @@
         }
       }
     },
-    "The Discussion is waiting for an Agent reply. Copying a new handoff replaces its prior pairing; closing this sheet leaves it active." : {
+    "The Discussion is waiting for one Agent reply. A successful reply forms its Research Record automatically and clears these Comments from Review. Closing this sheet leaves it active." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此讨论正在等待智能体回复。复制新的交接内容会替换此前的配对；关闭此工作表后，讨论仍会保持活跃。"
+            "value" : "讨论正在等待一次 Agent 回应。回应成功后会自动形成研究记录，并从审阅中清除这些评论。关闭此表单会保留其活动状态。"
           }
         }
       }
@@ -32102,6 +32138,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "方法可以指导学术工作，但无法隐藏或扩展这些由应用拥有的事实。"
+          }
+        }
+      }
+    },
+    "The Note changed after this Comment. Scholium does not guess a new location." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The Note changed after this Comment. Scholium does not guess a new location."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "笔记在此评论后已更改。Scholium 不会猜测新的位置。"
           }
         }
       }
@@ -32334,6 +32386,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "无法验证当前笔记：%@"
+          }
+        }
+      }
+    },
+    "The current Note changed, so this location cannot be opened" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "The current Note changed, so this location cannot be opened"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前笔记已更改，因此无法打开此位置"
           }
         }
       }

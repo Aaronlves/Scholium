@@ -93,7 +93,6 @@ public enum AgentCommandActionKind: String, Codable, Hashable, Sendable {
     case reply
     case write
     case submitResult = "submit_result"
-    case finish
 }
 
 /// Distinguishes steps needed to complete the current Action from bounded

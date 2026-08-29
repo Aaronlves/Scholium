@@ -461,14 +461,13 @@ func createCommentExchange(
         passage: anchor,
         researcherMessage: researcherText
     )
-    _ = try await handle.research.appendDiscussionStatement(
-        discussionID: discussion.id,
-        author: .agent,
-        attribution: "Research Agent",
-        text: agentText
-    )
     if finish {
-        _ = try await handle.research.finishDiscussion(discussionID: discussion.id)
+        _ = try await handle.research.replyToDiscussionAndFinish(
+            discussionID: discussion.id,
+            statementID: UUID(),
+            attribution: "Research Agent",
+            text: agentText
+        )
     }
     return discussion.id
 }

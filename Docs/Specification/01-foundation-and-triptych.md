@@ -18,11 +18,12 @@
   to affect. **Focal Materials** guide attention without defining the complete
   read boundary, and no readable or focal note becomes writable merely because
   an agent can inspect it.
-- A **Discussion** is one resumable researcher-agent exchange containing
-  passage-anchored Comments, optional whole-note turns, optional focal notes,
-  attributed replies, and any authorized child Action. Closing its Action
-  surface preserves it; **Finish Discussion** creates one Research Record and
-  makes no claim of acceptance, truth, or settlement.
+- A **Discussion** is one bounded researcher-agent exchange containing one or
+  more Comments or one whole-note request, optional focal Notes, and one
+  attributed Agent response. Closing its Action surface preserves it; the
+  first successful Agent response forms one Research Record and ends its active
+  presentation. Explicit End preserves an unanswered exchange. Neither route
+  claims acceptance, truth, or settlement.
 - A **Research Skill Registration** binds one Action to one current `SKILL.md`
   entry, an optional ordinary local Skill-folder path, and one
   hidden stable relation key. It has no product version, package, dependency,

@@ -134,13 +134,12 @@ obligation. Scholium refuses another Run; status offers a fresh handoff and
 withholds End until Result submission.
 
 For Discuss, Session exposes frozen `DialogueResponseContract` and
-`agent discuss-reply`, appending one attributed Agent turn keyed by
-`statement_id`. Exact repeat returns `already_recorded`; changed content
-fails closed. After at least one durable Agent turn, `agent finish-discussion`
-finishes that same Run, forms its portable Discussion Record, and revokes the
-Session. Finish accepts no Result body and grants no Note/Metadata mutation,
-evaluation, Undo, recovery, new Run, or filesystem access. It does not imply
-researcher acceptance.
+`agent discuss-reply` for one attributed response keyed by `statement_id`.
+First commit atomically retains it, forms the Record, completes the Run, and
+finalizes Session. Exact repeat returns `already_recorded`; changed content
+fails closed. No separate Finish or Result exists. Reply grants no mutation or
+filesystem authority and implies no researcher acceptance. Later authorized
+Note changes do not alter this archival rule.
 
 Analyze-only `new_analysis` preflight returns the Analyses vault, applicable
 managed fields, optional Settings preferences, fixed authored-YAML fields,

@@ -1,14 +1,15 @@
 # Scholium Completion
 
-Use this reference immediately before Result composition, Discussion Finish,
+Use this reference immediately before Result composition, Discussion reply,
 Continue, End, or recovery of any of those operations.
 
 ## Run completion
 
 Finish Analyze, Synthesize, Write, Critique, or Check Fidelity with
 `agent submit-result` after applying the selected Method's own checks. Finish
-Discuss instead with `agent finish-discussion` after the final durable Agent
-turn; Discuss accepts no generic Result body. Analyze performs its bounded
+Discuss instead with one `agent discuss-reply`; that durable response forms the
+Research Record and completes the Run without a separate Finish or generic
+Result body. Analyze performs its bounded
 fidelity self-check inside the Analyze Method; it does not create a Check
 Fidelity child Run. Check Fidelity is a separate read-only Action and is
 prepared only when the researcher explicitly initiates it.

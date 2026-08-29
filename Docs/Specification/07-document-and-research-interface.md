@@ -30,6 +30,15 @@ empty Review Comment releases its input focus and retained action anchor, so
 the next pointer or keyboard selection is immediately available without
 erasing the current visible selection.
 
+Saved current-revision Comments use a quiet line treatment and margin
+`text.bubble` marker. One Discussion/range has one marker and Comment count.
+Activation opens the latest matching Comment; its locator returns to Review.
+A mismatch removes the marker and labels the locator noninteractive **Earlier
+revision**. Each Comment retains only its rendered selection, bounded to 2,000
+UTF-16 units, with no surrounding context. The first Agent response atomically
+forms the Record and removes every Discussion Comment from Review; later
+authorized Note changes do not alter this rule.
+
 Managed New Note selects Edit and focuses the exact body start after commit.
 Editor failure retains the Note with **Retry Edit** and **Source**.
 
@@ -280,6 +289,9 @@ rows align one fixed authorship track with one Serif academic-prose track.
 Researcher and Agent use distinct semantic
 colors and symbols with visible role labels; generic response-kind labels do not
 repeat the author. Records metadata uses spacing and alignment, never middots.
+For a researcher Comment, its selected passage precedes the Comment as three
+tail-truncated Scholarly lines in `mutedText`, without line number or source
+navigation.
 Free-text Research Result fields, attributed statements, saved Researcher
 Response prose, and Reading Lead reason, uncertainty, and researcher note use
 a limited read-only scholarly markup projection over §8.4's exact text fields.
@@ -547,12 +559,12 @@ Agent app. Success closes and restores focus to the Action row; failure keeps
 the sheet and inputs. A prepared Run's compact status sheet offers Run status,
 **Copy New Handoff**, **End Action**, and recovery only. Recopy invalidates the
 prior pairing without replacing the Run.
-Closing the sheet leaves an unfinished Action active; the explicit **End
-Action** route revokes Agent access and closes a cancellable no-write Run.
-Confirmed changes instead require Result finalization; conflicts, unknown
-writes, and recovery duties retain their owning repair path. **Finish Discussion** preserves the
-current exchange as a finished Research Record, even when the Agent has not
-replied. Pairing,
+Closing leaves an unfinished Action active; **End Action** revokes access and
+closes a cancellable no-write Run. Confirmed or uncertain work retains its
+Result or recovery path. Discussion shows Comments, current/earlier locators,
+**Copy Handoff**, **Close**, and **End Discussion…**, but no manual Agent reply,
+Follow Up, or Finish. The first Agent reply forms its Record and dismisses it;
+End preserves the unanswered exchange. Pairing,
 re-pairing, Session expiry or revocation, missing local Skill-folder path,
 conflict, write result unknown, and recovery each use complete text and an
 executable next route without displaying the real Session secret or internal
