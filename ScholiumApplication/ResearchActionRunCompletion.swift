@@ -927,6 +927,19 @@ extension ResearchActionRunCoordinator {
                     "The Continue Research child no longer matches one finalized parent Record and its explicit Agent handoff."
                 )
             }
+        case .followUp:
+            guard lineage.requestID == snapshot.runID,
+                  let handoff = snapshot.continuationHandoff,
+                  handoff.parentRecordID == lineage.parentRunID,
+                  handoff.initiator == .researcher,
+                  let parent = try? await dependencies.portableResearchRecordStore
+                    .record(id: lineage.parentRunID),
+                  parent.triptychID == workspaceID,
+                  parent.id != snapshot.runID else {
+                throw ResearchActionRunContractError.invalidCompletion(
+                    "The Follow-up child no longer matches one finalized parent Record and its explicit researcher handoff."
+                )
+            }
         case .resynthesis:
             guard lineage.requestID == snapshot.runID,
                   let context = snapshot.resynthesisContext,

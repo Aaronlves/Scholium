@@ -104,7 +104,7 @@ struct PortableResearchRecordContractsTests {
             "primary_note_id", "result_disposition",
             "academic_results",
         ])
-        #expect(object["schema_version"] as? Int == 16)
+        #expect(object["schema_version"] as? Int == 17)
         #expect(object["record_title"] as? String == "The remaining pressure")
         #expect(object["fidelity_completion"] as? String == "not_required")
         let changes = try #require(object["confirmed_changes"] as? [[String: Any]])
@@ -124,7 +124,7 @@ struct PortableResearchRecordContractsTests {
         ) == record)
     }
 
-    @Test("Schema 16 requires a frozen title and rejects every retired schema")
+    @Test("Schema 17 requires a frozen title and rejects every retired schema")
     func currentSchemaIsStrict() throws {
         for invalidTitle in ["", "line one\nline two", "/Users/researcher/private.md"] {
             #expect(throws: PortableResearchRecordError.self) {
@@ -496,28 +496,11 @@ struct PortableResearchRecordContractsTests {
         ) == record)
     }
 
-    @Test("Researcher evaluation and Method feedback are separate authored partitions")
-    func evaluationAndMethodFeedbackPartitions() throws {
-        #expect(throws: PortableResearchRecordError.self) {
-            _ = try PortableResearcherEvaluation(
-                observedIssues: [.sourceOrAttribution],
-                noIssuesObserved: true
-            )
-        }
-        #expect(throws: PortableResearchRecordError.self) {
-            _ = try ResearcherEvaluationDraft(note: "/Users/private/claim.md")
-        }
-
+    @Test("Method Feedback is researcher-authored and excluded from result fingerprint")
+    func methodFeedbackPartition() throws {
         let base = try makeRecord()
-        let evaluation = try PortableResearcherEvaluation(
-            observedIssues: [.conceptOrInterpretation],
-            valuableDiscovery: true,
-            note: "The distinction is useful, but the interpretation needs qualification.",
-            updatedAt: Date(timeIntervalSince1970: 30)
-        )
         let comment = try PortableResearchMethodFeedbackComment(
             text: "Require an explicit alternative-reading check before conclusion.",
-            sourceEvaluationRevision: evaluation.revision,
             updatedAt: Date(timeIntervalSince1970: 31)
         )
         let evaluated = try PortableResearchRecord(
@@ -540,17 +523,15 @@ struct PortableResearchRecordContractsTests {
             literatureRecommendations: base.literatureRecommendations,
             startedAt: base.startedAt,
             finishedAt: base.finishedAt,
-            researcherEvaluation: evaluation,
             methodFeedbackComment: comment
         )
 
         #expect(try base.finalizedResultFingerprint()
             == evaluated.finalizedResultFingerprint())
-        #expect(evaluated.researcherEvaluation?.author == .researcher)
         #expect(evaluated.methodFeedbackComment?.author == .researcher)
         let data = try JSONEncoder.scholium.encode(evaluated)
         let source = String(decoding: data, as: UTF8.self)
-        #expect(source.contains("researcher_evaluation"))
+        #expect(!source.contains("researcher_evaluation"))
         #expect(source.contains("method_feedback_comment"))
         #expect(!source.contains("evaluation_history"))
         #expect(try JSONDecoder.scholium.decode(
@@ -705,11 +686,11 @@ struct PortableResearchRecordContractsTests {
 
     }
 
-    @Test("Discussion Records cannot acquire Researcher Response state")
-    func discussionRejectsResearcherResponse() throws {
+    @Test("Discussion Records cannot acquire Method Feedback")
+    func discussionRejectsMethodFeedback() throws {
         let base = try makeRecord()
         let participant = try #require(base.participatingNotes.first)
-        let evaluation = try PortableResearcherEvaluation(noIssuesObserved: true)
+        let feedback = try PortableResearchMethodFeedbackComment(text: "Revise it.")
         let reply = try PortableResearchStatement(
             author: .researcher,
             kind: .discussionTurn,
@@ -730,7 +711,7 @@ struct PortableResearchRecordContractsTests {
                 fidelityCompletion: .notApplicable,
                 startedAt: base.startedAt,
                 finishedAt: base.finishedAt,
-                researcherEvaluation: evaluation
+                methodFeedbackComment: feedback
             )
         }
     }

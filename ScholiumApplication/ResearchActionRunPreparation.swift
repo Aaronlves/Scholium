@@ -335,8 +335,12 @@ extension ResearchActionRunCoordinator {
                 "A Resynthesize child requires its exact revision-bound context."
             )
         }
-        guard (continuationLineage?.kind == .continueResearch)
-                == (continuationHandoff != nil),
+        let continuationKinds: Set<ResearchContinuationLineage.Kind> = [
+            .continueResearch,
+            .followUp,
+        ]
+        guard (continuationLineage.map { continuationKinds.contains($0.kind) }
+                ?? false) == (continuationHandoff != nil),
               continuationHandoff?.parentRecordID
                 == continuationLineage?.parentRunID
                 || continuationHandoff == nil else {

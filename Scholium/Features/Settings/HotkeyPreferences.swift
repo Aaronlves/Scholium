@@ -63,7 +63,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
         case .toggleReviewEdit: "View → Document Mode"
         case .showSource: "View → Document Mode → Source"
         case .commentOnSelection: "Insert → Comment on Selection"
-        case .showAttention: "Window → Attention"
+        case .showAttention: "Window → Notifications"
         case .showTriptychRecords: "Research → Triptych Records"
         }
     }

@@ -138,15 +138,11 @@ struct ResearchMethodImprovementOperationsTests {
             credential: firstCredential,
             run: firstHandoff.run
         )
-        let revised = try await handle.research.saveResearcherResponse(
+        let revised = try await handle.research.saveMethodFeedback(
             recordID: record.id,
-            draft: try ResearcherResponseDraft(
-                evaluation: try first.researcherEvaluation.map(
-                    ResearcherEvaluationDraft.init
-                ),
-                methodFeedbackText: "The revised comment asks only for a diagnosis."
+            draft: try ResearchMethodFeedbackDraft(
+                text: "The revised comment asks only for a diagnosis."
             ),
-            expectedEvaluationRevision: first.researcherEvaluation?.revision,
             expectedMethodFeedbackRevision: first.methodFeedbackComment?.revision,
             expectedResultFingerprint: try first.finalizedResultFingerprint()
         )
@@ -350,15 +346,9 @@ struct ResearchMethodImprovementOperationsTests {
         to record: PortableResearchRecord,
         handle: WorkspaceHandle
     ) async throws -> PortableResearchRecord {
-        try await handle.research.saveResearcherResponse(
+        try await handle.research.saveMethodFeedback(
             recordID: record.id,
-            draft: try ResearcherResponseDraft(
-                evaluation: try record.researcherEvaluation.map(
-                    ResearcherEvaluationDraft.init
-                ),
-                methodFeedbackText: text
-            ),
-            expectedEvaluationRevision: record.researcherEvaluation?.revision,
+            draft: try ResearchMethodFeedbackDraft(text: text),
             expectedMethodFeedbackRevision: record.methodFeedbackComment?.revision,
             expectedResultFingerprint: try record.finalizedResultFingerprint()
         )

@@ -632,71 +632,46 @@ public actor PortableResearchRecordStore {
         }
     }
 
-    /// Atomically replaces both researcher-response partitions after both
-    /// optimistic revisions and the immutable finalized result have been
-    /// revalidated under the portable-record lock.
+    /// Atomically replaces the optional Method Feedback after its optimistic
+    /// revision and the immutable finalized result have been revalidated under
+    /// the portable-record lock.
     @discardableResult
-    public func saveResearcherResponse(
-        _ draft: ResearcherResponseDraft,
+    public func saveMethodFeedback(
+        _ draft: ResearchMethodFeedbackDraft?,
         recordID: UUID,
-        expectedEvaluationRevision: UUID?,
         expectedMethodFeedbackRevision: UUID?,
         expectedResultFingerprint: DocumentFingerprint,
         updatedAt: Date = Date()
     ) throws -> PortableResearchRecord {
         try replaceFinishedRecord(id: recordID) { current in
             guard current.kind == .action else {
-                throw PortableResearcherResponseMutationError.recordUnavailable
+                throw PortableResearchMethodFeedbackMutationError.recordUnavailable
             }
             guard try current.finalizedResultFingerprint()
                     == expectedResultFingerprint else {
-                throw PortableResearcherResponseMutationError.finalizedResultChanged
-            }
-            guard current.researcherEvaluation?.revision
-                    == expectedEvaluationRevision else {
-                throw PortableResearcherResponseMutationError.staleEvaluationRevision
+                throw PortableResearchMethodFeedbackMutationError.finalizedResultChanged
             }
             guard current.methodFeedbackComment?.revision
                     == expectedMethodFeedbackRevision else {
-                throw PortableResearcherResponseMutationError
+                throw PortableResearchMethodFeedbackMutationError
                     .staleMethodFeedbackRevision
             }
-            let evaluation: PortableResearcherEvaluation?
-            if let evaluationDraft = draft.evaluation {
-                if let existing = current.researcherEvaluation,
-                   Self.matches(existing, draft: evaluationDraft) {
-                    evaluation = existing
-                } else {
-                    evaluation = try PortableResearcherEvaluation(
-                        observedIssues: evaluationDraft.observedIssues,
-                        noIssuesObserved: evaluationDraft.noIssuesObserved,
-                        valuableDiscovery: evaluationDraft.valuableDiscovery,
-                        note: evaluationDraft.note,
-                        updatedAt: updatedAt
-                    )
-                }
-            } else {
-                evaluation = nil
-            }
             let feedback: PortableResearchMethodFeedbackComment?
-            if let feedbackText = draft.methodFeedbackText {
+            if let feedbackText = draft?.text {
                 if let existing = current.methodFeedbackComment,
-                   existing.text == feedbackText,
-                   existing.sourceEvaluationRevision == evaluation?.revision {
+                   existing.text == feedbackText {
                     feedback = existing
                 } else {
                     feedback = try PortableResearchMethodFeedbackComment(
                         text: feedbackText,
-                        sourceEvaluationRevision: evaluation?.revision,
                         updatedAt: updatedAt
                     )
                 }
             } else {
                 feedback = nil
             }
-            return try Self.replacingResearcherResponse(
+            return try Self.replacingMethodFeedback(
                 in: current,
-                evaluation: evaluation,
                 methodFeedbackComment: feedback
             )
         }
@@ -1693,14 +1668,12 @@ public actor PortableResearchRecordStore {
             literatureRecommendations: recommendations,
             startedAt: record.startedAt,
             finishedAt: record.finishedAt,
-            researcherEvaluation: record.researcherEvaluation,
             methodFeedbackComment: record.methodFeedbackComment
         )
     }
 
-    private static func replacingResearcherResponse(
+    private static func replacingMethodFeedback(
         in record: PortableResearchRecord,
-        evaluation: PortableResearcherEvaluation?,
         methodFeedbackComment: PortableResearchMethodFeedbackComment?
     ) throws -> PortableResearchRecord {
         try PortableResearchRecord(
@@ -1725,19 +1698,8 @@ public actor PortableResearchRecordStore {
             literatureRecommendations: record.literatureRecommendations,
             startedAt: record.startedAt,
             finishedAt: record.finishedAt,
-            researcherEvaluation: evaluation,
             methodFeedbackComment: methodFeedbackComment
         )
-    }
-
-    private static func matches(
-        _ evaluation: PortableResearcherEvaluation,
-        draft: ResearcherEvaluationDraft
-    ) -> Bool {
-        evaluation.observedIssues == draft.observedIssues
-            && evaluation.noIssuesObserved == draft.noIssuesObserved
-            && evaluation.valuableDiscovery == draft.valuableDiscovery
-            && evaluation.note == draft.note
     }
 
     private func recordListingWithoutLock() throws -> PortableResearchRecordListing {

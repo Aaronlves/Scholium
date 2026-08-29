@@ -75,6 +75,13 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
                     == snapshot.continuationLineage?.parentRunID
                 && snapshot.continuationHandoff?.initiator == .agent
                 && snapshot.resynthesisContext == nil
+        case .followUp:
+            continuationMatches = snapshot.continuationLineage?.requestID
+                    == snapshot.runID
+                && snapshot.continuationHandoff?.parentRecordID
+                    == snapshot.continuationLineage?.parentRunID
+                && snapshot.continuationHandoff?.initiator == .researcher
+                && snapshot.resynthesisContext == nil
         case .resynthesis:
             continuationMatches = snapshot.continuationLineage?.requestID
                     == snapshot.runID

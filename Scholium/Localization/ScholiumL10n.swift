@@ -96,10 +96,10 @@ enum ScholiumL10n {
         static var attention: LocalizedStringResource {
             LocalizedStringResource(
                 "settings.tab.attention",
-                defaultValue: "Attention",
+                defaultValue: "Notifications",
                 table: "Interface",
                 bundle: .module,
-                comment: "Settings tab for derived attention reminders."
+                comment: "Settings tab for notifications and derived issue reminders."
             )
         }
     }

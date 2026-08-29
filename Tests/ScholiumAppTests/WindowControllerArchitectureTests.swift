@@ -99,8 +99,15 @@ struct WindowControllerArchitectureTests {
             dismissalDays: 7,
             dependencies: .init(
                 dismissalDaysChanges: dismissalDays.eraseToAnyPublisher(),
+                activityChanges: Just<[ResearchActivityNotification]>([])
+                    .eraseToAnyPublisher(),
                 refresh: {},
-                resynthesize: { _ in }
+                resynthesize: { _ in },
+                openAction: { _ in },
+                endAction: { _ in },
+                reviewResult: { _ in },
+                followUp: { _ in },
+                dismissActivity: { _ in }
             )
         )
         var invalidations = 0
@@ -2406,7 +2413,7 @@ struct WindowControllerArchitectureTests {
         #expect(!toolbarSource.contains("@ObservedObject var shellState"))
     }
 
-    @Test("Records, Overview, and Document keep Response, Changes, and Note Review distinct")
+    @Test("Records, Notifications, and Document keep Follow-up, Changes, and Note Review distinct")
     func researchRecordProcessingSurface() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -2426,6 +2433,12 @@ struct WindowControllerArchitectureTests {
         )
         let processing = try source(
             "Scholium/Views/ResearchRecord/ResearchRecordProcessingViews.swift"
+        )
+        let followUp = try source(
+            "Scholium/Views/ResearchRecord/ResearchRecordFollowUpViews.swift"
+        )
+        let notifications = try source(
+            "Scholium/Views/AttentionQueueView.swift"
         )
         let comparison = try source(
             "Scholium/UI/Components/ExactSourceComparisonView.swift"
@@ -2458,12 +2471,12 @@ struct WindowControllerArchitectureTests {
                 "ResearchFinalizedResultView(record: record, context: context)"
             )
         )
-        #expect(recordBrowser.contains("ResearchRecordResearcherResponseSection("))
+        #expect(recordBrowser.contains("ResearchRecordFollowUpSection("))
         #expect(recordBrowser.contains("ResearchRecordChangesSection("))
         #expect(!recordBrowser.contains("ResearchRecordChangeDecisionSection("))
 
         let fixedOrder = [
-            "ResearchRecordResearcherResponseSection(",
+            "ResearchRecordFollowUpSection(",
             "ResearchRecordChangesSection(",
             "ResearchRecordEvidenceSection(",
             "ResearchRecordParticipantSection(",
@@ -2491,30 +2504,43 @@ struct WindowControllerArchitectureTests {
         #expect(inspector.contains("No Agent changes to review"))
         #expect(inspector.contains("No Agent changes awaiting Review"))
         #expect(!recordBrowser.contains("scholium.researchRecord.effects.changes"))
-        #expect(processing.contains("Text(\"RESEARCHER RESPONSE\")"))
         #expect(!processing.contains("restoreEditorFocus"))
         #expect(!processing.contains("restoreComparisonFocus"))
 
-        for atomicResponseBoundary in [
-            "Text(\"Researcher Response\")",
-            "Text(\"RESEARCHER EVALUATION\")",
-            "Text(\"METHOD FEEDBACK\")",
-            "Button(\"Save Response\"",
-            "ResearcherResponseDraft(",
-            "expectedEvaluation",
-            "expectedFeedback",
-            ".interactiveDismissDisabled(isDirty || operationInFlight)",
-            "Discard the Unsaved Response?",
-            "Clear Saved Response Content?",
-            "Reload Saved Response…",
+        for followUpBoundary in [
+            "ResearchRecordFollowUpSheet(",
+            "Button(\"Follow Up…\")",
+            "scholium.researchFollowUp.sheet",
             "Improve Current Method…",
-            "Button(\"＋ Add Method Feedback…\")",
-            "isMethodFeedbackExpanded",
+            "@Environment(\\.scholiumFileSelectionPresenter)",
         ] {
-            #expect(processing.contains(atomicResponseBoundary))
+            #expect(followUp.contains(followUpBoundary))
         }
-        #expect(!processing.contains("Save Evaluation"))
-        #expect(!processing.contains("Save Method Feedback"))
+        for followUpInputBoundary in [
+            "Picker(\"Bridge Type\"",
+            "controller.followUpStatement",
+            "Feedback on Previous Result",
+        ] {
+            #expect(actionPanel.contains(followUpInputBoundary))
+        }
+        for removedResponseBoundary in [
+            "Add Response",
+            "Researcher Response",
+            "Researcher Evaluation",
+            "Save Response",
+        ] {
+            #expect(!(recordBrowser + processing + followUp + actionPanel)
+                .contains(removedResponseBoundary))
+        }
+        for notificationBoundary in [
+            "Button(\"Review Result\"",
+            "Button(\"Follow Up…\"",
+            "Button(\"Dismiss\"",
+            "Button(\"End Action…\"",
+            "DisclosureGroup(\"Affected Notes",
+        ] {
+            #expect(notifications.contains(notificationBoundary))
+        }
 
         for changeRecoveryBoundary in [
             "Button(\"Compare Changes…\")",

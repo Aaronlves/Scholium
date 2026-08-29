@@ -399,11 +399,25 @@ public struct WorkspaceNoteReviewState: Hashable, Identifiable, Sendable {
     }
 }
 
+public struct WorkspaceResearchAffectedNote: Hashable, Identifiable, Sendable {
+    public let noteID: UUID
+    public let title: String
+
+    public var id: UUID { noteID }
+
+    public init(noteID: UUID, title: String) {
+        self.noteID = noteID
+        self.title = title
+    }
+}
+
 public struct WorkspaceResearchResultArrival: Hashable, Identifiable, Sendable {
     public let runID: UUID
     public let recordID: UUID
     public let actionID: ResearchActionID
     public let originNoteID: UUID
+    public let targetTitle: String
+    public let affectedNotes: [WorkspaceResearchAffectedNote]
     public let recordFingerprint: DocumentFingerprint
     public let finishedAt: Date
 
@@ -414,6 +428,8 @@ public struct WorkspaceResearchResultArrival: Hashable, Identifiable, Sendable {
         recordID: UUID,
         actionID: ResearchActionID,
         originNoteID: UUID,
+        targetTitle: String = "",
+        affectedNotes: [WorkspaceResearchAffectedNote] = [],
         recordFingerprint: DocumentFingerprint,
         finishedAt: Date
     ) {
@@ -421,6 +437,8 @@ public struct WorkspaceResearchResultArrival: Hashable, Identifiable, Sendable {
         self.recordID = recordID
         self.actionID = actionID
         self.originNoteID = originNoteID
+        self.targetTitle = targetTitle
+        self.affectedNotes = affectedNotes
         self.recordFingerprint = recordFingerprint
         self.finishedAt = finishedAt
     }
@@ -433,6 +451,7 @@ public struct WorkspaceResearchActivity: Hashable, Identifiable, Sendable {
     public let runID: UUID
     public let actionID: ResearchActionID
     public let targetNoteID: UUID
+    public let targetTitle: String
     public let state: WorkspaceResearchActivityState
     public let recordID: UUID?
     public let recordFingerprint: DocumentFingerprint?
@@ -445,6 +464,7 @@ public struct WorkspaceResearchActivity: Hashable, Identifiable, Sendable {
         runID: UUID,
         actionID: ResearchActionID,
         targetNoteID: UUID,
+        targetTitle: String = "",
         state: WorkspaceResearchActivityState,
         recordID: UUID? = nil,
         recordFingerprint: DocumentFingerprint? = nil,
@@ -454,6 +474,7 @@ public struct WorkspaceResearchActivity: Hashable, Identifiable, Sendable {
         self.runID = runID
         self.actionID = actionID
         self.targetNoteID = targetNoteID
+        self.targetTitle = targetTitle
         self.state = state
         self.recordID = recordID
         self.recordFingerprint = recordFingerprint

@@ -58,7 +58,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
         case .appearance: "paintbrush"
         case .hotkeys: "keyboard"
         case .metadata: "list.bullet.rectangle"
-        case .attention: "exclamationmark.triangle"
+        case .attention: "bell"
         case .skills: ResearchGuidanceCategory.skills.symbol
         case .actionProfiles: ResearchGuidanceCategory.actionProfiles.symbol
         case .agentAccess: ResearchGuidanceCategory.agentAccess.symbol
@@ -105,7 +105,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
         case .metadata:
             ["Metadata", "fields", "About", "Agent preferences", "optional fields"]
         case .attention:
-            ["Attention", "reminders", "dismissed items", "timing", "This Mac"]
+            ["Notifications", "activities", "reminders", "dismissed items", "timing", "This Mac"]
         case .skills:
             ["Skills", "Research Skills", "SKILL.md", "references", "philosophical lenses", "recovery"]
         case .actionProfiles:
@@ -418,7 +418,7 @@ private struct AttentionSettingsView: View {
                         }
                     }
 
-                    Text("Dismissal hides only the reminder. Leave Unchanged applies only to the current Material revision pair; neither action changes notes, Connections, or Records.")
+                    Text("These durations apply only to derived issue reminders. Dismiss on a completed Action removes that activity immediately; neither operation reviews, accepts, adopts, undoes, or changes Notes or Records.")
                         .font(ScholiumTypography.interface(.body))
                         .scholiumForeground(.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -444,7 +444,7 @@ private struct AttentionSettingsView: View {
 
                     Divider()
 
-                    settingsEditorSection("What Attention Can Report") {
+                    settingsEditorSection("What Notifications Can Report") {
                         Text("Reports structural, metadata, identity, Connection, and settled-revision issues.")
                             .font(ScholiumTypography.interface(.body))
                             .scholiumForeground(.secondaryText)
@@ -467,7 +467,7 @@ private struct AttentionSettingsView: View {
                 ? stored
                 : TriptychSettings().attentionDismissalDays
         }
-        .alert("Could Not Save Attention Settings", isPresented: Binding(
+        .alert("Could Not Save Notification Settings", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
         )) {
@@ -493,7 +493,7 @@ private struct AttentionSettingsView: View {
     }
 
     private var saveAttentionButton: some View {
-        Button("Save Attention Settings") { save() }
+        Button("Save Notification Settings") { save() }
             .buttonStyle(.borderedProminent)
             .disabled(
                 isSaving
@@ -512,7 +512,7 @@ private struct AttentionSettingsView: View {
                 dismissalDays = settings.attentionDismissalDays
                 settingsModel.showToast(
                     result.targetIsCurrent
-                        ? String(localized: "Attention settings saved", table: "Localizable", bundle: .module)
+                        ? String(localized: "Notification settings saved", table: "Localizable", bundle: .module)
                         : result.warning ?? String(localized: "Settings saved to the previously active Triptych.", table: "Localizable", bundle: .module)
                 )
             } catch {

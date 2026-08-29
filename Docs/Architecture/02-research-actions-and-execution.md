@@ -279,8 +279,8 @@ the frozen Method revision; `researchEvidence` contains Markdown, YAML declarati
 Zotero metadata, Records, and provider responses as typed data. Evidence text
 cannot alter the other two layers, Session, write set, tools, or next Action.
 
-Result and Researcher Response prose remains an opaque exact string throughout
-Agent submission, strict schema-16 decoding, Record validation, hashing,
+Result and Method Feedback prose remains an opaque exact string throughout
+Agent submission, strict schema-17 decoding, Record validation, hashing,
 persistence, CLI reading, Search projection, and replacement. No Core or
 Application operation parses scholarly markup, resolves a Record-authored
 link, or reconstructs source from a rendered value. Presentation may derive a
@@ -292,7 +292,7 @@ read-only projection only after the complete portable Record has been accepted.
 Triptych scope, and snapshots current generation before any provider call. Its
 production provider composes the existing Application Search use case, exact
 Note/section reader, same-snapshot explicit Graph relations, Metadata
-projection, Application Record provider, Settle/Discussion/Evaluation owner
+projection, Application Record provider, Settle/Discussion/Method Feedback owner
 reads, and the authenticated Run's already-frozen `ResearchSourceReference`
 plus Zotero bibliographic snapshot when explicitly inspected. Material
 inspection has no search string and cannot enumerate another source: an
@@ -301,7 +301,7 @@ current status of that Run's selected binding. It never imports `ScholiumCore`
 types across the Application boundary, reaches private JSON/index files
 directly, or copies source bytes, bookmarks, or paths into Research Context.
 Researcher State is separately rebuilt on demand for the Action target Note
-from current Settlement, Researcher Evaluation, Critique disposition, and
+from current Settlement, Critique disposition, and
 attributed active-Discussion owners. It is neither stored by the provider nor
 expanded into source history: Settle has no machine-local source version or
 recovery pin.
@@ -489,18 +489,18 @@ Record; a different payload fails closed. An interrupted committed
 source/finalization gap is repaired from the Run and transaction evidence
 unless a Record deletion tombstone forbids recreation.
 
-`PortableResearchRecordStore` owns strict schema-16 Records, including the
+`PortableResearchRecordStore` owns strict schema-17 Records, including the
 frozen Record Title, explicit Analyze source route, exact source-byte
-fingerprints, and researcher-owned
-Response. The same store owns schema-1 `PortableResearchNoteReview` files as
+fingerprints, and researcher-owned Method Feedback. The same store owns
+schema-1 `PortableResearchNoteReview` files as
 the single cumulative portable Note Review boundary. Analyze recommendation
-mutation and atomic Response replacement use one revision-safe replacement
+mutation and Method Feedback replacement use one revision-safe replacement
 primitive under portable coordination and lock, distinguish pre-commit refusal
 from post-commit uncertainty, and read back before success. Record schemas 1
 through 14 have no decoder or mutation route; their bytes remain untouched and
 nonauthorizing when encountered.
 
-Schema 16 contains no source-use report or actually-used Materials list.
+Schema 17 contains no source-use report or actually-used Materials list.
 Action participants are the Target, every explicit frozen Material, and every
 Note with a confirmed Agent change; dynamically queried Notes never become
 participants. In-text citations remain optional authored academic content and
@@ -514,17 +514,16 @@ or construct another Record index. List validates the stable Note UUID against
 the current catalog or the snapshot's historical participants, filters the
 Record-owned `participatingNotes`, and emits the snapshot's complete source
 manifest plus exact Record fingerprints. Read selects one exact Record UUID and
-returns the decoded schema-16 value with its same-snapshot fingerprint. Either
+returns the decoded schema-17 value with its same-snapshot fingerprint. Either
 adapter refuses an incomplete projection or missing fingerprint and exposes no
 Record mutation use case.
 
-`saveResearcherResponse` uses exact Record ID, expected Evaluation revision,
-expected Method Feedback revision, and finalized-result fingerprint. It
-validates all tokens under the same lock and replaces both Response partitions
-in one Record write; a stale token rejects the whole candidate. Review
-Response and recommendation disposition remain excluded from finalized-result
-identity. Record
-deletion removes those partitions and writes the existing minimal machine-local
+`saveMethodFeedback` uses exact Record ID, expected Method Feedback revision,
+and finalized-result fingerprint. It validates both tokens under the same lock
+and replaces the parent Record's feedback in one Record write; a stale token
+rejects the candidate. Note Review, Method Feedback, and recommendation
+disposition remain excluded from finalized-result identity. Record deletion
+removes those partitions and writes the existing minimal machine-local
 tombstone; no other operation can recreate or reparent them.
 
 Action completion derives each modified change's starting revision from the
@@ -556,41 +555,34 @@ per-document recovery facts; multi-document requests are not a durable
 transaction. Undo does not read or write Note Review, and every attempted
 source replacement triggers refresh even when readback is uncertain.
 
-`WorkspaceSnapshotBuilder` derives `WorkspaceResearchSnapshot.activities`,
-`noteReviewStates`, and `resultArrivals` from current Local Execution payloads, exact
-schema-16 Record reads, and schema-1 Note Reviews. The projections
-contain only Run, Action, target stable Note ID, one interface state, optional
-Record ID/finalized-result fingerprint, a closed public repair reason, and time. It
-omits pairing codes, Session secrets, source bytes, prompts,
-and tool traces. Needs Attention follows the current bounded-entry/recovery
-state, not an immutable historical conflict record. A formed Record ends its
-Action activity immediately; only confirmed Agent changes create per-Note
-pending Review, while every Action Record can create a deduplicated one-shot
-Result arrival. Local Execution, Record, and Note Review remain the durable
-owners; projections cannot authorize a write or survive independently.
+`WorkspaceSnapshotBuilder` derives activities, Note Reviews, and Result arrivals
+from current Local Execution, exact schema-17 Records, and schema-1 Note Reviews.
+The bounded projections omit authority and research content. Needs Attention
+follows current entry/recovery state. A formed Record evolves its Action item to
+Result Ready; confirmed changes create per-Note Review, but one Action creates
+at most one Run/Record Result arrival with one affected-Notes list. Local
+Execution, Record, and Note Review remain durable owners.
 
-The Action sheet stops at preparation, handoff, active-Run status,
-continuation, cancellation, and recovery. It contains no finalized Result,
-Evaluation, or Method Feedback subtree. The Records detail is the sole current
-result-reading surface: its reading plane owns the progressive combined
-Researcher Response editor, while its Evidence rail owns Changes, Effects,
+The Action sheet stops at ordinary or researcher Follow-up preparation and
+handoff. Persistent Run status, End, Result routing, and recovery belong to the
+Action-level Notifications item rather than the Inspector launcher. It contains
+no finalized Result or Note Review subtree. The Records detail is the sole
+current result-reading surface: its reading plane owns **Follow Up…** and
+parent-owned Method Feedback, while its Evidence rail owns Changes, Effects,
 Participants, and Technical Details. Its shared exact-comparison
 sheet supports whole-document direct Undo only when the feature model holds the
 validated window-lifetime grant. The Document conflict route supplies different
 inputs and operations to the same pure folding-diff presentation without
 sharing source or conflict state ownership.
-The notification click is the production `.reviewResult` producer and submits
-the exact Record identifier and finalized-result fingerprint; ordinary Records
-browsing cannot manufacture this grant. Copy
-Handoff success records process-local source-window affinity and dismisses the
-preparation sheet, while failure leaves its inputs intact. The Action row
-derives Waiting, Running, Needs Attention, and its first repair only from the
-privacy-bounded activity projection. A
-compact status sheet reloads the exact Run for recopy, ending, or recovery and
-constructs no second academic-input/result surface.
+Notification **Review Result** produces the exact fingerprint-bound
+`.reviewResult` grant; browsing cannot. The Inspector row remains a launcher.
+`ResearchResultNotificationCoordinator` folds activity and arrival into one
+Run item, publishes it to every window, and evolves its five specified states.
+Popover/window disappearance never deletes it; completed **Dismiss** and
+unfinished **End Action…** remain distinct operations.
 Confirmed reload rereads the exact Record ID through the existing Record use
 case and accepts no differently identified response; it adds no presentation
-cache or Evaluation owner.
+cache or Method Feedback owner.
 Application maps portable replacement commit uncertainty into the public
 mutation-outcome taxonomy rather than exposing a Core error to the interface.
 An already-committed refresh failure or commit-uncertain replacement is
@@ -598,8 +590,8 @@ nonretryable until that exact-ID reload reconciles the Record; only a
 proven-not-committed failure appears as **Save Failed**.
 Likewise, a workspace refresh that removes a Record makes an authoritative
 reload fail closed and refuses any later write to that missing identity. An
-already-open Response editor retains its local draft and exposes reconciliation
-rather than substituting a different Record.
+already-open Method Feedback draft retains its local text and exposes
+reconciliation rather than substituting a different Record.
 
 `PortableResearchDiscussion` remains the single active exchange owner.
 Comments retain stable Note/fingerprint, inclusive line range, and only the
@@ -637,7 +629,7 @@ Workspace, window, Agent Bridge, or Application capability. Window-local
 Scope/View/search/route state disappears on close. Portable Records remain the
 only durable owner.
 
-## Continue Research and method improvement
+## Agent Continue Research, researcher Follow-up, and method improvement
 
 Continue Research validates a determined current result, next Action/initial
 object/purpose, bounded epistemically labelled handoff, current Triptych policy,
@@ -651,12 +643,11 @@ fingerprint through `ResearchSourceAccessStore` and reports current, changed,
 missing, or unavailable; it transfers no bookmark, path, bytes, or source
 authority.
 
-The CLI and authenticated Agent Session remain the only Continue Research
-operation owners. A created Continue response attaches the child locator to the
-existing Session and returns the child's complete authenticated Context,
+The CLI and authenticated Agent Session remain the owners of Agent autonomous
+Continue Research. A created Continue response attaches the child locator to
+the existing Session and returns the child's complete authenticated Context,
 including its fresh minimum `required_skills`; it requires neither another
-pairing nor an initial reload. The Records interface exposes no continuation
-command or credential path. Only after the next Record safely forms does that child
+pairing nor an initial reload. Only after the next Record safely forms does that child
 persist `ResearchContinuationLineage(.continueResearch)` with its parent Run;
 the parent relation is rebuildable. The child remains one portable Record and
 one Search result for audit, while the Records collection folds it beneath the
@@ -664,6 +655,14 @@ parent instead of presenting a second peer row. The parent Action sheet derives
 the same direct children as a read-only **Continue Research** section. A denied
 or abandoned continuation leaves the old Record unchanged, and initiator actor
 is explicit rather than inferred as researcher adoption.
+
+`followUpContext` resolves the live parent fingerprint and target. Record and
+Result Ready routes share one `ResearchActionController` sheet for current
+Action, finding/question/hypothesis, and Research Request. On confirmation,
+`prepareFollowUp` re-resolves Method, Profile, capabilities, materials, policy,
+and write boundary, reserves a fresh Run, and persists `.followUp` with
+researcher initiator. Parent Session, capability, write set, Context, and Agent
+judgment never cross. Optional feedback CAS-replaces only the parent comment.
 
 Method improvement is a separate explicitly researcher-started Run attached as
 the one current `methodImprovementRun` in its parent Local Execution payload.

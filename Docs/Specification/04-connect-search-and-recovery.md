@@ -307,10 +307,14 @@ direction, anchor, target, and Markdown occurrences. It creates no second
 parser, ranker, Metadata/Relation resolver, persistent response, hidden Agent
 index, confidence score, or writable source.
 
-Attention is one Triptych-owned queue. Presentation may open the complete
-Triptych queue or add an exact current-Note subset; those views create no
-Vault-owned queue, diagnostic owner, or philosophical status. Attention may
-report a **Possible Orphan** only when a Note has no resolved incoming or
+**Notifications** is one Triptych-owned entry that combines persistent
+Action-level activities with the existing derived structural Attention queue.
+Presentation may open the complete Triptych queue or add an exact current-Note
+subset for non-Action issues; those views create no Vault-owned queue,
+diagnostic owner, philosophical status, task manager, or unread model. Action
+activities retain their own Run/Record identity and explicit Dismiss semantics;
+they never use the structural dismissal ledger. The structural queue may report
+a **Possible Orphan** only when a Note has no resolved incoming or
 outgoing connection. A neutral, same-vault, or cross-vault connection is
 sufficient to prevent that condition; Attention does not require an explicit
 Vector Link or cross-vault relation. It may also report Changed Since Settled,
@@ -323,7 +327,7 @@ changes, Attention may offer **Inspect**, **Resynthesize**, and **Leave
 Unchanged**. Dismissal binds the material identity and revision pair, so a later
 change may appear again.
 
-Attention never says the Topic is wrong, outdated, or Superseded; uses age
+Structural Attention never says the Topic is wrong, outdated, or Superseded; uses age
 alone; or issues an automatic philosophical verdict. Warnings are dismissible;
 Settings controls duration, default seven days. The researcher retains
 judgment.

@@ -21,6 +21,9 @@ struct ResearchActionClient {
         ResearchActionExecutionRequest,
         SynthesisMaterialChangedAttentionContext?
     ) async throws -> ResearchActionPreparation
+    let prepareFollowUp: @MainActor (
+        ResearchFollowUpRequest
+    ) async throws -> ResearchActionPreparation
     let actionRun: @MainActor (UUID) async throws -> ResearchActionPreparation
     let handoff: @MainActor (UUID) async throws -> ResearchAgentHandoff
     let cancel: @MainActor (UUID) async throws -> Void
@@ -32,6 +35,9 @@ struct ResearchActionClient {
         sourceAccess: @escaping @MainActor (ResearchActionNoteSnapshot) async throws -> ResearchSourceAccessStatus,
         bindLocalSource: @escaping @MainActor (ResearchActionNoteSnapshot, URL) async throws -> ResearchSourceReference,
         prepare: @escaping @MainActor (ResearchActionExecutionRequest, SynthesisMaterialChangedAttentionContext?) async throws -> ResearchActionPreparation,
+        prepareFollowUp: @escaping @MainActor (ResearchFollowUpRequest) async throws -> ResearchActionPreparation = { _ in
+            throw ResearchContinuationContractError.invalidRequest
+        },
         actionRun: @escaping @MainActor (UUID) async throws -> ResearchActionPreparation = { _ in
             throw ResearchActionExecutionContractError.staleResolution
         },
@@ -46,6 +52,7 @@ struct ResearchActionClient {
         self.sourceAccess = sourceAccess
         self.bindLocalSource = bindLocalSource
         self.prepare = prepare
+        self.prepareFollowUp = prepareFollowUp
         self.actionRun = actionRun
         self.handoff = handoff
         self.cancel = cancel
@@ -111,9 +118,13 @@ final class ResearchActionController: ObservableObject {
     @Published var selectedFocalNoteIDs: Set<UUID> = []
     @Published var selectedFidelityChecks: Set<FidelityCheck> = []
     @Published var usesPassage = true
+    @Published var followUpKind: ResearchFollowUpKind = .question
+    @Published var followUpStatement = ""
+    @Published var followUpMethodFeedback = ""
 
     private var passage: CommentAnchor?
     private var resynthesisContext: SynthesisMaterialChangedAttentionContext?
+    private(set) var followUpContext: ResearchFollowUpContext?
     private var client: ResearchActionClient?
     private var generation: UInt64 = 0
     private var availabilityGeneration: UInt64 = 0
@@ -166,6 +177,10 @@ final class ResearchActionController: ObservableObject {
               !isBusy else { return false }
         return profile.academicInputFields.allSatisfy(academicFieldIsSatisfied)
             && requiredPlatformSelectorsAreSatisfied
+            && (followUpContext == nil
+                || !followUpStatement.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                ).isEmpty)
     }
 
     func bind(_ client: ResearchActionClient) {
@@ -177,7 +192,9 @@ final class ResearchActionController: ObservableObject {
         guard let runID = preparation?.runID else { return }
         resultRecord = records.first { $0.id == runID }
         continuationRecords = records.filter {
-            $0.continuationLineage?.kind == .continueResearch
+            $0.continuationLineage.map {
+                [.continueResearch, .followUp].contains($0.kind)
+            } ?? false
                 && $0.continuationLineage?.parentRunID == runID
         }.sorted {
             if $0.finishedAt != $1.finishedAt { return $0.finishedAt < $1.finishedAt }
@@ -368,6 +385,25 @@ final class ResearchActionController: ObservableObject {
         return true
     }
 
+    @discardableResult
+    func beginFollowUp(
+        context: ResearchFollowUpContext,
+        availability selected: ResearchActionAvailability,
+        presentationID: UUID
+    ) -> Bool {
+        guard begin(
+            target: context.target,
+            availability: selected,
+            selection: nil,
+            presentationID: presentationID
+        ) else { return false }
+        followUpContext = context
+        followUpKind = .question
+        followUpStatement = ""
+        followUpMethodFeedback = context.methodFeedbackText ?? ""
+        return true
+    }
+
     func setText(_ value: String, field: ResearchAcademicFieldDefinition) {
         guard field.kind == .freeText,
               let maximum = field.maximumTextUTF8Count else { return }
@@ -484,7 +520,26 @@ final class ResearchActionController: ObservableObject {
         errorMessage = nil
         preparationTask = Task { @MainActor [self] in
             do {
-                let result = try await client.prepare(request, resynthesisContext)
+                let result: ResearchActionPreparation
+                if let followUpContext {
+                    result = try await client.prepareFollowUp(
+                        ResearchFollowUpRequest(
+                            parentRecordID: followUpContext.parentRecordID,
+                            expectedFinalizedResultFingerprint:
+                                followUpContext.expectedFinalizedResultFingerprint,
+                            statement: try ResearchFollowUpStatement(
+                                kind: followUpKind,
+                                text: followUpStatement
+                            ),
+                            action: request,
+                            methodFeedbackText: followUpMethodFeedback,
+                            expectedMethodFeedbackRevision:
+                                followUpContext.methodFeedbackRevision
+                        )
+                    )
+                } else {
+                    result = try await client.prepare(request, resynthesisContext)
+                }
                 guard self.accepts(token), self.presentationID == presentationID else {
                     cleanupUndeliveredRun(result.runID, using: client)
                     return
@@ -855,6 +910,10 @@ final class ResearchActionController: ObservableObject {
         selectedFidelityChecks = []
         passage = nil
         resynthesisContext = nil
+        followUpContext = nil
+        followUpKind = .question
+        followUpStatement = ""
+        followUpMethodFeedback = ""
         usesPassage = true
         phase = .idle
         if clearAvailability {

@@ -581,7 +581,6 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     func reviewResearchResult(_ destination: ResearchResultReviewDestination) {
         guard destination.triptychID == researchRecordsTriptychID else { return }
         researchResultReviewer(destination)
-        appState.shellState.dismissResearchResultNotice(matching: destination)
     }
 
     func requestResearchNotificationAuthorization() {
@@ -768,12 +767,9 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             researchResultNotificationCoordinator.registerWindow(
                 windowID: windowID,
                 triptychID: triptychID,
-                presentResult: { [weak appState] destination in
-                    appState?.shellState.presentResearchResultNotice(destination)
-                },
-                dismissResult: { [weak appState] destination in
-                    appState?.shellState.dismissResearchResultNotice(
-                        matching: destination
+                receiveActivities: { [weak appState] notifications in
+                    appState?.shellState.receiveResearchActivityNotifications(
+                        notifications
                     )
                 },
                 presentPermission: { [weak appState] notice in
@@ -788,14 +784,23 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
                     self?.reviewResearchResult(destination)
                 }
             )
+        appState.researchResultNotificationDismissal = {
+            [weak self] destination in
+            guard let self else { return }
+            self.researchResultNotificationCoordinator?.dismiss(
+                destination,
+                from: self.windowID
+            )
+        }
     }
 
     private func unregisterResearchNotificationWindow() {
         // These notices belong to this exact window-to-Triptych binding. Do
-        // not let an old result or permission prompt survive when the same
+        // not let an old activity projection or permission prompt survive when the same
         // native window is reassigned or detached.
-        appState.shellState.dismissResearchResultNotice()
+        appState.shellState.receiveResearchActivityNotifications([])
         appState.shellState.dismissResearchNotificationPermissionNotice()
+        appState.researchResultNotificationDismissal = nil
         guard let token = researchNotificationWindowToken else { return }
         researchResultNotificationCoordinator?.unregisterWindow(
             windowID: windowID,

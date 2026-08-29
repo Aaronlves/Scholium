@@ -431,11 +431,6 @@ struct ResearchAgentSessionAuthorityTests {
             startingRevision: target.fingerprint,
             endingRevision: target.fingerprint
         )
-        let evaluation = try PortableResearcherEvaluation(
-            observedIssues: [.conceptOrInterpretation],
-            valuableDiscovery: true,
-            note: "The distinction was useful, but one interpretation remained compressed."
-        )
         let finishedAt = Date(timeIntervalSince1970: 1_700_000_100)
         let researcherDiscussionText = "Is this passage a quotation, or should it constrain the synthesis?"
         let researcherStatement = try PortableResearchStatement(
@@ -472,8 +467,7 @@ struct ResearchAgentSessionAuthorityTests {
             )],
             fidelityCompletion: .notRequired,
             startedAt: finishedAt.addingTimeInterval(-60),
-            finishedAt: finishedAt,
-            researcherEvaluation: evaluation
+            finishedAt: finishedAt
         )
         let finding = CritiqueFinding(
             judgment: .traced,
@@ -554,16 +548,6 @@ struct ResearchAgentSessionAuthorityTests {
                 }
             )
         )
-        let evaluationItem = try #require(researcherState.items.first {
-            $0.title.contains("Researcher Evaluation")
-        })
-        #expect(evaluationItem.semanticContent?.contains("Valuable Discovery") == true)
-        #expect(evaluationItem.semanticContent?.contains("not Settlement") == false)
-        #expect(evaluationItem.sourceReference.actorClass == .researcher)
-        #expect(evaluationItem.sourceReference.materialLimitations.contains {
-            $0.contains("not Settlement")
-        })
-
         let critiqueItem = try #require(researcherState.items.first {
             $0.title.contains("Critique Disposition")
         })

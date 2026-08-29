@@ -206,10 +206,9 @@ public protocol ResearchRecordUseCases: Sendable {
     ) async throws -> PortableResearchRecord
     func finishDiscussion(discussionID: UUID) async throws -> PortableResearchRecord
     func finishedResearchRecords(noteID: UUID?) async throws -> [PortableResearchRecord]
-    func saveResearcherResponse(
+    func saveMethodFeedback(
         recordID: UUID,
-        draft: ResearcherResponseDraft,
-        expectedEvaluationRevision: UUID?,
+        draft: ResearchMethodFeedbackDraft?,
         expectedMethodFeedbackRevision: UUID?,
         expectedResultFingerprint: DocumentFingerprint
     ) async throws -> PortableResearchRecord
@@ -316,6 +315,15 @@ public protocol ResearchActionUseCases: Sendable {
     func prepareAction(
         _ request: ResearchActionExecutionRequest
     ) async throws -> ResearchActionPreparation
+
+    func prepareFollowUp(
+        _ request: ResearchFollowUpRequest
+    ) async throws -> ResearchActionPreparation
+
+    func followUpContext(
+        recordID: UUID,
+        expectedFinalizedResultFingerprint: DocumentFingerprint
+    ) async throws -> ResearchFollowUpContext
 
     func materialCandidates(
         for target: ResearchActionNoteSnapshot,

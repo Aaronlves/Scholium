@@ -346,6 +346,7 @@ private struct ResearchContinuationPermissionView: View {
         switch status {
         case .sourceConclusion: String(localized: "Source Conclusion")
         case .agentReconstruction: String(localized: "Agent Reconstruction")
+        case .researcherFinding: String(localized: "Researcher Finding")
         case .hypothesisToVerify: String(localized: "Hypothesis to Verify")
         case .unresolvedQuestion: String(localized: "Unresolved Question")
         }

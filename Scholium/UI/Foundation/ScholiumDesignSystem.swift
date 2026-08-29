@@ -1501,15 +1501,6 @@ enum ScholiumMetrics {
             static let regularIdealHeight: CGFloat = 380
         }
 
-        enum ResearcherResponse {
-            static let minimumWidth: CGFloat = 620
-            static let idealWidth: CGFloat = 700
-            static let minimumHeight: CGFloat = 600
-            static let idealHeight: CGFloat = 720
-            static let editorMinimumHeight = ScholiumGrid.foundationUnit * 20
-            static let editorIdealHeight = ScholiumGrid.foundationUnit * 26
-        }
-
         enum Comparison {
             static let minimumWidth: CGFloat = 760
             static let idealWidth: CGFloat = 900

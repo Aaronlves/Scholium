@@ -17,6 +17,7 @@ package enum ResearchRecordsScope: String, CaseIterable, Hashable, Sendable {
 package enum ResearchRecordsWindowPurpose: Hashable, Sendable {
     case browse
     case reviewResult
+    case followUp
 }
 
 /// The complete transient destination owned by one Triptych-keyed Research

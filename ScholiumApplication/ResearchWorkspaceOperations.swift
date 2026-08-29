@@ -572,10 +572,9 @@ extension WorkspaceHandle {
         }
     }
 
-    func saveResearcherResponse(
+    func saveMethodFeedback(
         recordID: UUID,
-        draft: ResearcherResponseDraft,
-        expectedEvaluationRevision: UUID?,
+        draft: ResearchMethodFeedbackDraft?,
         expectedMethodFeedbackRevision: UUID?,
         expectedResultFingerprint: DocumentFingerprint
     ) async throws -> PortableResearchRecord {
@@ -583,20 +582,19 @@ extension WorkspaceHandle {
         let updated: PortableResearchRecord
         do {
             updated = try await researchWorkspaceDependencies.portableResearchRecordStore
-                .saveResearcherResponse(
+                .saveMethodFeedback(
                     draft,
                     recordID: recordID,
-                    expectedEvaluationRevision: expectedEvaluationRevision,
                     expectedMethodFeedbackRevision: expectedMethodFeedbackRevision,
                     expectedResultFingerprint: expectedResultFingerprint
                 )
         } catch {
-            throw researcherResponseMutationError(
+            throw methodFeedbackMutationError(
                 error,
-                operation: "the Researcher Response save"
+                operation: "the Method Feedback save"
             )
         }
-        try await refreshAfterResearchCommit("The Researcher Response")
+        try await refreshAfterResearchCommit("The Method Feedback")
         return updated
     }
 
@@ -1784,7 +1782,7 @@ extension WorkspaceHandle {
         )
     }
 
-    private func researcherResponseMutationError(
+    private func methodFeedbackMutationError(
         _ error: Error,
         operation: String
     ) -> Error {
@@ -1798,7 +1796,7 @@ extension WorkspaceHandle {
                 reason: reason
             )
         case .recordNotFound, .recordPermanentlyDeleted:
-            return PortableResearcherResponseMutationError.recordUnavailable
+            return PortableResearchMethodFeedbackMutationError.recordUnavailable
         default:
             return error
         }

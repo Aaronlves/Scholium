@@ -17,14 +17,10 @@ struct ResearchRecordBrowserContext {
             UUID,
             String?
         ) async throws -> PortableResearchRecord
-    let saveResponse:
-        @MainActor (
-            UUID,
-            ResearcherResponseDraft,
-            UUID?,
-            UUID?,
-            DocumentFingerprint
-        ) async throws -> PortableResearchRecord
+    let followUpContext:
+        @MainActor (UUID, DocumentFingerprint) async throws
+            -> ResearchFollowUpContext
+    let followUpClient: ResearchActionClient
     let reloadRecord:
         @MainActor (UUID) async throws -> PortableResearchRecord
     let changeState:
@@ -2114,7 +2110,7 @@ private struct ResearchRecordWorkspaceView: View {
                     ResearchFinalizedResultView(record: record, context: context)
                     if record.kind == .action {
                         ScholiumStructuralRule()
-                        ResearchRecordResearcherResponseSection(
+                        ResearchRecordFollowUpSection(
                             record: record,
                             model: model,
                             context: context
@@ -3468,27 +3464,6 @@ private struct ResearchRecordsTechnicalDetailsDisclosure<Content: View>: View {
                 content
                     .padding(.top, ScholiumGrid.Spacing.inlineControlGap)
             }
-        }
-    }
-}
-
-extension PortableResearchObservedIssue {
-    fileprivate var interfaceTitle: String {
-        switch self {
-        case .sourceOrAttribution:
-            String(localized: "Source or Attribution")
-        case .conceptOrInterpretation:
-            String(localized: "Concept or Interpretation")
-        case .argumentOrObjectionReply:
-            String(localized: "Argument or Objection/Reply")
-        case .epistemicIdentityOrResearcherState:
-            String(localized: "Epistemic Identity or Researcher State")
-        case .evidentialScopeOrRestraint:
-            String(localized: "Evidential Scope or Restraint")
-        case .researchHelpOrNextStep:
-            String(localized: "Research Help or Next Step")
-        case .other:
-            String(localized: "Other")
         }
     }
 }

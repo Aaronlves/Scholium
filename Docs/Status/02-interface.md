@@ -117,20 +117,20 @@
   optional inputs under Additional Instructions, and explain target mutation,
   read-only Additional Context, and later extra-Note approval. The bounded
   extra-write sheet has one denial, **Continue Without Additional Notes**;
-  **End Action** remains separate. Sheets also expose
-  handoff, active Run state, continuation, cancellation, and recovery without
+  **End Action** remains separate. Sheets expose preparation and handoff without
   exposing credentials, registration keys, protocol internals, or
-  implementation hashes. Finalized Result, Evaluation, and Method Feedback now
-  appear only in the exact Research Record.
-- Action, Reading Lead note, and combined Researcher Response sheets share the same
+  implementation hashes. Finalized Result and Method Feedback appear only in
+  the exact Research Record.
+- Action, Follow-up, and Reading Lead note sheets share the same
   fixed-header, scrolling-body, fixed-action layout while retaining separate
   workflow state and dimensions.
-- Record reading detail shows progressive Researcher Response; its Evidence
+- Record reading detail shows **Follow Up…** and any parent-owned Method
+  Feedback; its Evidence
   rail shows Changes, Effects, Participants, and Technical
-  Details without repeating the Changes count under Effects. The Response
-  heading shares the reading plane's content baseline. One combined editor
-  atomically saves Evaluation and optional Method
-  Feedback. The shared folding exact comparison remains read-only until an
+  Details without repeating the Changes count under Effects. Follow-up chooses
+  the next Action plus a finding/question/hypothesis and Research Request; its
+  optional Feedback on Previous Result disclosure is default-collapsed. The
+  shared folding exact comparison remains read-only until an
   explicitly granted whole-document recovery. Notification clicks produce the
   validated exact result route and its Records-window-lifetime direct-Undo
   grant; ordinary Records browsing does not receive the grant.
@@ -138,17 +138,18 @@
   quiet three-line `mutedText` excerpt. Record detail exposes neither the
   revision-bound line number nor a jump to a location that may have moved.
 - Copy Handoff success closes the preparation sheet and returns focus through
-  the existing Action-row focus owner. Actions project Waiting, Running, Needs
-  Attention, and repair text from durable execution truth. Waiting and Running
-  open a compact status sheet; a finalized Record ends the Action row.
-- Foreground completion presents a dismissible Review Result banner only in
-  the source window. Authorized background completion uses a private system
-  notification; click routing retains its exact Triptych, Record, and finalized
-  fingerprint even when no main window remains. Arrival alone never opens,
-  retargets, focuses, or activates Records. Delivery is one-shot and independent
-  of Note Review.
+  the existing Action-row focus owner. One persistent Notifications activity per
+  Run projects Waiting, Running, Needs Attention, Result Ready, or Recovery
+  Required from durable execution truth. Running offers Open Action and End
+  Action; completion offers Review Result, Follow Up, and explicit Dismiss.
+  Closing the popover/window never Dismisses it.
+- Authorized background completion uses a private system notification; click
+  routing retains its exact Triptych, Record, and finalized fingerprint even
+  when no main window remains. Arrival alone never opens, retargets, focuses,
+  reviews, or activates Records. One Action may summarize multiple affected
+  Notes, whose Review/Undo states remain independent.
 
-## Search, Attention, and Research Records
+## Search, Notifications, and Research Records
 
 - Search is a compact command surface with visible scope, typed diagnostics,
   provider-aware completion and results, freshness, Saved Searches, and Explain
@@ -157,9 +158,11 @@
 - The Saved Searches menu exposes archive-and-reset only while its local file
   is unreadable. Methods likewise exposes bounded, confirmed repair actions
   only for its typed invalid local owner.
-- Attention is one transient anchored popover per workspace. It keeps current
-  rows available during refresh or recoverable failure and preserves explicit
-  Inspect, Resynthesize, Leave Unchanged, dismiss, and Retry routes.
+- Notifications is one transient anchored popover per workspace backed by a
+  persistent process-level Action activity model. It keeps the existing
+  structural source/conflict/recovery Attention rows and their Inspect,
+  Resynthesize, Leave Unchanged, timed dismiss, and Retry routes without merging
+  those semantics with Action Dismiss.
 - The Workspace Records control opens This Note scope for a resolved selected
   Note and remains available without a Document by opening Triptych scope.
   Research Records opens to Records or Reading Leads with toolbar View,

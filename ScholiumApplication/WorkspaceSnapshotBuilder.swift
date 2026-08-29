@@ -790,6 +790,19 @@ enum WorkspaceSnapshotBuilder {
                 recordID: record.id,
                 actionID: action.actionID,
                 originNoteID: originNoteID,
+                targetTitle: record.participatingNotes.first(where: {
+                    $0.noteID == originNoteID
+                })?.title ?? record.title.value,
+                affectedNotes: record.confirmedChanges.compactMap { change in
+                    record.participatingNotes.first(where: {
+                        $0.noteID == change.noteID
+                    }).map {
+                        WorkspaceResearchAffectedNote(
+                            noteID: $0.noteID,
+                            title: $0.title
+                        )
+                    }
+                },
                 recordFingerprint: fingerprint,
                 finishedAt: record.finishedAt
             )
@@ -1032,6 +1045,7 @@ enum WorkspaceSnapshotBuilder {
                 runID: execution.id,
                 actionID: action.actionID,
                 targetNoteID: action.target.noteID,
+                targetTitle: action.target.title,
                 state: state,
                 repairReason: repairReason,
                 updatedAt: max(updatedAt, execution.completion?.completedAt ?? updatedAt)

@@ -450,37 +450,17 @@ never cascades. Settlement, source access, stable identity, and Critique
 association remain for Finder reconciliation.
 
 Every safely finalized Action Research Record may contain one optional current
-**Researcher Response** owned by that Record. One editor presents **Researcher
-Evaluation** first and **Method Feedback** second, then saves or clears the two
-semantic partitions in one atomic **Save Response** replacement. Discussion
-Records have no source-change review or Researcher Response workflow. Method
-Feedback remains a researcher-authored comment about the exact Method used by
-the Record; saving it alone authorizes no Agent access.
-
-The evaluation contains:
-
-- multi-select **Observed Issues**: source/attribution, concept/interpretation,
-  argument/objection-reply, epistemic identity/researcher state,
-  evidence scope/restraint, research help/next step, or other;
-- **No issue marked in this evaluation scope**, mutually exclusive with issue
-  selections and never meaning truth, completeness, adoption, or finality; and
-- optional **Valuable Discovery** plus a short note for a useful new relation,
-  objection, evidence gap, or research direction.
-
-Absence means unevaluated. There is no score, rating, mandatory severity,
-root-cause diagnosis, queue, history, profile, training channel, automatic
-method change, retrieval demotion, or adoption inference. Evaluation is
-researcher-authored evidence about one exact response; it does not change the
-finalized Agent/Scholium result, Record completion, Settle, or philosophical
-truth.
-
-Every Response save carries the expected Evaluation revision, expected Method
-Feedback revision, and immutable finalized-result fingerprint. The Record
-store validates all three under one lock, atomically replaces both partitions,
-reads back, and otherwise rejects the entire save while retaining the local
-draft. Clearing either saved partition is an explicit confirmed edit inside the
-same Response editor. A deleted or unavailable Record cannot receive or
-redirect the draft.
+**Method Feedback** comment owned by that parent Record. It is
+researcher-authored feedback about the exact Method used by the Record; saving
+it alone authorizes no Agent access. Discussion Records have no Method Feedback
+workflow. There is no independent Researcher Response, Evaluation, score,
+rating, mandatory severity, root-cause diagnosis, queue, history, profile,
+training channel, automatic method change, retrieval demotion, or adoption
+inference. Every feedback save carries its expected Method Feedback revision
+and the immutable finalized-result fingerprint. The Record store validates
+both under one lock, replaces the feedback, reads back, and otherwise rejects
+the save while retaining the local draft. Clearing saved feedback is an
+explicit edit. A deleted or unavailable Record cannot receive or redirect it.
 
 Review is a researcher-owned milestone for one Note's current saved state, not
 a Record, change, or hunk disposition. Reading Records or Changes, restoring
@@ -540,8 +520,8 @@ retains its frozen Record Title, attributed researcher and Agent statements, par
 revisions, Action, minimal method provenance, confirmed
 changes, discrepancies, Fidelity completion, the explicit Analyze source route,
 Analyze-only Literature
-Recommendations, and current Researcher Response. Researcher Response is
-excluded from the finalized-result fingerprint. It excludes raw secrets,
+Recommendations, and current Method Feedback. Method Feedback is excluded from
+the finalized-result fingerprint. It excludes raw secrets,
 bookmarks, absolute paths, method/folder snapshots, prompts, token counts,
 transport logs, window state, and diff hunks. Markdown remains authoritative
 research content; Records never reconstruct writable source.
@@ -558,7 +538,7 @@ duplicate Record, inferred relevance, acceptance, mutation authority, or
 alternative Record owner.
 
 Research Records presentation, collection behavior, Reading Leads, evidence,
-evaluation, and deletion are owned by [§18.5](07-document-and-research-interface.md#185-contextual-research-and-actions).
+Follow-up, feedback, and deletion are owned by [§18.5](07-document-and-research-interface.md#185-contextual-research-and-actions).
 Those routes never change the portable ownership above. Analyze-only Literature
 Recommendations remain occurrences inside their parent Record under
 [§15.3](05-integrations-onboarding-and-boundaries.md#153-literature-recommendations-and-the-zotero-boundary);
@@ -585,12 +565,16 @@ attributed candidates until retained through the one Result/Record or an
 authorized exact-document write. Scholium creates no Discovery or writer-history
 store.
 
-**Continue Research** begins another Action and therefore another Run. It is
-available only after the current Run has a determined completion or legitimate
-blocked result. The initiator supplies the next Action, initial object, short
-academic purpose, and only the needed finding/question/hypothesis together
-with its epistemic status and why the next Action needs it. Scholium supplies
-the `continued from` Record relationship.
+Continuation has two explicit initiators and distinct lineage kinds. An
+authenticated Agent may autonomously submit **Continue Research** after its
+current Run has a determined completion or legitimate blocked result. A
+researcher may choose **Follow Up…** from a safely finalized Record or its
+Result Ready notification. Each begins another ordinary Action and therefore
+another Run; neither rewrites the parent Result or Record. The initiator
+supplies the next Action and a bounded finding, question, or hypothesis plus
+the next Action's Research Request. Scholium supplies the `continued from`
+Record relationship and records whether the lineage is Agent Continue Research
+or researcher Follow-up.
 
 Full Access may create the next Run directly; the other policies use the same
 single decision rule and ask only when required. The new Run independently
@@ -619,20 +603,22 @@ as` is derived in reverse and never rewrites the prior Record. Rejection or
 abandonment changes no prior completion. Agent-initiated continuation under
 Full Access remains an Agent act rather than researcher intent.
 
-Continue Research is initiated only through the authenticated CLI/Agent Run
-protocol. Research Records exposes no Continue Research button or
-researcher-side preparation port. The parent Action presentation shows the
-continuation and, after the child Record safely forms, derives its relationship
-from `continued from`. That child remains one portable Record and remains
-searchable, but the Records collection folds it beneath its parent rather than
-creating a second peer top-level row.
-A created Continue response returns the child Context and `required_skills`
-through the existing Session, without pairing or initial reload.
+Agent **Continue Research** remains initiated through the authenticated
+CLI/Agent Run protocol. A created Continue response returns the child Context
+and `required_skills` through the existing Session, without pairing or initial
+reload. Researcher **Follow Up…** instead creates a new researcher-initiated
+Run through ordinary Action preparation and a fresh handoff; it never reuses
+the parent Session or any parent write authority. Both child Records remain
+portable and searchable and retain their precise lineage while the Records
+collection may fold them beneath the parent instead of creating a second peer
+top-level row.
 
-The Record's Researcher Response accepts one short Method Feedback comment and
-the Record exposes an explicit **Improve Current Method...** action. Saving or
-editing the comment alone authorizes no Agent access. Starting that action, not
-Full Access, Evaluation, or source disposition, creates one
+The Follow-up sheet may reveal one optional, secondary, default-collapsed
+**Feedback on Previous Result** field. Saving it writes Method Feedback to the
+parent Record, not to the child request or Result, and authorizes no Agent
+access. A parent Record with current feedback exposes **Improve Current
+Method...**. Starting that action, not Full Access, Follow-up, or source
+disposition, creates one
 separately paired improvement Run bound to the parent Record, exact comment
 revision/text, finalized Result fingerprint, original registration relation,
 current Skill entry and its exact revision. It

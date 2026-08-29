@@ -36,33 +36,33 @@ override.
 
 ## Focused interface evidence
 
+- On 2026-08-30, the Follow-up and Action Notifications cutover passed the
+  complete gate: documentation and 9 shipped-Skill
+  guards; 207 Web, 468 Core plus 3 performance, 161 Contracts, 288 Application,
+  15 bridge, 1 architecture, and 665 App tests; 16 signed executable CLI
+  lifecycles; sandbox loopback, symbol/residue guards; and a 191.14-second
+  Release build. Focused tests prove that authenticated Agent Continue Research
+  remains intact while researcher Follow-up creates a fresh `.followUp` Run,
+  and that one Action activity survives window replacement until explicit
+  Dismiss. This is automated local evidence, not human UI, VoiceOver, or
+  external-Agent acceptance.
+
 - On 2026-08-27, the external-Agent Skill deployment cutover passed the complete
-  gate: documentation and 9 shipped-Skill guards; 206 Web, 465 Core plus 3
-  performance, 150 Contract, 284 Application, 16 bridge, 1 architecture, and
-  668 App tests; 16 signed executable CLI lifecycles; the sandbox loopback
-  probe; symbol/residue guards; and a 184.40-second Release build. A disposable
-  external Agent workspace obtained and registered 3 System plus 6 Action Skill
-  sources through the real CLI, retained an unrelated non-Scholium Skill,
-  received only minimum `required_skills` and the frozen Method revision in Run
-  Context, executed all six Actions, and performed Analyze, Synthesize, and
-  Write mutations only through `scholium agent write`. Continue returned its
-  attached child Context without another pair/reload, and substituted external
-  Skill entries failed closed. This proves local deterministic deployment and
-  CLI behavior, not live Codex/Claude discovery refresh, a packaged external
-  account, or human/researcher acceptance.
+  gate: 206 Web, 465 Core plus 3 performance, 150 Contracts, 284 Application,
+  16 bridge, 1 architecture, and 668 App tests; 16 CLI lifecycles, sandbox and
+  residue guards, and a 184.40-second Release build. A disposable external
+  Agent workspace registered 3 System plus 6 Action Skills, preserved unrelated
+  Skills, received bounded Run Context, executed all six Actions, and performed
+  writes only through `scholium agent write`. Continue returned its child
+  Context without re-pair/reload; substituted Skill entries failed closed.
+  Live-provider, packaged-account, and human acceptance remain unproved.
 
 - On 2026-08-25, the window-workspace and Local Agent bridge ownership cutover
-  passed the complete gate: documentation/Skill guards; 206 Web, 464 Core, 3
-  performance, 150 Contract, 279 Application, 16 bridge, and 663 App tests;
-  architecture measurement; 13 CLI lifecycles; App-to-standalone-CLI probe;
-  residue guards; and the 188.64-second Release build.
-  `WindowWorkspaceController` alone owns registration, assignment, capability
-  activation, and recovery; `LocalAgentBridgeRequestRouter` alone translates
-  the closed 17-operation wire set. A subsequent 197-test residue pass removed
-  the generic recovery setter, single-field feedback wrapper, capability
-  relay, and duplicate recovery finalizers; transaction notices now survive
-  successful installation. No visible behavior changed, so no visual or
-  researcher acceptance was required.
+  passed its complete gate: 206 Web, 464 Core, 3 performance, 150 Contracts,
+  279 Application, 16 bridge, 663 App, 13 CLI lifecycles, sandbox/residue guards,
+  and a 188.64-second Release build. `WindowWorkspaceController` owns workspace
+  activation/recovery; `LocalAgentBridgeRequestRouter` owns the closed wire set.
+  A 197-test residue pass removed duplicate relays and recovery finalizers.
 
 - On 2026-08-23, the explicit Record retrieval CLI facade passed the Debug CLI
   build, documentation-authority validator, and all 11 signed executable CLI
@@ -524,7 +524,7 @@ Triptychs. Analyze used live Zotero; Synthesize wrote one Topic; Write revised
 one Work; Critique, Discuss, and Check Fidelity remained read-only. Check
 Fidelity inspected the exact Work, Topic, four Analyses, and two prior Records,
 then found the planted YAML/body thesis conflict and reversed `functional
-appropriateness` phrase. Each Action formed one schema-16 Record and terminal
+appropriateness` phrase. Each Action formed one then-current Record and terminal
 execution; Discuss used Finish without post-Finish End. Independent source-PDF
 reviews found no critical or material defect in the accepted runs and
 respectively two, three, one, one, two, and one minor findings. Two earlier

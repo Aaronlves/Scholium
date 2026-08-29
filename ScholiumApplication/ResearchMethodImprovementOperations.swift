@@ -375,16 +375,9 @@ extension WorkspaceHandle {
         case .current:
             do {
                 _ = try await researchMethodImprovementDependencies.portableResearchRecordStore
-                    .saveResearcherResponse(
-                        try ResearcherResponseDraft(
-                            evaluation: try portable.researcherEvaluation.map(
-                                ResearcherEvaluationDraft.init
-                            ),
-                            methodFeedbackText: nil
-                        ),
+                    .saveMethodFeedback(
+                        nil,
                         recordID: portable.id,
-                        expectedEvaluationRevision:
-                            portable.researcherEvaluation?.revision,
                         expectedMethodFeedbackRevision: improvement.feedbackRevision,
                         expectedResultFingerprint:
                             improvement.expectedResultFingerprint

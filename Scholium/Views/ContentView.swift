@@ -183,8 +183,15 @@ struct ContentView: View {
             ScholiumMotion.searchPresentation(reduceMotion: reduceMotion),
             value: appState.showSearchSurface
         )
-        .onChange(of: shellState.researchResultNotice) { previous, current in
-            guard current != nil, current != previous else { return }
+        .onChange(
+            of: shellState.researchActivityNotifications
+        ) { previous, current in
+            let previousReady = Set(previous.compactMap {
+                $0.state == .resultReady ? $0.runID : nil
+            })
+            guard current.contains(where: {
+                $0.state == .resultReady && !previousReady.contains($0.runID)
+            }) else { return }
             AccessibilityNotification.Announcement(
                 String(
                     localized: "An Agent result is ready to review.",
@@ -417,6 +424,8 @@ struct ContentView: View {
         ResearchInspectorContentContext(
             presentation: ResearchOverviewPresentation(
                 visibleAttentionItems: visibleCurrentDocumentAttentionItems,
+                activityNotificationCount:
+                    currentDocumentActivityNotificationCount,
                 freshness: researchProjectionFreshness,
                 aboutConfiguration: appState.currentDocumentAboutConfiguration,
                 metadataCatalog: workspaceProjectionController.metadataCatalog,
@@ -518,6 +527,14 @@ struct ContentView: View {
             $0.note.vaultID == vaultID && $0.note.relativePath == note.relativePath
         }
         return AttentionPreferences.decodeLedger(attentionDismissalLedgerData).visible(matching)
+    }
+
+    private var currentDocumentActivityNotificationCount: Int {
+        guard let noteID = currentNoteStableID else { return 0 }
+        return shellState.researchActivityNotifications.count { notification in
+            notification.targetNoteID == noteID
+                || notification.affectedNotes.contains { $0.noteID == noteID }
+        }
     }
 
     private var researchProjectionFreshness: ResearchProjectionFreshness {
@@ -821,11 +838,14 @@ struct ContentView: View {
     }
 
     private var sidebarAttentionTotal: Int? {
-        AttentionPreferences.visibleTotalCount(
+        let activityCount = shellState.researchActivityNotifications.count
+        let issueCount = AttentionPreferences.visibleTotalCount(
             catalog: appState.workspaceCatalog,
             assignment: appState.workspaceAssignment,
             dismissalLedgerData: attentionDismissalLedgerData
         )
+        if let issueCount { return issueCount + activityCount }
+        return activityCount > 0 ? activityCount : nil
     }
 
     private var sidebarWorkspaceNoteCounts: SidebarWorkspaceNoteCounts {
@@ -1106,19 +1126,8 @@ struct ContentView: View {
 
     @ViewBuilder
     private var researchNotificationBanner: some View {
-        if let destination = shellState.researchResultNotice {
-            ResearchResultNotificationView(
-                kind: .result,
-                review: {
-                    windowCoordinator.reviewResearchResult(destination)
-                },
-                dismiss: {
-                    shellState.dismissResearchResultNotice(matching: destination)
-                }
-            )
-            .padding(ScholiumMetrics.Workspace.refreshStatusOuterInset)
-        } else if let permission = shellState.researchNotificationPermissionNotice {
-            ResearchResultNotificationView(
+        if let permission = shellState.researchNotificationPermissionNotice {
+            ResearchNotificationPermissionView(
                 kind: permission == .enable
                     ? .enableNotifications
                     : .openNotificationSettings,
@@ -1402,9 +1411,8 @@ struct ToastView: View {
     }
 }
 
-private struct ResearchResultNotificationView: View {
+private struct ResearchNotificationPermissionView: View {
     enum Kind {
-        case result
         case enableNotifications
         case openNotificationSettings
     }
@@ -1456,28 +1464,18 @@ private struct ResearchResultNotificationView: View {
     }
 
     private var symbol: String {
-        switch kind {
-        case .result: "doc.text.magnifyingglass"
-        case .enableNotifications, .openNotificationSettings: "bell"
-        }
+        "bell"
     }
 
     @ViewBuilder
     private var actionButton: some View {
-        if kind == .result {
-            Button(actionTitle, action: review)
-                .controlSize(.small)
-                .buttonStyle(.borderedProminent)
-        } else {
-            Button(actionTitle, action: review)
-                .controlSize(.small)
-                .buttonStyle(.bordered)
-        }
+        Button(actionTitle, action: review)
+            .controlSize(.small)
+            .buttonStyle(.bordered)
     }
 
     private var title: LocalizedStringResource {
         switch kind {
-        case .result: "Agent Result Arrived"
         case .enableNotifications: "Get Notified When Results Are Ready"
         case .openNotificationSettings: "Notifications Are Off"
         }
@@ -1485,8 +1483,6 @@ private struct ResearchResultNotificationView: View {
 
     private var detail: LocalizedStringResource {
         switch kind {
-        case .result:
-            "Review the completed Research Record when you are ready."
         case .enableNotifications:
             "Scholium can notify you when the app is in the background."
         case .openNotificationSettings:
@@ -1496,18 +1492,13 @@ private struct ResearchResultNotificationView: View {
 
     private var actionTitle: LocalizedStringResource {
         switch kind {
-        case .result: "Review Result"
         case .enableNotifications: "Enable Notifications"
         case .openNotificationSettings: "Open Settings"
         }
     }
 
     private var identifier: String {
-        switch kind {
-        case .result: "scholium.researchResultNotification"
-        case .enableNotifications, .openNotificationSettings:
-            "scholium.researchNotificationPermission"
-        }
+        "scholium.researchNotificationPermission"
     }
 }
 

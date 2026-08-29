@@ -145,7 +145,7 @@ stable identity, source-access records, Zotero bindings, and Critique
 associations are not cleanup targets. The Note-deletion marker shares the
 portable-store lock with active Discussion, Settlement, and finished Record
 creation, so no participating state can appear after confirmation. Portable
-Record schema 16 has no deleted-participant representation; every unsupported
+Record schema 17 has no deleted-participant representation; every unsupported
 schema remains byte-unchanged, unread, and nonauthorizing.
 
 Watcher reconciliation, Finder actions, and sync tools cannot construct this

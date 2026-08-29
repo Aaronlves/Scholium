@@ -1558,93 +1558,58 @@ struct ResearchRecordV1StoresTests {
         #expect(try await store.activeExecutionIDs(containing: [unrelatedNoteID]).isEmpty)
     }
 
-    @Test("Researcher Response replaces Evaluation and Method Feedback in one CAS")
-    func researcherResponseCAS() async throws {
+    @Test("Method Feedback replaces only the parent Record comment in one CAS")
+    func methodFeedbackCAS() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = try fixture.portableStore()
         let original = try makePortableRecord()
         _ = try await store.createFinishedRecord(original)
         let resultFingerprint = try original.finalizedResultFingerprint()
-        let first = try await store.saveResearcherResponse(
-            ResearcherResponseDraft(
-                evaluation: ResearcherEvaluationDraft(
-                    observedIssues: [.sourceOrAttribution],
-                    note: "The attribution needs a narrower locator."
-                ),
-                methodFeedbackText: "Ask for a counter-reading before synthesis."
+        let first = try await store.saveMethodFeedback(
+            ResearchMethodFeedbackDraft(
+                text: "Ask for a counter-reading before synthesis."
             ),
             recordID: original.id,
-            expectedEvaluationRevision: nil,
             expectedMethodFeedbackRevision: nil,
             expectedResultFingerprint: resultFingerprint,
             updatedAt: Date(timeIntervalSince1970: 30)
         )
-        let firstRevision = try #require(first.researcherEvaluation?.revision)
         let firstFeedbackRevision = try #require(first.methodFeedbackComment?.revision)
         #expect(try first.finalizedResultFingerprint() == resultFingerprint)
-        #expect(first.researcherEvaluation?.author == .researcher)
-        #expect(first.methodFeedbackComment?.sourceEvaluationRevision == firstRevision)
 
-        let feedbackOnly = try await store.saveResearcherResponse(
-            ResearcherResponseDraft(
-                evaluation: ResearcherEvaluationDraft(
-                    observedIssues: [.sourceOrAttribution],
-                    note: "The attribution needs a narrower locator."
-                ),
-                methodFeedbackText: "Require the counter-reading before synthesis."
+        let revised = try await store.saveMethodFeedback(
+            ResearchMethodFeedbackDraft(
+                text: "Require the counter-reading before synthesis."
             ),
             recordID: original.id,
-            expectedEvaluationRevision: firstRevision,
             expectedMethodFeedbackRevision: firstFeedbackRevision,
             expectedResultFingerprint: resultFingerprint,
             updatedAt: Date(timeIntervalSince1970: 31)
         )
-        let feedbackOnlyRevision = try #require(
-            feedbackOnly.methodFeedbackComment?.revision
+        let revisedFeedbackRevision = try #require(
+            revised.methodFeedbackComment?.revision
         )
-        #expect(feedbackOnly.researcherEvaluation?.revision == firstRevision)
-        #expect(feedbackOnlyRevision != firstFeedbackRevision)
-        #expect(feedbackOnly.methodFeedbackComment?.sourceEvaluationRevision
-            == firstRevision)
+        #expect(revisedFeedbackRevision != firstFeedbackRevision)
 
         await #expect(
-            throws: PortableResearcherResponseMutationError.staleEvaluationRevision
+            throws: PortableResearchMethodFeedbackMutationError
+                .staleMethodFeedbackRevision
         ) {
-            _ = try await store.saveResearcherResponse(
-                ResearcherResponseDraft(
-                    evaluation: ResearcherEvaluationDraft(noIssuesObserved: true),
-                    methodFeedbackText: nil
-                ),
+            _ = try await store.saveMethodFeedback(
+                nil,
                 recordID: original.id,
-                expectedEvaluationRevision: nil,
-                expectedMethodFeedbackRevision: feedbackOnlyRevision,
-                expectedResultFingerprint: resultFingerprint
-            )
-        }
-        await #expect(
-            throws: PortableResearcherResponseMutationError.staleMethodFeedbackRevision
-        ) {
-            _ = try await store.saveResearcherResponse(
-                ResearcherResponseDraft(
-                    evaluation: ResearcherEvaluationDraft(noIssuesObserved: true),
-                    methodFeedbackText: nil
-                ),
-                recordID: original.id,
-                expectedEvaluationRevision: firstRevision,
                 expectedMethodFeedbackRevision: nil,
                 expectedResultFingerprint: resultFingerprint
             )
         }
 
-        let cleared = try await store.saveResearcherResponse(
-            ResearcherResponseDraft(evaluation: nil, methodFeedbackText: nil),
+        let cleared = try await store.saveMethodFeedback(
+            nil,
             recordID: original.id,
-            expectedEvaluationRevision: firstRevision,
-            expectedMethodFeedbackRevision: feedbackOnlyRevision,
+            expectedMethodFeedbackRevision: revisedFeedbackRevision,
             expectedResultFingerprint: resultFingerprint
         )
-        #expect(cleared.researcherEvaluation == nil)
         #expect(cleared.methodFeedbackComment == nil)
         #expect(try cleared.finalizedResultFingerprint() == resultFingerprint)
 
@@ -1653,28 +1618,23 @@ struct ResearchRecordV1StoresTests {
             throw InjectedFailure.afterRename
         }
         do {
-            _ = try await store.saveResearcherResponse(
-                ResearcherResponseDraft(
-                    evaluation: ResearcherEvaluationDraft(noIssuesObserved: true),
-                    methodFeedbackText: "Retain the response together."
+            _ = try await store.saveMethodFeedback(
+                ResearchMethodFeedbackDraft(
+                    text: "Retain this feedback."
                 ),
                 recordID: original.id,
-                expectedEvaluationRevision: nil,
                 expectedMethodFeedbackRevision: nil,
                 expectedResultFingerprint: resultFingerprint
             )
-            Issue.record("Expected Response replacement commit uncertainty.")
+            Issue.record("Expected Method Feedback replacement commit uncertainty.")
         } catch let error as ResearchRecordStoreV1Error {
             guard case .replacementCommitUncertain = error else {
-                Issue.record("Unexpected Response replacement error: \(error)")
+                Issue.record("Unexpected Method Feedback replacement error: \(error)")
                 return
             }
         }
         let reconciled = try await store.record(id: original.id)
-        #expect(reconciled.researcherEvaluation?.noIssuesObserved == true)
-        #expect(reconciled.methodFeedbackComment?.text == "Retain the response together.")
-        #expect(reconciled.methodFeedbackComment?.sourceEvaluationRevision
-            == reconciled.researcherEvaluation?.revision)
+        #expect(reconciled.methodFeedbackComment?.text == "Retain this feedback.")
         #expect(try reconciled.finalizedResultFingerprint() == resultFingerprint)
     }
 

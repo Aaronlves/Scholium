@@ -260,6 +260,12 @@
   created Continue response attaches the child to that Session and returns the
   child's complete authenticated Context and fresh `required_skills` without
   another pair or initial reload.
+- Researcher **Follow Up…** is a separate continuation owner. It starts from a
+  finalized Record or Result Ready notification, re-resolves a normal current
+  Action request, creates a fresh Run/handoff, and persists `.followUp` lineage
+  without inheriting the parent Session, Method/Profile, permission, write set,
+  Research Context, or Agent judgment. Agent autonomous Continue Research and
+  its authenticated Session path remain unchanged.
 - Action inspection revalidates an Agent-written target against the Run-owned
   current write/completion revision. A later unrelated external revision still
   fails stale, while ordinary Agent continuation remains available within the
@@ -314,7 +320,7 @@
 - An explicitly researcher-started `researcher_provided` Check Fidelity Run
   exposes the exact checks plus a typed Citation constraint. Without a formal
   source envelope, Citation must be `unavailable`; Note YAML URLs remain
-  authored metadata. The Fidelity Run forms its own schema-16 Record with
+  authored metadata. The Fidelity Run forms its own schema-17 Record with
   explicit unverified evidence rather than a fabricated source claim; Analyze
   records the same limitation through its bounded self-check without creating
   a parent/child Fidelity pair.
@@ -334,8 +340,8 @@
 
 - Comments, attributed Discussion turns, completed Action results, explicit
   frozen Material participants, confirmed effects, discrepancies, Fidelity outcome, Literature
-  Recommendations, and atomic Researcher Response persist through strict
-  schema-16 Records. Dynamic reading and source-use testimony are not persisted;
+  Recommendations, and parent-owned Method Feedback persist through strict
+  schema-17 Records. Dynamic reading and source-use testimony are not persisted;
   the Action identity retains only Application-established frozen Material Note
   IDs so selected Materials remain distinct from confirmed-change-only
   participants. In-text citations remain optional academic content. Analyze Records retain one explicit Scholium-source,
@@ -350,8 +356,9 @@
   documents from the first committed Agent baseline, including after a stable-
   identity rename. Undo is independent of Note Review; each document uses an
   independent ordinary revision-checked repository transaction.
-- Workspace research snapshots derive Waiting, Running, and Needs Attention
-  activities plus Note Review state and one-shot Result arrivals without
+- Workspace research snapshots derive Waiting, Running, Needs Attention,
+  Result Ready, and Recovery Required activity inputs plus Note Review state
+  and one-shot Result arrivals without
   persisting a second workflow owner or
   projecting credentials, source bytes, or tool traces.
 - Local Execution now stores a stable Run/Triptych/Note-participation/authority
@@ -366,7 +373,7 @@
 - The Triptych-keyed Research Records window and Search consume the same Record
   provider. Reading Leads are a rebuildable projection of recommendation
   occurrences; handling and researcher notes update the parent Record.
-- Strict schema-16 prose strings now remain byte-for-byte opaque through
+- Strict schema-17 prose strings now remain byte-for-byte opaque through
   submission, validation, storage, hashing, Search, and CLI reading while a
   disposable Contracts projection recognizes the closed Record scholarly-
   markup subset. Navigation reuses current fail-closed Note/heading/block

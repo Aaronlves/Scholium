@@ -20,19 +20,19 @@
       }
     },
     "settings.tab.attention" : {
-      "comment" : "Settings tab for derived attention reminders.",
+      "comment" : "Settings tab for Action notifications and derived structural reminders.",
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Attention"
+            "value" : "Notifications"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "关注"
+            "value" : "通知"
           }
         }
       }

@@ -151,16 +151,16 @@ toolbar-collapsible 260–304pt Evidence rail, separated by one 1pt adaptive
 divider. Both plane backgrounds extend behind the transparent toolbar while
 their scroll content remains inside the AppKit safe area. Reading owns the
 finalized result, attributed record, continuity relation, Reading Lead links,
-and the progressive Researcher Response. The fixed Evidence rail presents
-Changes, Effects, Participants, then Technical Details. The
-Response opens one Evaluation-first, optionally expanded Method-Feedback-second
-editor whose single Save Response operation is atomic. Changes reads exact
+the researcher **Follow Up…** entry, and parent-owned Method Feedback. The fixed
+Evidence rail presents Changes, Effects, Participants, then Technical Details.
+Follow-up opens ordinary Action preparation plus an optional default-collapsed
+Feedback on Previous Result field. Changes reads exact
 current source state and opens the shared comparison without writing Review. One
 default-closed Technical Details group
 owns schema, identity, and exact revision hashes; confirmed Research Record deletion
 remains in the Record header. Record
-detail is the sole finalized-result, Evaluation, and Method Feedback processing
-route; the parent Action presentation contains none of those subtrees.
+detail is the sole finalized-result and Method Feedback processing route; the
+parent Action presentation contains neither subtree.
 
 `ResearchRecordProseView` converts only the closed Contracts projection into
 native SwiftUI attributed text. It intercepts internal attributed-link URLs
@@ -200,19 +200,21 @@ therefore cannot reveal or resize Research Inspector or mutate its presentation.
 Its visible Scope remains This Note/Triptych; a Record found through global
 This Vault Search reapplies Triptych Scope before selection without adding a
 third auxiliary-window Scope or changing the shared provider semantics.
-Direct Continue Research remains CLI/Agent-owned. A completed continuation
-Record stays exact-ID addressable and searchable, but the collection omits its
-peer row and the parent Record/Action presentation derives it underneath the
-parent.
+Agent autonomous Continue Research remains CLI/Agent-owned. Researcher
+Follow-up is a separate Records/Result Ready notification route into ordinary
+Action preparation with its own `.followUp` lineage. A completed continuation
+Record stays exact-ID addressable and searchable, but the collection may omit
+its peer row and derive it underneath the parent without conflating initiators.
 
-Attention is one native transient SwiftUI popover owned by each exact
+Notifications is one native transient SwiftUI popover owned by each exact
 `WindowModel`, not an app-wide Scene, sheet, inline Library destination,
 utility panel, or always-on-top surface. Per-Workspace
 `AttentionPresentationState` owns only filter, selected item, an optional
 Inspector workspace subset, and an optional current-Note subset;
 `AttentionPopoverSession` adapts that state
-and the current immutable queue to the Sidebar and Inspector anchors without
-duplicating either. The adapter observes only the exact assignment and
+and the current immutable structural queue plus application-owned Action
+activities to the Sidebar and Inspector anchors without duplicating either.
+The adapter observes only the exact assignment and
 workspace-projection owners plus the single dismissal-duration setting; it
 borrows closed refresh and resynthesis effects and never observes or retains
 the complete `WindowModel`. Sidebar derives one read-only aggregate from the
@@ -220,22 +222,23 @@ same catalog and machine-local dismissal ledger through its stable BrandHeader
 entry; workspace rows
 instead consume neutral ordinary-active-Note totals, and zero remains a real
 inventory value. The Document toolbar consumes
-no Attention count, observation, item, action, reserved width, or popover
+no Notifications count, observation, item, action, reserved width, or popover
 anchor. A missing first catalog remains checking, and a failed first load
 presents an unavailable Retry state rather than zero. Sidebar opens the complete
 Triptych queue; Inspector may add the active Note, and a workspace change clears
 that Inspector subset without retargeting an already open Triptych queue. SwiftUI's
-transient popover behavior owns outside-click and Escape dismissal; Inspect and
-Resynthesize dismiss before routing through the same exact `WindowModel`.
-**Window → Attention** asks the exact `WorkspaceWindowCoordinator` for a visible
+transient popover behavior owns outside-click and Escape closure; that closure
+does not remove Action activities. Inspect and Resynthesize close before routing
+through the same exact `WindowModel`.
+**Window → Notifications** asks the exact `WorkspaceWindowCoordinator` for a visible
 contextual route: the stable Sidebar entry whenever Sidebar is visible, then the
 nonempty current-Note Inspector summary. Without either visible anchor the
 command is disabled; it never synthesizes a toolbar or detached presentation
 route. The application-wide window registry records exact Workspace focus
 changes so the newly active Workspace resets query, kind, Note subset, and
 selected task without treating popover key-window changes or app deactivation
-as Workspace switches. No global window search, notification, model registry,
-detached Attention Scene, NSWindow attachment, or toolbar compatibility state
+as Workspace switches. No global window search, detached Notifications Scene,
+NSWindow attachment, or toolbar compatibility state
 participates. Inspector alone consumes the document-adjacent apparatus surface;
 Library has no literature-recommendation row, footer, count, or reserved gap.
 The Document toolbar sends a Note-scoped Records request when a resolved Note
@@ -333,14 +336,14 @@ window temporarily has no current Note, a recovery-only Apparatus keeps those
 window-owned cleanup entries reachable without inventing a Target or Action.
 Successful Copy Handoff dismisses the sheet through the existing router, whose
 native dismissal callback restores the originating Action-row focus. Clipboard
-failure keeps the sheet and entered values. Thereafter the same row consumes
-the activity projection, retains a direct End route for Waiting/Running, and
-opens either the compact status sheet or the exact Result Record. Activity rows
-survive a temporary Profile-resolution failure by falling back only to the
-closed Platform Action identity; that fallback cannot prepare a new Run.
-Foreground result banners are transient window-shell overlays and background
-alerts use the application-owned notification adapter. Neither notification
-owns Result state or mutates the current Records selection on arrival.
+failure keeps the sheet and entered values. Thereafter the Inspector row remains
+an Action launcher. `AttentionPopoverSession` combines structural Attention
+with the application coordinator's one-per-Run Action activities. The activity
+supplies Open Action and End Action for Waiting/Running, and Review Result,
+Follow Up, and Dismiss for completed work. Closing the native popover or window
+never removes it; Dismiss is explicit and has no Review, adoption, Undo, or
+cancellation meaning. Background alerts use the application-owned notification
+adapter and neither owner mutates Records selection on arrival.
 Protected execution is selected directly from the frozen Action identity and
 required Action snapshot; Application has no second Function mapping. The
 public route and controller are Action-owned. Neither leaf receives

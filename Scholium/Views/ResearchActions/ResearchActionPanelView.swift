@@ -55,6 +55,7 @@ struct ResearchActionPanelView: View {
     @State private var confirmsEndAction = false
     @State private var showsAdditionalContext = false
     @State private var showsOptionalAcademicInputs = false
+    @State private var showsFollowUpFeedback = false
     @State private var pendingDismissalFocusDisposition:
         ResearchActionDismissalFocusDisposition = .preserveInputModality
 
@@ -141,6 +142,7 @@ struct ResearchActionPanelView: View {
                     alignment: .leading,
                     spacing: ScholiumMetrics.ResearchSheet.bodySectionSpacing
                 ) {
+                    followUpBridge
                     primaryResearchRequest
                     platformInputs
                     academicInputs
@@ -217,7 +219,9 @@ struct ResearchActionPanelView: View {
                 alignment: .leading,
                 spacing: ScholiumMetrics.ResearchSheet.headerDetailSpacing
             ) {
-                Text(verbatim: actionTitle)
+                Text(verbatim: controller.followUpContext == nil
+                    ? actionTitle
+                    : "Follow Up · \(actionTitle)")
                     .font(ScholiumTypography.interface(.primaryTitle))
                     .accessibilityAddTraits(.isHeader)
                 HStack(alignment: .firstTextBaseline, spacing: ScholiumMetrics.ResearchSheet.fieldSpacing) {
@@ -472,6 +476,88 @@ struct ResearchActionPanelView: View {
     }
 
     @ViewBuilder
+    private var followUpBridge: some View {
+        if controller.followUpContext != nil {
+            VStack(
+                alignment: .leading,
+                spacing: ScholiumMetrics.ResearchSheet.fieldGroupSpacing
+            ) {
+                Text("CONTINUED FROM PREVIOUS RESULT")
+                    .scholiumApparatusHeadingStyle()
+                    .accessibilityAddTraits(.isHeader)
+
+                Picker("Bridge Type", selection: $controller.followUpKind) {
+                    Text("Finding").tag(ResearchFollowUpKind.finding)
+                    Text("Question").tag(ResearchFollowUpKind.question)
+                    Text("Hypothesis").tag(ResearchFollowUpKind.hypothesis)
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("scholium.researchFollowUp.kind")
+
+                TextEditor(text: $controller.followUpStatement)
+                    .font(ScholiumTypography.scholarly(.body))
+                    .frame(minHeight: 76, maxHeight: 120)
+                    .scrollContentBackground(.hidden)
+                    .padding(ScholiumMetrics.ResearchSheet.textEditorInset)
+                    .background(ScholiumColorRole.documentBackground.color)
+                    .overlay {
+                        RoundedRectangle(
+                            cornerRadius: ScholiumShape.editorialControlCornerRadius
+                        )
+                        .stroke(ScholiumColorRole.separator.color, lineWidth: 0.5)
+                    }
+                    .accessibilityLabel("Finding, question, or hypothesis")
+                    .accessibilityIdentifier(
+                        "scholium.researchFollowUp.statement"
+                    )
+
+                ScholiumDisclosureHeaderButton(
+                    isExpanded: showsFollowUpFeedback,
+                    accessibilityLabel: Text("Feedback on Previous Result"),
+                    accessibilityIdentifier:
+                        "scholium.researchFollowUp.feedbackDisclosure",
+                    action: { showsFollowUpFeedback.toggle() }
+                ) {
+                    Text("Feedback on Previous Result")
+                        .font(ScholiumTypography.interface(.sectionTitle))
+                }
+                if showsFollowUpFeedback {
+                    VStack(
+                        alignment: .leading,
+                        spacing: ScholiumGrid.Spacing.inlineControlGap
+                    ) {
+                        Text("Optional Method Feedback is stored on the previous Record. It is not part of the new Agent result.")
+                            .font(ScholiumTypography.interface(.small))
+                            .scholiumForeground(.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                        TextEditor(text: $controller.followUpMethodFeedback)
+                            .font(ScholiumTypography.scholarly(.body))
+                            .frame(minHeight: 72, maxHeight: 120)
+                            .scrollContentBackground(.hidden)
+                            .padding(ScholiumMetrics.ResearchSheet.textEditorInset)
+                            .background(ScholiumColorRole.documentBackground.color)
+                            .overlay {
+                                RoundedRectangle(
+                                    cornerRadius:
+                                        ScholiumShape.editorialControlCornerRadius
+                                )
+                                .stroke(
+                                    ScholiumColorRole.separator.color,
+                                    lineWidth: 0.5
+                                )
+                            }
+                            .accessibilityIdentifier(
+                                "scholium.researchFollowUp.methodFeedback"
+                            )
+                    }
+                    .padding(.leading, ScholiumGrid.Spacing.nestedContentInset)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
     private var primaryResearchRequest: some View {
         if let researchRequestField {
             academicField(researchRequestField)
@@ -575,6 +661,7 @@ struct ResearchActionPanelView: View {
     private func synchronizeDisclosureState() {
         showsAdditionalContext = actionSheetLayout.expandsAdditionalContext
         showsOptionalAcademicInputs = false
+        showsFollowUpFeedback = false
     }
 
     @ViewBuilder

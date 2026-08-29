@@ -75,21 +75,13 @@ struct ResearchActionsPresentation {
                 return $0.id.rawValue < $1.id.rawValue
             }
             .map { availability in
-                let actionActivities = activities.filter {
-                    $0.targetNoteID == target.noteID
-                        && $0.actionID == availability.id
-                }
                 return ResearchActionItemPresentation(
                     actionID: availability.id,
                     definition: availability.definition,
                     resolvedAvailability: availability,
                     sortOrder: availability.order,
-                    activity: ResearchActionActivityPresentation.make(
-                        activities: actionActivities
-                    ),
-                    isEndingActivity: actionActivities.contains {
-                        endingActivityRunIDs.contains($0.runID)
-                    },
+                    activity: nil,
+                    isEndingActivity: false,
                     isBlockedByCancellationRecovery:
                         hasCancellationBarrier || availabilityIsUnconfirmed,
                     reopensActiveDiscussion:
@@ -113,31 +105,6 @@ struct ResearchActionsPresentation {
                                     ?? "Unavailable for this note."
                 )
             }
-        let resolvedActionIDs = Set(items.map(\.id))
-        let fallbackDefinitions = PlatformActionCatalog.definitions.enumerated()
-            .filter { !resolvedActionIDs.contains($0.element.id) }
-        for (definitionIndex, definition) in fallbackDefinitions {
-            let actionActivities = activities.filter {
-                $0.targetNoteID == target.noteID
-                    && $0.actionID == definition.id
-            }
-            guard let activity = ResearchActionActivityPresentation.make(
-                activities: actionActivities
-            ) else { continue }
-            items.append(ResearchActionItemPresentation(
-                actionID: definition.actionID,
-                definition: definition.actionID.interfaceDefinition,
-                resolvedAvailability: nil,
-                sortOrder: 10_000 + definitionIndex,
-                activity: activity,
-                isEndingActivity: actionActivities.contains {
-                    endingActivityRunIDs.contains($0.runID)
-                },
-                isBlockedByCancellationRecovery: false,
-                reopensActiveDiscussion: false,
-                disabledReason: nil
-            ))
-        }
         items.sort {
             if $0.sortOrder != $1.sortOrder {
                 return $0.sortOrder < $1.sortOrder

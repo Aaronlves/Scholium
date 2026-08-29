@@ -805,51 +805,6 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                 ]
             ))
         }
-        for record in workspace.research.finishedResearchRecords
-            .filter({ record in
-                record.researcherEvaluation != nil
-                    && record.participatingNotes.contains {
-                        $0.noteID == action.target.noteID
-                    }
-            })
-            .sorted(by: { lhs, rhs in
-                if lhs.finishedAt != rhs.finishedAt {
-                    return lhs.finishedAt > rhs.finishedAt
-                }
-                return lhs.id.uuidString < rhs.id.uuidString
-            }) where items.count < limit {
-            guard let evaluation = record.researcherEvaluation,
-                  let recordFingerprint = workspace.research
-                    .finishedResearchRecordFingerprints[record.id] else {
-                continue
-            }
-            let issues = evaluation.observedIssues.isEmpty
-                ? "none selected"
-                : evaluation.observedIssues.map(\.rawValue).joined(separator: ", ")
-            let content = [
-                "The researcher explicitly evaluated this exact Research Record.",
-                "Observed issues: \(issues).",
-                evaluation.noIssuesObserved
-                    ? "No issue was marked within this evaluation's stated scope."
-                    : nil,
-                evaluation.valuableDiscovery
-                    ? "The researcher marked a Valuable Discovery."
-                    : nil,
-                evaluation.note.map { "Researcher note: \($0)" },
-            ].compactMap { $0 }.joined(separator: "\n")
-            items.append(try researcherStateItem(
-                query: query,
-                clause: clause,
-                identity: "record:\(record.id.uuidString.lowercased()):evaluation:\(evaluation.revision.uuidString.lowercased())",
-                title: "Researcher Evaluation: \(record.action?.actionID.rawValue ?? "research_action")",
-                content: content,
-                fingerprint: recordFingerprint,
-                currentness: .current,
-                limitations: [
-                    "Evaluation reports the researcher's explicit assessment of this exact Record only; it is not Settlement, adoption, a technical root-cause diagnosis, or a truth claim. Missing evaluation implies nothing."
-                ]
-            ))
-        }
         for association in workspace.research.critiques
             .filter({ $0.workNoteID == action.target.noteID })
             .sorted(by: { lhs, rhs in

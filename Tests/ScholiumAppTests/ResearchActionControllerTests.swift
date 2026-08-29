@@ -1083,8 +1083,7 @@ struct ResearchActionControllerTests {
     private func portableActionRecord(
         id: UUID,
         snapshot: ResearchActionSnapshot,
-        continuationLineage: ResearchContinuationLineage? = nil,
-        researcherEvaluation: PortableResearcherEvaluation? = nil
+        continuationLineage: ResearchContinuationLineage? = nil
     ) throws -> PortableResearchRecord {
         let target = snapshot.target
         let participant = try PortableResearchNoteRevision(
@@ -1108,8 +1107,7 @@ struct ResearchActionControllerTests {
             statements: [],
             fidelityCompletion: .notRequired,
             startedAt: Date(timeIntervalSince1970: 100),
-            finishedAt: Date(timeIntervalSince1970: 100),
-            researcherEvaluation: researcherEvaluation
+            finishedAt: Date(timeIntervalSince1970: 100)
         )
     }
 

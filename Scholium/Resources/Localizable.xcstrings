@@ -2438,16 +2438,6 @@
         }
       }
     },
-    "Add Response…" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "添加回应…"
-          }
-        }
-      }
-    },
     "Add Reviewed Author" : {
       "localizations" : {
         "zh-Hans" : {
@@ -4557,18 +4547,18 @@
         }
       }
     },
-    "Attention Unavailable" : {
+    "Notifications Unavailable" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Attention Unavailable"
+            "value" : "Notifications Unavailable"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "关注事项不可用"
+            "value" : "通知不可用"
           }
         }
       }
@@ -12173,22 +12163,6 @@
         }
       }
     },
-    "Edit Response…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Edit Response…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "编辑回应…"
-          }
-        }
-      }
-    },
     "Edit Unavailable" : {
       "localizations" : {
         "zh-Hans" : {
@@ -12342,22 +12316,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "编者"
-          }
-        }
-      }
-    },
-    "Edits Researcher Evaluation and Method Feedback together" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Edits Researcher Evaluation and Method Feedback together"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "同时编辑研究者评价与方法反馈"
           }
         }
       }
@@ -24749,16 +24707,6 @@
         }
       }
     },
-    "Reloading Researcher Evaluation" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在重新载入研究者评价"
-          }
-        }
-      }
-    },
     "Reloading Response" : {
       "localizations" : {
         "en" : {
@@ -26068,32 +26016,12 @@
         }
       }
     },
-    "Researcher Evaluation" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "研究者评价"
-          }
-        }
-      }
-    },
     "Researcher Note" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "研究者备注"
-          }
-        }
-      }
-    },
-    "Researcher Response" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "研究者回应"
           }
         }
       }
@@ -28038,22 +27966,6 @@
         }
       }
     },
-    "Save Response" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Save Response"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "保存回应"
-          }
-        }
-      }
-    },
     "Save Search" : {
       "localizations" : {
         "en" : {
@@ -28206,16 +28118,6 @@
         }
       }
     },
-    "Saving Researcher Evaluation" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在保存研究者评价"
-          }
-        }
-      }
-    },
     "Saving Response" : {
       "localizations" : {
         "en" : {
@@ -28260,22 +28162,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在保存研究者备注"
-          }
-        }
-      }
-    },
-    "Saving this draft will remove one or more saved Researcher Response sections. The Agent result remains unchanged." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Saving this draft will remove one or more saved Researcher Response sections. The Agent result remains unchanged."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "保存此草稿会移除一项或多项已保存的研究者回应内容。Agent 结果不会改变。"
           }
         }
       }
@@ -32032,22 +31918,6 @@
         }
       }
     },
-    "The Evaluation is removed only when you choose Save Response." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "The Evaluation is removed only when you choose Save Response."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "只有在选择“保存回应”后，评价才会被移除。"
-          }
-        }
-      }
-    },
     "The Markdown editor resources could not be reloaded." : {
       "localizations" : {
         "en" : {
@@ -32086,22 +31956,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "元数据设置候选项缺少一个三联体角色。"
-          }
-        }
-      }
-    },
-    "The Method Feedback is removed only when you choose Save Response." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "The Method Feedback is removed only when you choose Save Response."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "只有在选择“保存回应”后，方法反馈才会被移除。"
           }
         }
       }
@@ -32454,22 +32308,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "当前运行仍保持冻结。允许笔记只会为一个单独阶段记录一次性决定，不会扩大当前运行。"
-          }
-        }
-      }
-    },
-    "The current saved Researcher Response will replace this local draft." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "The current saved Researcher Response will replace this local draft."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "当前已保存的研究者回应将替换此本地草稿。"
           }
         }
       }
@@ -33138,38 +32976,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已保存文档发生变化。请重新载入当前审阅状态后继续。"
-          }
-        }
-      }
-    },
-    "The saved Researcher Response and finalized Agent result remain unchanged." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "The saved Researcher Response and finalized Agent result remain unchanged."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已保存的研究者回应与 Agent 定稿结果均不会改变。"
-          }
-        }
-      }
-    },
-    "The saved Researcher Response changed elsewhere. Your local draft remains here until you reload or close it." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "The saved Researcher Response changed elsewhere. Your local draft remains here until you reload or close it."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已保存的研究者回应已在别处更改。重新载入或关闭前，此本地草稿会保留在这里。"
           }
         }
       }
@@ -33895,16 +33701,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此规范键属于另一个 Triptych 角色。"
-          }
-        }
-      }
-    },
-    "This clears the one current pending Method feedback comment. It does not change the Method or the Researcher Evaluation." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "这会清除当前唯一一条待处理的方法反馈评论，不会更改方法或研究者评价。"
           }
         }
       }

@@ -322,11 +322,13 @@ result prose, or create a second Record-query owner. A continuation child
 Record remains searchable but appears beneath its parent Action/Record rather
 than as another peer row in the ordinary Records collection.
 
-The reading plane owns **Researcher Response**: empty offers **Add Response...**;
-saved content offers **Edit Response...**. Evaluation comes first; absent Method
-Feedback stays behind **+ Add Method Feedback...**. Saved feedback reveals
-**Improve Current Method...**. **Save Response** atomically writes both. Its
-heading uses the reading baseline, never the Evidence inset.
+Record detail and Result Ready expose the same primary **Follow Up…**. It
+prepares a fresh researcher Action/Run with distinct `continued from` without
+editing the parent. The sheet requires a next Action, Research Request, and
+short finding/question/hypothesis. Optional default-collapsed **Feedback on
+Previous Result** belongs to the parent and may expose **Improve Current
+Method...**. Add Response, Researcher Response, Evaluation, and Record unread
+state do not exist.
 
 The fixed Evidence rail presents **Changes**, **Effects**, **Participants**,
 and **Technical Details**. It owns no Review or Response.
@@ -570,17 +572,18 @@ conflict, write result unknown, and recovery each use complete text and an
 executable next route without displaying the real Session secret or internal
 fingerprints as tasks for the researcher.
 
-The Action row states **Waiting for Agent**, **Running**, or **Needs Attention**
-from the privacy-bounded projection. A Record ends the row. Arrival never opens,
-retargets, activates, focuses, or reviews; only notification action opens it.
+The Inspector shows no post-preparation lifecycle. **Notifications** owns one
+nonblocking activity per Run through **Waiting for Agent**, **Running**,
+**Needs Attention**, **Result Ready**, and **Recovery Required**. Popover,
+Note, window, and focus changes never remove it. Running offers **Open Action**
+and **End Action…**; completion offers **Review Result**, **Follow Up…**, and
+**Dismiss**. Dismiss removes only the completed item: it is not read, Review,
+acceptance, adoption, Undo, or Run cancellation.
 
-Foreground completion sends one actionable in-app notification to the origin
-window. Authorized background delivery says only **An Agent result is ready to
-review.** Record ID plus finalized-result fingerprint deduplicates it. Clicking
-opens the exact Triptych/Record. Delivery is one-shot and independent of Note
-Review. No
-notification contains research content, credentials, change evidence, or traces;
-denial is not repeatedly requested and never weakens the Action row.
+One multi-Note Action remains one item with quiet affected-Note disclosure;
+each Note keeps independent Review and Undo. Background delivery contains no
+research content and routes only after activation. Arrival itself never opens,
+retargets, focuses, or reviews.
 
 Functional text is never a generic blue link or a separate **Open** button.
 Body and secondary colors, hover surface, focus ring, button semantics, and

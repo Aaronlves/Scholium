@@ -416,6 +416,71 @@ struct ResearchContinuationOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("Researcher Follow-up creates a fresh Action Run with separate lineage and parent feedback")
+    func researcherFollowUpCreatesFreshRun() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let parent = try await finalizedParent(handle: handle, fixture: fixture)
+        let parentRecord = try await handle.services.portableResearchRecordStore
+            .record(id: parent.preparation.runID)
+        let parentFingerprint = try parentRecord.finalizedResultFingerprint()
+        let context = try await handle.research.followUpContext(
+            recordID: parentRecord.id,
+            expectedFinalizedResultFingerprint: parentFingerprint
+        )
+        let requestField = try #require(
+            ResearchAcademicFieldID(rawValue: "research-request")
+        )
+        let action = try await ResearchActionRunOperationsTests().actionRequest(
+            handle: handle,
+            actionID: .synthesize,
+            target: context.target,
+            academicValues: [
+                requestField: .freeText(
+                    "Test whether the qualified synthesis survives the new objection."
+                ),
+            ]
+        )
+        let preparation = try await handle.research.prepareFollowUp(
+            try ResearchFollowUpRequest(
+                parentRecordID: parentRecord.id,
+                expectedFinalizedResultFingerprint: parentFingerprint,
+                statement: try ResearchFollowUpStatement(
+                    kind: .hypothesis,
+                    text: "The qualification may fail when the objection targets authority rather than salience."
+                ),
+                action: action,
+                methodFeedbackText:
+                    "Ask for an explicit alternative-reading check before synthesis.",
+                expectedMethodFeedbackRevision: nil
+            )
+        )
+
+        #expect(preparation.runID != parent.preparation.runID)
+        let child = try await handle.services.localResearchExecutionStore.record(
+            id: preparation.runID
+        )
+        #expect(child.snapshot.continuationLineage?.kind == .followUp)
+        #expect(child.snapshot.continuationLineage?.parentRunID == parentRecord.id)
+        #expect(child.snapshot.continuationHandoff?.initiator == .researcher)
+        #expect(child.snapshot.continuationHandoff?.handoff.first?.epistemicStatus
+            == .hypothesisToVerify)
+        #expect(child.snapshot.actionSnapshot.method.registration.key
+            == preparation.snapshot.method.registration.key)
+        #expect(child.documentWriteRecords.isEmpty)
+        #expect(child.completion == nil)
+
+        let updatedParent = try await handle.services.portableResearchRecordStore
+            .record(id: parentRecord.id)
+        #expect(updatedParent.methodFeedbackComment?.text
+            == "Ask for an explicit alternative-reading check before synthesis.")
+        #expect(try updatedParent.finalizedResultFingerprint() == parentFingerprint)
+        #expect(updatedParent.continuationLineage == nil)
+        await runtime.shutdown()
+    }
+
     @Test("Material handoff rechecks current, changed, missing, and unavailable source-owner states")
     func materialReferenceCurrentness() async throws {
         let fixture = try await ResearchFixture.make()

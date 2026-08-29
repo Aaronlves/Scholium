@@ -370,6 +370,7 @@ public struct ResearchContinuationLineage: Codable, Hashable, Sendable {
 
     public enum Kind: String, Codable, Hashable, Sendable {
         case continueResearch = "continue_research"
+        case followUp = "follow_up"
         case resynthesis
     }
 

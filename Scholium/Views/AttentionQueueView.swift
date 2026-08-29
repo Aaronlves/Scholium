@@ -108,11 +108,14 @@ struct AttentionQueueView: View {
             controls
             Divider()
 
-            if !session.catalogIsAvailable, session.isRefreshing {
+            if session.activityNotifications.isEmpty,
+               !session.catalogIsAvailable, session.isRefreshing {
                 loadingState
-            } else if !session.catalogIsAvailable, let error = session.catalogError {
+            } else if session.activityNotifications.isEmpty,
+                      !session.catalogIsAvailable, let error = session.catalogError {
                 completeErrorState(error)
-            } else if visibleItems.isEmpty {
+            } else if visibleItems.isEmpty
+                        && session.activityNotifications.isEmpty {
                 emptyState
             } else {
                 queueList
@@ -137,7 +140,7 @@ struct AttentionQueueView: View {
 
     private var controls: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            Text("Attention")
+            Text("Notifications")
                 .font(ScholiumTypography.interface(.sectionTitle))
                 .accessibilityAddTraits(.isHeader)
 
@@ -156,7 +159,7 @@ struct AttentionQueueView: View {
                 }
             }
 
-            TextField("Search Attention", text: filterQuery)
+            TextField("Search Issues", text: filterQuery)
                 .textFieldStyle(.roundedBorder)
                 .focused($filterFocused)
                 .accessibilityIdentifier("scholium.attentionSearch")
@@ -224,13 +227,33 @@ struct AttentionQueueView: View {
             Label("Refresh", systemImage: "arrow.clockwise")
                 .labelStyle(.iconOnly)
         }
-        .help("Refresh Attention")
+        .help("Refresh Notifications")
         .disabled(session.isRefreshing)
         .accessibilityIdentifier("scholium.attentionRefresh")
     }
 
     private var queueList: some View {
         List(selection: selectedItem) {
+            if !session.activityNotifications.isEmpty {
+                Section {
+                    ForEach(session.activityNotifications) { notification in
+                        ResearchActivityNotificationRow(
+                            notification: notification,
+                            openAction: { session.openAction(notification) },
+                            endAction: { session.endAction(notification) },
+                            reviewResult: {
+                                session.reviewResult(notification)
+                            },
+                            followUp: { session.followUp(notification) },
+                            dismiss: {
+                                session.dismissActivity(notification)
+                            }
+                        )
+                    }
+                } header: {
+                    Text("ACTION ACTIVITIES")
+                }
+            }
             ForEach(AttentionIssueGroup.allCases) { group in
                 let items = visibleItems.filter(group.contains)
                 if !items.isEmpty {
@@ -268,7 +291,7 @@ struct AttentionQueueView: View {
 
     private var loadingState: some View {
         ScholiumContentStateView(
-            "Loading Attention…",
+            "Loading Notifications…",
             indicator: .progress,
             density: .compact
         )
@@ -278,7 +301,7 @@ struct AttentionQueueView: View {
 
     private func completeErrorState(_ message: String) -> some View {
         ScholiumContentStateView(
-            "Could Not Load Attention",
+            "Could Not Load Notifications",
             detail: Text(message),
             indicator: .symbol("exclamationmark.triangle", role: .attention),
             density: .compact
@@ -309,14 +332,14 @@ struct AttentionQueueView: View {
     private var emptyTitle: LocalizedStringResource {
         let query = presentation.filter.query.trimmingCharacters(in: .whitespacesAndNewlines)
         return query.isEmpty && presentation.filter.kind == nil
-            ? "No Attention Needed"
-            : "No Matching Attention"
+            ? "No Notifications"
+            : "No Matching Issues"
     }
 
     private var emptyDescription: String {
         presentation.noteScope == nil
-            ? "Scholium found no visible derived issues in this Scope."
-            : "Scholium found no visible derived issues for this Note."
+            ? "No Action activity or visible derived issue needs attention in this Scope."
+            : "No Action activity or visible derived issue needs attention for this Note."
     }
 
     private var selectedItem: Binding<String?> {
@@ -436,9 +459,123 @@ struct AttentionQueueView: View {
     }
 }
 
-/// Issue-first task row for the Attention popover. It keeps the short derived
+/// Issue-first task row for the Notifications popover. It keeps the short derived
 /// condition ahead of Note context while preserving linear actions and source
 /// identity without promoting the row into a card.
+struct ResearchActivityNotificationRow: View {
+    let notification: ResearchActivityNotification
+    let openAction: () -> Void
+    let endAction: () -> Void
+    let reviewResult: () -> Void
+    let followUp: () -> Void
+    let dismiss: () -> Void
+    @State private var confirmsEndAction = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            HStack(alignment: .firstTextBaseline) {
+                Label(stateTitle, systemImage: stateSymbol)
+                    .font(ScholiumTypography.interface(.rowTitle))
+                    .scholiumForeground(stateColor)
+                Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
+                Text(actionTitle)
+                    .font(ScholiumTypography.interface(.small, emphasis: .medium))
+                    .scholiumForeground(.secondaryText)
+            }
+
+            Text(notification.targetTitle.isEmpty
+                ? String(localized: "Research Action")
+                : notification.targetTitle)
+                .font(ScholiumTypography.interface(.body))
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            if !notification.affectedNotes.isEmpty {
+                DisclosureGroup("Affected Notes (\(notification.affectedNotes.count))") {
+                    VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                        ForEach(notification.affectedNotes) { note in
+                            Text(verbatim: note.title)
+                                .font(ScholiumTypography.interface(.small))
+                                .scholiumForeground(.secondaryText)
+                                .lineLimit(1)
+                        }
+                    }
+                    .padding(.top, ScholiumGrid.Spacing.labelAccessoryGap)
+                }
+                .font(ScholiumTypography.interface(.small, emphasis: .medium))
+            }
+
+            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                Spacer(minLength: 0)
+                if notification.result != nil {
+                    Button("Review Result", action: reviewResult)
+                    Button("Follow Up…", action: followUp)
+                    Button("Dismiss", action: dismiss)
+                } else {
+                    Button("Open Action", action: openAction)
+                    Button("End Action…", role: .destructive) {
+                        confirmsEndAction = true
+                    }
+                }
+            }
+            .controlSize(.small)
+        }
+        .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(
+            "scholium.notification.action.\(notification.runID.uuidString)"
+        )
+        .confirmationDialog(
+            "End this Action?",
+            isPresented: $confirmsEndAction,
+            titleVisibility: .visible
+        ) {
+            Button("Keep Action", role: .cancel) {}
+            Button("End Action", role: .destructive, action: endAction)
+        } message: {
+            Text("Scholium will revoke Agent access and end this unfinished Run. Existing recovery evidence remains available.")
+        }
+    }
+
+    private var stateTitle: String {
+        switch notification.state {
+        case .waitingForAgent: "Waiting for Agent"
+        case .running: "Running"
+        case .needsAttention: "Needs Attention"
+        case .resultReady: "Result Ready"
+        case .recoveryRequired: "Recovery Required"
+        }
+    }
+
+    private var stateSymbol: String {
+        switch notification.state {
+        case .waitingForAgent: "clock"
+        case .running: "arrow.triangle.2.circlepath"
+        case .needsAttention: "exclamationmark.triangle"
+        case .resultReady: "doc.text.magnifyingglass"
+        case .recoveryRequired: "wrench.and.screwdriver"
+        }
+    }
+
+    private var stateColor: ScholiumColorRole {
+        switch notification.state {
+        case .needsAttention, .recoveryRequired: .attention
+        case .waitingForAgent, .running, .resultReady: .secondaryText
+        }
+    }
+
+    private var actionTitle: String {
+        switch notification.actionID {
+        case .discuss: String(localized: "Discuss")
+        case .analyze: String(localized: "Analyze")
+        case .synthesize: String(localized: "Synthesize")
+        case .write: String(localized: "Write")
+        case .critique: String(localized: "Critique")
+        case .checkFidelity: String(localized: "Check Fidelity")
+        }
+    }
+}
+
 struct AttentionQueueRow: View {
     let item: AttentionQueueItem
     let noteTitle: String

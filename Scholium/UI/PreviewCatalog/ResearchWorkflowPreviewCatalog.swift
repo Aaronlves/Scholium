@@ -113,7 +113,37 @@ private struct ResearchResultReviewProof: View {
                 proseNavigation: fixture.proseNavigation,
                 setRecommendationDisposition: { _, _, _ in fixture.record },
                 setRecommendationNote: { _, _, _ in fixture.record },
-                saveResponse: { _, _, _, _, _ in fixture.record },
+                followUpContext: { _, fingerprint in
+                    let participant = fixture.record.participatingNotes[0]
+                    return ResearchFollowUpContext(
+                        parentRecordID: fixture.record.id,
+                        expectedFinalizedResultFingerprint: fingerprint,
+                        target: ResearchActionNoteSnapshot(
+                            noteID: participant.noteID,
+                            note: participant.note,
+                            role: participant.role,
+                            fingerprint: participant.endingRevision,
+                            title: participant.title
+                        ),
+                        methodFeedbackText: nil,
+                        methodFeedbackRevision: nil
+                    )
+                },
+                followUpClient: ResearchActionClient(
+                    availableActions: { _ in [] },
+                    materialCandidates: { _, _ in [] },
+                    sourceAccess: { _ in
+                        throw ResearchActionExecutionContractError.staleResolution
+                    },
+                    bindLocalSource: { _, _ in
+                        throw ResearchActionExecutionContractError.staleResolution
+                    },
+                    prepare: { _, _ in
+                        throw ResearchActionExecutionContractError.staleResolution
+                    },
+                    cancel: { _ in },
+                    openActiveDiscussion: { _ in }
+                ),
                 reloadRecord: { _ in fixture.record },
                 changeState: { _ in fixture.changeState },
                 comparison: { _, noteID in

@@ -129,6 +129,7 @@ struct ScholiumFileSelectionTests {
             "Views/ContentView.swift": 1,
             "Views/Note/NoteContentView.swift": 1,
             "Views/ResearchMethodsSettingsView.swift": 2,
+            "Views/ResearchRecord/ResearchRecordFollowUpViews.swift": 1,
             "Views/RestoreWorkspaceAccessView.swift": 1,
             "Views/WorkspaceSettingsView.swift": 3,
             "Views/WorkspaceSetupView.swift": 2,

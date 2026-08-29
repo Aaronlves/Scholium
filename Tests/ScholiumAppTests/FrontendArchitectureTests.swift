@@ -1694,7 +1694,7 @@ struct FrontendArchitectureTests {
         #expect(!componentsSource.contains("title: \"ATTENTION\""))
         #expect(
             componentsSource.contains(
-                "Text(Image(systemName: \"exclamationmark.triangle\"))"
+                "Text(Image(systemName: \"bell\"))"
             ))
         #expect(componentsSource.contains("alignment: .firstTextBaseline"))
         #expect(
@@ -2058,7 +2058,7 @@ struct FrontendArchitectureTests {
         #expect(content.contains("secondaryButton: .destructive"))
     }
 
-    @Test("Attention search lives in the transient Workspace popover without custom close chrome")
+    @Test("Notifications search lives in the transient Workspace popover without custom close chrome")
     func attentionSearchOwnershipContract() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -2074,7 +2074,7 @@ struct FrontendArchitectureTests {
             contentsOf: repository.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
             encoding: .utf8
         )
-        #expect(attentionSource.contains("TextField(\"Search Attention\""))
+        #expect(attentionSource.contains("TextField(\"Search Issues\""))
         #expect(attentionSource.contains("scholium.attentionSearch"))
         #expect(attentionSource.contains(".popover("))
         #expect(
@@ -3602,9 +3602,9 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        let response = try String(
+        let followUp = try String(
             contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/ResearchRecord/ResearchRecordProcessingViews.swift"
+                "Scholium/Views/ResearchRecord/ResearchRecordFollowUpViews.swift"
             ),
             encoding: .utf8
         )
@@ -3617,8 +3617,8 @@ struct FrontendArchitectureTests {
             #expect(browser.contains(requiredSupportingPresentation))
         }
         #expect(
-            response.contains(
-                "Text(statusMessage)\n                            .font(ScholiumTypography.interface(.compact))"
+            followUp.contains(
+                ".font(ScholiumTypography.interface(.compact))"
             )
         )
         #expect(
@@ -4193,6 +4193,9 @@ struct FrontendArchitectureTests {
         let processing = try source(
             "Scholium/Views/ResearchRecord/ResearchRecordProcessingViews.swift"
         )
+        let followUp = try source(
+            "Scholium/Views/ResearchRecord/ResearchRecordFollowUpViews.swift"
+        )
         let comparison = try source(
             "Scholium/UI/Components/ExactSourceComparisonView.swift"
         )
@@ -4211,17 +4214,17 @@ struct FrontendArchitectureTests {
             #expect(records.contains(token))
         }
         for token in [
-            "ScholiumMetrics.ResearchSheet.ResearcherResponse.minimumWidth",
-            "scholium.researchResponse.sheet",
-            "scholium.researchRecord.comparison",
+            "ScholiumMetrics.ResearchSheet.Action.minimumWidth",
+            "scholium.researchFollowUp.sheet",
         ] {
-            #expect(processing.contains(token))
+            #expect(followUp.contains(token))
         }
+        #expect(processing.contains("scholium.researchRecord.comparison"))
         #expect(comparison.contains(
             "ScholiumMetrics.ResearchSheet.Comparison.minimumWidth"
         ))
         #expect(
-            (records + processing).components(
+            (records + processing + followUp).components(
                 separatedBy: ".font(ScholiumTypography.interface(.primaryTitle))"
             ).count >= 3
         )

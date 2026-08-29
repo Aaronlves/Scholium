@@ -559,6 +559,7 @@ package final class ResearchRecordBrowserModel {
         ] = [:]
     package private(set) var contextNoteID: UUID?
     package private(set) var focusedStatementID: UUID?
+    package private(set) var pendingFollowUpRecordID: UUID?
 
     package var selectedRecord: PortableResearchRecord? {
         selectedRecordID.flatMap { recordsByID[$0] }
@@ -737,7 +738,14 @@ package final class ResearchRecordBrowserModel {
     package func select(_ id: UUID?) {
         activeRecordLocator = nil
         focusedStatementID = nil
+        pendingFollowUpRecordID = nil
         selectedRecordID = id
+    }
+
+    package func consumeFollowUpRequest(recordID: UUID) -> Bool {
+        guard pendingFollowUpRecordID == recordID else { return false }
+        pendingFollowUpRecordID = nil
+        return true
     }
 
     package func selectRecommendation(_ id: ResearchLiteratureRecommendationOccurrenceID?) {
@@ -1051,6 +1059,7 @@ package final class ResearchRecordBrowserModel {
             )
             return
         }
+        pendingFollowUpRecordID = nil
         switch request.purpose {
         case .browse:
             guard let expected = request.expectedRecordFingerprint,
@@ -1074,6 +1083,18 @@ package final class ResearchRecordBrowserModel {
                 return
             }
             directUndoResultFingerprints[recordID] = expected
+        case .followUp:
+            guard record.kind == .action,
+                  let expected = request.expectedFinalizedResultFingerprint,
+                  (try? record.finalizedResultFingerprint()) == expected else {
+                route = .collection
+                focusedStatementID = nil
+                presentError(
+                    "The Agent result changed or is no longer available. Refresh the Action before following up."
+                )
+                return
+            }
+            pendingFollowUpRecordID = recordID
         }
         if let statementID = request.statementID,
             !record.statements.contains(where: { $0.id == statementID })

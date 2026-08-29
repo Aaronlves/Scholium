@@ -80,6 +80,7 @@ struct ResearchProjectionFreshnessView: View {
 
 struct ResearchOverviewPresentation {
     let visibleAttentionItems: [AttentionQueueItem]
+    let activityNotificationCount: Int
     let freshness: ResearchProjectionFreshness
     let aboutConfiguration: VaultAboutConfiguration?
     let metadataCatalog: NoteMetadataCatalog
@@ -100,6 +101,10 @@ struct ResearchInspectorContentContext {
     let manageZoteroBinding: (UUID, AnalysisZoteroBinding?) -> Void
 
     var visibleAttentionItems: [AttentionQueueItem] { presentation.visibleAttentionItems }
+    var notificationCount: Int {
+        presentation.visibleAttentionItems.count
+            + presentation.activityNotificationCount
+    }
     var freshness: ResearchProjectionFreshness { presentation.freshness }
     var aboutConfiguration: VaultAboutConfiguration? {
         presentation.aboutConfiguration
@@ -215,16 +220,16 @@ struct ResearchOverviewView: View {
                 spacing: ScholiumMetrics.Apparatus.sectionContentSpacing
             ) {
                 HStack(spacing: ScholiumMetrics.Apparatus.iconToTextSpacing) {
-                    Image(systemName: "exclamationmark.triangle")
+                    Image(systemName: "bell")
                         .font(ScholiumTypography.interface(.small, emphasis: .medium))
                         .scholiumForeground(.attention)
                         .accessibilityHidden(true)
-                    Text("NEEDS ATTENTION")
+                    Text("NOTIFICATIONS")
                         .font(ScholiumTypography.interface(.small, emphasis: .strong))
                         .tracking(0.7)
                         .scholiumForeground(.attention)
                     Spacer(minLength: ScholiumMetrics.Apparatus.iconToTextSpacing)
-                    Text(context.visibleAttentionItems.count.formatted())
+                    Text(context.notificationCount.formatted())
                         .font(
                             ScholiumTypography.interface(.small, emphasis: .strong, tabularDigits: true)
                         )
@@ -262,9 +267,9 @@ struct ResearchOverviewView: View {
             verticalInset: ScholiumMetrics.Apparatus.actionRowVerticalInset
         ))
         .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
-        .accessibilityLabel("Needs Attention")
-        .accessibilityValue("\(context.visibleAttentionItems.count) items")
-        .accessibilityIdentifier("scholium.researchOverview.attention")
+        .accessibilityLabel("Notifications")
+        .accessibilityValue("\(context.notificationCount) items")
+        .accessibilityIdentifier("scholium.researchOverview.notifications")
     }
 
     private var aboutSection: some View {
@@ -548,6 +553,7 @@ private struct AboutTagsView: View {
         context: ResearchInspectorContentContext(
             presentation: ResearchOverviewPresentation(
                 visibleAttentionItems: [],
+                activityNotificationCount: 0,
                 freshness: .unavailable("No workspace is open."),
                 aboutConfiguration: nil,
                 metadataCatalog: .builtIn,

@@ -7,7 +7,7 @@ enum AttentionPopoverAnchor: String, Equatable, Sendable {
     case inspector
 }
 
-/// Exact-Workspace adapter for the transient Attention popover. It observes
+/// Exact-Workspace adapter for the transient Notifications popover. It observes
 /// only the owners whose state appears in the popover and borrows closed
 /// refresh/navigation effects from the window composition root. It never
 /// searches global windows, broadcasts notifications, or duplicates queue
@@ -16,12 +16,20 @@ enum AttentionPopoverAnchor: String, Equatable, Sendable {
 final class AttentionPopoverSession: ObservableObject {
     struct Dependencies {
         let dismissalDaysChanges: AnyPublisher<Int, Never>
+        let activityChanges: AnyPublisher<[ResearchActivityNotification], Never>
         let refresh: @MainActor () async -> Void
         let resynthesize: @MainActor (AttentionQueueItem) -> Void
+        let openAction: @MainActor (ResearchActivityNotification) -> Void
+        let endAction: @MainActor (ResearchActivityNotification) -> Void
+        let reviewResult: @MainActor (ResearchActivityNotification) -> Void
+        let followUp: @MainActor (ResearchActivityNotification) -> Void
+        let dismissActivity: @MainActor (ResearchActivityNotification) -> Void
     }
 
     @Published private(set) var presentedAnchor: AttentionPopoverAnchor?
     @Published private(set) var dismissalDays: Int
+    @Published private(set) var activityNotifications:
+        [ResearchActivityNotification] = []
 
     let presentation: AttentionPresentationState
     private let discoveryController: DiscoveryController
@@ -61,6 +69,12 @@ final class AttentionPopoverSession: ObservableObject {
             .sink { [weak self] days in
                 guard self?.dismissalDays != days else { return }
                 self?.dismissalDays = days
+            }
+            .store(in: &observations)
+        dependencies.activityChanges
+            .removeDuplicates()
+            .sink { [weak self] notifications in
+                self?.activityNotifications = notifications
             }
             .store(in: &observations)
     }
@@ -153,5 +167,28 @@ final class AttentionPopoverSession: ObservableObject {
     func resynthesize(_ item: AttentionQueueItem) {
         dismiss()
         dependencies.resynthesize(item)
+    }
+
+    func openAction(_ notification: ResearchActivityNotification) {
+        dismiss()
+        dependencies.openAction(notification)
+    }
+
+    func endAction(_ notification: ResearchActivityNotification) {
+        dependencies.endAction(notification)
+    }
+
+    func reviewResult(_ notification: ResearchActivityNotification) {
+        dismiss()
+        dependencies.reviewResult(notification)
+    }
+
+    func followUp(_ notification: ResearchActivityNotification) {
+        dismiss()
+        dependencies.followUp(notification)
+    }
+
+    func dismissActivity(_ notification: ResearchActivityNotification) {
+        dependencies.dismissActivity(notification)
     }
 }

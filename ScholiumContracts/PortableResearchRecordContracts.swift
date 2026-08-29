@@ -54,7 +54,6 @@ public enum PortableResearchStatementAuthor: String, Codable, Hashable, Sendable
 public enum PortableResearchStatementKind: String, Codable, Hashable, Sendable {
     case discussionTurn = "discussion_turn"
     case agentFeedback = "agent_feedback"
-    case researcherResponse = "researcher_response"
 }
 
 /// A lightweight researcher Comment reference. The bounded rendered selection
@@ -148,12 +147,10 @@ public struct PortableResearchStatement: Codable, Hashable, Identifiable, Sendab
         }
         switch (author, kind) {
         case (.researcher, .discussionTurn),
-             (.researcher, .researcherResponse),
              (.agent, .discussionTurn),
              (.agent, .agentFeedback):
             break
-        case (.researcher, .agentFeedback),
-             (.agent, .researcherResponse):
+        case (.researcher, .agentFeedback):
             throw PortableResearchRecordError.invalidStatement
         }
         self.id = id
@@ -522,7 +519,7 @@ public enum PortableResearchFidelityCompletion: String, Codable, Hashable, Senda
 /// validated nonconversational Action. It deliberately has no generic metadata
 /// dictionary, so machine-local execution fields cannot leak through encoding.
 public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 16
+    public static let currentSchemaVersion = 17
 
     public let schemaVersion: Int
     public let id: UUID
@@ -550,7 +547,6 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
     public let literatureRecommendations: [ResearchLiteratureRecommendation]
     public let startedAt: Date
     public let finishedAt: Date
-    public let researcherEvaluation: PortableResearcherEvaluation?
     public let methodFeedbackComment: PortableResearchMethodFeedbackComment?
 
     public init(
@@ -575,7 +571,6 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         literatureRecommendations: [ResearchLiteratureRecommendation] = [],
         startedAt: Date,
         finishedAt: Date,
-        researcherEvaluation: PortableResearcherEvaluation? = nil,
         methodFeedbackComment: PortableResearchMethodFeedbackComment? = nil
     ) throws {
         let participatingByID = Dictionary(
@@ -652,7 +647,6 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
                   continuationLineage == nil,
                   fidelityCompletion == .notApplicable,
                   confirmedChanges.isEmpty,
-                  researcherEvaluation == nil,
                   methodFeedbackComment == nil,
                   discrepancies.isEmpty,
                   literatureRecommendations.isEmpty else {
@@ -688,7 +682,6 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         self.literatureRecommendations = literatureRecommendations
         self.startedAt = startedAt
         self.finishedAt = finishedAt
-        self.researcherEvaluation = researcherEvaluation
         self.methodFeedbackComment = methodFeedbackComment
     }
 
@@ -713,7 +706,6 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         case literatureRecommendations = "literature_recommendations"
         case startedAt = "started_at"
         case finishedAt = "finished_at"
-        case researcherEvaluation = "researcher_evaluation"
         case methodFeedbackComment = "method_feedback_comment"
     }
 
@@ -792,10 +784,6 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
             ),
             startedAt: container.decode(Date.self, forKey: .startedAt),
             finishedAt: container.decode(Date.self, forKey: .finishedAt),
-            researcherEvaluation: container.decodeIfPresent(
-                PortableResearcherEvaluation.self,
-                forKey: .researcherEvaluation
-            ),
             methodFeedbackComment: container.decodeIfPresent(
                 PortableResearchMethodFeedbackComment.self,
                 forKey: .methodFeedbackComment

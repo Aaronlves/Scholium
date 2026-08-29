@@ -76,8 +76,8 @@ struct ResearchActionActivityPresentationTests {
         #expect(!presentation.showsDirectEnd)
     }
 
-    @Test("An active status remains reachable while Action availability is unavailable")
-    func activeStatusSurvivesAvailabilityFailure() throws {
+    @Test("Active status is not reconstructed in Inspector when availability is unavailable")
+    func activeStatusStaysOutOfInspectorAfterAvailabilityFailure() throws {
         let targetNoteID = UUID()
         let target = ResearchActionNoteSnapshot(
             noteID: targetNoteID,
@@ -101,12 +101,7 @@ struct ResearchActionActivityPresentationTests {
             availabilityError: "Profile unavailable",
             activities: [running]
         )
-        let row = try #require(presentation.items.first)
-
-        #expect(row.id == .analyze)
-        #expect(row.title == "Analyze")
-        #expect(row.canPresent)
-        #expect(row.activity?.primary == running)
+        #expect(presentation.items.isEmpty)
     }
 
     private func activity(

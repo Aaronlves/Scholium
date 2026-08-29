@@ -117,17 +117,15 @@ window-lifetime direct-Undo grant. Multiple exact review requests may retain
 independent per-Record grants through navigation in that same window. They are
 neither persisted nor treated as source authority, and closing the window
 destroys all of them.
-`ResearchResultNotificationCoordinator`, owned once by the application
-delegate, observes only `WorkspaceResearchSnapshot.activities`. It retains
-process-local source-window affinity, Record/finalized-result deduplication,
-and a SwiftUI scene-opening callback for notification clicks after the last
-main window closes. Foreground delivery targets only the recorded origin
-window; authorized background delivery passes the privacy-fixed body and exact
-route identifiers through a replaceable `UNUserNotificationCenter` adapter.
-Neither delivery path opens, retargets, focuses, or activates a Records window
-until the researcher invokes its Review action. Activity disappearance removes
-the in-app and system delivery; execution and the portable Record remain the
-only durable owners.
+The application-owned `ResearchResultNotificationCoordinator` observes
+`WorkspaceResearchSnapshot.activities` and `resultArrivals`, folds one
+process-local persistent activity per Run, deduplicates Results, replays each
+window, and routes Review/Follow-up after all main windows close. A replaceable
+`UNUserNotificationCenter` adapter receives only the private background body
+and route IDs. Delivery never opens, retargets, focuses, or reviews before an
+invoked action. Window/popover disappearance does not remove activity; only
+completed Dismiss does. Execution, Record, per-Note Review, and source evidence
+remain separate durable owners.
 
 ### Runtime bootstrap, refresh, and Search
 
@@ -281,7 +279,7 @@ identities. Structured projection joins validated Metadata with authored YAML
 and unknown YAML is not queryable. Core owns the Note
 provider's disposable SQLite schema, staging/validation/recovery, read
 transactions, cancellation, deterministic ranking, and in-memory **This Note**
-matcher. The portable Record store supplies exact decoded schema-16 Records,
+matcher. The portable Record store supplies exact decoded schema-17 Records,
 schema-1 Note Reviews, and their source-byte fingerprints; Application owns the rebuildable Record query
 projection and provider routing, authorizes visible scope before query, and is
 the only Search capability exposed to GUI and CLI. No adapter, window model, or
@@ -693,8 +691,8 @@ width.
 ### Inspector ownership
 
 The Inspector has exactly three current-note modes: Overview, Connect, and
-Actions. Overview presents a current-Note Attention summary whose one button
-routes to the exact Workspace's Attention popover, followed by role-aware About fields;
+Actions. Overview presents a current-Note Notifications summary whose one
+button routes to the exact Workspace's unified popover, followed by role-aware About fields;
 About keeps selectable values and routes editing through its heading button.
 For Analysis, `WorkspaceSnapshotBuilder` joins portable Zotero binding by Note
 UUID; the window supplies exact library/key and `ZoteroBridge`. About exposes

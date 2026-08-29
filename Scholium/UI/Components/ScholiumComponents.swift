@@ -449,7 +449,7 @@ enum SidebarTriptychAttentionState: Equatable {
     case unavailable
 }
 
-/// The stable Triptych-level Attention entry. Queue derivation and dismissal
+/// The stable Triptych-level Notifications entry. Queue derivation and dismissal
 /// remain outside this component; it owns exact aggregate presentation,
 /// interaction feedback, and accessible state grammar without resembling an
 /// inventory badge.
@@ -474,7 +474,7 @@ struct SidebarTriptychAttentionEntry: View {
                         .accessibilityHidden(true)
                         .frame(height: ScholiumMetrics.Accessibility.preferredCustomTarget)
                 } else {
-                    Text(Image(systemName: "exclamationmark.triangle"))
+                    Text(Image(systemName: "bell"))
                         .font(ScholiumTypography.interface(.rowTitle))
                         .scholiumContentControlInk(
                             resting: symbolRestingRole,
@@ -509,7 +509,7 @@ struct SidebarTriptychAttentionEntry: View {
         .help(actionLabel)
         .accessibilityLabel(actionLabel)
         .accessibilityValue(accessibilityValue)
-        .accessibilityIdentifier("scholium.triptychAttention")
+        .accessibilityIdentifier("scholium.triptychNotifications")
     }
 
     private var action: () -> Void {
@@ -518,23 +518,23 @@ struct SidebarTriptychAttentionEntry: View {
 
     private var actionLabel: String {
         state == .unavailable
-            ? ScholiumL10n.string("Retry Triptych Attention", locale: locale)
-            : ScholiumL10n.string("Open Triptych Attention", locale: locale)
+            ? ScholiumL10n.string("Retry Triptych Notifications", locale: locale)
+            : ScholiumL10n.string("Open Triptych Notifications", locale: locale)
     }
 
     private var accessibilityValue: String {
         switch state {
         case .zero:
-            ScholiumL10n.string("No items need attention", locale: locale)
+            ScholiumL10n.string("No notifications", locale: locale)
         case .active(let count):
             String.localizedStringWithFormat(
-                ScholiumL10n.string("%lld requiring attention", locale: locale),
+                ScholiumL10n.string("%lld notifications", locale: locale),
                 Int64(count)
             )
         case .checking:
-            ScholiumL10n.string("Checking Attention", locale: locale)
+            ScholiumL10n.string("Checking Notifications", locale: locale)
         case .unavailable:
-            ScholiumL10n.string("Attention Unavailable", locale: locale)
+            ScholiumL10n.string("Notifications Unavailable", locale: locale)
         }
     }
 

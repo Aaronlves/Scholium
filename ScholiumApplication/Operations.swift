@@ -623,18 +623,16 @@ public actor ResearchOperations:
         return try await handle.finishedResearchRecords(noteID: noteID)
     }
 
-    public func saveResearcherResponse(
+    public func saveMethodFeedback(
         recordID: UUID,
-        draft: ResearcherResponseDraft,
-        expectedEvaluationRevision: UUID?,
+        draft: ResearchMethodFeedbackDraft?,
         expectedMethodFeedbackRevision: UUID?,
         expectedResultFingerprint: DocumentFingerprint
     ) async throws -> PortableResearchRecord {
         let handle = try await reference.requireHandle()
-        return try await handle.saveResearcherResponse(
+        return try await handle.saveMethodFeedback(
             recordID: recordID,
             draft: draft,
-            expectedEvaluationRevision: expectedEvaluationRevision,
             expectedMethodFeedbackRevision: expectedMethodFeedbackRevision,
             expectedResultFingerprint: expectedResultFingerprint
         )
@@ -815,6 +813,25 @@ public actor ResearchOperations:
     ) async throws -> ResearchActionPreparation {
         let handle = try await reference.requireHandle()
         return try await handle.prepareResearchAction(request)
+    }
+
+    public func prepareFollowUp(
+        _ request: ResearchFollowUpRequest
+    ) async throws -> ResearchActionPreparation {
+        let handle = try await reference.requireHandle()
+        return try await handle.prepareResearchFollowUp(request)
+    }
+
+    public func followUpContext(
+        recordID: UUID,
+        expectedFinalizedResultFingerprint: DocumentFingerprint
+    ) async throws -> ResearchFollowUpContext {
+        let handle = try await reference.requireHandle()
+        return try await handle.researchFollowUpContext(
+            recordID: recordID,
+            expectedFinalizedResultFingerprint:
+                expectedFinalizedResultFingerprint
+        )
     }
 
     public func materialCandidates(

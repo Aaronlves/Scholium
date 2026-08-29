@@ -254,11 +254,12 @@
   or unavailable state, supports exact subset selection, and never makes one
   member appear authorized because another was selected.
 - Copy Handoff success closes preparation and returns focus to the originating
-  Action row. Result arrival announces no focus change; the Action row and
-  actionable notification remain explicit routes to the exact Record.
-- The combined Researcher Response editor orders Evaluation before Method
-  Feedback and exposes one atomic Save Response state. Dirty, saving, stale,
-  failed, and explicit-clear confirmation are named without relying on color.
+  Action row. Result arrival announces no focus change; the persistent
+  Action-level notification remains the explicit route to the exact Record.
+- Follow-up exposes a named finding/question/hypothesis control, its short
+  statement, next Action, and Research Request in reading order. Optional
+  **Feedback on Previous Result** is a labelled default-collapsed disclosure;
+  dirty, saving, stale, failed, and explicit-clear states never rely on color.
 
 ### Research Records
 
@@ -288,7 +289,7 @@
   keyboard focus, VoiceOver labels, and the ordinary activation route rather
   than a pointer-only gesture. Missing or ambiguous internal destinations read
   as their exact literal authored syntax and expose no false action.
-- The reading plane exposes Researcher Response before the Evidence rail. The
+- The reading plane exposes **Follow Up…** and any Method Feedback before the Evidence rail. The
   rail reads Changes, Effects, Participants, and Technical Details in that
   order at minimum width and enlarged mixed-script settings.
   Compare Changes exposes document

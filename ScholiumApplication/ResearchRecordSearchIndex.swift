@@ -128,7 +128,9 @@ struct ResearchRecordSearchIndex: Sendable {
         for entry in entries {
             try Task.checkCancellation()
             guard (!topLevelOnly
-                    || entry.record.continuationLineage?.kind != .continueResearch),
+                    || !(entry.record.continuationLineage.map {
+                        [.continueResearch, .followUp].contains($0.kind)
+                    } ?? false)),
                   includes(entry.record, in: scope),
                   satisfies(
                     entry,

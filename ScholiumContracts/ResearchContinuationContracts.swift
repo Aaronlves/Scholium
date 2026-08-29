@@ -5,6 +5,7 @@ public enum ResearchContinuationEpistemicStatus: String, Codable, CaseIterable,
 {
     case sourceConclusion = "source_conclusion"
     case agentReconstruction = "agent_reconstruction"
+    case researcherFinding = "researcher_finding"
     case hypothesisToVerify = "hypothesis_to_verify"
     case unresolvedQuestion = "unresolved_question"
 }

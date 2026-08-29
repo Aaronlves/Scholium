@@ -522,7 +522,7 @@ the required meaning.
 | `Source List` | Organize Notes as a quiet, hierarchical source navigation surface with explicit selected, empty, loading, and error states. | A tile grid, status badge wall, or content preview card. | §18.3 |
 | `Connection Direction Control` | Switch Connect between Incoming and Outgoing through one native two-segment control. Undirected relations appear in both with source anchors preserved. | A Combined/All segment, an index replacement, or a second graph owner. | §12, §18.5 |
 | `Action Row` | Expose one bounded Research Action with its declared intent, scope, current state, consequence, and first repair. | An agent avatar, chat bubble, score badge, or generic command card. | §8.1, §18.5 |
-| `Triptych Attention Entry` | Keeps one stable Sidebar route to the complete Triptych queue and adds the exact nonzero aggregate beside its warning symbol without imitating a notification badge. | Per-Vault counters, a bell, pulse, diagnostic owner, or Document-toolbar item. | §13, §§18.2–18.3 |
+| `Triptych Notifications Entry` | Opens persistent Action activities and structural Attention; shows the exact nonzero total beside a bell. | Per-Vault counters, task manager, unread/adoption matrix, pulse, diagnostic owner, or Document-toolbar item. | §13, §§18.2–18.3 |
 | `Recovery Notice` | Present a persistent workflow-supplied condition, consequence, and repair or inspection action as a Document notice or Workspace banner. | A generic error or Search banner, runtime state owner, or recovery coordinator. | §§5.3, 14, 18.2, 18.6 |
 | `Document Find Bar` | Find and, in writable modes, replace literal text in the current unsaved buffer while retaining editor selection, Undo, and focus. | Research Search, a modal panel, a second text owner, or saved query history. | §13, §18.4 |
 | `Review Comment Anchor` | Shows a current Comment at its source line and opens its Discussion through one counted margin marker with keyboard and contrast states. | An authored highlight, chat card, comments pane, guessed reattachment, or annotation store. | §7.2, §18.4 |
@@ -549,8 +549,8 @@ the owning workflow chapter remains authoritative for meaning and permission.
 | `Document Find / Replace` | Locate literal text in the current unsaved buffer and replace it only in writable modes. | One inline Document bar; standard menu and keyboard routes; no Search provider, index, or persistent history. | §13, §18.4 |
 | `Search` | Retrieve bounded research material with explicit provider, scope, explanation, and freshness. | Stable command surface, retained context, and distinct empty/stale/error results. | §13, §18.3 |
 | `Connect` | Inspect direct relations from the current Note through an Incoming/Outgoing view switch, typed relationship subheadings, and source-located rows. | A file hierarchy, inferred graph, evidence verdict, or multi-hop exploration surface. | §12, §18.5 |
-| `Attention` | Enter the complete Triptych queue from one stable Sidebar control or add an exact current-Note subset from Inspector without interruption. | One native transient presentation; zero removes emphasis and count but not the Triptych route. | §13, §§18.2–18.3 |
-| `Research Action` | Prepare, run, inspect, end, and recover one bounded Research Action. | Intent-first Action row, visible state transitions, cancellation, and recovery. | §§8–11, 18.5 |
+| `Notifications` | Shows one persistent item per Action plus structural Attention from one Sidebar route. | A task manager or unread/adoption model; popover closure never Dismisses an Action. | §§8.4, 13, §§18.2–18.3 |
+| `Research Action` | Prepare one bounded Research Action, then track, open, end, review, follow up, dismiss, or recover it. | Intent-first launcher plus one persistent Action-level activity whose state transitions and controls remain separate from Note Review. | §§8–11, 18.5 |
 | `Conflict / Recovery` | Preserve authored bytes when an external participant changes the source. | Retained buffer, exact revision comparison, selective choice, and reversible restore. | §14, §§18.4–18.6 |
 | `Research Records` | Review portable records without reconstructing writable research Markdown. | Collection-first navigation into one reading-first Record or Reading Lead detail, with source and derived evidence distinct. | §8.4, §18.5 |
 | `Note Review` | Inspects pending Agent activity for a saved Note and marks exact observed state reviewed. | Task bar auto-presents; close suppresses the set for the session, Overview reopens, and a new set presents. Raised surface and rule, never a floating card or focus transfer. | §§8.4, 18.5 |
@@ -594,8 +594,9 @@ Every state presentation follows five invariants:
 5. A state transition must preserve cancellation, focus return, source safety,
    and recovery semantics owned by the underlying workflow.
 
-Note Settle/Settled semantics remain owned by §7.1. Result arrival,
-Researcher Response, and Note Review remain owned by §8.4; none is a generic
+Note Settle/Settled semantics remain owned by §7.1. Result arrival, Action
+notification Dismissal, researcher Follow-up, Method Feedback, and Note Review
+remain separately owned by §8.4; none is a generic
 cross-functional state or a synonym for another.
 
 Page- and pane-level state copy uses the `Content State` component. Its symbol

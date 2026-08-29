@@ -114,11 +114,11 @@ custom active enclosure. Tracking separators remain structural bounds. Add no
 split-item accessory row, custom title strip, Inspector replacement, ellipsis,
 fixed height, automatic glass-like item, or Liquid Glass.
 
-Attention never enters the Document toolbar. While Sidebar is visible, the
+Notifications never enters the Document toolbar. While Sidebar is visible, the
 stable Triptych-owned control beside its identity is the workspace-chrome
 entry and popover anchor; collapsing Sidebar removes that control without
 transferring a count, symbol, or anchor. Inspector retains its distinct
-current-Note summary. **Window → Attention** is enabled only when the focused
+current-Note summary. **Window → Notifications** is enabled only when the focused
 window has a visible Triptych entry or Inspector summary capable of anchoring
 the transient popover; otherwise showing Sidebar restores the Triptych route.
 
@@ -161,9 +161,9 @@ bypass that no-note starting state.
 
 The Library BrandHeader sits below window controls. A static Scholium wordmark
 occupies its own identity line. The next line pairs the Triptych identity menu
-with one logical-trailing Triptych Attention control on §19.3's peripheral
+with one logical-trailing Triptych Notifications control on §19.3's peripheral
 page edge; neither turns the wordmark into a second toolbar. The control uses a
-direct `exclamationmark.triangle` SF Symbol and places an exact nonzero Triptych
+direct `bell` SF Symbol and places an exact nonzero Triptych
 total beside, never over, that symbol. Its resting background is transparent;
 one complete interaction surface appears only for hover, keyboard focus, press,
 or the open popover. Traffic-light alignment is visual reference only, never
@@ -181,10 +181,10 @@ Menus follow researcher tasks:
 - **Edit:** editing and **Edit Metadata…**.
 - **View:** Back/Forward, Search, document mode/text size, Sidebar, Research
   Inspector.
-- **Window:** standard window navigation plus **Attention**. The command is
+- **Window:** standard window navigation plus **Notifications**. The command is
   enabled only when the focused window has a visible Triptych or Inspector
-  Attention anchor, and opens that anchor's transient popover.
-- **Research:** role-valid Actions and **Triptych Records**, never Attention.
+  Notifications anchor, and opens that anchor's transient popover.
+- **Research:** role-valid Actions and **Triptych Records**, never Notifications.
 - **Settings:** one searchable native list/detail window restores its last
   destination. The titlebar retains native traffic-light and drag geometry but
   hides the redundant window-title label; the navigation plane starts with
@@ -313,7 +313,7 @@ Menus follow researcher tasks:
   body insertion point only after editor mode acknowledgement. This explicit
   writing focus is separate from Library reveal and remains recoverable when
   the editor fails after the durable source commit.
-- Library shows no total. Triptych Attention treats zero as the
+- Library shows no total. Triptych Notifications treats zero as the
   steady state, **1–3** unresolved items as its primary design condition, and
   larger queues as exceptional accumulation rather than a separate mode or
   hard cap. Its stable BrandHeader control always remains a direct entry. At
@@ -326,7 +326,7 @@ Menus follow researcher tasks:
   It neither auto-opens, steals focus, pulses, nor repeats attention-seeking
   motion. Opening it presents the complete Triptych queue without changing the
   selected workspace, source content, Document, or Sidebar selection.
-  Inspector may open the same queue with a current-Note subset. Attention is
+  Inspector may open the same queue with a current-Note subset. Notifications is
   not Library navigation.
 - Refresh preserves the last trustworthy Triptych total. A first load with no
   trustworthy result never claims zero; checking uses the control's bounded
@@ -334,20 +334,23 @@ Menus follow researcher tasks:
   visible non-counting unavailable state from the same control and exposes
   Retry in the popover. Resolving or dismissing the final item removes only the
   visible number and Attention emphasis; the focused control remains stable.
-- Attention is one native transient popover owned by the exact
+- Notifications is one native transient popover owned by the exact
   Workspace window, never an application-wide Scene, sheet, inline destination,
   custom panel, or always-on-top surface. Its preferred bounded content size is
   **420 × 480pt**. Triptych entry and Inspector summary each anchor the same
   Triptych-owned queue to their complete trigger.
-  Native transient behavior dismisses it after outside activation or Escape;
+  Native transient behavior closes it after outside activation or Escape;
   opening a Note or Resynthesize also dismisses it. It has no custom or manual
-  close control. Dismissing and reopening within the same Workspace may retain
+  close control. Closing the popover never removes an Action activity; only the
+  completed activity's explicit **Dismiss** action does. Reopening within the same Workspace may retain
   its session filter and selection. Activating a different Workspace window
   resets query, kind filter, selected task, and current-Note subset; the
-  machine-local dismissal ledger is unaffected. The Triptych entry opens the
+  machine-local structural-dismissal ledger and persistent Action activities
+  are unaffected. The Triptych entry opens the
   complete queue; Inspector entry adds the current Note. Switching workspace
   neither filters nor retargets an already open Triptych queue.
-- The Attention popover groups **Identity & Metadata** (Malformed Metadata,
+- The Notifications popover presents **Action Activities** once per Run, then
+  groups structural Attention as **Identity & Metadata** (Malformed Metadata,
   Unresolved Identity), **Structure & Connections** (Possible Orphan, Broken
   Connection, Ambiguous Connection), and **Revision & Research** (Changed Since
   Settled, Synthesis Material Changed). Each group shows its visible count.

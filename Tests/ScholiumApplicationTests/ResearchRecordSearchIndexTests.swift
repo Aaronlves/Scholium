@@ -214,7 +214,7 @@ private extension ResearchRecordSearchIndexTests {
             let researcherStatement = try PortableResearchStatement(
                 id: researcherStatementID,
                 author: .researcher,
-                kind: .researcherResponse,
+                kind: .discussionTurn,
                 attribution: "Professor Imna",
                 text: "A shared-token premise remains contested and sortable.",
                 createdAt: historicalFinished.addingTimeInterval(-60)

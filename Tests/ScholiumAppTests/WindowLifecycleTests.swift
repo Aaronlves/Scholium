@@ -392,7 +392,7 @@ struct WindowLifecycleTests {
         #expect(expectedDelegate.didReceiveWindowWillClose)
     }
 
-    @Test("Changing a window Triptych clears its transient research notification state")
+    @Test("Changing a window Triptych clears transient notification prompts")
     func triptychReassignmentClearsResearchNotificationState() throws {
         let windowID = UUID()
         let firstTriptychID = UUID()
@@ -414,26 +414,11 @@ struct WindowLifecycleTests {
             lifecycleRegistry: ScholiumWindowLifecycleRegistry(),
             researchResultNotificationCoordinator: notificationCoordinator
         )
-        let arrival = WorkspaceResearchResultArrival(
-            runID: UUID(),
-            recordID: UUID(),
-            actionID: .analyze,
-            originNoteID: UUID(),
-            recordFingerprint: DocumentFingerprint(content: "result"),
-            finishedAt: Date(timeIntervalSinceReferenceDate: 10)
-        )
-        let destination = ResearchResultReviewDestination(
-            triptychID: firstTriptychID,
-            arrival: arrival
-        )
-
         coordinator.updateResearchRecordsRouting(triptychID: firstTriptychID)
-        model.shellState.presentResearchResultNotice(destination)
         model.shellState.presentResearchNotificationPermissionNotice(.enable)
 
         coordinator.updateResearchRecordsRouting(triptychID: secondTriptychID)
 
-        #expect(model.shellState.researchResultNotice == nil)
         #expect(model.shellState.researchNotificationPermissionNotice == nil)
     }
 

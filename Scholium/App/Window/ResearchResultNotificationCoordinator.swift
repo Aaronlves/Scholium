@@ -11,6 +11,9 @@ struct ResearchResultReviewDestination: Hashable, Sendable {
     let targetNoteID: UUID
     let recordID: UUID
     let finalizedResultFingerprint: DocumentFingerprint
+    let targetTitle: String
+    let affectedNotes: [WorkspaceResearchAffectedNote]
+    let finishedAt: Date
 
     init(triptychID: UUID, arrival: WorkspaceResearchResultArrival) {
         self.triptychID = triptychID
@@ -19,7 +22,36 @@ struct ResearchResultReviewDestination: Hashable, Sendable {
         targetNoteID = arrival.originNoteID
         recordID = arrival.recordID
         finalizedResultFingerprint = arrival.recordFingerprint
+        targetTitle = arrival.targetTitle
+        affectedNotes = arrival.affectedNotes
+        finishedAt = arrival.finishedAt
     }
+}
+
+enum ResearchActivityNotificationState: Hashable, Sendable {
+    case waitingForAgent
+    case running
+    case needsAttention
+    case resultReady
+    case recoveryRequired
+}
+
+/// One process-local, Action-owned activity entry. It is a presentation and
+/// operation route only; it owns no Record, Note review, Undo, or acceptance
+/// state.
+struct ResearchActivityNotification: Hashable, Identifiable, Sendable {
+    let triptychID: UUID
+    let runID: UUID
+    let actionID: ResearchActionID
+    let targetNoteID: UUID
+    let targetTitle: String
+    let state: ResearchActivityNotificationState
+    let activity: WorkspaceResearchActivity?
+    let result: ResearchResultReviewDestination?
+    let affectedNotes: [WorkspaceResearchAffectedNote]
+    let updatedAt: Date
+
+    var id: UUID { runID }
 }
 
 enum ResearchNotificationPermissionNotice: Equatable {
@@ -116,7 +148,7 @@ final class ResearchResultUserNotificationAdapter: NSObject,
             UNNotificationPresentationOptions
         ) -> Void
     ) {
-        // Foreground delivery is owned by the source window's in-app notice.
+        // Foreground delivery is owned by the persistent in-app Action activity.
         completionHandler([])
     }
 
@@ -178,7 +210,10 @@ final class ResearchResultUserNotificationAdapter: NSObject,
             finalizedResultFingerprint: DocumentFingerprint(
                 sha256: sha256,
                 byteCount: byteCount
-            )
+            ),
+            targetTitle: "",
+            affectedNotes: [],
+            finishedAt: .distantPast
         )
     }
 }
@@ -190,7 +225,10 @@ private extension ResearchResultReviewDestination {
         actionID: ResearchActionID,
         targetNoteID: UUID,
         recordID: UUID,
-        finalizedResultFingerprint: DocumentFingerprint
+        finalizedResultFingerprint: DocumentFingerprint,
+        targetTitle: String = "",
+        affectedNotes: [WorkspaceResearchAffectedNote] = [],
+        finishedAt: Date = .distantPast
     ) {
         self.triptychID = triptychID
         self.runID = runID
@@ -198,6 +236,9 @@ private extension ResearchResultReviewDestination {
         self.targetNoteID = targetNoteID
         self.recordID = recordID
         self.finalizedResultFingerprint = finalizedResultFingerprint
+        self.targetTitle = targetTitle
+        self.affectedNotes = affectedNotes
+        self.finishedAt = finishedAt
     }
 }
 
@@ -216,8 +257,7 @@ final class ResearchResultNotificationCoordinator {
         let windowID: UUID
         let triptychID: UUID
         var activationOrdinal: UInt64
-        let presentResult: @MainActor (ResearchResultReviewDestination) -> Void
-        let dismissResult: @MainActor (ResearchResultReviewDestination) -> Void
+        let receiveActivities: @MainActor ([ResearchActivityNotification]) -> Void
         let presentPermission: @MainActor (ResearchNotificationPermissionNotice) -> Void
         let dismissPermission: @MainActor () -> Void
         let openReview: @MainActor (ResearchResultReviewDestination) -> Void
@@ -233,6 +273,8 @@ final class ResearchResultNotificationCoordinator {
     private var storeCancellables: Set<AnyCancellable> = []
     private var initializedTriptychs: Set<UUID> = []
     private var readyByTriptych: [UUID: [ResultKey: ResearchResultReviewDestination]] = [:]
+    private var activitiesByTriptych: [UUID: [UUID: WorkspaceResearchActivity]] = [:]
+    private var presentedResultKeys: Set<ResultKey> = []
     private var deliveredKeys: Set<ResultKey> = []
     private var deliveryTasks: [ResultKey: Task<Void, Never>] = [:]
     private var deliveryTokens: [ResultKey: UUID] = [:]
@@ -271,6 +313,7 @@ final class ResearchResultNotificationCoordinator {
                     guard let self else { return }
                     for (triptychID, activation) in activations {
                         receive(
+                            activities: activation.snapshot.research.activities,
                             arrivals: activation.snapshot.research.resultArrivals,
                             triptychID: triptychID
                         )
@@ -285,6 +328,7 @@ final class ResearchResultNotificationCoordinator {
                     guard let self else { return }
                     for (triptychID, event) in events {
                         receive(
+                            activities: event.snapshot.research.activities,
                             arrivals: event.snapshot.research.resultArrivals,
                             triptychID: triptychID
                         )
@@ -298,11 +342,8 @@ final class ResearchResultNotificationCoordinator {
     func registerWindow(
         windowID: UUID,
         triptychID: UUID,
-        presentResult: @escaping @MainActor (
-            ResearchResultReviewDestination
-        ) -> Void,
-        dismissResult: @escaping @MainActor (
-            ResearchResultReviewDestination
+        receiveActivities: @escaping @MainActor (
+            [ResearchActivityNotification]
         ) -> Void,
         presentPermission: @escaping @MainActor (
             ResearchNotificationPermissionNotice
@@ -319,12 +360,12 @@ final class ResearchResultNotificationCoordinator {
             windowID: windowID,
             triptychID: triptychID,
             activationOrdinal: nextActivationOrdinal,
-            presentResult: presentResult,
-            dismissResult: dismissResult,
+            receiveActivities: receiveActivities,
             presentPermission: presentPermission,
             dismissPermission: dismissPermission,
             openReview: openReview
         )
+        receiveActivities(currentActivities(for: triptychID))
         routePendingReviewIfPossible()
         return token
     }
@@ -434,10 +475,34 @@ final class ResearchResultNotificationCoordinator {
         endpoint.openReview(destination)
     }
 
+    /// Removes only the completed Action's process-local activity entry. It
+    /// does not mutate its Record, Note review, Undo, or researcher judgment.
+    func dismiss(
+        _ destination: ResearchResultReviewDestination,
+        from windowID: UUID
+    ) {
+        guard destinationIsCurrent(destination),
+              let endpoint = windowEndpoints[windowID],
+              endpoint.triptychID == destination.triptychID else { return }
+        let key = ResultKey(
+            recordID: destination.recordID,
+            fingerprint: destination.finalizedResultFingerprint
+        )
+        presentedResultKeys.remove(key)
+        systemNotifications.removeNotification(
+            identifier: Self.notificationIdentifier(for: key)
+        )
+        publishActivities(triptychID: destination.triptychID)
+    }
+
     func receive(
+        activities: [WorkspaceResearchActivity],
         arrivals: [WorkspaceResearchResultArrival],
         triptychID: UUID
     ) {
+        activitiesByTriptych[triptychID] = Dictionary(
+            uniqueKeysWithValues: activities.map { ($0.runID, $0) }
+        )
         let current = Dictionary(uniqueKeysWithValues: arrivals.map {
             arrival -> (ResultKey, ResearchResultReviewDestination) in
             let destination = ResearchResultReviewDestination(
@@ -463,19 +528,77 @@ final class ResearchResultNotificationCoordinator {
             systemNotifications.removeNotification(
                 identifier: Self.notificationIdentifier(for: key)
             )
-            for endpoint in windowEndpoints.values {
-                endpoint.dismissResult(destination)
-            }
+            presentedResultKeys.remove(key)
             if pendingReviewDestination == destination {
                 pendingReviewDestination = nil
             }
         }
 
         guard initializedTriptychs.insert(triptychID).inserted == false else {
+            publishActivities(triptychID: triptychID)
             return
         }
         for (key, destination) in current where previous[key] == nil {
+            presentedResultKeys.insert(key)
             deliverIfNeeded(destination, key: key)
+        }
+        publishActivities(triptychID: triptychID)
+    }
+
+    private func publishActivities(triptychID: UUID) {
+        let current = currentActivities(for: triptychID)
+        for endpoint in windowEndpoints.values
+            where endpoint.triptychID == triptychID {
+            endpoint.receiveActivities(current)
+        }
+    }
+
+    private func currentActivities(
+        for triptychID: UUID
+    ) -> [ResearchActivityNotification] {
+        var byRunID: [UUID: ResearchActivityNotification] = [:]
+        for activity in (activitiesByTriptych[triptychID] ?? [:]).values {
+            let state: ResearchActivityNotificationState
+            if activity.repairReason == .recoveryRequired {
+                state = .recoveryRequired
+            } else {
+                state = switch activity.state {
+                case .waitingForAgent: .waitingForAgent
+                case .running: .running
+                case .needsAttention: .needsAttention
+                }
+            }
+            byRunID[activity.runID] = ResearchActivityNotification(
+                triptychID: triptychID,
+                runID: activity.runID,
+                actionID: activity.actionID,
+                targetNoteID: activity.targetNoteID,
+                targetTitle: activity.targetTitle,
+                state: state,
+                activity: activity,
+                result: nil,
+                affectedNotes: [],
+                updatedAt: activity.updatedAt
+            )
+        }
+        for (key, result) in readyByTriptych[triptychID] ?? [:]
+            where presentedResultKeys.contains(key) {
+            byRunID[result.runID] = ResearchActivityNotification(
+                triptychID: triptychID,
+                runID: result.runID,
+                actionID: result.actionID,
+                targetNoteID: result.targetNoteID,
+                targetTitle: result.targetTitle,
+                state: .resultReady,
+                activity: nil,
+                result: result,
+                affectedNotes: result.affectedNotes,
+                updatedAt: result.finishedAt
+            )
+        }
+        return byRunID.values.sorted {
+            if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
+            return $0.runID.uuidString < $1.runID.uuidString
         }
     }
 
@@ -485,10 +608,6 @@ final class ResearchResultNotificationCoordinator {
     ) {
         guard deliveredKeys.insert(key).inserted else { return }
         if applicationIsActive() {
-            guard let sourceWindowID = sourceWindowByRunID[destination.runID],
-                  let endpoint = windowEndpoints[sourceWindowID],
-                  endpoint.triptychID == destination.triptychID else { return }
-            endpoint.presentResult(destination)
             return
         }
 
@@ -595,7 +714,12 @@ final class ResearchResultNotificationCoordinator {
             recordID: destination.recordID,
             fingerprint: destination.finalizedResultFingerprint
         )
-        return readyByTriptych[destination.triptychID]?[key] == destination
+        guard let current = readyByTriptych[destination.triptychID]?[key] else {
+            return false
+        }
+        return current.runID == destination.runID
+            && current.actionID == destination.actionID
+            && current.targetNoteID == destination.targetNoteID
     }
 
     private static func notificationIdentifier(for key: ResultKey) -> String {

@@ -125,14 +125,10 @@ extension ResearchActionRunOperationsTests {
         #expect(activeAfterCompletion.isEmpty)
         #expect(record.kind == .discussion)
         #expect(record.statements.count == 2)
-        await #expect(throws: PortableResearcherResponseMutationError.recordUnavailable) {
-            _ = try await handle.research.saveResearcherResponse(
+        await #expect(throws: PortableResearchMethodFeedbackMutationError.recordUnavailable) {
+            _ = try await handle.research.saveMethodFeedback(
                 recordID: record.id,
-                draft: ResearcherResponseDraft(
-                    evaluation: ResearcherEvaluationDraft(noIssuesObserved: true),
-                    methodFeedbackText: nil
-                ),
-                expectedEvaluationRevision: nil,
+                draft: nil,
                 expectedMethodFeedbackRevision: nil,
                 expectedResultFingerprint: try record.finalizedResultFingerprint()
             )

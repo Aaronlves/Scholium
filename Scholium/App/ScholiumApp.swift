@@ -494,26 +494,66 @@ private struct ScholiumResearchRecordsRoot: View {
                                 note: note
                             )
                     },
-                    saveResponse: {
-                        recordID, draft, expectedEvaluationRevision,
-                        expectedMethodFeedbackRevision, resultFingerprint in
-                        try await capabilities.research.records
-                            .saveResearcherResponse(
-                                recordID: recordID,
-                                draft: draft,
-                                expectedEvaluationRevision: expectedEvaluationRevision,
-                                expectedMethodFeedbackRevision:
-                                    expectedMethodFeedbackRevision,
-                                expectedResultFingerprint: resultFingerprint
-                            )
+                    followUpContext: { recordID, resultFingerprint in
+                        try await capabilities.research.actions.followUpContext(
+                            recordID: recordID,
+                            expectedFinalizedResultFingerprint: resultFingerprint
+                        )
                     },
+                    followUpClient: ResearchActionClient(
+                        availableActions: { target in
+                            try await capabilities.research.actions.availableActions(
+                                for: target
+                            )
+                        },
+                        materialCandidates: { target, definition in
+                            try await capabilities.research.actions.materialCandidates(
+                                for: target,
+                                actionID: definition.id
+                            )
+                        },
+                        sourceAccess: { target in
+                            try await capabilities.research.sourceAccess.sourceAccess(
+                                for: target
+                            )
+                        },
+                        bindLocalSource: { target, url in
+                            try await capabilities.research.sourceAccess.bindSourceAccess(
+                                ResearchSourceBindingRequest(
+                                    target: target,
+                                    selection: .localFile(url)
+                                )
+                            )
+                        },
+                        prepare: { request, _ in
+                            try await capabilities.research.actions.prepareAction(request)
+                        },
+                        prepareFollowUp: { request in
+                            try await capabilities.research.actions.prepareFollowUp(request)
+                        },
+                        actionRun: { runID in
+                            try await capabilities.research.actions.actionRun(id: runID)
+                        },
+                        handoff: { runID in
+                            try await capabilities.research.actions.issueAgentHandoff(
+                                runID: runID,
+                                validity: 10 * 60
+                            )
+                        },
+                        cancel: { runID in
+                            try await capabilities.research.actions.cancelAction(
+                                runID: runID
+                            )
+                        },
+                        openActiveDiscussion: { _ in }
+                    ),
                     reloadRecord: { recordID in
                         let records = try await capabilities.research.records
                             .finishedResearchRecords(noteID: nil)
                         guard let record = records.first(where: {
                             $0.id == recordID
                         }) else {
-                            throw PortableResearcherResponseMutationError
+                            throw PortableResearchMethodFeedbackMutationError
                                 .recordUnavailable
                         }
                         return record
@@ -1197,6 +1237,17 @@ private struct ScholiumWindowObservedRoot: View {
             .onChange(of: reduceMotion) { _, reduceMotion in
                 windowCoordinator.update(reduceMotion: reduceMotion)
             }
+            .onChange(
+                of: appState.requestedResearchRecordsWindowRequest
+            ) { _, request in
+                guard let request else { return }
+                researchRecordsWindowCoordinator.submit(request)
+                openWindow(
+                    id: "scholium-research-records",
+                    value: request.triptychID
+                )
+                appState.requestedResearchRecordsWindowRequest = nil
+            }
             .onDisappear {
                 windowCoordinator.detach()
             }
@@ -1829,7 +1880,7 @@ private struct ScholiumAttentionCommandContent: View {
     @FocusedValue(\.scholiumWorkspaceWindowActions) private var workspaceWindowActions
 
     var body: some View {
-        Button("Attention") {
+        Button("Notifications") {
             workspaceWindowActions?.showPreferredAttention()
         }
         .scholiumKeyboardShortcut(shortcut(for: .showAttention))
@@ -2096,6 +2147,8 @@ final class WindowModel: ObservableObject {
     /// One-shot routing from Actions to one portable active Discussion. The
     /// document view consumes and clears it without changing record state.
     @Published var requestedDiscussionID: UUID? = nil
+    @Published var requestedResearchRecordsWindowRequest:
+        ResearchRecordsWindowRequest? = nil
     let presentationRouter = WindowPresentationRouter()
     let shellState = WindowShellState()
     lazy var discoveryController = DiscoveryController(
@@ -2308,14 +2361,55 @@ final class WindowModel: ObservableObject {
             dismissalDaysChanges: $triptychSettings
                 .map(\.attentionDismissalDays)
                 .eraseToAnyPublisher(),
+            activityChanges: shellState.$researchActivityNotifications
+                .eraseToAnyPublisher(),
             refresh: { [weak self] in
                 await self?.refreshWorkspaceCatalog()
             },
             resynthesize: { [weak self] item in
                 self?.requestResynthesis(item)
+            },
+            openAction: { [weak self] notification in
+                guard let activity = notification.activity else { return }
+                self?.openResearchActionRecovery(runIDs: [activity.runID])
+            },
+            endAction: { [weak self] notification in
+                self?.researchController.actions.endActivity(
+                    runID: notification.runID
+                )
+            },
+            reviewResult: { [weak self] notification in
+                guard let result = notification.result else { return }
+                self?.requestedResearchRecordsWindowRequest =
+                    ResearchRecordsWindowRequest(
+                        triptychID: result.triptychID,
+                        initialView: .records,
+                        purpose: .reviewResult,
+                        recordID: result.recordID,
+                        expectedFinalizedResultFingerprint:
+                            result.finalizedResultFingerprint
+                    )
+            },
+            followUp: { [weak self] notification in
+                guard let result = notification.result else { return }
+                self?.requestedResearchRecordsWindowRequest =
+                    ResearchRecordsWindowRequest(
+                        triptychID: result.triptychID,
+                        initialView: .records,
+                        purpose: .followUp,
+                        recordID: result.recordID,
+                        expectedFinalizedResultFingerprint:
+                            result.finalizedResultFingerprint
+                    )
+            },
+            dismissActivity: { [weak self] notification in
+                guard let self, let result = notification.result else { return }
+                self.researchResultNotificationDismissal?(result)
             }
         )
     )
+    var researchResultNotificationDismissal:
+        (@MainActor (ResearchResultReviewDestination) -> Void)?
     lazy var researchAgentPermissionWindowController =
         ResearchAgentPermissionWindowController(
             windowID: nativeWindowID,
@@ -4686,6 +4780,9 @@ final class WindowModel: ObservableObject {
                     )
                 }
                 return try await capabilities.research.actions.prepareAction(request)
+            },
+            prepareFollowUp: { request in
+                try await capabilities.research.actions.prepareFollowUp(request)
             },
             actionRun: { runID in
                 try await capabilities.research.actions.actionRun(id: runID)
