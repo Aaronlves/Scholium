@@ -576,6 +576,17 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             triptychID: triptychID,
             sourceWindowID: windowID
         )
+        Task { [weak self] in
+            guard let self,
+                  let snapshot = await self.appState.refreshAfterResearchHandoff(),
+                  snapshot.triptych.id == triptychID,
+                  self.researchRecordsTriptychID == triptychID else { return }
+            self.researchResultNotificationCoordinator?.receive(
+                activities: snapshot.research.activities,
+                arrivals: snapshot.research.resultArrivals,
+                triptychID: triptychID
+            )
+        }
     }
 
     func reviewResearchResult(_ destination: ResearchResultReviewDestination) {

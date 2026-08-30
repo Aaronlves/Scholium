@@ -1,4 +1,5 @@
 import ScholiumContracts
+import ScholiumResearchRecordsFeature
 import SwiftUI
 
 enum WindowSheetRoute: Identifiable {
@@ -95,6 +96,7 @@ final class WindowPresentationRouter: ObservableObject {
     @Published private(set) var overlays: WindowOverlayRoute = []
     @Published var alert: WindowAlertRoute?
     @Published var fileImport: WindowFileImportRequest?
+    @Published var researchRecordsWindowRequest: ResearchRecordsWindowRequest?
 
     func present(_ route: WindowSheetRoute) {
         sheet = route
@@ -135,5 +137,6 @@ final class WindowPresentationRouter: ObservableObject {
         overlays = []
         alert = nil
         fileImport = nil
+        researchRecordsWindowRequest = nil
     }
 }

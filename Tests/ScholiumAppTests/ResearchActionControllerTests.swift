@@ -833,6 +833,91 @@ struct ResearchActionControllerTests {
         #expect(controller.continuationRecords.isEmpty)
     }
 
+    @Test("Follow-up failure retains the draft and retries with the reconciled feedback revision")
+    func followUpFailureRetriesWithReconciledRevision() async throws {
+        let requestID = try #require(
+            ResearchAcademicFieldID(rawValue: "research-request")
+        )
+        let requestField = try ResearchAcademicFieldDefinition.freeText(
+            id: requestID,
+            label: "Research Request",
+            requirement: .optional,
+            maximumTextUTF8Count: 512
+        )
+        let action = try availability(
+            .discuss,
+            order: 0,
+            academicInputFields: [requestField]
+        )
+        let target = target()
+        let parentID = UUID()
+        let resultFingerprint = DocumentFingerprint(content: "finalized parent result")
+        let savedRevision = UUID()
+        let initialContext = ResearchFollowUpContext(
+            parentRecordID: parentID,
+            expectedFinalizedResultFingerprint: resultFingerprint,
+            target: target,
+            methodFeedbackText: nil,
+            methodFeedbackRevision: nil
+        )
+        let reconciledContext = ResearchFollowUpContext(
+            parentRecordID: parentID,
+            expectedFinalizedResultFingerprint: resultFingerprint,
+            target: target,
+            methodFeedbackText: "Separate the two objections.",
+            methodFeedbackRevision: savedRevision
+        )
+        let prepared = try preparation(action: action, target: target, runID: UUID())
+        var requests: [ResearchFollowUpRequest] = []
+        let controller = ResearchActionController()
+        controller.bind(ResearchActionClient(
+            availableActions: { _ in [action] },
+            materialCandidates: { _, _ in [] },
+            sourceAccess: { _ in .repairRequired(.missingBinding) },
+            bindLocalSource: { _, _ in throw TestFailure.stopAfterCapture },
+            prepare: { _, _ in throw TestFailure.stopAfterCapture },
+            prepareFollowUp: { request in
+                requests.append(request)
+                if requests.count == 1 {
+                    throw ResearchFollowUpPreparationError(
+                        latestContext: reconciledContext,
+                        methodFeedbackWasSaved: true,
+                        reason: "An active Discussion already exists."
+                    )
+                }
+                return prepared
+            },
+            handoff: { try testHandoff(runID: $0) },
+            cancel: { _ in },
+            openActiveDiscussion: { _ in }
+        ))
+        #expect(controller.beginFollowUp(
+            context: initialContext,
+            availability: action,
+            presentationID: UUID()
+        ))
+        await waitUntil { controller.phase == .editing }
+        controller.setText("Reassess the premise.", field: requestField)
+        controller.followUpStatement = "Does the objection target the premise?"
+        controller.followUpMethodFeedback = "Separate the two objections."
+        await waitUntil { controller.canPrepare }
+
+        controller.prepare()
+        await waitUntil { controller.phase == .failed }
+        #expect(controller.followUpMethodFeedback == "Separate the two objections.")
+        #expect(controller.followUpStatement == "Does the objection target the premise?")
+        #expect(controller.errorMessage?.contains("Method Feedback was saved") == true)
+        #expect(controller.canPrepare)
+
+        controller.prepare()
+        await waitUntil { controller.phase == .prepared }
+        #expect(requests.count == 2)
+        guard requests.count == 2 else { return }
+        #expect(requests[0].expectedMethodFeedbackRevision == nil)
+        #expect(requests[1].expectedMethodFeedbackRevision == savedRevision)
+        #expect(requests[1].methodFeedbackText == "Separate the two objections.")
+    }
+
     @Test("An activity opens a compact status presentation without rebuilding academic input")
     func activityStatusPresentation() async throws {
         let action = try availability(.synthesize, order: 100)

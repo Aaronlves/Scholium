@@ -560,6 +560,7 @@ package final class ResearchRecordBrowserModel {
     package private(set) var contextNoteID: UUID?
     package private(set) var focusedStatementID: UUID?
     package private(set) var pendingFollowUpRecordID: UUID?
+    package private(set) var pendingFollowUpRequestGeneration: UInt64 = 0
 
     package var selectedRecord: PortableResearchRecord? {
         selectedRecordID.flatMap { recordsByID[$0] }
@@ -695,6 +696,7 @@ package final class ResearchRecordBrowserModel {
         request: ResearchRecordsWindowRequest
     ) {
         self.triptychID = triptychID
+        route = request.recordID.map(ResearchRecordsRoute.record) ?? .collection
         searchText = ""
         recommendationSearchText = ""
         recommendationFilter = .unprocessed
@@ -717,7 +719,7 @@ package final class ResearchRecordBrowserModel {
         currentFingerprints = fingerprints
         rebuild(records: records)
         if let activeRecordLocator {
-            applyRecordLocator(activeRecordLocator)
+            applyRecordLocator(activeRecordLocator, presentsFollowUp: false)
         }
     }
 
@@ -732,7 +734,7 @@ package final class ResearchRecordBrowserModel {
         scope = request.noteID == nil ? .triptych : .thisNote
         viewKind = request.initialView
         refilter()
-        applyRecordLocator(request)
+        applyRecordLocator(request, presentsFollowUp: true)
     }
 
     package func select(_ id: UUID?) {
@@ -740,6 +742,7 @@ package final class ResearchRecordBrowserModel {
         focusedStatementID = nil
         pendingFollowUpRecordID = nil
         selectedRecordID = id
+        if id == nil { refilterRecords() }
     }
 
     package func consumeFollowUpRequest(recordID: UUID) -> Bool {
@@ -756,6 +759,7 @@ package final class ResearchRecordBrowserModel {
         activeRecordLocator = nil
         focusedStatementID = nil
         route = .collection
+        refilterRecords()
     }
 
     package func openParentRecord(_ id: UUID) {
@@ -952,7 +956,8 @@ package final class ResearchRecordBrowserModel {
     package func continuationParent(
         for record: PortableResearchRecord
     ) -> PortableResearchRecord? {
-        guard record.continuationLineage?.kind == .continueResearch,
+        guard let kind = record.continuationLineage?.kind,
+            kind == .continueResearch || kind == .followUp,
             let parentID = record.continuationLineage?.parentRunID
         else {
             return nil
@@ -964,8 +969,9 @@ package final class ResearchRecordBrowserModel {
         for recordID: UUID
     ) -> [PortableResearchRecord] {
         currentRecords.filter {
-            $0.continuationLineage?.kind == .continueResearch
-                && $0.continuationLineage?.parentRunID == recordID
+            guard let lineage = $0.continuationLineage else { return false }
+            return (lineage.kind == .continueResearch || lineage.kind == .followUp)
+                && lineage.parentRunID == recordID
         }.sorted {
             if $0.finishedAt != $1.finishedAt { return $0.finishedAt < $1.finishedAt }
             return $0.id.uuidString < $1.id.uuidString
@@ -1049,9 +1055,13 @@ package final class ResearchRecordBrowserModel {
         refilter()
     }
 
-    private func applyRecordLocator(_ request: ResearchRecordsWindowRequest) {
+    private func applyRecordLocator(
+        _ request: ResearchRecordsWindowRequest,
+        presentsFollowUp: Bool
+    ) {
         guard let recordID = request.recordID else { return }
         guard let record = currentRecords.first(where: { $0.id == recordID }) else {
+            pendingFollowUpRecordID = nil
             route = .collection
             focusedStatementID = nil
             presentError(
@@ -1059,7 +1069,20 @@ package final class ResearchRecordBrowserModel {
             )
             return
         }
-        pendingFollowUpRecordID = nil
+        if presentsFollowUp {
+            pendingFollowUpRecordID = nil
+        }
+        if let statementID = request.statementID,
+            !record.statements.contains(where: { $0.id == statementID })
+        {
+            pendingFollowUpRecordID = nil
+            route = .collection
+            focusedStatementID = nil
+            presentError(
+                "The matched Research Record statement is no longer available. Search results must be refreshed."
+            )
+            return
+        }
         switch request.purpose {
         case .browse:
             guard let expected = request.expectedRecordFingerprint,
@@ -1087,6 +1110,7 @@ package final class ResearchRecordBrowserModel {
             guard record.kind == .action,
                   let expected = request.expectedFinalizedResultFingerprint,
                   (try? record.finalizedResultFingerprint()) == expected else {
+                pendingFollowUpRecordID = nil
                 route = .collection
                 focusedStatementID = nil
                 presentError(
@@ -1094,21 +1118,14 @@ package final class ResearchRecordBrowserModel {
                 )
                 return
             }
-            pendingFollowUpRecordID = recordID
+            if presentsFollowUp {
+                pendingFollowUpRecordID = recordID
+                pendingFollowUpRequestGeneration &+= 1
+            }
         }
-        if let statementID = request.statementID,
-            !record.statements.contains(where: { $0.id == statementID })
-        {
-            route = .collection
-            focusedStatementID = nil
-            presentError(
-                "The matched Research Record statement is no longer available. Search results must be refreshed."
-            )
-            return
-        }
-        clearAllFilters()
         viewKind = .records
         selectedRecordID = recordID
+        clearAllFilters()
         focusedStatementID = request.statementID
         refilterRecords()
     }
@@ -1192,6 +1209,13 @@ package final class ResearchRecordBrowserModel {
         recordSearchGeneration &+= 1
         recordSearchTask?.cancel()
         recordSearchTask = nil
+        guard route == .collection else {
+            isLoadingRecords = false
+            isLoadingMoreRecords = false
+            recordLoadMoreErrorMessage = nil
+            if isRecordSearchError { dismissError() }
+            return
+        }
         visibleEntries = []
         recordResultCount = 0
         hasMoreRecords = false
@@ -1518,7 +1542,8 @@ package final class ResearchRecordBrowserModel {
     private static func isTopLevelCollectionRecord(
         _ record: PortableResearchRecord
     ) -> Bool {
-        record.continuationLineage?.kind != .continueResearch
+        guard let kind = record.continuationLineage?.kind else { return true }
+        return kind != .continueResearch && kind != .followUp
     }
 
     private func reconcileRouteWithCurrentRecords() {

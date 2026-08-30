@@ -2240,8 +2240,7 @@ private struct ResearchRecordContinuitySection: View {
 
             if let parent = model.continuationParent(for: record) {
                 continuityButton(
-                    title:
-                        "Continued from \(parent.title.value)",
+                    title: parentLinkTitle(parent),
                     detail: parent.finishedAt.formatted(
                         .dateTime.year().month().day().hour().minute()),
                     symbol: "arrow.turn.up.left",
@@ -2250,11 +2249,33 @@ private struct ResearchRecordContinuitySection: View {
             }
 
             let children = model.continuationChildren(for: record.id)
-            if !children.isEmpty {
+            let continuations = children.filter {
+                $0.continuationLineage?.kind == .continueResearch
+            }
+            if !continuations.isEmpty {
                 Text("Continue Research")
                     .font(ScholiumTypography.interface(.small, emphasis: .strong))
                     .scholiumForeground(.secondaryText)
-                ForEach(children) { child in
+                ForEach(continuations) { child in
+                    continuityButton(
+                        title: child.title.value,
+                        detail: child.finishedAt.formatted(
+                            .dateTime.year().month().day().hour().minute()
+                        ),
+                        symbol: "arrow.turn.down.right",
+                        recordID: child.id
+                    )
+                }
+            }
+
+            let followUps = children.filter {
+                $0.continuationLineage?.kind == .followUp
+            }
+            if !followUps.isEmpty {
+                Text("Follow-up")
+                    .font(ScholiumTypography.interface(.small, emphasis: .strong))
+                    .scholiumForeground(.secondaryText)
+                ForEach(followUps) { child in
                     continuityButton(
                         title: child.title.value,
                         detail: child.finishedAt.formatted(
@@ -2268,6 +2289,17 @@ private struct ResearchRecordContinuitySection: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.researchRecord.continuity")
+    }
+
+    private func parentLinkTitle(_ parent: PortableResearchRecord) -> String {
+        switch record.continuationLineage?.kind {
+        case .followUp:
+            "Followed up from \(parent.title.value)"
+        case .continueResearch:
+            "Continued from \(parent.title.value)"
+        case .resynthesis, nil:
+            parent.title.value
+        }
     }
 
     private func continuityButton(

@@ -136,71 +136,147 @@ extension WorkspaceHandle {
         let feedbackDraft = try request.methodFeedbackText.map(
             ResearchMethodFeedbackDraft.init(text:)
         )
-        _ = try await saveMethodFeedback(
-            recordID: request.parentRecordID,
-            draft: feedbackDraft,
-            expectedMethodFeedbackRevision:
-                request.expectedMethodFeedbackRevision,
-            expectedResultFingerprint:
-                request.expectedFinalizedResultFingerprint
-        )
-
-        // Resolve after the researcher confirms Follow-up. No Method, Profile,
-        // note revision, material, permission, or write grant from the parent
-        // Run crosses this boundary.
-        let resolved = try await resolvedResearchActionExecution(request.action)
-        let currentParent = try await researchActionResolverDependencies
-            .portableResearchRecordStore.record(id: request.parentRecordID)
-        guard try currentParent.finalizedResultFingerprint()
-                == request.expectedFinalizedResultFingerprint else {
-            throw ResearchFollowUpError.parentResultChanged
-        }
-
-        let researchRequest: String
-        guard case .freeText(let value)? = request.action.academicInputs.values[
-            "research-request"
-        ] else {
-            throw ResearchContinuationContractError.invalidRequest
-        }
-        researchRequest = value
-        let epistemicStatus: ResearchContinuationEpistemicStatus = switch request.statement.kind {
-        case .finding: .researcherFinding
-        case .question: .unresolvedQuestion
-        case .hypothesis: .hypothesisToVerify
-        }
-        let handoffItem = try ResearchContinuationHandoffItem(
-            content: request.statement.text,
-            epistemicStatus: epistemicStatus,
-            nextUse: researchRequest
-        )
-        let handoff = try ResearchContinuationHandoffContext(
-            parentRecordID: currentParent.id,
-            initiator: .researcher,
-            academicPurpose: researchRequest,
-            handoff: [handoffItem],
-            referenceChecks: [],
-            requiresResearcherStateRequery: true
-        )
-        let runID = UUID()
-        let lineage = ResearchContinuationLineage(
-            groupID: currentParent.continuationLineage?.groupID
-                ?? currentParent.id,
-            parentRunID: currentParent.id,
-            requestID: runID,
-            kind: .followUp
-        )
-        let prepared = try await researchActionRunCoordinator
-            .prepareResearchActionRun(
-                resolved.request,
-                actionContext: resolved.context,
-                runIDOverride: runID,
-                continuationLineage: lineage,
-                continuationHandoff: handoff,
-                requiresAgentChangeEvidence:
-                    !resolved.context.authority.writableNotes.isEmpty,
-                host: self
+        let requestedFeedbackText = feedbackDraft?.text
+        guard request.expectedMethodFeedbackRevision
+                == parent.methodFeedbackRevision else {
+            throw ResearchFollowUpPreparationError(
+                latestContext: parent,
+                methodFeedbackWasSaved: false,
+                reason: PortableResearchMethodFeedbackMutationError
+                    .staleMethodFeedbackRevision.localizedDescription
             )
+        }
+        let feedbackNeedsSave = requestedFeedbackText != parent.methodFeedbackText
+        var currentParentContext = parent
+        if feedbackNeedsSave {
+            do {
+                let updatedParent = try await saveMethodFeedback(
+                    recordID: request.parentRecordID,
+                    draft: feedbackDraft,
+                    expectedMethodFeedbackRevision:
+                        request.expectedMethodFeedbackRevision,
+                    expectedResultFingerprint:
+                        request.expectedFinalizedResultFingerprint
+                )
+                currentParentContext = followUpContext(
+                    replacingFeedbackIn: parent,
+                    with: updatedParent
+                )
+            } catch {
+                throw try await reconciledFollowUpPreparationError(
+                    after: error,
+                    parent: parent,
+                    requestedFeedbackText: requestedFeedbackText
+                )
+            }
+        }
+
+        let prepared: ResearchActionRunPreparation
+        do {
+            // Resolve after the researcher confirms Follow-up. No Method, Profile,
+            // note revision, material, permission, or write grant from the parent
+            // Run crosses this boundary.
+            let resolved = try await resolvedResearchActionExecution(request.action)
+            let currentParent = try await researchActionResolverDependencies
+                .portableResearchRecordStore.record(id: request.parentRecordID)
+            guard try currentParent.finalizedResultFingerprint()
+                    == request.expectedFinalizedResultFingerprint else {
+                throw ResearchFollowUpError.parentResultChanged
+            }
+
+            let researchRequest: String
+            guard case .freeText(let value)? = request.action.academicInputs.values[
+                "research-request"
+            ] else {
+                throw ResearchContinuationContractError.invalidRequest
+            }
+            researchRequest = value
+            let epistemicStatus: ResearchContinuationEpistemicStatus = switch request.statement.kind {
+            case .finding: .researcherFinding
+            case .question: .unresolvedQuestion
+            case .hypothesis: .hypothesisToVerify
+            }
+            let handoffItem = try ResearchContinuationHandoffItem(
+                content: request.statement.text,
+                epistemicStatus: epistemicStatus,
+                nextUse: researchRequest
+            )
+            let handoff = try ResearchContinuationHandoffContext(
+                parentRecordID: currentParent.id,
+                initiator: .researcher,
+                academicPurpose: researchRequest,
+                handoff: [handoffItem],
+                referenceChecks: [],
+                requiresResearcherStateRequery: true
+            )
+            let runID = UUID()
+            let lineage = ResearchContinuationLineage(
+                groupID: currentParent.continuationLineage?.groupID
+                    ?? currentParent.id,
+                parentRunID: currentParent.id,
+                requestID: runID,
+                kind: .followUp
+            )
+            prepared = try await researchActionRunCoordinator
+                .prepareResearchActionRun(
+                    resolved.request,
+                    actionContext: resolved.context,
+                    runIDOverride: runID,
+                    continuationLineage: lineage,
+                    continuationHandoff: handoff,
+                    requiresAgentChangeEvidence:
+                        !resolved.context.authority.writableNotes.isEmpty,
+                    host: self
+                )
+        } catch {
+            let latestParentContext = (
+                try? await researchFollowUpContext(
+                    recordID: request.parentRecordID,
+                    expectedFinalizedResultFingerprint:
+                        request.expectedFinalizedResultFingerprint
+                )
+            ) ?? currentParentContext
+            throw ResearchFollowUpPreparationError(
+                latestContext: latestParentContext,
+                methodFeedbackWasSaved:
+                    feedbackNeedsSave
+                        && latestParentContext.methodFeedbackText == requestedFeedbackText,
+                reason: error.localizedDescription
+            )
+        }
         return try await publicActionPreparation(from: prepared)
+    }
+
+    private func reconciledFollowUpPreparationError(
+        after error: Error,
+        parent: ResearchFollowUpContext,
+        requestedFeedbackText: String?
+    ) async throws -> ResearchFollowUpPreparationError {
+        let current = try await researchFollowUpContext(
+            recordID: parent.parentRecordID,
+            expectedFinalizedResultFingerprint:
+                parent.expectedFinalizedResultFingerprint
+        )
+        return ResearchFollowUpPreparationError(
+            latestContext: current,
+            methodFeedbackWasSaved:
+                current.methodFeedbackText == requestedFeedbackText,
+            reason: error.localizedDescription
+        )
+    }
+
+    private func followUpContext(
+        replacingFeedbackIn context: ResearchFollowUpContext,
+        with record: PortableResearchRecord
+    ) -> ResearchFollowUpContext {
+        ResearchFollowUpContext(
+            parentRecordID: context.parentRecordID,
+            expectedFinalizedResultFingerprint:
+                context.expectedFinalizedResultFingerprint,
+            target: context.target,
+            methodFeedbackText: record.methodFeedbackComment?.text,
+            methodFeedbackRevision: record.methodFeedbackComment?.revision
+        )
     }
 
     func researchActionMaterialCandidates(

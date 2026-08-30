@@ -573,6 +573,13 @@ final class ResearchActionController: ObservableObject {
                     )
                 }
                 return
+            } catch let error as ResearchFollowUpPreparationError {
+                guard accepts(token), self.presentationID == presentationID else {
+                    return
+                }
+                followUpContext = error.latestContext
+                phase = .failed
+                errorMessage = error.localizedDescription
             } catch let error as ResearchActionRunContractError {
                 guard accepts(token), self.presentationID == presentationID else {
                     return

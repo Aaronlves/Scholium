@@ -60,7 +60,7 @@ struct ResearchRecordFollowUpSection: View {
                 ResearchMethodImprovementHandoffSheet(handoff: improvementHandoff)
             }
         }
-        .onAppear {
+        .onChange(of: model.pendingFollowUpRequestGeneration, initial: true) { _, _ in
             if model.consumeFollowUpRequest(recordID: record.id) {
                 isPresentingFollowUp = true
             }
@@ -160,6 +160,7 @@ private struct ResearchRecordFollowUpSheet: View {
                 Text("Follow Up")
                     .font(ScholiumTypography.interface(.primaryTitle))
                     .accessibilityHeading(.h1)
+                    .accessibilityIdentifier("scholium.researchFollowUp.sheet")
                 Text(verbatim: record.title.value)
                     .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.secondaryText)
@@ -225,7 +226,6 @@ private struct ResearchRecordFollowUpSheet: View {
         )
         .scholiumSurface(.denseEvidence)
         .accessibilityAddTraits(.isModal)
-        .accessibilityIdentifier("scholium.researchFollowUp.sheet")
     }
 
     private var selectedAction: ResearchActionAvailability? {

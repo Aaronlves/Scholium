@@ -88,6 +88,35 @@ public struct ResearchFollowUpContext: Hashable, Sendable {
     }
 }
 
+/// A Follow-up attempt that stopped after reconciling the parent Record.
+///
+/// The latest context lets the same sheet retain the researcher's draft while
+/// advancing its optimistic Method Feedback revision. This is intentionally a
+/// typed failure instead of a generic retry: the caller must not reuse the
+/// superseded revision or imply that a child Run was created.
+public struct ResearchFollowUpPreparationError: LocalizedError, Hashable, Sendable {
+    public let latestContext: ResearchFollowUpContext
+    public let methodFeedbackWasSaved: Bool
+    public let reason: String
+
+    public init(
+        latestContext: ResearchFollowUpContext,
+        methodFeedbackWasSaved: Bool,
+        reason: String
+    ) {
+        self.latestContext = latestContext
+        self.methodFeedbackWasSaved = methodFeedbackWasSaved
+        self.reason = reason
+    }
+
+    public var errorDescription: String? {
+        if methodFeedbackWasSaved {
+            return "Method Feedback was saved, but the Follow-up Action was not created. The retained draft now uses the saved revision and can be tried again safely. \(reason)"
+        }
+        return "The Follow-up Action was not created. Method Feedback was reconciled with the current parent Record; review the retained draft before trying again. \(reason)"
+    }
+}
+
 public enum ResearchFollowUpError: LocalizedError, Hashable, Sendable {
     case parentUnavailable
     case parentResultChanged

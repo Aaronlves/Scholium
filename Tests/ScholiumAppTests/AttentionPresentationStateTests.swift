@@ -149,6 +149,112 @@ struct AttentionPresentationStateTests {
         #expect(state.filterFocusRequestGeneration == focusGeneration + 1)
     }
 
+    @Test("Action activities obey exact Note scope, affected-note scope, kind, and query filters")
+    func activityNotificationScopeAndFilter() {
+        let triptychID = UUID()
+        let noteA = UUID()
+        let noteB = UUID()
+        let targetA = ResearchActivityNotification(
+            triptychID: triptychID,
+            runID: UUID(),
+            actionID: .analyze,
+            targetNoteID: noteA,
+            targetTitle: "Agency Analysis",
+            state: .running,
+            activity: nil,
+            result: nil,
+            affectedNotes: [],
+            updatedAt: Date(timeIntervalSince1970: 100)
+        )
+        let targetB = ResearchActivityNotification(
+            triptychID: triptychID,
+            runID: UUID(),
+            actionID: .critique,
+            targetNoteID: noteB,
+            targetTitle: "Value Draft",
+            state: .needsAttention,
+            activity: nil,
+            result: nil,
+            affectedNotes: [],
+            updatedAt: Date(timeIntervalSince1970: 200)
+        )
+        let affectsA = ResearchActivityNotification(
+            triptychID: triptychID,
+            runID: UUID(),
+            actionID: .synthesize,
+            targetNoteID: noteB,
+            targetTitle: "Cross-note Synthesis",
+            state: .resultReady,
+            activity: nil,
+            result: nil,
+            affectedNotes: [
+                WorkspaceResearchAffectedNote(noteID: noteA, title: "Agency Topic")
+            ],
+            updatedAt: Date(timeIntervalSince1970: 300)
+        )
+        let notifications = [targetA, targetB, affectsA]
+
+        #expect(ResearchActivityNotificationQuery.apply(
+            notifications: notifications,
+            noteID: nil,
+            filter: AttentionQueueFilter()
+        ).map(\.runID) == notifications.map(\.runID))
+        #expect(ResearchActivityNotificationQuery.apply(
+            notifications: notifications,
+            noteID: noteA,
+            filter: AttentionQueueFilter()
+        ).map(\.runID) == [targetA.runID, affectsA.runID])
+        #expect(ResearchActivityNotificationQuery.apply(
+            notifications: notifications,
+            noteID: noteB,
+            filter: AttentionQueueFilter(query: "needs attention")
+        ).map(\.runID) == [targetB.runID])
+        #expect(ResearchActivityNotificationQuery.apply(
+            notifications: notifications,
+            noteID: noteA,
+            filter: AttentionQueueFilter(query: "agency topic")
+        ).map(\.runID) == [affectsA.runID])
+        #expect(ResearchActivityNotificationQuery.apply(
+            notifications: notifications,
+            noteID: noteA,
+            filter: AttentionQueueFilter(kind: .possibleOrphan)
+        ).isEmpty)
+    }
+
+    @Test("Inspector Note paths resolve only an exact stable catalog identity")
+    func activityNotificationStableNoteResolution() {
+        let stableNoteID = UUID()
+        let vaultID = UUID()
+        let scopedPath = VaultQualifiedNoteID(
+            vaultID: vaultID,
+            relativePath: "Topics/Agency.md"
+        )
+        let catalogNote = WorkspaceCatalogNote(
+            reference: VaultNoteReference(
+                vaultID: vaultID,
+                vaultName: "Topics",
+                vaultRole: .topicKnowledge,
+                relativePath: scopedPath.relativePath,
+                stableNoteID: stableNoteID.uuidString.lowercased()
+            ),
+            title: "Agency",
+            fingerprint: DocumentFingerprint(content: "agency"),
+            validationWarnings: []
+        )
+
+        #expect(ResearchActivityNotificationQuery.stableNoteID(
+            for: scopedPath,
+            in: [catalogNote]
+        ) == stableNoteID)
+        #expect(ResearchActivityNotificationQuery.stableNoteID(
+            for: VaultQualifiedNoteID(
+                vaultID: vaultID,
+                relativePath: "Topics/Other.md"
+            ),
+            in: [catalogNote]
+        ) == nil)
+    }
+
     private func makeAssignment() -> TriptychAssignment {
         let analyses = RegisteredVault(
             name: "Analyses",

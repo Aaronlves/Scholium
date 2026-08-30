@@ -96,7 +96,13 @@ struct AttentionQueueView: View {
         return presentation.filter.apply(to: ledger.visible(scopedItems))
     }
 
-    private var visibleItemIDs: [String] { visibleItems.map(\.id) }
+    private var visibleActivityNotifications: [ResearchActivityNotification] {
+        session.visibleActivityNotifications(for: presentation)
+    }
+
+    private var visibleItemIDs: [String] {
+        visibleActivityNotifications.map(activityItemID) + visibleItems.map(\.id)
+    }
 
     private var dismissedCount: Int {
         let ledger = AttentionPreferences.decodeLedger(dismissalLedgerData)
@@ -108,14 +114,14 @@ struct AttentionQueueView: View {
             controls
             Divider()
 
-            if session.activityNotifications.isEmpty,
+            if visibleActivityNotifications.isEmpty,
                !session.catalogIsAvailable, session.isRefreshing {
                 loadingState
-            } else if session.activityNotifications.isEmpty,
+            } else if visibleActivityNotifications.isEmpty,
                       !session.catalogIsAvailable, let error = session.catalogError {
                 completeErrorState(error)
             } else if visibleItems.isEmpty
-                        && session.activityNotifications.isEmpty {
+                        && visibleActivityNotifications.isEmpty {
                 emptyState
             } else {
                 queueList
@@ -234,9 +240,9 @@ struct AttentionQueueView: View {
 
     private var queueList: some View {
         List(selection: selectedItem) {
-            if !session.activityNotifications.isEmpty {
+            if !visibleActivityNotifications.isEmpty {
                 Section {
-                    ForEach(session.activityNotifications) { notification in
+                    ForEach(visibleActivityNotifications) { notification in
                         ResearchActivityNotificationRow(
                             notification: notification,
                             openAction: { session.openAction(notification) },
@@ -249,6 +255,7 @@ struct AttentionQueueView: View {
                                 session.dismissActivity(notification)
                             }
                         )
+                        .tag(activityItemID(notification))
                     }
                 } header: {
                     Text("ACTION ACTIVITIES")
@@ -365,6 +372,10 @@ struct AttentionQueueView: View {
 
     private var normalizedDismissalDays: Int {
         session.dismissalDays
+    }
+
+    private func activityItemID(_ notification: ResearchActivityNotification) -> String {
+        "action:\(notification.runID.uuidString.lowercased())"
     }
 
     private func noteTitle(for item: AttentionQueueItem) -> String {
@@ -509,13 +520,28 @@ struct ResearchActivityNotificationRow: View {
                 Spacer(minLength: 0)
                 if notification.result != nil {
                     Button("Review Result", action: reviewResult)
+                        .accessibilityIdentifier(
+                            "scholium.notification.action.reviewResult.\(notification.runID.uuidString)"
+                        )
                     Button("Follow Up…", action: followUp)
+                        .accessibilityIdentifier(
+                            "scholium.notification.action.followUp.\(notification.runID.uuidString)"
+                        )
                     Button("Dismiss", action: dismiss)
+                        .accessibilityIdentifier(
+                            "scholium.notification.action.dismiss.\(notification.runID.uuidString)"
+                        )
                 } else {
                     Button("Open Action", action: openAction)
+                        .accessibilityIdentifier(
+                            "scholium.notification.action.open.\(notification.runID.uuidString)"
+                        )
                     Button("End Action…", role: .destructive) {
                         confirmsEndAction = true
                     }
+                    .accessibilityIdentifier(
+                        "scholium.notification.action.end.\(notification.runID.uuidString)"
+                    )
                 }
             }
             .controlSize(.small)

@@ -127,6 +127,26 @@ struct ResearchRecordSearchIndexTests {
         })
     }
 
+    @Test("Continuation children remain searchable but never become collection rows")
+    func continuationChildrenSearchWithoutTopLevelDuplication() throws {
+        let fixture = try Fixture()
+
+        #expect(try fixture.search(
+            "kind:record follow-up-search-token"
+        ).results.map(\.recordID) == [fixture.followUpRecordID])
+        #expect(try fixture.search(
+            "kind:record continue-search-token"
+        ).results.map(\.recordID) == [fixture.continueRecordID])
+        #expect(try fixture.search(
+            "kind:record follow-up-search-token",
+            topLevelOnly: true
+        ).results.isEmpty)
+        #expect(try fixture.search(
+            "kind:record continue-search-token",
+            topLevelOnly: true
+        ).results.isEmpty)
+    }
+
     @Test("Ambiguous Note identities and incomplete Record corpora fail closed")
     func ambiguityAndIncompleteCorpus() throws {
         let fixture = try Fixture()
@@ -170,6 +190,8 @@ private extension ResearchRecordSearchIndexTests {
         let todayRecordID = UUID(uuidString: "40000000-0000-0000-0000-000000000002")!
         let tombstoneRecordID = UUID(uuidString: "40000000-0000-0000-0000-000000000003")!
         let otherVaultRecordID = UUID(uuidString: "40000000-0000-0000-0000-000000000004")!
+        let continueRecordID = UUID(uuidString: "40000000-0000-0000-0000-000000000008")!
+        let followUpRecordID = UUID(uuidString: "40000000-0000-0000-0000-000000000009")!
         let researcherStatementID = UUID(uuidString: "50000000-0000-0000-0000-000000000001")!
         let manifestHash = "exact-record-manifest-v1"
         let calendar: Calendar
@@ -323,10 +345,38 @@ private extension ResearchRecordSearchIndexTests {
                 text: "sortable future",
                 finishedAt: calendar.date(byAdding: .day, value: 1, to: now)!
             )
+            let continued = try Self.actionRecord(
+                id: continueRecordID,
+                triptychID: triptychID,
+                note: alpha,
+                method: method,
+                text: "continue-search-token remains a portable child",
+                finishedAt: calendar.date(byAdding: .day, value: -3, to: now)!,
+                continuationLineage: ResearchContinuationLineage(
+                    groupID: historicalRecordID,
+                    parentRunID: historicalRecordID,
+                    requestID: continueRecordID,
+                    kind: .continueResearch
+                )
+            )
+            let followUp = try Self.actionRecord(
+                id: followUpRecordID,
+                triptychID: triptychID,
+                note: alpha,
+                method: method,
+                text: "follow-up-search-token remains a portable child",
+                finishedAt: calendar.date(byAdding: .day, value: -4, to: now)!,
+                continuationLineage: ResearchContinuationLineage(
+                    groupID: historicalRecordID,
+                    parentRunID: historicalRecordID,
+                    requestID: followUpRecordID,
+                    kind: .followUp
+                )
+            )
 
             records = [
                 historical, today, tombstoneRecord, otherVaultRecord,
-                ambiguousOne, ambiguousTwo, future,
+                ambiguousOne, ambiguousTwo, future, continued, followUp,
             ]
             fingerprints = Dictionary(uniqueKeysWithValues: records.map {
                 ($0.id, DocumentFingerprint(data: Data("exact-\($0.id.uuidString) \n".utf8)))
@@ -420,7 +470,8 @@ private extension ResearchRecordSearchIndexTests {
             note: PortableResearchNoteRevision,
             method: PortableResearchMethodReference,
             text: String,
-            finishedAt: Date
+            finishedAt: Date,
+            continuationLineage: ResearchContinuationLineage? = nil
         ) throws -> PortableResearchRecord {
             try PortableResearchRecord(
                 id: id,
@@ -429,6 +480,7 @@ private extension ResearchRecordSearchIndexTests {
                 kind: .action,
                 action: try ResearchActionRecordIdentity(actionID: .synthesize),
                 method: method,
+                continuationLineage: continuationLineage,
                 primaryNoteID: note.noteID,
                 participatingNotes: [note],
                 statements: [try PortableResearchStatement(

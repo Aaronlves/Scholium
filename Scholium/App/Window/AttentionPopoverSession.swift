@@ -140,6 +140,26 @@ final class AttentionPopoverSession: ObservableObject {
         }
     }
 
+    func visibleActivityNotifications(
+        for presentation: AttentionPresentationState
+    ) -> [ResearchActivityNotification] {
+        let noteID: UUID?
+        if let noteScope = presentation.noteScope {
+            noteID = ResearchActivityNotificationQuery.stableNoteID(
+                for: noteScope,
+                in: projectionController.catalog?.notes ?? []
+            )
+            guard noteID != nil else { return [] }
+        } else {
+            noteID = nil
+        }
+        return ResearchActivityNotificationQuery.apply(
+            notifications: activityNotifications,
+            noteID: noteID,
+            filter: presentation.filter
+        )
+    }
+
     func noteTitle(for item: AttentionQueueItem) -> String {
         if let title = projectionController.catalog?.notes.first(where: {
             $0.reference.vaultID == item.note.vaultID
@@ -190,5 +210,56 @@ final class AttentionPopoverSession: ObservableObject {
 
     func dismissActivity(_ notification: ResearchActivityNotification) {
         dependencies.dismissActivity(notification)
+    }
+}
+
+enum ResearchActivityNotificationQuery {
+    static func stableNoteID(
+        for noteScope: VaultQualifiedNoteID,
+        in notes: [WorkspaceCatalogNote]
+    ) -> UUID? {
+        notes.first(where: {
+            $0.reference.vaultID == noteScope.vaultID
+                && $0.reference.relativePath == noteScope.relativePath
+        })?.reference.stableNoteID.flatMap(UUID.init(uuidString:))
+    }
+
+    static func apply(
+        notifications: [ResearchActivityNotification],
+        noteID: UUID?,
+        filter: AttentionQueueFilter
+    ) -> [ResearchActivityNotification] {
+        guard filter.kind == nil else { return [] }
+        let query = normalized(filter.query)
+        return notifications.filter { notification in
+            if let noteID,
+               notification.targetNoteID != noteID,
+               !notification.affectedNotes.contains(where: { $0.noteID == noteID }) {
+                return false
+            }
+            guard !query.isEmpty else { return true }
+            let searchable = [
+                stateTitle(notification.state),
+                actionTitle(notification.actionID),
+                notification.targetTitle,
+                notification.affectedNotes.map(\.title).joined(separator: " "),
+            ].joined(separator: " ")
+            return normalized(searchable).contains(query)
+        }
+    }
+
+    private static func normalized(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+    }
+
+    private static func stateTitle(_ state: ResearchActivityNotificationState) -> String {
+        switch state {
+        case .waitingForAgent: "Waiting for Agent"
+        case .running: "Running"
+        case .needsAttention: "Needs Attention"
+        case .resultReady: "Result Ready"
+        case .recoveryRequired: "Recovery Required"
+        }
     }
 }

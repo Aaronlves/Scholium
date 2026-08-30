@@ -481,6 +481,160 @@ struct ResearchContinuationOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("Saved Follow-up feedback reconciles its revision before a safe child retry")
+    func followUpFeedbackReconcilesBeforeRetry() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let parent = try await finalizedParent(handle: handle, fixture: fixture)
+        let parentRecord = try await handle.services.portableResearchRecordStore
+            .record(id: parent.preparation.runID)
+        let parentFingerprint = try parentRecord.finalizedResultFingerprint()
+        let context = try await handle.research.followUpContext(
+            recordID: parentRecord.id,
+            expectedFinalizedResultFingerprint: parentFingerprint
+        )
+        let requestField = try #require(
+            ResearchAcademicFieldID(rawValue: "research-request")
+        )
+        let helpers = ResearchActionRunOperationsTests()
+        let blockingDiscussion = try await handle.research.prepareAction(
+            try await helpers.actionRequest(
+                handle: handle,
+                actionID: .discuss,
+                target: context.target,
+                academicValues: [
+                    requestField: .freeText("Keep this Discussion active for the retry fixture."),
+                ]
+            )
+        )
+        let followUpAction = try await helpers.actionRequest(
+            handle: handle,
+            actionID: .discuss,
+            target: context.target,
+            academicValues: [
+                requestField: .freeText("Test the objection in a fresh Discussion."),
+            ]
+        )
+        let feedback = "Ask the Discussion to separate textual and dialectical objections."
+        let statement = try ResearchFollowUpStatement(
+            kind: .question,
+            text: "Does the objection challenge the premise or only its dialectical role?"
+        )
+
+        let failure: ResearchFollowUpPreparationError
+        do {
+            _ = try await handle.research.prepareFollowUp(
+                try ResearchFollowUpRequest(
+                    parentRecordID: parentRecord.id,
+                    expectedFinalizedResultFingerprint: parentFingerprint,
+                    statement: statement,
+                    action: followUpAction,
+                    methodFeedbackText: feedback,
+                    expectedMethodFeedbackRevision: nil
+                )
+            )
+            Issue.record("Expected the existing Action-owned Discussion to block Follow-up.")
+            return
+        } catch let error as ResearchFollowUpPreparationError {
+            failure = error
+        }
+
+        #expect(failure.methodFeedbackWasSaved)
+        #expect(failure.latestContext.methodFeedbackText == feedback)
+        let savedRevision = try #require(failure.latestContext.methodFeedbackRevision)
+        let persistedParent = try await handle.services.portableResearchRecordStore
+            .record(id: parentRecord.id)
+        #expect(persistedParent.methodFeedbackComment?.revision == savedRevision)
+        #expect(persistedParent.methodFeedbackComment?.text == feedback)
+        #expect(try await handle.services.localResearchExecutionStore.listing().records
+            .filter { $0.snapshot.continuationLineage?.kind == .followUp }
+            .isEmpty)
+
+        try await handle.research.cancelAction(runID: blockingDiscussion.runID)
+        let retry = try await handle.research.prepareFollowUp(
+            try ResearchFollowUpRequest(
+                parentRecordID: parentRecord.id,
+                expectedFinalizedResultFingerprint: parentFingerprint,
+                statement: statement,
+                action: followUpAction,
+                methodFeedbackText: feedback,
+                expectedMethodFeedbackRevision: savedRevision
+            )
+        )
+
+        let retryParent = try await handle.services.portableResearchRecordStore
+            .record(id: parentRecord.id)
+        #expect(retryParent.methodFeedbackComment?.revision == savedRevision)
+        let followUpRuns = try await handle.services.localResearchExecutionStore
+            .listing().records.filter {
+                $0.snapshot.continuationLineage?.kind == .followUp
+            }
+        #expect(followUpRuns.map(\.id) == [retry.runID])
+        await runtime.shutdown()
+    }
+
+    @Test("Follow-up rejects a stale feedback revision even when its text still matches")
+    func followUpRejectsStaleMatchingFeedbackRevision() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let parent = try await finalizedParent(handle: handle, fixture: fixture)
+        let parentRecord = try await handle.services.portableResearchRecordStore
+            .record(id: parent.preparation.runID)
+        let parentFingerprint = try parentRecord.finalizedResultFingerprint()
+        let initialContext = try await handle.research.followUpContext(
+            recordID: parentRecord.id,
+            expectedFinalizedResultFingerprint: parentFingerprint
+        )
+        let feedback = "Preserve the distinction between authority and salience."
+        let externallyUpdated = try await handle.research.saveMethodFeedback(
+            recordID: parentRecord.id,
+            draft: try ResearchMethodFeedbackDraft(text: feedback),
+            expectedMethodFeedbackRevision: initialContext.methodFeedbackRevision,
+            expectedResultFingerprint: parentFingerprint
+        )
+        let requestField = try #require(
+            ResearchAcademicFieldID(rawValue: "research-request")
+        )
+        let action = try await ResearchActionRunOperationsTests().actionRequest(
+            handle: handle,
+            actionID: .synthesize,
+            target: initialContext.target,
+            academicValues: [
+                requestField: .freeText("Reassess the qualified synthesis."),
+            ]
+        )
+
+        do {
+            _ = try await handle.research.prepareFollowUp(
+                try ResearchFollowUpRequest(
+                    parentRecordID: parentRecord.id,
+                    expectedFinalizedResultFingerprint: parentFingerprint,
+                    statement: try ResearchFollowUpStatement(
+                        kind: .question,
+                        text: "Does the distinction survive the objection?"
+                    ),
+                    action: action,
+                    methodFeedbackText: feedback,
+                    expectedMethodFeedbackRevision: nil
+                )
+            )
+            Issue.record("Expected a stale matching feedback revision to fail closed.")
+        } catch let error as ResearchFollowUpPreparationError {
+            #expect(!error.methodFeedbackWasSaved)
+            #expect(error.latestContext.methodFeedbackRevision
+                == externallyUpdated.methodFeedbackComment?.revision)
+            #expect(error.latestContext.methodFeedbackText == feedback)
+        }
+        #expect(try await handle.services.localResearchExecutionStore.listing().records
+            .filter { $0.snapshot.continuationLineage?.kind == .followUp }
+            .isEmpty)
+        await runtime.shutdown()
+    }
+
     @Test("Material handoff rechecks current, changed, missing, and unavailable source-owner states")
     func materialReferenceCurrentness() async throws {
         let fixture = try await ResearchFixture.make()

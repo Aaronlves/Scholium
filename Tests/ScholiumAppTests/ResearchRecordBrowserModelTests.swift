@@ -212,6 +212,49 @@ struct ResearchRecordBrowserModelTests {
         #expect(!model.isShowingError)
     }
 
+    @Test("A direct Record route defers collection Search until Back")
+    func directRecordRouteDoesNotSearchTheHiddenCollection() async throws {
+        let record = try makeDiscussion(
+            id: deterministicUUID(45),
+            noteID: deterministicUUID(46),
+            title: "Direct Record",
+            text: "The direct route remains available without loading its collection.",
+            author: .researcher,
+            finishedAt: Date(timeIntervalSince1970: 100)
+        )
+        let fingerprint = DocumentFingerprint(content: "direct record bytes")
+        let probe = ResearchRecordSearchProbe { request in
+            recordSearchResponse(
+                request: request,
+                triptychID: record.triptychID,
+                records: [record],
+                fingerprints: [record.id: fingerprint]
+            )
+        }
+        let model = ResearchRecordBrowserModel()
+        model.bindRecordSearch { request in try await probe.search(request) }
+        model.prepareForOpen(
+            triptychID: record.triptychID,
+            records: [record],
+            fingerprints: [record.id: fingerprint],
+            request: ResearchRecordsWindowRequest(
+                triptychID: record.triptychID,
+                recordID: record.id,
+                expectedRecordFingerprint: fingerprint
+            )
+        )
+        await model.waitForRecordSearchForTesting()
+
+        #expect(model.selectedRecord?.id == record.id)
+        #expect(probe.requests.isEmpty)
+
+        model.backToCollection()
+        await model.waitForRecordSearchForTesting()
+
+        #expect(probe.requests.count == 1)
+        #expect(model.visibleEntries.map(\.id) == [record.id])
+    }
+
     @Test("A stale, deleted, or missing-statement Search Record locator fails closed")
     func invalidSearchRecordLocatorsFailClosed() throws {
         let record = try makeDiscussion(
@@ -1142,10 +1185,11 @@ struct ResearchRecordBrowserModelTests {
     }
 
     @Test(
-        "Continue Research remains one portable child but folds beneath its parent collection row")
-    func continueResearchFoldsBeneathParent() async throws {
+        "Continue Research and Follow-up remain portable children folded beneath their parent collection row")
+    func continuationKindsFoldBeneathParent() async throws {
         let parentID = deterministicUUID(951)
         let childID = deterministicUUID(952)
+        let followUpID = deterministicUUID(957)
         let parent = try makeAction(
             id: parentID,
             noteID: deterministicUUID(953),
@@ -1164,22 +1208,35 @@ struct ResearchRecordBrowserModelTests {
                 kind: .continueResearch
             )
         )
+        let followUp = try makeAction(
+            id: followUpID,
+            noteID: deterministicUUID(958),
+            title: "Follow-up Analysis",
+            finishedAt: Date(timeIntervalSince1970: 300),
+            continuationLineage: ResearchContinuationLineage(
+                groupID: deterministicUUID(955),
+                parentRunID: parentID,
+                requestID: deterministicUUID(959),
+                kind: .followUp
+            )
+        )
         let model = ResearchRecordBrowserModel()
         let fingerprints = [
             parentID: DocumentFingerprint(content: "parent-record"),
             childID: DocumentFingerprint(content: "child-record"),
+            followUpID: DocumentFingerprint(content: "follow-up-record"),
         ]
         model.bindRecordSearch { request in
             recordSearchResponse(
                 request: request,
                 triptychID: parent.triptychID,
-                records: [parent, child],
+                records: [parent, child, followUp],
                 fingerprints: fingerprints
             )
         }
         model.prepareForOpen(
             triptychID: parent.triptychID,
-            records: [parent, child],
+            records: [parent, child, followUp],
             fingerprints: fingerprints,
             request: ResearchRecordsWindowRequest(triptychID: parent.triptychID)
         )
@@ -1189,11 +1246,88 @@ struct ResearchRecordBrowserModelTests {
         #expect(model.visibleEntries.map(\.id) == [parentID])
         #expect(model.totalRecordCount == 1)
         #expect(model.record(id: childID)?.id == childID)
-        #expect(model.continuationChildren(for: parentID).map(\.id) == [childID])
+        #expect(model.record(id: followUpID)?.id == followUpID)
+        #expect(model.continuationChildren(for: parentID).map(\.id)
+            == [childID, followUpID])
 
         model.openRecord(id: childID)
         #expect(model.route == .record(childID))
         #expect(model.continuationParent(for: child)?.id == parentID)
+        #expect(model.continuationParent(for: followUp)?.id == parentID)
+    }
+
+    @Test("Follow-up routes present once per valid request without refresh replay")
+    func followUpRouteGenerationIsOneShot() throws {
+        let first = try makeAction(
+            id: deterministicUUID(970),
+            noteID: deterministicUUID(971),
+            title: "First Analysis",
+            finishedAt: Date(timeIntervalSince1970: 100)
+        )
+        let second = try makeAction(
+            id: deterministicUUID(972),
+            noteID: deterministicUUID(973),
+            title: "Second Analysis",
+            finishedAt: Date(timeIntervalSince1970: 200)
+        )
+        let firstRequest = ResearchRecordsWindowRequest(
+            triptychID: first.triptychID,
+            purpose: .followUp,
+            recordID: first.id,
+            expectedFinalizedResultFingerprint: try first.finalizedResultFingerprint()
+        )
+        let model = ResearchRecordBrowserModel()
+        model.prepareForOpen(
+            triptychID: first.triptychID,
+            records: [first, second],
+            request: firstRequest
+        )
+
+        #expect(model.pendingFollowUpRequestGeneration == 1)
+        #expect(model.consumeFollowUpRequest(recordID: first.id))
+        #expect(!model.consumeFollowUpRequest(recordID: first.id))
+
+        model.receive(triptychID: first.triptychID, records: [first, second])
+        #expect(model.pendingFollowUpRequestGeneration == 1)
+        #expect(!model.consumeFollowUpRequest(recordID: first.id))
+
+        model.apply(firstRequest)
+        #expect(model.pendingFollowUpRequestGeneration == 2)
+        #expect(model.consumeFollowUpRequest(recordID: first.id))
+        #expect(!model.consumeFollowUpRequest(recordID: first.id))
+
+        model.apply(ResearchRecordsWindowRequest(
+            triptychID: second.triptychID,
+            purpose: .followUp,
+            recordID: second.id,
+            expectedFinalizedResultFingerprint: try second.finalizedResultFingerprint()
+        ))
+        #expect(model.pendingFollowUpRequestGeneration == 3)
+        #expect(!model.consumeFollowUpRequest(recordID: first.id))
+        #expect(model.consumeFollowUpRequest(recordID: second.id))
+
+        model.apply(ResearchRecordsWindowRequest(
+            triptychID: first.triptychID,
+            purpose: .followUp,
+            recordID: first.id,
+            expectedFinalizedResultFingerprint: DocumentFingerprint(
+                content: "stale result"
+            )
+        ))
+        #expect(model.pendingFollowUpRequestGeneration == 3)
+        #expect(model.route == .collection)
+        #expect(!model.consumeFollowUpRequest(recordID: first.id))
+
+        model.apply(ResearchRecordsWindowRequest(
+            triptychID: first.triptychID,
+            purpose: .followUp,
+            recordID: first.id,
+            expectedFinalizedResultFingerprint: try first.finalizedResultFingerprint(),
+            statementID: UUID()
+        ))
+        #expect(model.pendingFollowUpRequestGeneration == 3)
+        #expect(model.route == .collection)
+        #expect(!model.consumeFollowUpRequest(recordID: first.id))
     }
 
     @Test("Record and Reading Lead collections expose exact totals across 100-row pages")
@@ -1609,8 +1743,9 @@ struct ResearchRecordBrowserModelTests {
                 clauses: []
             )
         var orderedRecords = records.filter {
-            request.recordSort == nil
-                || $0.continuationLineage?.kind != .continueResearch
+            guard request.recordSort != nil,
+                  let kind = $0.continuationLineage?.kind else { return true }
+            return kind != .continueResearch && kind != .followUp
         }
         orderedRecords.sort { lhs, rhs in
             let action: (PortableResearchRecord) -> String = {

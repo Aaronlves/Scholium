@@ -1378,6 +1378,173 @@ extension ScholiumUITests {
     }
 
     @MainActor
+    func testResearchRecordFollowUpReopensAccessiblyOnTheMountedRecord() throws {
+        waitForCurrentDocumentSurface()
+
+        let workspace = app.windows.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
+        ).firstMatch
+        selectVault(
+            "scholium.vault.topic_knowledge",
+            waitingFor: "scholium.noteRow.QA Topic.md"
+        )
+        openNote("QA Topic.md", expectedTitle: "QA Topic", in: workspace)
+        selectResearchInspectorMode("actions")
+        let synthesize = app.descendants(matching: .any)[
+            "scholium.researchAction.synthesize"
+        ].firstMatch
+        XCTAssertTrue(synthesize.waitForExistence(timeout: 8))
+        synthesize.click()
+        let actionSheet = app.sheets.firstMatch
+        XCTAssertTrue(actionSheet.descendants(matching: .any)[
+            "scholium.researchAction.sheet"
+        ].waitForExistence(timeout: 8))
+        let researchRequest = actionSheet.textViews[
+            "scholium.researchAction.academicText.research-request"
+        ]
+        XCTAssertTrue(researchRequest.waitForExistence(timeout: 5))
+        researchRequest.click()
+        researchRequest.typeText(
+            "Create a disposable completed result for mounted Follow-up routing QA."
+        )
+        let copyHandoff = actionSheet.buttons[
+            "scholium.researchAction.copyHandoff"
+        ]
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            copyHandoff.isEnabled && copyHandoff.isHittable
+        })
+        copyHandoff.click()
+        XCTAssertTrue(waitUntil(timeout: 15) { !actionSheet.exists })
+
+        let runID = try latestLocalResearchExecutionRunID()
+        let copiedInstructions = try pasteboardText()
+        let handoffLines = copiedInstructions.components(separatedBy: .newlines)
+        let runLocator = try XCTUnwrap(
+            handoffLines.first { $0.hasPrefix("Scholium Run: ") }.map {
+                String($0.dropFirst("Scholium Run: ".count))
+            }
+        )
+        let pairingCode = try XCTUnwrap(
+            handoffLines.first { $0.hasPrefix("Pairing Code: ") }.map {
+                String($0.dropFirst("Pairing Code: ".count))
+            }
+        )
+        let pairingOutput = try runScholiumCLI(
+            ["agent", "pair", "--run", runLocator],
+            stdin: Data("\(pairingCode)\n".utf8)
+        )
+        XCTAssertTrue(pairingOutput.contains(runLocator))
+        let resultSubmission = try JSONSerialization.data(withJSONObject: [
+            "schema_version": 3,
+            "record_title": "Mounted Follow-up routing result",
+            "disposition": "completed",
+            "academic_results": [
+                "values": [
+                    "synthesis-outcome": [
+                        "kind": "freeText",
+                        "text": "A disposable synthesis that verifies mounted Follow-up routing.",
+                    ],
+                    "contribution": [
+                        "kind": "multipleChoice",
+                        "choices": ["adds"],
+                    ],
+                ],
+            ],
+            "fidelity_outcomes": [],
+        ])
+        let resultOutput = try runScholiumCLI(
+            ["agent", "submit-result", "--run", runLocator, "--from", "-"],
+            stdin: resultSubmission
+        )
+        let resultReceipt = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(resultOutput.utf8))
+                as? [String: Any]
+        )
+        XCTAssertEqual(resultReceipt["state"] as? String, "finalized")
+        XCTAssertEqual(resultReceipt["record_formed"] as? Bool, true)
+
+        let notifications = workspace.buttons[
+            "scholium.triptychNotifications"
+        ]
+        XCTAssertTrue(waitUntil(timeout: 20) {
+            notifications.exists && notifications.isEnabled
+        })
+        notifications.click()
+        var popover = app.popovers.firstMatch
+        XCTAssertTrue(popover.waitForExistence(timeout: 8))
+        let activityID = "scholium.notification.action.\(runID.uuidString)"
+        var activity = popover.descendants(matching: .any)[activityID]
+        XCTAssertTrue(activity.waitForExistence(timeout: 8))
+        let reviewResult = app.buttons[
+            "scholium.notification.action.reviewResult.\(runID.uuidString)"
+        ].firstMatch
+        XCTAssertTrue(
+            reviewResult.waitForExistence(timeout: 25),
+            "The seeded completed Record did not replace the active Run with Result Ready."
+        )
+        reviewResult.click()
+
+        let recordsWindow = researchRecordsWindow()
+        let reading = recordsWindow.descendants(matching: .any)[
+            "scholium.researchRecord.detail"
+        ]
+        XCTAssertTrue(reading.waitForExistence(timeout: 8))
+        XCTAssertTrue(
+            reading.staticTexts["Mounted Follow-up routing result"]
+                .waitForExistence(timeout: 5)
+        )
+
+        for attempt in 1...2 {
+            if popover.exists {
+                app.typeKey(.escape, modifierFlags: [])
+                XCTAssertTrue(waitUntil(timeout: 5) { !popover.exists })
+            }
+            workspace.click()
+            XCTAssertTrue(notifications.exists && notifications.isEnabled)
+            notifications.click()
+            popover = app.popovers.firstMatch
+            XCTAssertTrue(popover.waitForExistence(timeout: 8))
+            activity = popover.descendants(matching: .any)[activityID]
+            XCTAssertTrue(activity.waitForExistence(timeout: 8))
+            let notificationFollowUp = app.buttons[
+                "scholium.notification.action.followUp.\(runID.uuidString)"
+            ].firstMatch
+            XCTAssertTrue(notificationFollowUp.waitForExistence(timeout: 5))
+            XCTAssertTrue(notificationFollowUp.isHittable)
+            notificationFollowUp.click()
+
+            let sheet = recordsWindow.sheets.firstMatch
+            let sheetMarker = sheet.descendants(matching: .any)[
+                "scholium.researchFollowUp.sheet"
+            ]
+            XCTAssertTrue(
+                sheet.waitForExistence(timeout: 10)
+                    && sheetMarker.waitForExistence(timeout: 5),
+                "Mounted Record Follow-up attempt \(attempt) did not present."
+            )
+            XCTAssertTrue(sheet.descendants(matching: .any)[
+                "scholium.researchFollowUp.actionPicker"
+            ].exists)
+            XCTAssertTrue(sheet.buttons["Cancel"].isEnabled)
+            XCTAssertTrue(sheet.buttons["Continue"].exists)
+
+            app.typeKey(.escape, modifierFlags: [])
+            XCTAssertTrue(waitUntil(timeout: 5) { !sheet.exists })
+            XCTAssertTrue(reading.exists)
+        }
+
+        let focusExpectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "hasKeyboardFocus == true"),
+            object: recordsWindow
+        )
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [focusExpectation], timeout: 3),
+            .completed,
+            "Dismissing notification-routed Follow-up must keep keyboard focus in the mounted Records window."
+        )
+    }
+
+    @MainActor
     private func retainScreenshot(of element: XCUIElement, named name: String) {
         let attachment = XCTAttachment(screenshot: element.screenshot())
         attachment.name = name

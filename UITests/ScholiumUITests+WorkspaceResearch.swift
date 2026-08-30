@@ -2078,6 +2078,99 @@ extension ScholiumUITests {
 
 
     @MainActor
+    func testInspectorNotificationActivitiesStayScopedToTheCurrentNote() throws {
+        waitForCurrentDocumentSurface()
+        let workspace = app.windows.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
+        ).firstMatch
+        selectVault(
+            "scholium.vault.topic_knowledge",
+            waitingFor: "scholium.noteRow.QA Topic.md"
+        )
+        openNote("QA Topic.md", expectedTitle: "QA Topic", in: workspace)
+        selectResearchInspectorMode("actions")
+        let synthesize = app.descendants(matching: .any)[
+            "scholium.researchAction.synthesize"
+        ].firstMatch
+        XCTAssertTrue(synthesize.waitForExistence(timeout: 8))
+        synthesize.click()
+        let sheet = app.sheets.firstMatch
+        XCTAssertTrue(sheet.descendants(matching: .any)[
+            "scholium.researchAction.sheet"
+        ].waitForExistence(timeout: 8))
+        let request = sheet.textViews[
+            "scholium.researchAction.academicText.research-request"
+        ]
+        XCTAssertTrue(request.waitForExistence(timeout: 5))
+        request.click()
+        request.typeText("Keep this disposable Action active for Note-scoped notification QA.")
+        let copyHandoff = sheet.descendants(matching: .any)[
+            "scholium.researchAction.copyHandoff"
+        ]
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            copyHandoff.isEnabled && copyHandoff.isHittable
+        })
+        copyHandoff.click()
+        XCTAssertTrue(waitUntil(timeout: 20) { !sheet.exists })
+        let runID = try latestLocalResearchExecutionRunID()
+        let activityID = "scholium.notification.action.\(runID.uuidString)"
+
+        selectResearchInspectorMode("overview")
+        let inspectorNotifications = app.buttons[
+            "scholium.researchOverview.notifications"
+        ].firstMatch
+        XCTAssertTrue(inspectorNotifications.waitForExistence(timeout: 8))
+        inspectorNotifications.click()
+        var popover = app.popovers.firstMatch
+        XCTAssertTrue(popover.waitForExistence(timeout: 8))
+        XCTAssertTrue(popover.descendants(matching: .any)[activityID]
+            .waitForExistence(timeout: 8))
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !popover.exists })
+
+        openNote(
+            "topic-synthesize.md",
+            expectedTitle: "topic-synthesize",
+            in: workspace
+        )
+        selectResearchInspectorMode("overview")
+        XCTAssertTrue(inspectorNotifications.waitForExistence(timeout: 8))
+        inspectorNotifications.click()
+        popover = app.popovers.firstMatch
+        XCTAssertTrue(popover.waitForExistence(timeout: 8))
+        XCTAssertFalse(
+            popover.descendants(matching: .any)[activityID]
+                .waitForExistence(timeout: 2),
+            "Inspector Notifications leaked an Action from another Note."
+        )
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !popover.exists })
+
+        let triptychNotifications = app.buttons[
+            "scholium.triptychNotifications"
+        ].firstMatch
+        XCTAssertTrue(triptychNotifications.waitForExistence(timeout: 8))
+        triptychNotifications.click()
+        popover = app.popovers.firstMatch
+        XCTAssertTrue(popover.waitForExistence(timeout: 8))
+        let aggregateActivity = popover.descendants(matching: .any)[activityID]
+        XCTAssertTrue(
+            aggregateActivity.waitForExistence(timeout: 8),
+            "Triptych Notifications must retain the full Action activity queue."
+        )
+
+        let endAction = app.buttons[
+            "scholium.notification.action.end.\(runID.uuidString)"
+        ].firstMatch
+        XCTAssertTrue(endAction.waitForExistence(timeout: 5))
+        endAction.click()
+        let confirm = workspace.sheets.firstMatch.buttons["End Action"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        confirm.click()
+        XCTAssertTrue(waitUntil(timeout: 8) { !aggregateActivity.exists })
+    }
+
+    @MainActor
     func testResearchActionsRemainUsableInLightAndDarkAppearances() {
         for appearance in QAAppearance.allCases {
             app.terminate()

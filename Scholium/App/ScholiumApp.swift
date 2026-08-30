@@ -1238,7 +1238,7 @@ private struct ScholiumWindowObservedRoot: View {
                 windowCoordinator.update(reduceMotion: reduceMotion)
             }
             .onChange(
-                of: appState.requestedResearchRecordsWindowRequest
+                of: presentationRouter.researchRecordsWindowRequest
             ) { _, request in
                 guard let request else { return }
                 researchRecordsWindowCoordinator.submit(request)
@@ -1246,7 +1246,7 @@ private struct ScholiumWindowObservedRoot: View {
                     id: "scholium-research-records",
                     value: request.triptychID
                 )
-                appState.requestedResearchRecordsWindowRequest = nil
+                presentationRouter.researchRecordsWindowRequest = nil
             }
             .onDisappear {
                 windowCoordinator.detach()
@@ -2147,8 +2147,6 @@ final class WindowModel: ObservableObject {
     /// One-shot routing from Actions to one portable active Discussion. The
     /// document view consumes and clears it without changing record state.
     @Published var requestedDiscussionID: UUID? = nil
-    @Published var requestedResearchRecordsWindowRequest:
-        ResearchRecordsWindowRequest? = nil
     let presentationRouter = WindowPresentationRouter()
     let shellState = WindowShellState()
     lazy var discoveryController = DiscoveryController(
@@ -2380,7 +2378,7 @@ final class WindowModel: ObservableObject {
             },
             reviewResult: { [weak self] notification in
                 guard let result = notification.result else { return }
-                self?.requestedResearchRecordsWindowRequest =
+                self?.presentationRouter.researchRecordsWindowRequest =
                     ResearchRecordsWindowRequest(
                         triptychID: result.triptychID,
                         initialView: .records,
@@ -2392,7 +2390,7 @@ final class WindowModel: ObservableObject {
             },
             followUp: { [weak self] notification in
                 guard let result = notification.result else { return }
-                self?.requestedResearchRecordsWindowRequest =
+                self?.presentationRouter.researchRecordsWindowRequest =
                     ResearchRecordsWindowRequest(
                         triptychID: result.triptychID,
                         initialView: .records,
@@ -4108,8 +4106,20 @@ final class WindowModel: ObservableObject {
     }
 
     func retryDerivedRefresh() async {
-        guard let vaultID = currentRegisteredVault?.id else { return }
-        refreshStatusText = "Retrying Triptych refresh…"
+        _ = await refreshWorkspaceProjection(
+            refreshingStatus: "Retrying Triptych refresh…"
+        )
+    }
+
+    func refreshAfterResearchHandoff() async -> WorkspaceSnapshot? {
+        await refreshWorkspaceProjection(refreshingStatus: nil)
+    }
+
+    private func refreshWorkspaceProjection(
+        refreshingStatus: String?
+    ) async -> WorkspaceSnapshot? {
+        guard let vaultID = currentRegisteredVault?.id else { return nil }
+        if let refreshingStatus { refreshStatusText = refreshingStatus }
         do {
             let snapshot = try await discoveryController.refreshWorkspace()
             guard currentRegisteredVault?.id == vaultID,
@@ -4119,13 +4129,15 @@ final class WindowModel: ObservableObject {
                       runtimeIdentity: capabilities.runtimeIdentity,
                       status: .current(WorkspaceDerivedRefreshEvidence(snapshot: snapshot)),
                       context: workspaceProjectionContext
-                  ) else { return }
+                  ) else { return nil }
             applyWorkspaceProjectionCommit(commit)
             refreshStatusText = nil
             workspaceProjectionController.reportCatalogError(nil)
+            return snapshot
         } catch {
             refreshStatusText = "Triptych refresh failed"
             workspaceProjectionController.reportCatalogError(error.localizedDescription)
+            return nil
         }
     }
 
