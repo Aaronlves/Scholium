@@ -152,6 +152,7 @@ struct ScholiumSettingsView: View {
     private var persistedResearchCategory = ResearchGuidanceCategory.skills.rawValue
     @State private var destination = ScholiumSettingsDestination.triptychs
     @State private var searchQuery = ""
+    @State private var didPresentQAFeedbackProof = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -188,33 +189,39 @@ struct ScholiumSettingsView: View {
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
             }
+            .overlay(alignment: .top) {
+                if let feedback = settingsModel.feedbackItems.first {
+                    WorkspaceSettingsFeedbackItem(
+                        feedback: feedback,
+                        dismiss: {
+                            settingsModel.dismissFeedback(id: feedback.id)
+                        }
+                    )
+                    .padding(
+                        .top,
+                        max(
+                            topInset,
+                            ScholiumMetrics.Settings.editorContentInset
+                        )
+                    )
+                    .transition(
+                        ScholiumMotion.transientStatusTransition(
+                            reduceMotion: reduceMotion,
+                            edge: .top
+                        )
+                    )
+                    .zIndex(3)
+                }
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .clipped()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.settings.root")
-        .overlay(alignment: .bottom) {
-            if let message = settingsModel.toastMessage {
-                ToastView(message: message)
-                    .transition(
-                        ScholiumMotion.transientStatusTransition(
-                            reduceMotion: reduceMotion
-                        )
-                    )
-                    .padding(.bottom, ScholiumGrid.Spacing.regionContentInset)
-            }
-        }
         .animation(
             ScholiumMotion.transientStatus(reduceMotion: reduceMotion),
-            value: settingsModel.toastMessage
+            value: settingsModel.feedbackItems
         )
-        .task(id: settingsModel.toastMessage) {
-            guard let message = settingsModel.toastMessage else { return }
-            AccessibilityNotification.Announcement(message).post()
-            try? await Task.sleep(for: .seconds(2.5))
-            guard !Task.isCancelled else { return }
-            settingsModel.dismissToast(message)
-        }
         .onAppear {
             let pane = WorkspaceSettingsPane(rawValue: persistedPane) ?? .triptychs
             let category = ResearchGuidanceCategory(
@@ -225,6 +232,7 @@ struct ScholiumSettingsView: View {
                 researchCategory: category
             )
             settingsModel.selectPane(destination.pane)
+            presentQAFeedbackProofIfNeeded()
         }
         .onChange(of: destination) { _, destination in
             settingsModel.selectPane(destination.pane)
@@ -238,6 +246,25 @@ struct ScholiumSettingsView: View {
                   let first = filteredDestinations.first else { return }
             destination = first
         }
+    }
+
+    private func presentQAFeedbackProofIfNeeded() {
+        #if DEBUG
+        guard !didPresentQAFeedbackProof,
+              Bundle.main.bundleIdentifier == "com.scholium.qa",
+              ProcessInfo.processInfo.arguments.contains(
+                  "--scholium-feedback-proofs"
+              ) else { return }
+        didPresentQAFeedbackProof = true
+        settingsModel.presentFeedback(
+            "QA settings confirmation",
+            kind: .confirmation
+        )
+        settingsModel.presentFeedback(
+            "QA settings error",
+            kind: .error
+        )
+        #endif
     }
 
     private var sidebarSelection: Binding<ScholiumSettingsDestination?> {
@@ -375,6 +402,8 @@ struct ScholiumSettingsView: View {
 
 private struct AttentionSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
+    @EnvironmentObject private var researchResultNotificationCoordinator: ResearchResultNotificationCoordinator
+    @Environment(\.scenePhase) private var scenePhase
     @State private var dismissalDays = TriptychSettings().attentionDismissalDays
     @State private var isSaving = false
     @State private var errorMessage: String?
@@ -402,6 +431,17 @@ private struct AttentionSettingsView: View {
                     alignment: .leading,
                     spacing: ScholiumGrid.Spacing.sectionSeparation
                 ) {
+                    settingsEditorSection("System Result Notifications") {
+                        systemNotificationAuthorizationControl
+
+                        Text("System notifications use a private summary and never include Note, Result, Record, or research-content text.")
+                            .font(ScholiumTypography.interface(.body))
+                            .scholiumForeground(.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Divider()
+
                     settingsEditorSection("Reminder Timing for This Triptych") {
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
@@ -466,6 +506,15 @@ private struct AttentionSettingsView: View {
             dismissalDays = durations.contains(stored)
                 ? stored
                 : TriptychSettings().attentionDismissalDays
+            await researchResultNotificationCoordinator
+                .refreshSystemNotificationAuthorization()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task {
+                await researchResultNotificationCoordinator
+                    .refreshSystemNotificationAuthorization()
+            }
         }
         .alert("Could Not Save Notification Settings", isPresented: Binding(
             get: { errorMessage != nil },
@@ -481,6 +530,75 @@ private struct AttentionSettingsView: View {
         let ledger = AttentionPreferences.decodeLedger(dismissalLedgerData)
         return !ledger.dismissedUntilByItemID.isEmpty
             || !ledger.revisionBoundItemIDs.isEmpty
+    }
+
+    @ViewBuilder
+    private var systemNotificationAuthorizationControl: some View {
+        let coordinator = researchResultNotificationCoordinator
+        HStack(alignment: .center, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Label(systemNotificationStatusTitle, systemImage: systemNotificationStatusSymbol)
+                .font(ScholiumTypography.interface(.body, emphasis: .strong))
+                .scholiumForeground(systemNotificationStatusColor)
+            Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
+            switch coordinator.systemNotificationAuthorizationState {
+            case .notDetermined:
+                Button("Enable System Notifications") {
+                    Task {
+                        await coordinator
+                            .requestSystemNotificationAuthorizationFromSettings()
+                    }
+                }
+                .disabled(coordinator.isRequestingSystemNotificationAuthorization)
+            case .authorized, .denied:
+                Button("Open System Notification Settings…") {
+                    coordinator.openNotificationSettings()
+                }
+            case nil:
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel("Checking notification permission")
+            }
+        }
+
+        if let error = coordinator.systemNotificationAuthorizationError {
+            Text(error)
+                .font(ScholiumTypography.interface(.small))
+                .scholiumForeground(.destructive)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var systemNotificationStatusTitle: String {
+        switch researchResultNotificationCoordinator
+            .systemNotificationAuthorizationState {
+        case .notDetermined:
+            String(localized: "Not Enabled", table: "Localizable", bundle: .module)
+        case .authorized:
+            String(localized: "Enabled", table: "Localizable", bundle: .module)
+        case .denied:
+            String(localized: "Off in System Settings", table: "Localizable", bundle: .module)
+        case nil:
+            String(localized: "Checking…", table: "Localizable", bundle: .module)
+        }
+    }
+
+    private var systemNotificationStatusSymbol: String {
+        switch researchResultNotificationCoordinator
+            .systemNotificationAuthorizationState {
+        case .authorized: "checkmark.circle"
+        case .notDetermined, .denied: "bell.slash"
+        case nil: "bell"
+        }
+    }
+
+    private var systemNotificationStatusColor: ScholiumColorRole {
+        switch researchResultNotificationCoordinator
+            .systemNotificationAuthorizationState {
+        case .authorized: .confirmed
+        case .denied: .attention
+        case .notDetermined, nil: .secondaryText
+        }
     }
 
     private var reminderTimingPicker: some View {
@@ -510,10 +628,11 @@ private struct AttentionSettingsView: View {
                 settings.attentionDismissalDays = AttentionPreferences.normalizedDays(dismissalDays)
                 let result = try await settingsModel.saveTriptychSettings(settings)
                 dismissalDays = settings.attentionDismissalDays
-                settingsModel.showToast(
+                settingsModel.presentFeedback(
                     result.targetIsCurrent
                         ? String(localized: "Notification settings saved", table: "Localizable", bundle: .module)
-                        : result.warning ?? String(localized: "Settings saved to the previously active Triptych.", table: "Localizable", bundle: .module)
+                        : result.warning ?? String(localized: "Settings saved to the previously active Triptych.", table: "Localizable", bundle: .module),
+                    kind: result.targetIsCurrent ? .confirmation : .warning
                 )
             } catch {
                 errorMessage = error.localizedDescription
@@ -1480,7 +1599,10 @@ private struct MetadataSettingsView: View {
                 } else {
                     result.warning ?? String(localized: "Metadata configuration saved", table: "Localizable", bundle: .module)
                 }
-                settingsModel.showToast(message)
+                settingsModel.presentFeedback(
+                    message,
+                    kind: result.warning == nil ? .confirmation : .warning
+                )
             } catch TriptychControlError.settingsRevisionConflict {
                 revisionConflict = true
             } catch WorkspaceSettingsMutationError.triptychChanged {
@@ -1665,12 +1787,33 @@ struct AgentCLISettingsView: View {
                             table: "Localizable",
                             bundle: .module
                         )
-                    settingsModel.showToast(message)
+                    settingsModel.presentFeedback(
+                        message,
+                        kind: copied ? .confirmation : .error
+                    )
                 }
                 .accessibilityIdentifier("scholium.agentCLI.copyInstructions")
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+}
+
+private struct WorkspaceSettingsFeedbackItem: View {
+    let feedback: WorkspaceSettingsFeedback
+    let dismiss: () -> Void
+
+    var body: some View {
+        ScholiumOperationFeedback(
+            id: feedback.id,
+            message: feedback.message,
+            kind: feedback.kind,
+            maximumWidth: ScholiumMetrics.Notice.settingsFeedbackMaximumWidth,
+            accessibilityIdentifierPrefix: "scholium.settings.feedback",
+            dismiss: dismiss
+        )
+        .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
+        .frame(maxWidth: .infinity, alignment: .top)
     }
 }
 

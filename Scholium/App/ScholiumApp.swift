@@ -357,10 +357,15 @@ private struct ScholiumSettingsWindowEnvironmentContent: View {
 
 @MainActor
 private struct ScholiumSettingsWindowReadyContent: View {
+    @EnvironmentObject private var applicationDelegate: ScholiumApplicationDelegate
     @EnvironmentObject private var workspaceStore: WorkspaceStore
 
     var body: some View {
-        ScholiumSettingsRoot(workspaceStore: workspaceStore)
+        ScholiumSettingsRoot(
+            workspaceStore: workspaceStore,
+            researchResultNotificationCoordinator:
+                applicationDelegate.researchResultNotificationCoordinator
+        )
     }
 }
 
@@ -1215,12 +1220,18 @@ private struct ScholiumWindowObservedRoot: View {
                             value: destination.triptychID
                         )
                     },
-                    showAttention: { anchor, workspaceSlot, noteScope in
-                        appState.attentionPopoverSession.present(
-                            from: anchor,
-                            workspaceSlot: workspaceSlot,
-                            noteScope: noteScope
-                        )
+                    showAttention: { request in
+                        switch request {
+                        case .queue(let anchor, let workspaceSlot, let noteScope):
+                            appState.attentionPopoverSession.presentQueue(
+                                anchor: anchor,
+                                workspaceSlot: workspaceSlot,
+                                noteScope: noteScope
+                            )
+                        case .actionStack:
+                            appState.shellState
+                                .requestActionNotificationStackExpansion()
+                        }
                     }
                 )
                 windowCoordinator.updateResearchRecordsRouting(
@@ -1347,11 +1358,19 @@ private struct ScholiumSettingsRoot: View {
     @AppStorage(WindowColorSchemeChoice.defaultsKey)
     private var storedColorScheme = WindowColorSchemeChoice.system.rawValue
     @ObservedObject private var workspaceStore: WorkspaceStore
+    @ObservedObject private var researchResultNotificationCoordinator:
+        ResearchResultNotificationCoordinator
     @StateObject private var settingsModel: WorkspaceSettingsModel
     @StateObject private var fileSelectionPresenter = ScholiumFileSelectionPresenter()
 
-    init(workspaceStore: WorkspaceStore) {
+    init(
+        workspaceStore: WorkspaceStore,
+        researchResultNotificationCoordinator:
+            ResearchResultNotificationCoordinator
+    ) {
         self.workspaceStore = workspaceStore
+        self.researchResultNotificationCoordinator =
+            researchResultNotificationCoordinator
         _settingsModel = StateObject(
             wrappedValue: WorkspaceSettingsModel(
                 capabilities: workspaceStore.settingsCapabilities(),
@@ -1363,6 +1382,7 @@ private struct ScholiumSettingsRoot: View {
     var body: some View {
         ScholiumSettingsView()
             .environmentObject(settingsModel)
+            .environmentObject(researchResultNotificationCoordinator)
             .tint(ScholiumColorRole.accent.color)
             .preferredColorScheme(
                 WindowColorSchemeChoice(rawValue: storedColorScheme)?.swiftUIColorScheme
@@ -1937,8 +1957,42 @@ private struct ScholiumResearchCommandContent: View {
 }
 
 #if DEBUG
+enum QAActionNotificationProof {
+    static func notifications(
+        triptychID: UUID,
+        arrivals: [WorkspaceResearchResultArrival]
+    ) -> [ResearchActivityNotification] {
+        arrivals.sorted {
+            if $0.finishedAt != $1.finishedAt {
+                return $0.finishedAt > $1.finishedAt
+            }
+            return $0.runID.uuidString < $1.runID.uuidString
+        }
+        .prefix(2)
+        .map { arrival in
+            let destination = ResearchResultReviewDestination(
+                triptychID: triptychID,
+                arrival: arrival
+            )
+            return ResearchActivityNotification(
+                triptychID: triptychID,
+                runID: arrival.runID,
+                actionID: arrival.actionID,
+                targetNoteID: arrival.originNoteID,
+                targetTitle: arrival.targetTitle,
+                state: .resultReady,
+                activity: nil,
+                result: destination,
+                affectedNotes: arrival.affectedNotes,
+                updatedAt: arrival.finishedAt
+            )
+        }
+    }
+}
+
 private struct ScholiumQACommandContent: View {
     @Environment(\.openWindow) private var openWindow
+    @FocusedObject private var appState: WindowModel?
     @FocusedValue(\.scholiumEditorActions) private var editorActions
 
     var body: some View {
@@ -1955,7 +2009,28 @@ private struct ScholiumQACommandContent: View {
             .keyboardShortcut("w", modifiers: [.command, .option, .control])
             .disabled(editorActions == nil)
         }
-        if qaEditorFaultsAreEnabled && qaResearchWorkflowProofsAreEnabled {
+        if qaEditorFaultsAreEnabled
+            && (qaFeedbackProofsAreEnabled || qaResearchWorkflowProofsAreEnabled) {
+            Divider()
+        }
+        if qaFeedbackProofsAreEnabled {
+            Button("Present Window Feedback Proof") {
+                appState?.presentFeedback(
+                    "QA transient confirmation",
+                    kind: .confirmation
+                )
+                appState?.presentFeedback(
+                    "QA persistent warning",
+                    kind: .warning
+                )
+            }
+            .disabled(appState == nil)
+            Button("Present Action Notification Proof") {
+                appState?.presentQAActionNotificationProof()
+            }
+            .disabled(appState == nil)
+        }
+        if qaFeedbackProofsAreEnabled && qaResearchWorkflowProofsAreEnabled {
             Divider()
         }
         if qaResearchWorkflowProofsAreEnabled {
@@ -1974,6 +2049,13 @@ private struct ScholiumQACommandContent: View {
         Bundle.main.bundleIdentifier == "com.scholium.qa"
             && ProcessInfo.processInfo.arguments.contains(
                 "--scholium-research-workflow-proofs"
+            )
+    }
+
+    private var qaFeedbackProofsAreEnabled: Bool {
+        Bundle.main.bundleIdentifier == "com.scholium.qa"
+            && ProcessInfo.processInfo.arguments.contains(
+                "--scholium-feedback-proofs"
             )
     }
 }
@@ -2027,7 +2109,9 @@ private struct ScholiumCommands: Commands {
             researchCommand
         }
         #if DEBUG
-        if qaEditorFaultsAreEnabled || qaResearchWorkflowProofsAreEnabled {
+        if qaEditorFaultsAreEnabled
+            || qaFeedbackProofsAreEnabled
+            || qaResearchWorkflowProofsAreEnabled {
             CommandMenu("QA") {
                 qaCommand
             }
@@ -2045,6 +2129,13 @@ private struct ScholiumCommands: Commands {
         Bundle.main.bundleIdentifier == "com.scholium.qa"
             && ProcessInfo.processInfo.arguments.contains(
                 "--scholium-research-workflow-proofs"
+            )
+    }
+
+    private var qaFeedbackProofsAreEnabled: Bool {
+        Bundle.main.bundleIdentifier == "com.scholium.qa"
+            && ProcessInfo.processInfo.arguments.contains(
+                "--scholium-feedback-proofs"
             )
     }
     #endif
@@ -2197,13 +2288,13 @@ final class WindowModel: ObservableObject {
             isPresented: { [weak self] in self?.showSearchSurface == true },
             setPresented: { [weak self] in self?.showSearchSurface = $0 },
             reportInformation: { [weak self] message in
-                self?.showToast(message, kind: .information)
+                self?.presentFeedback(message, kind: .information)
             },
             reportLoadFailure: { [weak self] message in
                 self?.vaultError = message
             },
             reportSaveFailure: { [weak self] message in
-                self?.showToast(message, kind: .error)
+                self?.presentFeedback(message, kind: .error)
             },
             setAvailabilityStatus: { [weak self] status in
                 guard let self else { return }
@@ -2298,10 +2389,10 @@ final class WindowModel: ObservableObject {
                 self?.presentationRouter.alert = nil
             },
             reportError: { [weak self] message in
-                self?.showToast(message, kind: .error)
+                self?.presentFeedback(message, kind: .error)
             },
             reportInformation: { [weak self] message in
-                self?.showToast(message, kind: .information)
+                self?.presentFeedback(message, kind: .information)
             },
             refreshTransactionRecovery: { [weak self] in
                 await self?.refreshTransactionRecoveryRecords()
@@ -2318,7 +2409,7 @@ final class WindowModel: ObservableObject {
                 )
             },
             reportInformation: { [weak self] message in
-                self?.showToast(message, kind: .information)
+                self?.presentFeedback(message, kind: .information)
             }
         )
     )
@@ -2401,7 +2492,13 @@ final class WindowModel: ObservableObject {
                     )
             },
             dismissActivity: { [weak self] notification in
-                guard let self, let result = notification.result else { return }
+                guard let self else { return }
+                #if DEBUG
+                if self.dismissQAActionNotificationProof(notification) {
+                    return
+                }
+                #endif
+                guard let result = notification.result else { return }
                 self.researchResultNotificationDismissal?(result)
             }
         )
@@ -2447,7 +2544,7 @@ final class WindowModel: ObservableObject {
             }
         ),
         reportError: { [weak self] message in
-            self?.showToast(message, kind: .error)
+            self?.presentFeedback(message, kind: .error)
         }
     )
 
@@ -2460,8 +2557,8 @@ final class WindowModel: ObservableObject {
         shellState.hasCompletedInitialRestore
     }
 
-    var toastMessage: WindowToast? {
-        shellState.toastMessage
+    var feedbackItems: [WindowFeedback] {
+        shellState.feedbackItems
     }
 
     var colorScheme: WindowColorSchemeChoice {
@@ -2815,7 +2912,7 @@ final class WindowModel: ObservableObject {
                     }
                 },
                 reportInformation: { [weak self] message in
-                    self?.showToast(message)
+                    self?.presentFeedback(message, kind: .information)
                 }
             )
         )
@@ -3381,11 +3478,15 @@ final class WindowModel: ObservableObject {
                     return
                 }
                 if let navigationError = error as? WindowNavigationError {
-                    self.showToast(navigationError.localizedDescription, kind: .warning)
+                    self.presentFeedback(navigationError.localizedDescription, kind: .warning)
                 } else {
                     self.lastSaveError = error.localizedDescription
-                    self.showToast(
-                        "The current note could not be saved, so Scholium kept it open. \(error.localizedDescription)",
+                    self.presentFeedback(
+                        String(
+                            localized: "The current note could not be saved, so Scholium kept it open. \(error.localizedDescription)",
+                            table: "Localizable",
+                            bundle: .module
+                        ),
                         kind: .error
                     )
                 }
@@ -3419,14 +3520,18 @@ final class WindowModel: ObservableObject {
                     return
                 }
                 if let navigationError = error as? WindowNavigationError {
-                    self.showToast(
+                    self.presentFeedback(
                         navigationError.localizedDescription,
                         kind: .warning
                     )
                 } else {
                     self.lastSaveError = error.localizedDescription
-                    self.showToast(
-                        "The current note could not be saved, so Scholium kept it open. \(error.localizedDescription)",
+                    self.presentFeedback(
+                        String(
+                            localized: "The current note could not be saved, so Scholium kept it open. \(error.localizedDescription)",
+                            table: "Localizable",
+                            bundle: .module
+                        ),
                         kind: .error
                     )
                 }
@@ -3556,7 +3661,7 @@ final class WindowModel: ObservableObject {
         guard let vault = workspaceAssignment?.vaults.values.first(where: {
             $0.id == snapshot.id.vaultID
         }) else {
-            showToast(String(localized: "The selected vault is no longer available.", table: "Localizable", bundle: .module), kind: .warning)
+            presentFeedback(String(localized: "The selected vault is no longer available.", table: "Localizable", bundle: .module), kind: .warning)
             return
         }
         let reference = VaultNoteReference(
@@ -3632,7 +3737,7 @@ final class WindowModel: ObservableObject {
                 )
             }
         }, didFail: { [weak self] error in
-            self?.showToast(error.localizedDescription, kind: .warning)
+            self?.presentFeedback(error.localizedDescription, kind: .warning)
         }, didSucceed: { [weak self] in
             self?.openResearchAction(
                 .synthesize,
@@ -3650,7 +3755,7 @@ final class WindowModel: ObservableObject {
         guard let vault = workspaceAssignment?.vaults.values.first(where: {
             $0.id == note.vaultID
         }) else {
-            showToast(
+            presentFeedback(
                 String(
                     localized: "The selected vault is no longer available.",
                     table: "Localizable",
@@ -3737,7 +3842,7 @@ final class WindowModel: ObservableObject {
 
     func requestDocumentMode(_ mode: NotePresentationMode) {
         guard mode == .read || canEditCurrentNote else {
-            showToast(String(localized: "This note is read-only in Scholium.", table: "Localizable", bundle: .module), kind: .information)
+            presentFeedback(String(localized: "This note is read-only in Scholium.", table: "Localizable", bundle: .module), kind: .information)
             return
         }
         requestPresentationMode = mode
@@ -3865,7 +3970,7 @@ final class WindowModel: ObservableObject {
             return
         }
         guard !researchController.actions.hasCancellationBarrier else {
-            showToast(
+            presentFeedback(
                 String(
                     localized: "Resolve the pending Action cancellation before starting another Action.",
                     table: "Localizable",
@@ -3933,7 +4038,7 @@ final class WindowModel: ObservableObject {
                             table: "Localizable",
                             bundle: .module
                         )
-                    self.showToast(reason, kind: .information)
+                    self.presentFeedback(reason, kind: .information)
                     return
                 }
                 let capturedSelection: CommentAnchor?
@@ -3942,7 +4047,7 @@ final class WindowModel: ObservableObject {
                 } else {
                     capturedSelection = nil
                     if selection != nil {
-                        self.showToast(
+                        self.presentFeedback(
                             String(
                                 localized: "The selected passage changed while Scholium saved the note. The Action will open for the whole note.",
                                 table: "Localizable",
@@ -3965,7 +4070,7 @@ final class WindowModel: ObservableObject {
                     resynthesisContext: resynthesisContext,
                     presentationID: presentationID
                       ) else {
-                    self.showToast(
+                    self.presentFeedback(
                         String(
                             localized: "Resolve the pending Action cancellation before starting another Action.",
                             table: "Localizable",
@@ -3983,7 +4088,7 @@ final class WindowModel: ObservableObject {
             } catch {
                 guard !Task.isCancelled,
                       self.researchActionOpenRequestID == requestID else { return }
-                self.showToast(
+                self.presentFeedback(
                     String(
                         localized: "Scholium could not save the current editor before opening this Action. \(error.localizedDescription)",
                         table: "Localizable",
@@ -4030,7 +4135,7 @@ final class WindowModel: ObservableObject {
         guard let activity = ResearchActionActivityPresentation.make(
             activities: activities
         )?.primary else {
-            showToast(
+            presentFeedback(
                 TriptychTransactionError.activeResearchActions(runIDs)
                     .localizedDescription,
                 kind: .warning
@@ -4045,7 +4150,7 @@ final class WindowModel: ObservableObject {
             $0.reference.stableNoteID.flatMap(UUID.init(uuidString:))
                 == activity.targetNoteID
         })?.reference else {
-            showToast(
+            presentFeedback(
                 String(
                     localized: "Open the participating Note, then choose its active Action to continue recovery.",
                     table: "Localizable",
@@ -4391,7 +4496,7 @@ final class WindowModel: ObservableObject {
         do {
             stored = try await windowSessionPersistenceCoordinator.load(id: id)
         } catch {
-            showToast(String(localized: "The saved window layout could not be restored. Scholium opened a clean window instead.", table: "Localizable", bundle: .module), kind: .warning)
+            presentFeedback(String(localized: "The saved window layout could not be restored. Scholium opened a clean window instead.", table: "Localizable", bundle: .module), kind: .warning)
             stored = nil
         }
         guard let stored else {
@@ -4980,9 +5085,9 @@ final class WindowModel: ObservableObject {
         }
 
         if warnings.isEmpty {
-            showToast(successSummary)
+            presentFeedback(successSummary)
         } else {
-            showToast(([successSummary] + warnings).joined(separator: " "), kind: .warning)
+            presentFeedback(([successSummary] + warnings).joined(separator: " "), kind: .warning)
         }
     }
 
@@ -5406,7 +5511,7 @@ final class WindowModel: ObservableObject {
                 error.localizedDescription,
                 for: request
             )
-            showToast(String(localized: "Could not open \(scope.rawValue): \(error.localizedDescription)", table: "Localizable", bundle: .module), kind: .error)
+            presentFeedback(String(localized: "Could not open \(scope.rawValue): \(error.localizedDescription)", table: "Localizable", bundle: .module), kind: .error)
         }
     }
 
@@ -5535,7 +5640,7 @@ final class WindowModel: ObservableObject {
             }
             expandFolderAncestors(folder.rawValue, vaultID: vault.id)
             if !reportCommittedMutationWarnings(outcome) {
-                showToast(
+                presentFeedback(
                     String(
                         localized: "Folder created: \(folder.rawValue)",
                         table: "Localizable",
@@ -5790,7 +5895,7 @@ final class WindowModel: ObservableObject {
             } catch is CancellationError {
                 return
             } catch {
-                showToast(error.localizedDescription, kind: .error)
+                presentFeedback(error.localizedDescription, kind: .error)
             }
         }
     }
@@ -5908,7 +6013,7 @@ final class WindowModel: ObservableObject {
             ))
         }
         if warnings.isEmpty {
-            showToast(
+            presentFeedback(
                 outcome.committedValue.didReplaceSource
                     ? String(
                         localized: "Interrupted save restored",
@@ -5922,7 +6027,7 @@ final class WindowModel: ObservableObject {
                     )
             )
         } else {
-            showToast(warnings.joined(separator: " "), kind: .warning)
+            presentFeedback(warnings.joined(separator: " "), kind: .warning)
         }
         return outcome.committedValue
     }
@@ -6100,7 +6205,7 @@ final class WindowModel: ObservableObject {
         tabActivation: DocumentTabActivation = .place(.replaceSelected)
     ) {
         guard let location = notes.first(where: { $0.relativePath == path }) else {
-            showToast(String(localized: "Note not found: \(path)", table: "Localizable", bundle: .module), kind: .warning)
+            presentFeedback(String(localized: "Note not found: \(path)", table: "Localizable", bundle: .module), kind: .warning)
             return
         }
         PerformanceProbe.shared.beginReadActivation(documentID: path)
@@ -6115,7 +6220,7 @@ final class WindowModel: ObservableObject {
         } else if let descriptor = selectionDescriptor(for: path) {
             documentController.selectDocument(descriptor)
         } else {
-            showToast(
+            presentFeedback(
                 String(localized: "Note not found: \(path)", table: "Localizable", bundle: .module),
                 kind: .warning
             )
@@ -6373,8 +6478,12 @@ final class WindowModel: ObservableObject {
                     error.localizedDescription,
                     for: request
                 )
-                showToast(
-                    "Could not reveal the current note. \(error.localizedDescription)",
+                presentFeedback(
+                    String(
+                        localized: "Could not reveal the current note. \(error.localizedDescription)",
+                        table: "Localizable",
+                        bundle: .module
+                    ),
                     kind: .error
                 )
                 return
@@ -6481,7 +6590,7 @@ final class WindowModel: ObservableObject {
             documentTabController.removeTabs(withIDs: matchingIDs)
             documentController.clearSelectionAfterClosingLastTab()
             reconcileDocumentSessionLeases()
-            showToast(
+            presentFeedback(
                 String(
                     localized: "The deleted note was removed, but Scholium could not activate the adjacent tab. Choose a document to continue. \(error.localizedDescription)",
                     table: "Localizable",
@@ -6654,7 +6763,7 @@ final class WindowModel: ObservableObject {
     func openInternalLink(_ targetWithFragment: String, from sourcePath: String) {
         guard let sourceContext = activeDocumentContext(for: sourcePath),
               let graph = workspaceCatalog?.graph else {
-            showToast(String(localized: "Connections are still refreshing. Try the link again shortly.", table: "Localizable", bundle: .module), kind: .information)
+            presentFeedback(String(localized: "Connections are still refreshing. Try the link again shortly.", table: "Localizable", bundle: .module), kind: .information)
             return
         }
         let parts = targetWithFragment.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
@@ -6685,10 +6794,19 @@ final class WindowModel: ObservableObject {
                 if case .ambiguous = $0.occurrence.resolution { return true }
                 return false
             }
-            showToast(
-                hasAmbiguity
-                    ? "This Connection is ambiguous. Open Incoming or Outgoing to choose a source-located candidate."
-                    : "This Connection is broken or its destination no longer exists.",
+            let message = hasAmbiguity
+                ? String(
+                    localized: "This Connection is ambiguous. Open Incoming or Outgoing to choose a source-located candidate.",
+                    table: "Localizable",
+                    bundle: .module
+                )
+                : String(
+                    localized: "This Connection is broken or its destination no longer exists.",
+                    table: "Localizable",
+                    bundle: .module
+                )
+            presentFeedback(
+                message,
                 kind: .warning
             )
             return
@@ -6697,7 +6815,7 @@ final class WindowModel: ObservableObject {
             $0.reference.vaultID == destination.note.vaultID
                 && $0.reference.relativePath == destination.note.relativePath
         })?.reference else {
-            showToast(String(localized: "The resolved note is not available in the current Triptych catalog.", table: "Localizable", bundle: .module), kind: .warning)
+            presentFeedback(String(localized: "The resolved note is not available in the current Triptych catalog.", table: "Localizable", bundle: .module), kind: .warning)
             return
         }
         Task { await openWorkspaceReference(reference, line: destination.line, mode: .read) }
@@ -6729,7 +6847,7 @@ final class WindowModel: ObservableObject {
             let saved = WindowDocumentLocation.workspace(savedSnapshot)
             let didWarn = reportCommittedMutationWarnings(outcome)
             if !didWarn {
-                showToast(String(
+                presentFeedback(String(
                     localized: "Metadata saved",
                     table: "Localizable",
                     bundle: .module
@@ -6772,13 +6890,65 @@ final class WindowModel: ObservableObject {
         return (refreshed, metadata?.revision)
     }
 
-    func showToast(_ message: String, kind: WindowToast.Kind = .success) {
-        shellState.showToast(message, kind: kind)
+    func presentFeedback(
+        _ message: String,
+        kind: ScholiumFeedbackKind = .confirmation
+    ) {
+        shellState.presentFeedback(message, kind: kind)
     }
+
+    #if DEBUG
+    func presentQAActionNotificationProof() {
+        guard Bundle.main.bundleIdentifier == "com.scholium.qa",
+              ProcessInfo.processInfo.arguments.contains(
+                  "--scholium-feedback-proofs"
+              ),
+              let triptychID = workspaceAssignment?.id else { return }
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let snapshot = try await researchController.researchSnapshot()
+                guard workspaceAssignment?.id == triptychID else { return }
+                let notifications = QAActionNotificationProof.notifications(
+                    triptychID: triptychID,
+                    arrivals: snapshot.resultArrivals
+                )
+                guard !notifications.isEmpty else {
+                    presentQAActionNotificationProofUnavailable()
+                    return
+                }
+                shellState.presentQAResearchActivityNotifications(notifications)
+            } catch {
+                guard workspaceAssignment?.id == triptychID else { return }
+                presentQAActionNotificationProofUnavailable()
+            }
+        }
+    }
+
+    private func dismissQAActionNotificationProof(
+        _ notification: ResearchActivityNotification
+    ) -> Bool {
+        shellState.dismissQAResearchActivityNotification(
+            runID: notification.runID
+        )
+    }
+
+    private func presentQAActionNotificationProofUnavailable() {
+        presentFeedback(
+            String(
+                localized: "QA Action notification proof is unavailable until the Triptych research projection is ready.",
+                table: "Localizable",
+                bundle: .module
+            ),
+            kind: .information
+        )
+    }
+    #endif
 
     /// Presents post-commit repair truth without turning a durable file
     /// operation into a retryable failure. Returns `true` when a warning was
-    /// shown so callers do not immediately replace it with a success toast.
+    /// shown so callers do not immediately add a redundant confirmation.
     @discardableResult
     private func reportCommittedMutationWarnings<CommittedValue: Sendable>(
         _ outcome: WorkspaceMutationOutcome<CommittedValue>,
@@ -6833,7 +7003,7 @@ final class WindowModel: ObservableObject {
             messages.append(presentationWarning)
         }
         guard !messages.isEmpty else { return false }
-        showToast(messages.joined(separator: " "), kind: .warning)
+        presentFeedback(messages.joined(separator: " "), kind: .warning)
         return true
     }
 

@@ -73,6 +73,7 @@ extension View {
 /// data remains immutable input from the Workspace session; only filter,
 /// selection, Note scope, and machine-local dismissal state are mutable here.
 struct AttentionQueueView: View {
+    @Environment(\.locale) private var locale
     @ObservedObject private var presentation: AttentionPresentationState
     @ObservedObject private var session: AttentionPopoverSession
     @AppStorage(AttentionPreferences.dismissalLedgerKey)
@@ -93,7 +94,17 @@ struct AttentionQueueView: View {
 
     private var visibleItems: [AttentionQueueItem] {
         let ledger = AttentionPreferences.decodeLedger(dismissalLedgerData)
-        return presentation.filter.apply(to: ledger.visible(scopedItems))
+        guard presentation.notificationFilter.showsIssues else { return [] }
+        let visible = ledger.visible(scopedItems)
+        let typed = if let kind = presentation.notificationFilter.issueKind {
+            visible.filter { $0.kind == kind }
+        } else {
+            visible
+        }
+        return AttentionStructuralNotificationSearch.apply(
+            to: typed,
+            filter: presentation.filter
+        )
     }
 
     private var visibleActivityNotifications: [ResearchActivityNotification] {
@@ -165,7 +176,7 @@ struct AttentionQueueView: View {
                 }
             }
 
-            TextField("Search Issues", text: filterQuery)
+            TextField("Search Notifications", text: filterQuery)
                 .textFieldStyle(.roundedBorder)
                 .focused($filterFocused)
                 .accessibilityIdentifier("scholium.attentionSearch")
@@ -211,12 +222,15 @@ struct AttentionQueueView: View {
     }
 
     private var kindPicker: some View {
-        Picker("Issue Type", selection: filterKind) {
-            Text("All Issues").tag(AttentionQueueKind?.none)
+        Picker("Notification Type", selection: notificationFilter) {
+            Text("All Notifications").tag(AttentionNotificationFilter.all)
+            Text("Action Activities").tag(AttentionNotificationFilter.activities)
+            Text("All Issues").tag(AttentionNotificationFilter.issues)
             ForEach(AttentionIssueGroup.allCases) { group in
                 Section(ScholiumL10n.dynamicString(group.title)) {
                     ForEach(group.kinds, id: \.self) { kind in
-                        Text(ScholiumL10n.dynamicString(kind.displayName)).tag(Optional(kind))
+                        Text(kind.localizedDisplayNameResource)
+                            .tag(AttentionNotificationFilter.issue(kind))
                     }
                 }
             }
@@ -338,15 +352,16 @@ struct AttentionQueueView: View {
 
     private var emptyTitle: LocalizedStringResource {
         let query = presentation.filter.query.trimmingCharacters(in: .whitespacesAndNewlines)
-        return query.isEmpty && presentation.filter.kind == nil
+        return query.isEmpty && presentation.notificationFilter == .all
             ? "No Notifications"
-            : "No Matching Issues"
+            : "No Matching Notifications"
     }
 
     private var emptyDescription: String {
-        presentation.noteScope == nil
-            ? "No Action activity or visible derived issue needs attention in this Scope."
-            : "No Action activity or visible derived issue needs attention for this Note."
+        AttentionNotificationCopy.emptyDescription(
+            noteScoped: presentation.noteScope != nil,
+            locale: locale
+        )
     }
 
     private var selectedItem: Binding<String?> {
@@ -356,10 +371,10 @@ struct AttentionQueueView: View {
         )
     }
 
-    private var filterKind: Binding<AttentionQueueKind?> {
+    private var notificationFilter: Binding<AttentionNotificationFilter> {
         Binding(
-            get: { presentation.filter.kind },
-            set: { presentation.filter.kind = $0 }
+            get: { presentation.notificationFilter },
+            set: { presentation.notificationFilter = $0 }
         )
     }
 
@@ -429,7 +444,7 @@ struct AttentionQueueView: View {
         if session.isRefreshing, session.catalogIsAvailable {
             return RefreshStatus(
                 symbol: "arrow.triangle.2.circlepath",
-                message: "Refreshing — showing the last available results.",
+                message: AttentionNotificationCopy.refreshing(locale: locale),
                 colorRole: .information,
                 offersRetry: false
             )
@@ -438,21 +453,27 @@ struct AttentionQueueView: View {
         case .opening:
             return RefreshStatus(
                 symbol: "arrow.triangle.2.circlepath",
-                message: "Refreshing — showing the last available results.",
+                message: AttentionNotificationCopy.refreshing(locale: locale),
                 colorRole: .information,
                 offersRetry: false
             )
         case .stale(let issue):
             return RefreshStatus(
                 symbol: "clock.badge.exclamationmark",
-                message: "Results may be out of date. \(issue.reason)",
+                message: AttentionNotificationCopy.stale(
+                    reason: issue.reason,
+                    locale: locale
+                ),
                 colorRole: .attention,
                 offersRetry: true
             )
         case .failed(let issue):
             return RefreshStatus(
                 symbol: "exclamationmark.triangle",
-                message: "Refresh failed. Showing the last available results. \(issue.reason)",
+                message: AttentionNotificationCopy.refreshFailed(
+                    reason: issue.reason,
+                    locale: locale
+                ),
                 colorRole: .destructive,
                 offersRetry: true
             )
@@ -460,7 +481,10 @@ struct AttentionQueueView: View {
             if let error = session.catalogError, session.catalogIsAvailable {
                 return RefreshStatus(
                     symbol: "exclamationmark.triangle",
-                    message: "Refresh failed. Showing the last available results. \(error)",
+                    message: AttentionNotificationCopy.refreshFailed(
+                        reason: error,
+                        locale: locale
+                    ),
                     colorRole: .destructive,
                     offersRetry: true
                 )
@@ -480,7 +504,6 @@ struct ResearchActivityNotificationRow: View {
     let reviewResult: () -> Void
     let followUp: () -> Void
     let dismiss: () -> Void
-    @State private var confirmsEndAction = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
@@ -518,59 +541,25 @@ struct ResearchActivityNotificationRow: View {
 
             HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Spacer(minLength: 0)
-                if notification.result != nil {
-                    Button("Review Result", action: reviewResult)
-                        .accessibilityIdentifier(
-                            "scholium.notification.action.reviewResult.\(notification.runID.uuidString)"
-                        )
-                    Button("Follow Up…", action: followUp)
-                        .accessibilityIdentifier(
-                            "scholium.notification.action.followUp.\(notification.runID.uuidString)"
-                        )
-                    Button("Dismiss", action: dismiss)
-                        .accessibilityIdentifier(
-                            "scholium.notification.action.dismiss.\(notification.runID.uuidString)"
-                        )
-                } else {
-                    Button("Open Action", action: openAction)
-                        .accessibilityIdentifier(
-                            "scholium.notification.action.open.\(notification.runID.uuidString)"
-                        )
-                    Button("End Action…", role: .destructive) {
-                        confirmsEndAction = true
-                    }
-                    .accessibilityIdentifier(
-                        "scholium.notification.action.end.\(notification.runID.uuidString)"
-                    )
-                }
+                ResearchActivityNotificationControls(
+                    notification: notification,
+                    openAction: openAction,
+                    endAction: endAction,
+                    reviewResult: reviewResult,
+                    followUp: followUp,
+                    dismiss: dismiss
+                )
             }
-            .controlSize(.small)
         }
         .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(
             "scholium.notification.action.\(notification.runID.uuidString)"
         )
-        .confirmationDialog(
-            "End this Action?",
-            isPresented: $confirmsEndAction,
-            titleVisibility: .visible
-        ) {
-            Button("Keep Action", role: .cancel) {}
-            Button("End Action", role: .destructive, action: endAction)
-        } message: {
-            Text("Scholium will revoke Agent access and end this unfinished Run. Existing recovery evidence remains available.")
-        }
     }
 
     private var stateTitle: String {
-        switch notification.state {
-        case .waitingForAgent: "Waiting for Agent"
-        case .running: "Running"
-        case .needsAttention: "Needs Attention"
-        case .resultReady: "Result Ready"
-        case .recoveryRequired: "Recovery Required"
-        }
+        ResearchActivityNotificationCopy.stateTitle(notification.state)
     }
 
     private var stateSymbol: String {
@@ -591,18 +580,13 @@ struct ResearchActivityNotificationRow: View {
     }
 
     private var actionTitle: String {
-        switch notification.actionID {
-        case .discuss: String(localized: "Discuss")
-        case .analyze: String(localized: "Analyze")
-        case .synthesize: String(localized: "Synthesize")
-        case .write: String(localized: "Write")
-        case .critique: String(localized: "Critique")
-        case .checkFidelity: String(localized: "Check Fidelity")
-        }
+        ResearchActivityNotificationCopy.actionTitle(notification.actionID)
     }
 }
 
 struct AttentionQueueRow: View {
+    @Environment(\.locale) private var locale
+
     let item: AttentionQueueItem
     let noteTitle: String
     let locator: String
@@ -647,7 +631,7 @@ struct AttentionQueueRow: View {
 
     private var issueSummary: some View {
         HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-            Text(ScholiumL10n.dynamicString(item.kind.displayName))
+            Text(item.kind.localizedDisplayNameResource)
                 .font(ScholiumTypography.interface(.small, emphasis: .medium))
                 .scholiumForeground(severityColorRole)
                 .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
@@ -667,7 +651,7 @@ struct AttentionQueueRow: View {
                 .scholiumForeground(.mutedText)
                 .accessibilityHidden(true)
 
-            Text(item.message)
+            Text(verbatim: AttentionIssueCopy.message(for: item, locale: locale))
                 .font(ScholiumTypography.interface(.compact))
                 .scholiumForeground(.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)

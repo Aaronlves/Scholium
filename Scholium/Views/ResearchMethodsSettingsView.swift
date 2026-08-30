@@ -338,8 +338,13 @@ struct ResearchMethodsSettingsView: View {
                 canRecoverMethodLocators = false
                 errorMessage = nil
                 if let preserved {
-                    settingsModel.showToast(
-                        "Previous Method access was preserved at \(preserved.path)."
+                    settingsModel.presentFeedback(
+                        String(
+                            localized: "Previous Method access was preserved at \(preserved.path).",
+                            table: "Localizable",
+                            bundle: .module
+                        ),
+                        kind: .warning
                     )
                 }
                 await reload()

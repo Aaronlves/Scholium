@@ -401,7 +401,7 @@ extension ScholiumUITests {
         XCTAssertLessThanOrEqual(
             abs(compare.frame.midY - conflictStatus.frame.midY),
             1,
-            "The conflict action must be vertically centered in the status toast."
+            "The conflict action must be vertically centered in the inline conflict status."
         )
         XCTAssertFalse(reload.exists)
         XCTAssertFalse(keepEditing.exists)

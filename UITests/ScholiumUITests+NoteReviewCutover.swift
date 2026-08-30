@@ -386,15 +386,14 @@ extension ScholiumUITests {
         reviewTask.buttons["Close Note Review"].click()
         XCTAssertTrue(waitUntil(timeout: 8) { !reviewTask.exists })
         XCTAssertTrue(notificationStack.waitForExistence(timeout: 8))
-        XCTAssertTrue(
-            String(describing: notificationStack.value)
-                .contains("1 Action notification")
-        )
-        notificationStack.click()
         let seededActivityDismiss = app.buttons[
             "scholium.notification.action.dismiss.\(reviewRecordID.uuidString)"
         ]
-        XCTAssertTrue(seededActivityDismiss.waitForExistence(timeout: 8))
+        XCTAssertTrue(
+            seededActivityDismiss.waitForExistence(timeout: 8),
+            "A single Action must expose Dismiss directly in its banner."
+        )
+        XCTAssertFalse(app.popovers.firstMatch.exists)
         seededActivityDismiss.click()
         XCTAssertTrue(waitUntil(timeout: 8) { !notificationStack.exists })
         XCTAssertTrue(initialReview.exists)
@@ -406,10 +405,9 @@ extension ScholiumUITests {
 
         XCTAssertTrue(notificationStack.waitForExistence(timeout: 20))
         XCTAssertFalse(permissionNotice.exists)
-        XCTAssertTrue(
-            String(describing: notificationStack.value)
-                .contains("1 Action notification")
-        )
+        XCTAssertTrue(app.buttons[
+            "scholium.notification.action.dismiss.\(firstRunID.uuidString)"
+        ].waitForExistence(timeout: 8))
 
         let secondRunID = try completeNoChangeSynthesizeAction(
             request: "Synthesize this fixture again without changing source.",
@@ -418,7 +416,7 @@ extension ScholiumUITests {
 
         XCTAssertTrue(waitUntil(timeout: 20) {
             String(describing: notificationStack.value)
-                .contains("2 Action notifications")
+                .contains("2 Actions")
         })
         XCTAssertEqual(
             app.descendants(matching: .any).matching(
@@ -454,7 +452,7 @@ extension ScholiumUITests {
         XCTAssertTrue(notificationStack.waitForExistence(timeout: 8))
         XCTAssertTrue(
             String(describing: notificationStack.value)
-                .contains("2 Action notifications")
+                .contains("2 Actions")
         )
         XCTAssertTrue(readingAnchor.isHittable)
 
@@ -464,32 +462,47 @@ extension ScholiumUITests {
         )
         notificationStack.hover()
         XCTAssertTrue(notificationStack.isHittable)
+        let activityRows = workspace.descendants(matching: .any)[
+            "scholium.researchActivityNotificationRows"
+        ]
+        XCTAssertTrue(
+            activityRows.waitForExistence(timeout: 8),
+            "Hover must expand sibling Action banners downward in place."
+        )
+        var firstActivityDismiss = activityRows.buttons[
+            "scholium.notification.action.dismiss.\(firstRunID.uuidString)"
+        ]
+        var secondActivityDismiss = activityRows.buttons[
+            "scholium.notification.action.dismiss.\(secondRunID.uuidString)"
+        ]
+        XCTAssertTrue(firstActivityDismiss.waitForExistence(timeout: 8))
+        XCTAssertTrue(secondActivityDismiss.waitForExistence(timeout: 8))
         retainNoteReviewScreenshot(
             of: workspace,
-            named: "Activity notification stack hover preview"
+            named: "Activity notification stack hover expansion"
         )
         notificationStack.click()
-        let firstActivity = app.descendants(matching: .any)[
-            "scholium.notification.action.\(firstRunID.uuidString)"
-        ]
-        let secondActivity = app.descendants(matching: .any)[
-            "scholium.notification.action.\(secondRunID.uuidString)"
-        ]
-        XCTAssertTrue(firstActivity.waitForExistence(timeout: 8))
-        XCTAssertTrue(secondActivity.waitForExistence(timeout: 8))
+        XCTAssertTrue(activityRows.exists, "Click must pin the inline expansion.")
+        XCTAssertFalse(app.popovers.firstMatch.exists)
+        retainNoteReviewScreenshot(
+            of: workspace,
+            named: "Pinned inline Actions"
+        )
 
-        app.buttons[
+        secondActivityDismiss.click()
+        XCTAssertTrue(waitUntil(timeout: 8) { !activityRows.exists })
+        firstActivityDismiss = notificationStack.buttons[
             "scholium.notification.action.dismiss.\(firstRunID.uuidString)"
-        ].click()
-        XCTAssertTrue(waitUntil(timeout: 8) {
-            String(describing: notificationStack.value)
-                .contains("1 Action notification")
-        })
-        app.buttons[
-            "scholium.notification.action.dismiss.\(secondRunID.uuidString)"
-        ].click()
+        ]
+        XCTAssertTrue(firstActivityDismiss.waitForExistence(timeout: 8))
+        XCTAssertFalse(app.popovers.firstMatch.exists)
+        firstActivityDismiss.click()
         XCTAssertTrue(waitUntil(timeout: 8) { !notificationStack.exists })
-        XCTAssertTrue(permissionNotice.waitForExistence(timeout: 8))
+        // System notification authorization belongs to macOS and can already
+        // be authorized or denied for the QA bundle. This journey proves that
+        // eligible education never competes with Review or the Action stack;
+        // deterministic post-stack priority is owned by
+        // `DocumentTopSurfacePresentationTests`.
 
         selectVault(
             "scholium.vault.paper_analysis",
@@ -533,8 +546,7 @@ extension ScholiumUITests {
             "scholium.researchAction.academicText.research-request"
         ]
         XCTAssertTrue(researchRequest.waitForExistence(timeout: 5))
-        researchRequest.click()
-        researchRequest.typeText(request)
+        typeCommittedText(request, into: researchRequest, in: app)
         XCTAssertTrue(waitUntil(timeout: 5) { copy.isEnabled })
         copy.click()
         XCTAssertTrue(waitUntil(timeout: 15) { !actionSheet.exists })

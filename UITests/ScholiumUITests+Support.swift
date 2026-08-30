@@ -251,6 +251,11 @@ extension ScholiumUITests {
         if name.contains("testResearchWriteSetExtensionSheet") {
             application.launchArguments += ["--scholium-write-set-extension-fixture"]
         }
+        if name.contains("testWindowFeedbackPlacesTransientToast")
+            || name.contains("testSettingsFeedbackOverlaysTheWindow")
+            || name.contains("testActionNotificationProofPresentation") {
+            application.launchArguments += ["--scholium-feedback-proofs"]
+        }
         if let appearance {
             application.launchArguments += ["-colorScheme", appearance.rawValue]
         }

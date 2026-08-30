@@ -47,6 +47,12 @@
 - State changes that matter without focus movement are announced once and
   remain inspectable. Progress animation is never the only Running signal;
   persistent errors remain reachable after announcement.
+- Operation feedback exposes its semantic type, complete message, and explicit
+  Dismiss control in reading order. A redundant Confirmation or Information
+  toast is announced once without moving focus and may time out; Warning,
+  Error, partial-commit, source-integrity, and recovery facts remain selectable
+  and reachable after their one announcement and never rely on color, symbol,
+  motion, position, or timeout alone.
 - Synthetic events cannot certify genuine VoiceOver, Voice Control, Dictation,
   Full Keyboard Access, installed input methods, or system text services.
   Release acceptance retains the corresponding human gates.
@@ -80,17 +86,26 @@
 - Attention exposes heading, filter, groups, selected task, issue, Note,
   locator, state, and actions in one linear order. Loading, stale, and
   recoverable failure preserve current rows and name Retry.
-- The Activity Notification Stack is one keyboard-focusable button whose name
-  opens Notifications and whose value states the exact count, latest Action
-  state, and complete latest target title. Rear layers are decorative and
-  absent from the accessibility tree. Their resting offsets never replace the
-  visible count; hover and keyboard focus share the bounded preview, and Reduce
-  Motion retains the collapsed presentation without geometry animation.
+- One Action activity exposes its complete state, target, and valid actions
+  directly in the Document banner. A multiple-activity stack begins with one
+  keyboard-focusable disclosure named **Show Action Notifications** whose value
+  states only the exact count requiring attention.
+  Pointer presence and keyboard focus reveal the same downward Action-only
+  expansion; activation or Space pins it, Escape collapses it, and every direct
+  action has a stable name and Run-bound identity. Structural issues, Search
+  Notifications, Notification Type, and All Notifications are absent from that
+  expansion and its accessibility tree. Rear layers are decorative and absent
+  from the tree. Reduce Motion preserves content and disclosure state without
+  geometry animation.
 - While that stack is present, one-time system-notification permission
   education is neither presented nor announced; it may enter reading order
   after the stack disappears. A presented current-Note Review task likewise
   removes the stack from the active tree without dismissing its activities;
   if attention remains, the stack returns after the Review task leaves.
+- Settings window feedback follows window reading order rather than the
+  selected detail section, does not move existing controls, and remains one
+  queued accessible item. Field-specific validation remains adjacent to and
+  programmatically associated with its field.
 
 ### Document and editor
 
@@ -267,7 +282,8 @@
 - Copy Handoff success closes preparation and returns focus to the originating
   Action row. Result arrival announces no focus change; the persistent
   Action-level notification and its summarized Document stack remain explicit
-  routes to the exact queue and Record.
+  routes to that exact activity and its Record, while the Triptych bell remains
+  the complete queue route.
 - Follow-up exposes a named finding/question/hypothesis control, its short
   statement, next Action, and Research Request in reading order. Optional
   **Feedback on Previous Result** is a labelled default-collapsed disclosure;
@@ -312,8 +328,10 @@
   once without moving focus. Closing the task removes it from the active tree;
   the Overview Review row remains the named route that can present it again.
   While presented it precedes and replaces the Activity Notification Stack in
-  Document reading order; the hidden stack neither duplicates the announcement
-  nor exposes decorative layers.
+  Document reading order. It uses the same compact banner grammar and direct
+  keyboard actions without becoming operation feedback, acquiring a timeout,
+  or entering a feedback queue; the hidden Action stack neither duplicates the
+  announcement nor exposes decorative layers.
 - Reading Lead detail retains one order from disposition and full citation
   through bibliography, discovery, reason, uncertainty, note, source, parent,
   and technical identity. Narrow or enlarged presentation stacks complete

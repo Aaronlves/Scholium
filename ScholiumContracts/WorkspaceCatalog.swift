@@ -186,11 +186,9 @@ public struct AttentionQueueItem: Codable, Hashable, Identifiable, Sendable {
 /// not search or rank authoritative note content, and therefore remains
 /// distinct from full-text search while sharing its plain query interaction.
 public struct AttentionQueueFilter: Codable, Hashable, Sendable {
-    public var kind: AttentionQueueKind?
     public var query: String
 
-    public init(kind: AttentionQueueKind? = nil, query: String = "") {
-        self.kind = kind
+    public init(query: String = "") {
         self.query = query
     }
 
@@ -199,7 +197,6 @@ public struct AttentionQueueFilter: Codable, Hashable, Sendable {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
         return items.filter { item in
-            guard kind == nil || item.kind == kind else { return false }
             guard !normalizedQuery.isEmpty else { return true }
             let searchable = [
                 item.kind.displayName,

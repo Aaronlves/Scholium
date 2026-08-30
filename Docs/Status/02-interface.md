@@ -60,8 +60,11 @@
   the exact aggregate count, and unavailable first load never claims zero.
 - Needs Attention, Result Ready, and Recovery Required Action activities also
   project one exact-count Document notification stack. It exposes at most three
-  visible layers, uses a bounded hover/focus preview, and opens the same complete
-  queue without owning Dismiss or activity state.
+  visible layers. One Action exposes its valid operations directly. Multiple
+  Actions expand downward into bounded inline rows through hover, focus, click,
+  focused Space, or Window → Notifications; they expose no complete-queue
+  search, filter, structural issue, or popover and own neither Dismiss nor
+  activity state.
 
 ## Document and Research Inspector
 
@@ -149,7 +152,10 @@
   Closing the popover/window never Dismisses it.
 - Authorized background completion uses a private system notification; click
   routing retains its exact Triptych, Record, and finalized fingerprint even
-  when no main window remains. Arrival alone never opens, retargets, focuses,
+  when no main window remains. A cold-launch click waits for the first owning
+  Triptych snapshot before exact validation. Notifications Settings exposes
+  current system authorization plus Enable or System Settings recovery after
+  the one-time education surface is dismissed. Arrival alone never opens, retargets, focuses,
   reviews, or activates Records. One Action may summarize multiple affected
   Notes, whose Review/Undo states remain independent.
 
@@ -167,8 +173,19 @@
   structural source/conflict/recovery Attention rows and their Inspect,
   Resynthesize, Leave Unchanged, timed dismiss, and Retry routes without merging
   those semantics with Action Dismiss. Sidebar, current-Note Inspector, and the
-  attention-requiring Document activity stack are presentation anchors to this
-  same popover.
+  Sidebar and current-Note Inspector share the same native complete-queue
+  popover session. The Document activity stack never opens that popover; it
+  presents only its own Action rows and operations inline.
+- Notifications search uses localized Action state/action names, structural
+  issue types and reasons, empty/refresh copy, and the explicit All, Action
+  Activities, All Issues, or concrete issue-type filter. Window operation
+  feedback is typed and ordered: Confirmation and Information use a narrow
+  bottom-centred window overlay, while Warning and Error persist at the
+  top-centred edge; both use a compact outer-edge inset, top feedback may cover
+  toolbar space, and neither changes Document geometry. Settings presents the
+  same queue one item at a time immediately below native toolbar space in a top-centred
+  window overlay that does not reflow panes. Source-integrity notices remain
+  inline Document state.
 - The Workspace Records control opens This Note scope for a resolved selected
   Note and remains available without a Document by opening Triptych scope.
   Research Records opens to Records or Reading Leads with toolbar View,

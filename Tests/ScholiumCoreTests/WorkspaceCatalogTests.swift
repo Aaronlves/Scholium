@@ -217,7 +217,7 @@ struct WorkspaceCatalogTests {
             message: "Possible orphan."
         )
 
-        #expect(AttentionQueueFilter(kind: .changedSinceSettled, query: "line 12")
+        #expect(AttentionQueueFilter(query: "line 12")
             .apply(to: [item, other]) == [item])
 
         let now = Date(timeIntervalSince1970: 1_000_000)

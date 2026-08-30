@@ -213,12 +213,19 @@ utility panel, or always-on-top surface. Per-Workspace
 Inspector workspace subset, and an optional current-Note subset;
 `AttentionPopoverSession` adapts that state
 and the current immutable structural queue plus application-owned Action
-activities to the Sidebar, Inspector, and temporary Document activity-stack
-anchors without duplicating either.
+activities only to the Sidebar and Inspector anchors without duplicating
+either. A typed `AttentionPresentationRequest` separates complete-queue
+popover requests from a window-local Action-stack expansion request. The
+Document stack never opens or retains a popover Run selection; it renders one
+Action directly or an ordered set of Action rows in place.
 The adapter observes only the exact assignment and
 workspace-projection owners plus the single dismissal-duration setting; it
 borrows closed refresh and resynthesis effects and never observes or retains
-the complete `WindowModel`. Sidebar derives one read-only aggregate from the
+the complete `WindowModel`. The App presentation layer localizes Action state
+and action names, empty/refresh states, and the bounded developer-owned
+structural reason vocabulary; Contract and Application projections remain
+delivery-neutral and researcher-authored titles, paths, and diagnostic details
+remain verbatim. Sidebar derives one read-only aggregate from the
 same catalog and machine-local dismissal ledger through its stable BrandHeader
 entry; workspace rows
 instead consume neutral ordinary-active-Note totals, and zero remains a real
@@ -226,19 +233,21 @@ inventory value. The Document toolbar consumes
 no Notifications count, observation, item, action, reserved width, or popover
 anchor. `ContentView` filters the same immutable Action activity array to
 Needs Attention, Result Ready, and Recovery Required and projects one
-presentation-only stack above Document; the stack adds no queue or dismissal
+presentation-only top-centred window overlay; the stack adds no queue or dismissal
 state. A missing first catalog remains checking, and a failed first load
 presents an unavailable Retry state rather than zero. Sidebar opens the complete
-Triptych queue; the activity stack opens that same complete queue; Inspector may
-add the active Note, and a workspace change clears that Inspector subset without
-retargeting an already open Triptych queue. SwiftUI's
-transient popover behavior owns outside-click and Escape closure; that closure
-does not remove Action activities. Inspect and Resynthesize close before routing
-through the same exact `WindowModel`.
+Triptych queue; Inspector may add the active Note. One Action is already fully
+operable in its Document banner. Multiple Actions share one summary and expand
+downward over Document through hover, focus, click, focused Space,
+or the Window command; no queue search, filter, structural item, or popover is
+present. Escape or summary activation collapses the pinned expansion without
+dismissing activity. A workspace change clears an Inspector subset without
+retargeting an already open Triptych queue. Inspect and Resynthesize close the
+complete queue popover before routing through the same exact `WindowModel`.
 **Window → Notifications** asks the exact `WorkspaceWindowCoordinator` for a visible
 contextual route: the stable Sidebar entry whenever Sidebar is visible, then the
-attention-requiring Document activity stack, then the nonempty current-Note
-Inspector summary. Without any visible anchor the
+Action stack in an attention-requiring Document, then the
+nonempty current-Note Inspector summary. Without any visible anchor the
 command is disabled; it never synthesizes a toolbar or detached presentation
 route. The application-wide window registry records exact Workspace focus
 changes so the newly active Workspace resets query, kind, Note subset, and
@@ -264,7 +273,7 @@ last requested workspace. `WindowModel.currentWorkspaceVaultSnapshot` first cons
 the narrow `WindowWorkspaceProjectionController.vaultSnapshot(id:)` query; the
 Application operation is only an initial-construction fallback. A complete
 destination session and Source List commit together, while staged failure
-retains the prior workspace and reports through the existing toast path.
+retains the prior workspace and appends typed persistent window feedback.
 Explicit refresh continues to use the content-loading/error presentation.
 
 Snapshot assembly derives Synthesis Material Changed only from the latest

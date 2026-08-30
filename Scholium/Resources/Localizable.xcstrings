@@ -678,18 +678,18 @@
         }
       }
     },
-    "%lld Action notifications" : {
+    "%lld Actions" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "%lld Action notifications"
+            "value" : "%lld Actions"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%lld 条操作通知"
+            "value" : "%lld 个研究操作"
           }
         }
       }
@@ -1345,22 +1345,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "/"
-          }
-        }
-      }
-    },
-    "1 Action notification" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "1 Action notification"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "1 条操作通知"
           }
         }
       }
@@ -2116,6 +2100,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "操作"
+          }
+        }
+      }
+    },
+    "Action Activities" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "研究操作活动"
           }
         }
       }
@@ -3435,6 +3429,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "所有文档"
+          }
+        }
+      }
+    },
+    "All Notifications" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "所有通知"
           }
         }
       }
@@ -6229,6 +6233,16 @@
         }
       }
     },
+    "Checking notification permission" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在检查通知权限"
+          }
+        }
+      }
+    },
     "Checking source access…" : {
       "localizations" : {
         "zh-Hans" : {
@@ -8627,6 +8641,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "确认此文件夹，使 Scholium 能使用作品旁的可移植 .scholium 控制文件夹。"
+          }
+        }
+      }
+    },
+    "Confirmation" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确认"
           }
         }
       }
@@ -12522,6 +12546,16 @@
         }
       }
     },
+    "Enable System Notifications" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "启用系统通知"
+          }
+        }
+      }
+    },
     "Enable as Work Action" : {
       "localizations" : {
         "en" : {
@@ -12778,6 +12812,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "认知身份或研究者状态"
+          }
+        }
+      }
+    },
+    "Error" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "错误"
           }
         }
       }
@@ -13774,6 +13818,26 @@
         }
       }
     },
+    "Finish text composition to change document mode." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先结束文本输入，再切换文稿模式。"
+          }
+        }
+      }
+    },
+    "Finish text composition to open a Research Action." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先结束文本输入，再打开研究操作。"
+          }
+        }
+      }
+    },
     "Finish the current file selection before choosing another file or folder." : {
       "localizations" : {
         "en" : {
@@ -14450,6 +14514,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "隐藏 %arg"
+          }
+        }
+      }
+    },
+    "Hide Action Notifications" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收起研究操作通知"
           }
         }
       }
@@ -15362,6 +15436,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已索引附件不可用：%arg"
+          }
+        }
+      }
+    },
+    "Information" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "信息"
           }
         }
       }
@@ -19106,6 +19190,230 @@
         }
       }
     },
+    "A selected Analysis changed after Synthesize" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "A selected Analysis changed after Synthesize"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "某篇已选分析在综合后发生了更改"
+          }
+        }
+      }
+    },
+    "Changed after this revision was settled" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Changed after this revision was settled"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此修订暂定后发生了更改"
+          }
+        }
+      }
+    },
+    "Identity not confirmed" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Identity not confirmed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "身份尚未确认"
+          }
+        }
+      }
+    },
+    "Invalid relationship endpoint" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Invalid relationship endpoint"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关联端点无效"
+          }
+        }
+      }
+    },
+    "Invalid YAML" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Invalid YAML"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "YAML 无效"
+          }
+        }
+      }
+    },
+    "Missing block" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Missing block"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "块缺失"
+          }
+        }
+      }
+    },
+    "Missing heading" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Missing heading"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标题缺失"
+          }
+        }
+      }
+    },
+    "Missing Note" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Missing Note"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "笔记缺失"
+          }
+        }
+      }
+    },
+    "Multiple candidates" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Multiple candidates"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有多个候选项"
+          }
+        }
+      }
+    },
+    "Multiple matching headings" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Multiple matching headings"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有多个匹配的标题"
+          }
+        }
+      }
+    },
+    "Multiple matching Notes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Multiple matching Notes"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有多个匹配的笔记"
+          }
+        }
+      }
+    },
+    "No incoming or outgoing links" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No incoming or outgoing links"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有传入或传出链接"
+          }
+        }
+      }
+    },
+    "No Action activity or visible derived issue needs attention for this Note." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No Action activity or visible derived issue needs attention for this Note."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此笔记没有需要关注的 Action 活动或可见派生问题。"
+          }
+        }
+      }
+    },
+    "No Action activity or visible derived issue needs attention in this Scope." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No Action activity or visible derived issue needs attention in this Scope."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此范围内没有需要关注的 Action 活动或可见派生问题。"
+          }
+        }
+      }
+    },
     "No Actions are available for this note." : {
       "localizations" : {
         "en" : {
@@ -19403,6 +19711,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "没有匹配的材料"
+          }
+        }
+      }
+    },
+    "No Matching Notifications" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有匹配的通知"
           }
         }
       }
@@ -20253,6 +20571,16 @@
         }
       }
     },
+    "Not Enabled" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未启用"
+          }
+        }
+      }
+    },
     "Not Evaluated" : {
       "localizations" : {
         "zh-Hans" : {
@@ -20588,6 +20916,16 @@
         }
       }
     },
+    "Notification Type" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通知类型"
+          }
+        }
+      }
+    },
     "Notification settings saved" : {
       "localizations" : {
         "zh-Hans" : {
@@ -20715,6 +21053,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "观察到的修订：%arg"
+          }
+        }
+      }
+    },
+    "Off in System Settings" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已在系统设置中关闭"
           }
         }
       }
@@ -20950,22 +21298,6 @@
         }
       }
     },
-    "Open Notifications" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Open Notifications"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "打开通知"
-          }
-        }
-      }
-    },
     "Open Parent Record" : {
       "localizations" : {
         "zh-Hans" : {
@@ -21068,6 +21400,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "打开系统设置"
+          }
+        }
+      }
+    },
+    "Open System Notification Settings…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开系统通知设置…"
           }
         }
       }
@@ -23001,6 +23343,32 @@
         }
       }
     },
+    "Present Action Notification Proof" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Present Action Notification Proof"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "呈现研究操作通知验证界面"
+          }
+        }
+      }
+    },
+    "Present Window Feedback Proof" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "呈现窗口反馈验证"
+          }
+        }
+      }
+    },
     "Presentation" : {
       "localizations" : {
         "zh-Hans" : {
@@ -23133,6 +23501,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "预览…"
+          }
+        }
+      }
+    },
+    "Previous Method access was preserved at %@." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已在 %@ 保留先前的方法访问权限。"
           }
         }
       }
@@ -23521,6 +23899,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "目的（可选）"
+          }
+        }
+      }
+    },
+    "QA Action notification proof is unavailable until the Triptych research projection is ready." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "QA Action notification proof is unavailable until the Triptych research projection is ready."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "三联窗研究投影就绪后才能呈现 QA 研究操作通知验证界面。"
           }
         }
       }
@@ -24600,6 +24994,22 @@
         }
       }
     },
+    "Refresh failed. Showing the last available results. %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Refresh failed. Showing the last available results. %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "刷新失败。目前显示上次可用的结果。%@"
+          }
+        }
+      }
+    },
     "Refresh Failed" : {
       "localizations" : {
         "en" : {
@@ -24684,6 +25094,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "刷新 Zotero 元数据…"
+          }
+        }
+      }
+    },
+    "Refreshing — showing the last available results." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Refreshing — showing the last available results."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在刷新——目前显示上次可用的结果。"
           }
         }
       }
@@ -27018,6 +27444,22 @@
         }
       }
     },
+    "Results may be out of date. %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Results may be out of date. %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "结果可能已过时。%@"
+          }
+        }
+      }
+    },
     "Resynthesize" : {
       "localizations" : {
         "en" : {
@@ -28812,6 +29254,16 @@
         }
       }
     },
+    "Scholium could not capture the current selection. The Action will open for the whole note. %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 无法捕获当前选区。研究操作将针对整篇笔记打开。%@"
+          }
+        }
+      }
+    },
     "Scholium could not confirm that this Action is available for the current note." : {
       "localizations" : {
         "en" : {
@@ -28856,6 +29308,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scholium 无法复制交接说明。%@"
+          }
+        }
+      }
+    },
+    "Scholium could not match the selected passage reliably. The Action will open for the whole note." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 无法可靠匹配所选段落。研究操作将针对整篇笔记打开。"
+          }
+        }
+      }
+    },
+    "Scholium could not open this Comment. %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 无法打开此评论。%@"
+          }
+        }
+      }
+    },
+    "Scholium could not open this Discussion. %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 无法打开此讨论。%@"
           }
         }
       }
@@ -28920,6 +29402,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scholium 无法在打开此操作前保存当前编辑器。%1$@"
+          }
+        }
+      }
+    },
+    "Scholium could not save this Comment. %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 无法保存此评论。%@"
           }
         }
       }
@@ -29221,6 +29713,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scholium 保留了原始编辑缓冲区，因为此文档已无法通过当前脉络访问。"
+          }
+        }
+      }
+    },
+    "Scholium kept this window open because the current note could not be saved. %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "因当前笔记无法保存，Scholium 保留了此窗口。%@"
           }
         }
       }
@@ -29692,6 +30194,16 @@
         }
       }
     },
+    "Search Notifications" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索通知"
+          }
+        }
+      }
+    },
     "Search Research" : {
       "localizations" : {
         "zh-Hans" : {
@@ -30008,6 +30520,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "请在研究文档中选择一则笔记，以开始阅读或编辑。"
+          }
+        }
+      }
+    },
+    "Select a passage before commenting." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先选择一段文字再评论。"
           }
         }
       }
@@ -30532,6 +31054,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "将此角色的新建笔记 YAML 缩短到 64 KiB 或更小。"
+          }
+        }
+      }
+    },
+    "Show Action Notifications" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "展开研究操作通知"
           }
         }
       }
@@ -31964,12 +32496,32 @@
         }
       }
     },
+    "System Result Notifications" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "系统结果通知"
+          }
+        }
+      }
+    },
     "System Trash and Record Cleanup" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "系统纸篓与研究记录清理"
+          }
+        }
+      }
+    },
+    "System notifications use a private summary and never include Note, Result, Record, or research-content text." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "系统通知仅使用不含私密内容的摘要，绝不会包含笔记、结果、记录或研究内容文本。"
           }
         }
       }
@@ -32368,6 +32920,16 @@
         }
       }
     },
+    "The Comment was saved. Research views will refresh when the workspace is available." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "评论已保存。工作区可用后，研究视图将刷新。"
+          }
+        }
+      }
+    },
     "The Discussion is waiting for one Agent reply. A successful reply forms its Research Record automatically and clears these Comments from Review. Closing this sheet leaves it active." : {
       "localizations" : {
         "zh-Hans" : {
@@ -32740,6 +33302,16 @@
         }
       }
     },
+    "The current note could not be saved, so Scholium kept it open. %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前笔记无法保存，因此 Scholium 将其保持打开。%@"
+          }
+        }
+      }
+    },
     "The current note is unavailable." : {
       "localizations" : {
         "en" : {
@@ -32804,6 +33376,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已移除被删除的笔记，但 Scholium 无法激活相邻标签页。请选择一篇文档以继续。错误：%1$@"
+          }
+        }
+      }
+    },
+    "The document was saved, but window state could not be saved. %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文稿已保存，但无法保存窗口状态。%@"
           }
         }
       }
@@ -33342,6 +33924,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "所记录的标题或引文并不能确定一个确切的段落。"
+          }
+        }
+      }
+    },
+    "The requested Discussion is no longer active." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请求的讨论已不再处于活动状态。"
           }
         }
       }
@@ -33895,6 +34487,48 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此评论已结束。"
+          }
+        }
+      }
+    },
+    "This Comment is no longer in an active Discussion." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此评论已不在活动讨论中。"
+          }
+        }
+      }
+    },
+    "This Connection is ambiguous. Open Incoming or Outgoing to choose a source-located candidate." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This Connection is ambiguous. Open Incoming or Outgoing to choose a source-located candidate."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此连接存在歧义。请打开“指向本笔记的链接”或“本笔记指向的链接”，选择带来源位置的候选项。"
+          }
+        }
+      }
+    },
+    "This Connection is broken or its destination no longer exists." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This Connection is broken or its destination no longer exists."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此连接已断开，或其目标已不存在。"
           }
         }
       }
@@ -36748,6 +37382,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在等待被中断的操作完成清理…"
+          }
+        }
+      }
+    },
+    "Warning" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "警告"
           }
         }
       }

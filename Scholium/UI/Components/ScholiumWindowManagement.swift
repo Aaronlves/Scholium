@@ -344,10 +344,7 @@ struct WorkspaceWindowActions {
     let setResearchInspectorVisible: @MainActor (Bool) -> Void
     let showNoteResearchRecords: @MainActor () -> Void
     let showTriptychResearchRecords: @MainActor () -> Void
-    let showAttention: @MainActor (
-        AttentionPopoverAnchor,
-        VaultQualifiedNoteID?
-    ) -> Void
+    let showAttention: @MainActor (AttentionPresentationRequest) -> Void
     let showPreferredAttention: @MainActor () -> Void
     let canShowAttention: @MainActor () -> Bool
 }
@@ -414,11 +411,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     private var researchRecordsTriptychID: UUID?
     private var researchNotificationWindowToken: UUID?
     private var attentionPresenter:
-        @MainActor (
-            AttentionPopoverAnchor,
-            WorkspaceVaultSlot?,
-            VaultQualifiedNoteID?
-        ) -> Void = { _, _, _ in }
+        @MainActor (AttentionPresentationRequest) -> Void = { _ in }
     private weak var agentRequestPriorResponder: NSResponder?
     private var agentRequestWindowIsRegistered = false
     #if DEBUG
@@ -482,8 +475,8 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             showTriptychResearchRecords: { [weak self] in
                 self?.triptychResearchRecordsPresenter()
             },
-            showAttention: { [weak self] anchor, noteScope in
-                self?.attentionPresenter(anchor, nil, noteScope)
+            showAttention: { [weak self] request in
+                self?.attentionPresenter(request)
             },
             showPreferredAttention: { [weak self] in
                 self?.showPreferredAttention()
@@ -513,11 +506,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         reviewResearchResult: @escaping @MainActor (
             ResearchResultReviewDestination
         ) -> Void,
-        showAttention: @escaping @MainActor (
-            AttentionPopoverAnchor,
-            WorkspaceVaultSlot?,
-            VaultQualifiedNoteID?
-        ) -> Void
+        showAttention: @escaping @MainActor (AttentionPresentationRequest) -> Void
     ) {
         registerLifecycle()
         noteResearchRecordsPresenter = showNoteResearchRecords
@@ -680,7 +669,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         triptychResearchRecordsPresenter = {}
         researchRecordsWindowPresenter = {}
         researchResultReviewer = { _ in }
-        attentionPresenter = { _, _, _ in }
+        attentionPresenter = { _ in }
     }
 
     private func finalizeWindowAttachments(
@@ -878,23 +867,17 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         window.close()
     }
 
-    private struct PreferredAttentionRoute {
-        let anchor: AttentionPopoverAnchor
-        let workspaceSlot: WorkspaceVaultSlot?
-        let noteScope: VaultQualifiedNoteID?
-    }
-
     private func showPreferredAttention() {
-        guard let route = preferredAttentionRoute() else { return }
-        attentionPresenter(route.anchor, route.workspaceSlot, route.noteScope)
+        guard let request = preferredAttentionRoute() else { return }
+        attentionPresenter(request)
     }
 
-    private func preferredAttentionRoute() -> PreferredAttentionRoute? {
+    private func preferredAttentionRoute() -> AttentionPresentationRequest? {
         let ledgerData = UserDefaults.standard.data(
             forKey: AttentionPreferences.dismissalLedgerKey
         ) ?? Data()
         if appState.sidebarVisible {
-            return PreferredAttentionRoute(
+            return .queue(
                 anchor: .sidebar,
                 workspaceSlot: nil,
                 noteScope: nil
@@ -904,11 +887,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         if appState.shellState.researchActivityNotifications.contains(where: {
             $0.state.requiresResearcherAttention
         }) {
-            return PreferredAttentionRoute(
-                anchor: .activityStack,
-                workspaceSlot: nil,
-                noteScope: nil
-            )
+            return .actionStack
         }
 
         guard appState.researchInspectorVisible,
@@ -925,7 +904,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
                 && $0.note.relativePath == noteScope.relativePath
         }
         guard !ledger.visible(noteItems).isEmpty else { return nil }
-        return PreferredAttentionRoute(
+        return .queue(
             anchor: .inspector,
             workspaceSlot: nil,
             noteScope: noteScope
@@ -1144,8 +1123,12 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
                 guard attempt == closeAttemptGeneration,
                       self.window === sender else { return }
                 if let warning = outcome.presentationWarning {
-                    appState.showToast(
-                        "The document was saved, but window state could not be saved. \(warning)",
+                    appState.presentFeedback(
+                        String(
+                            localized: "The document was saved, but window state could not be saved. \(warning)",
+                            table: "Localizable",
+                            bundle: .module
+                        ),
                         kind: .warning
                     )
                 }
@@ -1155,8 +1138,12 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
                       self.window === sender else { return }
                 flushInFlight = false
                 appState.lastSaveError = error.localizedDescription
-                appState.showToast(
-                    "Scholium kept this window open because the current note could not be saved. \(error.localizedDescription)",
+                appState.presentFeedback(
+                    String(
+                        localized: "Scholium kept this window open because the current note could not be saved. \(error.localizedDescription)",
+                        table: "Localizable",
+                        bundle: .module
+                    ),
                     kind: .error
                 )
             }
@@ -1274,6 +1261,170 @@ final class WindowAttachmentView: NSView {
         super.viewDidMoveToWindow()
         guard let window else { return }
         onWindowAttachment?(window)
+    }
+}
+
+/// Installs interactive SwiftUI content as the frontmost child of the native
+/// window frame. A workspace notification may therefore cover the toolbar
+/// without leaving AppKit's toolbar above it in the pointer event path.
+private final class WorkspaceWindowTopOverlayHostingView<Content: View>:
+    NSHostingView<Content> {
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+}
+
+struct WorkspaceWindowTopOverlayHost<Overlay: View>: NSViewRepresentable {
+    let topInset: CGFloat
+    let overlay: Overlay
+
+    init(
+        topInset: CGFloat,
+        @ViewBuilder overlay: () -> Overlay
+    ) {
+        self.topInset = topInset
+        self.overlay = overlay()
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> WindowAttachmentView {
+        context.coordinator.update(overlay: overlay, topInset: topInset)
+        let view = WindowAttachmentView()
+        view.onWindowAttachment = { [weak coordinator = context.coordinator] window in
+            coordinator?.attach(to: window)
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: WindowAttachmentView, context: Context) {
+        context.coordinator.update(overlay: overlay, topInset: topInset)
+        if let window = nsView.window {
+            context.coordinator.attach(to: window)
+        }
+    }
+
+    static func dismantleNSView(
+        _ nsView: WindowAttachmentView,
+        coordinator: Coordinator
+    ) {
+        coordinator.detach()
+    }
+
+    @MainActor
+    final class Coordinator {
+        private weak var window: NSWindow?
+        private weak var frameView: NSView?
+        private var hostingView: WorkspaceWindowTopOverlayHostingView<Overlay>?
+        private var pendingTopInset: CGFloat = 0
+
+        func update(overlay: Overlay, topInset: CGFloat) {
+            pendingTopInset = topInset
+            if let hostingView {
+                hostingView.rootView = overlay
+                hostingView.invalidateIntrinsicContentSize()
+                hostingView.needsLayout = true
+                hostingView.superview?.needsLayout = true
+            } else {
+                let hostingView = WorkspaceWindowTopOverlayHostingView(
+                    rootView: overlay
+                )
+                hostingView.translatesAutoresizingMaskIntoConstraints = true
+                hostingView.autoresizingMask = [.minXMargin, .maxXMargin]
+                hostingView.setContentHuggingPriority(.required, for: .horizontal)
+                hostingView.setContentHuggingPriority(.required, for: .vertical)
+                hostingView.setContentCompressionResistancePriority(
+                    .required,
+                    for: .horizontal
+                )
+                hostingView.setContentCompressionResistancePriority(
+                    .required,
+                    for: .vertical
+                )
+                hostingView.wantsLayer = true
+                hostingView.layer?.zPosition = 10_000
+                self.hostingView = hostingView
+            }
+            layoutHost()
+            DispatchQueue.main.async { @MainActor [weak self] in
+                self?.layoutHost()
+            }
+        }
+
+        func attach(to window: NSWindow) {
+            guard let hostingView,
+                  let contentView = window.contentView else { return }
+            let frameView: NSView
+            if let titlebarView = fullWidthTitlebarView(in: window) {
+                frameView = titlebarView
+            } else {
+                var rootView = contentView
+                while let superview = rootView.superview {
+                    rootView = superview
+                }
+                frameView = rootView
+            }
+            if self.window === window,
+               self.frameView === frameView,
+               hostingView.superview === frameView {
+                layoutHost()
+                return
+            }
+            detachHost()
+            self.window = window
+            self.frameView = frameView
+            frameView.addSubview(hostingView, positioned: .above, relativeTo: nil)
+            layoutHost()
+        }
+
+        private func fullWidthTitlebarView(in window: NSWindow) -> NSView? {
+            var candidate = window.standardWindowButton(.closeButton)?.superview
+            let minimumWidth = window.frame.width * 0.9
+            let minimumHeight = max(
+                ScholiumGrid.Dimension.minimumCustomTarget,
+                window.frame.height - window.contentLayoutRect.height
+            )
+            while let view = candidate {
+                if view.bounds.width >= minimumWidth,
+                   view.bounds.height >= minimumHeight {
+                    return view
+                }
+                candidate = view.superview
+            }
+            return nil
+        }
+
+        func detach() {
+            detachHost()
+            window = nil
+            frameView = nil
+        }
+
+        private func detachHost() {
+            hostingView?.removeFromSuperview()
+        }
+
+        private func layoutHost() {
+            guard let window, let frameView, let hostingView else { return }
+            hostingView.layoutSubtreeIfNeeded()
+            let fittingSize = hostingView.fittingSize
+            let topCenterInScreen = NSPoint(
+                x: window.frame.midX,
+                y: window.frame.maxY - pendingTopInset - (fittingSize.height / 2)
+            )
+            let topCenterInWindow = window.convertPoint(fromScreen: topCenterInScreen)
+            let topCenter = frameView.convert(topCenterInWindow, from: nil)
+            hostingView.frame = NSRect(
+                x: topCenter.x - (fittingSize.width / 2),
+                y: topCenter.y - (fittingSize.height / 2),
+                width: fittingSize.width,
+                height: fittingSize.height
+            )
+        }
     }
 }
 

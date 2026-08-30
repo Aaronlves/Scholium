@@ -118,14 +118,13 @@ independent per-Record grants through navigation in that same window. They are
 neither persisted nor treated as source authority, and closing the window
 destroys all of them.
 The application-owned `ResearchResultNotificationCoordinator` observes
-`WorkspaceResearchSnapshot.activities` and `resultArrivals`, folds one
-process-local persistent activity per Run, deduplicates Results, replays each
-window, and routes Review/Follow-up after all main windows close. A replaceable
-`UNUserNotificationCenter` adapter receives only the private background body
-and route IDs. Delivery never opens, retargets, focuses, or reviews before an
-invoked action. Window/popover disappearance does not remove activity; only
-completed Dismiss does. Execution, Record, per-Note Review, and source evidence
-remain separate durable owners.
+activities and Result arrivals, keeps one local activity per Run, deduplicates
+Results, replays windows, and routes Review/Follow-up. Its system adapter
+receives private body and route IDs only. Delivery never opens, retargets,
+focuses, or reviews before activation. Closing presentation removes nothing;
+only completed Dismiss does. Document presents exact Action operations inline;
+only Sidebar/Inspector own complete-queue popovers. Execution, Records, Review,
+and source evidence stay separate.
 
 ### Runtime bootstrap, refresh, and Search
 
@@ -343,7 +342,9 @@ transport nor router owns Run context, source, recovery, or durable decisions.
 `WindowModel` is the per-window composition root.
 `WindowShellState` alone owns selected workspace, Inspector mode, Library
 disclosure, initial restore, peripheral visibility, text scale, appearance,
-toast, and shell status. `WindowWorkspaceController` alone owns Triptych
+the typed window-feedback queue, and shell status. Presentation expires
+Confirmation/Information; Warning/Error require identity dismissal.
+`WindowWorkspaceController` alone owns Triptych
 selection, registration, capability generation, identity, access recovery,
 and restoration. It calls `WorkspaceStore` for configuration, activation
 snapshots, registration, permissions, and Vault configuration, then a

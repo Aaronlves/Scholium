@@ -432,11 +432,12 @@ Overview presents only compact current-note projections, in this order:
    fetched metadata inline. No Research Status, Provenance,
    Derived State, or Zotero sections appear.
 
-Pending Agent activity presents a focus-neutral Document task bar with **View
-Changes** and **Mark Current Note Reviewed**. Raised surface and bottom rule,
-never card or shadow. Close suppresses that set in-session; Overview reopens it,
-new Agent activity presents, and researcher revisions do not. Review has
-Document-top priority: it replaces the Action stack, whose queue persists and
+Pending Agent activity presents a compact Document banner with **View Changes**
+and **Mark Current Note Reviewed**. It shares Action's visual grammar but remains
+Review, not feedback or a popover. Close suppresses; Overview reopens; Agent
+activity presents, researcher revisions do not. It overlays at the Document's
+top-centre without reflow. Review has priority: it replaces the
+Action stack, whose queue persists and
 returns afterward. Neither counts, dismisses, nor substitutes for the other.
 Commit requires clean, available, conflict-free exact Note and Record revisions;
 mismatch fails closed.
@@ -647,9 +648,9 @@ toast, or saved-with-warning state. Autosave Failed states that the editor
 buffer remains available and retains the existing Retry or recovery route. An
 unresolved Conflict uses the same Document-owned position, states that
 autosave is paused because the file changed outside Scholium, preserves the
-editor buffer, and exposes **Compare Changes**. These failure states remain
-until the state changes or the researcher chooses the applicable recovery
-path; they do not time out as if the failure were resolved.
+editor buffer, and exposes **Compare Changes**. These inline states remain above
+Document content until state changes or the researcher chooses recovery; they
+never time out or use a bottom overlay.
 
 Filesystem metadata and redundant machine-local housekeeping are not Document
 states. Once exact canonical readback proves the candidate, the Document is

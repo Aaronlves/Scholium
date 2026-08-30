@@ -122,27 +122,6 @@ struct ContentView: View {
             }
             .scholiumSurface(.document)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .overlay(alignment: .bottom) {
-                if let toast = appState.toastMessage {
-                    ToastView(toast: toast)
-                        .transition(
-                            ScholiumMotion.transientStatusTransition(
-                                reduceMotion: reduceMotion
-                            )
-                        )
-                        .padding(
-                            .bottom,
-                            ScholiumGrid.Spacing.regionContentInset
-                        )
-                }
-            }
-            .animation(
-                ScholiumMotion.transientStatus(reduceMotion: reduceMotion),
-                value: appState.toastMessage
-            )
-            .overlay(alignment: .topTrailing) {
-                refreshStatusNotice
-            }
         } apparatus: {
             apparatusRegion
             .scholiumSurface(.apparatus)
@@ -156,11 +135,48 @@ struct ContentView: View {
         // titlebar frame. Each container keeps its actual content inside the
         // live toolbar safe area.
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-        .ignoresSafeArea(.container, edges: .top)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background {
+            WorkspaceWindowTopOverlayHost(
+                topInset: ScholiumGrid.Spacing.sectionSeparation
+            ) {
+                windowTopNotificationOverlay
+                    .ignoresSafeArea(.container, edges: .top)
+                    .animation(
+                        ScholiumMotion.transientStatus(reduceMotion: reduceMotion),
+                        value: shellState.feedbackItems
+                    )
+                    .animation(
+                        ScholiumMotion.activityNotificationStackPreview(
+                            reduceMotion: reduceMotion
+                        ),
+                        value: documentActivityNotifications.map(\.runID)
+                    )
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if let feedback = shellState.transientFeedbackItems.first {
+                WindowFeedbackItem(
+                    feedback: feedback,
+                    dismiss: { shellState.dismissFeedback(id: feedback.id) }
+                )
+                .padding(.bottom, ScholiumGrid.Spacing.sectionSeparation)
+                .transition(
+                    ScholiumMotion.transientStatusTransition(
+                        reduceMotion: reduceMotion
+                    )
+                )
+                .zIndex(10)
+            }
+        }
+        .ignoresSafeArea(.container, edges: .top)
         .animation(
             ScholiumMotion.documentReveal(reduceMotion: reduceMotion),
             value: appState.currentNote != nil
+        )
+        .animation(
+            ScholiumMotion.transientStatus(reduceMotion: reduceMotion),
+            value: shellState.feedbackItems
         )
         .overlay {
             if appState.isLoading {
@@ -425,10 +441,13 @@ struct ContentView: View {
                 guard let note = appState.currentNote,
                       let vaultID = appState.currentDocumentVaultID else { return }
                 windowCoordinator.actions.showAttention(
-                    .inspector,
-                    VaultQualifiedNoteID(
-                        vaultID: vaultID,
-                        relativePath: note.relativePath
+                    .queue(
+                        anchor: .inspector,
+                        workspaceSlot: nil,
+                        noteScope: VaultQualifiedNoteID(
+                            vaultID: vaultID,
+                            relativePath: note.relativePath
+                        )
                     )
                 )
             },
@@ -713,9 +732,12 @@ struct ContentView: View {
             },
             notify: { message, kind in
                 switch kind {
-                case .success: appState.showToast(message)
-                case .information: appState.showToast(message, kind: .information)
-                case .error: appState.showToast(message, kind: .error)
+                case .confirmation:
+                    appState.presentFeedback(message)
+                case .information:
+                    appState.presentFeedback(message, kind: .information)
+                case .error:
+                    appState.presentFeedback(message, kind: .error)
                 }
             }
         )
@@ -767,7 +789,13 @@ struct ContentView: View {
             ),
             attentionPopoverSession: appState.attentionPopoverSession,
             openAttention: {
-                windowCoordinator.actions.showAttention(.sidebar, nil)
+                windowCoordinator.actions.showAttention(
+                    .queue(
+                        anchor: .sidebar,
+                        workspaceSlot: nil,
+                        noteScope: nil
+                    )
+                )
             },
             retryAttention: {
                 Task { await appState.refreshWorkspaceCatalog() }
@@ -799,7 +827,7 @@ struct ContentView: View {
             copyRelativePath: { path in
                 do {
                     try appState.copyTextToClipboard(path)
-                    appState.showToast(
+                    appState.presentFeedback(
                         String(
                             localized: "Relative path copied.",
                             table: "Localizable",
@@ -807,7 +835,7 @@ struct ContentView: View {
                         )
                     )
                 } catch {
-                    appState.showToast(error.localizedDescription, kind: .error)
+                    appState.presentFeedback(error.localizedDescription, kind: .error)
                 }
             },
             revealNote: { appState.showInFinder($0) },
@@ -821,7 +849,7 @@ struct ContentView: View {
             revealCurrentVault: { appState.revealVaultInFinder() },
             openSettings: { openSettings() },
             selectSortOrder: { appState.discoveryController.selectSortOrder($0) },
-            showError: { appState.showToast($0, kind: .error) }
+            showError: { appState.presentFeedback($0, kind: .error) }
         )
     }
 
@@ -1094,18 +1122,7 @@ struct ContentView: View {
     @ViewBuilder
     private var detailRegion: some View {
         VStack(spacing: 0) {
-            if let documentSession = currentNoteDocumentSession {
-                DocumentTopSurfaceObservation(
-                    documentSession: documentSession,
-                    noteReviewState: currentNoteReviewState
-                ) { noteReviewTaskIsPresented in
-                    researchNotificationBanner(
-                        noteReviewTaskIsPresented: noteReviewTaskIsPresented
-                    )
-                }
-            } else {
-                researchNotificationBanner(noteReviewTaskIsPresented: false)
-            }
+            refreshStatusNotice
             if !appState.transactionRecoveryRecords.isEmpty
                 || !appState.interruptedSaveRecoveries.isEmpty
                 || appState.transactionRecoveryError != nil
@@ -1124,32 +1141,67 @@ struct ContentView: View {
     }
 
     @ViewBuilder
-    private func researchNotificationBanner(
+    private var windowTopNotificationOverlay: some View {
+        if shellState.hasCompletedInitialRestore {
+            Group {
+                if let documentSession = currentNoteDocumentSession {
+                    DocumentTopSurfaceObservation(
+                        documentSession: documentSession,
+                        noteReviewState: currentNoteReviewState
+                    ) { noteReviewTaskIsPresented in
+                        windowTopNotificationSurface(
+                            noteReviewTaskIsPresented: noteReviewTaskIsPresented
+                        )
+                    }
+                } else {
+                    windowTopNotificationSurface(noteReviewTaskIsPresented: false)
+                }
+            }
+            .zIndex(10)
+        }
+    }
+
+    @ViewBuilder
+    private func windowTopNotificationSurface(
         noteReviewTaskIsPresented: Bool
     ) -> some View {
         let permission = shellState.researchNotificationPermissionNotice
         switch DocumentTopSurfacePresentation.resolve(
             noteReviewTaskIsPresented: noteReviewTaskIsPresented,
+            hasPersistentFeedback: !shellState.persistentFeedbackItems.isEmpty,
             hasActionNotifications: !documentActivityNotifications.isEmpty,
             hasNotificationPermissionNotice: permission != nil
         ) {
         case .noteReviewTask, .none:
             EmptyView()
+        case .persistentFeedback:
+            if let feedback = shellState.persistentFeedbackItems.first {
+                WindowFeedbackItem(
+                    feedback: feedback,
+                    dismiss: { shellState.dismissFeedback(id: feedback.id) }
+                )
+                .transition(
+                    ScholiumMotion.transientStatusTransition(
+                        reduceMotion: reduceMotion,
+                        edge: .top
+                    )
+                )
+            }
         case .actionNotificationStack:
             ResearchActivityNotificationStack(
                 notifications: documentActivityNotifications,
-                open: {
-                    windowCoordinator.actions.showAttention(
-                        .activityStack,
-                        nil
-                    )
+                expansionRequestGeneration:
+                    shellState.actionNotificationStackExpansionGeneration,
+                openAction: { appState.attentionPopoverSession.openAction($0) },
+                endAction: { appState.attentionPopoverSession.endAction($0) },
+                reviewResult: {
+                    appState.attentionPopoverSession.reviewResult($0)
+                },
+                followUp: { appState.attentionPopoverSession.followUp($0) },
+                dismiss: {
+                    appState.attentionPopoverSession.dismissActivity($0)
                 }
             )
-            .scholiumAttentionPopover(
-                anchor: .activityStack,
-                session: appState.attentionPopoverSession
-            )
-            .padding(ScholiumMetrics.Workspace.refreshStatusOuterInset)
         case .notificationPermissionNotice:
             if let permission {
                 ResearchNotificationPermissionView(
@@ -1449,43 +1501,23 @@ private struct LoadingOverlay: View {
     }
 }
 
-// MARK: - Toast View
+// MARK: - Window Feedback
 
-struct ToastView: View {
-    let message: String
-    let symbol: String
-    let colorRole: ScholiumColorRole
-
-    init(toast: WindowToast) {
-        message = toast.message
-        symbol = toast.kind.symbol
-        colorRole = toast.kind.colorRole
-    }
-
-    init(message: String) {
-        self.message = message
-        symbol = "checkmark.circle"
-        colorRole = .confirmed
-    }
+private struct WindowFeedbackItem: View {
+    let feedback: WindowFeedback
+    let dismiss: () -> Void
 
     var body: some View {
-        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            Image(systemName: symbol)
-                .font(ScholiumTypography.interface(.body))
-                .scholiumForeground(colorRole)
-            Text(message)
-                .font(ScholiumTypography.interface(.rowTitle))
-        }
-        .padding(.horizontal, ScholiumMetrics.Workspace.toastHorizontalInset)
-        .padding(.vertical, ScholiumMetrics.Workspace.toastVerticalInset)
-        .scholiumEditorialSurface(
-            .floatingControl,
-            in: RoundedRectangle(
-                cornerRadius: ScholiumShape.inlineStatusCornerRadius,
-                style: .continuous
-            )
+        ScholiumOperationFeedback(
+            id: feedback.id,
+            message: feedback.message,
+            kind: feedback.kind,
+            maximumWidth: feedback.kind.dismissesAutomatically
+                ? ScholiumMetrics.Notice.transientToastMaximumWidth
+                : ScholiumMetrics.Notice.windowFeedbackMaximumWidth,
+            accessibilityIdentifierPrefix: "scholium.windowFeedback",
+            dismiss: dismiss
         )
-        .accessibilityElement(children: .combine)
     }
 }
 
@@ -1527,9 +1559,9 @@ private struct ResearchNotificationPermissionView: View {
             .buttonStyle(.borderless)
             .controlSize(.small)
         }
-        .padding(.horizontal, ScholiumMetrics.Workspace.toastHorizontalInset)
-        .padding(.vertical, ScholiumMetrics.Workspace.toastVerticalInset)
-        .frame(maxWidth: 520, alignment: .leading)
+        .padding(.horizontal, ScholiumMetrics.Workspace.compactNoticeHorizontalInset)
+        .padding(.vertical, ScholiumMetrics.Workspace.compactNoticeVerticalInset)
+        .scholiumContentFittingWidth(maximumWidth: 520)
         .scholiumEditorialSurface(
             .floatingControl,
             in: RoundedRectangle(

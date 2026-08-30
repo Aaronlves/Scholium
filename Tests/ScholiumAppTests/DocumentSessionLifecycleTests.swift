@@ -7,25 +7,35 @@ import Combine
 @MainActor
 @Suite("Document session lifecycle")
 struct DocumentSessionLifecycleTests {
-    @Test("Document top presents Review, Action notifications, then permission education")
+    @Test("Document top presents Review, persistent feedback, Actions, then permission education")
     func documentTopSurfacePriority() {
         #expect(DocumentTopSurfacePresentation.resolve(
             noteReviewTaskIsPresented: true,
+            hasPersistentFeedback: true,
             hasActionNotifications: true,
             hasNotificationPermissionNotice: true
         ) == .noteReviewTask)
         #expect(DocumentTopSurfacePresentation.resolve(
             noteReviewTaskIsPresented: false,
+            hasPersistentFeedback: true,
+            hasActionNotifications: true,
+            hasNotificationPermissionNotice: true
+        ) == .persistentFeedback)
+        #expect(DocumentTopSurfacePresentation.resolve(
+            noteReviewTaskIsPresented: false,
+            hasPersistentFeedback: false,
             hasActionNotifications: true,
             hasNotificationPermissionNotice: true
         ) == .actionNotificationStack)
         #expect(DocumentTopSurfacePresentation.resolve(
             noteReviewTaskIsPresented: false,
+            hasPersistentFeedback: false,
             hasActionNotifications: false,
             hasNotificationPermissionNotice: true
         ) == .notificationPermissionNotice)
         #expect(DocumentTopSurfacePresentation.resolve(
             noteReviewTaskIsPresented: false,
+            hasPersistentFeedback: false,
             hasActionNotifications: false,
             hasNotificationPermissionNotice: false
         ) == .none)

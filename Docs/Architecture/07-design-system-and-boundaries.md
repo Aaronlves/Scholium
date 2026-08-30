@@ -364,6 +364,16 @@ Research Records, Attention, Recovery, and Settings owners continue
 to derive their own states and transitions. `ScholiumApparatusStateView`,
 inline field feedback, and `ScholiumRecoveryNotice` remain separate owners for
 their distinct compact, validation, and persistent-recovery responsibilities.
+Window and Settings operation feedback share `ScholiumOperationFeedback`,
+`ScholiumFeedbackKind`, and `ScholiumFeedbackPolicy`. Confirmation and
+Information use one content-fitting bottom-centred window overlay; Warning
+and Error use one top-centred window overlay until explicit dismissal. Neither
+changes Document geometry. Settings
+shows the same queue one item at a time in a top-centred window overlay, outside
+pane layout and immediately below native toolbar space. Main-window overlays use
+one compact outer-edge inset and their top variants may cover native toolbar space.
+`ScholiumDocumentStatusNotice` remains an operation-state
+projection, not a queue member, and occupies inline Document layout.
 
 ## Boundary enforcement
 

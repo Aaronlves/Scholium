@@ -1463,8 +1463,8 @@ enum ScholiumMetrics {
         static let refreshStatusVerticalInset = ScholiumGrid.foundationUnit * 1.5
         static let refreshStatusOuterInset = ScholiumGrid.foundationUnit * 2.5
         static let loadingOverlayInset = ScholiumGrid.foundationUnit * 7
-        static let toastHorizontalInset = ScholiumGrid.foundationUnit * 4.5
-        static let toastVerticalInset = ScholiumGrid.foundationUnit * 2.5
+        static let compactNoticeHorizontalInset = ScholiumGrid.foundationUnit * 4.5
+        static let compactNoticeVerticalInset = ScholiumGrid.foundationUnit * 2.5
     }
 
     enum ResearchGuidance {
@@ -1616,6 +1616,9 @@ enum ScholiumMetrics {
         static let contentSpacing = ScholiumGrid.foundationUnit * 2.5
         static let detailSpacing = ScholiumGrid.foundationUnit * 0.5
         static let verticalInset = ScholiumGrid.foundationUnit * 2.5
+        static let transientToastMaximumWidth = ScholiumGrid.foundationUnit * 105
+        static let windowFeedbackMaximumWidth = ScholiumGrid.foundationUnit * 155
+        static let settingsFeedbackMaximumWidth = ScholiumGrid.foundationUnit * 140
     }
 
     enum Library {
@@ -1661,10 +1664,10 @@ enum ScholiumMetrics {
         /// The exact count remains textual; these layers only make plurality
         /// visible before the researcher reads or focuses the control.
         static let visibleLayerLimit = 3
-        static let collapsedLayerOffset = ScholiumGrid.foundationUnit
-        static let previewLayerOffset = ScholiumGrid.foundationUnit * 2
+        static let collapsedLayerOffset = ScholiumGrid.foundationUnit * 1.5
         static let horizontalScaleStep: CGFloat = 0.025
         static let maximumWidth: CGFloat = 520
+        static let expandedMaximumHeight: CGFloat = 360
     }
 
     enum Document {
@@ -2799,11 +2802,10 @@ private struct ScholiumContentControlPointerFeedbackModifier<S: Shape>: ViewModi
     }
 }
 
-/// Keeps custom content controls in the complete keyboard focus chain while
-/// preventing pointer presses from manufacturing a keyboard-only focus state.
-/// Ordinary content controls replace the system effect with Scholium's shared
-/// focus surface; transient popover rows retain the native effect so AppKit's
-/// automatic first responder never resembles a pre-existing pointer hover.
+/// Keeps controls in the complete keyboard focus chain. Custom content
+/// surfaces clear pointer-manufactured keyboard focus before painting their
+/// own focus treatment; native buttons keep AppKit's unmodified pointer,
+/// keyboard, and focus behavior.
 enum ScholiumActivationFocusPresentation: Sendable {
     case contentSurface
     case native
@@ -2813,12 +2815,20 @@ private struct ScholiumBooleanActivationFocusModifier: ViewModifier {
     let focus: FocusState<Bool>.Binding
     let presentation: ScholiumActivationFocusPresentation
 
+    @ViewBuilder
     func body(content: Content) -> some View {
-        content
-            .focusable()
-            .focusEffectDisabled(presentation == .contentSurface)
-            .focused(focus)
-            .simultaneousGesture(pointerFocusReset)
+        switch presentation {
+        case .contentSurface:
+            content
+                .focusable()
+                .focusEffectDisabled()
+                .focused(focus)
+                .simultaneousGesture(pointerFocusReset)
+        case .native:
+            content
+                .focusable()
+                .focused(focus)
+        }
     }
 
     private var pointerFocusReset: some Gesture {
@@ -2833,12 +2843,20 @@ private struct ScholiumValueActivationFocusModifier<Value: Hashable>: ViewModifi
     let value: Value
     let presentation: ScholiumActivationFocusPresentation
 
+    @ViewBuilder
     func body(content: Content) -> some View {
-        content
-            .focusable()
-            .focusEffectDisabled(presentation == .contentSurface)
-            .focused(focus, equals: value)
-            .simultaneousGesture(pointerFocusReset)
+        switch presentation {
+        case .contentSurface:
+            content
+                .focusable()
+                .focusEffectDisabled()
+                .focused(focus, equals: value)
+                .simultaneousGesture(pointerFocusReset)
+        case .native:
+            content
+                .focusable()
+                .focused(focus, equals: value)
+        }
     }
 
     private var pointerFocusReset: some Gesture {
@@ -2850,6 +2868,46 @@ private struct ScholiumValueActivationFocusModifier<Value: Hashable>: ViewModifi
     private func clearPointerFocus() {
         guard focus.wrappedValue == value else { return }
         focus.wrappedValue = nil
+    }
+}
+
+/// Keeps short floating surfaces at their natural width while still wrapping
+/// long content inside the window's available width and a semantic upper cap.
+private struct ScholiumContentFittingWidthLayout: Layout {
+    let maximumWidth: CGFloat
+
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) -> CGSize {
+        guard let subview = subviews.first else { return .zero }
+        let availableWidth = min(proposal.width ?? maximumWidth, maximumWidth)
+        let ideal = subview.sizeThatFits(
+            ProposedViewSize(width: nil, height: nil)
+        )
+        let width = min(ideal.width, availableWidth)
+        let fitted = subview.sizeThatFits(
+            ProposedViewSize(width: width, height: nil)
+        )
+        return CGSize(width: width, height: fitted.height)
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) {
+        guard let subview = subviews.first else { return }
+        subview.place(
+            at: bounds.origin,
+            anchor: .topLeading,
+            proposal: ProposedViewSize(
+                width: bounds.width,
+                height: bounds.height
+            )
+        )
     }
 }
 
@@ -3004,9 +3062,12 @@ enum ScholiumMotion {
         reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.8)
     }
 
-    static func transientStatusTransition(reduceMotion: Bool) -> AnyTransition {
+    static func transientStatusTransition(
+        reduceMotion: Bool,
+        edge: Edge = .bottom
+    ) -> AnyTransition {
         guard !reduceMotion else { return .identity }
-        return .move(edge: .bottom).combined(with: .opacity)
+        return .move(edge: edge).combined(with: .opacity)
     }
 
     static func activityNotificationStackPreview(
@@ -3016,7 +3077,75 @@ enum ScholiumMotion {
     }
 }
 
+enum ScholiumFeedbackKind: Equatable, Sendable {
+    case confirmation
+    case information
+    case warning
+    case error
+
+    var dismissesAutomatically: Bool {
+        switch self {
+        case .confirmation, .information: true
+        case .warning, .error: false
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .confirmation: "checkmark.circle"
+        case .information: "info.circle"
+        case .warning: "exclamationmark.triangle"
+        case .error: "xmark.octagon"
+        }
+    }
+
+    var colorRole: ScholiumColorRole {
+        switch self {
+        case .confirmation: .confirmed
+        case .information: .information
+        case .warning: .attention
+        case .error: .destructive
+        }
+    }
+
+    var accessibilityLabel: String {
+        switch self {
+        case .confirmation:
+            String(localized: "Confirmation", table: "Localizable", bundle: .module)
+        case .information:
+            String(localized: "Information", table: "Localizable", bundle: .module)
+        case .warning:
+            String(localized: "Warning", table: "Localizable", bundle: .module)
+        case .error:
+            String(localized: "Error", table: "Localizable", bundle: .module)
+        }
+    }
+
+    var accessibilityIdentifierSuffix: String {
+        switch self {
+        case .confirmation: "confirmation"
+        case .information: "information"
+        case .warning: "warning"
+        case .error: "error"
+        }
+    }
+}
+
+enum ScholiumFeedbackPolicy {
+    /// Transient feedback is redundant, noncritical, and explicitly dismissible.
+    /// Warnings and errors never use this lifetime.
+    static let transientLifetime: Duration = .seconds(6)
+}
+
 extension View {
+    /// Fits compact overlays and banners to their content without allowing
+    /// authored or diagnostic text to escape the containing window.
+    func scholiumContentFittingWidth(maximumWidth: CGFloat) -> some View {
+        ScholiumContentFittingWidthLayout(maximumWidth: maximumWidth) {
+            self
+        }
+    }
+
     /// Reports SwiftUI pointer presence through the Design System's single
     /// hover adapter. Feature views may retain semantic reveal state, but do
     /// not own a second platform presentation path.

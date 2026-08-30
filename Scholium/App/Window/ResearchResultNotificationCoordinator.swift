@@ -179,7 +179,7 @@ final class ResearchResultUserNotificationAdapter: NSObject,
         }
     }
 
-    private static func userInfo(
+    nonisolated static func userInfo(
         for destination: ResearchResultReviewDestination
     ) -> [AnyHashable: Any] {
         [
@@ -193,7 +193,7 @@ final class ResearchResultUserNotificationAdapter: NSObject,
         ]
     }
 
-    private nonisolated static func destination(
+    nonisolated static func destination(
         from userInfo: [AnyHashable: Any]
     ) -> ResearchResultReviewDestination? {
         guard let triptych = userInfo["triptych_id"] as? String,
@@ -258,7 +258,7 @@ private extension ResearchResultReviewDestination {
 /// durable owners; this value owns only source-window affinity, transition
 /// observation, notification delivery, and exact click routing.
 @MainActor
-final class ResearchResultNotificationCoordinator {
+final class ResearchResultNotificationCoordinator: ObservableObject {
     private struct ResultKey: Hashable {
         let recordID: UUID
         let fingerprint: DocumentFingerprint
@@ -298,6 +298,11 @@ final class ResearchResultNotificationCoordinator {
     private var pendingReviewDestination: ResearchResultReviewDestination?
     private var authorizationRequestWindowIDs: Set<UUID> = []
     private var nextActivationOrdinal: UInt64 = 0
+
+    @Published private(set) var systemNotificationAuthorizationState:
+        ResearchResultNotificationAuthorizationState?
+    @Published private(set) var isRequestingSystemNotificationAuthorization = false
+    @Published private(set) var systemNotificationAuthorizationError: String?
 
     init(
         systemNotifications: any ResearchResultSystemNotificationServing =
@@ -427,10 +432,13 @@ final class ResearchResultNotificationCoordinator {
                   currentEndpoint.token == endpoint.token else { return }
             switch await systemNotifications.authorizationState() {
             case .notDetermined:
+                systemNotificationAuthorizationState = .notDetermined
                 currentEndpoint.presentPermission(.enable)
             case .denied:
+                systemNotificationAuthorizationState = .denied
                 currentEndpoint.presentPermission(.openSettings)
             case .authorized:
+                systemNotificationAuthorizationState = .authorized
                 break
             }
         }
@@ -450,26 +458,55 @@ final class ResearchResultNotificationCoordinator {
                       current.token == endpoint.token else { return nil }
                 return current
             }
-            switch await systemNotifications.authorizationState() {
+            let authorization = await systemNotifications.authorizationState()
+            systemNotificationAuthorizationState = authorization
+            switch authorization {
             case .authorized:
                 currentEndpoint()?.dismissPermission()
             case .denied:
                 currentEndpoint()?.presentPermission(.openSettings)
             case .notDetermined:
                 do {
-                    let granted = try await systemNotifications.requestAuthorization()
+                    _ = try await systemNotifications.requestAuthorization()
+                    let updated = await systemNotifications.authorizationState()
+                    systemNotificationAuthorizationState = updated
                     guard let current = currentEndpoint() else { return }
-                    if granted {
+                    if updated == .authorized {
                         current.dismissPermission()
-                    } else if await systemNotifications.authorizationState()
-                        == .denied {
+                    } else if updated == .denied {
                         current.presentPermission(.openSettings)
                     }
                 } catch {
+                    systemNotificationAuthorizationError = error.localizedDescription
                     // The prompt remains available. Action and in-app result
                     // delivery do not depend on notification authorization.
                 }
             }
+        }
+    }
+
+    func refreshSystemNotificationAuthorization() async {
+        systemNotificationAuthorizationState =
+            await systemNotifications.authorizationState()
+    }
+
+    func requestSystemNotificationAuthorizationFromSettings() async {
+        guard !isRequestingSystemNotificationAuthorization else { return }
+        isRequestingSystemNotificationAuthorization = true
+        systemNotificationAuthorizationError = nil
+        defer { isRequestingSystemNotificationAuthorization = false }
+
+        let current = await systemNotifications.authorizationState()
+        systemNotificationAuthorizationState = current
+        guard current == .notDetermined else { return }
+        do {
+            _ = try await systemNotifications.requestAuthorization()
+            systemNotificationAuthorizationState =
+                await systemNotifications.authorizationState()
+        } catch {
+            systemNotificationAuthorizationError = error.localizedDescription
+            systemNotificationAuthorizationState =
+                await systemNotifications.authorizationState()
         }
     }
 
@@ -548,6 +585,7 @@ final class ResearchResultNotificationCoordinator {
 
         guard initializedTriptychs.insert(triptychID).inserted == false else {
             publishActivities(triptychID: triptychID)
+            routePendingReviewIfPossible()
             return
         }
         for (key, destination) in current where previous[key] == nil {
@@ -555,6 +593,7 @@ final class ResearchResultNotificationCoordinator {
             deliverIfNeeded(destination, key: key)
         }
         publishActivities(triptychID: triptychID)
+        routePendingReviewIfPossible()
     }
 
     private func publishActivities(triptychID: UUID) {
@@ -676,6 +715,10 @@ final class ResearchResultNotificationCoordinator {
     private func openReviewFromSystemNotification(
         _ destination: ResearchResultReviewDestination
     ) {
+        guard initializedTriptychs.contains(destination.triptychID) else {
+            pendingReviewDestination = destination
+            return
+        }
         guard destinationIsCurrent(destination) else { return }
         if let endpoint = preferredEndpoint(for: destination) {
             endpoint.openReview(destination)
@@ -688,7 +731,11 @@ final class ResearchResultNotificationCoordinator {
 
     private func routePendingReviewIfPossible() {
         guard let destination = pendingReviewDestination,
-              destinationIsCurrent(destination) else { return }
+              initializedTriptychs.contains(destination.triptychID) else { return }
+        guard destinationIsCurrent(destination) else {
+            pendingReviewDestination = nil
+            return
+        }
         if let endpoint = preferredEndpoint(for: destination) {
             pendingReviewDestination = nil
             endpoint.openReview(destination)

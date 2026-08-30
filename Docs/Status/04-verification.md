@@ -16,46 +16,47 @@ measurement; 636 App tests; 7 executable Research Action CLI lifecycles; the
 sandboxed App-to-standalone-CLI loopback probe; symbol and residue guards; and
 an optimized Release build in 187.92 seconds.
 
-The same clean tagged commit produced an architecture-labelled DMG and separate
-standalone CLI ZIP with exact provenance and SHA-256 files. `hdiutil` verified
-and read-only mounted the DMG; its visible root contained only Scholium and the
-Applications alias, and the copied App passed strict signature, architecture,
-sandbox-entitlement, and provenance checks. The CLI installed into an isolated
-user prefix and launched by basename from an unrelated working directory.
-GitHub published the tag and all four assets. Fresh exact-release downloads
-matched both published checksums; the stable CLI `latest/download` route was
-moved to this release and independently resolved to `v0.1.0-beta.8`.
+The same commit produced a verified read-only DMG and standalone CLI ZIP with
+exact provenance and checksums. The DMG contained only Scholium and the
+Applications alias; App signature, architecture, sandbox and provenance checks
+passed. The isolated CLI launched by basename. Published downloads matched both
+checksums and the stable route resolved to `v0.1.0-beta.8`.
 
-This evidence is not Developer ID signing, notarization, a clean external-account
-Agent journey, the current complete packaged G7 series, packaged-icon and human
-visual acceptance, or a packaged first-launch UI journey. The release owner
-directed publication with those gaps still open; they remain acceptance work
-rather than passed evidence. The ad-hoc App is intentionally neither Developer
-ID signed nor notarized and Gatekeeper rejects it until the documented user
-override.
+Developer ID signing, notarization, clean-account Agent and first-launch
+journeys, current packaged G7, icon, visual, and human acceptance remain open.
+The ad-hoc App requires the documented Gatekeeper override.
 
 ## Focused interface evidence
 
+- On 2026-08-30, the Notifications and inline-feedback cutover passed 13 Core
+  and 112 App tests, both validators, retired-path guards, and two UI journeys
+  covering ordered feedback, expiry versus persistence, Dismiss, and an
+  unobscured Document. The exact-stack extension passed 20 App tests and UI
+  journeys at 117.059 and 25.232 seconds: only front Run appeared;
+  Tab-and-Space opened it; queue controls, siblings, issues, and All Notifications
+  stayed absent; Dismiss affected that Run alone. One complete gate reached 678
+  App tests and found one pre-existing Library-chevron guard plus two stale
+  notification guards; the latter were corrected and their owner passed. The
+  completion audit passed 6 Core and 41 App tests after closing localized
+  Action/reason search, empty/refresh copy, and exact system-payload round-trip.
+  Genuine VoiceOver, Full Keyboard Access, adaptation, and researcher
+  acceptance remain open.
+
 - On 2026-08-30, the Follow-up and Action Notifications cutover passed the
-  complete gate: documentation/9 Skill guards; 207 Web, 468 Core plus 3
-  performance, 161 Contracts, 288 Application,
-  15 bridge, 1 architecture, and 665 App tests; 16 signed executable CLI
-  lifecycles; sandbox loopback, symbol/residue guards; and a 191.14-second
-  Release build. Focused tests preserve Continue Research, create Follow-up as
-  a fresh `.followUp` Run, and retain one Action activity until Dismiss. Stack
-  evidence: 4 focused tests and a 127.25-second UI pass. Review owns
-  Document top without consuming Actions; reading position holds;
-  permission waits. VoiceOver remains open.
+  complete gate: 207 Web, 468 Core plus 3 performance, 161 Contracts, 288
+  Application, 15 bridge, 1 architecture, 665 App, and 16 CLI lifecycles;
+  sandbox/residue guards and Release build passed. Focused and UI evidence
+  preserves Continue Research, creates a fresh `.followUp` Run, retains one
+  Action activity until Dismiss, keeps Review above Actions without losing
+  reading position, and delays permission. VoiceOver remains open.
 
 - On 2026-08-27, the external-Agent Skill deployment cutover passed the complete
-  gate: 206 Web, 465 Core plus 3 performance, 150 Contracts, 284 Application,
-  16 bridge, 1 architecture, and 668 App tests; 16 CLI lifecycles, sandbox and
-  residue guards, and a 184.40-second Release build. A disposable external
-  Agent workspace registered 3 System plus 6 Action Skills, preserved unrelated
-  Skills, received bounded Run Context, executed all six Actions, and performed
-  writes only through `scholium agent write`. Continue returned its child
-  Context without re-pair/reload; substituted Skill entries failed closed.
-  Live-provider, packaged-account, and human acceptance remain unproved.
+  gate across 206 Web, 465 Core plus 3 performance, 150 Contracts, 284
+  Application, 16 bridge, 1 architecture, 668 App, and 16 CLI lifecycles.
+  Disposable external-Agent evidence registered 3 System plus 6 Action Skills,
+  preserved unrelated Skills, ran six bounded Actions, confined writes to
+  `scholium agent write`, preserved Continue context, and rejected substituted
+  Skills. Live-provider, packaged-account, and human acceptance remain open.
 
 - On 2026-08-25, the window-workspace and Local Agent bridge ownership cutover
   passed its complete gate: 206 Web, 464 Core, 3 performance, 150 Contracts,

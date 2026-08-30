@@ -401,7 +401,7 @@ struct ScholiumEditorialIconControl<NativeControl: View>: View {
     var body: some View {
         nativeControl
             .menuStyle(.button)
-            .buttonStyle(.plain)
+            .buttonStyle(.borderless)
             .menuIndicator(.hidden)
             .fixedSize()
             .scholiumContentControlPointerFeedback(
@@ -557,101 +557,308 @@ struct SidebarTriptychAttentionEntry: View {
     }
 }
 
-/// A compact, focus-neutral summary of Action activities that need a
-/// researcher decision. The complete queue remains owned by
-/// `AttentionPopoverSession`; this control only makes plurality visible and
-/// supplies one additional exact-window popover anchor.
+/// Compact Run-bound operations shared by the Document Action banner and the
+/// complete Notifications queue. The caller owns surrounding information.
+struct ResearchActivityNotificationControls: View {
+    private enum ControlFocus: Hashable {
+        case openAction
+        case endAction
+        case reviewResult
+        case followUp
+        case dismiss
+    }
+
+    let notification: ResearchActivityNotification
+    let openAction: () -> Void
+    let endAction: () -> Void
+    let reviewResult: () -> Void
+    let followUp: () -> Void
+    let dismiss: () -> Void
+
+    @State private var confirmsEndAction = false
+    @FocusState private var focusedControl: ControlFocus?
+
+    var body: some View {
+        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            if notification.result != nil {
+                Button("Review Result", action: reviewResult)
+                    .accessibilityIdentifier(
+                        "scholium.notification.action.reviewResult.\(notification.runID.uuidString)"
+                    )
+                    .scholiumActivationFocus(
+                        $focusedControl,
+                        equals: .reviewResult,
+                        presentation: .native
+                    )
+                    .onKeyPress(.space) {
+                        reviewResult()
+                        return .handled
+                    }
+                Button("Follow Up…", action: followUp)
+                    .accessibilityIdentifier(
+                        "scholium.notification.action.followUp.\(notification.runID.uuidString)"
+                    )
+                    .scholiumActivationFocus(
+                        $focusedControl,
+                        equals: .followUp,
+                        presentation: .native
+                    )
+                    .onKeyPress(.space) {
+                        followUp()
+                        return .handled
+                    }
+                Button("Dismiss", action: dismiss)
+                    .accessibilityIdentifier(
+                        "scholium.notification.action.dismiss.\(notification.runID.uuidString)"
+                    )
+                    .scholiumActivationFocus(
+                        $focusedControl,
+                        equals: .dismiss,
+                        presentation: .native
+                    )
+                    .onKeyPress(.space) {
+                        dismiss()
+                        return .handled
+                    }
+            } else {
+                Button("Open Action", action: openAction)
+                    .accessibilityIdentifier(
+                        "scholium.notification.action.open.\(notification.runID.uuidString)"
+                    )
+                    .scholiumActivationFocus(
+                        $focusedControl,
+                        equals: .openAction,
+                        presentation: .native
+                    )
+                    .onKeyPress(.space) {
+                        openAction()
+                        return .handled
+                    }
+                Button("End Action…", role: .destructive) {
+                    confirmsEndAction = true
+                }
+                .accessibilityIdentifier(
+                    "scholium.notification.action.end.\(notification.runID.uuidString)"
+                )
+                .scholiumActivationFocus(
+                    $focusedControl,
+                    equals: .endAction,
+                    presentation: .native
+                )
+                .onKeyPress(.space) {
+                    confirmsEndAction = true
+                    return .handled
+                }
+            }
+        }
+        .controlSize(.small)
+        .confirmationDialog(
+            "End this Action?",
+            isPresented: $confirmsEndAction,
+            titleVisibility: .visible
+        ) {
+            Button("Keep Action", role: .cancel) {}
+            Button("End Action", role: .destructive, action: endAction)
+        } message: {
+            Text("Scholium will revoke Agent access and end this unfinished Run. Existing recovery evidence remains available.")
+        }
+    }
+}
+
+/// One direct Action banner or a bounded, Action-only stack. Durable activity
+/// state and operations stay with their existing owners; this view owns only
+/// disclosure, pointer preview, keyboard focus, and presentation.
 struct ResearchActivityNotificationStack: View {
     @Environment(\.locale) private var locale
     @Environment(\.scholiumReduceMotion) private var reduceMotion
-    @FocusState private var isFocused: Bool
+    @FocusState private var summaryIsFocused: Bool
     @State private var isHovering = false
+    @State private var isPinnedExpanded = false
 
     let notifications: [ResearchActivityNotification]
-    let open: () -> Void
+    let expansionRequestGeneration: UInt64
+    let openAction: (ResearchActivityNotification) -> Void
+    let endAction: (ResearchActivityNotification) -> Void
+    let reviewResult: (ResearchActivityNotification) -> Void
+    let followUp: (ResearchActivityNotification) -> Void
+    let dismiss: (ResearchActivityNotification) -> Void
 
+    @ViewBuilder
     var body: some View {
         if let latest = notifications.first {
-            let shape = RoundedRectangle(
-                cornerRadius: ScholiumShape.inlineStatusCornerRadius,
-                style: .continuous
-            )
-            Button(action: open) {
-                HStack(
-                    alignment: .center,
-                    spacing: ScholiumGrid.Spacing.inlineControlGap
-                ) {
-                    Image(systemName: "bell")
-                        .font(
-                            ScholiumTypography.interface(
-                                .body,
-                                emphasis: .strong
-                            )
+            if notifications.count == 1 {
+                directBanner(for: latest)
+            } else {
+                multipleActivityStack()
+            }
+        }
+    }
+
+    private func directBanner(
+        for notification: ResearchActivityNotification
+    ) -> some View {
+        let shape = notificationShape
+        return ResearchActivityNotificationBannerRow(
+            notification: notification,
+            openAction: { openAction(notification) },
+            endAction: { endAction(notification) },
+            reviewResult: { reviewResult(notification) },
+            followUp: { followUp(notification) },
+            dismiss: { dismiss(notification) }
+        )
+        .padding(.horizontal, ScholiumMetrics.Workspace.compactNoticeHorizontalInset)
+        .padding(.vertical, ScholiumMetrics.Workspace.compactNoticeVerticalInset)
+        .scholiumContentFittingWidth(
+            maximumWidth: ScholiumMetrics.ActivityNotificationStack.maximumWidth
+        )
+        .scholiumEditorialSurface(.floatingControl, in: shape)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("scholium.researchActivityNotificationStack")
+    }
+
+    private func multipleActivityStack() -> some View {
+        let shape = notificationShape
+        return VStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            summaryButton(shape: shape)
+            if isExpanded {
+                expandedRows
+                    .transition(
+                        ScholiumMotion.transientStatusTransition(
+                            reduceMotion: reduceMotion,
+                            edge: .top
                         )
-                        .scholiumForeground(.attention)
-                        .accessibilityHidden(true)
-                    VStack(
-                        alignment: .leading,
-                        spacing: ScholiumGrid.Spacing.labelAccessoryGap
-                    ) {
-                        Text(countTitle)
-                            .font(ScholiumTypography.interface(.rowTitle))
-                        HStack(
-                            alignment: .firstTextBaseline,
-                            spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment
-                        ) {
-                            Text(stateTitle(for: latest.state))
-                                .font(ScholiumTypography.interface(.small, emphasis: .medium))
-                                .scholiumForeground(stateColor(for: latest.state))
-                            Text(verbatim: "—")
-                                .font(ScholiumTypography.interface(.small))
-                                .scholiumForeground(.mutedText)
-                            Text(verbatim: targetTitle(for: latest))
-                                .font(ScholiumTypography.interface(.small))
-                                .scholiumForeground(.secondaryText)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    Image(systemName: "chevron.down")
-                        .font(ScholiumTypography.interface(.small, emphasis: .medium))
-                        .scholiumForeground(.mutedText)
-                        .accessibilityHidden(true)
-                }
-                .padding(.horizontal, ScholiumMetrics.Workspace.toastHorizontalInset)
-                .padding(.vertical, ScholiumMetrics.Workspace.toastVerticalInset)
-                .frame(
-                    maxWidth: ScholiumMetrics.ActivityNotificationStack.maximumWidth,
-                    alignment: .leading
-                )
-                .contentShape(shape)
+                    )
             }
-            .buttonStyle(
-                ResearchActivityNotificationStackButtonStyle(
-                    isHovering: isHovering,
-                    isFocused: isFocused,
-                    shape: shape
-                )
-            )
-            .scholiumHoverState { isHovering = $0 }
-            .scholiumEditorialSurface(.floatingControl, in: shape)
+        }
             .background(alignment: .bottom) {
-                stackLayers(shape: shape)
+                if !isExpanded { stackLayers(shape: shape) }
             }
-            .padding(.bottom, maximumLayerOffset)
-            .scholiumActivationFocus($isFocused)
+            .padding(.bottom, isExpanded ? 0 : maximumLayerOffset)
+            .zIndex(isExpanded ? 2 : 0)
+            .scholiumHoverState { isHovering = $0 }
+            .onChange(of: summaryIsFocused) { _, focused in
+                if focused { isPinnedExpanded = true }
+            }
+            .onChange(of: expansionRequestGeneration) { _, _ in
+                isPinnedExpanded = true
+            }
+            .onChange(of: notifications.map(\.runID)) { _, runIDs in
+                if runIDs.count < 2 { isPinnedExpanded = false }
+            }
+            .onKeyPress(.escape) {
+                guard isExpanded else { return .ignored }
+                isPinnedExpanded = false
+                isHovering = false
+                return .handled
+            }
             .animation(
                 ScholiumMotion.activityNotificationStackPreview(
                     reduceMotion: reduceMotion
                 ),
-                value: isPreviewing
+                value: isExpanded
             )
-            .help(openLabel)
-            .accessibilityLabel(openLabel)
-            .accessibilityValue(accessibilityValue(latest: latest))
-            .accessibilityIdentifier("scholium.researchActivityNotificationStack")
+    }
+
+    private func summaryButton(shape: RoundedRectangle) -> some View {
+        Button {
+            isPinnedExpanded.toggle()
+        } label: {
+            notificationSummary(expanded: isExpanded)
+                .padding(.horizontal, ScholiumMetrics.Workspace.compactNoticeHorizontalInset)
+                .padding(.vertical, ScholiumMetrics.Workspace.compactNoticeVerticalInset)
+                .contentShape(shape)
         }
+        .buttonStyle(
+            ResearchActivityNotificationStackButtonStyle(
+                isHovering: isHovering,
+                isFocused: summaryIsFocused,
+                shape: shape
+            )
+        )
+        .scholiumContentFittingWidth(
+            maximumWidth: ScholiumMetrics.ActivityNotificationStack.maximumWidth
+        )
+        .scholiumEditorialSurface(.floatingControl, in: shape)
+        .scholiumActivationFocus($summaryIsFocused)
+        .onKeyPress(.space) {
+            isPinnedExpanded.toggle()
+            return .handled
+        }
+        .help(disclosureLabel)
+        .accessibilityLabel(disclosureLabel)
+        .accessibilityValue("\(countTitle), \(latestSummary)")
+        .accessibilityIdentifier("scholium.researchActivityNotificationStack")
+    }
+
+    private func notificationSummary(expanded: Bool) -> some View {
+        HStack(
+            alignment: .center,
+            spacing: ScholiumGrid.Spacing.inlineControlGap
+        ) {
+            Image(systemName: "bell")
+                .font(
+                    ScholiumTypography.interface(
+                        .body,
+                        emphasis: .strong
+                    )
+                )
+                .scholiumForeground(.attention)
+                .accessibilityHidden(true)
+            VStack(
+                alignment: .leading,
+                spacing: ScholiumGrid.Spacing.labelAccessoryGap
+            ) {
+                Text(countTitle)
+                    .font(ScholiumTypography.interface(.rowTitle))
+                Text(verbatim: latestSummary)
+                    .font(ScholiumTypography.interface(.small))
+                    .scholiumForeground(.secondaryText)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                .font(ScholiumTypography.interface(.small, emphasis: .medium))
+                .scholiumForeground(.mutedText)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var expandedRows: some View {
+        ScrollView {
+            LazyVStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                ForEach(notifications) { notification in
+                    ResearchActivityNotificationBannerRow(
+                        notification: notification,
+                        openAction: { openAction(notification) },
+                        endAction: { endAction(notification) },
+                        reviewResult: { reviewResult(notification) },
+                        followUp: { followUp(notification) },
+                        dismiss: { dismiss(notification) }
+                    )
+                    .padding(.horizontal, ScholiumMetrics.Workspace.compactNoticeHorizontalInset)
+                    .padding(.vertical, ScholiumMetrics.Workspace.compactNoticeVerticalInset)
+                    .scholiumEditorialSurface(
+                        .floatingControl,
+                        in: notificationShape
+                    )
+                }
+            }
+        }
+        .frame(
+            maxHeight: ScholiumMetrics.ActivityNotificationStack.expandedMaximumHeight
+        )
+        .scholiumContentFittingWidth(
+            maximumWidth: ScholiumMetrics.ActivityNotificationStack.maximumWidth
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("scholium.researchActivityNotificationRows")
+    }
+
+    private var notificationShape: RoundedRectangle {
+        RoundedRectangle(
+            cornerRadius: ScholiumShape.inlineStatusCornerRadius,
+            style: .continuous
+        )
     }
 
     @ViewBuilder
@@ -689,75 +896,152 @@ struct ResearchActivityNotificationStack: View {
         )
     }
 
-    private var isPreviewing: Bool {
-        !reduceMotion && visibleLayerCount > 1 && (isHovering || isFocused)
+    private var isExpanded: Bool {
+        notifications.count > 1
+            && (isPinnedExpanded || isHovering || summaryIsFocused)
     }
 
     private var maximumLayerOffset: CGFloat {
         CGFloat(max(0, visibleLayerCount - 1))
-            * ScholiumMetrics.ActivityNotificationStack.previewLayerOffset
+            * ScholiumMetrics.ActivityNotificationStack.collapsedLayerOffset
     }
 
     private func layerOffset(for depth: Int) -> CGFloat {
-        CGFloat(depth) * (
-            isPreviewing
-                ? ScholiumMetrics.ActivityNotificationStack.previewLayerOffset
-                : ScholiumMetrics.ActivityNotificationStack.collapsedLayerOffset
-        )
+        CGFloat(depth)
+            * ScholiumMetrics.ActivityNotificationStack.collapsedLayerOffset
     }
 
     private var countTitle: String {
-        if notifications.count == 1 {
-            return ScholiumL10n.string("1 Action notification", locale: locale)
-        }
         return String.localizedStringWithFormat(
-            ScholiumL10n.string("%lld Action notifications", locale: locale),
+            ScholiumL10n.string("%lld Actions", locale: locale),
             Int64(notifications.count)
         )
     }
 
-    private var openLabel: String {
-        ScholiumL10n.string("Open Notifications", locale: locale)
+    private var latestSummary: String {
+        guard let latest = notifications.first else { return "" }
+        let target = latest.targetTitle.isEmpty
+            ? ScholiumL10n.string("Research Action", locale: locale)
+            : latest.targetTitle
+        let state = ResearchActivityNotificationCopy.stateTitle(
+            latest.state,
+            locale: locale
+        )
+        return "\(target) · \(state)"
     }
 
-    private func accessibilityValue(
-        latest: ResearchActivityNotification
-    ) -> String {
-        [
-            countTitle,
-            ScholiumL10n.localized(stateTitle(for: latest.state), locale: locale),
-            targetTitle(for: latest),
-        ].joined(separator: ". ")
+    private var disclosureLabel: String {
+        ScholiumL10n.string(
+            isExpanded
+                ? "Hide Action Notifications"
+                : "Show Action Notifications",
+            locale: locale
+        )
     }
 
-    private func targetTitle(
-        for notification: ResearchActivityNotification
-    ) -> String {
+}
+
+private struct ResearchActivityNotificationBannerRow: View {
+    @Environment(\.locale) private var locale
+
+    let notification: ResearchActivityNotification
+    let openAction: () -> Void
+    let endAction: () -> Void
+    let reviewResult: () -> Void
+    let followUp: () -> Void
+    let dismiss: () -> Void
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(
+                alignment: .center,
+                spacing: ScholiumGrid.Spacing.nestedContentInset
+            ) {
+                identity
+                controls
+            }
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                identity
+                controls
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(
+            "scholium.notification.action.\(notification.runID.uuidString)"
+        )
+    }
+
+    private var identity: some View {
+        HStack(
+            alignment: .center,
+            spacing: ScholiumGrid.Spacing.inlineControlGap
+        ) {
+            Image(systemName: stateSymbol)
+                .font(ScholiumTypography.interface(.body))
+                .scholiumForeground(stateColor)
+                .accessibilityHidden(true)
+            VStack(
+                alignment: .leading,
+                spacing: ScholiumGrid.Spacing.labelAccessoryGap
+            ) {
+                Text(verbatim: targetTitle)
+                    .font(ScholiumTypography.interface(.rowTitle))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(verbatim: "\(stateTitle) · \(actionTitle)")
+                    .font(ScholiumTypography.interface(.small))
+                    .scholiumForeground(.secondaryText)
+                    .lineLimit(1)
+            }
+        }
+    }
+
+    private var controls: some View {
+        ResearchActivityNotificationControls(
+            notification: notification,
+            openAction: openAction,
+            endAction: endAction,
+            reviewResult: reviewResult,
+            followUp: followUp,
+            dismiss: dismiss
+        )
+    }
+
+    private var targetTitle: String {
         notification.targetTitle.isEmpty
             ? ScholiumL10n.string("Research Action", locale: locale)
             : notification.targetTitle
     }
 
-    private func stateTitle(
-        for state: ResearchActivityNotificationState
-    ) -> LocalizedStringResource {
-        switch state {
-        case .waitingForAgent: "Waiting for Agent"
-        case .running: "Running"
-        case .needsAttention: "Needs Attention"
-        case .resultReady: "Result Ready"
-        case .recoveryRequired: "Recovery Required"
+    private var stateTitle: String {
+        ResearchActivityNotificationCopy.stateTitle(
+            notification.state,
+            locale: locale
+        )
+    }
+
+    private var actionTitle: String {
+        ResearchActivityNotificationCopy.actionTitle(
+            notification.actionID,
+            locale: locale
+        )
+    }
+
+    private var stateSymbol: String {
+        switch notification.state {
+        case .waitingForAgent: "clock"
+        case .running: "arrow.triangle.2.circlepath"
+        case .needsAttention: "exclamationmark.triangle"
+        case .resultReady: "doc.text.magnifyingglass"
+        case .recoveryRequired: "wrench.and.screwdriver"
         }
     }
 
-    private func stateColor(
-        for state: ResearchActivityNotificationState
-    ) -> ScholiumColorRole {
-        switch state {
-        case .needsAttention, .recoveryRequired:
-            .attention
-        case .waitingForAgent, .running, .resultReady:
-            .secondaryText
+    private var stateColor: ScholiumColorRole {
+        switch notification.state {
+        case .needsAttention, .recoveryRequired: .attention
+        case .waitingForAgent, .running, .resultReady: .secondaryText
         }
     }
 }
@@ -1014,10 +1298,10 @@ struct ScholiumContentStateView<Actions: View>: View {
 
     var body: some View {
         Group {
-            if density == .page {
+            if placement == .centered || density == .page {
                 VStack(
                     alignment: horizontalAlignment,
-                    spacing: ScholiumGrid.Spacing.sectionSeparation
+                    spacing: contentGroupSpacing
                 ) {
                     indicatorView
                     copyAndActions
@@ -1094,6 +1378,12 @@ struct ScholiumContentStateView<Actions: View>: View {
         density == .page
             ? ScholiumGrid.Spacing.regionContentInset
             : 0
+    }
+
+    private var contentGroupSpacing: CGFloat {
+        density == .page
+            ? ScholiumGrid.Spacing.sectionSeparation
+            : ScholiumGrid.Spacing.inlineControlGap
     }
 
     private var indicatorSymbolStyle: ScholiumSymbolStyle {
@@ -1262,6 +1552,91 @@ struct ScholiumRecoveryNotice<Action: View>: View {
     }
 }
 
+/// Shared presentation for ordered operation feedback. Feature owners retain
+/// queue state and operation semantics; this component owns only visible type,
+/// copy, announcement, bounded transient lifetime, and explicit dismissal.
+struct ScholiumOperationFeedback: View {
+    @FocusState private var dismissIsFocused: Bool
+
+    let id: UUID
+    let message: String
+    let kind: ScholiumFeedbackKind
+    let maximumWidth: CGFloat
+    let accessibilityIdentifierPrefix: String
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Image(systemName: kind.symbol)
+                .font(ScholiumTypography.interface(.body))
+                .scholiumForeground(kind.colorRole)
+                .accessibilityHidden(true)
+            feedbackMessage
+            Button(action: dismiss) {
+                Label("Dismiss", systemImage: "xmark")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.plain)
+            .frame(
+                minWidth: ScholiumGrid.Dimension.minimumCustomTarget,
+                minHeight: ScholiumGrid.Dimension.minimumCustomTarget
+            )
+            .contentShape(Rectangle())
+            .scholiumActivationFocus(
+                $dismissIsFocused,
+                presentation: .native
+            )
+            .onKeyPress(.space) {
+                dismiss()
+                return .handled
+            }
+            .help("Dismiss")
+        }
+        .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
+        .padding(.vertical, ScholiumMetrics.Notice.verticalInset)
+        .scholiumContentFittingWidth(maximumWidth: maximumWidth)
+        .scholiumEditorialSurface(
+            .floatingControl,
+            in: RoundedRectangle(
+                cornerRadius: ScholiumShape.inlineStatusCornerRadius,
+                style: .continuous
+            )
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(kind.accessibilityLabel)
+        .accessibilityValue(message)
+        .accessibilityIdentifier(
+            "\(accessibilityIdentifierPrefix).\(kind.accessibilityIdentifierSuffix)"
+        )
+        .task(id: id) {
+            AccessibilityNotification.Announcement(
+                "\(kind.accessibilityLabel). \(message)"
+            ).post()
+            guard kind.dismissesAutomatically else { return }
+            try? await Task.sleep(for: ScholiumFeedbackPolicy.transientLifetime)
+            guard !Task.isCancelled else { return }
+            dismiss()
+        }
+    }
+
+    @ViewBuilder
+    private var feedbackMessage: some View {
+        if kind.dismissesAutomatically {
+            Text(message)
+                .font(ScholiumTypography.interface(.small))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+        } else {
+            Text(message)
+                .font(ScholiumTypography.interface(.small))
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
 enum ScholiumDocumentStatusKind: Sendable {
     case attention
     case destructive
@@ -1284,7 +1659,7 @@ enum ScholiumDocumentStatusKind: Sendable {
 /// Persistent Document-owned source-integrity feedback. The caller retains
 /// the autosave or conflict state and supplies only the recovery actions that
 /// are valid for that exact state.
-struct ScholiumDocumentStatusToast<Actions: View>: View {
+struct ScholiumDocumentStatusNotice<Actions: View>: View {
     let title: String
     let detail: String
     let kind: ScholiumDocumentStatusKind

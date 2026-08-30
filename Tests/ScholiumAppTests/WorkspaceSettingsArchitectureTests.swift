@@ -659,19 +659,39 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!source.contains("DatePicker("))
     }
 
-    @Test("Settings success feedback replaces stale messages and dismisses by identity")
-    func settingsSuccessFeedback() {
+    @Test("Settings feedback preserves distinct messages and dismisses by identity")
+    func settingsFeedbackQueue() throws {
         let model = WorkspaceSettingsModel()
 
-        model.showToast("First")
-        #expect(model.toastMessage == "First")
+        model.presentFeedback("First", kind: .confirmation)
+        let first = try #require(model.feedbackItems.first)
+        #expect(first.message == "First")
+        #expect(first.kind == .confirmation)
+        #expect(first.kind.dismissesAutomatically)
 
-        model.showToast("Second")
-        model.dismissToast("First")
-        #expect(model.toastMessage == "Second")
+        model.presentFeedback("Second", kind: .error)
+        let second = try #require(model.feedbackItems.last)
+        #expect(model.feedbackItems.map(\.message) == ["First", "Second"])
+        #expect(second.kind == .error)
+        #expect(!second.kind.dismissesAutomatically)
 
-        model.dismissToast("Second")
-        #expect(model.toastMessage == nil)
+        model.dismissFeedback(id: first.id)
+        #expect(model.feedbackItems == [second])
+
+        model.dismissFeedback(id: second.id)
+        #expect(model.feedbackItems.isEmpty)
+    }
+
+    @Test("Settings feedback deduplicates an identical live notice")
+    func settingsFeedbackDeduplication() throws {
+        let model = WorkspaceSettingsModel()
+
+        model.presentFeedback("Saved", kind: .confirmation)
+        let firstID = try #require(model.feedbackItems.first?.id)
+        model.presentFeedback("Saved", kind: .confirmation)
+
+        #expect(model.feedbackItems.count == 1)
+        #expect(model.feedbackItems.first?.id != firstID)
     }
 
     @Test("Settings root and model cannot construct window-local owners")
@@ -708,8 +728,8 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(rootSource.contains("ScholiumSettingsView()"))
     }
 
-    @Test("Settings descendants have one environment boundary")
-    func descendantsUseOnlyWorkspaceSettingsModel() throws {
+    @Test("Settings descendants borrow only Settings state and app notification authorization")
+    func descendantsUseOnlySettingsOwners() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -725,7 +745,10 @@ struct WorkspaceSettingsArchitectureTests {
             $0.contains("@EnvironmentObject")
         }
         #expect(!declarations.isEmpty)
-        #expect(declarations.allSatisfy { $0.contains("WorkspaceSettingsModel") })
+        #expect(declarations.allSatisfy {
+            $0.contains("WorkspaceSettingsModel")
+                || $0.contains("ResearchResultNotificationCoordinator")
+        })
     }
 
     @Test("Appearance owns named structured profiles without a generated CSS preview")

@@ -215,7 +215,7 @@ struct WorkspaceToolbarTests {
             setResearchInspectorVisible: { _ in },
             showNoteResearchRecords: {},
             showTriptychResearchRecords: {},
-            showAttention: { _, _ in },
+            showAttention: { _ in },
             showPreferredAttention: {},
             canShowAttention: { false }
         )

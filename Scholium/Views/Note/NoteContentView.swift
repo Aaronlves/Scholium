@@ -4,7 +4,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 enum DocumentNotificationKind {
-    case success
+    case confirmation
     case information
     case error
 }
@@ -632,7 +632,7 @@ private struct DiscussionPanel: View {
     }
 
     private func transcript(_ discussion: PortableResearchDiscussion) -> some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+        return VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Text("EXCHANGE")
                 .font(ScholiumTypography.interface(.small, emphasis: .strong))
                 .tracking(0.7)
@@ -914,13 +914,6 @@ struct NoteContentView: View {
                 .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
             }
 
-            if documentSession.noteReviewTaskPresentation.isPresented(
-                for: state.noteReviewState?.noteID
-            ),
-               state.noteReviewState?.status == .needsReview {
-                noteReviewTaskBar
-            }
-
             if state.isManagedCritique {
                 CritiqueProvenanceView(
                     note: note,
@@ -935,6 +928,19 @@ struct NoteContentView: View {
                 )
             }
 
+            if let presentation = documentIntegrityPresentation {
+                ScholiumDocumentStatusNotice(
+                    presentation.title,
+                    detail: presentation.detail,
+                    kind: presentation.kind
+                ) {
+                    documentIntegrityActions(presentation)
+                }
+                .accessibilityIdentifier(presentation.accessibilityIdentifier)
+                .padding(.horizontal, ScholiumGrid.Spacing.regionContentInset)
+                .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
+            }
+
             documentBodySurface
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
@@ -942,6 +948,16 @@ struct NoteContentView: View {
             DocumentStatisticsStatus(statistics: currentDocumentStatistics)
         }
         .scholiumSurface(.document)
+        .overlay(alignment: .top) {
+            if documentSession.noteReviewTaskPresentation.isPresented(
+                for: state.noteReviewState?.noteID
+            ),
+               state.noteReviewState?.status == .needsReview {
+                noteReviewTaskBanner
+                    .padding(.top, ScholiumGrid.Spacing.inlineControlGap)
+                    .zIndex(10)
+            }
+        }
         .focusedSceneValue(\.scholiumSearchActions, ScholiumSearchActions { invocation in
             actions.beginSearch(invocation)
         })
@@ -989,20 +1005,6 @@ struct NoteContentView: View {
                 indexImage: requestImageIndex
             )
         ))
-        .overlay(alignment: .bottom) {
-            if let presentation = documentIntegrityPresentation {
-                ScholiumDocumentStatusToast(
-                    presentation.title,
-                    detail: presentation.detail,
-                    kind: presentation.kind
-                ) {
-                    documentIntegrityActions(presentation)
-                }
-                .accessibilityIdentifier(presentation.accessibilityIdentifier)
-                .padding(.horizontal, ScholiumGrid.Spacing.regionContentInset)
-                .padding(.bottom, ScholiumGrid.Spacing.sectionSeparation)
-            }
-        }
         .sheet(isPresented: Binding(
             get: { showConflictComparison },
             set: { showConflictComparison = $0 }
@@ -1185,8 +1187,12 @@ struct NoteContentView: View {
         }
     }
 
-    private var noteReviewTaskBar: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+    private var noteReviewTaskBanner: some View {
+        let shape = RoundedRectangle(
+            cornerRadius: ScholiumShape.inlineStatusCornerRadius,
+            style: .continuous
+        )
+        return VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             HStack(alignment: .firstTextBaseline) {
                 Label("Review Current Note", systemImage: "checkmark.circle")
                     .font(ScholiumTypography.interface(.sectionTitle))
@@ -1236,10 +1242,10 @@ struct NoteContentView: View {
         }
         .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
         .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
-        .background(ScholiumColorRole.raisedSurfaceBackground.color)
-        .overlay(alignment: .bottom) {
-            ScholiumStructuralRule()
-        }
+        .scholiumContentFittingWidth(
+            maximumWidth: ScholiumMetrics.ActivityNotificationStack.maximumWidth
+        )
+        .scholiumEditorialSurface(.floatingControl, in: shape)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.noteReview.task")
     }
@@ -1329,7 +1335,7 @@ struct NoteContentView: View {
                 ).post()
                 actions.notify(
                     String(localized: "Current Note marked reviewed"),
-                    .success
+                    .confirmation
                 )
             } catch {
                 noteReviewError = error.localizedDescription
@@ -2066,7 +2072,14 @@ struct NoteContentView: View {
 
     private func selectPresentationMode(_ mode: NotePresentationMode) {
         guard !editorIsComposing else {
-            actions.notify("Finish text composition to change document mode.", .information)
+            actions.notify(
+                String(
+                    localized: "Finish text composition to change document mode.",
+                    table: "Localizable",
+                    bundle: .module
+                ),
+                .information
+            )
             return
         }
         if mode == .read {
@@ -2110,7 +2123,14 @@ struct NoteContentView: View {
         }
 
         guard editingIsAvailable else {
-            actions.notify("This note is read-only in Scholium.", .information)
+            actions.notify(
+                String(
+                    localized: "This note is read-only in Scholium.",
+                    table: "Localizable",
+                    bundle: .module
+                ),
+                .information
+            )
             return
         }
         guard let editorMode = mode.editorMode else { return }
@@ -2188,7 +2208,14 @@ struct NoteContentView: View {
 
     private func retryManagedCreationEditor(in mode: MarkdownEditorMode) {
         guard editingIsAvailable else {
-            actions.notify("This note is read-only in Scholium.", .information)
+            actions.notify(
+                String(
+                    localized: "This note is read-only in Scholium.",
+                    table: "Localizable",
+                    bundle: .module
+                ),
+                .information
+            )
             return
         }
         if let bodyStart = documentSession.managedCreationBodyStartUTF16 {
@@ -2222,7 +2249,14 @@ struct NoteContentView: View {
     private func requestCommentFromDocument() {
         guard commentingIsAvailable, presentationMode == .read else { return }
         guard documentSession.readSelection != nil else {
-            actions.notify("Select a passage before commenting.", .information)
+            actions.notify(
+                String(
+                    localized: "Select a passage before commenting.",
+                    table: "Localizable",
+                    bundle: .module
+                ),
+                .information
+            )
             return
         }
         commentComposerRequestID = UUID()
@@ -2267,7 +2301,11 @@ struct NoteContentView: View {
                     succeeded: true
                 )
                 actions.notify(
-                    "The Comment was saved. Research views will refresh when the workspace is available.",
+                    String(
+                        localized: "The Comment was saved. Research views will refresh when the workspace is available.",
+                        table: "Localizable",
+                        bundle: .module
+                    ),
                     .information
                 )
             } catch {
@@ -2276,7 +2314,11 @@ struct NoteContentView: View {
                     succeeded: false
                 )
                 actions.notify(
-                    "Scholium could not save this Comment. \(error.localizedDescription)",
+                    String(
+                        localized: "Scholium could not save this Comment. \(error.localizedDescription)",
+                        table: "Localizable",
+                        bundle: .module
+                    ),
                     .error
                 )
             }
@@ -2289,7 +2331,11 @@ struct NoteContentView: View {
             do {
                 guard let discussion = try await actions.reloadDiscussion(discussionID) else {
                     actions.notify(
-                        "The requested Discussion is no longer active.",
+                        String(
+                            localized: "The requested Discussion is no longer active.",
+                            table: "Localizable",
+                            bundle: .module
+                        ),
                         .information
                     )
                     actions.clearRequestedDiscussion()
@@ -2300,7 +2346,11 @@ struct NoteContentView: View {
             } catch {
                 guard state.requestedDiscussionID == discussionID else { return }
                 actions.notify(
-                    "Scholium could not open this Discussion. \(error.localizedDescription)",
+                    String(
+                        localized: "Scholium could not open this Discussion. \(error.localizedDescription)",
+                        table: "Localizable",
+                        bundle: .module
+                    ),
                     .error
                 )
                 actions.clearRequestedDiscussion()
@@ -2314,7 +2364,11 @@ struct NoteContentView: View {
                 guard let discussion = try await actions.reloadDiscussion(anchor.discussionID),
                       discussion.statements.contains(where: { $0.id == anchor.statementID }) else {
                     actions.notify(
-                        "This Comment is no longer in an active Discussion.",
+                        String(
+                            localized: "This Comment is no longer in an active Discussion.",
+                            table: "Localizable",
+                            bundle: .module
+                        ),
                         .information
                     )
                     return
@@ -2325,7 +2379,11 @@ struct NoteContentView: View {
                 )
             } catch {
                 actions.notify(
-                    "Scholium could not open this Comment. \(error.localizedDescription)",
+                    String(
+                        localized: "Scholium could not open this Comment. \(error.localizedDescription)",
+                        table: "Localizable",
+                        bundle: .module
+                    ),
                     .error
                 )
             }
@@ -2343,7 +2401,11 @@ struct NoteContentView: View {
     private func openResearchAction(_ actionID: ResearchActionID) {
         guard !editorIsComposing else {
             actions.notify(
-                "Finish text composition to open a Research Action.",
+                String(
+                    localized: "Finish text composition to open a Research Action.",
+                    table: "Localizable",
+                    bundle: .module
+                ),
                 .information
             )
             return
@@ -2357,7 +2419,11 @@ struct NoteContentView: View {
             )
             if selection != nil, anchor == nil {
                 actions.notify(
-                    "Scholium could not match the selected passage reliably. The Action will open for the whole note.",
+                    String(
+                        localized: "Scholium could not match the selected passage reliably. The Action will open for the whole note.",
+                        table: "Localizable",
+                        bundle: .module
+                    ),
                     .information
                 )
             }
@@ -2382,7 +2448,11 @@ struct NoteContentView: View {
                 actions.openResearchAction(actionID, anchor)
             } catch {
                 actions.notify(
-                    "Scholium could not capture the current selection. The Action will open for the whole note. \(error.localizedDescription)",
+                    String(
+                        localized: "Scholium could not capture the current selection. The Action will open for the whole note. \(error.localizedDescription)",
+                        table: "Localizable",
+                        bundle: .module
+                    ),
                     .information
                 )
                 actions.openResearchAction(actionID, nil)

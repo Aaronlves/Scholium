@@ -24,34 +24,20 @@ enum WindowColorSchemeChoice: String, CaseIterable {
     }
 }
 
-struct WindowToast: Equatable {
-    enum Kind: Equatable {
-        case success
-        case information
-        case warning
-        case error
-
-        var symbol: String {
-            switch self {
-            case .success: "checkmark.circle.fill"
-            case .information: "info.circle.fill"
-            case .warning: "exclamationmark.triangle.fill"
-            case .error: "xmark.octagon.fill"
-            }
-        }
-
-        var colorRole: ScholiumColorRole {
-            switch self {
-            case .success: .confirmed
-            case .information: .information
-            case .warning: .attention
-            case .error: .destructive
-            }
-        }
-    }
-
+struct WindowFeedback: Equatable, Identifiable {
+    let id: UUID
     let message: String
-    let kind: Kind
+    let kind: ScholiumFeedbackKind
+
+    init(
+        id: UUID = UUID(),
+        message: String,
+        kind: ScholiumFeedbackKind
+    ) {
+        self.id = id
+        self.message = message
+        self.kind = kind
+    }
 }
 
 /// Presentation state owned by one complete configured window.
@@ -77,9 +63,15 @@ final class WindowShellState: ObservableObject {
         }
     }
     @Published private(set) var documentTextScale = ScholiumMetrics.Document.defaultTextScale
-    @Published private(set) var toastMessage: WindowToast?
+    @Published private(set) var feedbackItems: [WindowFeedback] = []
+    @Published private(set) var actionNotificationStackExpansionGeneration:
+        UInt64 = 0
     @Published private(set) var researchActivityNotifications:
         [ResearchActivityNotification] = []
+    #if DEBUG
+    private var qaResearchActivityNotifications:
+        [ResearchActivityNotification] = []
+    #endif
     @Published private(set) var researchNotificationPermissionNotice:
         ResearchNotificationPermissionNotice?
     @Published private(set) var refreshStatusText: String?
@@ -149,6 +141,11 @@ final class WindowShellState: ObservableObject {
         }
         inspectorModesByWorkspace = resetInspectorModes
         inspector.mode = .overview
+        feedbackItems.removeAll()
+        actionNotificationStackExpansionGeneration = 0
+        #if DEBUG
+        qaResearchActivityNotifications.removeAll()
+        #endif
     }
 
     func showResearchInspector(_ isVisible: Bool) {
@@ -187,21 +184,65 @@ final class WindowShellState: ObservableObject {
         documentTextScale = ScholiumMetrics.Document.defaultTextScale
     }
 
-    func showToast(_ message: String, kind: WindowToast.Kind) {
-        let toast = WindowToast(message: message, kind: kind)
-        toastMessage = toast
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
-            if self?.toastMessage == toast {
-                self?.toastMessage = nil
-            }
+    func presentFeedback(_ message: String, kind: ScholiumFeedbackKind) {
+        feedbackItems.removeAll {
+            $0.message == message && $0.kind == kind
         }
+        feedbackItems.append(
+            WindowFeedback(message: message, kind: kind)
+        )
+    }
+
+    func dismissFeedback(id: WindowFeedback.ID) {
+        feedbackItems.removeAll { $0.id == id }
+    }
+
+    var transientFeedbackItems: [WindowFeedback] {
+        feedbackItems.filter { $0.kind.dismissesAutomatically }
+    }
+
+    var persistentFeedbackItems: [WindowFeedback] {
+        feedbackItems.filter { !$0.kind.dismissesAutomatically }
+    }
+
+    func requestActionNotificationStackExpansion() {
+        actionNotificationStackExpansionGeneration &+= 1
     }
 
     func receiveResearchActivityNotifications(
         _ notifications: [ResearchActivityNotification]
     ) {
+        #if DEBUG
+        let qaRunIDs = Set(qaResearchActivityNotifications.map(\.runID))
+        researchActivityNotifications = qaResearchActivityNotifications
+            + notifications.filter { !qaRunIDs.contains($0.runID) }
+        #else
         researchActivityNotifications = notifications
+        #endif
     }
+
+    #if DEBUG
+    func presentQAResearchActivityNotifications(
+        _ notifications: [ResearchActivityNotification]
+    ) {
+        let previousQARunIDs = Set(qaResearchActivityNotifications.map(\.runID))
+        let production = researchActivityNotifications.filter {
+            !previousQARunIDs.contains($0.runID)
+        }
+        qaResearchActivityNotifications = notifications
+        receiveResearchActivityNotifications(production)
+    }
+
+    @discardableResult
+    func dismissQAResearchActivityNotification(runID: UUID) -> Bool {
+        guard qaResearchActivityNotifications.contains(where: {
+            $0.runID == runID
+        }) else { return false }
+        qaResearchActivityNotifications.removeAll { $0.runID == runID }
+        researchActivityNotifications.removeAll { $0.runID == runID }
+        return true
+    }
+    #endif
 
     func presentResearchNotificationPermissionNotice(
         _ notice: ResearchNotificationPermissionNotice

@@ -9,8 +9,8 @@ import Testing
 @Suite("Frontend architecture")
 @MainActor
 struct FrontendArchitectureTests {
-    @Test("Transient workspace notices are owned by the Document split region")
-    func transientNoticesFollowDocumentRegionWidth() throws {
+    @Test("Window feedback uses content-fitting edge overlays without Document reflow")
+    func windowFeedbackUsesConsequenceSpecificPlacement() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -18,6 +18,18 @@ struct FrontendArchitectureTests {
         let source = try String(
             contentsOf: repository.appendingPathComponent(
                 "Scholium/Views/ContentView.swift"
+            ),
+            encoding: .utf8
+        )
+        let settingsSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/WorkspaceSettingsView.swift"
+            ),
+            encoding: .utf8
+        )
+        let componentsSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumComponents.swift"
             ),
             encoding: .utf8
         )
@@ -32,17 +44,65 @@ struct FrontendArchitectureTests {
             documentStart.lowerBound..<apparatusStart.lowerBound
         ]
 
-        #expect(documentRegion.contains("ToastView(toast: toast)"))
-        #expect(documentRegion.contains("refreshStatusNotice"))
+        #expect(documentRegion.contains("detailRegion"))
+        #expect(source.contains("WorkspaceWindowTopOverlayHost("))
+        #expect(source.contains(".overlay(alignment: .bottom)"))
+        #expect(source.contains("windowTopNotificationOverlay"))
+        #expect(source.contains("shellState.transientFeedbackItems.first"))
+        #expect(source.contains("shellState.persistentFeedbackItems.first"))
+        #expect(source.contains("ScholiumMetrics.Notice.transientToastMaximumWidth"))
+        #expect(source.contains("ScholiumMetrics.Notice.windowFeedbackMaximumWidth"))
+        #expect(source.contains("WindowFeedbackItem("))
+        #expect(source.contains("ScholiumOperationFeedback("))
+        #expect(settingsSource.contains("WorkspaceSettingsFeedbackItem("))
+        #expect(settingsSource.contains(".overlay(alignment: .top)"))
+        #expect(settingsSource.contains("topInset - ScholiumGrid.Spacing.sectionSeparation"))
+        #expect(settingsSource.contains("settingsModel.feedbackItems.first"))
+        #expect(settingsSource.contains("ScholiumOperationFeedback("))
+        #expect(componentsSource.contains("struct ScholiumOperationFeedback: View"))
         #expect(
-            source.components(separatedBy: "ToastView(toast: toast)").count
-                == 2
+            componentsSource.contains(
+                ".scholiumContentFittingWidth(maximumWidth: maximumWidth)"
+            )
         )
+        #expect(componentsSource.contains("@FocusState private var dismissIsFocused: Bool"))
+        #expect(
+            componentsSource.contains(
+                ".scholiumActivationFocus(\n                $dismissIsFocused,\n                presentation: .native"
+            )
+        )
+        #expect(componentsSource.contains(".onKeyPress(.space)"))
+        #expect(componentsSource.contains("guard kind.dismissesAutomatically"))
+        #expect(!source.contains("WindowFeedbackStack"))
+        #expect(!settingsSource.contains("WorkspaceSettingsFeedbackStack"))
+        #expect(source.contains("refreshStatusNotice"))
         #expect(
             source.components(
                 separatedBy: ".accessibilityIdentifier(\"scholium.refreshStatus\")"
             ).count == 2
         )
+    }
+
+    @Test("Window feedback queues distinct notices and keeps warnings persistent")
+    func windowFeedbackQueue() throws {
+        let shell = WindowShellState()
+
+        shell.presentFeedback("Saved", kind: .confirmation)
+        let confirmation = try #require(shell.feedbackItems.first)
+        #expect(confirmation.kind.dismissesAutomatically)
+
+        shell.presentFeedback("Recovery required", kind: .warning)
+        let warning = try #require(shell.feedbackItems.last)
+        #expect(shell.feedbackItems.map(\.message) == ["Saved", "Recovery required"])
+        #expect(shell.transientFeedbackItems == [confirmation])
+        #expect(shell.persistentFeedbackItems == [warning])
+        #expect(!warning.kind.dismissesAutomatically)
+
+        shell.dismissFeedback(id: confirmation.id)
+        #expect(shell.feedbackItems == [warning])
+
+        shell.resetWorkspaceSessions()
+        #expect(shell.feedbackItems.isEmpty)
     }
 
     @Test("Research Action availability reconverges after progressive loading")
@@ -533,7 +593,11 @@ struct FrontendArchitectureTests {
         )
 
         #expect(noteSource.contains("DocumentIntegrityPresentation.resolve("))
-        #expect(noteSource.contains("ScholiumDocumentStatusToast("))
+        #expect(noteSource.contains("ScholiumDocumentStatusNotice("))
+        #expect(!noteSource.contains(
+            ".overlay(alignment: .bottom) {\n"
+                + "            if let presentation = documentIntegrityPresentation"
+        ))
         #expect(noteSource.contains("scholium.documentStatus.autosaveFailed"))
         #expect(noteSource.contains("scholium.documentStatus.conflict"))
         #expect(noteSource.contains("AccessibilityNotification.Announcement"))
@@ -551,7 +615,7 @@ struct FrontendArchitectureTests {
         #expect(!noteSource.contains(".alert(conflict == nil ? \"Save Failed\""))
         #expect(
             !noteSource.contains("Native save/conflict recovery owns focus while it is visible."))
-        #expect(componentSource.contains("struct ScholiumDocumentStatusToast<Actions: View>"))
+        #expect(componentSource.contains("struct ScholiumDocumentStatusNotice<Actions: View>"))
         #expect(
             componentSource.contains(
                 "HStack(alignment: .center, spacing: ScholiumMetrics.Notice.contentSpacing)"
@@ -2074,7 +2138,35 @@ struct FrontendArchitectureTests {
             contentsOf: repository.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
             encoding: .utf8
         )
-        #expect(attentionSource.contains("TextField(\"Search Issues\""))
+        let componentsSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumComponents.swift"
+            ),
+            encoding: .utf8
+        )
+        let contentSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/ContentView.swift"
+            ),
+            encoding: .utf8
+        )
+        let actionStackStart = try #require(
+            componentsSource.range(
+                of: "struct ResearchActivityNotificationStack: View"
+            )
+        )
+        let actionStackEnd = try #require(
+            componentsSource.range(
+                of: "private struct ResearchActivityNotificationBannerRow",
+                range: actionStackStart.upperBound..<componentsSource.endIndex
+            )
+        )
+        let actionStackSource = componentsSource[
+            actionStackStart.lowerBound..<actionStackEnd.lowerBound
+        ]
+        #expect(attentionSource.contains("TextField(\"Search Notifications\""))
+        #expect(attentionSource.contains("Picker(\"Notification Type\""))
+        #expect(attentionSource.contains("Text(\"Action Activities\")"))
         #expect(attentionSource.contains("scholium.attentionSearch"))
         #expect(attentionSource.contains(".popover("))
         #expect(
@@ -2098,6 +2190,24 @@ struct FrontendArchitectureTests {
         #expect(!appSource.contains("Window(\"Attention\", id: \"scholium-attention\")"))
         #expect(!appSource.contains("AttentionWindowSession"))
         #expect(!attentionSource.contains("Button(\"Close\""))
+
+        #expect(!attentionSource.contains(
+            "ActionActivityNotificationPopoverContent"
+        ))
+        #expect(!attentionSource.contains("presentedActivityRunID"))
+        #expect(!attentionSource.contains("notification.actionDetail"))
+        #expect(actionStackSource.contains("directBanner(for: latest)"))
+        #expect(actionStackSource.contains("ResearchActivityNotificationBannerRow("))
+        #expect(actionStackSource.contains("private var expandedRows"))
+        #expect(actionStackSource.contains("return VStack(spacing:"))
+        #expect(actionStackSource.contains("if isExpanded"))
+        #expect(!actionStackSource.contains("summaryHeight"))
+        #expect(actionStackSource.contains("expansionRequestGeneration"))
+        #expect(actionStackSource.contains("Show Action Notifications"))
+        #expect(actionStackSource.contains("Hide Action Notifications"))
+        #expect(!String(actionStackSource).localizedCaseInsensitiveContains("popover"))
+        #expect(contentSource.contains("actionNotificationStackExpansionGeneration"))
+        #expect(!contentSource.contains(".scholiumAttentionPopover(anchor: .activityStack"))
     }
 
     @Test("Completed Sidebar and Inspector proofs leave no compatibility residue")
@@ -2707,6 +2817,8 @@ struct FrontendArchitectureTests {
         #expect(components.contains("enum ScholiumContentStatePlacement"))
         #expect(components.contains("enum ScholiumContentStateDensity"))
         #expect(components.contains("maxWidth: ScholiumMetrics.ContentState.readableWidth"))
+        #expect(components.contains("if placement == .centered || density == .page"))
+        #expect(components.contains("private var contentGroupSpacing: CGFloat"))
         #expect(components.contains(".accessibilityElement(children: .contain)"))
         #expect(note.contains("\"Empty Note\""))
         #expect(note.contains("\"Review Mode Unavailable\""))
@@ -4729,10 +4841,10 @@ struct FrontendArchitectureTests {
             contentsOf: repository.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
             encoding: .utf8
         )
-        let showToastSource = try #require(
-            appSource.range(of: "func showToast(_ message:")
+        let presentFeedbackSource = try #require(
+            appSource.range(of: "func presentFeedback(")
         )
-        let suffix = appSource[showToastSource.lowerBound...]
+        let suffix = appSource[presentFeedbackSource.lowerBound...]
         let end = suffix.range(of: "private func refreshIdentityState")
         let body = end.map { String(suffix[..<$0.lowerBound]) } ?? String(suffix.prefix(1_000))
         #expect(!body.contains("withAnimation"))

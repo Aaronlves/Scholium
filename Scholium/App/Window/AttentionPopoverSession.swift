@@ -5,7 +5,29 @@ import Foundation
 enum AttentionPopoverAnchor: String, Equatable, Sendable {
     case sidebar
     case inspector
-    case activityStack
+}
+
+enum AttentionQueuePopoverAnchor: Equatable, Sendable {
+    case sidebar
+    case inspector
+
+    var popoverAnchor: AttentionPopoverAnchor {
+        switch self {
+        case .sidebar: .sidebar
+        case .inspector: .inspector
+        }
+    }
+}
+
+/// One window-level Notifications request either opens the complete queue from
+/// a stable anchor or expands the Document's Action-only stack in place.
+enum AttentionPresentationRequest: Equatable, Sendable {
+    case queue(
+        anchor: AttentionQueuePopoverAnchor,
+        workspaceSlot: WorkspaceVaultSlot?,
+        noteScope: VaultQualifiedNoteID?
+    )
+    case actionStack
 }
 
 /// Exact-Workspace adapter for the transient Notifications popover. It observes
@@ -77,12 +99,6 @@ final class AttentionPopoverSession: ObservableObject {
             .sink { [weak self] notifications in
                 guard let self else { return }
                 activityNotifications = notifications
-                if presentedAnchor == .activityStack,
-                   !notifications.contains(where: {
-                       $0.state.requiresResearcherAttention
-                   }) {
-                    dismiss()
-                }
             }
             .store(in: &observations)
     }
@@ -103,9 +119,9 @@ final class AttentionPopoverSession: ObservableObject {
         projectionController.derivedRefreshStatus
     }
 
-    func present(
-        from anchor: AttentionPopoverAnchor,
-        workspaceSlot: WorkspaceVaultSlot? = nil,
+    func presentQueue(
+        anchor: AttentionQueuePopoverAnchor,
+        workspaceSlot: WorkspaceVaultSlot?,
         noteScope: VaultQualifiedNoteID?
     ) {
         let resolvedWorkspaceSlot = workspaceSlot ?? noteScope.flatMap { note in
@@ -117,7 +133,7 @@ final class AttentionPopoverSession: ObservableObject {
             workspaceSlot: resolvedWorkspaceSlot,
             noteScope: noteScope
         )
-        presentedAnchor = anchor
+        presentedAnchor = anchor.popoverAnchor
     }
 
     func isPresented(from anchor: AttentionPopoverAnchor) -> Bool {
@@ -151,6 +167,7 @@ final class AttentionPopoverSession: ObservableObject {
     func visibleActivityNotifications(
         for presentation: AttentionPresentationState
     ) -> [ResearchActivityNotification] {
+        guard presentation.notificationFilter.showsActivities else { return [] }
         let noteID: UUID?
         if let noteScope = presentation.noteScope {
             noteID = ResearchActivityNotificationQuery.stableNoteID(
@@ -235,10 +252,10 @@ enum ResearchActivityNotificationQuery {
     static func apply(
         notifications: [ResearchActivityNotification],
         noteID: UUID?,
-        filter: AttentionQueueFilter
+        filter: AttentionQueueFilter,
+        locale: Locale = .current
     ) -> [ResearchActivityNotification] {
-        guard filter.kind == nil else { return [] }
-        let query = normalized(filter.query)
+        let query = normalized(filter.query, locale: locale)
         return notifications.filter { notification in
             if let noteID,
                notification.targetNoteID != noteID,
@@ -247,27 +264,63 @@ enum ResearchActivityNotificationQuery {
             }
             guard !query.isEmpty else { return true }
             let searchable = [
-                stateTitle(notification.state),
-                actionTitle(notification.actionID),
+                ResearchActivityNotificationCopy.stateTitle(
+                    notification.state,
+                    locale: locale
+                ),
+                ResearchActivityNotificationCopy.actionTitle(
+                    notification.actionID,
+                    locale: locale
+                ),
                 notification.targetTitle,
                 notification.affectedNotes.map(\.title).joined(separator: " "),
             ].joined(separator: " ")
-            return normalized(searchable).contains(query)
+            return normalized(searchable, locale: locale).contains(query)
         }
     }
 
-    private static func normalized(_ value: String) -> String {
+    private static func normalized(_ value: String, locale: Locale) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines)
-            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: locale)
+    }
+}
+
+enum ResearchActivityNotificationCopy {
+    static func actionTitle(
+        _ actionID: ResearchActionID,
+        locale: Locale = .current
+    ) -> String {
+        switch actionID {
+        case .discuss:
+            ScholiumL10n.string("Discuss", locale: locale)
+        case .analyze:
+            ScholiumL10n.string("Analyze", locale: locale)
+        case .synthesize:
+            ScholiumL10n.string("Synthesize", locale: locale)
+        case .write:
+            ScholiumL10n.string("Write", locale: locale)
+        case .critique:
+            ScholiumL10n.string("Critique", locale: locale)
+        case .checkFidelity:
+            ScholiumL10n.string("Check Fidelity", locale: locale)
+        }
     }
 
-    private static func stateTitle(_ state: ResearchActivityNotificationState) -> String {
+    static func stateTitle(
+        _ state: ResearchActivityNotificationState,
+        locale: Locale = .current
+    ) -> String {
         switch state {
-        case .waitingForAgent: "Waiting for Agent"
-        case .running: "Running"
-        case .needsAttention: "Needs Attention"
-        case .resultReady: "Result Ready"
-        case .recoveryRequired: "Recovery Required"
+        case .waitingForAgent:
+            ScholiumL10n.string("Waiting for Agent", locale: locale)
+        case .running:
+            ScholiumL10n.string("Running", locale: locale)
+        case .needsAttention:
+            ScholiumL10n.string("Needs Attention", locale: locale)
+        case .resultReady:
+            ScholiumL10n.string("Result Ready", locale: locale)
+        case .recoveryRequired:
+            ScholiumL10n.string("Recovery Required", locale: locale)
         }
     }
 }

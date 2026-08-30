@@ -150,69 +150,19 @@ struct WindowControllerArchitectureTests {
         #expect(sessionSource.contains("projectionController.$state"))
     }
 
-    @Test("Document activity stack closes when no researcher-decision activity remains")
-    func activityStackDismissesWithLastEligibleActivity() {
-        let store = makeTestWorkspaceStore()
-        let workspaceController = WindowWorkspaceController(
-            workspaceStore: store,
-            requestedTriptychID: nil
-        )
-        let activityChanges = PassthroughSubject<
-            [ResearchActivityNotification], Never
-        >()
-        let session = AttentionPopoverSession(
-            presentation: AttentionPresentationState(),
-            discoveryController: DiscoveryController(),
-            workspaceController: workspaceController,
-            projectionController: WindowWorkspaceProjectionController {
-                throw DiscoverySearchExecutionError.workspaceUnavailable
-            },
-            dismissalDays: 7,
-            dependencies: .init(
-                dismissalDaysChanges: Just(7).eraseToAnyPublisher(),
-                activityChanges: activityChanges.eraseToAnyPublisher(),
-                refresh: {},
-                resynthesize: { _ in },
-                openAction: { _ in },
-                endAction: { _ in },
-                reviewResult: { _ in },
-                followUp: { _ in },
-                dismissActivity: { _ in }
-            )
-        )
-        let ready = ResearchActivityNotification(
-            triptychID: UUID(),
-            runID: UUID(),
-            actionID: .synthesize,
-            targetNoteID: UUID(),
-            targetTitle: "Fixture",
-            state: .resultReady,
-            activity: nil,
-            result: nil,
-            affectedNotes: [],
-            updatedAt: .now
-        )
-        let running = ResearchActivityNotification(
-            triptychID: ready.triptychID,
-            runID: UUID(),
-            actionID: .synthesize,
-            targetNoteID: ready.targetNoteID,
-            targetTitle: ready.targetTitle,
-            state: .running,
-            activity: nil,
-            result: nil,
-            affectedNotes: [],
-            updatedAt: .now
-        )
+    @Test("Document activity stack expansion stays in the exact window shell")
+    func activityStackExpansionIsWindowLocal() {
+        let first = WindowShellState(userDefaults: UserDefaults(suiteName: UUID().uuidString)!)
+        let second = WindowShellState(userDefaults: UserDefaults(suiteName: UUID().uuidString)!)
 
-        activityChanges.send([ready, running])
-        session.present(from: .activityStack, noteScope: nil)
-        #expect(session.presentedAnchor == .activityStack)
-
-        activityChanges.send([running])
-
-        #expect(session.presentedAnchor == nil)
-        #expect(session.activityNotifications == [running])
+        #expect(first.actionNotificationStackExpansionGeneration == 0)
+        #expect(second.actionNotificationStackExpansionGeneration == 0)
+        first.requestActionNotificationStackExpansion()
+        first.requestActionNotificationStackExpansion()
+        #expect(first.actionNotificationStackExpansionGeneration == 2)
+        #expect(second.actionNotificationStackExpansionGeneration == 0)
+        first.resetWorkspaceSessions()
+        #expect(first.actionNotificationStackExpansionGeneration == 0)
     }
 
     @Test("Visible Sidebar always owns the stable Triptych Attention route")
@@ -237,6 +187,7 @@ struct WindowControllerArchitectureTests {
         #expect(route.contains("if appState.sidebarVisible"))
         #expect(route.contains("anchor: .sidebar"))
         #expect(route.contains("workspaceSlot: nil"))
+        #expect(route.contains("return .actionStack"))
         #expect(!route.contains("visibleTotalCount"))
         #expect(!route.contains("count > 0"))
     }
@@ -1815,14 +1766,14 @@ struct WindowControllerArchitectureTests {
         ))
 
         #expect(window.vaultError == nil)
-        #expect(window.toastMessage?.kind == .warning)
-        #expect(window.toastMessage?.message.contains("already committed") == true)
-        #expect(window.toastMessage?.message.contains("do not import them again") == true)
-        #expect(window.toastMessage?.message.contains("Topics") == true)
-        #expect(window.toastMessage?.message.contains(
+        #expect(window.feedbackItems.last?.kind == .warning)
+        #expect(window.feedbackItems.last?.message.contains("already committed") == true)
+        #expect(window.feedbackItems.last?.message.contains("do not import them again") == true)
+        #expect(window.feedbackItems.last?.message.contains("Topics") == true)
+        #expect(window.feedbackItems.last?.message.contains(
             "stable note identity recovery is incomplete"
         ) == true)
-        #expect(window.toastMessage?.message.contains(
+        #expect(window.feedbackItems.last?.message.contains(
             "Identity registry is unavailable."
         ) == true)
 
@@ -2505,6 +2456,9 @@ struct WindowControllerArchitectureTests {
         let notifications = try source(
             "Scholium/Views/AttentionQueueView.swift"
         )
+        let sharedComponents = try source(
+            "Scholium/UI/Components/ScholiumComponents.swift"
+        )
         let comparison = try source(
             "Scholium/UI/Components/ExactSourceComparisonView.swift"
         )
@@ -2604,7 +2558,7 @@ struct WindowControllerArchitectureTests {
             "Button(\"End Action…\"",
             "DisclosureGroup(\"Affected Notes",
         ] {
-            #expect(notifications.contains(notificationBoundary))
+            #expect((notifications + sharedComponents).contains(notificationBoundary))
         }
 
         for changeRecoveryBoundary in [
@@ -2638,8 +2592,8 @@ struct WindowControllerArchitectureTests {
             "Button(\"Mark Current Note Reviewed\")",
             "reconcileNoteReviewTask",
             "AccessibilityNotification.Announcement",
-            "ScholiumColorRole.raisedSurfaceBackground.color",
-            "ScholiumStructuralRule()",
+            ".scholiumEditorialSurface(.floatingControl, in: shape)",
+            "ScholiumMetrics.ActivityNotificationStack.maximumWidth",
             "noteReviewBlockingReason",
             "documentSession.hasUnsavedChanges",
             "conflict != nil",

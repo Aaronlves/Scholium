@@ -97,19 +97,209 @@ struct ResearchActivityNotificationCoordinatorTests {
         coordinator.dismiss(destination, from: windowID)
         #expect(replayed.isEmpty)
     }
+
+    @Test("Settings can recover notification authorization after education is dismissed")
+    func settingsAuthorizationRecovery() async {
+        let system = ActivityNotificationSystem(
+            authorizationState: .notDetermined,
+            authorizationStateAfterRequest: .authorized
+        )
+        let coordinator = ResearchResultNotificationCoordinator(
+            systemNotifications: system,
+            userDefaults: UserDefaults(suiteName: UUID().uuidString)!,
+            applicationIsActive: { true }
+        )
+
+        await coordinator.refreshSystemNotificationAuthorization()
+        #expect(coordinator.systemNotificationAuthorizationState == .notDetermined)
+
+        await coordinator.requestSystemNotificationAuthorizationFromSettings()
+        #expect(coordinator.systemNotificationAuthorizationState == .authorized)
+        #expect(system.authorizationRequestCount == 1)
+
+        coordinator.openNotificationSettings()
+        #expect(system.openSettingsCount == 1)
+    }
+
+    @Test("A cold-launch notification click waits for its authoritative Triptych snapshot")
+    func coldLaunchNotificationClick() {
+        let system = ActivityNotificationSystem()
+        let coordinator = ResearchResultNotificationCoordinator(
+            systemNotifications: system,
+            userDefaults: UserDefaults(suiteName: UUID().uuidString)!,
+            applicationIsActive: { true }
+        )
+        let triptychID = UUID()
+        let arrival = WorkspaceResearchResultArrival(
+            runID: UUID(),
+            recordID: UUID(),
+            actionID: .analyze,
+            originNoteID: UUID(),
+            targetTitle: "Reasons",
+            affectedNotes: [],
+            recordFingerprint: DocumentFingerprint(content: "result"),
+            finishedAt: Date(timeIntervalSince1970: 40)
+        )
+        let destination = ResearchResultReviewDestination(
+            triptychID: triptychID,
+            arrival: arrival
+        )
+        var opened: [ResearchResultReviewDestination] = []
+
+        system.responseHandler?(destination)
+        coordinator.registerReviewRouter(triptychID: triptychID) {
+            opened.append($0)
+        }
+        #expect(opened.isEmpty)
+
+        coordinator.receive(
+            activities: [],
+            arrivals: [arrival],
+            triptychID: triptychID
+        )
+
+        #expect(opened == [destination])
+    }
+
+    @Test("System notification payload preserves the exact cold-launch route identity")
+    func systemNotificationPayloadRoundTrip() throws {
+        let arrival = WorkspaceResearchResultArrival(
+            runID: UUID(),
+            recordID: UUID(),
+            actionID: .checkFidelity,
+            originNoteID: UUID(),
+            targetTitle: "Fidelity Review",
+            affectedNotes: [],
+            recordFingerprint: DocumentFingerprint(content: "final result"),
+            finishedAt: Date(timeIntervalSince1970: 50)
+        )
+        let expected = ResearchResultReviewDestination(
+            triptychID: UUID(),
+            arrival: arrival
+        )
+
+        let payload = ResearchResultUserNotificationAdapter.userInfo(
+            for: expected
+        )
+        let decoded = try #require(
+            ResearchResultUserNotificationAdapter.destination(from: payload)
+        )
+
+        #expect(decoded.triptychID == expected.triptychID)
+        #expect(decoded.runID == expected.runID)
+        #expect(decoded.actionID == expected.actionID)
+        #expect(decoded.targetNoteID == expected.targetNoteID)
+        #expect(decoded.recordID == expected.recordID)
+        #expect(
+            decoded.finalizedResultFingerprint
+                == expected.finalizedResultFingerprint
+        )
+
+        var invalidPayload = payload
+        invalidPayload["result_sha256"] = "not-a-fingerprint"
+        #expect(
+            ResearchResultUserNotificationAdapter.destination(
+                from: invalidPayload
+            ) == nil
+        )
+    }
+
+    #if DEBUG
+    @Test("QA Action proof reuses the two latest durable result routes")
+    func qaActionNotificationProof() {
+        let triptychID = UUID()
+        let arrivals = (0..<3).map { offset in
+            WorkspaceResearchResultArrival(
+                runID: UUID(),
+                recordID: UUID(),
+                actionID: offset == 0 ? .analyze : .synthesize,
+                originNoteID: UUID(),
+                targetTitle: "Result \(offset)",
+                affectedNotes: [],
+                recordFingerprint: DocumentFingerprint(
+                    content: "result \(offset)"
+                ),
+                finishedAt: Date(timeIntervalSince1970: TimeInterval(offset))
+            )
+        }
+
+        let notifications = QAActionNotificationProof.notifications(
+            triptychID: triptychID,
+            arrivals: arrivals
+        )
+
+        #expect(notifications.count == 2)
+        #expect(notifications.map(\.targetTitle) == ["Result 2", "Result 1"])
+        #expect(notifications.allSatisfy { $0.triptychID == triptychID })
+        #expect(notifications.allSatisfy { $0.state == .resultReady })
+        #expect(
+            notifications.map(\.result?.recordID)
+                == [arrivals[2].recordID, arrivals[1].recordID]
+        )
+
+        let shell = WindowShellState()
+        let production = ResearchActivityNotification(
+            triptychID: triptychID,
+            runID: UUID(),
+            actionID: .write,
+            targetNoteID: UUID(),
+            targetTitle: "Production activity",
+            state: .running,
+            activity: nil,
+            result: nil,
+            affectedNotes: [],
+            updatedAt: .distantPast
+        )
+        shell.receiveResearchActivityNotifications([production])
+        shell.presentQAResearchActivityNotifications(notifications)
+        #expect(
+            shell.researchActivityNotifications.map(\.runID)
+                == notifications.map(\.runID) + [production.runID]
+        )
+
+        shell.receiveResearchActivityNotifications([production])
+        #expect(
+            shell.researchActivityNotifications.map(\.runID)
+                == notifications.map(\.runID) + [production.runID]
+        )
+        #expect(shell.dismissQAResearchActivityNotification(
+            runID: notifications[0].runID
+        ))
+        #expect(
+            shell.researchActivityNotifications.map(\.runID)
+                == [notifications[1].runID, production.runID]
+        )
+    }
+    #endif
 }
 
 @MainActor
 private final class ActivityNotificationSystem:
     ResearchResultSystemNotificationServing {
     var responseHandler: (@MainActor (ResearchResultReviewDestination) -> Void)?
+    var authorizationStateValue: ResearchResultNotificationAuthorizationState
+    let authorizationStateAfterRequest: ResearchResultNotificationAuthorizationState
+    private(set) var authorizationRequestCount = 0
+    private(set) var openSettingsCount = 0
 
-    func authorizationState() async -> ResearchResultNotificationAuthorizationState {
-        .authorized
+    init(
+        authorizationState: ResearchResultNotificationAuthorizationState = .authorized,
+        authorizationStateAfterRequest: ResearchResultNotificationAuthorizationState = .authorized
+    ) {
+        authorizationStateValue = authorizationState
+        self.authorizationStateAfterRequest = authorizationStateAfterRequest
     }
 
-    func requestAuthorization() async throws -> Bool { true }
+    func authorizationState() async -> ResearchResultNotificationAuthorizationState {
+        authorizationStateValue
+    }
+
+    func requestAuthorization() async throws -> Bool {
+        authorizationRequestCount += 1
+        authorizationStateValue = authorizationStateAfterRequest
+        return authorizationStateAfterRequest == .authorized
+    }
     func deliver(_ request: ResearchResultSystemNotificationRequest) async throws {}
     func removeNotification(identifier: String) {}
-    func openNotificationSettings() {}
+    func openNotificationSettings() { openSettingsCount += 1 }
 }

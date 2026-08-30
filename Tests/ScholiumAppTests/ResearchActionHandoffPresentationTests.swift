@@ -58,6 +58,24 @@ struct ResearchActionHandoffPresentationTests {
             "Scholium/App/ScholiumApp.swift",
             repositoryRoot: repositoryRoot
         )
+        let detailStart = try #require(
+            content.range(of: "private var detailRegion")
+        )
+        let overlayOwner = try #require(
+            content.range(
+                of: "private var windowTopNotificationOverlay",
+                range: detailStart.upperBound..<content.endIndex
+            )
+        )
+        let detailRegion = content[
+            detailStart.lowerBound..<overlayOwner.lowerBound
+        ]
+        let refresh = try #require(
+            detailRegion.range(of: "refreshStatusNotice")
+        )
+        let recovery = try #require(
+            detailRegion.range(of: "TransactionRecoveryNotice(")
+        )
 
         #expect(actionPanel.contains("Text(\"Target\")"))
         #expect(actionPanel.contains("Text(actionEffectLabel)"))
@@ -88,9 +106,13 @@ struct ResearchActionHandoffPresentationTests {
         #expect(actionPanel.contains("controller.retryHandoff()"))
         #expect(!content.contains("reviewResult: { activity in"))
         #expect(content.contains("appState.presentationRouter.dismissSheet()"))
-        #expect(content.contains("private var researchNotificationBanner"))
-        #expect(content.contains("researchNotificationBanner\n            if !appState.transactionRecoveryRecords"))
-        #expect(!content.contains(".overlay(alignment: .top)"))
+        #expect(refresh.lowerBound < recovery.lowerBound)
+        #expect(!detailRegion.contains("windowTopNotificationSurface("))
+        #expect(content.contains("WorkspaceWindowTopOverlayHost("))
+        #expect(content.contains(".overlay(alignment: .bottom)"))
+        #expect(content.contains("private func windowTopNotificationSurface("))
+        #expect(content.contains("transientFeedbackItems.first"))
+        #expect(content.contains("persistentFeedbackItems.first"))
         #expect(content.contains("AccessibilityNotification.Announcement"))
         #expect(app.contains("purpose: .reviewResult"))
         #expect(app.contains("expectedFinalizedResultFingerprint:"))

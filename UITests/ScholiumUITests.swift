@@ -143,6 +143,11 @@ final class ScholiumUITests: XCTestCase {
         sessionID = UUID()
         try createIsolatedTriptych()
         if name.contains(
+            "testActionNotificationProofPresentationKeepsTheStackExact"
+        ) {
+            try seedNoteReviewCutoverFixture()
+        }
+        if name.contains(
             "testAmbiguousExternalRenameRequiresExplicitIdentityConfirmation"
         ) {
             try seedAmbiguousIdentityFixture()

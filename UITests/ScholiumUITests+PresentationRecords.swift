@@ -30,6 +30,257 @@ extension ScholiumUITests {
     }
 
     @MainActor
+    func testWindowFeedbackPlacesTransientToastBelowAndPersistentWarningAbove() {
+        let document = app.webViews.firstMatch
+        XCTAssertTrue(document.waitForExistence(timeout: 5))
+        let documentFrameBeforeFeedback = document.frame
+        let window = app.windows.firstMatch
+
+        let qaMenu = app.menuBars.menuBarItems["QA"]
+        XCTAssertTrue(qaMenu.waitForExistence(timeout: 5))
+        qaMenu.click()
+        let present = app.menuItems["Present Window Feedback Proof"]
+        XCTAssertTrue(present.waitForExistence(timeout: 3))
+        present.click()
+
+        let confirmation = app.descendants(matching: .any)[
+            "scholium.windowFeedback.confirmation"
+        ]
+        let warning = app.descendants(matching: .any)[
+            "scholium.windowFeedback.warning"
+        ]
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 3))
+        XCTAssertTrue(warning.waitForExistence(timeout: 3))
+        XCTAssertEqual(confirmation.label, "Confirmation")
+        XCTAssertEqual(warning.label, "Warning")
+        XCTAssertTrue(
+            accessibilityText(of: confirmation.staticTexts.firstMatch)
+                .contains("QA transient confirmation")
+        )
+        XCTAssertTrue(
+            accessibilityText(of: warning.staticTexts.firstMatch)
+                .contains("QA persistent warning")
+        )
+
+        XCTAssertEqual(document.frame, documentFrameBeforeFeedback)
+        XCTAssertTrue(window.frame.contains(warning.frame))
+        XCTAssertTrue(
+            document.frame.intersects(confirmation.frame),
+            "Transient feedback must overlay Document instead of taking layout space."
+        )
+        XCTAssertEqual(warning.frame.midX, window.frame.midX, accuracy: 2)
+        XCTAssertEqual(confirmation.frame.midX, window.frame.midX, accuracy: 2)
+        XCTAssertEqual(
+            warning.frame.minY - window.frame.minY,
+            16,
+            accuracy: 4
+        )
+        XCTAssertEqual(
+            window.frame.maxY - confirmation.frame.maxY,
+            16,
+            accuracy: 4
+        )
+        XCTAssertGreaterThan(
+            confirmation.frame.midY,
+            document.frame.midY,
+            "The transient toast must remain in the lower half of the window."
+        )
+        let screenshot = XCTAttachment(screenshot: window.screenshot())
+        screenshot.name = "Window feedback split presentation"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+
+        XCTAssertTrue(
+            waitUntil(timeout: 8) { !confirmation.exists },
+            "A redundant confirmation must leave after the bounded dwell."
+        )
+        XCTAssertEqual(document.frame, documentFrameBeforeFeedback)
+        XCTAssertTrue(warning.exists, "Warnings must remain until explicit dismissal.")
+        let dismiss = warning.buttons["Dismiss"]
+        XCTAssertTrue(dismiss.waitForExistence(timeout: 3))
+        let keyboardFocus = NSPredicate(format: "hasKeyboardFocus == true")
+        for _ in 0..<32 where !keyboardFocus.evaluate(with: dismiss) {
+            app.typeKey(.tab, modifierFlags: [])
+        }
+        XCTAssertTrue(
+            keyboardFocus.evaluate(with: dismiss),
+            "Tab must give Dismiss observable native keyboard focus."
+        )
+        let focusedScreenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        focusedScreenshot.name = "Persistent feedback keyboard focus"
+        focusedScreenshot.lifetime = .keepAlways
+        add(focusedScreenshot)
+        app.typeKey(.space, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 3) { !warning.exists })
+        XCTAssertTrue(document.exists)
+    }
+
+    @MainActor
+    func testActionNotificationProofPresentationKeepsTheStackExact() throws {
+        let document = app.webViews.firstMatch
+        XCTAssertTrue(document.waitForExistence(timeout: 5))
+        let documentFrameBeforeAction = document.frame
+        let window = app.windows.firstMatch
+        let qaMenu = app.menuBars.menuBarItems["QA"]
+        XCTAssertTrue(qaMenu.waitForExistence(timeout: 5))
+        qaMenu.click()
+        let present = app.menuItems["Present Action Notification Proof"]
+        XCTAssertTrue(present.waitForExistence(timeout: 3))
+        present.click()
+
+        let stack = app.descendants(matching: .any)[
+            "scholium.researchActivityNotificationStack"
+        ]
+        XCTAssertTrue(stack.waitForExistence(timeout: 8))
+        let dismiss = stack.buttons["Dismiss"].firstMatch
+        XCTAssertTrue(
+            dismiss.waitForExistence(timeout: 5),
+            "A single Action notification must expose its action directly in the banner."
+        )
+        XCTAssertFalse(app.popovers.firstMatch.exists)
+        XCTAssertEqual(document.frame, documentFrameBeforeAction)
+        XCTAssertTrue(document.frame.intersects(stack.frame))
+        XCTAssertEqual(stack.frame.midX, window.frame.midX, accuracy: 2)
+        XCTAssertEqual(
+            stack.frame.minY - window.frame.minY,
+            16,
+            accuracy: 4
+        )
+        let screenshot = XCTAttachment(screenshot: window.screenshot())
+        screenshot.name = "Compact top-centred Action"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+
+        XCTAssertTrue(dismiss.isHittable)
+        dismiss.click()
+        XCTAssertTrue(
+            waitUntil(timeout: 5) { !stack.exists },
+            "Pointer activation must dismiss the inline Action operation."
+        )
+        XCTAssertFalse(app.popovers.firstMatch.exists)
+
+        qaMenu.click()
+        XCTAssertTrue(present.waitForExistence(timeout: 3))
+        present.click()
+        XCTAssertTrue(stack.waitForExistence(timeout: 8))
+        let keyboardDismiss = stack.buttons["Dismiss"].firstMatch
+        XCTAssertTrue(keyboardDismiss.waitForExistence(timeout: 5))
+        let keyboardFocus = NSPredicate(format: "hasKeyboardFocus == true")
+        for _ in 0..<32 where !keyboardFocus.evaluate(with: keyboardDismiss) {
+            app.typeKey(.tab, modifierFlags: [])
+        }
+        XCTAssertTrue(
+            keyboardFocus.evaluate(with: keyboardDismiss),
+            "Tab must reach the inline Action operation."
+        )
+        app.typeKey(.space, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !stack.exists })
+        XCTAssertFalse(app.popovers.firstMatch.exists)
+    }
+
+    @MainActor
+    func testNotificationsEmptyStateKeepsIndicatorWithCopy() {
+        let notifications = app.buttons["scholium.triptychNotifications"].firstMatch
+        XCTAssertTrue(notifications.waitForExistence(timeout: 8))
+        notifications.click()
+
+        let popover = app.popovers.firstMatch
+        XCTAssertTrue(popover.waitForExistence(timeout: 5))
+        let search = popover.descendants(matching: .any)[
+            "scholium.attentionSearch"
+        ]
+        XCTAssertTrue(search.waitForExistence(timeout: 3))
+        search.click()
+        search.typeText("no-notification-can-match-this-query")
+
+        let empty = popover.descendants(matching: .any)[
+            "scholium.attentionEmpty"
+        ]
+        XCTAssertTrue(empty.waitForExistence(timeout: 3))
+        let copy = empty.staticTexts.firstMatch
+        XCTAssertTrue(copy.exists)
+        let accessibleCopy = accessibilityText(of: copy)
+        XCTAssertTrue(accessibleCopy.contains("No Matching Notifications"))
+        XCTAssertTrue(
+            accessibleCopy.contains(
+                "No Action activity or visible derived issue needs attention in this Scope."
+            )
+        )
+
+        let screenshot = XCTAttachment(screenshot: popover.screenshot())
+        screenshot.name = "Grouped Notifications empty state"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
+    @MainActor
+    func testSettingsFeedbackOverlaysTheWindowWithoutReflow() {
+        let settingsItem = app.menuItems["Settings…"]
+        XCTAssertTrue(settingsItem.waitForExistence(timeout: 3))
+        settingsItem.click()
+        let settings = settingsWindow()
+        XCTAssertTrue(settings.waitForExistence(timeout: 8))
+
+        let confirmation = settings.descendants(matching: .any)[
+            "scholium.settings.feedback.confirmation"
+        ]
+        let error = settings.descendants(matching: .any)[
+            "scholium.settings.feedback.error"
+        ]
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 3))
+        XCTAssertFalse(error.exists)
+        XCTAssertEqual(confirmation.label, "Confirmation")
+        XCTAssertTrue(
+            accessibilityText(of: confirmation.staticTexts.firstMatch)
+                .contains("QA settings confirmation")
+        )
+
+        let root = settings.descendants(matching: .any)["scholium.settings.root"]
+        let sidebar = settings.descendants(matching: .any)["scholium.settings.sidebar"]
+        XCTAssertTrue(root.exists)
+        XCTAssertTrue(sidebar.exists)
+        let sidebarFrame = sidebar.frame
+
+        XCTAssertTrue(
+            waitUntil(timeout: 8) { !confirmation.exists },
+            "A Settings confirmation must leave after the bounded dwell."
+        )
+        XCTAssertTrue(error.waitForExistence(timeout: 3))
+        XCTAssertEqual(error.label, "Error")
+        XCTAssertTrue(
+            accessibilityText(of: error.staticTexts.firstMatch)
+                .contains("QA settings error")
+        )
+        XCTAssertTrue(error.exists, "Settings errors must remain until explicit dismissal.")
+        XCTAssertTrue(root.frame.contains(error.frame))
+        XCTAssertEqual(error.frame.midX, settings.frame.midX, accuracy: 2)
+        let settingsFeedbackTopGap = error.frame.minY - settings.frame.minY
+        XCTAssertGreaterThanOrEqual(
+            settingsFeedbackTopGap,
+            52,
+            "Settings feedback must begin below the native titlebar/toolbar band."
+        )
+        XCTAssertLessThanOrEqual(
+            settingsFeedbackTopGap,
+            68,
+            "Settings feedback must remain close to the top of the Settings content."
+        )
+        XCTAssertEqual(
+            sidebar.frame,
+            sidebarFrame,
+            "Settings feedback must not move the underlying Settings content."
+        )
+        let screenshot = XCTAttachment(screenshot: settings.screenshot())
+        screenshot.name = "Window-level Settings feedback"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        let dismiss = error.buttons["Dismiss"]
+        XCTAssertTrue(dismiss.waitForExistence(timeout: 3))
+        dismiss.click()
+        XCTAssertTrue(waitUntil(timeout: 3) { !error.exists })
+    }
+
+    @MainActor
     func testWorkspaceInitialDefaultPreservesNativeReachability() throws {
         waitForCurrentDocumentSurface()
         let window = app.windows.firstMatch
