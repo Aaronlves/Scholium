@@ -150,6 +150,71 @@ struct WindowControllerArchitectureTests {
         #expect(sessionSource.contains("projectionController.$state"))
     }
 
+    @Test("Document activity stack closes when no researcher-decision activity remains")
+    func activityStackDismissesWithLastEligibleActivity() {
+        let store = makeTestWorkspaceStore()
+        let workspaceController = WindowWorkspaceController(
+            workspaceStore: store,
+            requestedTriptychID: nil
+        )
+        let activityChanges = PassthroughSubject<
+            [ResearchActivityNotification], Never
+        >()
+        let session = AttentionPopoverSession(
+            presentation: AttentionPresentationState(),
+            discoveryController: DiscoveryController(),
+            workspaceController: workspaceController,
+            projectionController: WindowWorkspaceProjectionController {
+                throw DiscoverySearchExecutionError.workspaceUnavailable
+            },
+            dismissalDays: 7,
+            dependencies: .init(
+                dismissalDaysChanges: Just(7).eraseToAnyPublisher(),
+                activityChanges: activityChanges.eraseToAnyPublisher(),
+                refresh: {},
+                resynthesize: { _ in },
+                openAction: { _ in },
+                endAction: { _ in },
+                reviewResult: { _ in },
+                followUp: { _ in },
+                dismissActivity: { _ in }
+            )
+        )
+        let ready = ResearchActivityNotification(
+            triptychID: UUID(),
+            runID: UUID(),
+            actionID: .synthesize,
+            targetNoteID: UUID(),
+            targetTitle: "Fixture",
+            state: .resultReady,
+            activity: nil,
+            result: nil,
+            affectedNotes: [],
+            updatedAt: .now
+        )
+        let running = ResearchActivityNotification(
+            triptychID: ready.triptychID,
+            runID: UUID(),
+            actionID: .synthesize,
+            targetNoteID: ready.targetNoteID,
+            targetTitle: ready.targetTitle,
+            state: .running,
+            activity: nil,
+            result: nil,
+            affectedNotes: [],
+            updatedAt: .now
+        )
+
+        activityChanges.send([ready, running])
+        session.present(from: .activityStack, noteScope: nil)
+        #expect(session.presentedAnchor == .activityStack)
+
+        activityChanges.send([running])
+
+        #expect(session.presentedAnchor == nil)
+        #expect(session.activityNotifications == [running])
+    }
+
     @Test("Visible Sidebar always owns the stable Triptych Attention route")
     func stableTriptychAttentionRoute() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)

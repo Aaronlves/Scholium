@@ -37,15 +37,15 @@ override.
 ## Focused interface evidence
 
 - On 2026-08-30, the Follow-up and Action Notifications cutover passed the
-  complete gate: documentation and 9 shipped-Skill
-  guards; 207 Web, 468 Core plus 3 performance, 161 Contracts, 288 Application,
+  complete gate: documentation/9 Skill guards; 207 Web, 468 Core plus 3
+  performance, 161 Contracts, 288 Application,
   15 bridge, 1 architecture, and 665 App tests; 16 signed executable CLI
   lifecycles; sandbox loopback, symbol/residue guards; and a 191.14-second
-  Release build. Focused tests prove that authenticated Agent Continue Research
-  remains intact while researcher Follow-up creates a fresh `.followUp` Run,
-  and that one Action activity survives window replacement until explicit
-  Dismiss. This is automated local evidence, not human UI, VoiceOver, or
-  external-Agent acceptance.
+  Release build. Focused tests preserve authenticated Continue Research, create
+  researcher Follow-up as a fresh `.followUp` Run, and retain one Action
+  activity until Dismiss. Stack evidence adds 3 focused App tests and Debug/UI-
+  test builds; a locked console blocked UI, hover, VoiceOver, and visual
+  acceptance.
 
 - On 2026-08-27, the external-Agent Skill deployment cutover passed the complete
   gate: 206 Web, 465 Core plus 3 performance, 150 Contracts, 284 Application,

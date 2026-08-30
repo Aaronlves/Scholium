@@ -327,7 +327,7 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func testNoChangeActionDeliversOneResultArrivalWithoutNoteReview() throws {
+    func testNoChangeActionResultsFormOneCountedNotificationStackWithoutNoteReview() throws {
         let workspace = app.windows.matching(
             NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
         ).firstMatch
@@ -336,11 +336,115 @@ extension ScholiumUITests {
             waitingFor: "scholium.noteRow.QA Topic.md"
         )
         openNote("QA Topic.md", expectedTitle: "QA Topic", in: workspace)
+        let firstRunID = try startNoChangeSynthesizeAction(
+            request: "Synthesize this fixture without changing source."
+        )
+        let origin = QANoteReviewRecordSeed.Participant(
+            relativePath: "QA Topic.md",
+            role: "topic",
+            title: "QA Topic"
+        )
+        try seedNoteReviewRecords([
+            QANoteReviewRecordSeed(
+                recordID: firstRunID,
+                title: "First no-change Synthesis result",
+                primaryRelativePath: origin.relativePath,
+                participants: [origin],
+                changedRelativePaths: [],
+                finishedAt: "2026-08-10T04:10:00Z"
+            ),
+        ])
+        try triggerWorkspaceRefreshForPortableFixture("first no-change result")
+
+        let notificationStack = app.descendants(matching: .any)[
+            "scholium.researchActivityNotificationStack"
+        ]
+        XCTAssertTrue(notificationStack.waitForExistence(timeout: 20))
+        XCTAssertTrue(
+            String(describing: notificationStack.value)
+                .contains("1 Action notification")
+        )
+
+        let secondRunID = try startNoChangeSynthesizeAction(
+            request: "Synthesize this fixture again without changing source."
+        )
+        try seedNoteReviewRecords([
+            QANoteReviewRecordSeed(
+                recordID: secondRunID,
+                title: "Second no-change Synthesis result",
+                primaryRelativePath: origin.relativePath,
+                participants: [origin],
+                changedRelativePaths: [],
+                finishedAt: "2026-08-10T04:20:00Z"
+            ),
+        ])
+        try triggerWorkspaceRefreshForPortableFixture("second no-change result")
+
+        XCTAssertTrue(waitUntil(timeout: 20) {
+            String(describing: notificationStack.value)
+                .contains("2 Action notifications")
+        })
+        XCTAssertEqual(
+            app.descendants(matching: .any).matching(
+                identifier: "scholium.researchActivityNotificationStack"
+            ).count,
+            1
+        )
+        selectResearchInspectorMode("overview")
+        XCTAssertTrue(app.staticTexts[
+            "No Agent changes to review"
+        ].waitForExistence(timeout: 12))
+
+        notificationStack.hover()
+        XCTAssertTrue(notificationStack.isHittable)
+        notificationStack.click()
+        let firstActivity = app.descendants(matching: .any)[
+            "scholium.notification.action.\(firstRunID.uuidString)"
+        ]
+        let secondActivity = app.descendants(matching: .any)[
+            "scholium.notification.action.\(secondRunID.uuidString)"
+        ]
+        XCTAssertTrue(firstActivity.waitForExistence(timeout: 8))
+        XCTAssertTrue(secondActivity.waitForExistence(timeout: 8))
+
+        app.buttons[
+            "scholium.notification.action.dismiss.\(firstRunID.uuidString)"
+        ].click()
+        XCTAssertTrue(waitUntil(timeout: 8) {
+            String(describing: notificationStack.value)
+                .contains("1 Action notification")
+        })
+        app.buttons[
+            "scholium.notification.action.dismiss.\(secondRunID.uuidString)"
+        ].click()
+        XCTAssertTrue(waitUntil(timeout: 8) { !notificationStack.exists })
+
+        selectVault(
+            "scholium.vault.paper_analysis",
+            waitingFor: "scholium.noteRow.QA Autosave A.md"
+        )
+        openNote("QA Autosave A.md", expectedTitle: "QA Autosave A", in: workspace)
+        selectVault(
+            "scholium.vault.topic_knowledge",
+            waitingFor: "scholium.noteRow.QA Topic.md"
+        )
+        openNote("QA Topic.md", expectedTitle: "QA Topic", in: workspace)
+        XCTAssertFalse(app.descendants(matching: .any)[
+            "scholium.researchActivityNotificationStack"
+        ].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts[
+            "No Agent changes to review"
+        ].exists)
+    }
+
+    @MainActor
+    private func startNoChangeSynthesizeAction(request: String) throws -> UUID {
         selectResearchInspectorMode("actions")
         let synthesize = app.descendants(matching: .any)[
             "scholium.researchAction.synthesize"
         ].firstMatch
         XCTAssertTrue(synthesize.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(timeout: 5) { synthesize.isEnabled })
         synthesize.click()
         let actionSheet = app.sheets.firstMatch
         XCTAssertTrue(actionSheet.waitForExistence(timeout: 8))
@@ -354,62 +458,11 @@ extension ScholiumUITests {
         ]
         XCTAssertTrue(researchRequest.waitForExistence(timeout: 5))
         researchRequest.click()
-        researchRequest.typeText("Synthesize this fixture without changing source.")
+        researchRequest.typeText(request)
         XCTAssertTrue(waitUntil(timeout: 5) { copy.isEnabled })
         copy.click()
         XCTAssertTrue(waitUntil(timeout: 15) { !actionSheet.exists })
-
-        let runID = try latestLocalResearchExecutionRunID()
-        let origin = QANoteReviewRecordSeed.Participant(
-            relativePath: "QA Topic.md",
-            role: "topic",
-            title: "QA Topic"
-        )
-        try seedNoteReviewRecords([
-            QANoteReviewRecordSeed(
-                recordID: runID,
-                title: "No-change Synthesis result",
-                primaryRelativePath: origin.relativePath,
-                participants: [origin],
-                changedRelativePaths: [],
-                finishedAt: "2026-08-10T04:10:00Z"
-            ),
-        ])
-        try triggerWorkspaceRefreshForPortableFixture("no-change result")
-
-        let resultNotice = app.descendants(matching: .any)[
-            "scholium.researchResultNotification"
-        ]
-        XCTAssertTrue(resultNotice.waitForExistence(timeout: 20))
-        XCTAssertEqual(
-            app.descendants(matching: .any).matching(
-                identifier: "scholium.researchResultNotification"
-            ).count,
-            1
-        )
-        selectResearchInspectorMode("overview")
-        XCTAssertTrue(app.staticTexts[
-            "No Agent changes to review"
-        ].waitForExistence(timeout: 12))
-        resultNotice.buttons["Dismiss"].click()
-        XCTAssertTrue(waitUntil(timeout: 5) { !resultNotice.exists })
-
-        selectVault(
-            "scholium.vault.paper_analysis",
-            waitingFor: "scholium.noteRow.QA Autosave A.md"
-        )
-        openNote("QA Autosave A.md", expectedTitle: "QA Autosave A", in: workspace)
-        selectVault(
-            "scholium.vault.topic_knowledge",
-            waitingFor: "scholium.noteRow.QA Topic.md"
-        )
-        openNote("QA Topic.md", expectedTitle: "QA Topic", in: workspace)
-        XCTAssertFalse(app.descendants(matching: .any)[
-            "scholium.researchResultNotification"
-        ].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts[
-            "No Agent changes to review"
-        ].exists)
+        return try latestLocalResearchExecutionRunID()
     }
 
     @MainActor

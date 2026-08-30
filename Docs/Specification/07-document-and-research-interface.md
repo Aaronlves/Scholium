@@ -580,8 +580,10 @@ and **End Action…**; completion offers **Review Result**, **Follow Up…**, an
 **Dismiss**. Dismiss removes only the completed item: it is not read, Review,
 acceptance, adoption, Undo, or Run cancellation.
 
+Attention-required activities use the Document stack defined in §18.3.
+
 One multi-Note Action remains one item with quiet affected-Note disclosure;
-each Note keeps independent Review and Undo. Background delivery contains no
+each Note keeps independent Review and Undo. Background delivery excludes
 research content and routes only after activation. Arrival itself never opens,
 retargets, focuses, or reviews.
 

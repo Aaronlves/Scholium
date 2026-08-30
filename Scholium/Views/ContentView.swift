@@ -537,6 +537,12 @@ struct ContentView: View {
         }
     }
 
+    private var documentActivityNotifications: [ResearchActivityNotification] {
+        shellState.researchActivityNotifications.filter {
+            $0.state.requiresResearcherAttention
+        }
+    }
+
     private var researchProjectionFreshness: ResearchProjectionFreshness {
         if appState.isRefreshingWorkspaceCatalog { return .refreshing }
         switch appState.derivedRefreshStatus {
@@ -1126,6 +1132,22 @@ struct ContentView: View {
 
     @ViewBuilder
     private var researchNotificationBanner: some View {
+        if !documentActivityNotifications.isEmpty {
+            ResearchActivityNotificationStack(
+                notifications: documentActivityNotifications,
+                open: {
+                    windowCoordinator.actions.showAttention(
+                        .activityStack,
+                        nil
+                    )
+                }
+            )
+            .scholiumAttentionPopover(
+                anchor: .activityStack,
+                session: appState.attentionPopoverSession
+            )
+            .padding(ScholiumMetrics.Workspace.refreshStatusOuterInset)
+        }
         if let permission = shellState.researchNotificationPermissionNotice {
             ResearchNotificationPermissionView(
                 kind: permission == .enable

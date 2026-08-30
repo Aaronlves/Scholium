@@ -1657,6 +1657,16 @@ enum ScholiumMetrics {
         static let popoverHeight: CGFloat = 480
     }
 
+    enum ActivityNotificationStack {
+        /// The exact count remains textual; these layers only make plurality
+        /// visible before the researcher reads or focuses the control.
+        static let visibleLayerLimit = 3
+        static let collapsedLayerOffset = ScholiumGrid.foundationUnit
+        static let previewLayerOffset = ScholiumGrid.foundationUnit * 2
+        static let horizontalScaleStep: CGFloat = 0.025
+        static let maximumWidth: CGFloat = 520
+    }
+
     enum Document {
         /// Document-local breathing room below the system-owned toolbar. The
         /// toolbar safe area is not added again by document layout.
@@ -2997,6 +3007,12 @@ enum ScholiumMotion {
     static func transientStatusTransition(reduceMotion: Bool) -> AnyTransition {
         guard !reduceMotion else { return .identity }
         return .move(edge: .bottom).combined(with: .opacity)
+    }
+
+    static func activityNotificationStackPreview(
+        reduceMotion: Bool
+    ) -> Animation? {
+        reduceMotion ? nil : .easeOut(duration: 0.16)
     }
 }
 

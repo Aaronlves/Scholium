@@ -319,6 +319,7 @@ metrics, and absent content contributes no spacing.
 | --- | --- |
 | Shared grid | **2pt** optical alignment; **4pt** label/accessory; **8pt** inline control; **12pt** nested content; **16pt** section; **20pt** region content; **28pt** peripheral page edge. |
 | Shared anchors | Preferred/minimum custom target **28/20pt**; Document tab strip **40pt**; Action target **44pt**; region header **48pt**. There is no general 24pt row role. |
+| Activity notification stack | **520pt** maximum width; at most **3** visible layers; **4/8pt** collapsed/preview offsets; **2.5%** horizontal inset per rear layer. |
 | Library | **300pt** minimum readable thickness; **12pt** row inset; **28pt** minimum row; **16pt** hierarchy step; **12–14pt** leading slot; **8pt** title gap; **12pt** header-to-workspace gap. |
 | Apparatus | **270pt** system Inspector minimum with no application-defined maximum; **4pt** local-state gap; **78pt** fact-label minimum; **14pt** fact gap; **204pt** horizontal-grid threshold; **44pt** Action row. |
 | Connect | **16pt** between major groups; **8pt** heading-to-first-cluster; **12pt** between clusters; **28pt** Note rows; **4pt** relationship-heading gap; **240pt** direction-control cap. |
@@ -335,10 +336,13 @@ preference.
 Motion is purpose-named, interruptible, and absent under Reduce Motion. There
 is no duration scale, parallax, grain, decorative loop, or repeating Attention
 pulse. Native feedback stays system-owned; custom hover, focus, press, and
-disabled states change immediately without geometry animation. Named
-transitions are disclosure, document reveal, search presentation/expansion,
-transient status, Handled disposition feedback, Triptych workspace change, and
-bounded Bootstrap steps.
+disabled states change immediately. The Activity Notification Stack alone may
+move two decorative rear surfaces from 4pt to 8pt over **0.16s ease-out** on
+hover or keyboard focus; content and extent stay fixed. Reduce Motion leaves it
+collapsed. Named transitions are disclosure, document reveal, search
+presentation/expansion, transient status, Activity Notification Stack preview,
+Handled disposition feedback, Triptych workspace change, and bounded Bootstrap
+steps.
 
 Handled feedback applies **0.12s** symbol-replacement easing to the collection
 checkbox or detail-button label after the immediate optimistic value appears.
@@ -523,6 +527,7 @@ the required meaning.
 | `Connection Direction Control` | Switch Connect between Incoming and Outgoing through one native two-segment control. Undirected relations appear in both with source anchors preserved. | A Combined/All segment, an index replacement, or a second graph owner. | §12, §18.5 |
 | `Action Row` | Expose one bounded Research Action with its declared intent, scope, current state, consequence, and first repair. | An agent avatar, chat bubble, score badge, or generic command card. | §8.1, §18.5 |
 | `Triptych Notifications Entry` | Opens persistent Action activities and structural Attention; shows the exact nonzero total beside a bell. | Per-Vault counters, task manager, unread/adoption matrix, pulse, diagnostic owner, or Document-toolbar item. | §13, §§18.2–18.3 |
+| `Activity Notification Stack` | One exact-count Document control summarizes attention-required Action activities, previews two rear layers, and opens the complete queue. | A second queue, full expansion, card deck, timeout, unread model, or Dismiss owner. | §18.3, §18.5 |
 | `Recovery Notice` | Present a persistent workflow-supplied condition, consequence, and repair or inspection action as a Document notice or Workspace banner. | A generic error or Search banner, runtime state owner, or recovery coordinator. | §§5.3, 14, 18.2, 18.6 |
 | `Document Find Bar` | Find and, in writable modes, replace literal text in the current unsaved buffer while retaining editor selection, Undo, and focus. | Research Search, a modal panel, a second text owner, or saved query history. | §13, §18.4 |
 | `Review Comment Anchor` | Shows a current Comment at its source line and opens its Discussion through one counted margin marker with keyboard and contrast states. | An authored highlight, chat card, comments pane, guessed reattachment, or annotation store. | §7.2, §18.4 |
@@ -549,7 +554,7 @@ the owning workflow chapter remains authoritative for meaning and permission.
 | `Document Find / Replace` | Locate literal text in the current unsaved buffer and replace it only in writable modes. | One inline Document bar; standard menu and keyboard routes; no Search provider, index, or persistent history. | §13, §18.4 |
 | `Search` | Retrieve bounded research material with explicit provider, scope, explanation, and freshness. | Stable command surface, retained context, and distinct empty/stale/error results. | §13, §18.3 |
 | `Connect` | Inspect direct relations from the current Note through an Incoming/Outgoing view switch, typed relationship subheadings, and source-located rows. | A file hierarchy, inferred graph, evidence verdict, or multi-hop exploration surface. | §12, §18.5 |
-| `Notifications` | Shows one persistent item per Action plus structural Attention from one Sidebar route. | A task manager or unread/adoption model; popover closure never Dismisses an Action. | §§8.4, 13, §§18.2–18.3 |
+| `Notifications` | One queue holds Action activities and structural Attention; Sidebar, current-Note Inspector, and temporary Document stack anchor it within the exact window. | A task manager or unread model; closing an anchor never Dismisses an Action. | §§8.4, 13, §§18.2–18.3 |
 | `Research Action` | Prepare one bounded Research Action, then track, open, end, review, follow up, dismiss, or recover it. | Intent-first launcher plus one persistent Action-level activity whose state transitions and controls remain separate from Note Review. | §§8–11, 18.5 |
 | `Conflict / Recovery` | Preserve authored bytes when an external participant changes the source. | Retained buffer, exact revision comparison, selective choice, and reversible restore. | §14, §§18.4–18.6 |
 | `Research Records` | Review portable records without reconstructing writable research Markdown. | Collection-first navigation into one reading-first Record or Reading Lead detail, with source and derived evidence distinct. | §8.4, §18.5 |

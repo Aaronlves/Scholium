@@ -901,6 +901,16 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             )
         }
 
+        if appState.shellState.researchActivityNotifications.contains(where: {
+            $0.state.requiresResearcherAttention
+        }) {
+            return PreferredAttentionRoute(
+                anchor: .activityStack,
+                workspaceSlot: nil,
+                noteScope: nil
+            )
+        }
+
         guard appState.researchInspectorVisible,
               let note = appState.currentNote,
               let vaultID = appState.currentDocumentVaultID

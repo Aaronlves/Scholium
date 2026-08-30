@@ -5,6 +5,7 @@ import Foundation
 enum AttentionPopoverAnchor: String, Equatable, Sendable {
     case sidebar
     case inspector
+    case activityStack
 }
 
 /// Exact-Workspace adapter for the transient Notifications popover. It observes
@@ -74,7 +75,14 @@ final class AttentionPopoverSession: ObservableObject {
         dependencies.activityChanges
             .removeDuplicates()
             .sink { [weak self] notifications in
-                self?.activityNotifications = notifications
+                guard let self else { return }
+                activityNotifications = notifications
+                if presentedAnchor == .activityStack,
+                   !notifications.contains(where: {
+                       $0.state.requiresResearcherAttention
+                   }) {
+                    dismiss()
+                }
             }
             .store(in: &observations)
     }

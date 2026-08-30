@@ -34,6 +34,18 @@ enum ResearchActivityNotificationState: Hashable, Sendable {
     case needsAttention
     case resultReady
     case recoveryRequired
+
+    /// The Document stack is a presentation of activities that require a
+    /// researcher decision or recovery step. Waiting and Running remain in the
+    /// persistent Notifications queue without occupying the Document plane.
+    var requiresResearcherAttention: Bool {
+        switch self {
+        case .waitingForAgent, .running:
+            false
+        case .needsAttention, .resultReady, .recoveryRequired:
+            true
+        }
+    }
 }
 
 /// One process-local, Action-owned activity entry. It is a presentation and

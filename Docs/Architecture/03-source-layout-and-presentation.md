@@ -213,7 +213,8 @@ utility panel, or always-on-top surface. Per-Workspace
 Inspector workspace subset, and an optional current-Note subset;
 `AttentionPopoverSession` adapts that state
 and the current immutable structural queue plus application-owned Action
-activities to the Sidebar and Inspector anchors without duplicating either.
+activities to the Sidebar, Inspector, and temporary Document activity-stack
+anchors without duplicating either.
 The adapter observes only the exact assignment and
 workspace-projection owners plus the single dismissal-duration setting; it
 borrows closed refresh and resynthesis effects and never observes or retains
@@ -223,16 +224,21 @@ entry; workspace rows
 instead consume neutral ordinary-active-Note totals, and zero remains a real
 inventory value. The Document toolbar consumes
 no Notifications count, observation, item, action, reserved width, or popover
-anchor. A missing first catalog remains checking, and a failed first load
+anchor. `ContentView` filters the same immutable Action activity array to
+Needs Attention, Result Ready, and Recovery Required and projects one
+presentation-only stack above Document; the stack adds no queue or dismissal
+state. A missing first catalog remains checking, and a failed first load
 presents an unavailable Retry state rather than zero. Sidebar opens the complete
-Triptych queue; Inspector may add the active Note, and a workspace change clears
-that Inspector subset without retargeting an already open Triptych queue. SwiftUI's
+Triptych queue; the activity stack opens that same complete queue; Inspector may
+add the active Note, and a workspace change clears that Inspector subset without
+retargeting an already open Triptych queue. SwiftUI's
 transient popover behavior owns outside-click and Escape closure; that closure
 does not remove Action activities. Inspect and Resynthesize close before routing
 through the same exact `WindowModel`.
 **Window → Notifications** asks the exact `WorkspaceWindowCoordinator` for a visible
 contextual route: the stable Sidebar entry whenever Sidebar is visible, then the
-nonempty current-Note Inspector summary. Without either visible anchor the
+attention-requiring Document activity stack, then the nonempty current-Note
+Inspector summary. Without any visible anchor the
 command is disabled; it never synthesizes a toolbar or detached presentation
 route. The application-wide window registry records exact Workspace focus
 changes so the newly active Workspace resets query, kind, Note subset, and

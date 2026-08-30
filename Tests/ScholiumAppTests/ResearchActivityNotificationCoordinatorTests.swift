@@ -6,6 +6,15 @@ import Testing
 @Suite("Research Action activity notifications")
 @MainActor
 struct ResearchActivityNotificationCoordinatorTests {
+    @Test("Only researcher-decision states enter the Document notification stack")
+    func documentStackEligibility() {
+        #expect(!ResearchActivityNotificationState.waitingForAgent.requiresResearcherAttention)
+        #expect(!ResearchActivityNotificationState.running.requiresResearcherAttention)
+        #expect(ResearchActivityNotificationState.needsAttention.requiresResearcherAttention)
+        #expect(ResearchActivityNotificationState.resultReady.requiresResearcherAttention)
+        #expect(ResearchActivityNotificationState.recoveryRequired.requiresResearcherAttention)
+    }
+
     @Test("One Action item evolves to Result Ready and survives window replacement until Dismiss")
     func persistentActionItem() throws {
         let system = ActivityNotificationSystem()

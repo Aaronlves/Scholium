@@ -80,6 +80,12 @@
 - Attention exposes heading, filter, groups, selected task, issue, Note,
   locator, state, and actions in one linear order. Loading, stale, and
   recoverable failure preserve current rows and name Retry.
+- The Activity Notification Stack is one keyboard-focusable button whose name
+  opens Notifications and whose value states the exact count, latest Action
+  state, and complete latest target title. Rear layers are decorative and
+  absent from the accessibility tree. Their resting offsets never replace the
+  visible count; hover and keyboard focus share the bounded preview, and Reduce
+  Motion retains the collapsed presentation without geometry animation.
 
 ### Document and editor
 
@@ -255,7 +261,8 @@
   member appear authorized because another was selected.
 - Copy Handoff success closes preparation and returns focus to the originating
   Action row. Result arrival announces no focus change; the persistent
-  Action-level notification remains the explicit route to the exact Record.
+  Action-level notification and its summarized Document stack remain explicit
+  routes to the exact queue and Record.
 - Follow-up exposes a named finding/question/hypothesis control, its short
   statement, next Action, and Research Request in reading order. Optional
   **Feedback on Previous Result** is a labelled default-collapsed disclosure;

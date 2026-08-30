@@ -58,6 +58,10 @@
   startup fails.
 - Triptych Attention has one stable Sidebar entry. Zero is quiet, nonzero shows
   the exact aggregate count, and unavailable first load never claims zero.
+- Needs Attention, Result Ready, and Recovery Required Action activities also
+  project one exact-count Document notification stack. It exposes at most three
+  visible layers, uses a bounded hover/focus preview, and opens the same complete
+  queue without owning Dismiss or activity state.
 
 ## Document and Research Inspector
 
@@ -162,7 +166,9 @@
   persistent process-level Action activity model. It keeps the existing
   structural source/conflict/recovery Attention rows and their Inspect,
   Resynthesize, Leave Unchanged, timed dismiss, and Retry routes without merging
-  those semantics with Action Dismiss.
+  those semantics with Action Dismiss. Sidebar, current-Note Inspector, and the
+  attention-requiring Document activity stack are presentation anchors to this
+  same popover.
 - The Workspace Records control opens This Note scope for a resolved selected
   Note and remains available without a Document by opening Triptych scope.
   Research Records opens to Records or Reading Leads with toolbar View,

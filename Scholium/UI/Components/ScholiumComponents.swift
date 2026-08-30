@@ -557,6 +557,228 @@ struct SidebarTriptychAttentionEntry: View {
     }
 }
 
+/// A compact, focus-neutral summary of Action activities that need a
+/// researcher decision. The complete queue remains owned by
+/// `AttentionPopoverSession`; this control only makes plurality visible and
+/// supplies one additional exact-window popover anchor.
+struct ResearchActivityNotificationStack: View {
+    @Environment(\.locale) private var locale
+    @Environment(\.scholiumReduceMotion) private var reduceMotion
+    @FocusState private var isFocused: Bool
+    @State private var isHovering = false
+
+    let notifications: [ResearchActivityNotification]
+    let open: () -> Void
+
+    var body: some View {
+        if let latest = notifications.first {
+            let shape = RoundedRectangle(
+                cornerRadius: ScholiumShape.inlineStatusCornerRadius,
+                style: .continuous
+            )
+            Button(action: open) {
+                HStack(
+                    alignment: .center,
+                    spacing: ScholiumGrid.Spacing.inlineControlGap
+                ) {
+                    Image(systemName: "bell")
+                        .font(
+                            ScholiumTypography.interface(
+                                .body,
+                                emphasis: .strong
+                            )
+                        )
+                        .scholiumForeground(.attention)
+                        .accessibilityHidden(true)
+                    VStack(
+                        alignment: .leading,
+                        spacing: ScholiumGrid.Spacing.labelAccessoryGap
+                    ) {
+                        Text(countTitle)
+                            .font(ScholiumTypography.interface(.rowTitle))
+                        HStack(
+                            alignment: .firstTextBaseline,
+                            spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment
+                        ) {
+                            Text(stateTitle(for: latest.state))
+                                .font(ScholiumTypography.interface(.small, emphasis: .medium))
+                                .scholiumForeground(stateColor(for: latest.state))
+                            Text(verbatim: "—")
+                                .font(ScholiumTypography.interface(.small))
+                                .scholiumForeground(.mutedText)
+                            Text(verbatim: targetTitle(for: latest))
+                                .font(ScholiumTypography.interface(.small))
+                                .scholiumForeground(.secondaryText)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: "chevron.down")
+                        .font(ScholiumTypography.interface(.small, emphasis: .medium))
+                        .scholiumForeground(.mutedText)
+                        .accessibilityHidden(true)
+                }
+                .padding(.horizontal, ScholiumMetrics.Workspace.toastHorizontalInset)
+                .padding(.vertical, ScholiumMetrics.Workspace.toastVerticalInset)
+                .frame(
+                    maxWidth: ScholiumMetrics.ActivityNotificationStack.maximumWidth,
+                    alignment: .leading
+                )
+                .contentShape(shape)
+            }
+            .buttonStyle(
+                ResearchActivityNotificationStackButtonStyle(
+                    isHovering: $isHovering,
+                    isFocused: isFocused,
+                    shape: shape
+                )
+            )
+            .scholiumEditorialSurface(.floatingControl, in: shape)
+            .background(alignment: .bottom) {
+                stackLayers(shape: shape)
+            }
+            .padding(.bottom, maximumLayerOffset)
+            .scholiumActivationFocus($isFocused)
+            .animation(
+                ScholiumMotion.activityNotificationStackPreview(
+                    reduceMotion: reduceMotion
+                ),
+                value: isPreviewing
+            )
+            .help(openLabel)
+            .accessibilityLabel(openLabel)
+            .accessibilityValue(accessibilityValue(latest: latest))
+            .accessibilityIdentifier("scholium.researchActivityNotificationStack")
+        }
+    }
+
+    @ViewBuilder
+    private func stackLayers(
+        shape: RoundedRectangle
+    ) -> some View {
+        if visibleLayerCount > 1 {
+            ZStack {
+                ForEach(
+                    Array((1..<visibleLayerCount).reversed()),
+                    id: \.self
+                ) { depth in
+                    shape
+                        .fill(ScholiumColorRole.surfaceBackground.color)
+                        .scholiumBoundary(.floatingBoundary, in: shape)
+                        .scaleEffect(
+                            x: 1 - CGFloat(depth)
+                                * ScholiumMetrics.ActivityNotificationStack
+                                    .horizontalScaleStep,
+                            y: 1,
+                            anchor: .center
+                        )
+                        .offset(y: layerOffset(for: depth))
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
+        }
+    }
+
+    private var visibleLayerCount: Int {
+        min(
+            notifications.count,
+            ScholiumMetrics.ActivityNotificationStack.visibleLayerLimit
+        )
+    }
+
+    private var isPreviewing: Bool {
+        !reduceMotion && visibleLayerCount > 1 && (isHovering || isFocused)
+    }
+
+    private var maximumLayerOffset: CGFloat {
+        CGFloat(max(0, visibleLayerCount - 1))
+            * ScholiumMetrics.ActivityNotificationStack.previewLayerOffset
+    }
+
+    private func layerOffset(for depth: Int) -> CGFloat {
+        CGFloat(depth) * (
+            isPreviewing
+                ? ScholiumMetrics.ActivityNotificationStack.previewLayerOffset
+                : ScholiumMetrics.ActivityNotificationStack.collapsedLayerOffset
+        )
+    }
+
+    private var countTitle: String {
+        if notifications.count == 1 {
+            return ScholiumL10n.string("1 Action notification", locale: locale)
+        }
+        return String.localizedStringWithFormat(
+            ScholiumL10n.string("%lld Action notifications", locale: locale),
+            Int64(notifications.count)
+        )
+    }
+
+    private var openLabel: String {
+        ScholiumL10n.string("Open Notifications", locale: locale)
+    }
+
+    private func accessibilityValue(
+        latest: ResearchActivityNotification
+    ) -> String {
+        [
+            countTitle,
+            ScholiumL10n.localized(stateTitle(for: latest.state), locale: locale),
+            targetTitle(for: latest),
+        ].joined(separator: ". ")
+    }
+
+    private func targetTitle(
+        for notification: ResearchActivityNotification
+    ) -> String {
+        notification.targetTitle.isEmpty
+            ? ScholiumL10n.string("Research Action", locale: locale)
+            : notification.targetTitle
+    }
+
+    private func stateTitle(
+        for state: ResearchActivityNotificationState
+    ) -> LocalizedStringResource {
+        switch state {
+        case .waitingForAgent: "Waiting for Agent"
+        case .running: "Running"
+        case .needsAttention: "Needs Attention"
+        case .resultReady: "Result Ready"
+        case .recoveryRequired: "Recovery Required"
+        }
+    }
+
+    private func stateColor(
+        for state: ResearchActivityNotificationState
+    ) -> ScholiumColorRole {
+        switch state {
+        case .needsAttention, .recoveryRequired:
+            .attention
+        case .waitingForAgent, .running, .resultReady:
+            .secondaryText
+        }
+    }
+}
+
+private struct ResearchActivityNotificationStackButtonStyle: ButtonStyle {
+    @Binding var isHovering: Bool
+    let isFocused: Bool
+    let shape: RoundedRectangle
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scholiumContentInteractionSurface(
+                isHovering: isHovering,
+                isFocused: isFocused,
+                isPressed: configuration.isPressed,
+                in: shape
+            )
+            .opacity(configuration.isPressed ? 0.78 : 1)
+            .scholiumHoverState { isHovering = $0 }
+    }
+}
+
 /// One quiet full-row Button treatment shared by editorial summary and action
 /// rows. Callers retain their purpose-owned hit height and content insets; the
 /// component owns only the common raised hover/press feedback.

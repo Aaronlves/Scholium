@@ -116,11 +116,14 @@ fixed height, automatic glass-like item, or Liquid Glass.
 
 Notifications never enters the Document toolbar. While Sidebar is visible, the
 stable Triptych-owned control beside its identity is the workspace-chrome
-entry and popover anchor; collapsing Sidebar removes that control without
-transferring a count, symbol, or anchor. Inspector retains its distinct
-current-Note summary. **Window → Notifications** is enabled only when the focused
-window has a visible Triptych entry or Inspector summary capable of anchoring
-the transient popover; otherwise showing Sidebar restores the Triptych route.
+entry and preferred popover anchor; collapsing Sidebar removes that control
+without transferring its count or symbol. Inspector retains its distinct
+current-Note summary. A focus-neutral Document activity stack is a third
+temporary anchor only while one or more Action activities require researcher
+attention under §18.5; it is presentation over the same queue, not another
+count or state owner. **Window → Notifications** prefers the visible Triptych
+entry, then that activity stack, then a nonempty Inspector summary. Without a
+visible anchor, showing Sidebar restores the Triptych route.
 
 The Inspector toolbar control and View command send one explicit intent through
 the exact window coordinator to the native split.
@@ -328,6 +331,20 @@ Menus follow researcher tasks:
   selected workspace, source content, Document, or Sidebar selection.
   Inspector may open the same queue with a current-Note subset. Notifications is
   not Library navigation.
+- One or more **Needs Attention**, **Result Ready**, or **Recovery Required**
+  Action activities also present one centered **Activity Notification Stack**
+  at the top of Document. Its front control always states the exact activity
+  total, latest state, and latest target; at most two additional decorative
+  surfaces remain visibly offset behind it, so plurality is evident without
+  pointer input. Hover or keyboard focus only increases those two offsets
+  enough to preview the stack and never reveals item content or expands the
+  complete queue. Activation opens the ordinary complete Triptych
+  Notifications popover from that exact control. The stack has no independent
+  Dismiss, selection, filter, unread state, or timeout. Waiting and Running
+  remain in the persistent queue and Triptych total without occupying
+  Document. When no attention-requiring Action remains, the stack disappears;
+  Reduce Motion retains the collapsed layers and exact text without the preview
+  transition.
 - Refresh preserves the last trustworthy Triptych total. A first load with no
   trustworthy result never claims zero; checking uses the control's bounded
   native progress state. Failure without a trustworthy result presents a
@@ -337,8 +354,9 @@ Menus follow researcher tasks:
 - Notifications is one native transient popover owned by the exact
   Workspace window, never an application-wide Scene, sheet, inline destination,
   custom panel, or always-on-top surface. Its preferred bounded content size is
-  **420 × 480pt**. Triptych entry and Inspector summary each anchor the same
-  Triptych-owned queue to their complete trigger.
+  **420 × 480pt**. Triptych entry, Inspector summary, and the temporary Activity
+  Notification Stack each anchor the same Triptych-owned queue to their complete
+  trigger.
   Native transient behavior closes it after outside activation or Escape;
   opening a Note or Resynthesize also dismisses it. It has no custom or manual
   close control. Closing the popover never removes an Action activity; only the
@@ -346,7 +364,7 @@ Menus follow researcher tasks:
   its session filter and selection. Activating a different Workspace window
   resets query, kind filter, selected task, and current-Note subset; the
   machine-local structural-dismissal ledger and persistent Action activities
-  are unaffected. The Triptych entry opens the
+  are unaffected. The Triptych entry and Activity Notification Stack open the
   complete queue; Inspector entry adds the current Note. Switching workspace
   neither filters nor retargets an already open Triptych queue.
 - The Notifications popover presents **Action Activities** once per Run, then
