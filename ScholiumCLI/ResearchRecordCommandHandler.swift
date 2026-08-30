@@ -13,9 +13,7 @@ extension ScholiumCLI {
             selector: option("--triptych", in: arguments)
         )
         let handle = try await context.handle(for: assignment)
-        let research = try completeRecordSnapshot(
-            try await handle.research.snapshot()
-        )
+        let research = try await handle.research.snapshot()
 
         switch subcommand {
         case "list":
@@ -80,6 +78,7 @@ extension ScholiumCLI {
                 triptychID: assignment.id,
                 noteID: noteID,
                 recordCount: entries.count,
+                corpusComplete: research.finishedResearchRecordProjectionIsComplete,
                 sourceManifestHash: research.finishedResearchRecordSourceManifestHash
             )
             write(String(decoding: try encoder.encode(summary), as: UTF8.self) + "\n")
@@ -87,14 +86,18 @@ extension ScholiumCLI {
                 write(String(decoding: try encoder.encode(entry), as: UTF8.self) + "\n")
             }
         case "text":
+            let completeness = research.finishedResearchRecordProjectionIsComplete
+                ? "complete"
+                : "partial"
+            write(
+                "Research Records for Note \(noteID.uuidString.lowercased()) "
+                    + "count=\(entries.count) corpus=\(completeness) "
+                    + "manifest=\(research.finishedResearchRecordSourceManifestHash)\n"
+            )
             if entries.isEmpty {
                 write("No finished Research Records participate in Note \(noteID.uuidString.lowercased()).\n")
                 return
             }
-            write(
-                "Research Records for Note \(noteID.uuidString.lowercased()) "
-                    + "count=\(entries.count) manifest=\(research.finishedResearchRecordSourceManifestHash)\n"
-            )
             for entry in entries {
                 let action = entry.actionID?.rawValue ?? ResearchActionID.discuss.rawValue
                 let method = entry.methodName ?? "none"
@@ -125,6 +128,11 @@ extension ScholiumCLI {
         guard let record = research.finishedResearchRecords.first(where: {
             $0.id == recordID
         }) else {
+            if !research.finishedResearchRecordProjectionIsComplete {
+                throw CLIError.unavailable(
+                    "Research Record \(recordID.uuidString.lowercased()) is not readable in the current partial corpus."
+                )
+            }
             throw CLIError.recordNotFound(recordID)
         }
         let format = option("--format", in: arguments) ?? "json"
@@ -147,24 +155,13 @@ extension ScholiumCLI {
         )
     }
 
-    private static func completeRecordSnapshot(
-        _ snapshot: WorkspaceResearchSnapshot
-    ) throws -> WorkspaceResearchSnapshot {
-        guard snapshot.finishedResearchRecordProjectionIsComplete else {
-            throw CLIError.unavailable(
-                "Research Records are unavailable because the portable Record corpus could not be read completely."
-            )
-        }
-        return snapshot
-    }
-
     private static func requiredRecordFingerprint(
         _ id: UUID,
         research: WorkspaceResearchSnapshot
     ) throws -> DocumentFingerprint {
         guard let fingerprint = research.finishedResearchRecordFingerprints[id] else {
             throw CLIError.unavailable(
-                "Research Record \(id.uuidString.lowercased()) has no exact portable-byte fingerprint in the current complete projection."
+                "Research Record \(id.uuidString.lowercased()) has no exact portable-byte fingerprint in the current readable projection."
             )
         }
         return fingerprint
@@ -192,10 +189,11 @@ extension ScholiumCLI {
 
     private struct RecordListSummary: Encodable {
         let type = "record_list_summary"
-        let schemaVersion = 1
+        let schemaVersion = 2
         let triptychID: UUID
         let noteID: UUID
         let recordCount: Int
+        let corpusComplete: Bool
         let sourceManifestHash: String
     }
 

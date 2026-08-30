@@ -161,6 +161,15 @@ or statement. A Note hit retains vault-qualified identity, matched field,
 reason, exact source range, and Note fingerprint. Neither provider may present
 itself as the other.
 
+One malformed, future-schema, identity-mismatched, or otherwise unreadable
+portable Record is isolated to that file. Record Search returns every readable,
+fully validated Record under **Partial** availability and visibly states that
+some Records were omitted; it never turns the valid subset into no results or
+silently labels that subset complete. Exact fingerprints, scope authorization,
+sorting, paging, and navigation remain unchanged for returned Records. An
+internally inconsistent readable projection still fails, and operations whose
+safety depends on knowing the complete Record set continue to fail closed.
+
 Search projects visible semantic text and identity/filter fields, never raw
 Markdown source or link destinations. Title, alias, heading, author,
 publication date, tag,
@@ -232,10 +241,12 @@ creates a second query language, parser, or retrieval owner.
 
 Each response binds the query contract, authorized scope, provider-specific
 source identity, and freshness. Note and Record generations never mix. A stale
-result refreshes rather than navigating. Building, refreshing, stale, failed,
-provider-mismatch, ambiguous, not-applicable, query-invalid, and cancellation
-remain distinct. A failed refresh may retain only its last complete compatible
-generation; no disposable index stores writable research authority.
+result refreshes rather than navigating. Building, refreshing, partial, stale,
+failed, provider-mismatch, ambiguous, not-applicable, query-invalid, and
+cancellation remain distinct. Partial Record Search exposes and navigates only
+current, fully validated Records while naming the omitted-file limitation. A
+failed refresh may retain only its last complete compatible generation; no
+disposable index stores writable research authority.
 
 The parser exposes one typed capability description shared by field
 completion, **Explain Query**, and CLI help. Baseline completion exposes only

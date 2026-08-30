@@ -3699,9 +3699,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             if currentSnapshot.research.finishedResearchRecordProjectionIsComplete {
                 availability = .record(.current(generation))
             } else {
-                availability = .record(.failed(
-                    lastGood: nil,
-                    reason: "The portable Research Record corpus is incomplete."
+                availability = .record(.partial(
+                    current: generation,
+                    reason: "Some portable Research Records could not be read or validated. Showing readable Records only."
                 ))
             }
             freshness = .record(generation)

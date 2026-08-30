@@ -439,6 +439,40 @@ struct ResearchRecordBrowserModelTests {
         #expect(model.visibleEntries.map(\.id) == [discussion.id, action.id])
     }
 
+    @Test("A partial Record corpus keeps readable collection rows available")
+    func partialRecordCorpusKeepsReadableRows() async throws {
+        let record = try makeDiscussion(
+            id: deterministicUUID(64),
+            noteID: deterministicUUID(65),
+            title: "Readable neighbor",
+            text: "This complete Record remains available.",
+            author: .agent,
+            finishedAt: Date(timeIntervalSince1970: 200)
+        )
+        let fingerprint = DocumentFingerprint(content: "readable neighbor bytes")
+        let model = ResearchRecordBrowserModel()
+        model.bindRecordSearch { request in
+            recordSearchResponse(
+                request: request,
+                triptychID: record.triptychID,
+                records: [record],
+                fingerprints: [record.id: fingerprint],
+                isPartial: true
+            )
+        }
+        model.prepareForOpen(
+            triptychID: record.triptychID,
+            records: [record],
+            fingerprints: [record.id: fingerprint],
+            request: ResearchRecordsWindowRequest(triptychID: record.triptychID)
+        )
+        await model.waitForRecordSearchForTesting()
+
+        #expect(model.visibleEntries.map(\.id) == [record.id])
+        #expect(model.recordResultCount == 1)
+        #expect(!model.isShowingError)
+    }
+
     @Test("Collection rows project exact Analyze Reliability and Coverage states")
     func collectionAcademicFieldProjection() async throws {
         let action = try makeAction(
@@ -1724,7 +1758,8 @@ struct ResearchRecordBrowserModelTests {
         request: SearchRequest,
         triptychID: UUID,
         records: [PortableResearchRecord],
-        fingerprints: [UUID: DocumentFingerprint]
+        fingerprints: [UUID: DocumentFingerprint],
+        isPartial: Bool = false
     ) -> SearchResponse {
         let generation = RecordSearchGenerationID(
             triptychID: triptychID,
@@ -1806,7 +1841,14 @@ struct ResearchRecordBrowserModelTests {
             scope: request.presentationScope,
             explanation: explanation,
             freshnessToken: freshness,
-            availability: .record(.current(generation)),
+            availability: .record(
+                isPartial
+                    ? .partial(
+                        current: generation,
+                        reason: "One Record is unreadable."
+                    )
+                    : .current(generation)
+            ),
             results: results,
             hasMore: upperBound < totalResultCount,
             totalResultCount: totalResultCount,

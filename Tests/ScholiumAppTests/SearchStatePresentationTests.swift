@@ -49,6 +49,9 @@ struct SearchStatePresentationTests {
         let building = try #require(SearchStatePresentation.record(
             .building(SearchBuildProgress(completed: 0, total: 0))
         ))
+        let partial = try #require(SearchStatePresentation.record(
+            .partial(current: recordGeneration, reason: "one Record is unreadable")
+        ))
         let refreshing = try #require(SearchStatePresentation.record(
             .refreshing(lastGood: recordGeneration)
         ))
@@ -62,6 +65,8 @@ struct SearchStatePresentationTests {
         #expect(unavailable.meaning == .unavailable)
         #expect(unavailable.action == .refresh)
         #expect(building.meaning == .loading)
+        #expect(partial.meaning == .unavailable)
+        #expect(partial.action == nil)
         #expect(refreshing.meaning == .loading)
         #expect(stale.meaning == .stale)
         #expect(stale.action == .refresh)
@@ -82,6 +87,14 @@ struct SearchStatePresentationTests {
         ))
         #expect(!SearchStatePresentation.suppressesNoMatchContent(
             for: .record(.current(recordGeneration)),
+            scope: .triptych,
+            hasExecutionIssue: false
+        ))
+        #expect(!SearchStatePresentation.suppressesNoMatchContent(
+            for: .record(.partial(
+                current: recordGeneration,
+                reason: "one Record is unreadable"
+            )),
             scope: .triptych,
             hasExecutionIssue: false
         ))

@@ -4,7 +4,7 @@ import Foundation
 /// Stable versions that make a Search generation reproducible and prevent a
 /// saved query or derived database from silently acquiring new semantics.
 public enum SearchContract {
-    public static let currentVersion = 10
+    public static let currentVersion = 11
     public static let schemaVersion = 11
     public static let tokenizerPolicyVersion = 2
     public static let rankingPolicyVersion = 2
@@ -291,6 +291,7 @@ public enum RecordSearchAvailability: Codable, Hashable, Sendable {
     case unavailable
     case building(SearchBuildProgress)
     case current(RecordSearchGenerationID)
+    case partial(current: RecordSearchGenerationID, reason: String)
     case refreshing(lastGood: RecordSearchGenerationID)
     case stale(lastGood: RecordSearchGenerationID, reason: String)
     case failed(lastGood: RecordSearchGenerationID?, reason: String)
@@ -298,10 +299,18 @@ public enum RecordSearchAvailability: Codable, Hashable, Sendable {
     public var lastGoodGeneration: RecordSearchGenerationID? {
         switch self {
         case .current(let generation): generation
+        case .partial(let generation, _): generation
         case .refreshing(let generation): generation
         case .stale(let generation, _): generation
         case .failed(let generation, _): generation
         case .unavailable, .building: nil
+        }
+    }
+
+    public var presentsCurrentResults: Bool {
+        switch self {
+        case .current, .partial: true
+        case .unavailable, .building, .refreshing, .stale, .failed: false
         }
     }
 }

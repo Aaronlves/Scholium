@@ -40,7 +40,8 @@ struct ResearchRecordSearchIndex: Sendable {
     private let generation: RecordSearchGenerationID
     private let entries: [Entry]
     private let catalogNotes: [WorkspaceCatalogNote]
-    private let isComplete: Bool
+    private let isValid: Bool
+    private let sourceProjectionIsComplete: Bool
 
     init(
         triptychID: UUID,
@@ -65,8 +66,8 @@ struct ResearchRecordSearchIndex: Sendable {
         )
         self.catalogNotes = catalogNotes
         let recordIDs = research.finishedResearchRecords.map(\.id)
-        isComplete = research.finishedResearchRecordProjectionIsComplete
-            && Set(recordIDs).count == recordIDs.count
+        sourceProjectionIsComplete = research.finishedResearchRecordProjectionIsComplete
+        isValid = Set(recordIDs).count == recordIDs.count
             && research.finishedResearchRecords.allSatisfy {
                 $0.triptychID == triptychID
             }
@@ -91,19 +92,19 @@ struct ResearchRecordSearchIndex: Sendable {
         calendar: Calendar = .autoupdatingCurrent
     ) throws -> Execution {
         precondition(ast.provider == .record)
-        guard isComplete else {
+        guard isValid else {
             return Execution(
                 generation: generation,
                 availability: .failed(
                     lastGood: nil,
-                    reason: "The portable Research Record corpus could not be read completely."
+                    reason: "The readable Research Record projection is internally inconsistent."
                 ),
                 results: [],
                 hasMore: false,
                 totalResultCount: nil,
                 diagnostics: [SearchQueryDiagnostic(
                     code: .notApplicable,
-                    message: "Research Record Search is unavailable because the portable Record corpus could not be read completely.",
+                    message: "Research Record Search is unavailable because the readable Record projection is internally inconsistent.",
                     utf16LowerBound: 0,
                     utf16UpperBound: 0
                 )]
@@ -153,9 +154,15 @@ struct ResearchRecordSearchIndex: Sendable {
                 freshness: freshness
             )
         }
+        let availability: RecordSearchAvailability = sourceProjectionIsComplete
+            ? .current(generation)
+            : .partial(
+                current: generation,
+                reason: "Some portable Research Records could not be read or validated. Showing readable Records only."
+            )
         return Execution(
             generation: generation,
-            availability: .current(generation),
+            availability: availability,
             results: results,
             hasMore: upperBound < totalResultCount,
             totalResultCount: totalResultCount,

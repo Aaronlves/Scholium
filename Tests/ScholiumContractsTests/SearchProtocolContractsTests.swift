@@ -4,6 +4,31 @@ import Testing
 
 @Suite("Current Search contracts")
 struct SearchProtocolContractsTests {
+    @Test("Partial Record availability is current, explicit, and codable")
+    func partialRecordAvailabilityContract() throws {
+        let generation = RecordSearchGenerationID(
+            triptychID: UUID(),
+            sourceManifestHash: "readable-records"
+        )
+        let availability = RecordSearchAvailability.partial(
+            current: generation,
+            reason: "One Record is unreadable."
+        )
+        let encoded = try JSONEncoder().encode(availability)
+        let decoded = try JSONDecoder().decode(
+            RecordSearchAvailability.self,
+            from: encoded
+        )
+
+        #expect(decoded == availability)
+        #expect(decoded.lastGoodGeneration == generation)
+        #expect(decoded.presentsCurrentResults)
+        #expect(!RecordSearchAvailability.failed(
+            lastGood: nil,
+            reason: "broken"
+        ).presentsCurrentResults)
+    }
+
     @Test("Record collection paging remains additive to existing Search requests")
     func recordCollectionPagingContract() throws {
         let request = SearchRequest(

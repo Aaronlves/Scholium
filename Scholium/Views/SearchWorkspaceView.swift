@@ -164,6 +164,14 @@ enum SearchStatePresentation {
             )
         case .current:
             nil
+        case .partial(_, let reason):
+            SearchStateBannerPresentation(
+                meaning: .unavailable,
+                title: String(localized: "Some Research Records Are Unavailable"),
+                message: reason,
+                systemImage: "exclamationmark.triangle",
+                action: nil
+            )
         case .refreshing:
             SearchStateBannerPresentation(
                 meaning: .loading,

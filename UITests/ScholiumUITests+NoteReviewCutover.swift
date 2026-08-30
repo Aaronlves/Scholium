@@ -46,6 +46,32 @@ extension ScholiumUITests {
     }
 
     @MainActor
+    func testPartialResearchRecordCorpusKeepsReadableRows() throws {
+        try seedNoteReviewCutoverFixture()
+        try seedUnreadableResearchRecordFixture()
+        try triggerWorkspaceRefreshForPortableFixture("partial Record corpus")
+
+        let workspace = app.windows.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
+        ).firstMatch
+        selectVault(
+            "scholium.vault.topic_knowledge",
+            waitingFor: "scholium.noteRow.QA Topic.md"
+        )
+        openNote("QA Topic.md", expectedTitle: "QA Topic", in: workspace)
+        let recordsWindow = try openCurrentNoteRecords(in: workspace)
+        let readableRow = recordsWindow.descendants(matching: .any)[
+            "scholium.researchRecord.row.8A410000-0000-4000-8000-000000000001"
+        ]
+
+        XCTAssertTrue(readableRow.waitForExistence(timeout: 10))
+        XCTAssertTrue(recordsWindow.descendants(matching: .any)[
+            "Some Research Records Could Not Be Loaded"
+        ].firstMatch.waitForExistence(timeout: 8))
+        XCTAssertFalse(app.staticTexts["Research Records Unavailable"].exists)
+    }
+
+    @MainActor
     func testNoteReviewCutoverAcrossRecordsAndNotes() throws {
         try seedNoteReviewCutoverFixture()
         try triggerWorkspaceRefreshForPortableFixture("initial note review")
@@ -110,7 +136,7 @@ extension ScholiumUITests {
         ]
         XCTAssertTrue(
             firstRow.waitForExistence(timeout: 10),
-            "The origin Note must project the one durable multi-Note Record."
+            "The selected Material Note must project the one durable multi-Note Record."
         )
 
         focusWorkspaceWindow(workspace)

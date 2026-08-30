@@ -488,4 +488,7 @@ Menus follow researcher tasks:
   remains discoverable and never reparses query text or constructs a second
   interpretation. Provider mismatch,
   ambiguous identity, not-applicable clauses, invalid syntax, unavailable
-  Graph, stale source, and no matches retain distinct inline states.
+  Graph, partial Record corpus, stale source, and no matches retain distinct
+  inline states. A partial Record corpus keeps every readable Record available
+  beneath one nonblocking limitation banner; it never replaces the collection
+  with a modal failure or an empty state.

@@ -988,6 +988,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
         case .record(let value):
             switch value {
             case .current: .current
+            case .partial: .partial
             case .refreshing: .partial
             case .stale: .stale
             case .failed(let lastGood, _): lastGood == nil ? .unavailable : .stale

@@ -1297,7 +1297,7 @@ package final class ResearchRecordBrowserModel {
             response.provider == .record,
             response.hasConsistentProviderIdentity,
             response.diagnostics.isEmpty,
-            case .record(.current) = response.availability,
+            response.availability.recordAvailability?.presentsCurrentResults == true,
             let totalResultCount = response.totalResultCount
         else {
             throw ResearchRecordBrowserSearchError.invalidResponse(

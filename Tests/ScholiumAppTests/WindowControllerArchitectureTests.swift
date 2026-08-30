@@ -2468,6 +2468,9 @@ struct WindowControllerArchitectureTests {
         let inspector = try source(
             "Scholium/Views/Sidebar/ResearchInspectorContentView.swift"
         )
+        let actionRail = try source(
+            "Scholium/Views/ResearchActions/ResearchActionsInspectorView.swift"
+        )
         let permissions = try source(
             "Scholium/Views/ResearchActions/ResearchWriteSetExtensionView.swift"
         )
@@ -2506,19 +2509,25 @@ struct WindowControllerArchitectureTests {
 
         let overviewOrder = [
             "                attentionSection",
-            "                reviewSection",
             "                aboutSection",
         ].compactMap { inspector.range(of: $0)?.lowerBound }
-        #expect(overviewOrder.count == 3)
+        #expect(overviewOrder.count == 2)
         #expect(zip(overviewOrder, overviewOrder.dropFirst()).allSatisfy {
             $0.0 < $0.1
         })
-        #expect(inspector.contains("Needs Review · \\(count) Agent activities"))
-        #expect(inspector.contains("Button(action: context.openNoteReview)"))
-        #expect(!inspector.contains("Button(\"Review Current Note…\""))
-        #expect(inspector.contains("Opens this Note's Research Records"))
-        #expect(inspector.contains("No Agent changes to review"))
-        #expect(inspector.contains("No Agent changes awaiting Review"))
+        #expect(!inspector.contains("reviewSection"))
+        #expect(!inspector.contains("openNoteReview"))
+        let documentRailOrder = [
+            "                reviewGroup",
+            "            researchActionGroup",
+        ].compactMap { actionRail.range(of: $0)?.lowerBound }
+        #expect(documentRailOrder.count == 2)
+        #expect(documentRailOrder[0] < documentRailOrder[1])
+        #expect(actionRail.contains("if noteReviewState?.status == .needsReview"))
+        #expect(actionRail.contains("Button(action: openReview)"))
+        #expect(actionRail.contains(".accessibilityLabel(\"Note Review\")"))
+        #expect(actionRail.contains("Needs Review, \\(count) Agent activities"))
+        #expect(actionRail.contains("Opens this Note's Agent changes"))
         #expect(!recordBrowser.contains("scholium.researchRecord.effects.changes"))
         #expect(!processing.contains("restoreEditorFocus"))
         #expect(!processing.contains("restoreComparisonFocus"))

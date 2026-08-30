@@ -336,7 +336,7 @@ managed Metadata explicitly has none, and
 direct-relation provenance retains relation, direction, anchor, target, and
 explicit Markdown occurrences. A coarse direct-relation or Metadata retrieval
 reason without the corresponding typed match is rejected.
-Search contract 10's structured `callout:` and `has:` match reasons are not
+Search contract 11's structured `callout:` and `has:` match reasons are not
 admitted into Research Context schema 6: those queries return Invalid Query at
 this boundary instead of being flattened into a lexical Source Reference.
 

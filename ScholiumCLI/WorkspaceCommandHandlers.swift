@@ -251,6 +251,11 @@ extension ScholiumCLI {
                     recordGeneration = generation
                     progress = nil
                     reason = nil
+                case .partial(let generation, let value):
+                    status = "partial"
+                    recordGeneration = generation
+                    progress = nil
+                    reason = value
                 case .refreshing(let generation):
                     status = "refreshing"
                     recordGeneration = generation

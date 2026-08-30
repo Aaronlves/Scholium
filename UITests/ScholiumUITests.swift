@@ -82,6 +82,7 @@ final class ScholiumUITests: XCTestCase {
     var triptychDirectory: URL!
     var secondTriptychDirectory: URL?
     var synthesisAttentionFixture: QAResearchRecordFixture?
+    var didPrepareCurrentResearchRecordFixtures = false
 
     struct QAResearchRecordFixture {
         let recordID: UUID
@@ -251,6 +252,7 @@ final class ScholiumUITests: XCTestCase {
         homeDirectory = nil
         triptychDirectory = nil
         synthesisAttentionFixture = nil
+        didPrepareCurrentResearchRecordFixtures = false
     }
 
 }

@@ -118,6 +118,14 @@ struct ResearchActionPanelView: View {
                 showsAdditionalContext = true
             }
         }
+        .onExitCommand {
+            guard controller.phase != .preparing,
+                  controller.phase != .cancelling,
+                  !confirmsEndAction else {
+                return
+            }
+            context.dismiss(.restoreOriginatingAction)
+        }
         .confirmationDialog(
             "End this Action?",
             isPresented: $confirmsEndAction,
@@ -991,7 +999,6 @@ struct ResearchActionPanelView: View {
             Button(controller.preparation == nil ? "Cancel" : "Close") {
                 dismissFromCurrentInput()
             }
-            .keyboardShortcut(.cancelAction)
             .disabled(
                 controller.phase == .preparing
                     || controller.phase == .cancelling

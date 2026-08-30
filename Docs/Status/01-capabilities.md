@@ -378,10 +378,13 @@
   disposable Contracts projection recognizes the closed Record scholarly-
   markup subset. Navigation reuses current fail-closed Note/heading/block
   lookup without emitting Connections or another durable relation owner.
-- The standalone CLI can list every finished Record related to one exact stable
-  Note UUID and read one complete Record by UUID. Both routes use one complete
-  immutable Record projection, return exact portable-byte fingerprints, and
-  fail closed instead of scanning `.scholium` or returning a partial corpus.
+- The standalone CLI can list every readable finished Record related to one
+  exact stable Note UUID and read one readable complete Record by UUID. Both
+  routes use the immutable Application projection and return exact portable-byte
+  fingerprints. List output names complete versus partial corpus state and
+  omits only unreadable Record files; an unresolved target in a partial corpus
+  and completeness-sensitive operations still fail closed instead of scanning
+  `.scholium` or guessing.
 - Research Guidance supports Skill registration and exact expected-revision
   `SKILL.md` editing, bundled Skill-routed lens references, explicit default restoration, academic
   Profiles, one Triptych collaboration policy, citation style, external

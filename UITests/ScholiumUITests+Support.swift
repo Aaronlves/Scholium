@@ -1066,6 +1066,7 @@ extension ScholiumUITests {
         hasEvidenceOverflow: Bool = false,
         createsSynthesisAttention: Bool = false
     ) throws -> QAResearchRecordFixture {
+        try prepareCurrentResearchRecordFixtureState()
         let triptychID = try triptychID(at: triptychDirectory)
         let manifestURL = triptychDirectory.appendingPathComponent(
             ".scholium/manifest.json"
@@ -1311,6 +1312,7 @@ extension ScholiumUITests {
     func seedNoteReviewRecords(
         _ seeds: [QANoteReviewRecordSeed]
     ) throws {
+        try prepareCurrentResearchRecordFixtureState()
         let triptychID = try triptychID(at: triptychDirectory)
         let identities = try qaStoredNoteIdentities()
         let recordsDirectory = triptychDirectory.appendingPathComponent(
@@ -1368,6 +1370,16 @@ extension ScholiumUITests {
                 return try XCTUnwrap(
                     identities[participant.relativePath]
                 ).noteID.uuidString
+            }
+            guard !materialNoteIDs.contains(primary.noteID.uuidString) else {
+                throw NSError(
+                    domain: "ScholiumUITests.NoteReviewFixture",
+                    code: 1,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "A synthetic Action Record cannot use its primary Note as a Material.",
+                    ]
+                )
             }
             let record: [String: Any] = [
                 "schema_version": 17,
@@ -1430,7 +1442,7 @@ extension ScholiumUITests {
                     uuidString: "8A410000-0000-4000-8000-000000000001"
                 )!,
                 title: "Multi-Note Agent revision",
-                primaryRelativePath: origin.relativePath,
+                primaryRelativePath: topic.relativePath,
                 participants: [origin, topic, work],
                 changedRelativePaths: [topic.relativePath, work.relativePath],
                 finishedAt: "2026-08-09T03:01:00Z"
@@ -1446,6 +1458,20 @@ extension ScholiumUITests {
                 finishedAt: "2026-08-09T03:02:00Z"
             ),
         ])
+    }
+
+    func seedUnreadableResearchRecordFixture() throws {
+        let destination = triptychDirectory.appendingPathComponent(
+            ".scholium/research-records/v1/records/8a410000-0000-4000-8000-000000000099.json"
+        )
+        try FileManager.default.createDirectory(
+            at: destination.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("{\"schema_version\":17".utf8).write(
+            to: destination,
+            options: .atomic
+        )
     }
 
     func externallyReplaceResearcherResponse(
@@ -1695,6 +1721,10 @@ extension ScholiumUITests {
             || name.contains(
                 "testNoChangeActionResultsShareDocumentTopWithoutCreatingNoteReview"
             )
+            || name.contains("testDocumentActionRailCentersActionsAndPlacesReviewAbove")
+            || name.contains("testNoteReviewCutoverAcrossRecordsAndNotes")
+            || name.contains("testPartialResearchRecordCorpusKeepsReadableRows")
+            || name.contains("testResearcherResponseProgressiveEditingAndStaleDraft")
             || name.contains("testResearchActionPanelFits") {
             try resetResearchActionFixtureState()
         }
@@ -2064,6 +2094,16 @@ extension ScholiumUITests {
                 "Research Action fixture retained mutable state: \(component)"
             )
         }
+        didPrepareCurrentResearchRecordFixtures = true
+    }
+
+    /// Current-schema Record journeys must not inherit unsupported historical
+    /// bytes from the disposable static vault copy. Preserve that source copy,
+    /// clear only this test's clone once, then let later seeds in the same
+    /// journey accumulate through the real portable store boundary.
+    private func prepareCurrentResearchRecordFixtureState() throws {
+        guard !didPrepareCurrentResearchRecordFixtures else { return }
+        try resetResearchActionFixtureState()
     }
 
     private func seedManagedTopicAliases(

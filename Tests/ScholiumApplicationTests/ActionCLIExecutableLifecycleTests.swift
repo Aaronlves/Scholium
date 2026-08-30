@@ -1656,7 +1656,9 @@ struct ActionCLIExecutableLifecycleTests {
             }
         #expect(relatedRows.count == 2)
         #expect(relatedRows[0]["type"] as? String == "record_list_summary")
+        #expect(relatedRows[0]["schema_version"] as? Int == 2)
         #expect(relatedRows[0]["record_count"] as? Int == 1)
+        #expect(relatedRows[0]["corpus_complete"] as? Bool == true)
         #expect(relatedRows[0]["source_manifest_hash"] as? String != nil)
         #expect(relatedRows[1]["type"] as? String == "research_record_summary")
         #expect(
@@ -1718,6 +1720,72 @@ struct ActionCLIExecutableLifecycleTests {
             JSONSerialization.jsonObject(with: missingNoteRecords.stderr) as? [String: Any]
         )
         #expect(missingNoteReport["code"] as? String == "note_not_found")
+
+        let unreadableRecordURL = fixture.rootURL.appendingPathComponent(
+            ".scholium/research-records/v1/records/00000000-0000-4000-8000-000000000003.json"
+        )
+        try Data("{\"schema_version\":17".utf8).write(
+            to: unreadableRecordURL,
+            options: .atomic
+        )
+
+        let partialSearch = try cli.run([
+            "search", "kind:record synthetic", "--triptych", triptych,
+            "--format", "jsonl",
+        ])
+        let partialSearchRows = try String(
+            decoding: partialSearch.stdout,
+            as: UTF8.self
+        ).split(separator: "\n").map { line in
+            try #require(
+                JSONSerialization.jsonObject(with: Data(line.utf8))
+                    as? [String: Any]
+            )
+        }
+        let partialAvailability = try #require(
+            partialSearchRows.first?["availability"] as? [String: Any]
+        )
+        #expect(partialAvailability["status"] as? String == "partial")
+        #expect(partialSearchRows.dropFirst().contains {
+            ($0["record_id"] as? String)?.lowercased()
+                == fixture.recordID.uuidString.lowercased()
+        })
+
+        let partialList = try cli.run([
+            "record", "list", "--note", fixture.analysisTarget.noteID.uuidString,
+            "--triptych", triptych, "--format", "jsonl",
+        ])
+        let partialListRows = try String(
+            decoding: partialList.stdout,
+            as: UTF8.self
+        ).split(separator: "\n").map { line in
+            try #require(
+                JSONSerialization.jsonObject(with: Data(line.utf8))
+                    as? [String: Any]
+            )
+        }
+        #expect(partialListRows.first?["corpus_complete"] as? Bool == false)
+        #expect(partialListRows.count == 2)
+        #expect(
+            (partialListRows[1]["record_id"] as? String)?.lowercased()
+                == fixture.recordID.uuidString.lowercased()
+        )
+
+        let readableNeighbor = try cli.run([
+            "record", "read", fixture.recordID.uuidString,
+            "--triptych", triptych, "--format", "json",
+        ])
+        #expect(readableNeighbor.stdout == exactRecord.stdout)
+
+        let unresolvedPartialRecord = try cli.runExpectingFailure([
+            "record", "read", "00000000-0000-0000-0000-000000000004",
+            "--triptych", triptych, "--format", "json",
+        ])
+        let unresolvedPartialReport = try #require(
+            JSONSerialization.jsonObject(with: unresolvedPartialRecord.stderr)
+                as? [String: Any]
+        )
+        #expect(unresolvedPartialReport["code"] as? String == "unavailable")
 
         let negativeStructured = try cli.run([
             "search", "-has:broken-link", "--triptych", triptych,

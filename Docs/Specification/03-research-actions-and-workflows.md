@@ -528,14 +528,17 @@ research content; Records never reconstruct writable source.
 
 The read-only CLI exposes the existing ownership directly rather than asking an
 Agent to compose Search providers. `record list --note <stable-note-uuid>`
-binds one Triptych and returns every complete finished Record in which that
-exact identity participates, with one complete-corpus manifest and each
-Record's exact persisted-byte fingerprint. `record read <record-uuid>` returns
-that Triptych's decoded portable Record with the same exact
-fingerprint. Unknown identities, a missing fingerprint, or an incomplete
-portable Record projection fail closed. These routes create no Note dossier,
-duplicate Record, inferred relevance, acceptance, mutation authority, or
-alternative Record owner.
+binds one Triptych and returns every readable complete finished Record in which
+that exact identity participates, with a valid-Record manifest, explicit
+complete/partial corpus state, and each Record's exact persisted-byte
+fingerprint. One unreadable Record is omitted and reported as a partial corpus;
+it does not suppress valid neighboring Records. `record read <record-uuid>`
+returns that Triptych's decoded portable Record with the same exact fingerprint
+even when an unrelated Record is unreadable. An unknown target in a partial
+corpus, a missing fingerprint for the requested Record, or an internally
+inconsistent readable projection fails closed. These routes create no Note
+dossier, duplicate Record, inferred relevance, acceptance, mutation authority,
+or alternative Record owner.
 
 Research Records presentation, collection behavior, Reading Leads, evidence,
 Follow-up, feedback, and deletion are owned by [§18.5](07-document-and-research-interface.md#185-contextual-research-and-actions).

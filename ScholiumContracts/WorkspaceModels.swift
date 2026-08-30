@@ -492,8 +492,10 @@ public struct WorkspaceResearchSnapshot: Sendable {
     public let finishedResearchRecordFingerprints: [UUID: DocumentFingerprint]
     /// Stable hash of the valid Record UUID + exact-byte fingerprint set.
     public let finishedResearchRecordSourceManifestHash: String
-    /// False when any portable Record file failed exact reading or validation;
-    /// Search must not present the remaining subset as a complete corpus.
+    /// False when any portable Record file failed exact reading or validation.
+    /// Read-only collection surfaces may present the valid subset only with an
+    /// explicit partial availability; completeness-sensitive operations must
+    /// continue to fail closed.
     public let finishedResearchRecordProjectionIsComplete: Bool
     public let critiques: [CritiqueAssociation]
     public let recoveryRecords: [TriptychMutationRecoveryRecord]

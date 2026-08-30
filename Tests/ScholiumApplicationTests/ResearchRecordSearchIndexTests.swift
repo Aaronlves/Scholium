@@ -24,11 +24,11 @@ struct ResearchRecordSearchIndexTests {
         let fixture = try Fixture()
         let thisNote = SearchExecutionScope.currentNote(SearchSourceSnapshot(
             noteID: VaultQualifiedNoteID(
-                vaultID: fixture.analysisVaultID,
-                relativePath: "New Akrasia.md"
+                vaultID: fixture.topicVaultID,
+                relativePath: "Selected Appendix.md"
             ),
             editorSessionID: UUID(),
-            source: "# Current Akrasia\n",
+            source: "# Selected Appendix\n",
             editorRevision: 4
         ))
 
@@ -147,8 +147,8 @@ struct ResearchRecordSearchIndexTests {
         ).results.isEmpty)
     }
 
-    @Test("Ambiguous Note identities and incomplete Record corpora fail closed")
-    func ambiguityAndIncompleteCorpus() throws {
+    @Test("Ambiguous Note identities fail closed while unreadable Records remain isolated")
+    func ambiguityAndPartialCorpus() throws {
         let fixture = try Fixture()
         let ambiguous = try fixture.search("kind:record note:\"Shared\"")
         let incomplete = ResearchRecordSearchIndex(
@@ -160,7 +160,7 @@ struct ResearchRecordSearchIndexTests {
             ),
             catalogNotes: fixture.catalogNotes
         )
-        let unavailable = try incomplete.search(
+        let partial = try incomplete.search(
             ast: try fixture.ast("kind:record"),
             scope: .triptych,
             limit: 100,
@@ -170,12 +170,14 @@ struct ResearchRecordSearchIndexTests {
 
         #expect(ambiguous.results.isEmpty)
         #expect(ambiguous.diagnostics.map(\.code) == [.ambiguousIdentity])
-        #expect(unavailable.results.isEmpty)
-        #expect(unavailable.diagnostics.map(\.code) == [.notApplicable])
-        if case .failed(let lastGood, _) = unavailable.availability {
-            #expect(lastGood == nil)
+        #expect(Set(partial.results.map(\.recordID)) == Set(fixture.records.map(\.id)))
+        #expect(partial.results.count == fixture.records.count)
+        #expect(partial.diagnostics.isEmpty)
+        if case .partial(let current, let reason) = partial.availability {
+            #expect(current == partial.generation)
+            #expect(reason.contains("Showing readable Records only"))
         } else {
-            Issue.record("An incomplete portable Record corpus did not fail closed.")
+            Issue.record("An incomplete portable Record corpus was not marked partial.")
         }
     }
 }

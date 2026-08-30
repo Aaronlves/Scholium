@@ -110,7 +110,7 @@ struct ResearchActionHandoffPresentationTests {
         #expect(!detailRegion.contains("windowTopNotificationSurface("))
         #expect(content.contains("ScholiumWindowTopOverlayHost("))
         #expect(content.contains(".overlay(alignment: .bottom)"))
-        #expect(content.contains("private func windowTopNotificationSurface("))
+        #expect(content.contains("private var windowTopNotificationSurface: some View"))
         #expect(content.contains("transientFeedbackItems.first"))
         #expect(content.contains("persistentFeedbackItems.first"))
         #expect(content.contains("AccessibilityNotification.Announcement"))
