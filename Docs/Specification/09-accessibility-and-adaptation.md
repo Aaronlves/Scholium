@@ -86,6 +86,9 @@
   absent from the accessibility tree. Their resting offsets never replace the
   visible count; hover and keyboard focus share the bounded preview, and Reduce
   Motion retains the collapsed presentation without geometry animation.
+- While that stack is present, one-time system-notification permission
+  education is neither presented nor announced; it may enter reading order
+  after the stack disappears.
 
 ### Document and editor
 

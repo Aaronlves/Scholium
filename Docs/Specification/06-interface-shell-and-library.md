@@ -344,7 +344,8 @@ Menus follow researcher tasks:
   remain in the persistent queue and Triptych total without occupying
   Document. When no attention-requiring Action remains, the stack disappears;
   Reduce Motion retains the collapsed layers and exact text without the preview
-  transition.
+  transition. A pending one-time system-notification permission prompt waits
+  while the stack is present and may appear only after it disappears.
 - Refresh preserves the last trustworthy Triptych total. A first load with no
   trustworthy result never claims zero; checking uses the control's bounded
   native progress state. Failure without a trustworthy result presents a

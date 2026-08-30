@@ -336,49 +336,28 @@ extension ScholiumUITests {
             waitingFor: "scholium.noteRow.QA Topic.md"
         )
         openNote("QA Topic.md", expectedTitle: "QA Topic", in: workspace)
-        let firstRunID = try startNoChangeSynthesizeAction(
-            request: "Synthesize this fixture without changing source."
+        let firstRunID = try completeNoChangeSynthesizeAction(
+            request: "Synthesize this fixture without changing source.",
+            recordTitle: "First no-change Synthesis result"
         )
-        let origin = QANoteReviewRecordSeed.Participant(
-            relativePath: "QA Topic.md",
-            role: "topic",
-            title: "QA Topic"
-        )
-        try seedNoteReviewRecords([
-            QANoteReviewRecordSeed(
-                recordID: firstRunID,
-                title: "First no-change Synthesis result",
-                primaryRelativePath: origin.relativePath,
-                participants: [origin],
-                changedRelativePaths: [],
-                finishedAt: "2026-08-10T04:10:00Z"
-            ),
-        ])
-        try triggerWorkspaceRefreshForPortableFixture("first no-change result")
 
         let notificationStack = app.descendants(matching: .any)[
             "scholium.researchActivityNotificationStack"
         ]
+        let permissionNotice = app.descendants(matching: .any)[
+            "scholium.researchNotificationPermission"
+        ]
         XCTAssertTrue(notificationStack.waitForExistence(timeout: 20))
+        XCTAssertFalse(permissionNotice.exists)
         XCTAssertTrue(
             String(describing: notificationStack.value)
                 .contains("1 Action notification")
         )
 
-        let secondRunID = try startNoChangeSynthesizeAction(
-            request: "Synthesize this fixture again without changing source."
+        let secondRunID = try completeNoChangeSynthesizeAction(
+            request: "Synthesize this fixture again without changing source.",
+            recordTitle: "Second no-change Synthesis result"
         )
-        try seedNoteReviewRecords([
-            QANoteReviewRecordSeed(
-                recordID: secondRunID,
-                title: "Second no-change Synthesis result",
-                primaryRelativePath: origin.relativePath,
-                participants: [origin],
-                changedRelativePaths: [],
-                finishedAt: "2026-08-10T04:20:00Z"
-            ),
-        ])
-        try triggerWorkspaceRefreshForPortableFixture("second no-change result")
 
         XCTAssertTrue(waitUntil(timeout: 20) {
             String(describing: notificationStack.value)
@@ -395,8 +374,16 @@ extension ScholiumUITests {
             "No Agent changes to review"
         ].waitForExistence(timeout: 12))
 
+        retainNoteReviewScreenshot(
+            of: workspace,
+            named: "Activity notification stack collapsed"
+        )
         notificationStack.hover()
         XCTAssertTrue(notificationStack.isHittable)
+        retainNoteReviewScreenshot(
+            of: workspace,
+            named: "Activity notification stack hover preview"
+        )
         notificationStack.click()
         let firstActivity = app.descendants(matching: .any)[
             "scholium.notification.action.\(firstRunID.uuidString)"
@@ -418,6 +405,7 @@ extension ScholiumUITests {
             "scholium.notification.action.dismiss.\(secondRunID.uuidString)"
         ].click()
         XCTAssertTrue(waitUntil(timeout: 8) { !notificationStack.exists })
+        XCTAssertTrue(permissionNotice.waitForExistence(timeout: 8))
 
         selectVault(
             "scholium.vault.paper_analysis",
@@ -438,7 +426,10 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    private func startNoChangeSynthesizeAction(request: String) throws -> UUID {
+    private func completeNoChangeSynthesizeAction(
+        request: String,
+        recordTitle: String
+    ) throws -> UUID {
         selectResearchInspectorMode("actions")
         let synthesize = app.descendants(matching: .any)[
             "scholium.researchAction.synthesize"
@@ -462,7 +453,66 @@ extension ScholiumUITests {
         XCTAssertTrue(waitUntil(timeout: 5) { copy.isEnabled })
         copy.click()
         XCTAssertTrue(waitUntil(timeout: 15) { !actionSheet.exists })
-        return try latestLocalResearchExecutionRunID()
+
+        let runID = try latestLocalResearchExecutionRunID()
+        let copiedInstructions = try pasteboardText()
+        let handoffLines = copiedInstructions.components(separatedBy: .newlines)
+        let runLocator = try XCTUnwrap(
+            handoffLines.first { $0.hasPrefix("Scholium Run: ") }.map {
+                String($0.dropFirst("Scholium Run: ".count))
+            }
+        )
+        let pairingCode = try XCTUnwrap(
+            handoffLines.first { $0.hasPrefix("Pairing Code: ") }.map {
+                String($0.dropFirst("Pairing Code: ".count))
+            }
+        )
+        let pairingOutput = try runScholiumCLI(
+            ["agent", "pair", "--run", runLocator],
+            stdin: Data("\(pairingCode)\n".utf8)
+        )
+        XCTAssertTrue(pairingOutput.contains(runLocator))
+
+        let resultSubmission = try JSONSerialization.data(withJSONObject: [
+            "schema_version": 3,
+            "record_title": recordTitle,
+            "disposition": "completed",
+            "academic_results": [
+                "values": [
+                    "synthesis-outcome": [
+                        "kind": "freeText",
+                        "text": "A disposable synthesis with no source changes.",
+                    ],
+                    "contribution": [
+                        "kind": "multipleChoice",
+                        "choices": ["adds"],
+                    ],
+                ],
+            ],
+            "fidelity_outcomes": [],
+        ])
+        let resultOutput = try runScholiumCLI(
+            ["agent", "submit-result", "--run", runLocator, "--from", "-"],
+            stdin: resultSubmission
+        )
+        let resultReceipt = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(resultOutput.utf8))
+                as? [String: Any]
+        )
+        XCTAssertEqual(resultReceipt["state"] as? String, "finalized")
+        XCTAssertEqual(resultReceipt["record_formed"] as? Bool, true)
+        return runID
+    }
+
+    @MainActor
+    private func retainNoteReviewScreenshot(
+        of element: XCUIElement,
+        named name: String
+    ) {
+        let attachment = XCTAttachment(screenshot: element.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     @MainActor

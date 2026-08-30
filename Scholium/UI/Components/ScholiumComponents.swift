@@ -629,11 +629,12 @@ struct ResearchActivityNotificationStack: View {
             }
             .buttonStyle(
                 ResearchActivityNotificationStackButtonStyle(
-                    isHovering: $isHovering,
+                    isHovering: isHovering,
                     isFocused: isFocused,
                     shape: shape
                 )
             )
+            .scholiumHoverState { isHovering = $0 }
             .scholiumEditorialSurface(.floatingControl, in: shape)
             .background(alignment: .bottom) {
                 stackLayers(shape: shape)
@@ -762,7 +763,7 @@ struct ResearchActivityNotificationStack: View {
 }
 
 private struct ResearchActivityNotificationStackButtonStyle: ButtonStyle {
-    @Binding var isHovering: Bool
+    let isHovering: Bool
     let isFocused: Bool
     let shape: RoundedRectangle
 
@@ -775,7 +776,6 @@ private struct ResearchActivityNotificationStackButtonStyle: ButtonStyle {
                 in: shape
             )
             .opacity(configuration.isPressed ? 0.78 : 1)
-            .scholiumHoverState { isHovering = $0 }
     }
 }
 

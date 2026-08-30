@@ -201,7 +201,7 @@ struct ContentView: View {
             ).post()
         }
         .onChange(
-            of: shellState.researchNotificationPermissionNotice
+            of: presentedResearchNotificationPermissionNotice
         ) { previous, current in
             guard let current, current != previous else { return }
             let message = switch current {
@@ -541,6 +541,12 @@ struct ContentView: View {
         shellState.researchActivityNotifications.filter {
             $0.state.requiresResearcherAttention
         }
+    }
+
+    private var presentedResearchNotificationPermissionNotice:
+        ResearchNotificationPermissionNotice? {
+        guard documentActivityNotifications.isEmpty else { return nil }
+        return shellState.researchNotificationPermissionNotice
     }
 
     private var researchProjectionFreshness: ResearchProjectionFreshness {
@@ -1148,7 +1154,7 @@ struct ContentView: View {
             )
             .padding(ScholiumMetrics.Workspace.refreshStatusOuterInset)
         }
-        if let permission = shellState.researchNotificationPermissionNotice {
+        if let permission = presentedResearchNotificationPermissionNotice {
             ResearchNotificationPermissionView(
                 kind: permission == .enable
                     ? .enableNotifications
