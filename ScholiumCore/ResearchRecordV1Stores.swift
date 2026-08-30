@@ -17,7 +17,7 @@ public struct PortableResearchRecordStoreIssue: Hashable, Identifiable, Sendable
 
 /// One decoded portable Record bound to the exact persisted JSON bytes from
 /// which it was read. The fingerprint is derived evidence only: it is never
-/// written into the schema-16 Record or reconstructed from a re-encoding.
+/// written into the schema-17 Record or reconstructed from a re-encoding.
 public struct PortableResearchRecordRevision: Hashable, Identifiable, Sendable {
     public let record: PortableResearchRecord
     public let fingerprint: DocumentFingerprint

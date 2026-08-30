@@ -88,7 +88,9 @@
   Motion retains the collapsed presentation without geometry animation.
 - While that stack is present, one-time system-notification permission
   education is neither presented nor announced; it may enter reading order
-  after the stack disappears.
+  after the stack disappears. A presented current-Note Review task likewise
+  removes the stack from the active tree without dismissing its activities;
+  if attention remains, the stack returns after the Review task leaves.
 
 ### Document and editor
 
@@ -309,6 +311,9 @@
 - A newly pending Note Review activity set announces its attached Document task
   once without moving focus. Closing the task removes it from the active tree;
   the Overview Review row remains the named route that can present it again.
+  While presented it precedes and replaces the Activity Notification Stack in
+  Document reading order; the hidden stack neither duplicates the announcement
+  nor exposes decorative layers.
 - Reading Lead detail retains one order from disposition and full citation
   through bibliography, discovery, reason, uncertainty, note, source, parent,
   and technical identity. Narrow or enlarged presentation stacks complete

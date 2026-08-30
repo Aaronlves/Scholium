@@ -7,6 +7,30 @@ import Combine
 @MainActor
 @Suite("Document session lifecycle")
 struct DocumentSessionLifecycleTests {
+    @Test("Document top presents Review, Action notifications, then permission education")
+    func documentTopSurfacePriority() {
+        #expect(DocumentTopSurfacePresentation.resolve(
+            noteReviewTaskIsPresented: true,
+            hasActionNotifications: true,
+            hasNotificationPermissionNotice: true
+        ) == .noteReviewTask)
+        #expect(DocumentTopSurfacePresentation.resolve(
+            noteReviewTaskIsPresented: false,
+            hasActionNotifications: true,
+            hasNotificationPermissionNotice: true
+        ) == .actionNotificationStack)
+        #expect(DocumentTopSurfacePresentation.resolve(
+            noteReviewTaskIsPresented: false,
+            hasActionNotifications: false,
+            hasNotificationPermissionNotice: true
+        ) == .notificationPermissionNotice)
+        #expect(DocumentTopSurfacePresentation.resolve(
+            noteReviewTaskIsPresented: false,
+            hasActionNotifications: false,
+            hasNotificationPermissionNotice: false
+        ) == .none)
+    }
+
     @Test("Repeated Review preparation preserves a finalized retained revision")
     func repeatedReadProjectionPreparationPreservesReadiness() {
         let session = DocumentSessionModel(key: nil)

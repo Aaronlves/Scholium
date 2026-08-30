@@ -327,7 +327,26 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func testNoChangeActionResultsFormOneCountedNotificationStackWithoutNoteReview() throws {
+    func testNoChangeActionResultsShareDocumentTopWithoutCreatingNoteReview() throws {
+        let reviewRecordID = UUID(
+            uuidString: "8A410000-0000-4000-8000-000000000004"
+        )!
+        let topic = QANoteReviewRecordSeed.Participant(
+            relativePath: "QA Topic.md",
+            role: "topic",
+            title: "QA Topic"
+        )
+        try seedNoteReviewRecords([
+            QANoteReviewRecordSeed(
+                recordID: reviewRecordID,
+                title: "Priority Note Review activity",
+                primaryRelativePath: topic.relativePath,
+                participants: [topic],
+                changedRelativePaths: [topic.relativePath],
+                finishedAt: "2026-08-10T04:30:00Z"
+            ),
+        ])
+        try triggerWorkspaceRefreshForPortableFixture("initial review priority")
         let workspace = app.windows.matching(
             NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
         ).firstMatch
@@ -336,17 +355,55 @@ extension ScholiumUITests {
             waitingFor: "scholium.noteRow.QA Topic.md"
         )
         openNote("QA Topic.md", expectedTitle: "QA Topic", in: workspace)
-        let firstRunID = try completeNoChangeSynthesizeAction(
-            request: "Synthesize this fixture without changing source.",
-            recordTitle: "First no-change Synthesis result"
-        )
-
+        selectDocumentMode("Review", in: workspace)
+        let renderedDocument = workspace.descendants(matching: .any)[
+            "Rendered Markdown"
+        ]
+        XCTAssertTrue(renderedDocument.waitForExistence(timeout: 10))
+        let readingAnchor = renderedDocument.staticTexts[
+            "Notification priority reading anchor remains in context."
+        ]
+        XCTAssertTrue(readingAnchor.waitForExistence(timeout: 10))
+        scrollUntilHittable(readingAnchor, in: renderedDocument)
+        XCTAssertTrue(readingAnchor.isHittable)
+        let reviewTask = workspace.descendants(matching: .any)[
+            "scholium.noteReview.task"
+        ]
+        let initialOverview = selectResearchInspectorMode("overview")
+        let initialReview = app.buttons["scholium.researchOverview.review.open"]
+        XCTAssertTrue(initialReview.waitForExistence(timeout: 12))
+        XCTAssertEqual(initialReview.value as? String, "Needs Review, 1 Agent activities")
+        XCTAssertTrue(initialOverview.exists)
+        XCTAssertTrue(reviewTask.waitForExistence(timeout: 12))
         let notificationStack = app.descendants(matching: .any)[
             "scholium.researchActivityNotificationStack"
         ]
         let permissionNotice = app.descendants(matching: .any)[
             "scholium.researchNotificationPermission"
         ]
+        XCTAssertFalse(notificationStack.exists)
+        XCTAssertFalse(permissionNotice.exists)
+        reviewTask.buttons["Close Note Review"].click()
+        XCTAssertTrue(waitUntil(timeout: 8) { !reviewTask.exists })
+        XCTAssertTrue(notificationStack.waitForExistence(timeout: 8))
+        XCTAssertTrue(
+            String(describing: notificationStack.value)
+                .contains("1 Action notification")
+        )
+        notificationStack.click()
+        let seededActivityDismiss = app.buttons[
+            "scholium.notification.action.dismiss.\(reviewRecordID.uuidString)"
+        ]
+        XCTAssertTrue(seededActivityDismiss.waitForExistence(timeout: 8))
+        seededActivityDismiss.click()
+        XCTAssertTrue(waitUntil(timeout: 8) { !notificationStack.exists })
+        XCTAssertTrue(initialReview.exists)
+        app.typeKey(.escape, modifierFlags: [])
+        let firstRunID = try completeNoChangeSynthesizeAction(
+            request: "Synthesize this fixture without changing source.",
+            recordTitle: "First no-change Synthesis result"
+        )
+
         XCTAssertTrue(notificationStack.waitForExistence(timeout: 20))
         XCTAssertFalse(permissionNotice.exists)
         XCTAssertTrue(
@@ -369,10 +426,37 @@ extension ScholiumUITests {
             ).count,
             1
         )
-        selectResearchInspectorMode("overview")
-        XCTAssertTrue(app.staticTexts[
-            "No Agent changes to review"
-        ].waitForExistence(timeout: 12))
+        let overview = selectResearchInspectorMode("overview")
+        let reopenReview = app.buttons["scholium.researchOverview.review.open"]
+        XCTAssertTrue(reopenReview.waitForExistence(timeout: 12))
+        XCTAssertEqual(
+            reopenReview.value as? String,
+            "Needs Review, 1 Agent activities",
+            "No-change Action results must not create additional Note Review work."
+        )
+        XCTAssertTrue(
+            readingAnchor.isHittable,
+            "Presenting the Action stack must preserve the current reading context."
+        )
+
+        scrollUntilHittable(reopenReview, in: overview)
+        reopenReview.click()
+        XCTAssertTrue(reviewTask.waitForExistence(timeout: 8))
+        XCTAssertTrue(waitUntil(timeout: 8) { !notificationStack.exists })
+        XCTAssertFalse(permissionNotice.exists)
+        XCTAssertTrue(
+            readingAnchor.isHittable,
+            "Note Review must replace the Action stack without resetting the reading anchor."
+        )
+
+        reviewTask.buttons["Close Note Review"].click()
+        XCTAssertTrue(waitUntil(timeout: 8) { !reviewTask.exists })
+        XCTAssertTrue(notificationStack.waitForExistence(timeout: 8))
+        XCTAssertTrue(
+            String(describing: notificationStack.value)
+                .contains("2 Action notifications")
+        )
+        XCTAssertTrue(readingAnchor.isHittable)
 
         retainNoteReviewScreenshot(
             of: workspace,
@@ -420,9 +504,10 @@ extension ScholiumUITests {
         XCTAssertFalse(app.descendants(matching: .any)[
             "scholium.researchActivityNotificationStack"
         ].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts[
-            "No Agent changes to review"
-        ].exists)
+        XCTAssertTrue(app.buttons[
+            "scholium.researchOverview.review.open"
+        ].waitForExistence(timeout: 8))
+        XCTAssertFalse(reviewTask.exists)
     }
 
     @MainActor

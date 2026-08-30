@@ -42,6 +42,8 @@ struct ContentView: View {
     @State private var researchActionFocusRequest: ResearchActionFocusRequest?
     @State private var researchActionDismissalFocusDisposition:
         ResearchActionDismissalFocusDisposition = .preserveInputModality
+    @State private var announcedResearchNotificationPermissionNotice:
+        ResearchNotificationPermissionNotice?
 
     init(
         appState: WindowModel,
@@ -199,26 +201,6 @@ struct ContentView: View {
                     bundle: .module
                 )
             ).post()
-        }
-        .onChange(
-            of: presentedResearchNotificationPermissionNotice
-        ) { previous, current in
-            guard let current, current != previous else { return }
-            let message = switch current {
-            case .enable:
-                String(
-                    localized: "Get Notified When Results Are Ready",
-                    table: "Localizable",
-                    bundle: .module
-                )
-            case .openSettings:
-                String(
-                    localized: "Notifications Are Off",
-                    table: "Localizable",
-                    bundle: .module
-                )
-            }
-            AccessibilityNotification.Announcement(message).post()
         }
         .sheet(item: presentedSheet, onDismiss: {
             let permissionController = appState
@@ -541,12 +523,6 @@ struct ContentView: View {
         shellState.researchActivityNotifications.filter {
             $0.state.requiresResearcherAttention
         }
-    }
-
-    private var presentedResearchNotificationPermissionNotice:
-        ResearchNotificationPermissionNotice? {
-        guard documentActivityNotifications.isEmpty else { return nil }
-        return shellState.researchNotificationPermissionNotice
     }
 
     private var researchProjectionFreshness: ResearchProjectionFreshness {
@@ -1118,7 +1094,18 @@ struct ContentView: View {
     @ViewBuilder
     private var detailRegion: some View {
         VStack(spacing: 0) {
-            researchNotificationBanner
+            if let documentSession = currentNoteDocumentSession {
+                DocumentTopSurfaceObservation(
+                    documentSession: documentSession,
+                    noteReviewState: currentNoteReviewState
+                ) { noteReviewTaskIsPresented in
+                    researchNotificationBanner(
+                        noteReviewTaskIsPresented: noteReviewTaskIsPresented
+                    )
+                }
+            } else {
+                researchNotificationBanner(noteReviewTaskIsPresented: false)
+            }
             if !appState.transactionRecoveryRecords.isEmpty
                 || !appState.interruptedSaveRecoveries.isEmpty
                 || appState.transactionRecoveryError != nil
@@ -1137,8 +1124,18 @@ struct ContentView: View {
     }
 
     @ViewBuilder
-    private var researchNotificationBanner: some View {
-        if !documentActivityNotifications.isEmpty {
+    private func researchNotificationBanner(
+        noteReviewTaskIsPresented: Bool
+    ) -> some View {
+        let permission = shellState.researchNotificationPermissionNotice
+        switch DocumentTopSurfacePresentation.resolve(
+            noteReviewTaskIsPresented: noteReviewTaskIsPresented,
+            hasActionNotifications: !documentActivityNotifications.isEmpty,
+            hasNotificationPermissionNotice: permission != nil
+        ) {
+        case .noteReviewTask, .none:
+            EmptyView()
+        case .actionNotificationStack:
             ResearchActivityNotificationStack(
                 notifications: documentActivityNotifications,
                 open: {
@@ -1153,26 +1150,52 @@ struct ContentView: View {
                 session: appState.attentionPopoverSession
             )
             .padding(ScholiumMetrics.Workspace.refreshStatusOuterInset)
-        }
-        if let permission = presentedResearchNotificationPermissionNotice {
-            ResearchNotificationPermissionView(
-                kind: permission == .enable
-                    ? .enableNotifications
-                    : .openNotificationSettings,
-                review: {
-                    switch permission {
-                    case .enable:
-                        windowCoordinator.requestResearchNotificationAuthorization()
-                    case .openSettings:
-                        windowCoordinator.openResearchNotificationSettings()
+        case .notificationPermissionNotice:
+            if let permission {
+                ResearchNotificationPermissionView(
+                    kind: permission == .enable
+                        ? .enableNotifications
+                        : .openNotificationSettings,
+                    review: {
+                        switch permission {
+                        case .enable:
+                            windowCoordinator.requestResearchNotificationAuthorization()
+                        case .openSettings:
+                            windowCoordinator.openResearchNotificationSettings()
+                        }
+                    },
+                    dismiss: {
+                        shellState.dismissResearchNotificationPermissionNotice()
                     }
-                },
-                dismiss: {
-                    shellState.dismissResearchNotificationPermissionNotice()
+                )
+                .padding(ScholiumMetrics.Workspace.refreshStatusOuterInset)
+                .task(id: permission == .enable) {
+                    announceResearchNotificationPermissionNotice(permission)
                 }
-            )
-            .padding(ScholiumMetrics.Workspace.refreshStatusOuterInset)
+            }
         }
+    }
+
+    private func announceResearchNotificationPermissionNotice(
+        _ permission: ResearchNotificationPermissionNotice
+    ) {
+        guard announcedResearchNotificationPermissionNotice != permission else { return }
+        announcedResearchNotificationPermissionNotice = permission
+        let message = switch permission {
+        case .enable:
+            String(
+                localized: "Get Notified When Results Are Ready",
+                table: "Localizable",
+                bundle: .module
+            )
+        case .openSettings:
+            String(
+                localized: "Notifications Are Off",
+                table: "Localizable",
+                bundle: .module
+            )
+        }
+        AccessibilityNotification.Announcement(message).post()
     }
 
     @ViewBuilder
@@ -1280,6 +1303,33 @@ struct ContentView: View {
         }
     }
 
+}
+
+/// Observes the retained Document session's presentation-only Review state
+/// without making ContentView own or duplicate that state.
+private struct DocumentTopSurfaceObservation<Content: View>: View {
+    @ObservedObject var documentSession: DocumentSessionModel
+    let noteReviewState: WorkspaceNoteReviewState?
+    let content: (Bool) -> Content
+
+    init(
+        documentSession: DocumentSessionModel,
+        noteReviewState: WorkspaceNoteReviewState?,
+        @ViewBuilder content: @escaping (Bool) -> Content
+    ) {
+        self.documentSession = documentSession
+        self.noteReviewState = noteReviewState
+        self.content = content
+    }
+
+    var body: some View {
+        content(
+            noteReviewState?.status == .needsReview
+                && documentSession.noteReviewTaskPresentation.isPresented(
+                    for: noteReviewState?.noteID
+                )
+        )
+    }
 }
 
 private struct LibrarySurface<Content: View>: View {

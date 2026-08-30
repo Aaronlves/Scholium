@@ -432,14 +432,14 @@ Overview presents only compact current-note projections, in this order:
    fetched metadata inline. No Research Status, Provenance,
    Derived State, or Zotero sections appear.
 
-A pending activity set automatically presents a once-announced, focus-neutral
-Document task bar with **View Changes** and **Mark Current Note Reviewed**. Its
-raised surface and bottom rule never form a floating card or shadow. Close
-suppresses that exact set only in the retained session; Overview reopens it,
-and a new Agent set presents again, unlike researcher-only revision changes.
+Pending Agent activity presents a focus-neutral Document task bar with **View
+Changes** and **Mark Current Note Reviewed**. Raised surface and bottom rule,
+never card or shadow. Close suppresses that set in-session; Overview reopens it,
+new Agent activity presents, and researcher revisions do not. Review has
+Document-top priority: it replaces the Action stack, whose queue persists and
+returns afterward. Neither counts, dismisses, nor substitutes for the other.
 Commit requires clean, available, conflict-free exact Note and Record revisions;
-every mismatch fails closed. No toolbar, Record/change action, or result
-notification substitutes.
+mismatch fails closed.
 
 Freshness appears only as a compact actionable line when Refresh is pending,
 stale, failed, or unavailable. It preserves last-known-good projections and

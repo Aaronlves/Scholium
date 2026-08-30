@@ -1157,7 +1157,7 @@ extension ScholiumUITests {
         }
 
         var portableRecord: [String: Any] = [
-            "schema_version": 15,
+            "schema_version": 17,
             "id": recordID.uuidString,
             "triptych_id": triptychID.uuidString,
             "record_title": createsSynthesisAttention
@@ -1353,7 +1353,7 @@ extension ScholiumUITests {
                 ).noteID.uuidString
             }
             let record: [String: Any] = [
-                "schema_version": 15,
+                "schema_version": 17,
                 "id": seed.recordID.uuidString,
                 "triptych_id": triptychID.uuidString,
                 "record_title": seed.title,
@@ -1675,6 +1675,9 @@ extension ScholiumUITests {
             || name.contains("testResearchActionsRemainUsableInLightAndDarkAppearances")
             || name.contains("testLineCommentAgentReplyArchivesRecord")
             || name.contains("testCritiqueActionUsesTriptychWorkingMethodWithoutAdHocPrompting")
+            || name.contains(
+                "testNoChangeActionResultsShareDocumentTopWithoutCreatingNoteReview"
+            )
             || name.contains("testResearchActionPanelFits") {
             try resetResearchActionFixtureState()
         }
@@ -1710,6 +1713,32 @@ extension ScholiumUITests {
                 "Normative QA Nexus",
             ]
         )
+        if name.contains(
+            "testNoChangeActionResultsShareDocumentTopWithoutCreatingNoteReview"
+        ) {
+            let topicURL = topics.appendingPathComponent("QA Topic.md")
+            let source = try source(at: topicURL)
+            let opening = (1...18).map { index in
+                "Synthetic reading context \(index) precedes the stable Document anchor and contains no private research material."
+            }.joined(separator: "\n\n")
+            let closing = (19...36).map { index in
+                "Synthetic reading context \(index) follows the stable Document anchor and keeps this disposable fixture scrollable."
+            }.joined(separator: "\n\n")
+            let extendedSource = source
+                + "\n\n## Notification priority reading fixture\n\n"
+                + opening
+                + "\n\nNotification priority reading anchor remains in context.\n\n"
+                + closing
+                + "\n"
+            try write(
+                extendedSource,
+                to: topicURL
+            )
+            try updateStoredNoteFingerprint(
+                relativePath: "QA Topic.md",
+                source: extendedSource
+            )
+        }
         if name.contains(
             "testSidebarWorkspaceLibraryAndTriptychAttentionWindowJourney"
         ) {
@@ -2071,6 +2100,42 @@ extension ScholiumUITests {
         try FileManager.default.setAttributes(
             [.posixPermissions: NSNumber(value: 0o600)],
             ofItemAtPath: destination.path
+        )
+    }
+
+    /// Test-owned source extensions must update the matching identity record
+    /// before launch so the app sees an ordinary current Note, not an external
+    /// replacement whose old stable ID cannot own the seeded Review Record.
+    private func updateStoredNoteFingerprint(
+        relativePath: String,
+        source: String
+    ) throws {
+        let identityURL = triptychDirectory.appendingPathComponent(
+            ".scholium/identities.json"
+        )
+        var document = try XCTUnwrap(
+            try JSONSerialization.jsonObject(
+                with: Data(contentsOf: identityURL)
+            ) as? [String: Any]
+        )
+        var records = document["records"] as? [[String: Any]] ?? []
+        let matches = records.indices.filter {
+            records[$0]["relativePath"] as? String == relativePath
+        }
+        let index = try XCTUnwrap(
+            matches.count == 1 ? matches.first : nil,
+            "The extended reading fixture requires one exact Note identity."
+        )
+        records[index]["fingerprint"] = qaFingerprint(source)
+        records[index]["updatedAt"] = "2026-08-30T08:00:00Z"
+        document["records"] = records
+        try JSONSerialization.data(
+            withJSONObject: document,
+            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        ).write(to: identityURL, options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: NSNumber(value: 0o600)],
+            ofItemAtPath: identityURL.path
         )
     }
 

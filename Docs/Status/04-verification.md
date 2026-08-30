@@ -43,9 +43,9 @@ override.
   lifecycles; sandbox loopback, symbol/residue guards; and a 191.14-second
   Release build. Focused tests preserve Continue Research, create Follow-up as
   a fresh `.followUp` Run, and retain one Action activity until Dismiss. Stack
-  evidence adds 3 focused App tests and an 81.77-second UI pass; hover changes
-  geometry and permission education waits for stack clearance. VoiceOver
-  remains open.
+  evidence: 4 focused tests and a 127.25-second UI pass. Review owns
+  Document top without consuming Actions; reading position holds;
+  permission waits. VoiceOver remains open.
 
 - On 2026-08-27, the external-Agent Skill deployment cutover passed the complete
   gate: 206 Web, 465 Core plus 3 performance, 150 Contracts, 284 Application,
