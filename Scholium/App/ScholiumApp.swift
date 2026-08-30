@@ -152,14 +152,9 @@ struct ScholiumApp: App {
         Settings {
             ScholiumSettingsWindowContent()
             .frame(width: 700, height: 560, alignment: .topLeading)
-            .background {
-                ScholiumSettingsWindowBackground()
-            }
             .background(SettingsWindowAttachment())
-            .containerBackground(for: .window) {
-                ScholiumSettingsWindowBackground()
-            }
         }
+        .windowToolbarStyle(.unified(showsTitle: false))
         .environmentObject(applicationBootstrap)
         .environmentObject(applicationDelegate)
 

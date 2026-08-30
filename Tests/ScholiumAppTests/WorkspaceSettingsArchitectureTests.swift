@@ -57,9 +57,9 @@ struct WorkspaceSettingsArchitectureTests {
         let topLevel = String(source[..<topLevelEnd.lowerBound])
 
         #expect(!topLevel.contains("TabView("))
-        #expect(topLevel.contains("HStack(spacing: 0)"))
+        #expect(topLevel.contains("NavigationSplitView {"))
         #expect(topLevel.contains(
-            "geometry.size.width\n                                - ScholiumMetrics.Settings.sidebarWidth"
+            ".navigationSplitViewColumnWidth("
         ))
         #expect(topLevel.contains("ScholiumSettingsDestination.application"))
         #expect(topLevel.contains("ScholiumSettingsDestination.triptych"))
@@ -87,7 +87,9 @@ struct WorkspaceSettingsArchitectureTests {
         let settingsAttachment = windowManagement[
             settingsAttachmentStart.lowerBound..<bootstrapAttachmentStart.lowerBound
         ]
-        #expect(settingsAttachment.contains("window.titleVisibility = .hidden"))
+        #expect(settingsAttachment.contains(
+            "window.styleMask.insert(.fullSizeContentView)"
+        ))
 
         let orderedDestinations = [
             "case triptychs",
@@ -987,18 +989,24 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(settingsSource.contains(
             ".scholiumSettingsPaneSurface(.navigationSurfaceBackground)"
         ))
-        #expect(settingsSource.contains("HStack(spacing: 0)"))
-        #expect(settingsSource.contains("geometry.safeAreaInsets.top"))
+        #expect(settingsSource.contains("NavigationSplitView {"))
+        #expect(settingsSource.contains(".navigationSplitViewColumnWidth("))
+        #expect(settingsSource.contains(".toolbar(removing: .sidebarToggle)"))
+        #expect(settingsSource.contains("ScholiumWindowTopOverlayHost("))
+        #expect(!settingsSource.contains("geometry.safeAreaInsets.top"))
+        #expect(!settingsSource.contains(".overlay(alignment: .leading)"))
         #expect(settingsSource.contains("ScholiumSettingsSearchField("))
-        #expect(componentSource.contains("struct ScholiumSettingsWindowBackground"))
+        #expect(!componentSource.contains("struct ScholiumSettingsWindowBackground"))
         #expect(componentSource.contains("struct ScholiumSettingsSearchField"))
         #expect(settingsSceneSource.contains(
             ".frame(width: 700, height: 560, alignment: .topLeading)"
         ))
         #expect(settingsSceneSource.contains(
-            ".containerBackground(for: .window)"
+            ".windowToolbarStyle(.unified(showsTitle: false))"
         ))
-        #expect(settingsSceneSource.contains("ScholiumSettingsWindowBackground()"))
+        #expect(!settingsSceneSource.contains(".toolbarBackgroundVisibility("))
+        #expect(!settingsSceneSource.contains(".containerBackground(for: .window)"))
+        #expect(!settingsSceneSource.contains("ScholiumSettingsWindowBackground()"))
         #expect(settingsSceneSource.contains("SettingsWindowAttachment()"))
         #expect(windowManagementSource.contains("struct SettingsWindowAttachment"))
         #expect(windowManagementSource.contains("window.animationBehavior = .none"))

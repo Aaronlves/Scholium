@@ -101,13 +101,17 @@
   record from an unsupported complete portable-control owner. Its confirmation
   names the direct record and archives only that unchanged file before retrying
   Triptych configuration.
-- Inspector presents Overview, Connect, and Actions through the shared
-  segmented control. Overview shows Needs Attention, Review, then About; Connect switches Incoming
-  and Outgoing direct relations; Actions shows role-valid Platform Actions and
-  Settle. A pending Review is one full-row route. Its exact pending activity set
-  auto-presents the retained Document session's attached Review task once;
-  closing suppresses that set without changing Review truth, and a later Agent
-  activity presents again.
+- Inspector presents only Overview and Connect through the shared segmented
+  control. Overview shows Needs Attention and About; Connect switches Incoming
+  and Outgoing direct relations. Role-valid Platform Actions and Settle now live
+  in one neutral icon-only group centered along the Document's trailing edge.
+  The rail overlays without reflow and follows the Document edge leftward when
+  the native Inspector opens. A pending Note Review appears as a separate group
+  above it without moving the Action center and is the only Accent icon; the
+  former auto-presented Review banner and Inspector Review row are absent.
+  Review still routes to this Note's Research Records; opening it directly in
+  Diff and placing Mark as Reviewed inside that Diff remain open implementation
+  work.
 - An already-visible Inspector with no selected Document presents a restrained
   No Document Selected state instead of a blank plane or stale origin content.
 - Every current Analysis Overview exposes **Link Zotero Item…** or **Manage
@@ -183,8 +187,11 @@
   bottom-centred window overlay, while Warning and Error persist at the
   top-centred edge; both use a compact outer-edge inset, top feedback may cover
   toolbar space, and neither changes Document geometry. Settings presents the
-  same queue one item at a time immediately below native toolbar space in a top-centred
-  window overlay that does not reflow panes. Source-integrity notices remain
+  same queue one item at a time from the transparent titlebar band in a top-centred
+  window overlay that does not reflow panes. Toolbar title and items are absent;
+  a native split's actual Navigation and detail surfaces and divider extend behind
+  native chrome without a separately painted window background or self-drawn
+  divider. Source-integrity notices remain
   inline Document state.
 - The Workspace Records control opens This Note scope for a resolved selected
   Note and remains available without a Document by opening Triptych scope.

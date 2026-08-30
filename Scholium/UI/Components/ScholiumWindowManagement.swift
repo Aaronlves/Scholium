@@ -1246,7 +1246,7 @@ struct SettingsWindowAttachment: NSViewRepresentable {
 
     private func configure(_ window: NSWindow) {
         window.tabbingMode = .disallowed
-        window.titleVisibility = .hidden
+        window.styleMask.insert(.fullSizeContentView)
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
         window.backgroundColor = ScholiumColorRole.surfaceBackground.nsColor
@@ -1265,9 +1265,9 @@ final class WindowAttachmentView: NSView {
 }
 
 /// Installs interactive SwiftUI content as the frontmost child of the native
-/// window frame. A workspace notification may therefore cover the toolbar
-/// without leaving AppKit's toolbar above it in the pointer event path.
-private final class WorkspaceWindowTopOverlayHostingView<Content: View>:
+/// window frame. A top-edge notification may therefore cover transparent
+/// chrome without leaving AppKit above it in the pointer event path.
+private final class ScholiumWindowTopOverlayHostingView<Content: View>:
     NSHostingView<Content> {
     override var mouseDownCanMoveWindow: Bool { false }
 
@@ -1276,7 +1276,7 @@ private final class WorkspaceWindowTopOverlayHostingView<Content: View>:
     }
 }
 
-struct WorkspaceWindowTopOverlayHost<Overlay: View>: NSViewRepresentable {
+struct ScholiumWindowTopOverlayHost<Overlay: View>: NSViewRepresentable {
     let topInset: CGFloat
     let overlay: Overlay
 
@@ -1319,7 +1319,7 @@ struct WorkspaceWindowTopOverlayHost<Overlay: View>: NSViewRepresentable {
     final class Coordinator {
         private weak var window: NSWindow?
         private weak var frameView: NSView?
-        private var hostingView: WorkspaceWindowTopOverlayHostingView<Overlay>?
+        private var hostingView: ScholiumWindowTopOverlayHostingView<Overlay>?
         private var pendingTopInset: CGFloat = 0
 
         func update(overlay: Overlay, topInset: CGFloat) {
@@ -1330,7 +1330,7 @@ struct WorkspaceWindowTopOverlayHost<Overlay: View>: NSViewRepresentable {
                 hostingView.needsLayout = true
                 hostingView.superview?.needsLayout = true
             } else {
-                let hostingView = WorkspaceWindowTopOverlayHostingView(
+                let hostingView = ScholiumWindowTopOverlayHostingView(
                     rootView: overlay
                 )
                 hostingView.translatesAutoresizingMaskIntoConstraints = true

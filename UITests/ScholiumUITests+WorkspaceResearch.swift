@@ -410,7 +410,7 @@ extension ScholiumUITests {
         }
 
         XCTContext.runActivity(named: "Actions keeps role-valid work and Settle explicit") { _ in
-            selectResearchInspectorMode("actions")
+            waitForDocumentActionRail()
             XCTAssertTrue(app.descendants(matching: .any)[
                 "scholium.researchAction.discuss"
             ].waitForExistence(timeout: 5))
@@ -1604,19 +1604,9 @@ extension ScholiumUITests {
     @MainActor
     func testPointerActivationDoesNotRetainKeyboardOnlyFocus() {
         waitForCurrentDocumentSurface()
-        selectResearchInspectorMode("actions")
+        waitForDocumentActionRail()
 
         let keyboardFocus = NSPredicate(format: "hasKeyboardFocus == true")
-        let actionsMode = app.buttons[
-            "scholium.inspectorMode.actions"
-        ].firstMatch
-        XCTAssertTrue(actionsMode.waitForExistence(timeout: 5))
-        actionsMode.click()
-        XCTAssertFalse(
-            keyboardFocus.evaluate(with: actionsMode),
-            "Pointer activation must not leave a keyboard-only focus ring on the ModeIndex."
-        )
-
         let discuss = app.descendants(matching: .any)[
             "scholium.researchAction.discuss"
         ].firstMatch
@@ -1641,33 +1631,62 @@ extension ScholiumUITests {
             "Pointer dismissal must not synthesize keyboard focus on the Action row."
         )
 
-        for _ in 0..<12 where !keyboardFocus.evaluate(with: actionsMode) {
-            app.typeKey(.tab, modifierFlags: [.shift])
-        }
-        XCTAssertTrue(
-            keyboardFocus.evaluate(with: actionsMode),
-            "The ModeIndex must retain its native keyboard focus path."
-        )
-        app.typeKey(.tab, modifierFlags: [])
         let actionButtons = ["discuss", "analyze", "check-fidelity"].map { id in
             app.descendants(matching: .any)[
                 "scholium.researchAction.\(id)"
             ].firstMatch
         }
-        XCTAssertTrue(
-            waitUntil(timeout: 3) {
-                actionButtons.contains(where: {
-                    keyboardFocus.evaluate(with: $0)
-                })
-            },
-            "Tab from the ModeIndex must enter an available Action row."
-        )
+        for _ in 0..<24 where !actionButtons.contains(where: {
+            keyboardFocus.evaluate(with: $0)
+        }) {
+            app.typeKey(.tab, modifierFlags: [])
+        }
+        XCTAssertTrue(actionButtons.contains(where: {
+            keyboardFocus.evaluate(with: $0)
+        }), "The Document Action rail must remain in the native keyboard order.")
     }
 
     @MainActor
     func testResearchActionsRolePointerKeyboardFocusAccessibilityAndMinimumWidth() {
         waitForCurrentDocumentSurface()
-        selectResearchInspectorMode("actions")
+        let rail = waitForDocumentActionRail()
+        XCTAssertFalse(app.buttons["scholium.inspectorMode.actions"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.documentActionRail.actions"
+        ].waitForExistence(timeout: 8))
+        XCTAssertFalse(app.descendants(matching: .any)[
+            "scholium.documentReviewGroup"
+        ].exists)
+        XCTAssertFalse(app.toolbars.firstMatch.descendants(matching: .any)[
+            "scholium.researchAction.discuss"
+        ].exists)
+
+        let workspaceWindow = app.windows.firstMatch
+        XCTAssertEqual(rail.frame.midY, workspaceWindow.frame.midY, accuracy: 40)
+
+        let railFrameWithoutInspector = rail.frame
+        let inspectorToggle = inspectorVisibilityControl()
+        inspectorToggle.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).click()
+        let inspector = app.descendants(matching: .any)[
+            "scholium.researchInspector"
+        ].firstMatch
+        XCTAssertTrue(inspector.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            rail.frame.maxX < railFrameWithoutInspector.maxX - 200
+        })
+        XCTAssertEqual(rail.frame.midY, workspaceWindow.frame.midY, accuracy: 40)
+        XCTAssertFalse(inspector.descendants(matching: .any)[
+            "scholium.researchAction.discuss"
+        ].exists)
+
+        let railScreenshot = XCTAttachment(
+            screenshot: app.windows.firstMatch.screenshot()
+        )
+        railScreenshot.name = "Document Action rail follows the Inspector edge"
+        railScreenshot.lifetime = .keepAlways
+        add(railScreenshot)
 
         func assertActions(_ expected: [(String, String)]) {
             let controls = expected.map { id, title in
@@ -1676,6 +1695,8 @@ extension ScholiumUITests {
                 ].firstMatch
                 XCTAssertTrue(control.waitForExistence(timeout: 8))
                 XCTAssertTrue(control.label.localizedCaseInsensitiveContains(title))
+                XCTAssertEqual(control.frame.width, control.frame.height, accuracy: 1)
+                XCTAssertFalse(control.staticTexts[title].exists)
                 return control
             }
             for pair in zip(controls, controls.dropFirst()) {
@@ -1740,7 +1761,7 @@ extension ScholiumUITests {
         XCTAssertEqual(
             XCTWaiter.wait(for: [focusExpectation], timeout: 3),
             .completed,
-            "Keyboard dismissal must return focus to the initiating Discuss row."
+            "Keyboard dismissal must return focus to the initiating Discuss button."
         )
 
         XCTAssertTrue(discuss.exists && discuss.isHittable)
@@ -1751,7 +1772,7 @@ extension ScholiumUITests {
             self.documentTitle()
                 == "QA Topic"
         })
-        selectResearchInspectorMode("actions")
+        waitForDocumentActionRail()
         assertActions([
             ("discuss", "Discuss"),
             ("synthesize", "Synthesize"),
@@ -1763,7 +1784,7 @@ extension ScholiumUITests {
             self.documentTitle()
                 == "QA Work"
         })
-        selectResearchInspectorMode("actions")
+        waitForDocumentActionRail()
         assertActions([
             ("discuss", "Discuss"),
             ("write", "Write"),
@@ -1802,19 +1823,12 @@ extension ScholiumUITests {
         copyHandoff.click()
         XCTAssertTrue(
             waitUntil(timeout: 30) { !sheet.exists },
-            "Copy Handoff must close preparation while the Inspector retains the active Action."
+            "Copy Handoff must close preparation while the Document rail remains a launcher."
         )
-        let endAction = app.buttons["End Action"].firstMatch
-        XCTAssertTrue(endAction.waitForExistence(timeout: 8))
-        endAction.click()
-        let confirmation = app.sheets.firstMatch
-        XCTAssertTrue(confirmation.staticTexts["End this Action?"].waitForExistence(timeout: 5))
-        let confirmEndAction = confirmation.buttons["End Action"]
-        XCTAssertTrue(confirmEndAction.waitForExistence(timeout: 5))
-        confirmEndAction.click()
-        XCTAssertTrue(waitUntil(timeout: 8) {
-            !confirmation.exists && !endAction.exists
-        })
+        XCTAssertTrue(waitForDocumentActionRail().exists)
+        XCTAssertFalse(app.descendants(matching: .any)[
+            "scholium.documentActionRail.actions"
+        ].buttons["End Action"].exists)
 
         let workScreenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
         workScreenshot.name = "Work Research Actions"
@@ -1842,7 +1856,7 @@ extension ScholiumUITests {
             throw XCTSkip("The VoiceOver UI-test service requires macOS 27 or newer.")
         }
         waitForCurrentDocumentSurface()
-        selectResearchInspectorMode("actions")
+        waitForDocumentActionRail()
 
         let voiceOver = XCUIDevice.shared.voiceOverService
         let wasEnabled = voiceOver.isEnabled
@@ -1941,7 +1955,7 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func testResearchInspectorModePersistsAcrossNotesAndRelaunch() throws {
+    func testResearchInspectorModePersistsWhileDocumentActionRailRemainsIndependent() throws {
         waitForCurrentDocumentSurface()
         XCTAssertFalse(
             app.descendants(matching: .any)["scholium.researchStrip"].exists
@@ -1968,19 +1982,19 @@ extension ScholiumUITests {
         overviewScreenshot.lifetime = .keepAlways
         add(overviewScreenshot)
         selectResearchInspectorMode("connect")
-        selectResearchInspectorMode("actions")
+        let rail = waitForDocumentActionRail()
 
+        let overviewMode = app.buttons[
+            "scholium.inspectorMode.overview"
+        ].firstMatch
         let connectMode = app.buttons[
             "scholium.inspectorMode.connect"
         ].firstMatch
-        let actionsMode = app.buttons[
-            "scholium.inspectorMode.actions"
-        ].firstMatch
-        actionsMode.click()
+        connectMode.click()
 
         let keyboardFocus = NSPredicate(format: "hasKeyboardFocus == true")
         XCTAssertFalse(
-            keyboardFocus.evaluate(with: actionsMode),
+            keyboardFocus.evaluate(with: connectMode),
             "Pointer activation must not leave a keyboard-only focus ring on the ModeIndex."
         )
         func focusModeButton(_ button: XCUIElement) {
@@ -1993,38 +2007,29 @@ extension ScholiumUITests {
             )
         }
 
-        focusModeButton(actionsMode)
+        focusModeButton(connectMode)
         app.typeKey(.leftArrow, modifierFlags: [])
-        XCTAssertTrue(waitUntil(timeout: 3) { connectMode.isSelected })
+        XCTAssertTrue(waitUntil(timeout: 3) { overviewMode.isSelected })
         app.typeKey(.rightArrow, modifierFlags: [])
-        XCTAssertTrue(waitUntil(timeout: 3) { actionsMode.isSelected })
+        XCTAssertTrue(waitUntil(timeout: 3) { connectMode.isSelected })
 
-        focusModeButton(actionsMode)
-        app.typeKey(.tab, modifierFlags: [])
-        let actionButtons = ["discuss", "analyze", "check-fidelity"].map { id in
-            app.descendants(matching: .any)[
-                "scholium.researchAction.\(id)"
-            ].firstMatch
-        }
-        XCTAssertTrue(
-            waitUntil(timeout: 3) {
-                actionButtons.contains(where: {
-                    keyboardFocus.evaluate(with: $0)
-                })
-            },
-            "Tab from the ModeIndex must enter an available Action row."
-        )
-
+        let railFrameWithInspector = rail.frame
         let inspectorToggle = inspectorVisibilityControl()
         inspectorToggle.coordinate(
             withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
         ).click()
         XCTAssertTrue(waitUntil(timeout: 5) { !inspector.exists })
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            rail.frame.minX > railFrameWithInspector.minX + 200
+        })
         let inspectorReveal = inspectorVisibilityControl()
         inspectorReveal.coordinate(
             withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
         ).click()
         XCTAssertTrue(inspector.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            rail.frame.minX < railFrameWithInspector.minX + 4
+        })
         XCTAssertEqual(
             inspector.frame.width,
             QAWorkspaceMetricContract.apparatusFirstRevealWidth,
@@ -2038,7 +2043,7 @@ extension ScholiumUITests {
         XCTAssertTrue(secondRow.waitForExistence(timeout: 8))
         secondRow.click()
         XCTAssertTrue(waitForDocumentTitle("QA Autosave B", timeout: 8))
-        XCTAssertTrue(actionsMode.isSelected)
+        XCTAssertTrue(connectMode.isSelected)
         XCTAssertTrue(app.descendants(matching: .any)[
             "scholium.researchAction.discuss"
         ].waitForExistence(timeout: 10))
@@ -2056,7 +2061,7 @@ extension ScholiumUITests {
                       $0["workspace"] as? String == "paper_analysis"
                   })
             else { return false }
-            return analyses["inspectorMode"] as? String == "actions"
+            return analyses["inspectorMode"] as? String == "connect"
                 && snapshot["inspectorVisible"] as? Bool == true
         })
 
@@ -2066,7 +2071,7 @@ extension ScholiumUITests {
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
         waitForCurrentDocumentSurface()
         XCTAssertTrue(app.buttons[
-            "scholium.inspectorMode.actions"
+            "scholium.inspectorMode.connect"
         ].firstMatch.isSelected)
         XCTAssertTrue(app.descendants(matching: .any)[
             "scholium.researchAction.discuss"
@@ -2088,7 +2093,7 @@ extension ScholiumUITests {
             waitingFor: "scholium.noteRow.QA Topic.md"
         )
         openNote("QA Topic.md", expectedTitle: "QA Topic", in: workspace)
-        selectResearchInspectorMode("actions")
+        waitForDocumentActionRail()
         let synthesize = app.descendants(matching: .any)[
             "scholium.researchAction.synthesize"
         ].firstMatch
@@ -2188,7 +2193,7 @@ extension ScholiumUITests {
             waitForCurrentDocumentSurface()
 
             let window = app.windows.firstMatch
-            selectResearchInspectorMode("actions")
+            waitForDocumentActionRail()
             let actions = ["discuss", "analyze", "check-fidelity"].map { identifier in
                 app.descendants(matching: .any)[
                     "scholium.researchAction.\(identifier)"
@@ -2234,7 +2239,7 @@ extension ScholiumUITests {
             ].exists)
 
             let screenshot = XCTAttachment(screenshot: window.screenshot())
-            screenshot.name = "Actions Inspector and Discuss — \(appearance.displayName)"
+            screenshot.name = "Document Action rail and Discuss — \(appearance.displayName)"
             screenshot.lifetime = .keepAlways
             add(screenshot)
 
@@ -2256,7 +2261,7 @@ extension ScholiumUITests {
         workRow.click()
 
         XCTAssertTrue(waitForDocumentTitle("QA Work", timeout: 8))
-        selectResearchInspectorMode("actions")
+        waitForDocumentActionRail()
 
         let critique = app.descendants(matching: .any)[
             "scholium.researchAction.critique"
@@ -2554,7 +2559,7 @@ extension ScholiumUITests {
             }
         })
 
-        selectResearchInspectorMode("actions")
+        waitForDocumentActionRail()
         let discuss = app.descendants(matching: .any)["scholium.researchAction.discuss"]
         XCTAssertTrue(discuss.waitForExistence(timeout: 8))
         XCTAssertTrue(waitUntil(timeout: 8) { discuss.isEnabled })

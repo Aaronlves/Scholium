@@ -736,9 +736,6 @@ struct ResearchActivityNotificationStack: View {
             .padding(.bottom, isExpanded ? 0 : maximumLayerOffset)
             .zIndex(isExpanded ? 2 : 0)
             .scholiumHoverState { isHovering = $0 }
-            .onChange(of: summaryIsFocused) { _, focused in
-                if focused { isPinnedExpanded = true }
-            }
             .onChange(of: expansionRequestGeneration) { _, _ in
                 isPinnedExpanded = true
             }
@@ -804,18 +801,15 @@ struct ResearchActivityNotificationStack: View {
                 )
                 .scholiumForeground(.attention)
                 .accessibilityHidden(true)
-            VStack(
-                alignment: .leading,
-                spacing: ScholiumGrid.Spacing.labelAccessoryGap
-            ) {
-                Text(countTitle)
-                    .font(ScholiumTypography.interface(.rowTitle))
-                Text(verbatim: latestSummary)
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
+            Text(countTitle)
+                .font(ScholiumTypography.interface(.rowTitle))
+                .fixedSize(horizontal: true, vertical: false)
+            Text(verbatim: latestSummary)
+                .font(ScholiumTypography.interface(.small))
+                .scholiumForeground(.secondaryText)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .layoutPriority(-1)
             Image(systemName: expanded ? "chevron.up" : "chevron.down")
                 .font(ScholiumTypography.interface(.small, emphasis: .medium))
                 .scholiumForeground(.mutedText)
@@ -927,7 +921,7 @@ struct ResearchActivityNotificationStack: View {
             latest.state,
             locale: locale
         )
-        return "\(target) · \(state)"
+        return "\(state) — \(target)"
     }
 
     private var disclosureLabel: String {
@@ -959,7 +953,10 @@ private struct ResearchActivityNotificationBannerRow: View {
             ) {
                 identity
                 controls
+                    .fixedSize(horizontal: true, vertical: false)
+                    .layoutPriority(1)
             }
+            .fixedSize(horizontal: true, vertical: false)
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 identity
                 controls
@@ -975,26 +972,47 @@ private struct ResearchActivityNotificationBannerRow: View {
     private var identity: some View {
         HStack(
             alignment: .center,
-            spacing: ScholiumGrid.Spacing.inlineControlGap
+            spacing: ScholiumGrid.Spacing.labelAccessoryGap
         ) {
             Image(systemName: stateSymbol)
                 .font(ScholiumTypography.interface(.body))
                 .scholiumForeground(stateColor)
                 .accessibilityHidden(true)
-            VStack(
-                alignment: .leading,
-                spacing: ScholiumGrid.Spacing.labelAccessoryGap
-            ) {
-                Text(verbatim: targetTitle)
-                    .font(ScholiumTypography.interface(.rowTitle))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Text(verbatim: "\(stateTitle) · \(actionTitle)")
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
-                    .lineLimit(1)
-            }
+            Text(verbatim: stateTitle)
+                .font(ScholiumTypography.interface(.rowTitle))
+                .fixedSize(horizontal: true, vertical: false)
+            actionCapsule
+            Text("—")
+                .font(ScholiumTypography.interface(.small))
+                .scholiumForeground(.mutedText)
+                .accessibilityHidden(true)
+            Text(verbatim: targetTitle)
+                .font(ScholiumTypography.interface(.body))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .layoutPriority(-1)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(stateTitle), \(actionTitle), \(targetTitle)")
+    }
+
+    private var actionCapsule: some View {
+        Text(verbatim: actionTitle)
+            .font(ScholiumTypography.interface(.small, emphasis: .medium))
+            .scholiumForeground(.secondaryText)
+            .lineLimit(1)
+            .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
+            .padding(.vertical, ScholiumGrid.Spacing.opticalAlignmentAdjustment)
+            .background(
+                ScholiumColorRole.raisedSurfaceBackground.color,
+                in: Capsule(style: .continuous)
+            )
+            .scholiumBoundary(
+                .subtleBoundary,
+                in: Capsule(style: .continuous)
+            )
+            .fixedSize(horizontal: true, vertical: false)
+            .accessibilityHidden(true)
     }
 
     private var controls: some View {

@@ -5,14 +5,12 @@ import Foundation
 enum ResearchInspectorMode: String, CaseIterable, Identifiable, Sendable {
     case overview
     case connect
-    case actions
 
     var id: Self { self }
 
     init(restoring rawValue: String?) {
         switch rawValue?.lowercased() {
         case "connect", "connections", "incoming", "outgoing": self = .connect
-        case "actions": self = .actions
         case "overview", "research", "relationships", .none: self = .overview
         default: self = .overview
         }
@@ -22,7 +20,6 @@ enum ResearchInspectorMode: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .overview: "Overview"
         case .connect: "Connect"
-        case .actions: "Actions"
         }
     }
 }

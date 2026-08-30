@@ -99,9 +99,8 @@
   geometry animation.
 - While that stack is present, one-time system-notification permission
   education is neither presented nor announced; it may enter reading order
-  after the stack disappears. A presented current-Note Review task likewise
-  removes the stack from the active tree without dismissing its activities;
-  if attention remains, the stack returns after the Review task leaves.
+  after the stack disappears. Note Review is a separate explicit task route and
+  neither removes nor reprioritizes the stack.
 - Settings window feedback follows window reading order rather than the
   selected detail section, does not move existing controls, and remains one
   queued accessible item. Field-specific validation remains adjacent to and
@@ -256,7 +255,7 @@
   states remain distinct and retain an edit or retry target. Note and Record
   results identify their source context and restore focus at the exact available
   destination.
-- Inspector's Overview, Connect, and Actions form one shared horizontal
+- Inspector's Overview and Connect form one shared horizontal
   segmented single-choice group. Selection remains identifiable without hover. At regular, compact,
   enlarged-text, and supported English, Simplified Chinese, and mixed-script
   presentations, About fields adapt as one complete grid and error/recovery
@@ -269,9 +268,13 @@
   values. Changing direction keeps focus on the control, returns the scroll
   owner to the beginning, and announces an empty destination. Undirected rows
   state that they appear in both directions.
-- Each Action remains a linear named operation. Running combines Action name and
-  state while retaining a distinct End Action control. Unavailable Actions name
-  the first executable repair; ordinary defaults do not repeat title summaries.
+- The trailing-centered Document control rail exposes a conditional **Note
+  Review** accessibility group above **Research Actions**. Note Review exists
+  only while pending; its Accent icon is not its only distinction. Neutral
+  icon-only Action buttons expose complete names and Help in visible
+  top-to-bottom order. Review appearance does not move the Actions group's
+  center. Opening Inspector moves both groups with Document but changes neither
+  reading nor focus order. Unavailable Actions name the first executable repair.
 - Pairing and re-pairing expose one linear order through target, local-connection
   explanation, Copy Handoff, status, and recovery. One-use codes remain inside
   the complete copied handoff; credentials and opaque identifiers are never
@@ -280,7 +283,7 @@
   or unavailable state, supports exact subset selection, and never makes one
   member appear authorized because another was selected.
 - Copy Handoff success closes preparation and returns focus to the originating
-  Action row. Result arrival announces no focus change; the persistent
+  Action rail button. Result arrival announces no focus change; the persistent
   Action-level notification and its summarized Document stack remain explicit
   routes to that exact activity and its Record, while the Triptych bell remains
   the complete queue route.
@@ -324,14 +327,12 @@
   disclosure state, selected complete documents, changed rows, folded unchanged
   counts, and per-document undo outcomes; focus returns to the Result or
   Conflict owner selected by its footer action.
-- A newly pending Note Review activity set announces its attached Document task
-  once without moving focus. Closing the task removes it from the active tree;
-  the Overview Review row remains the named route that can present it again.
-  While presented it precedes and replaces the Activity Notification Stack in
-  Document reading order. It uses the same compact banner grammar and direct
-  keyboard actions without becoming operation feedback, acquiring a timeout,
-  or entering a feedback queue; the hidden Action stack neither duplicates the
-  announcement nor exposes decorative layers.
+- A pending Note Review is exposed through one named Review action, never an
+  automatically presented banner. Activating it enters the exact Agent-change
+  Diff; **Mark as Reviewed** exists only inside that Diff, follows the compared
+  changes in reading order, and remains unavailable until its exact saved-source
+  and Record projection preconditions hold. Review neither enters a feedback
+  queue nor changes the Activity Notification Stack's accessibility tree.
 - Reading Lead detail retains one order from disposition and full citation
   through bibliography, discovery, reason, uncertainty, note, source, parent,
   and technical identity. Narrow or enlarged presentation stacks complete

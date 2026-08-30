@@ -155,41 +155,30 @@ struct ScholiumSettingsView: View {
     @State private var didPresentQAFeedbackProof = false
 
     var body: some View {
-        GeometryReader { geometry in
-            let topInset = max(
-                geometry.safeAreaInsets.top
-                    - ScholiumMetrics.Settings.editorContentInset,
-                0
-            )
-            HStack(spacing: 0) {
-                settingsSidebar
-                    .padding(.top, topInset)
-
-                settingsDetail
-                    .padding(.top, topInset)
-                    .frame(
-                        width: max(
-                            geometry.size.width
-                                - ScholiumMetrics.Settings.sidebarWidth,
-                            0
-                        ),
-                        alignment: .topLeading
-                    )
-                    .frame(maxHeight: .infinity, alignment: .topLeading)
-                    .scholiumSettingsPaneSurface()
-                    .clipped()
-            }
-            .overlay(alignment: .leading) {
-                HStack(spacing: 0) {
-                    Color.clear
-                        .frame(width: ScholiumMetrics.Settings.sidebarWidth)
-                    Divider()
-                    Spacer(minLength: 0)
-                }
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-            }
-            .overlay(alignment: .top) {
+        NavigationSplitView {
+            settingsSidebar
+                .navigationSplitViewColumnWidth(
+                    min: ScholiumMetrics.Settings.sidebarWidth,
+                    ideal: ScholiumMetrics.Settings.sidebarWidth,
+                    max: ScholiumMetrics.Settings.sidebarWidth
+                )
+                .toolbar(removing: .sidebarToggle)
+        } detail: {
+            settingsDetail
+                .frame(
+                    maxWidth: .infinity,
+                    maxHeight: .infinity,
+                    alignment: .topLeading
+                )
+                .scholiumSettingsPaneSurface()
+                .clipped()
+        }
+        .navigationSplitViewStyle(.balanced)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background {
+            ScholiumWindowTopOverlayHost(
+                topInset: ScholiumGrid.Spacing.sectionSeparation
+            ) {
                 if let feedback = settingsModel.feedbackItems.first {
                     WorkspaceSettingsFeedbackItem(
                         feedback: feedback,
@@ -197,25 +186,19 @@ struct ScholiumSettingsView: View {
                             settingsModel.dismissFeedback(id: feedback.id)
                         }
                     )
-                    .padding(
-                        .top,
-                        max(
-                            topInset,
-                            ScholiumMetrics.Settings.editorContentInset
-                        )
-                    )
                     .transition(
                         ScholiumMotion.transientStatusTransition(
                             reduceMotion: reduceMotion,
                             edge: .top
                         )
                     )
-                    .zIndex(3)
+                    .animation(
+                        ScholiumMotion.transientStatus(reduceMotion: reduceMotion),
+                        value: settingsModel.feedbackItems
+                    )
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .clipped()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.settings.root")
         .animation(

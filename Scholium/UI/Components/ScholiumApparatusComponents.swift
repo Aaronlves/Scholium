@@ -16,7 +16,7 @@ extension View {
     }
 }
 
-/// The production Overview / Connect / Actions index. It owns only visual
+/// The production Overview / Connect index. It owns only visual
 /// selection and keyboard traversal; the surrounding window remains the mode
 /// state owner.
 struct ScholiumInspectorModeIndex: View {

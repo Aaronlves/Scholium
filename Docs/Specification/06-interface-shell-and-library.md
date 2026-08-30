@@ -47,8 +47,9 @@ sibling items:
    selected-workspace Library source region; and Library-local disclosure,
    Filter, and Add controls. Settings is not a Library destination.
 2. **Document:** selected note or the restrained no-document empty state.
-3. **Apparatus:** Research Inspector's read-only Overview, Connect, and Actions
-   projections. It never owns buffers, autosave, Undo, or conflicts;
+3. **Apparatus:** Research Inspector's read-only Overview and Connect
+   projections. It never owns Research Action launchers, buffers, autosave,
+   Undo, or conflicts;
    full chronology belongs to Research Records.
 
 The workspace uses the initial content size owned by §19.4, not a minimum. Scene state owns route
@@ -193,8 +194,11 @@ Menus follow researcher tasks:
 - **Research:** role-valid Actions and **Triptych Records**, never Notifications.
 - **Settings:** one searchable native list/detail window restores its last
   destination. The titlebar retains native traffic-light and drag geometry but
-  hides the redundant window-title label; the navigation plane starts with
-  search rather than a repeated Settings heading. Triptych registration and selection remain inside the
+  hides the redundant window-title label and toolbar items. The transparent
+  unified titlebar sits over a native split's actual full-height Navigation and
+  detail planes rather than a separately painted window background; pane color,
+  native divider, and content remain continuous beneath it. The navigation plane
+  starts with search rather than a repeated Settings heading. Triptych registration and selection remain inside the
   Triptychs detail; navigation exposes no global Triptych selector.
   Static page, section, control, and command metadata supplies Settings search;
   authored Skill, reference, YAML, profile, and document content is never
@@ -354,13 +358,12 @@ Menus follow researcher tasks:
   remain in the persistent queue and Triptych total without occupying
   Document. When no attention-requiring Action remains, the stack disappears;
   Reduce Motion retains the collapsed layers, direct actions, and expansion
-  state without geometry animation. A presented current-Note Review task owns
-  the Document top while the stack waits without dismissing any activity; a
-  persistent window Warning or Error likewise waits behind Review and replaces
-  the Action stack until explicitly dismissed. The stack returns after the
-  higher-priority surface leaves when attention-requiring Actions remain. A pending
-  one-time system-notification permission prompt waits while either surface is
-  present and may appear only after both disappear. Dismissing that education
+  state without geometry animation. Note Review is not a notification and
+  never enters this overlay priority. A persistent window Warning or Error
+  replaces the Action stack until explicitly dismissed; the stack returns
+  afterward when attention-requiring Actions remain. A pending one-time system-
+  notification permission prompt waits while either surface is present and may
+  appear only after both disappear. Dismissing that education
   never stands in for a system choice: **Settings → Notifications → System
   Result Notifications** always reports the current authorization state and
   offers Enable or the native System Settings route as applicable.
@@ -370,13 +373,13 @@ Menus follow researcher tasks:
   announces once, offers Dismiss, and leaves after a bounded dwell. Warning,
   Error, partial-commit, and recovery feedback uses one persistent horizontally
   centred overlay one compact inset from the top window edge, may cover the toolbar,
-  never times out, and precedes the Action stack after a
-  presented Note Review task. Distinct items queue instead of accumulating
+  never times out, and precedes the Action stack. Distinct items queue instead of accumulating
   visible cards. The operation owner retains Retry, Compare, or recovery;
   presentation owns only type, order, copy, announcement, and dismissal.
-- Settings window-level operation feedback is anchored immediately below the
-  native title-bar and toolbar, centred above Sidebar and detail as a
-  non-reflowing overlay. It remains stable across destination changes and never
+- Settings window-level operation feedback is centred across Sidebar and detail
+  one compact inset from the top window edge as a non-reflowing overlay. It may
+  cover the transparent native titlebar without changing either pane's
+  content geometry. It remains stable across destination changes and never
   appears to belong to one settings section. Field validation, a conflicting
   draft, and other control-specific repair remain adjacent to their owning
   field. Settings applies the same transient-versus-persistent lifetime rule and

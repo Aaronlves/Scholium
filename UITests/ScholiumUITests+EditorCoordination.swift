@@ -253,13 +253,13 @@ extension ScholiumUITests {
         // Visiting both notes after the shared-runtime refresh also proves
         // their stable identities were published before the external move.
         firstRow.click()
-        selectResearchInspectorMode("actions")
-        let actionsMode = app.buttons[
-            "scholium.inspectorMode.actions"
+        waitForDocumentActionRail()
+        let actionRail = app.descendants(matching: .any)[
+            "scholium.documentActionRail.actions"
         ].firstMatch
-        XCTAssertTrue(actionsMode.isSelected)
+        XCTAssertTrue(actionRail.exists)
         secondRow.click()
-        XCTAssertTrue(actionsMode.isSelected)
+        XCTAssertTrue(actionRail.waitForExistence(timeout: 8))
 
         // Remove the peer first, then move the selected file immediately. On
         // the resulting inventory both prior identities are absent and both
@@ -289,10 +289,10 @@ extension ScholiumUITests {
         )
         XCTAssertEqual(try source(at: movedURL), ambiguousSource)
 
-        // Actions require a resolved stable Target. Keep the selected
-        // Inspector mode, but expose no incorrect launcher while identity
-        // confirmation is pending.
-        XCTAssertTrue(actionsMode.isSelected)
+        // Actions require a resolved stable Target. Keep the Document-owned
+        // rail, but expose no incorrect launcher while identity confirmation
+        // is pending.
+        XCTAssertTrue(actionRail.exists)
         XCTAssertFalse(app.descendants(matching: .any)[
             "scholium.researchAction.discuss"
         ].exists)
@@ -306,7 +306,7 @@ extension ScholiumUITests {
         app.buttons["Confirm Identity"].click()
 
         XCTAssertTrue(waitUntil(timeout: 12) { !chooseIdentity.exists })
-        XCTAssertTrue(actionsMode.isSelected)
+        XCTAssertTrue(actionRail.waitForExistence(timeout: 8))
         let discuss = app.descendants(matching: .any)["scholium.researchAction.discuss"]
         let fidelity = app.descendants(matching: .any)["scholium.researchAction.check-fidelity"]
         let write = app.descendants(matching: .any)["scholium.researchAction.write"]

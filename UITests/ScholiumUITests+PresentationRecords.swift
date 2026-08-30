@@ -146,6 +146,11 @@ extension ScholiumUITests {
             16,
             accuracy: 4
         )
+        XCTAssertLessThanOrEqual(
+            stack.frame.height,
+            76,
+            "A direct Action banner may adapt to two compact rows but must not become a notification card."
+        )
         let screenshot = XCTAttachment(screenshot: window.screenshot())
         screenshot.name = "Compact top-centred Action"
         screenshot.lifetime = .keepAlways
@@ -257,13 +262,13 @@ extension ScholiumUITests {
         let settingsFeedbackTopGap = error.frame.minY - settings.frame.minY
         XCTAssertGreaterThanOrEqual(
             settingsFeedbackTopGap,
-            52,
-            "Settings feedback must begin below the native titlebar/toolbar band."
+            12,
+            "Settings feedback must begin inside the transparent toolbar band."
         )
         XCTAssertLessThanOrEqual(
             settingsFeedbackTopGap,
-            68,
-            "Settings feedback must remain close to the top of the Settings content."
+            24,
+            "Settings feedback must retain only the compact top-edge inset."
         )
         XCTAssertEqual(
             sidebar.frame,
@@ -276,6 +281,10 @@ extension ScholiumUITests {
         add(screenshot)
         let dismiss = error.buttons["Dismiss"]
         XCTAssertTrue(dismiss.waitForExistence(timeout: 3))
+        XCTAssertTrue(
+            dismiss.isHittable,
+            "The transparent toolbar must not intercept the Settings notice action."
+        )
         dismiss.click()
         XCTAssertTrue(waitUntil(timeout: 3) { !error.exists })
     }
@@ -1532,7 +1541,7 @@ extension ScholiumUITests {
         ).firstMatch
         openNote("QA Autosave A.md", expectedTitle: "QA Autosave A", in: workspace)
 
-        selectResearchInspectorMode("actions")
+        waitForDocumentActionRail()
         let actionSheet = openDiscussFromActions()
         XCTAssertGreaterThanOrEqual(actionSheet.frame.width, 519)
         XCTAssertGreaterThanOrEqual(actionSheet.frame.height, 279)
@@ -1640,7 +1649,7 @@ extension ScholiumUITests {
             waitingFor: "scholium.noteRow.QA Topic.md"
         )
         openNote("QA Topic.md", expectedTitle: "QA Topic", in: workspace)
-        selectResearchInspectorMode("actions")
+        waitForDocumentActionRail()
         let synthesize = app.descendants(matching: .any)[
             "scholium.researchAction.synthesize"
         ].firstMatch

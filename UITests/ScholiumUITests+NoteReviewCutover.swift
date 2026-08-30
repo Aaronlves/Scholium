@@ -2,6 +2,50 @@ import XCTest
 
 extension ScholiumUITests {
     @MainActor
+    func testDocumentActionRailCentersActionsAndPlacesReviewAbove() throws {
+        waitForCurrentDocumentSurface()
+        let actionGroup = waitForDocumentActionRail()
+        let baselineCenterY = actionGroup.frame.midY
+
+        try seedNoteReviewCutoverFixture()
+        try triggerWorkspaceRefreshForPortableFixture("centered action rail")
+        let workspace = app.windows.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
+        ).firstMatch
+        selectVault(
+            "scholium.vault.topic_knowledge",
+            waitingFor: "scholium.noteRow.QA Topic.md"
+        )
+        openNote("QA Topic.md", expectedTitle: "QA Topic", in: workspace)
+
+        let reviewGroup = app.descendants(matching: .any)[
+            "scholium.documentReviewGroup"
+        ].firstMatch
+        XCTAssertTrue(reviewGroup.waitForExistence(timeout: 20))
+        XCTAssertLessThan(reviewGroup.frame.maxY, actionGroup.frame.minY)
+        XCTAssertEqual(actionGroup.frame.midY, baselineCenterY, accuracy: 1)
+
+        let centerBeforeInspector = actionGroup.frame.midY
+        let trailingBeforeInspector = actionGroup.frame.maxX
+        inspectorVisibilityControl().coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
+        ).click()
+        XCTAssertTrue(app.descendants(matching: .any)[
+            "scholium.researchInspector"
+        ].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            actionGroup.frame.maxX < trailingBeforeInspector - 200
+        })
+        XCTAssertEqual(actionGroup.frame.midY, centerBeforeInspector, accuracy: 1)
+        XCTAssertLessThan(reviewGroup.frame.maxY, actionGroup.frame.minY)
+
+        let screenshot = XCTAttachment(screenshot: workspace.screenshot())
+        screenshot.name = "Centered Document Actions with Review above"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
+    @MainActor
     func testNoteReviewCutoverAcrossRecordsAndNotes() throws {
         try seedNoteReviewCutoverFixture()
         try triggerWorkspaceRefreshForPortableFixture("initial note review")
@@ -28,30 +72,32 @@ extension ScholiumUITests {
         )
         openNote("QA Topic.md", expectedTitle: "QA Topic", in: workspace)
         let initialInspector = selectResearchInspectorMode("overview")
-        let initialReviewRow = app.buttons["scholium.researchOverview.review.open"]
+        let initialReviewRow = app.buttons["scholium.documentActionRail.review"]
         XCTAssertTrue(
             initialReviewRow.waitForExistence(timeout: 20),
             "The live workspace projection must ingest both newly arrived portable Records."
         )
-        XCTAssertEqual(
-            initialReviewRow.value as? String,
-            "Needs Review, 2 Agent activities"
-        )
-        XCTAssertTrue(initialInspector.exists)
-        let autoReviewTask = workspace.descendants(matching: .any)[
-            "scholium.noteReview.task"
-        ]
         XCTAssertTrue(
-            autoReviewTask.waitForExistence(timeout: 5),
-            "The first pending activity set must present the attached Document task."
+            waitUntil(timeout: 20) {
+                initialReviewRow.value as? String
+                    == "Needs Review, 2 Agent activities"
+            },
+            "Review must accumulate both newly arrived Agent activities."
         )
-        autoReviewTask.buttons["Close Note Review"].click()
-        XCTAssertTrue(waitUntil(timeout: 5) { !autoReviewTask.exists })
-        scrollUntilHittable(initialReviewRow, in: initialInspector)
-        initialReviewRow.click()
-        XCTAssertTrue(autoReviewTask.waitForExistence(timeout: 5))
-        autoReviewTask.buttons["Close Note Review"].click()
-        XCTAssertTrue(waitUntil(timeout: 5) { !autoReviewTask.exists })
+        let actionGroup = app.descendants(matching: .any)[
+            "scholium.documentActionRail.actions"
+        ]
+        let reviewGroup = app.descendants(matching: .any)[
+            "scholium.documentReviewGroup"
+        ]
+        XCTAssertTrue(actionGroup.waitForExistence(timeout: 8))
+        XCTAssertTrue(reviewGroup.waitForExistence(timeout: 8))
+        XCTAssertLessThan(reviewGroup.frame.maxY, actionGroup.frame.minY)
+        XCTAssertEqual(actionGroup.frame.midY, workspace.frame.midY, accuracy: 40)
+        XCTAssertTrue(initialInspector.exists)
+        XCTAssertFalse(workspace.descendants(matching: .any)[
+            "scholium.noteReview.task"
+        ].exists)
 
         selectVault(
             "scholium.vault.paper_analysis",
@@ -118,43 +164,31 @@ extension ScholiumUITests {
         XCTAssertTrue(waitUntil(timeout: 5) { !recordsWindow.exists })
 
         focusWorkspaceWindow(workspace)
-        let inspector = selectResearchInspectorMode("overview")
-        let pendingTwo = app.buttons["scholium.researchOverview.review.open"]
+        _ = selectResearchInspectorMode("overview")
+        let pendingTwo = app.buttons["scholium.documentActionRail.review"]
         XCTAssertTrue(pendingTwo.waitForExistence(timeout: 12))
         XCTAssertEqual(
             pendingTwo.value as? String,
             "Needs Review, 2 Agent activities"
         )
-        let openReview = app.buttons["scholium.researchOverview.review.open"]
-        scrollUntilHittable(openReview, in: inspector)
+        let openReview = app.buttons["scholium.documentActionRail.review"]
+        XCTAssertTrue(waitUntil(timeout: 5) { openReview.isHittable })
         openReview.click()
-
-        let reviewTask = workspace.descendants(matching: .any)[
-            "scholium.noteReview.task"
-        ]
-        XCTAssertTrue(reviewTask.waitForExistence(timeout: 5))
-        XCTAssertTrue(reviewTask.buttons["scholium.noteReview.viewChanges"].exists)
-        let markReviewed = reviewTask.buttons["scholium.noteReview.mark"]
-        XCTAssertTrue(markReviewed.exists)
-        reviewTask.buttons["scholium.noteReview.viewChanges"].click()
         XCTAssertTrue(recordsWindow.waitForExistence(timeout: 8))
         XCTAssertTrue(firstRow.waitForExistence(timeout: 8))
+        XCTAssertFalse(workspace.descendants(matching: .any)[
+            "scholium.noteReview.task"
+        ].exists)
         focusAuxiliaryWindow(recordsWindow, menuItemTitle: "Research Records")
         closeFrontmostWindow()
         XCTAssertTrue(waitUntil(timeout: 5) { !recordsWindow.exists })
-        XCTAssertTrue(reviewTask.exists)
-        XCTAssertTrue(markReviewed.isEnabled)
-        markReviewed.click()
-        XCTAssertTrue(app.staticTexts[
-            "No Agent changes awaiting Review"
-        ].waitForExistence(timeout: 12))
 
         selectVault(
             "scholium.vault.output",
             waitingFor: "scholium.noteRow.QA Work.md"
         )
         openNote("QA Work.md", expectedTitle: "QA Work", in: workspace)
-        let workReview = app.buttons["scholium.researchOverview.review.open"]
+        let workReview = app.buttons["scholium.documentActionRail.review"]
         XCTAssertTrue(workReview.waitForExistence(timeout: 12))
         XCTAssertEqual(
             workReview.value as? String,
@@ -166,9 +200,12 @@ extension ScholiumUITests {
             waitingFor: "scholium.noteRow.QA Topic.md"
         )
         openNote("QA Topic.md", expectedTitle: "QA Topic", in: workspace)
-        XCTAssertTrue(app.staticTexts[
-            "No Agent changes awaiting Review"
-        ].waitForExistence(timeout: 10))
+        let stillPending = app.buttons["scholium.documentActionRail.review"]
+        XCTAssertTrue(stillPending.waitForExistence(timeout: 10))
+        XCTAssertEqual(
+            stillPending.value as? String,
+            "Needs Review, 2 Agent activities"
+        )
         try seedNoteReviewRecords([
             QANoteReviewRecordSeed(
                 recordID: laterRecordID,
@@ -180,19 +217,18 @@ extension ScholiumUITests {
             ),
         ])
         try triggerWorkspaceRefreshForPortableFixture("later note review")
-        let laterReview = app.buttons["scholium.researchOverview.review.open"]
+        let laterReview = app.buttons["scholium.documentActionRail.review"]
         XCTAssertTrue(
             laterReview.waitForExistence(timeout: 20),
             "A later confirmed Agent activity must reopen Review for this Note."
         )
         XCTAssertEqual(
             laterReview.value as? String,
-            "Needs Review, 1 Agent activities"
+            "Needs Review, 3 Agent activities"
         )
-        XCTAssertTrue(
-            reviewTask.waitForExistence(timeout: 5),
-            "A new pending activity set must present the attached task again."
-        )
+        XCTAssertFalse(workspace.descendants(matching: .any)[
+            "scholium.noteReview.task"
+        ].exists)
     }
 
     @MainActor
@@ -366,32 +402,28 @@ extension ScholiumUITests {
         XCTAssertTrue(readingAnchor.waitForExistence(timeout: 10))
         scrollUntilHittable(readingAnchor, in: renderedDocument)
         XCTAssertTrue(readingAnchor.isHittable)
-        let reviewTask = workspace.descendants(matching: .any)[
-            "scholium.noteReview.task"
-        ]
         let initialOverview = selectResearchInspectorMode("overview")
-        let initialReview = app.buttons["scholium.researchOverview.review.open"]
+        let initialReview = app.buttons["scholium.documentActionRail.review"]
         XCTAssertTrue(initialReview.waitForExistence(timeout: 12))
         XCTAssertEqual(initialReview.value as? String, "Needs Review, 1 Agent activities")
         XCTAssertTrue(initialOverview.exists)
-        XCTAssertTrue(reviewTask.waitForExistence(timeout: 12))
+        XCTAssertFalse(workspace.descendants(matching: .any)[
+            "scholium.noteReview.task"
+        ].exists)
         let notificationStack = app.descendants(matching: .any)[
             "scholium.researchActivityNotificationStack"
         ]
         let permissionNotice = app.descendants(matching: .any)[
             "scholium.researchNotificationPermission"
         ]
-        XCTAssertFalse(notificationStack.exists)
-        XCTAssertFalse(permissionNotice.exists)
-        reviewTask.buttons["Close Note Review"].click()
-        XCTAssertTrue(waitUntil(timeout: 8) { !reviewTask.exists })
         XCTAssertTrue(notificationStack.waitForExistence(timeout: 8))
+        XCTAssertFalse(permissionNotice.exists)
         let seededActivityDismiss = app.buttons[
             "scholium.notification.action.dismiss.\(reviewRecordID.uuidString)"
         ]
         XCTAssertTrue(
             seededActivityDismiss.waitForExistence(timeout: 8),
-            "A single Action must expose Dismiss directly in its banner."
+            "A pending Review must not suppress the Action notification."
         )
         XCTAssertFalse(app.popovers.firstMatch.exists)
         seededActivityDismiss.click()
@@ -418,14 +450,19 @@ extension ScholiumUITests {
             String(describing: notificationStack.value)
                 .contains("2 Actions")
         })
+        XCTAssertLessThanOrEqual(
+            notificationStack.frame.height,
+            52,
+            "The collapsed multi-Action control must remain one compact line plus its bounded layers."
+        )
         XCTAssertEqual(
             app.descendants(matching: .any).matching(
                 identifier: "scholium.researchActivityNotificationStack"
             ).count,
             1
         )
-        let overview = selectResearchInspectorMode("overview")
-        let reopenReview = app.buttons["scholium.researchOverview.review.open"]
+        _ = selectResearchInspectorMode("overview")
+        let reopenReview = app.buttons["scholium.documentActionRail.review"]
         XCTAssertTrue(reopenReview.waitForExistence(timeout: 12))
         XCTAssertEqual(
             reopenReview.value as? String,
@@ -437,19 +474,15 @@ extension ScholiumUITests {
             "Presenting the Action stack must preserve the current reading context."
         )
 
-        scrollUntilHittable(reopenReview, in: overview)
-        reopenReview.click()
-        XCTAssertTrue(reviewTask.waitForExistence(timeout: 8))
-        XCTAssertTrue(waitUntil(timeout: 8) { !notificationStack.exists })
+        XCTAssertTrue(notificationStack.exists)
+        XCTAssertFalse(workspace.descendants(matching: .any)[
+            "scholium.noteReview.task"
+        ].exists)
         XCTAssertFalse(permissionNotice.exists)
         XCTAssertTrue(
             readingAnchor.isHittable,
-            "Note Review must replace the Action stack without resetting the reading anchor."
+            "The retained Action stack must preserve the reading anchor."
         )
-
-        reviewTask.buttons["Close Note Review"].click()
-        XCTAssertTrue(waitUntil(timeout: 8) { !reviewTask.exists })
-        XCTAssertTrue(notificationStack.waitForExistence(timeout: 8))
         XCTAssertTrue(
             String(describing: notificationStack.value)
                 .contains("2 Actions")
@@ -472,7 +505,7 @@ extension ScholiumUITests {
         var firstActivityDismiss = activityRows.buttons[
             "scholium.notification.action.dismiss.\(firstRunID.uuidString)"
         ]
-        var secondActivityDismiss = activityRows.buttons[
+        let secondActivityDismiss = activityRows.buttons[
             "scholium.notification.action.dismiss.\(secondRunID.uuidString)"
         ]
         XCTAssertTrue(firstActivityDismiss.waitForExistence(timeout: 8))
@@ -518,9 +551,11 @@ extension ScholiumUITests {
             "scholium.researchActivityNotificationStack"
         ].waitForExistence(timeout: 3))
         XCTAssertTrue(app.buttons[
-            "scholium.researchOverview.review.open"
+            "scholium.documentActionRail.review"
         ].waitForExistence(timeout: 8))
-        XCTAssertFalse(reviewTask.exists)
+        XCTAssertFalse(workspace.descendants(matching: .any)[
+            "scholium.noteReview.task"
+        ].exists)
     }
 
     @MainActor
@@ -528,7 +563,7 @@ extension ScholiumUITests {
         request: String,
         recordTitle: String
     ) throws -> UUID {
-        selectResearchInspectorMode("actions")
+        waitForDocumentActionRail()
         let synthesize = app.descendants(matching: .any)[
             "scholium.researchAction.synthesize"
         ].firstMatch

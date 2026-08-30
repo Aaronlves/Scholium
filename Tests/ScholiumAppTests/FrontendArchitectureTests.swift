@@ -33,6 +33,12 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
+        let designSystemSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/Foundation/ScholiumDesignSystem.swift"
+            ),
+            encoding: .utf8
+        )
         let documentStart = try #require(source.range(of: "} document: {"))
         let apparatusStart = try #require(
             source.range(
@@ -45,7 +51,7 @@ struct FrontendArchitectureTests {
         ]
 
         #expect(documentRegion.contains("detailRegion"))
-        #expect(source.contains("WorkspaceWindowTopOverlayHost("))
+        #expect(source.contains("ScholiumWindowTopOverlayHost("))
         #expect(source.contains(".overlay(alignment: .bottom)"))
         #expect(source.contains("windowTopNotificationOverlay"))
         #expect(source.contains("shellState.transientFeedbackItems.first"))
@@ -55,14 +61,21 @@ struct FrontendArchitectureTests {
         #expect(source.contains("WindowFeedbackItem("))
         #expect(source.contains("ScholiumOperationFeedback("))
         #expect(settingsSource.contains("WorkspaceSettingsFeedbackItem("))
-        #expect(settingsSource.contains(".overlay(alignment: .top)"))
-        #expect(settingsSource.contains("topInset - ScholiumGrid.Spacing.sectionSeparation"))
+        #expect(settingsSource.contains("ScholiumWindowTopOverlayHost("))
+        #expect(settingsSource.contains(
+            "topInset: ScholiumGrid.Spacing.sectionSeparation"
+        ))
         #expect(settingsSource.contains("settingsModel.feedbackItems.first"))
         #expect(settingsSource.contains("ScholiumOperationFeedback("))
         #expect(componentsSource.contains("struct ScholiumOperationFeedback: View"))
         #expect(
             componentsSource.contains(
                 ".scholiumContentFittingWidth(maximumWidth: maximumWidth)"
+            )
+        )
+        #expect(
+            designSystemSource.contains(
+                "ProposedViewSize(width: availableWidth, height: nil)"
             )
         )
         #expect(componentsSource.contains("@FocusState private var dismissIsFocused: Bool"))
@@ -2205,6 +2218,7 @@ struct FrontendArchitectureTests {
         #expect(actionStackSource.contains("expansionRequestGeneration"))
         #expect(actionStackSource.contains("Show Action Notifications"))
         #expect(actionStackSource.contains("Hide Action Notifications"))
+        #expect(!actionStackSource.contains(".onChange(of: summaryIsFocused)"))
         #expect(!String(actionStackSource).localizedCaseInsensitiveContains("popover"))
         #expect(contentSource.contains("actionNotificationStackExpansionGeneration"))
         #expect(!contentSource.contains(".scholiumAttentionPopover(anchor: .activityStack"))
@@ -2348,7 +2362,7 @@ struct FrontendArchitectureTests {
         #expect(noteSource.contains("documentPresentation.css + \"\\n\" + state.appearanceCSS"))
     }
 
-    @Test("Overview, Connect, and Actions share one variable-driven Apparatus geometry")
+    @Test("Inspector modes and the Document Action rail keep distinct geometry owners")
     func apparatusAlignmentContract() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -2387,6 +2401,12 @@ struct FrontendArchitectureTests {
         let noteSource = try String(
             contentsOf: repository.appendingPathComponent(
                 "Scholium/Views/Note/NoteContentView.swift"
+            ),
+            encoding: .utf8
+        )
+        let contentSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/ContentView.swift"
             ),
             encoding: .utf8
         )
@@ -2525,25 +2545,51 @@ struct FrontendArchitectureTests {
             connectionsSource.contains(
                 "ScholiumTypography.interface(.body)"
             ))
+        #expect(actionsSource.contains("struct DocumentResearchActionRail"))
+        #expect(actionsSource.contains("scholium.documentActionRail"))
+        #expect(actionsSource.contains("scholium.documentActionRail.actions"))
+        #expect(actionsSource.contains("scholium.documentReviewGroup"))
+        #expect(contentSource.contains(".overlay(alignment: .trailing)"))
+        #expect(!contentSource.contains(".overlay(alignment: .topTrailing)"))
+        #expect(
+            contentSource.contains(
+                ".alignmentGuide(VerticalAlignment.center)"
+            )
+        )
+        #expect(
+            contentSource.contains(
+                "+ actionRailCenterOffset"
+            )
+        )
+        #expect(actionsSource.contains("static func verticalCenterOffset("))
         #expect(
             actionsSource.contains(
-                ".padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)"
-            ))
-        #expect(actionsSource.contains("ScholiumApparatusActionRowContent("))
-        #expect(actionsSource.contains("ScholiumApparatusStateView("))
-        #expect(actionsSource.contains("ResearchActionVisualSection"))
-        #expect(actionsSource.contains("BuiltInActionVisualGroup"))
-        #expect(actionsSource.contains("title: \"RESEARCH\""))
-        #expect(actionsSource.contains("title: \"REVIEW\""))
-        #expect(!actionsSource.contains("title: \"RESEARCHER SKILLS\""))
-        #expect(actionsSource.contains("ScholiumApparatusSection(\"JUDGMENT\")"))
+                "if noteReviewState?.status == .needsReview {\n                reviewGroup\n            }\n\n            researchActionGroup"
+            )
+        )
+        #expect(actionsSource.contains("ScholiumContentControlButtonStyle("))
+        #expect(actionsSource.contains(".scholiumEditorialSurface(.floatingControl"))
+        #expect(actionsSource.contains(".fixedSize(horizontal: true, vertical: false)"))
+        #expect(actionsSource.contains("scholium.documentActionRail.review"))
+        #expect(actionsSource.contains(".accessibilityLabel(Text(verbatim: item.title))"))
+        #expect(actionsSource.contains("railIcon("))
+        #expect(!actionsSource.contains("title: Text(verbatim: item.title)"))
+        #expect(actionsSource.components(separatedBy: ".accent").count - 1 == 2)
+        #expect(!actionsSource.contains("ResearchActionsInspectorView"))
+        #expect(!actionsSource.contains("ResearchActionVisualSection"))
+        #expect(!actionsSource.contains("BuiltInActionVisualGroup"))
+        #expect(!actionsSource.contains("ScholiumApparatusSection(\"JUDGMENT\")"))
         #expect(!actionsSource.contains("@FocusedValue(\\.scholiumResearchActionActions)"))
         #expect(!actionsSource.contains("ScholiumControlActivation"))
         #expect(!sharedComponentsSource.contains("ScholiumControlActivation"))
         #expect(!actionsSource.contains("ScholiumStructuralRule()"))
         #expect(!actionsSource.contains("ResearchActionHelpModifier"))
         #expect(!actionsSource.contains("helpText"))
-        #expect(!actionsSource.contains(".accessibilityHint(detailText"))
+        #expect(actionsSource.contains(".accessibilityHint(Text(verbatim: item.detail"))
+        #expect(contentSource.contains("documentResearchActionRail"))
+        #expect(contentSource.contains(".overlay(alignment: .trailing)"))
+        #expect(!noteSource.contains("case .actions:"))
+        #expect(!researchSource.contains("scholium.researchOverview.review"))
         #expect(researchSource.contains("visibleAttentionKinds.prefix(3)"))
         #expect(!researchSource.contains("Text(item.message)"))
         #expect(!researchSource.contains("\"Show All\""))

@@ -385,11 +385,11 @@ still equals its final Agent revision and its Run-bound starting evidence is
 intact. Closing and reopening the Records window does not change this factual
 eligibility. Undo never grants authority for another revision and never means
 Note Review.
-There is exactly one native trailing Inspector per window, with **Overview,
-Connect, Actions** in that order. These are
+There is exactly one native trailing Inspector per window, with **Overview**
+and **Connect** in that order. These are
 mutually exclusive modes inside the Inspector, not split columns, Document
 tabs, panels, or windows. The index uses the shared segmented control with
-three equal centered labels, its quiet track, and one raised selection plate.
+two equal centered labels, its quiet track, and one raised selection plate.
 It has no underline, Accent fill, or full-width bottom rule. The selected mode uses
 the shared continuous selection corner;
 its label uses Semibold primary ink. An unselected label uses Regular secondary
@@ -418,10 +418,7 @@ Overview presents only compact current-note projections, in this order:
    native button opening Workspace Attention for that Note. It has no nested
    **Show All** row. At zero it retains heading and `0`, without reassurance or
    a decorative verdict.
-2. **Review:** distinct from Attention. It states **No Agent changes to review**,
-   **Needs Review · N Agent activities** as a full-row route, or
-   **No Agent changes awaiting Review** with **Last reviewed [date]**.
-3. **About:** nonempty fields use accessible spacing groups.
+2. **About:** nonempty fields use accessible spacing groups.
    Research fields use reading blocks; Keywords use neutral capsules. **Edit
    Metadata** opens the shared sheet; values stay static and selectable.
    Analysis adds **Link Zotero Item…** or **Manage Zotero Link…**; a binding
@@ -432,15 +429,12 @@ Overview presents only compact current-note projections, in this order:
    fetched metadata inline. No Research Status, Provenance,
    Derived State, or Zotero sections appear.
 
-Pending Agent activity presents a compact Document banner with **View Changes**
-and **Mark Current Note Reviewed**. It shares Action's visual grammar but remains
-Review, not feedback or a popover. Close suppresses; Overview reopens; Agent
-activity presents, researcher revisions do not. It overlays at the Document's
-top-centre without reflow. Review has priority: it replaces the
-Action stack, whose queue persists and
-returns afterward. Neither counts, dismisses, nor substitutes for the other.
-Commit requires clean, available, conflict-free exact Note and Record revisions;
-mismatch fails closed.
+Pending Agent activity adds one **Note Review** group above **Research Actions**.
+Its icon alone uses Accent; it is not an Action, notification, or popover.
+Activation enters the exact Agent-change Diff; **Mark as Reviewed** exists only
+inside that Diff after the compared changes. Commit requires clean, available,
+conflict-free exact Note and Record revisions; mismatch fails closed. Removing
+or completing Review changes no Action activity notification.
 
 Freshness appears only as a compact actionable line when Refresh is pending,
 stale, failed, or unavailable. It preserves last-known-good projections and
@@ -519,46 +513,52 @@ still states the relationship from the current Note's perspective; a distinct
 source anchor remains a named accessibility action after the visual symbol is
 removed.
 
-Actions has no generic **Actions** section heading. The role-valid defaults in
-Section 8.1 retain their canonical order while appearing in two quiet semantic
-groups: **Research** contains Discuss and the applicable Analyze, Synthesize,
-or Write Action; **Review** contains Critique where applicable and Check
-Fidelity. Completed work is accessed through Research Records, and Agent
-handoff remains inside the selected Action. Discuss reopens the current Note's
-resumable active Discussion and automatically includes its existing line
-Comments from that one row.
+Document owns a content-fitting, trailing-centered rail in its split item. It
+overlays without changing Document geometry and is neither an Inspector mode
+nor a toolbar item. Research Actions keep their vertical center. Conditional
+Note Review appears immediately above and grows upward without displacement.
+Inspector resizing narrows Document through the native split, so both groups
+follow its trailing edge leftward without another geometry owner. The rail
+disappears with the Document and never persists a window coordinate.
 
-Profiles configure only the closed Platform Actions and do not create a third
-custom-Action group or another visual branch. Availability fails closed while
-checking; §19.6 owns title, explanation, and repair copy. Settle remains a quiet direct current-note
-action under one **Judgment** group; Attention remains in Overview/Library.
+The **Research Actions** group presents Section 8.1's role-valid defaults in
+canonical order as neutral icon-only buttons without visible labels or copied
+Inspector rows. Help and accessibility preserve each Action name. Settle
+follows as the quiet current-Note judgment. A
+pending **Note Review** is a separate surface above this group, never one of its
+items. Completed work is accessed through Research Records, and Agent handoff
+remains inside the selected Action. Discuss reopens the current Note's resumable
+active Discussion and automatically includes its existing line Comments.
 
-Each Action is one native full-row button with a direct symbol and, when useful,
-a trailing chevron. Action launchers have no assigned shortcuts; the menu and Inspector
-remain keyboard-accessible. Its modular sheet shows the necessary scholarly inputs
-and app-owned authority or recovery facts without exposing assembled prompts,
-registration keys, Session secrets, or technical mode names. The active Action and its sheet
-retain keyboard, menu, pointer, focus, cancellation, and VoiceOver parity.
-All Action launchers use one shared visual row recipe with the Action target
-metric owned by §19.3 and no default row or group separator. Availability checking,
-ready, unavailable, running, error, cancellation recovery, Settle, and Settled
+Profiles configure only the closed Platform Actions and do not create a custom
+rail group or another visual branch. Availability fails closed while checking;
+§19.6 owns title, explanation, and repair copy. Attention remains in
+Overview/Library.
+
+Each Action is one compact icon-only native button with a direct symbol.
+Action launchers have no assigned shortcuts; the menu and Document rail remain
+keyboard-accessible. Its modular sheet shows the necessary scholarly inputs and
+app-owned authority or recovery facts without exposing assembled prompts,
+registration keys, Session secrets, or technical mode names. The active Action
+and its sheet retain keyboard, menu, pointer, focus, cancellation, and VoiceOver
+parity. All Action launchers use one shared rail-button recipe with the Action
+target metric owned by §19.3 and no default row or group separator. Availability
+checking, ready, unavailable, error, cancellation recovery, Settle, and Settled
 remain distinct states without changing Action routing or ownership. Error and
 recovery information remains complete.
 
-A running Action retains that ordinary row structure and minimum rhythm rather
-than becoming a taller state block. Its leading Action symbol yields to one
-small indeterminate progress indicator; the Action title remains on the shared
-title axis; trailing text states **Running**; and a separately named direct
-**End Action** control replaces the ready-state chevron. It adds no ordinary
-second line. Larger interface text or localization may grow the row rather
-than clip its title, state, or ending route.
+After preparation, the rail remains a launcher rather than a lifecycle list.
+Waiting, Running, Needs Attention, Result Ready, and Recovery Required belong to
+Notifications; they never enlarge a rail button into a status block. Larger
+interface text or localization may grow the complete rail and button labels
+rather than clip them.
 
 An Action sheet keeps Profile **Research Request** visible and collapses only
 other optional inputs. It presents target effect, read-only Additional Context,
 extra-Note approval, and repair before **Copy Handoff**. The copied instructions contain only
 Run locator, one-time Pairing Code, local route, and CLI steps; the code is
 never a separate field. Copy freezes when needed but never selects or opens an
-Agent app. Success closes and restores focus to the Action row; failure keeps
+Agent app. Success closes and restores focus to the Action button; failure keeps
 the sheet and inputs. A prepared Run's compact status sheet offers Run status,
 **Copy New Handoff**, **End Action**, and recovery only. Recopy invalidates the
 prior pairing without replacing the Run.
@@ -573,7 +573,8 @@ conflict, write result unknown, and recovery each use complete text and an
 executable next route without displaying the real Session secret or internal
 fingerprints as tasks for the researcher.
 
-The Inspector shows no post-preparation lifecycle. **Notifications** owns one
+The Inspector and Document Action rail show no post-preparation lifecycle.
+**Notifications** owns one
 nonblocking activity per Run through **Waiting for Agent**, **Running**,
 **Needs Attention**, **Result Ready**, and **Recovery Required**. Popover,
 Note, window, and focus changes never remove it. Running offers **Open Action**
@@ -593,7 +594,7 @@ Body and secondary colors, hover surface, focus ring, button semantics, and
 the full hit region make interaction recognizable without depending on color,
 hover, or pointer use.
 
-All section headings across Overview, Connect, and Actions
+All section headings across Overview and Connect
 use one Apparatus heading token. Its provisional starting point is 10pt system
 semibold, 0.7pt tracking, and secondary text color. English localization
 supplies uppercase strings; runtime code never forces case, so Chinese and
@@ -604,10 +605,11 @@ Short facts share one adaptive section-level grid; long researcher prose uses
 reading blocks; exact paths and revisions remain monospaced. Empty values create
 no rows. Section and row boundaries follow §19.3.
 
-Document has no bottom Research Strip or hidden-Inspector duplicate. Action
-handoff remains keyboard/VoiceOver reachable; its sheet survives launch and
-restores focus on reactivation. Inspector visibility, mode changes, and
-projection refresh never replace the retained Editor host or its buffer,
+Document has no bottom Research Strip or hidden-Inspector duplicate. Its one
+trailing-centered Action rail remains keyboard/VoiceOver reachable; an Action sheet
+survives launch and restores focus to its originating rail button on
+reactivation. Inspector visibility, mode changes, and projection refresh never
+replace the retained Editor host or its buffer,
 selection, Undo, IME, scroll, or focus state. Report handoff, never agent
 execution.
 

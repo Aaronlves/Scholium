@@ -350,7 +350,7 @@ extension ScholiumUITests {
         maximumWidth: CGFloat,
         window: XCUIElement
     ) {
-        selectResearchInspectorMode("actions")
+        waitForDocumentActionRail()
         let sheet = openDiscussFromActions()
         XCTAssertGreaterThanOrEqual(sheet.frame.width, minimumWidth)
         XCTAssertLessThanOrEqual(sheet.frame.width, maximumWidth)
@@ -562,19 +562,31 @@ extension ScholiumUITests {
         switch mode {
         case "overview": contentIdentifier = "scholium.about"
         case "connect": contentIdentifier = "scholium.connectionGroup.0"
-        case "actions": contentIdentifier = "scholium.researchAction.discuss"
         default:
             XCTFail("Unknown Inspector mode: \(mode)")
             return inspector
         }
         XCTAssertTrue(
             app.descendants(matching: .any)[contentIdentifier]
-                .waitForExistence(timeout: mode == "actions" ? 45 : 8)
+                .waitForExistence(timeout: 8)
         )
         let scrollableInspector = app.scrollViews[
             "scholium.researchInspector"
         ].firstMatch
         return scrollableInspector.exists ? scrollableInspector : inspector
+    }
+
+    @MainActor
+    @discardableResult
+    func waitForDocumentActionRail(timeout: TimeInterval = 45) -> XCUIElement {
+        let rail = app.descendants(matching: .any)[
+            "scholium.documentActionRail.actions"
+        ].firstMatch
+        XCTAssertTrue(
+            rail.waitForExistence(timeout: timeout),
+            "The current Document must expose its trailing-centered Action rail."
+        )
+        return rail
     }
 
     @MainActor

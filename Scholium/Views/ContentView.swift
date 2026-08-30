@@ -77,6 +77,9 @@ struct ContentView: View {
     }
 
     var body: some View {
+        let actionRailCenterOffset = DocumentResearchActionRail.verticalCenterOffset(
+            showsReview: currentNoteReviewState?.status == .needsReview
+        )
         ScholiumWorkspaceSplitView(
             initialLibraryVisible: shellLibraryVisible,
             initialApparatusVisible: shellApparatusVisible,
@@ -120,6 +123,20 @@ struct ContentView: View {
                     detailRegion
                 }
             }
+            .overlay(alignment: .trailing) {
+                Group {
+                    if shellState.hasCompletedInitialRestore,
+                       appState.currentNote != nil {
+                        documentResearchActionRail
+                            .padding(.trailing, ScholiumGrid.Spacing.sectionSeparation)
+                    }
+                }
+                .alignmentGuide(VerticalAlignment.center) { dimensions in
+                    dimensions[VerticalAlignment.center]
+                        + actionRailCenterOffset
+                }
+                .zIndex(5)
+            }
             .scholiumSurface(.document)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         } apparatus: {
@@ -137,7 +154,7 @@ struct ContentView: View {
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background {
-            WorkspaceWindowTopOverlayHost(
+            ScholiumWindowTopOverlayHost(
                 topInset: ScholiumGrid.Spacing.sectionSeparation
             ) {
                 windowTopNotificationOverlay
@@ -428,7 +445,6 @@ struct ContentView: View {
                 aboutConfiguration: appState.currentDocumentAboutConfiguration,
                 metadataCatalog: workspaceProjectionController.metadataCatalog,
                 zoteroBinding: currentAnalysisZoteroBinding,
-                noteReviewState: currentNoteReviewState,
                 stableNoteID: currentAnalysisStableNoteID
             ),
             attentionPopoverSession: appState.attentionPopoverSession,
@@ -449,13 +465,6 @@ struct ContentView: View {
                             relativePath: note.relativePath
                         )
                     )
-                )
-            },
-            openNoteReview: {
-                guard let reviewState = currentNoteReviewState,
-                      reviewState.status == .needsReview else { return }
-                currentNoteDocumentSession?.presentNoteReviewTask(
-                    for: reviewState
                 )
             },
             retryRefresh: {
@@ -713,19 +722,6 @@ struct ContentView: View {
             },
             setResearchInspectorVisible: {
                 windowCoordinator.actions.setResearchInspectorVisible($0)
-            },
-            viewAgentChanges: {
-                windowCoordinator.actions.showNoteResearchRecords()
-            },
-            reloadNoteReviewState: {
-                try await appState.researchController.refreshResearchProjection()
-            },
-            markCurrentNoteReviewed: { noteID, revision, manifest in
-                _ = try await appState.researchController.markCurrentNoteReviewed(
-                    noteID: noteID,
-                    expectedRevision: revision,
-                    expectedRecordSourceManifestHash: manifest
-                )
             },
             openingDocumentPresentationDidComplete: {
                 appState.openingDocumentPresentationDidComplete()
@@ -1143,36 +1139,20 @@ struct ContentView: View {
     @ViewBuilder
     private var windowTopNotificationOverlay: some View {
         if shellState.hasCompletedInitialRestore {
-            Group {
-                if let documentSession = currentNoteDocumentSession {
-                    DocumentTopSurfaceObservation(
-                        documentSession: documentSession,
-                        noteReviewState: currentNoteReviewState
-                    ) { noteReviewTaskIsPresented in
-                        windowTopNotificationSurface(
-                            noteReviewTaskIsPresented: noteReviewTaskIsPresented
-                        )
-                    }
-                } else {
-                    windowTopNotificationSurface(noteReviewTaskIsPresented: false)
-                }
-            }
+            windowTopNotificationSurface
             .zIndex(10)
         }
     }
 
     @ViewBuilder
-    private func windowTopNotificationSurface(
-        noteReviewTaskIsPresented: Bool
-    ) -> some View {
+    private var windowTopNotificationSurface: some View {
         let permission = shellState.researchNotificationPermissionNotice
         switch DocumentTopSurfacePresentation.resolve(
-            noteReviewTaskIsPresented: noteReviewTaskIsPresented,
             hasPersistentFeedback: !shellState.persistentFeedbackItems.isEmpty,
             hasActionNotifications: !documentActivityNotifications.isEmpty,
             hasNotificationPermissionNotice: permission != nil
         ) {
-        case .noteReviewTask, .none:
+        case .none:
             EmptyView()
         case .persistentFeedback:
             if let feedback = shellState.persistentFeedbackItems.first {
@@ -1250,6 +1230,46 @@ struct ContentView: View {
         AccessibilityNotification.Announcement(message).post()
     }
 
+    private var documentResearchActionRail: some View {
+        DocumentResearchActionRail(
+            presentation: appState.researchActionsPresentation(),
+            freshness: researchProjectionFreshness,
+            noteReviewState: currentNoteReviewState,
+            focusRequest: researchActionFocusRequest,
+            registerFocusOwner: {
+                pendingResearchActionFocusID = $0
+                researchActionDismissalFocusDisposition = .preserveInputModality
+            },
+            select: openResearchAction,
+            openReview: {
+                guard currentNoteReviewState?.status == .needsReview else { return }
+                windowCoordinator.actions.showNoteResearchRecords()
+            },
+            retryRefresh: {
+                Task { await appState.retryDerivedRefresh() }
+            },
+            retryCancellationRecovery: { runID in
+                researchActionController.retryCancellationRecovery(runID: runID)
+            },
+            settle: { rationale in
+                guard let target = appState.currentResearchActionTarget else { return }
+                _ = try await appState.researchController.settle(
+                    target.note,
+                    expectedRevision: target.fingerprint,
+                    rationale: rationale
+                )
+            }
+        )
+    }
+
+    private func openResearchAction(_ item: ResearchActionItemPresentation) {
+        if let activity = item.activity {
+            appState.openResearchActionStatus(activity.primary)
+        } else {
+            appState.openResearchAction(item.id)
+        }
+    }
+
     @ViewBuilder
     private var apparatusRegion: some View {
         if let note = appState.currentNote {
@@ -1260,69 +1280,20 @@ struct ContentView: View {
                 catalog: appState.workspaceCatalog,
                 currentVaultID: appState.currentDocumentVaultID,
                 researchInspectorContentContext: researchInspectorContentContext,
-                researchActionsPresentation: appState.researchActionsPresentation(),
-                researchActionFocusRequest: researchActionFocusRequest,
-                registerResearchActionFocusOwner: {
-                    pendingResearchActionFocusID = $0
-                    researchActionDismissalFocusDisposition = .preserveInputModality
-                },
-                openResearchAction: { item in
-                    if let activity = item.activity {
-                        appState.openResearchActionStatus(
-                            activity.primary
-                        )
-                    } else {
-                        appState.openResearchAction(item.id)
-                    }
-                },
-                endResearchActivity: { runID in
-                    researchActionController.endActivity(runID: runID)
-                },
-                retryResearchActionCancellation: { runID in
-                    researchActionController.retryCancellationRecovery(runID: runID)
-                },
                 openReference: { reference, sourceLine in
                     appState.researchController.requestOpen(
                         reference,
                         sourceLine: sourceLine
                     )
-                },
-                settle: { rationale in
-                    guard let target = appState.currentResearchActionTarget else { return }
-                    _ = try await appState.researchController.settle(
-                        target.note,
-                        expectedRevision: target.fingerprint,
-                        rationale: rationale
-                    )
                 }
             )
         } else {
-            VStack(spacing: 0) {
-                if researchActionController.hasCancellationBarrier {
-                    ResearchActionsInspectorView(
-                        presentation: appState.researchActionsPresentation(),
-                        freshness: .current,
-                        focusRequest: nil,
-                        registerFocusOwner: { _ in },
-                        select: { _ in },
-                        endActivity: { _ in },
-                        retryRefresh: {},
-                        retryCancellationRecovery: { runID in
-                            researchActionController
-                                .retryCancellationRecovery(runID: runID)
-                        },
-                        settle: { _ in }
-                    )
-                    .accessibilityIdentifier("scholium.researchActions.recoveryOnly")
-                } else {
-                    ScholiumContentStateView(
-                        "No Document Selected",
-                        indicator: .symbol("doc.text")
-                    )
-                    .accessibilityIdentifier("scholium.noDocumentInspectorState")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-            }
+            ScholiumContentStateView(
+                "No Document Selected",
+                indicator: .symbol("doc.text")
+            )
+            .accessibilityIdentifier("scholium.noDocumentInspectorState")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .scholiumSurface(.apparatus)
         }
     }
@@ -1355,33 +1326,6 @@ struct ContentView: View {
         }
     }
 
-}
-
-/// Observes the retained Document session's presentation-only Review state
-/// without making ContentView own or duplicate that state.
-private struct DocumentTopSurfaceObservation<Content: View>: View {
-    @ObservedObject var documentSession: DocumentSessionModel
-    let noteReviewState: WorkspaceNoteReviewState?
-    let content: (Bool) -> Content
-
-    init(
-        documentSession: DocumentSessionModel,
-        noteReviewState: WorkspaceNoteReviewState?,
-        @ViewBuilder content: @escaping (Bool) -> Content
-    ) {
-        self.documentSession = documentSession
-        self.noteReviewState = noteReviewState
-        self.content = content
-    }
-
-    var body: some View {
-        content(
-            noteReviewState?.status == .needsReview
-                && documentSession.noteReviewTaskPresentation.isPresented(
-                    for: noteReviewState?.noteID
-                )
-        )
-    }
 }
 
 private struct LibrarySurface<Content: View>: View {

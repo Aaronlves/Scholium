@@ -567,9 +567,9 @@ struct WindowControllerArchitectureTests {
 
         let firstResearch = ResearchController(shellState: presentation)
         let secondResearch = ResearchController(shellState: presentation)
-        firstResearch.selectInspectorMode(.actions)
+        firstResearch.selectInspectorMode(.connect)
         firstResearch.showResearchInspector(true)
-        #expect(secondResearch.inspector.mode == .actions)
+        #expect(secondResearch.inspector.mode == .connect)
         #expect(secondResearch.inspector.isVisible)
 
         let firstDocument = DocumentController()
@@ -589,7 +589,7 @@ struct WindowControllerArchitectureTests {
             (nil as String?, ResearchInspectorMode.overview),
             ("overview", ResearchInspectorMode.overview),
             ("connect", .connect),
-            ("actions", .actions),
+            ("actions", .overview),
             ("connections", .connect),
             ("functions", .overview),
             ("research", .overview),
@@ -749,7 +749,7 @@ struct WindowControllerArchitectureTests {
         let shell = WindowShellState()
 
         document.rememberPresentationMode(.livePreview)
-        shell.selectInspectorMode(.actions)
+        shell.selectInspectorMode(.connect)
 
         shell.selectWorkspace(.topicKnowledge)
         document.selectWorkspace(.topicKnowledge)
@@ -757,14 +757,14 @@ struct WindowControllerArchitectureTests {
         #expect(shell.inspector.mode == .overview)
 
         document.rememberPresentationMode(.source)
-        shell.selectInspectorMode(.connect)
+        shell.selectInspectorMode(.overview)
         shell.selectWorkspace(.paperAnalysis)
         document.selectWorkspace(.paperAnalysis)
 
         #expect(document.currentPresentationMode == .livePreview)
-        #expect(shell.inspector.mode == .actions)
+        #expect(shell.inspector.mode == .connect)
         #expect(document.presentationMode(for: .topicKnowledge) == .source)
-        #expect(shell.inspectorMode(for: .topicKnowledge) == .connect)
+        #expect(shell.inspectorMode(for: .topicKnowledge) == .overview)
     }
 
     @Test("The current Document mode carries across selected Notes")
@@ -1414,7 +1414,7 @@ struct WindowControllerArchitectureTests {
         var invalidations = 0
         let observation = controller.objectWillChange.sink { invalidations += 1 }
 
-        shellState.selectInspectorMode(.actions)
+        shellState.selectInspectorMode(.connect)
         controller.actions.textValues = ["prompt": "Fixture"]
         #expect(invalidations == 0)
 
@@ -2474,9 +2474,6 @@ struct WindowControllerArchitectureTests {
         let researchOperations = try source(
             "ScholiumApplication/ResearchWorkspaceOperations.swift"
         )
-        let reviewPresentation = try source(
-            "Scholium/Features/Document/NoteReviewTaskPresentationState.swift"
-        )
 
         for removedActionSurface in [
             "ResearchFinalizedResultView(",
@@ -2519,7 +2516,7 @@ struct WindowControllerArchitectureTests {
         #expect(inspector.contains("Needs Review · \\(count) Agent activities"))
         #expect(inspector.contains("Button(action: context.openNoteReview)"))
         #expect(!inspector.contains("Button(\"Review Current Note…\""))
-        #expect(inspector.contains("Reopens the Document task"))
+        #expect(inspector.contains("Opens this Note's Research Records"))
         #expect(inspector.contains("No Agent changes to review"))
         #expect(inspector.contains("No Agent changes awaiting Review"))
         #expect(!recordBrowser.contains("scholium.researchRecord.effects.changes"))
@@ -2586,23 +2583,16 @@ struct WindowControllerArchitectureTests {
         #expect(noteContent.contains(
             "isDocumentExpanded ? \"Expanded\" : \"Collapsed\""
         ))
-        for noteReviewBoundary in [
+        for removedNoteReviewBannerBoundary in [
             "scholium.noteReview.task",
+            "Review Current Note",
             "Button(\"View Changes…\")",
             "Button(\"Mark Current Note Reviewed\")",
             "reconcileNoteReviewTask",
-            "AccessibilityNotification.Announcement",
-            ".scholiumEditorialSurface(.floatingControl, in: shape)",
-            "ScholiumMetrics.ActivityNotificationStack.maximumWidth",
             "noteReviewBlockingReason",
-            "documentSession.hasUnsavedChanges",
-            "conflict != nil",
-            "researchRecordSourceManifestHash",
         ] {
-            #expect(noteContent.contains(noteReviewBoundary))
+            #expect(!noteContent.contains(removedNoteReviewBannerBoundary))
         }
-        #expect(reviewPresentation.contains("dismissedIdentity == identity"))
-        #expect(reviewPresentation.contains("activityIDs = reviewState.pendingActivities"))
         for sharedComparisonBoundary in [
             "ExactSourceComparisonSheetLayout",
             "ExactSourceComparisonView",

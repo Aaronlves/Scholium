@@ -1664,7 +1664,7 @@ enum ScholiumMetrics {
         /// The exact count remains textual; these layers only make plurality
         /// visible before the researcher reads or focuses the control.
         static let visibleLayerLimit = 3
-        static let collapsedLayerOffset = ScholiumGrid.foundationUnit * 1.5
+        static let collapsedLayerOffset = ScholiumGrid.foundationUnit
         static let horizontalScaleStep: CGFloat = 0.025
         static let maximumWidth: CGFloat = 520
         static let expandedMaximumHeight: CGFloat = 360
@@ -2884,7 +2884,7 @@ private struct ScholiumContentFittingWidthLayout: Layout {
         guard let subview = subviews.first else { return .zero }
         let availableWidth = min(proposal.width ?? maximumWidth, maximumWidth)
         let ideal = subview.sizeThatFits(
-            ProposedViewSize(width: nil, height: nil)
+            ProposedViewSize(width: availableWidth, height: nil)
         )
         let width = min(ideal.width, availableWidth)
         let fitted = subview.sizeThatFits(

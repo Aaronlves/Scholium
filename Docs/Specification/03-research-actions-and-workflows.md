@@ -6,8 +6,8 @@
 
 ### 8.1 Action, Run, and method ownership
 
-The Research Inspector's **Actions** mode exposes only the code-owned Platform
-Actions valid for the current note. Profiles may change their academic fields,
+The Document's trailing-centered Action rail exposes only the code-owned Platform
+Actions valid for the current Note. Profiles may change their academic fields,
 visible names, order, and enabled state but cannot create another executable
 Action identity:
 
@@ -430,7 +430,7 @@ success.
 One Run owns one result payload—Record Title, Agent academic fields, and
 Scholium machine fields—until every initiated write and recovery duty is
 determined. Safe finalization creates exactly one portable **Research Record**,
-the sole durable result object. The Action row derives its state from the Run
+the sole durable result object. The Action activity derives its state from the Run
 and Record and opens that Record only after an explicit researcher action.
 Private interruption evidence reconciles to the same result and Record.
 

@@ -276,6 +276,14 @@ into `ScholiumHotkeyPreferences`, the versioned UserDefaults owner shared with
 `ScholiumCommands`; it owns no command execution, and Hotkeys never enter
 portable Triptych settings.
 
+Settings uses the same unified, title-free toolbar style as Research Records.
+`SettingsWindowAttachment` installs `fullSizeContentView` and retains the
+transparent native titlebar, traffic lights, and drag behavior. The Settings
+root is a two-column `NavigationSplitView`; its Navigation and detail columns
+own their actual full-height semantic surfaces and the native divider beneath
+that chrome. No window-level two-color background or SwiftUI divider duplicates
+those planes.
+
 The This Triptych Metadata detail consumes one candidate
 `NoteMetadataCatalog` derived from its settings draft. Its field-definition,
 Agent-preference, and About sections mutate three separate subvalues and save
@@ -370,8 +378,9 @@ Information use one content-fitting bottom-centred window overlay; Warning
 and Error use one top-centred window overlay until explicit dismissal. Neither
 changes Document geometry. Settings
 shows the same queue one item at a time in a top-centred window overlay, outside
-pane layout and immediately below native toolbar space. Main-window overlays use
-one compact outer-edge inset and their top variants may cover native toolbar space.
+pane layout and one compact inset from the top window edge, where it may cover
+transparent native titlebar space. Main-window overlays use the same compact
+outer-edge inset and their top variants may cover native toolbar space.
 `ScholiumDocumentStatusNotice` remains an operation-state
 projection, not a queue member, and occupies inline Document layout.
 

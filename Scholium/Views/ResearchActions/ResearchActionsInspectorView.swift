@@ -277,41 +277,17 @@ extension WorkspaceResearchActivityRepairReason {
     }
 }
 
-/// Presentation-only grouping for Scholium's closed Platform Action matrix.
-private enum BuiltInActionVisualGroup: Equatable {
-    case research
-    case review
-}
-
-private extension ResearchActionItemPresentation {
-    var builtInVisualGroup: BuiltInActionVisualGroup {
-        switch definition.id {
-        case .discuss, .analyze, .synthesize, .write:
-            .research
-        case .critique, .checkFidelity:
-            .review
-        }
-    }
-}
-
-private struct ResearchActionVisualSection: Identifiable {
-    enum ID: Hashable {
-        case research
-        case review
-    }
-
-    let id: ID
-    let title: LocalizedStringResource
-    let items: [ResearchActionItemPresentation]
-}
-
-struct ResearchActionsInspectorView: View {
+/// The current Document owns the compact Research Action launch surface. The
+/// rail is attached to the Document split item, so native Inspector resizing
+/// moves it with the Document instead of transferring it into window chrome.
+struct DocumentResearchActionRail: View {
     let presentation: ResearchActionsPresentation
     let freshness: ResearchProjectionFreshness
+    let noteReviewState: WorkspaceNoteReviewState?
     let focusRequest: ResearchActionFocusRequest?
     let registerFocusOwner: (ResearchActionID) -> Void
     let select: (ResearchActionItemPresentation) -> Void
-    let endActivity: (UUID) -> Void
+    let openReview: () -> Void
     let retryRefresh: () -> Void
     let retryCancellationRecovery: (UUID) -> Void
     let settle: (String?) async throws -> Void
@@ -320,191 +296,252 @@ struct ResearchActionsInspectorView: View {
     @State private var settlementRationale = ""
     @State private var settlementError: String?
     @State private var isSettling = false
-    @State private var activityPendingEnd: WorkspaceResearchActivity?
+    @State private var focusRestorationTask: Task<Void, Never>?
+    @FocusState private var focusedActionID: ResearchActionID?
 
     var body: some View {
-        ScrollView {
-            LazyVStack(
-                alignment: .leading,
-                spacing: ScholiumMetrics.Apparatus.sectionSpacing
-            ) {
-                if presentation.pendingCancellationBarrierCount > 0 {
-                    pendingCancellationNotice
-                }
-                ForEach(presentation.cancellationRecoveries) { recovery in
-                    cancellationRecoveryNotice(recovery)
-                }
-                if case .failed(let reason) = freshness {
-                    refreshNotice(reason)
-                }
-
-                if presentation.isCheckingAvailability && presentation.items.isEmpty {
-                    ScholiumApparatusStateView(
-                        "Checking Actions…",
-                        systemImage: "arrow.triangle.2.circlepath",
-                        showsProgress: true
-                    )
-                        .accessibilityIdentifier("scholium.researchActions.loading")
-                } else if let error = presentation.availabilityError {
-                    availabilityNotice(error)
-                }
-
-                ForEach(actionSections) { section in
-                    ScholiumApparatusSection(section.title) {
-                        actionRows(section.items)
-                    }
-                }
-
-                if presentation.target != nil {
-                    ScholiumApparatusSection("JUDGMENT") {
-                        settlementLauncher
-                    }
-                }
+        VStack(alignment: .trailing, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            if noteReviewState?.status == .needsReview {
+                reviewGroup
             }
-            .padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)
-            .padding(.top, ScholiumMetrics.Apparatus.firstSectionSpacing)
-            .padding(.bottom, ScholiumMetrics.Apparatus.bottomInset)
-            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+
+            researchActionGroup
         }
-        .scrollContentBackground(.hidden)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .accessibilityIdentifier("scholium.researchActions")
-        .confirmationDialog(
-            "End this Action?",
-            isPresented: Binding(
-                get: { activityPendingEnd != nil },
-                set: { if !$0 { activityPendingEnd = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("Keep Action", role: .cancel) {
-                activityPendingEnd = nil
+        .fixedSize(horizontal: true, vertical: false)
+        .onChange(of: focusRequest) { _, request in
+            guard let request else { return }
+            focusRestorationTask?.cancel()
+            focusedActionID = nil
+            focusRestorationTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(120))
+                guard !Task.isCancelled else { return }
+                focusedActionID = request.actionID
             }
-            Button("End Action", role: .destructive) {
-                guard let runID = activityPendingEnd?.runID else { return }
-                activityPendingEnd = nil
-                endActivity(runID)
-            }
-        } message: {
-            Text("Scholium will revoke Agent access and end this unfinished Run. Confirmed changes, conflicts, and recovery records remain available.")
+        }
+        .onDisappear {
+            focusRestorationTask?.cancel()
+            focusRestorationTask = nil
         }
     }
 
-    @ViewBuilder
-    private func actionRows(_ rows: [ResearchActionItemPresentation]) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(rows) { item in
-                actionRow(item)
-            }
-        }
+    nonisolated static func verticalCenterOffset(showsReview: Bool) -> CGFloat {
+        guard showsReview else { return 0 }
+        let reviewGroupHeight = ScholiumMetrics.Apparatus.actionRowMinimumHeight
+            + 2 * ScholiumGrid.Spacing.labelAccessoryGap
+        return (reviewGroupHeight + ScholiumGrid.Spacing.inlineControlGap) / 2
     }
 
-    private func actionRow(_ item: ResearchActionItemPresentation) -> some View {
-        HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-            ResearchActionRowButton(
-                title: item.title,
+    private var researchActionGroup: some View {
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment) {
+            ForEach(presentation.items) { item in
+                actionButton(item)
+            }
+
+            if presentation.target != nil {
+                settlementButton
+            }
+
+            recoveryControls
+        }
+        .padding(ScholiumGrid.Spacing.labelAccessoryGap)
+        .scholiumEditorialSurface(.floatingControl, in: railShape)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Research Actions")
+        .accessibilityIdentifier("scholium.documentActionRail.actions")
+    }
+
+    private var railShape: RoundedRectangle {
+        RoundedRectangle(
+            cornerRadius: ScholiumShape.inlineStatusCornerRadius,
+            style: .continuous
+        )
+    }
+
+    private func actionButton(_ item: ResearchActionItemPresentation) -> some View {
+        Button {
+            registerFocusOwner(item.id)
+            select(item)
+        } label: {
+            railIcon(
                 systemImage: item.definition.interfaceSymbol,
-                detail: item.detail,
-                trailingState: item.activity?.stateTitle,
-                showsProgress: item.activity?.showsProgress == true,
-                showsChevron: item.activity?.showsDirectEnd != true,
-                localizesTitle: false,
-                focusRequestToken: focusRequest?.actionID == item.id
-                    ? focusRequest?.token
-                    : nil
-            ) {
-                registerFocusOwner(item.id)
-                select(item)
-            }
-            .disabled(!item.canPresent)
-            if item.activity?.showsDirectEnd == true {
-                Button(item.isEndingActivity ? "Ending…" : "End Action") {
-                    activityPendingEnd = item.activity?.primary
-                }
-                .controlSize(.small)
-                .buttonStyle(.borderless)
-                .disabled(item.isEndingActivity)
-                .accessibilityHint("Revokes Agent access while preserving confirmed changes and recovery facts.")
-            }
+                showsProgress: item.activity?.showsProgress == true
+            )
         }
+        .buttonStyle(
+            ScholiumContentControlButtonStyle(
+                isFocused: focusedActionID == item.id,
+                in: RoundedRectangle(
+                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                    style: .continuous
+                )
+            )
+        )
+        .scholiumActivationFocus($focusedActionID, equals: item.id)
+        .disabled(!item.canPresent)
+        .help(item.detail ?? String(localized: "Open \(item.title)"))
+        .accessibilityLabel(Text(verbatim: item.title))
+        .accessibilityValue(Text(verbatim: item.activity?.stateTitle ?? ""))
+        .accessibilityHint(Text(verbatim: item.detail ?? ""))
         .accessibilityIdentifier("scholium.researchAction.\(item.id.rawValue)")
     }
 
-    private func refreshNotice(_ reason: String) -> some View {
-        ScholiumApparatusStateView(
-            "Action availability may be incomplete.",
-            detail: reason,
-            systemImage: "exclamationmark.triangle",
-            density: .block
-        ) {
-            Button("Retry", action: retryRefresh)
-                .controlSize(.small)
+    private var reviewGroup: some View {
+        VStack(spacing: 0) {
+            reviewButton
         }
+        .padding(ScholiumGrid.Spacing.labelAccessoryGap)
+        .scholiumEditorialSurface(.floatingControl, in: railShape)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Note Review")
+        .accessibilityIdentifier("scholium.documentReviewGroup")
     }
 
-    private func availabilityNotice(_ reason: String) -> some View {
-        ScholiumApparatusStateView(
-            "Actions could not be resolved.",
-            detail: reason,
-            systemImage: "exclamationmark.triangle",
-            density: .block
-        ) {
-            Button("Retry", action: retryRefresh)
-                .controlSize(.small)
-        }
-        .accessibilityIdentifier("scholium.researchActions.error")
-    }
-
-    private func cancellationRecoveryNotice(
-        _ recovery: ResearchActionCancellationRecovery
-    ) -> some View {
-        let isRetrying = presentation.retryingCancellationRecoveryIDs.contains(recovery.runID)
-        return ScholiumApparatusStateView(
-            "A prepared Action still needs cancellation.",
-            detail: recovery.errorMessage,
-            systemImage: "exclamationmark.arrow.triangle.2.circlepath",
-            showsProgress: isRetrying,
-            density: .block
-        ) {
-            Button(
-                isRetrying
-                    ? "Retrying Cancellation…"
-                    : "Retry Cancellation",
-                action: { retryCancellationRecovery(recovery.runID) }
+    private var reviewButton: some View {
+        Button(action: openReview) {
+            railIcon(
+                systemImage: "doc.text.magnifyingglass",
+                restingRole: .accent,
+                emphasizedRole: .accent
             )
-            .controlSize(.small)
-            .disabled(isRetrying)
         }
-        .accessibilityIdentifier(
-            "scholium.researchActions.cancellationRecovery.\(recovery.runID.uuidString.lowercased())"
-        )
+        .buttonStyle(railButtonStyle())
+        .help("Review this Note's Agent changes")
+        .accessibilityLabel("Review")
+        .accessibilityValue(reviewAccessibilityValue)
+        .accessibilityHint("Opens this Note's Agent changes")
+        .accessibilityIdentifier("scholium.documentActionRail.review")
     }
 
-    private var pendingCancellationNotice: some View {
-        ScholiumApparatusStateView(
-            "Waiting for interrupted Action cleanup…",
-            systemImage: "arrow.triangle.2.circlepath",
-            showsProgress: true
-        )
-        .accessibilityIdentifier("scholium.researchActions.pendingCancellation")
+    private var reviewAccessibilityValue: String {
+        let count = noteReviewState?.pendingActivities.count ?? 0
+        return String(localized: "Needs Review, \(count) Agent activities")
     }
 
-    private var settlementLauncher: some View {
+    private var settlementButton: some View {
         let isCurrent = presentation.latestSettlement?.fingerprint
             == presentation.target?.fingerprint
-        return ResearchActionRowButton(
-            title: isCurrent ? "Settled" : "Settle",
-            systemImage: "checkmark.circle",
-            detail: nil,
-            showsChevron: true
-        ) {
+        return Button {
             presentsSettlement = true
+        } label: {
+            railIcon(systemImage: isCurrent ? "checkmark.circle.fill" : "checkmark.circle")
         }
+        .buttonStyle(railButtonStyle())
         .disabled(presentation.target == nil)
+        .help(isCurrent ? "Settle this Note again" : "Settle this Note")
+        .accessibilityLabel(isCurrent ? "Settled" : "Settle")
         .popover(isPresented: $presentsSettlement) {
             settlementPopover
         }
         .accessibilityIdentifier("scholium.researchAction.settle")
+    }
+
+    @ViewBuilder
+    private var recoveryControls: some View {
+        if presentation.pendingCancellationBarrierCount > 0 {
+            railStatus(
+                "Cleaning Up Action…",
+                systemImage: "arrow.triangle.2.circlepath",
+                showsProgress: true
+            )
+            .accessibilityIdentifier("scholium.researchActions.pendingCancellation")
+        }
+
+        ForEach(presentation.cancellationRecoveries) { recovery in
+            let isRetrying = presentation.retryingCancellationRecoveryIDs
+                .contains(recovery.runID)
+            Button {
+                retryCancellationRecovery(recovery.runID)
+            } label: {
+                railIcon(
+                    systemImage: "exclamationmark.arrow.triangle.2.circlepath",
+                    showsProgress: isRetrying
+                )
+            }
+            .buttonStyle(railButtonStyle())
+            .disabled(isRetrying)
+            .help(recovery.errorMessage)
+            .accessibilityLabel(isRetrying ? "Retrying Action Cleanup" : "Retry Action Cleanup")
+            .accessibilityHint(Text(verbatim: recovery.errorMessage))
+            .accessibilityIdentifier(
+                "scholium.researchActions.cancellationRecovery.\(recovery.runID.uuidString.lowercased())"
+            )
+        }
+
+        if presentation.isCheckingAvailability && presentation.items.isEmpty {
+            railStatus(
+                "Checking Actions…",
+                systemImage: "arrow.triangle.2.circlepath",
+                showsProgress: true
+            )
+            .accessibilityIdentifier("scholium.researchActions.loading")
+        } else if let reason = presentation.availabilityError {
+            retryButton(title: "Retry Actions", detail: reason)
+                .accessibilityIdentifier("scholium.researchActions.error")
+        } else if case .failed(let reason) = freshness {
+            retryButton(title: "Retry Actions", detail: reason)
+                .accessibilityIdentifier("scholium.researchActions.refresh")
+        }
+    }
+
+    private func retryButton(title: LocalizedStringResource, detail: String) -> some View {
+        Button(action: retryRefresh) {
+            railIcon(systemImage: "arrow.clockwise")
+        }
+        .buttonStyle(railButtonStyle())
+        .help(detail)
+        .accessibilityLabel(Text(title))
+        .accessibilityHint(Text(verbatim: detail))
+    }
+
+    private func railButtonStyle() -> ScholiumContentControlButtonStyle<RoundedRectangle> {
+        ScholiumContentControlButtonStyle(
+            in: RoundedRectangle(
+                cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                style: .continuous
+            )
+        )
+    }
+
+    private func railIcon(
+        systemImage: String,
+        showsProgress: Bool = false,
+        restingRole: ScholiumColorRole = .secondaryText,
+        emphasizedRole: ScholiumColorRole = .primaryText
+    ) -> some View {
+        Group {
+            if showsProgress {
+                ProgressView()
+                    .controlSize(.mini)
+                    .accessibilityHidden(true)
+            } else {
+                Image(systemName: systemImage)
+                    .font(ScholiumTypography.interface(.body, emphasis: .medium))
+                .scholiumContentControlInk(
+                    resting: restingRole,
+                    emphasized: emphasizedRole
+                )
+                .accessibilityHidden(true)
+            }
+        }
+        .frame(
+            width: ScholiumMetrics.Apparatus.actionRowMinimumHeight,
+            height: ScholiumMetrics.Apparatus.actionRowMinimumHeight,
+            alignment: .center
+        )
+        .contentShape(railShape)
+    }
+
+    private func railStatus(
+        _ title: LocalizedStringResource,
+        systemImage: String,
+        showsProgress: Bool
+    ) -> some View {
+        railIcon(
+            systemImage: systemImage,
+            showsProgress: showsProgress
+        )
+        .accessibilityLabel(Text(title))
+        .accessibilityElement(children: .combine)
     }
 
     private var settlementPopover: some View {
@@ -551,29 +588,6 @@ struct ResearchActionsInspectorView: View {
         .padding(ScholiumGrid.Spacing.sectionSeparation)
         .frame(width: 300)
     }
-
-    private var researchItems: [ResearchActionItemPresentation] {
-        presentation.items.filter { $0.builtInVisualGroup == .research }
-    }
-
-    private var reviewItems: [ResearchActionItemPresentation] {
-        presentation.items.filter { $0.builtInVisualGroup == .review }
-    }
-
-    private var actionSections: [ResearchActionVisualSection] {
-        [
-            ResearchActionVisualSection(
-                id: .research,
-                title: "RESEARCH",
-                items: researchItems
-            ),
-            ResearchActionVisualSection(
-                id: .review,
-                title: "REVIEW",
-                items: reviewItems
-            ),
-        ].filter { !$0.items.isEmpty }
-    }
 }
 
 private extension ResearchActionID {
@@ -603,92 +617,5 @@ private extension ResearchActionID {
         case .checkFidelity:
             String(localized: "Check Fidelity", table: "Localizable", bundle: .module)
         }
-    }
-}
-
-private struct ResearchActionRowButton: View {
-    let title: String
-    let systemImage: String
-    let detail: String?
-    let trailingState: String?
-    let showsProgress: Bool
-    let showsChevron: Bool
-    let localizesTitle: Bool
-    let focusRequestToken: UUID?
-    let action: () -> Void
-
-    @State private var focusRestorationTask: Task<Void, Never>?
-    @FocusState private var hasKeyboardFocus: Bool
-
-    init(
-        title: String,
-        systemImage: String,
-        detail: String? = nil,
-        trailingState: String? = nil,
-        showsProgress: Bool = false,
-        showsChevron: Bool = true,
-        localizesTitle: Bool = true,
-        focusRequestToken: UUID? = nil,
-        action: @escaping () -> Void
-    ) {
-        self.title = title
-        self.systemImage = systemImage
-        self.detail = detail
-        self.trailingState = trailingState
-        self.showsProgress = showsProgress
-        self.showsChevron = showsChevron
-        self.localizesTitle = localizesTitle
-        self.focusRequestToken = focusRequestToken
-        self.action = action
-    }
-
-    var body: some View {
-        Button {
-            focusRestorationTask?.cancel()
-            action()
-        } label: {
-            ScholiumApparatusActionRowContent(
-                title: titleText,
-                systemImage: systemImage,
-                detail: detailText,
-                trailingState: trailingState.map { Text(verbatim: $0) },
-                showsProgress: showsProgress,
-                showsChevron: showsChevron
-            )
-        }
-        .buttonStyle(ScholiumQuietRowButtonStyle(
-            isFocused: hasKeyboardFocus,
-            minimumHeight: ScholiumMetrics.Apparatus.actionRowMinimumHeight,
-            verticalInset: ScholiumMetrics.Apparatus.actionRowVerticalInset
-        ))
-        .accessibilityValue(Text(verbatim: trailingState ?? ""))
-        .scholiumActivationFocus($hasKeyboardFocus)
-        .onChange(of: focusRequestToken) { _, token in
-            guard token != nil else { return }
-            focusRestorationTask?.cancel()
-            hasKeyboardFocus = false
-            focusRestorationTask = Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(120))
-                guard !Task.isCancelled else { return }
-                hasKeyboardFocus = true
-            }
-        }
-        .onDisappear {
-            focusRestorationTask?.cancel()
-            focusRestorationTask = nil
-        }
-    }
-
-    private var titleText: Text {
-        localizesTitle
-            ? Text(LocalizedStringKey(title))
-            : Text(verbatim: title)
-    }
-
-    private var detailText: Text? {
-        guard let detail, !detail.isEmpty else { return nil }
-        return localizesTitle
-            ? Text(LocalizedStringKey(detail))
-            : Text(verbatim: detail)
     }
 }

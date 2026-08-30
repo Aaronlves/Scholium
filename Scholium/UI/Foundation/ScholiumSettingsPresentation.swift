@@ -94,18 +94,6 @@ private struct ScholiumSettingsPaneSurface: ViewModifier {
     }
 }
 
-struct ScholiumSettingsWindowBackground: View {
-    var body: some View {
-        HStack(spacing: 0) {
-            ScholiumColorRole.navigationSurfaceBackground.color
-                .frame(width: ScholiumMetrics.Settings.sidebarWidth)
-            ScholiumColorRole.surfaceBackground.color
-        }
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-    }
-}
-
 struct ScholiumSettingsSearchField: NSViewRepresentable {
     @Binding var text: String
 

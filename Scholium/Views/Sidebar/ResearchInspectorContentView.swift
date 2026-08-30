@@ -85,7 +85,6 @@ struct ResearchOverviewPresentation {
     let aboutConfiguration: VaultAboutConfiguration?
     let metadataCatalog: NoteMetadataCatalog
     let zoteroBinding: AnalysisZoteroBinding?
-    let noteReviewState: WorkspaceNoteReviewState?
     let stableNoteID: UUID?
 }
 
@@ -94,7 +93,6 @@ struct ResearchInspectorContentContext {
     let attentionPopoverSession: AttentionPopoverSession?
     let openProperties: () -> Void
     let openAttention: () -> Void
-    let openNoteReview: () -> Void
     let retryRefresh: () -> Void
     let openZoteroItem: (AnalysisZoteroBinding) async -> Void
     let refreshZoteroMetadata: (UUID, AnalysisZoteroBinding) -> Void
@@ -111,9 +109,6 @@ struct ResearchInspectorContentContext {
     }
     var metadataCatalog: NoteMetadataCatalog { presentation.metadataCatalog }
     var zoteroBinding: AnalysisZoteroBinding? { presentation.zoteroBinding }
-    var noteReviewState: WorkspaceNoteReviewState? {
-        presentation.noteReviewState
-    }
     var stableNoteID: UUID? { presentation.stableNoteID }
 }
 
@@ -131,7 +126,6 @@ struct ResearchOverviewView: View {
                 spacing: ScholiumMetrics.Apparatus.sectionSpacing
             ) {
                 attentionSection
-                reviewSection
                 aboutSection
                 ResearchProjectionFreshnessView(
                     freshness: context.freshness,
@@ -145,72 +139,6 @@ struct ResearchOverviewView: View {
         }
         .scrollContentBackground(.hidden)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    }
-
-    private var reviewSection: some View {
-        VStack(alignment: .leading, spacing: ScholiumMetrics.Apparatus.sectionContentSpacing) {
-            Text("REVIEW")
-                .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                .tracking(0.7)
-                .scholiumForeground(.secondaryText)
-                .accessibilityHeading(.h2)
-
-            switch context.noteReviewState?.status ?? .noAgentChangesToReview {
-            case .noAgentChangesToReview:
-                Text("No Agent changes to review")
-                    .font(ScholiumTypography.scholarly(.emphasis))
-                    .scholiumForeground(.secondaryText)
-            case .needsReview:
-                let count = context.noteReviewState?.pendingActivities.count ?? 0
-                Button(action: context.openNoteReview) {
-                    HStack(
-                        alignment: .firstTextBaseline,
-                        spacing: ScholiumMetrics.Apparatus.iconToTextSpacing
-                    ) {
-                        Text("Needs Review · \(count) Agent activities")
-                            .font(ScholiumTypography.scholarly(.emphasis))
-                            .scholiumForeground(.primaryText)
-                        Spacer(minLength: ScholiumMetrics.Apparatus.iconToTextSpacing)
-                        Image(systemName: "chevron.forward")
-                            .font(
-                                ScholiumTypography.interface(
-                                    .small,
-                                    emphasis: .strong
-                                )
-                            )
-                            .scholiumForeground(.mutedText)
-                            .accessibilityHidden(true)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(ScholiumQuietRowButtonStyle(
-                    minimumHeight: ScholiumMetrics.Accessibility.preferredCustomTarget,
-                    verticalInset: 0
-                ))
-                .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
-                .accessibilityLabel("Review")
-                .accessibilityValue(
-                    "Needs Review, \(count) Agent activities"
-                )
-                .accessibilityHint(
-                    "Reopens the Document task for viewing changes and explicitly marking the current saved Note reviewed"
-                )
-                .accessibilityIdentifier(
-                    "scholium.researchOverview.review.open"
-                )
-            case .noAgentChangesAwaitingReview:
-                Text("No Agent changes awaiting Review")
-                    .font(ScholiumTypography.scholarly(.emphasis))
-                    .scholiumForeground(.secondaryText)
-                if let reviewedAt = context.noteReviewState?.lastReviewedAt {
-                    Text("Last reviewed \(reviewedAt.formatted(.dateTime.year().month().day().hour().minute()))")
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.mutedText)
-                }
-            }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("scholium.researchOverview.review")
     }
 
     private var attentionSection: some View {
@@ -558,13 +486,11 @@ private struct AboutTagsView: View {
                 aboutConfiguration: nil,
                 metadataCatalog: .builtIn,
                 zoteroBinding: nil,
-                noteReviewState: nil,
                 stableNoteID: nil
             ),
             attentionPopoverSession: nil,
             openProperties: {},
             openAttention: {},
-            openNoteReview: {},
             retryRefresh: {},
             openZoteroItem: { _ in },
             refreshZoteroMetadata: { _, _ in },

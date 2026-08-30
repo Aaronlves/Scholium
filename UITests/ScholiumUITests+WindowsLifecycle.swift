@@ -525,7 +525,7 @@ extension ScholiumUITests {
 
     @MainActor
     func testActionsExposeSettleWithoutAReviewModel() throws {
-        selectResearchInspectorMode("actions")
+        waitForDocumentActionRail()
         XCTAssertFalse(app.descendants(matching: .any)["scholium.openReview"].exists)
         XCTAssertFalse(app.buttons["Complete Review"].exists)
         XCTAssertFalse(app.textViews["Review Note"].exists)

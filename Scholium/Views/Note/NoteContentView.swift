@@ -232,13 +232,6 @@ struct DocumentFeatureActions {
         CommentAnchor?
     ) -> Void
     let setResearchInspectorVisible: @MainActor (Bool) -> Void
-    let viewAgentChanges: @MainActor () -> Void
-    let reloadNoteReviewState: @MainActor () async throws -> Void
-    let markCurrentNoteReviewed: @MainActor (
-        UUID,
-        DocumentFingerprint,
-        String
-    ) async throws -> Void
     let openingDocumentPresentationDidComplete: @MainActor () -> Void
     let notify: @MainActor (String, DocumentNotificationKind) -> Void
 }
@@ -392,14 +385,7 @@ struct ResearchInspectorView: View {
     let catalog: WorkspaceCatalogSnapshot?
     let currentVaultID: UUID?
     let researchInspectorContentContext: ResearchInspectorContentContext
-    let researchActionsPresentation: ResearchActionsPresentation
-    let researchActionFocusRequest: ResearchActionFocusRequest?
-    let registerResearchActionFocusOwner: (ResearchActionID) -> Void
-    let openResearchAction: (ResearchActionItemPresentation) -> Void
-    let endResearchActivity: (UUID) -> Void
-    let retryResearchActionCancellation: (UUID) -> Void
     let openReference: (VaultNoteReference, Int?) -> Void
-    let settle: (String?) async throws -> Void
 
     init(
         note: WindowDocumentLocation,
@@ -408,14 +394,7 @@ struct ResearchInspectorView: View {
         catalog: WorkspaceCatalogSnapshot?,
         currentVaultID: UUID?,
         researchInspectorContentContext: ResearchInspectorContentContext,
-        researchActionsPresentation: ResearchActionsPresentation,
-        researchActionFocusRequest: ResearchActionFocusRequest?,
-        registerResearchActionFocusOwner: @escaping (ResearchActionID) -> Void,
-        openResearchAction: @escaping (ResearchActionItemPresentation) -> Void,
-        endResearchActivity: @escaping (UUID) -> Void,
-        retryResearchActionCancellation: @escaping (UUID) -> Void,
-        openReference: @escaping (VaultNoteReference, Int?) -> Void,
-        settle: @escaping (String?) async throws -> Void
+        openReference: @escaping (VaultNoteReference, Int?) -> Void
     ) {
         self.note = note
         _shellState = ObservedObject(wrappedValue: shellState)
@@ -423,14 +402,7 @@ struct ResearchInspectorView: View {
         self.catalog = catalog
         self.currentVaultID = currentVaultID
         self.researchInspectorContentContext = researchInspectorContentContext
-        self.researchActionsPresentation = researchActionsPresentation
-        self.researchActionFocusRequest = researchActionFocusRequest
-        self.registerResearchActionFocusOwner = registerResearchActionFocusOwner
-        self.openResearchAction = openResearchAction
-        self.endResearchActivity = endResearchActivity
-        self.retryResearchActionCancellation = retryResearchActionCancellation
         self.openReference = openReference
-        self.settle = settle
     }
 
     var body: some View {
@@ -449,18 +421,6 @@ struct ResearchInspectorView: View {
                     )
                 case .connect:
                     ConnectionsInspectorView(context: relationshipContext)
-                case .actions:
-                    ResearchActionsInspectorView(
-                        presentation: researchActionsPresentation,
-                        freshness: researchInspectorContentContext.freshness,
-                        focusRequest: researchActionFocusRequest,
-                        registerFocusOwner: registerResearchActionFocusOwner,
-                        select: openResearchAction,
-                        endActivity: endResearchActivity,
-                        retryRefresh: researchInspectorContentContext.retryRefresh,
-                        retryCancellationRecovery: retryResearchActionCancellation,
-                        settle: settle
-                    )
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -816,9 +776,6 @@ struct NoteContentView: View {
     @State private var discussionRoute: DiscussionRoute?
     @State private var commentComposerRequestID: UUID?
     @State private var commentResolution: PassageCommentResolution?
-    @State private var isMarkingNoteReviewed = false
-    @State private var noteReviewError: String?
-    @State private var noteReviewRequiresReload = false
     @StateObject private var documentFind = DocumentFindPresentationModel()
     @StateObject private var reviewDocumentStatistics = ReviewDocumentStatisticsModel()
     @State private var isInsertingImage = false
@@ -948,16 +905,6 @@ struct NoteContentView: View {
             DocumentStatisticsStatus(statistics: currentDocumentStatistics)
         }
         .scholiumSurface(.document)
-        .overlay(alignment: .top) {
-            if documentSession.noteReviewTaskPresentation.isPresented(
-                for: state.noteReviewState?.noteID
-            ),
-               state.noteReviewState?.status == .needsReview {
-                noteReviewTaskBanner
-                    .padding(.top, ScholiumGrid.Spacing.inlineControlGap)
-                    .zIndex(10)
-            }
-        }
         .focusedSceneValue(\.scholiumSearchActions, ScholiumSearchActions { invocation in
             actions.beginSearch(invocation)
         })
@@ -1061,9 +1008,6 @@ struct NoteContentView: View {
         }
         .onAppear {
             controller.observe(documentSession)
-            documentSession.reconcileNoteReviewTask(
-                with: state.noteReviewState
-            )
             applyPreparedPresentationModeIfAvailable()
             consumePendingPresentationRequest()
             openRequestedDiscussion(state.requestedDiscussionID)
@@ -1109,15 +1053,6 @@ struct NoteContentView: View {
             for: NSApplication.didBecomeActiveNotification
         )) { _ in
             indexedImageAvailabilityGeneration &+= 1
-        }
-        .onChange(of: state.noteReviewState) { _, reviewState in
-            documentSession.reconcileNoteReviewTask(with: reviewState)
-        }
-        .task(id: noteReviewTaskAnnouncementIdentity) {
-            guard noteReviewTaskAnnouncementIdentity != nil else { return }
-            AccessibilityNotification.Announcement(
-                String(localized: "Review Current Note")
-            ).post()
         }
         .task(id: readProjectionTaskIdentity) {
             PerformanceProbe.shared.markReadTaskStarted(
@@ -1183,189 +1118,6 @@ struct NoteContentView: View {
                 documentFind.accept(result, for: request.id)
             } catch {
                 documentFind.fail(error, for: request.id)
-            }
-        }
-    }
-
-    private var noteReviewTaskBanner: some View {
-        let shape = RoundedRectangle(
-            cornerRadius: ScholiumShape.inlineStatusCornerRadius,
-            style: .continuous
-        )
-        return VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            HStack(alignment: .firstTextBaseline) {
-                Label("Review Current Note", systemImage: "checkmark.circle")
-                    .font(ScholiumTypography.interface(.sectionTitle))
-                Spacer(minLength: 0)
-                Button {
-                    documentSession.dismissNoteReviewTask(
-                        for: state.noteReviewState
-                    )
-                } label: {
-                    Image(systemName: "xmark")
-                }
-                .buttonStyle(.borderless)
-                .disabled(isMarkingNoteReviewed)
-                .accessibilityLabel("Close Note Review")
-            }
-            Text("Inspect all currently pending Agent activities for this Note, then explicitly mark the current saved source reviewed.")
-                .font(ScholiumTypography.interface(.compact))
-                .scholiumForeground(.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-            if let reason = noteReviewBlockingReason {
-                Text(reason)
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.attention)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if let noteReviewError {
-                Text(noteReviewError)
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.destructive)
-                    .textSelection(.enabled)
-            }
-            if noteReviewRequiresReload {
-                Button("Reload Review State") {
-                    reloadNoteReviewState()
-                }
-                .disabled(isMarkingNoteReviewed)
-                .accessibilityIdentifier("scholium.noteReview.reload")
-            }
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                    noteReviewControls
-                }
-                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                    noteReviewControls
-                }
-            }
-        }
-        .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
-        .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
-        .scholiumContentFittingWidth(
-            maximumWidth: ScholiumMetrics.ActivityNotificationStack.maximumWidth
-        )
-        .scholiumEditorialSurface(.floatingControl, in: shape)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("scholium.noteReview.task")
-    }
-
-    private var noteReviewTaskAnnouncementIdentity: String? {
-        guard documentSession.noteReviewTaskPresentation.isPresented(
-            for: state.noteReviewState?.noteID
-        ) else { return nil }
-        return documentSession.noteReviewTaskPresentation.presentedIdentity?
-            .activityIDs.joined(separator: ":")
-    }
-
-    @ViewBuilder
-    private var noteReviewControls: some View {
-        Button("View Changes…") {
-            actions.viewAgentChanges()
-        }
-        .accessibilityHint("Opens this Note's Research Records without changing Review state")
-        .disabled(isMarkingNoteReviewed)
-        .accessibilityIdentifier("scholium.noteReview.viewChanges")
-        Button("Mark Current Note Reviewed") {
-            markCurrentNoteReviewed()
-        }
-        .buttonStyle(.borderedProminent)
-        .disabled(
-            noteReviewBlockingReason != nil
-                || noteReviewRequiresReload
-                || isMarkingNoteReviewed
-        )
-        .accessibilityHint(
-            "Covers every currently observed pending Agent activity for this exact saved Note revision"
-        )
-        .accessibilityIdentifier("scholium.noteReview.mark")
-        if isMarkingNoteReviewed {
-            ProgressView()
-                .controlSize(.small)
-                .accessibilityLabel("Marking current Note reviewed")
-        }
-    }
-
-    private var noteReviewBlockingReason: String? {
-        guard state.researchRecordProjectionIsComplete,
-              !state.researchRecordSourceManifestHash.isEmpty else {
-            return String(localized: "Research Records are not currently complete. Reload before reviewing this Note.")
-        }
-        guard state.identityAmbiguity == nil,
-              state.pendingIdentityRebinding == nil,
-              let reviewState = state.noteReviewState,
-              let currentRevision = reviewState.currentRevision,
-              note.workspaceSnapshot?.stableIdentity.resolvedID == reviewState.noteID else {
-            return String(localized: "This Note's stable identity is not currently available for Review.")
-        }
-        if documentSession.hasUnsavedChanges || isSavingEdit {
-            return String(localized: "Save the current editor changes before marking this Note reviewed.")
-        }
-        if conflict != nil {
-            return String(localized: "Resolve the external source conflict before marking this Note reviewed.")
-        }
-        if editError != nil {
-            return String(localized: "Resolve the current save status before marking this Note reviewed.")
-        }
-        if note.document.fingerprint != currentRevision {
-            return String(localized: "The saved Note changed. Reload the current Review state before continuing.")
-        }
-        return nil
-    }
-
-    private func markCurrentNoteReviewed() {
-        guard noteReviewBlockingReason == nil,
-              !isMarkingNoteReviewed,
-              let reviewState = state.noteReviewState,
-              let revision = reviewState.currentRevision else { return }
-        isMarkingNoteReviewed = true
-        noteReviewError = nil
-        noteReviewRequiresReload = false
-        Task { @MainActor in
-            defer { isMarkingNoteReviewed = false }
-            do {
-                try await actions.markCurrentNoteReviewed(
-                    reviewState.noteID,
-                    revision,
-                    state.researchRecordSourceManifestHash
-                )
-                documentSession.completeNoteReviewTask()
-                AccessibilityNotification.Announcement(
-                    String(localized: "Current Note marked reviewed")
-                ).post()
-                actions.notify(
-                    String(localized: "Current Note marked reviewed"),
-                    .confirmation
-                )
-            } catch {
-                noteReviewError = error.localizedDescription
-                if let applicationError = error as? ScholiumApplicationError,
-                   applicationError.mutationRequiresReconciliation {
-                    noteReviewRequiresReload = true
-                } else if let mutationError = error as?
-                    PortableResearchNoteReviewMutationError {
-                    switch mutationError {
-                    case .sourceChanged, .recordProjectionChanged:
-                        noteReviewRequiresReload = true
-                    case .sourceUnavailable, .noPendingAgentChanges:
-                        break
-                    }
-                }
-            }
-        }
-    }
-
-    private func reloadNoteReviewState() {
-        guard !isMarkingNoteReviewed else { return }
-        isMarkingNoteReviewed = true
-        noteReviewError = nil
-        Task { @MainActor in
-            defer { isMarkingNoteReviewed = false }
-            do {
-                try await actions.reloadNoteReviewState()
-                noteReviewRequiresReload = false
-            } catch {
-                noteReviewError = error.localizedDescription
             }
         }
     }
@@ -2773,9 +2525,6 @@ private extension CritiqueFindingDispositionDecision {
         editProperties: {},
         openResearchAction: { _, _ in },
         setResearchInspectorVisible: { _ in },
-        viewAgentChanges: {},
-        reloadNoteReviewState: {},
-        markCurrentNoteReviewed: { _, _, _ in },
         openingDocumentPresentationDidComplete: {},
         notify: { _, _ in }
     )

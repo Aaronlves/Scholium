@@ -108,7 +108,7 @@ struct ResearchActionHandoffPresentationTests {
         #expect(content.contains("appState.presentationRouter.dismissSheet()"))
         #expect(refresh.lowerBound < recovery.lowerBound)
         #expect(!detailRegion.contains("windowTopNotificationSurface("))
-        #expect(content.contains("WorkspaceWindowTopOverlayHost("))
+        #expect(content.contains("ScholiumWindowTopOverlayHost("))
         #expect(content.contains(".overlay(alignment: .bottom)"))
         #expect(content.contains("private func windowTopNotificationSurface("))
         #expect(content.contains("transientFeedbackItems.first"))

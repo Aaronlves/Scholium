@@ -7,34 +7,24 @@ import Combine
 @MainActor
 @Suite("Document session lifecycle")
 struct DocumentSessionLifecycleTests {
-    @Test("Document top presents Review, persistent feedback, Actions, then permission education")
+    @Test("Document top presents persistent feedback, Actions, then permission education")
     func documentTopSurfacePriority() {
         #expect(DocumentTopSurfacePresentation.resolve(
-            noteReviewTaskIsPresented: true,
-            hasPersistentFeedback: true,
-            hasActionNotifications: true,
-            hasNotificationPermissionNotice: true
-        ) == .noteReviewTask)
-        #expect(DocumentTopSurfacePresentation.resolve(
-            noteReviewTaskIsPresented: false,
             hasPersistentFeedback: true,
             hasActionNotifications: true,
             hasNotificationPermissionNotice: true
         ) == .persistentFeedback)
         #expect(DocumentTopSurfacePresentation.resolve(
-            noteReviewTaskIsPresented: false,
             hasPersistentFeedback: false,
             hasActionNotifications: true,
             hasNotificationPermissionNotice: true
         ) == .actionNotificationStack)
         #expect(DocumentTopSurfacePresentation.resolve(
-            noteReviewTaskIsPresented: false,
             hasPersistentFeedback: false,
             hasActionNotifications: false,
             hasNotificationPermissionNotice: true
         ) == .notificationPermissionNotice)
         #expect(DocumentTopSurfacePresentation.resolve(
-            noteReviewTaskIsPresented: false,
             hasPersistentFeedback: false,
             hasActionNotifications: false,
             hasNotificationPermissionNotice: false
@@ -60,54 +50,6 @@ struct DocumentSessionLifecycleTests {
         session.prepareReadProjection(for: "new-revision")
 
         #expect(session.renderedReadReadyFingerprint.isEmpty)
-    }
-
-    @Test("Note Review task auto-presents once per retained pending set")
-    func noteReviewTaskPresentationLifecycle() {
-        let session = DocumentSessionModel(key: nil)
-        let noteID = UUID()
-        let firstRecordID = UUID()
-        let secondRecordID = UUID()
-        let firstPending = reviewState(
-            noteID: noteID,
-            recordIDs: [firstRecordID],
-            source: "saved source"
-        )
-
-        session.reconcileNoteReviewTask(with: firstPending)
-        #expect(session.noteReviewTaskPresentation.isPresented(for: noteID))
-
-        session.dismissNoteReviewTask(for: firstPending)
-        #expect(!session.noteReviewTaskPresentation.isPresented)
-
-        let researcherEdited = reviewState(
-            noteID: noteID,
-            recordIDs: [firstRecordID],
-            source: "later researcher edit"
-        )
-        session.reconcileNoteReviewTask(with: researcherEdited)
-        #expect(!session.noteReviewTaskPresentation.isPresented)
-
-        session.presentNoteReviewTask(for: researcherEdited)
-        #expect(session.noteReviewTaskPresentation.isPresented(for: noteID))
-        session.dismissNoteReviewTask(for: researcherEdited)
-
-        let newAgentActivity = reviewState(
-            noteID: noteID,
-            recordIDs: [firstRecordID, secondRecordID],
-            source: "later researcher edit"
-        )
-        session.reconcileNoteReviewTask(with: newAgentActivity)
-        #expect(session.noteReviewTaskPresentation.isPresented(for: noteID))
-
-        session.reconcileNoteReviewTask(
-            with: WorkspaceNoteReviewState(
-                noteID: noteID,
-                currentRevision: newAgentActivity.currentRevision,
-                status: .noAgentChangesAwaitingReview
-            )
-        )
-        #expect(!session.noteReviewTaskPresentation.isPresented)
     }
 
     @Test("Document presentation commits only valid lifecycle states")
@@ -184,24 +126,6 @@ struct DocumentSessionLifecycleTests {
         session.beginManagedCreationEntry(bodyStartUTF16: 24)
         session.shutdown()
         #expect(!session.isEnteringManagedCreation)
-    }
-
-    private func reviewState(
-        noteID: UUID,
-        recordIDs: [UUID],
-        source: String
-    ) -> WorkspaceNoteReviewState {
-        WorkspaceNoteReviewState(
-            noteID: noteID,
-            currentRevision: DocumentFingerprint(content: source),
-            status: .needsReview,
-            pendingActivities: recordIDs.map {
-                PortableResearchNoteActivityReference(
-                    recordID: $0,
-                    noteID: noteID
-                )
-            }
-        )
     }
 
     @Test("Lease reconciliation acquires the destination before reaping the source")

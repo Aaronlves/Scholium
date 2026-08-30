@@ -318,11 +318,11 @@ metrics, and absent content contributes no spacing.
 | Scope | Canonical metrics |
 | --- | --- |
 | Shared grid | **2pt** optical alignment; **4pt** label/accessory; **8pt** inline control; **12pt** nested content; **16pt** section; **20pt** region content; **28pt** peripheral page edge. |
-| Shared anchors | Preferred/minimum custom target **28/20pt**; Document tab strip **40pt**; Action target **44pt**; region header **48pt**. There is no general 24pt row role. |
+| Shared anchors | Preferred/minimum custom target **28/20pt**; Document tab strip **40pt**; Document Action target **44pt**; region header **48pt**. There is no general 24pt row role. |
 | Activity notification stack | **520pt** max; **3** collapsed layers; **4/8pt** offsets; **2.5%** rear inset; bounded expanded rows. |
 | Operation feedback | Content-fitting toast and notices stay within their owning window bounds. |
 | Library | **300pt** minimum readable thickness; **12pt** row inset; **28pt** minimum row; **16pt** hierarchy step; **12–14pt** leading slot; **8pt** title gap; **12pt** header-to-workspace gap. |
-| Apparatus | **270pt** system Inspector minimum with no application-defined maximum; **4pt** local-state gap; **78pt** fact-label minimum; **14pt** fact gap; **204pt** horizontal-grid threshold; **44pt** Action row. |
+| Apparatus | **270pt** system Inspector minimum with no application-defined maximum; **4pt** local-state gap; **78pt** fact-label minimum; **14pt** fact gap; **204pt** horizontal-grid threshold. |
 | Connect | **16pt** between major groups; **8pt** heading-to-first-cluster; **12pt** between clusters; **28pt** Note rows; **4pt** relationship-heading gap; **240pt** direction-control cap. |
 | Records collection | **240pt** View index; **28pt** page edge and column header; **24pt** section header; **8pt** row corners; **48pt** ledger rows. |
 | Records columns | **28pt** Attention gutter; **96pt** Action; **104pt** Date; **32pt** Handled track with **8pt** Title gap; **116/48/184pt** author/year/publication. |
@@ -379,10 +379,10 @@ numbers. The configured measure and typography remain valid at narrow widths, wi
 mixed scripts, and at 100%/200% text. Screenshots and prototype coordinates are
 evidence only and never define native/CSS unit conversion.
 
-Settings uses one opaque Navigation sidebar and one continuous detail plane.
-Its native titlebar keeps the traffic lights and drag region but hides the
-redundant window-title label. The sidebar begins with native Settings search,
-not another visible Settings heading.
+Settings renders full-height Navigation and detail planes under transparent
+titlebar. Traffic lights and dragging remain native; toolbar items, title,
+simulated background, and custom divider are absent. A native split owns
+panes and divider; feedback may cover chrome. The sidebar starts with search.
 The sidebar orders Application, This Triptych, and Research Guidance as
 succinct native list sections. Settings adds no
 toolbar of peer icons, card grid, bottom action strip, or unrelated General or
@@ -525,11 +525,11 @@ the required meaning.
 | `Segmented Control` | Equal text segments use a quiet Paper track, one adaptive raised selection, continuous corners, and no Accent fill. Inspector, Connect, Search, Properties, and Records share input and accessibility. | Workspace navigation, tab strips, or mixed actions. | §§18.4–18.5 |
 | `Source List` | Organize Notes as a quiet, hierarchical source navigation surface with explicit selected, empty, loading, and error states. | A tile grid, status badge wall, or content preview card. | §18.3 |
 | `Connection Direction Control` | Switch Connect between Incoming and Outgoing through one native two-segment control. Undirected relations appear in both with source anchors preserved. | A Combined/All segment, an index replacement, or a second graph owner. | §12, §18.5 |
-| `Action Row` | Expose one bounded Research Action with its declared intent, scope, current state, consequence, and first repair. | An agent avatar, chat bubble, score badge, or generic command card. | §8.1, §18.5 |
+| `Document Action Rail / Button` | Neutral icon-only Research Actions stay centered on Document's trailing edge; conditional Review grows above without moving them. | Inspector, toolbar, notification, avatar, badge, or command card. | §8.1, §18.5 |
 | `Triptych Notifications Entry` | Opens the complete Action/Attention queue from Sidebar or Inspector with its exact nonzero total. | Per-Vault counters, unread state, or a Document-toolbar item. | §13, §§18.2–18.3 |
 | `Activity Notification Stack` | Shows one actionable Run or expands Run-bound rows from the top-centred window edge without reflow. | A queue, structural Attention, timeout, or state owner. | §18.3, §18.5 |
 | `Transient Toast / Persistent Operation Notice` | Content fits near the lower/top trailing window edge; Settings centers one top overlay. | Workflow ownership, field validation, or stacked cards. | §§18.2–18.5, §20 |
-| `Note Review Task Banner` | Compact Document task for reviewing current-Note Agent activity. | Operation feedback, popover, timeout, or Action state. | §§8.4, 18.4–18.5 |
+| `Review Action / Diff` | One conditional group alone uses Accent and opens exact changes; Mark as Reviewed exists only in Diff. | Research Action, notification, banner, popover, or out-of-Diff acceptance. | §§8.4, 18.4–18.5 |
 | `Recovery Notice` | Present a persistent workflow-supplied condition, consequence, and repair or inspection action as a Document notice or Workspace banner. | A generic error or Search banner, runtime state owner, or recovery coordinator. | §§5.3, 14, 18.2, 18.6 |
 | `Document Find Bar` | Find and, in writable modes, replace literal text in the current unsaved buffer while retaining editor selection, Undo, and focus. | Research Search, a modal panel, a second text owner, or saved query history. | §13, §18.4 |
 | `Review Comment Anchor` | Shows a current Comment at its source line and opens its Discussion through one counted margin marker with keyboard and contrast states. | An authored highlight, chat card, comments pane, guessed reattachment, or annotation store. | §7.2, §18.4 |
@@ -557,10 +557,10 @@ the owning workflow chapter remains authoritative for meaning and permission.
 | `Search` | Retrieve bounded research material with explicit provider, scope, explanation, and freshness. | Stable command surface, retained context, and distinct empty/stale/error results. | §13, §18.3 |
 | `Connect` | Inspect direct relations from the current Note through an Incoming/Outgoing view switch, typed relationship subheadings, and source-located rows. | A file hierarchy, inferred graph, evidence verdict, or multi-hop exploration surface. | §12, §18.5 |
 | `Notifications` | Sidebar and Inspector open the Action/Attention queue; Document presents only its Action subset inline. | A task manager or unread model; popover closure never Dismisses an Action. | §§8.4, 13, §§18.2–18.3 |
-| `Research Action` | Prepare one bounded Research Action, then track, open, end, review, follow up, dismiss, or recover it. | Intent-first launcher plus one persistent Action-level activity whose state transitions and controls remain separate from Note Review. | §§8–11, 18.5 |
+| `Research Action` | Prepare one bounded Action from the Document rail, then track, review, follow up, dismiss, or recover it. | Document launcher plus a persistent activity separate from Note Review. | §§8–11, 18.5 |
 | `Conflict / Recovery` | Preserve authored bytes when an external participant changes the source. | Retained buffer, exact revision comparison, selective choice, and reversible restore. | §14, §§18.4–18.6 |
 | `Research Records` | Review portable records without reconstructing writable research Markdown. | Collection-first navigation into one reading-first Record or Reading Lead detail, with source and derived evidence distinct. | §8.4, §18.5 |
-| `Note Review` | Inspects Agent activity and marks the saved Note reviewed. | Compact top-priority task banner; close suppresses, Overview reopens, and Action waits. Never feedback or a popover. | §§8.4, 18.5 |
+| `Note Review` | Inspects Agent activity and marks the saved Note reviewed. | Review opens Diff; only Diff can mark reviewed. Never feedback, banner, or popover. | §§8.4, 18.5 |
 | `Bootstrap Agent Preparation` | Copies one independent-CLI setup prompt and accepts confirmation without granting research access. | App-owned CLI status or install, Agent launcher, provider picker, readiness manager, Session, or Run handoff. | §16 |
 
 Patterns may reference multiple components, but they must not introduce a
