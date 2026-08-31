@@ -1015,6 +1015,21 @@ extension ResearchActionRunOperationsTests {
         #expect(try await handle.documents.load(fixture.analysisID).fingerprint
             == sourceBefore.fingerprint)
 
+        let unchangedMetadataWrite = try await handle.research.writeAgentDocument(
+            credential: client.credential,
+            run: client.run,
+            intent: try ResearchDocumentWriteIntent(
+                role: .analysis,
+                relativePath: "Analysis.md",
+                operation: .modifyMetadata,
+                metadata: [try CanonicalPropertyInput(
+                    key: "language",
+                    value: .string("en")
+                )]
+            )
+        )
+        #expect(unchangedMetadataWrite.state == .unchanged)
+
         let setBinding = try await handle.research.writeAgentZoteroBinding(
             credential: client.credential,
             run: client.run,
@@ -1114,6 +1129,7 @@ extension ResearchActionRunOperationsTests {
         #expect(analysisParticipant.endingRevision == sourceBefore.fingerprint)
         #expect(Set(record.activityOutcomes.map(\.id)) == Set([
             metadataWrite.operationID,
+            unchangedMetadataWrite.operationID,
             setBinding.operationID,
             bindingConflict.operationID,
             clearBinding.operationID,
@@ -1125,6 +1141,9 @@ extension ResearchActionRunOperationsTests {
         #expect(outcomes[metadataWrite.operationID]?.revisionDomain
             == .managedMetadata)
         #expect(outcomes[metadataWrite.operationID]?.state == .committed)
+        #expect(outcomes[unchangedMetadataWrite.operationID]?.revisionDomain
+            == .managedMetadata)
+        #expect(outcomes[unchangedMetadataWrite.operationID]?.state == .unchanged)
         #expect(outcomes[setBinding.operationID]?.revisionDomain == .zoteroBinding)
         #expect(outcomes[setBinding.operationID]?.state == .committed)
         #expect(outcomes[setBinding.operationID]?.intendedZoteroBinding?.itemKey
