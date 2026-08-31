@@ -1,6 +1,24 @@
 import Foundation
 import ScholiumContracts
 
+struct ResearchContextOwnerMaterialPage: Sendable {
+    let reference: ResearchSourceReference
+    let bytes: Data
+    let byteOffset: Int
+    let totalByteCount: Int
+}
+
+struct ResearchContextOwnerNote: Sendable {
+    let document: NoteDocument
+    let stableID: UUID
+    let vaultRole: VaultRole
+}
+
+enum ResearchContextOwnerMaterialPageOutcome: Sendable {
+    case available(ResearchContextOwnerMaterialPage)
+    case repairRequired(ResearchSourceAccessStatus)
+}
+
 /// Application-owned owner access. Providers receive already-authorized
 /// closures and cannot discover another Workspace or widen Search scope.
 struct ResearchContextOwnerAccess: Sendable {
@@ -10,10 +28,15 @@ struct ResearchContextOwnerAccess: Sendable {
         [String],
         Int
     ) async throws -> ResearchRelatedNotesResult
-    let loadDocument: @Sendable (VaultQualifiedNoteID) async throws -> NoteDocument
+    let loadDocument: @Sendable (
+        VaultQualifiedNoteID
+    ) async throws -> ResearchContextOwnerNote
     /// This closure is already narrowed to the authenticated Run's selected
     /// source binding. A provider cannot use it to enumerate another source.
-    let sourceMaterialStatus: @Sendable () async -> ResearchSourceAccessStatus
+    let sourceMaterialPage: @Sendable (
+        Int,
+        Int
+    ) async -> ResearchContextOwnerMaterialPageOutcome
 }
 
 /// The frozen Run values a provider may adapt into Research Evidence Context.
@@ -188,8 +211,10 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                     items: outcome.items,
                     relatedNotes: outcome.relatedNotes,
                     limitations: outcome.limitations,
-                    hasMore: outcome.nextCursor != nil,
-                    nextCursor: outcome.nextCursor
+                    hasMore: outcome.nextCursor != nil
+                        || outcome.nextMaterialCursor != nil,
+                    nextCursor: outcome.nextCursor,
+                    nextMaterialCursor: outcome.nextMaterialCursor
                 ))
             } catch is CancellationError {
                 throw CancellationError()
@@ -239,7 +264,6 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                 availability: .current,
                 currentness: .current,
                 hasAdditionalMatches: false,
-                workspace: workspace,
                 access: access
             )
         }
@@ -279,7 +303,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                 availability: .invalidQuery,
                 items: [],
                 limitations: [
-                    "Structured Search filters are unavailable in Research Context schema 6."
+                    "Structured Search filters are unavailable in Research Context schema 7."
                 ]
             )
         }
@@ -294,7 +318,6 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                 response: response,
                 availability: availability,
                 currentness: currentness,
-                workspace: workspace,
                 access: access
             )
         }
@@ -378,7 +401,6 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
         response: SearchResponse,
         availability: ResearchContextAvailability,
         currentness: ResearchContextCurrentness,
-        workspace: WorkspaceSnapshot,
         access: ResearchContextOwnerAccess
     ) async throws -> ProviderOutcome {
         let selected: NoteSearchResult?
@@ -422,7 +444,6 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
             availability: availability,
             currentness: currentness,
             hasAdditionalMatches: response.hasMore,
-            workspace: workspace,
             access: access
         )
     }
@@ -435,25 +456,16 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
         availability: ResearchContextAvailability,
         currentness: ResearchContextCurrentness,
         hasAdditionalMatches: Bool,
-        workspace: WorkspaceSnapshot,
         access: ResearchContextOwnerAccess
     ) async throws -> ProviderOutcome {
-        guard let snapshot = workspace.document(id: note),
-              snapshot.fingerprint == expectedFingerprint,
-              let stableID = snapshot.stableIdentity.resolvedID,
-              let role = objectRole(snapshot.vaultRole) else {
+        let ownerNote = try await access.loadDocument(note)
+        let document = ownerNote.document
+        guard document.fingerprint == expectedFingerprint,
+              let role = objectRole(ownerNote.vaultRole) else {
             return ProviderOutcome(
                 availability: .stale,
                 items: [],
                 limitations: ["The exact-read Note changed identity or revision before delivery."]
-            )
-        }
-        let document = try await access.loadDocument(note)
-        guard document.fingerprint == expectedFingerprint else {
-            return ProviderOutcome(
-                availability: .stale,
-                items: [],
-                limitations: ["The exact-read Note changed while its page was being loaded."]
             )
         }
         let sourceSlice: Section
@@ -519,16 +531,16 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
             owner: .note(
                 triptychID: query.triptychID,
                 note: note,
-                stableObjectIdentity: stableID.uuidString.lowercased()
+                stableObjectIdentity: ownerNote.stableID.uuidString.lowercased()
             ),
             actorClass: .unknown,
             objectRole: role,
-            vaultRole: snapshot.vaultRole,
+            vaultRole: ownerNote.vaultRole,
             fingerprint: document.fingerprint,
             locator: try .sourceRange(deliveredRange),
             authorizedScope: .triptych(runID: query.runID, triptychID: query.triptychID),
             currentness: currentness,
-            evidentialLayer: evidentialLayer(snapshot.vaultRole),
+            evidentialLayer: evidentialLayer(ownerNote.vaultRole),
             retrievalReason: .exactRead,
             materialLimitations:
                 ResearchContextNoteProjection.unknownWriterLimitations
@@ -556,9 +568,11 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                 clauseID: clause.id,
                 sourceReference: envelope,
                 title: ResearchNoteTitleResolver.resolve(
-                    document: snapshot.document,
-                    profile: snapshot.schemaProfile,
-                    metadata: snapshot.metadata
+                    document: document,
+                    profile: WorkflowProfileResolver.resolve(
+                        vaultRole: ownerNote.vaultRole
+                    ),
+                    metadata: nil
                 ).title,
                 contentKind: clause.sectionHeading == nil ? .noteDocument : .noteSection,
                 exactSource: exactSource
@@ -696,37 +710,64 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
             )
         }
 
-        let status = await access.sourceMaterialStatus()
-        let availability: ResearchContextAvailability
-        let currentness: ResearchContextCurrentness
-        var limitations = ResearchContextMaterialProjection.limitations(
-            zoteroBibliographicContext: run.zoteroBibliographicContext
-        )
-        switch status.state {
-        case .available:
-            guard let current = status.reference else {
-                throw ResearchContextContractError.invalidResponse
+        let pageOffset: Int
+        if let cursor = clause.materialCursor {
+            let priorPageByteCount = cursor.nextByteOffset
+                - cursor.pageStartByteOffset
+            guard cursor.materialID == frozen.identity.id,
+                  cursor.fingerprint == frozen.fingerprint,
+                  cursor.binding == query.paginationBinding(for: clause),
+                  priorPageByteCount > 0,
+                  priorPageByteCount
+                    <= ResearchContextMaterialPage.maximumByteCount,
+                  cursor.nextByteOffset <= frozen.fingerprint.byteCount else {
+                throw ResearchContextContractError.invalidQuery
             }
-            if current.identity == frozen.identity,
-               current.fingerprint == frozen.fingerprint {
-                availability = .current
-                currentness = .current
-            } else {
-                availability = .stale
-                currentness = .stale
-                limitations.append(
-                    current.identity == frozen.identity
-                        ? "The selected source Material has changed since this Run froze its revision."
-                        : "The Run's selected source Material is no longer the current source binding."
+            guard case .available(let priorPage) = await access.sourceMaterialPage(
+                cursor.pageStartByteOffset,
+                priorPageByteCount
+            ),
+            priorPage.reference == frozen,
+            priorPage.byteOffset == cursor.pageStartByteOffset,
+            priorPage.bytes.count == priorPageByteCount,
+            DocumentFingerprint(data: priorPage.bytes) == cursor.pageDigest else {
+                return ProviderOutcome(
+                    availability: .stale,
+                    items: [],
+                    limitations: [
+                        "The Material continuation cursor no longer matches the previously delivered byte page."
+                    ]
                 )
             }
-        case .repairRequired:
+            pageOffset = cursor.nextByteOffset
+        } else {
+            pageOffset = 0
+        }
+        let limitations = ResearchContextMaterialProjection.limitations(
+            zoteroBibliographicContext: run.zoteroBibliographicContext
+        )
+        let ownerOutcome = await access.sourceMaterialPage(
+            pageOffset,
+            ResearchContextMaterialPage.maximumByteCount
+        )
+        let ownerPage: ResearchContextOwnerMaterialPage
+        switch ownerOutcome {
+        case .available(let page):
+            guard page.reference == frozen,
+                  page.byteOffset == pageOffset,
+                  page.totalByteCount == frozen.fingerprint.byteCount else {
+                throw ResearchContextContractError.invalidResponse
+            }
+            ownerPage = page
+        case .repairRequired(let status):
             switch status.failure?.code {
             case .sourceChanged:
-                availability = .stale
-                currentness = .stale
-                limitations.append(
-                    "The selected source Material has changed since this Run froze its revision."
+                return ProviderOutcome(
+                    availability: .stale,
+                    items: [],
+                    limitations: [
+                        "The selected source Material has changed since this Run froze its revision."
+                    ]
                 )
             case .missingBinding, .sourceMissing, .zoteroAttachmentMissing:
                 return ProviderOutcome(
@@ -755,10 +796,27 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
             zoteroBibliographicContext: run.zoteroBibliographicContext,
             runID: query.runID,
             triptychID: query.triptychID,
-            currentness: currentness
+            currentness: .current
         )
+        let page = try ResearchContextMaterialPage(
+            bytes: ownerPage.bytes,
+            byteOffset: ownerPage.byteOffset,
+            totalByteCount: ownerPage.totalByteCount
+        )
+        let nextOffset = page.byteOffset + page.bytes.count
+        let nextCursor = nextOffset < page.totalByteCount
+            ? try ResearchContextMaterialPageCursor(
+                clauseID: clause.id,
+                materialID: frozen.identity.id,
+                fingerprint: frozen.fingerprint,
+                pageStartByteOffset: page.byteOffset,
+                nextByteOffset: nextOffset,
+                binding: query.paginationBinding(for: clause),
+                pageDigest: page.pageDigest
+            )
+            : nil
         return ProviderOutcome(
-            availability: availability,
+            availability: .current,
             items: [try ResearchContextResponseItem(
                 clauseID: clause.id,
                 sourceReference: envelope,
@@ -766,10 +824,12 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
                 contentKind: .sourceMaterial,
                 materialContent: try ResearchContextMaterialContent(
                     source: frozen,
-                    zoteroBibliographicContext: run.zoteroBibliographicContext
+                    zoteroBibliographicContext: run.zoteroBibliographicContext,
+                    page: page
                 )
             )],
-            limitations: limitations
+            limitations: limitations,
+            nextMaterialCursor: nextCursor
         )
     }
 
@@ -1180,6 +1240,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
         let items: [ResearchContextResponseItem]
         let limitations: [String]
         let nextCursor: ResearchContextPageCursor?
+        let nextMaterialCursor: ResearchContextMaterialPageCursor?
         let relatedNotes: ResearchRelatedNotesResult?
 
         init(
@@ -1187,12 +1248,14 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
             items: [ResearchContextResponseItem],
             limitations: [String],
             nextCursor: ResearchContextPageCursor? = nil,
+            nextMaterialCursor: ResearchContextMaterialPageCursor? = nil,
             relatedNotes: ResearchRelatedNotesResult? = nil
         ) {
             self.availability = availability
             self.items = items
             self.limitations = limitations
             self.nextCursor = nextCursor
+            self.nextMaterialCursor = nextMaterialCursor
             self.relatedNotes = relatedNotes
         }
     }

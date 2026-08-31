@@ -186,10 +186,13 @@
   non-Discuss Result submission. Result templates omit optional academic fields
   while the frozen Result Contract retains them. Calling a query does not itself
   prove reliance or support and creates no reading history or source-use testimony.
-- Research Context request/response schema 6 removes Agent-authored eligibility
+- Research Context request/response schema 7 removes Agent-authored eligibility
   from every query clause. Application derives each response item's
   `research_evidence` or `reference_only` status from exact content kind and
-  currentness; old request fields and earlier schemas fail closed.
+  currentness; old request fields and earlier schemas fail closed. The
+  single-clause `inspect_materials` route carries bounded path-free base64
+  pages from the exact Run-frozen binary source, with whole-source/page
+  fingerprints and prior-page-bound continuation.
 - Authenticated Context schema 18 gives Work Write and Critique Runs
   a non-evidential `recommended_reading` directory computed from their exact
   current Work source, selected passage, and research request. Application
@@ -201,6 +204,10 @@
   Runs can call `agent related` with one to four exact names; Application
   dynamically combines per-seed channel ranks and returns typed reasons without
   source or score. There is no Works consumer or UI.
+- A confirmed Agent write advances the Activity Ledger member's current
+  revision. Synthesize and Write reload, Recommended Reading, and the supplied
+  exact-Target reread use that self-written revision before Result finalization;
+  an untracked external edit still returns `stale_run`.
 - A staged Analyze or other write Result completes after the Action's own
   transaction and Method checks. Analyze performs one bounded fidelity
   self-check inside its Method and records unresolved or unavailable limits in

@@ -849,11 +849,101 @@ public struct ResearchContextPageCursor: Codable, Hashable, Sendable {
     }
 }
 
+/// Stateless continuation for one exact, Run-frozen source Material. The
+/// cursor is correlation data rather than a file capability: Application
+/// reauthenticates the Run and reopens the same private source binding for
+/// every page.
+public struct ResearchContextMaterialPageCursor: Codable, Hashable, Sendable {
+    public static let currentSchemaVersion = 1
+
+    public let schemaVersion: Int
+    public let clauseID: UUID
+    public let materialID: UUID
+    public let fingerprint: DocumentFingerprint
+    public let pageStartByteOffset: Int
+    public let nextByteOffset: Int
+    public let binding: DocumentFingerprint
+    public let pageDigest: DocumentFingerprint
+
+    public init(
+        clauseID: UUID,
+        materialID: UUID,
+        fingerprint: DocumentFingerprint,
+        pageStartByteOffset: Int,
+        nextByteOffset: Int,
+        binding: DocumentFingerprint,
+        pageDigest: DocumentFingerprint
+    ) throws {
+        guard pageStartByteOffset >= 0,
+              nextByteOffset > pageStartByteOffset,
+              ResearchContextValidation.validFingerprint(fingerprint),
+              ResearchContextValidation.validFingerprint(binding),
+              ResearchContextValidation.validFingerprint(pageDigest) else {
+            throw ResearchContextContractError.invalidQuery
+        }
+        schemaVersion = Self.currentSchemaVersion
+        self.clauseID = clauseID
+        self.materialID = materialID
+        self.fingerprint = fingerprint
+        self.pageStartByteOffset = pageStartByteOffset
+        self.nextByteOffset = nextByteOffset
+        self.binding = binding
+        self.pageDigest = pageDigest
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case schemaVersion = "schema_version"
+        case clauseID = "clause_id"
+        case materialID = "material_id"
+        case fingerprint
+        case pageStartByteOffset = "page_start_byte_offset"
+        case nextByteOffset = "next_byte_offset"
+        case binding
+        case pageDigest = "page_digest"
+    }
+
+    public init(from decoder: Decoder) throws {
+        try ResearchContextValidation.rejectUnknownKeys(
+            decoder,
+            allowed: CodingKeys.self
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        guard schemaVersion == Self.currentSchemaVersion else {
+            throw ResearchContextContractError.unsupportedSchemaVersion(schemaVersion)
+        }
+        try self.init(
+            clauseID: try container.decode(UUID.self, forKey: .clauseID),
+            materialID: try container.decode(UUID.self, forKey: .materialID),
+            fingerprint: try container.decode(
+                DocumentFingerprint.self,
+                forKey: .fingerprint
+            ),
+            pageStartByteOffset: try container.decode(
+                Int.self,
+                forKey: .pageStartByteOffset
+            ),
+            nextByteOffset: try container.decode(
+                Int.self,
+                forKey: .nextByteOffset
+            ),
+            binding: try container.decode(
+                DocumentFingerprint.self,
+                forKey: .binding
+            ),
+            pageDigest: try container.decode(
+                DocumentFingerprint.self,
+                forKey: .pageDigest
+            )
+        )
+    }
+}
+
 /// A closed query clause. An Agent chooses no provider, source-kind cross
 /// product, Run, Triptych, or authorization scope; Application binds those
 /// facts after authenticating the request.
 public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 6
+    public static let currentSchemaVersion = 7
     public static let maximumLimit = 20
     public static let maximumRelatedNoteNames = 4
 
@@ -875,6 +965,7 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
     public let sectionHeading: String?
     public let limit: Int
     public let cursor: ResearchContextPageCursor?
+    public let materialCursor: ResearchContextMaterialPageCursor?
 
     public init(
         id: UUID = UUID(),
@@ -885,7 +976,8 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
         expectedFingerprint: DocumentFingerprint? = nil,
         sectionHeading: String? = nil,
         limit: Int = 8,
-        cursor: ResearchContextPageCursor? = nil
+        cursor: ResearchContextPageCursor? = nil,
+        materialCursor: ResearchContextMaterialPageCursor? = nil
     ) throws {
         try self.init(
             schemaVersion: Self.currentSchemaVersion,
@@ -898,7 +990,8 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
             expectedFingerprint: expectedFingerprint,
             sectionHeading: sectionHeading,
             limit: limit,
-            cursor: cursor
+            cursor: cursor,
+            materialCursor: materialCursor
         )
     }
 
@@ -913,7 +1006,8 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
         expectedFingerprint: DocumentFingerprint?,
         sectionHeading: String?,
         limit: Int,
-        cursor: ResearchContextPageCursor?
+        cursor: ResearchContextPageCursor?,
+        materialCursor: ResearchContextMaterialPageCursor?
     ) throws {
         guard schemaVersion == Self.currentSchemaVersion,
               scope == .triptych,
@@ -942,10 +1036,12 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
         case .discoverNote, .inspectRelations, .inspectMetadata, .inspectRecords:
             hasQuery && note == nil && expectedFingerprint == nil
                 && normalizedHeading == nil && cursor == nil
+                && materialCursor == nil
                 && normalizedNoteNames == nil
         case .relatedNotes:
             !hasQuery && note == nil && expectedFingerprint == nil
                 && normalizedHeading == nil && cursor == nil
+                && materialCursor == nil
                 && normalizedNoteNames?.isEmpty == false
                 && Set(normalizedNoteNames?.map {
                     SearchTextNormalization.normalize($0)
@@ -955,10 +1051,17 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
             ((hasQuery && note == nil && expectedFingerprint == nil)
                 || (!hasQuery && note != nil && expectedFingerprint != nil))
                 && cursor.map { $0.clauseID == id } != false
+                && materialCursor == nil
                 && normalizedNoteNames == nil
-        case .inspectMaterials, .inspectResearcherState:
+        case .inspectMaterials:
             !hasQuery && note == nil && expectedFingerprint == nil
                 && normalizedHeading == nil && cursor == nil
+                && materialCursor.map { $0.clauseID == id } != false
+                && normalizedNoteNames == nil
+        case .inspectResearcherState:
+            !hasQuery && note == nil && expectedFingerprint == nil
+                && normalizedHeading == nil && cursor == nil
+                && materialCursor == nil
                 && normalizedNoteNames == nil
         }
         guard clauseIsValid else { throw ResearchContextContractError.invalidQuery }
@@ -973,6 +1076,7 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
         self.sectionHeading = normalizedHeading
         self.limit = limit
         self.cursor = cursor
+        self.materialCursor = materialCursor
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
@@ -983,6 +1087,7 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
         case sectionHeading = "section_heading"
         case limit
         case cursor
+        case materialCursor = "material_cursor"
     }
 
     public init(from decoder: Decoder) throws {
@@ -1005,7 +1110,11 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
             ),
             sectionHeading: try container.decodeIfPresent(String.self, forKey: .sectionHeading),
             limit: try container.decode(Int.self, forKey: .limit),
-            cursor: try container.decodeIfPresent(ResearchContextPageCursor.self, forKey: .cursor)
+            cursor: try container.decodeIfPresent(ResearchContextPageCursor.self, forKey: .cursor),
+            materialCursor: try container.decodeIfPresent(
+                ResearchContextMaterialPageCursor.self,
+                forKey: .materialCursor
+            )
         )
     }
 }
@@ -1013,7 +1122,7 @@ public struct ResearchContextClause: Codable, Hashable, Identifiable, Sendable {
 /// Agent-facing request. Run and Triptych authority are deliberately absent:
 /// the authenticated Application boundary supplies them before provider work.
 public struct ResearchContextRequest: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 6
+    public static let currentSchemaVersion = 7
     public static let maximumClauses = 4
 
     public let schemaVersion: Int
@@ -1028,7 +1137,9 @@ public struct ResearchContextRequest: Codable, Hashable, Identifiable, Sendable 
         guard schemaVersion == Self.currentSchemaVersion,
               !clauses.isEmpty,
               clauses.count <= Self.maximumClauses,
-              Set(clauses.map(\.id)).count == clauses.count else {
+              Set(clauses.map(\.id)).count == clauses.count,
+              !clauses.contains(where: { $0.kind == .inspectMaterials })
+                || clauses.count == 1 else {
             if schemaVersion != Self.currentSchemaVersion {
                 throw ResearchContextContractError.unsupportedSchemaVersion(schemaVersion)
             }
@@ -1126,16 +1237,79 @@ public enum ResearchContextContentKind: String, Codable, CaseIterable, Hashable,
     case researcherState = "researcher_state"
 }
 
+/// One bounded byte-exact page from the Run-frozen Material. `bytes` uses
+/// Codable's base64 JSON representation, preserving binary sources such as
+/// PDFs without presenting a path or filesystem capability.
+public struct ResearchContextMaterialPage: Codable, Hashable, Sendable {
+    public static let maximumByteCount = 480 * 1_024
+
+    public let bytes: Data
+    public let byteOffset: Int
+    public let totalByteCount: Int
+    public let pageDigest: DocumentFingerprint
+
+    public init(
+        bytes: Data,
+        byteOffset: Int,
+        totalByteCount: Int
+    ) throws {
+        guard byteOffset >= 0,
+              totalByteCount >= 0,
+              byteOffset <= totalByteCount,
+              bytes.count <= Self.maximumByteCount,
+              byteOffset + bytes.count <= totalByteCount,
+              !bytes.isEmpty || totalByteCount == 0 else {
+            throw ResearchContextContractError.invalidResponse
+        }
+        self.bytes = bytes
+        self.byteOffset = byteOffset
+        self.totalByteCount = totalByteCount
+        pageDigest = DocumentFingerprint(data: bytes)
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case bytes
+        case byteOffset = "byte_offset"
+        case totalByteCount = "total_byte_count"
+        case pageDigest = "page_digest"
+    }
+
+    public init(from decoder: Decoder) throws {
+        try ResearchContextValidation.rejectUnknownKeys(
+            decoder,
+            allowed: CodingKeys.self
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let encodedDigest = try container.decode(
+            DocumentFingerprint.self,
+            forKey: .pageDigest
+        )
+        try self.init(
+            bytes: try container.decode(Data.self, forKey: .bytes),
+            byteOffset: try container.decode(Int.self, forKey: .byteOffset),
+            totalByteCount: try container.decode(
+                Int.self,
+                forKey: .totalByteCount
+            )
+        )
+        guard pageDigest == encodedDigest else {
+            throw ResearchContextContractError.invalidResponse
+        }
+    }
+}
+
 /// Ephemeral, typed material data supplied by the existing source and Zotero
 /// owners. It is response data only: it creates no source cache or durable
-/// Material owner, and it never carries a bookmark, path, or source bytes.
+/// Material owner, and it never carries a bookmark or path.
 public struct ResearchContextMaterialContent: Codable, Hashable, Sendable {
     public let source: ResearchSourceReference
     public let zoteroBibliographicContext: ZoteroBibliographicContext?
+    public let page: ResearchContextMaterialPage
 
     public init(
         source: ResearchSourceReference,
-        zoteroBibliographicContext: ZoteroBibliographicContext? = nil
+        zoteroBibliographicContext: ZoteroBibliographicContext? = nil,
+        page: ResearchContextMaterialPage
     ) throws {
         if source.identity.route == .zoteroAttachment,
            let zoteroBibliographicContext {
@@ -1144,13 +1318,18 @@ public struct ResearchContextMaterialContent: Codable, Hashable, Sendable {
                 throw ResearchContextContractError.invalidResponse
             }
         }
+        guard page.totalByteCount == source.fingerprint.byteCount else {
+            throw ResearchContextContractError.invalidResponse
+        }
         self.source = source
         self.zoteroBibliographicContext = zoteroBibliographicContext
+        self.page = page
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case source
         case zoteroBibliographicContext
+        case page
     }
 
     public init(from decoder: Decoder) throws {
@@ -1164,6 +1343,10 @@ public struct ResearchContextMaterialContent: Codable, Hashable, Sendable {
             zoteroBibliographicContext: try container.decodeIfPresent(
                 ZoteroBibliographicContext.self,
                 forKey: .zoteroBibliographicContext
+            ),
+            page: try container.decode(
+                ResearchContextMaterialPage.self,
+                forKey: .page
             )
         )
     }
@@ -1241,6 +1424,8 @@ public struct ResearchContextResponseItem: Codable, Hashable, Identifiable, Send
                 && sourceReference.fingerprint == material.source.fingerprint
                 && sourceReference.locator
                     == (try? ResearchContextSourceLocator.materialSource(material.source))
+                && material.page.totalByteCount
+                    == material.source.fingerprint.byteCount
         } ?? false
         guard noteMatchReasons.count <= Self.maximumNoteMatchReasons,
               sourceReference.sourceKind == .note || noteMatchReasons.isEmpty,
@@ -1378,6 +1563,7 @@ public struct ResearchContextClauseOutcome: Codable, Hashable, Sendable {
     public let limitations: [String]
     public let hasMore: Bool
     public let nextCursor: ResearchContextPageCursor?
+    public let nextMaterialCursor: ResearchContextMaterialPageCursor?
 
     public init(
         clause: ResearchContextClause,
@@ -1386,15 +1572,22 @@ public struct ResearchContextClauseOutcome: Codable, Hashable, Sendable {
         relatedNotes: ResearchRelatedNotesResult? = nil,
         limitations: [String] = [],
         hasMore: Bool = false,
-        nextCursor: ResearchContextPageCursor? = nil
+        nextCursor: ResearchContextPageCursor? = nil,
+        nextMaterialCursor: ResearchContextMaterialPageCursor? = nil
     ) throws {
         let isRelatedNotes = clause.kind == .relatedNotes
+        let continuationCount = [nextCursor != nil, nextMaterialCursor != nil]
+            .filter { $0 }.count
         guard items.count <= clause.limit,
               items.allSatisfy({ $0.clauseID == clause.id && $0.sourceReference.sourceKind == clause.kind.sourceKind }),
               Set(items.map(\.id)).count == items.count,
               !([.unavailable, .invalidQuery].contains(availability) && !items.isEmpty),
-              hasMore == (nextCursor != nil),
+              continuationCount <= 1,
+              hasMore == (continuationCount == 1),
               (nextCursor.map { $0.clauseID == clause.id && clause.kind == .readNote } != false),
+              (nextMaterialCursor.map {
+                  $0.clauseID == clause.id && clause.kind == .inspectMaterials
+              } != false),
               isRelatedNotes == (relatedNotes != nil),
               (!isRelatedNotes || items.isEmpty),
               relatedNotes.map({ Self.availability(for: $0.state) == availability })
@@ -1414,11 +1607,12 @@ public struct ResearchContextClauseOutcome: Codable, Hashable, Sendable {
         )
         self.hasMore = hasMore
         self.nextCursor = nextCursor
+        self.nextMaterialCursor = nextMaterialCursor
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case clauseID, kind, availability, items, relatedNotes, limitations,
-             hasMore, nextCursor
+             hasMore, nextCursor, nextMaterialCursor
     }
 
     public init(from decoder: Decoder) throws {
@@ -1437,11 +1631,21 @@ public struct ResearchContextClauseOutcome: Codable, Hashable, Sendable {
         )
         let hasMore = try container.decode(Bool.self, forKey: .hasMore)
         let nextCursor = try container.decodeIfPresent(ResearchContextPageCursor.self, forKey: .nextCursor)
+        let nextMaterialCursor = try container.decodeIfPresent(
+            ResearchContextMaterialPageCursor.self,
+            forKey: .nextMaterialCursor
+        )
+        let continuationCount = [nextCursor != nil, nextMaterialCursor != nil]
+            .filter { $0 }.count
         guard items.allSatisfy({ $0.clauseID == clauseID && $0.sourceReference.sourceKind == kind.sourceKind }),
               items.count <= ResearchContextClause.maximumLimit,
               Set(items.map(\.id)).count == items.count,
-              hasMore == (nextCursor != nil),
+              continuationCount <= 1,
+              hasMore == (continuationCount == 1),
               (nextCursor.map { $0.clauseID == clauseID && kind == .readNote } != false),
+              (nextMaterialCursor.map {
+                  $0.clauseID == clauseID && kind == .inspectMaterials
+              } != false),
               !([.unavailable, .invalidQuery].contains(availability)
                   && !items.isEmpty),
               (kind == .relatedNotes) == (relatedNotes != nil),
@@ -1463,6 +1667,7 @@ public struct ResearchContextClauseOutcome: Codable, Hashable, Sendable {
         )
         self.hasMore = hasMore
         self.nextCursor = nextCursor
+        self.nextMaterialCursor = nextMaterialCursor
     }
 
     private static func availability(
@@ -1479,7 +1684,7 @@ public struct ResearchContextClauseOutcome: Codable, Hashable, Sendable {
 }
 
 public struct ResearchContextResponse: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 6
+    public static let currentSchemaVersion = 7
     /// Leaves a material margin below the 1 MiB local-bridge frame for its
     /// envelope, error fields, and future transport metadata.
     public static let maximumEncodedByteCount = 768 * 1_024

@@ -93,7 +93,9 @@ struct ActionCLIExecutableLifecycleTests {
             "SCHOLIUM_ACTION_CLI_BINARY"
         ], !binaryPath.isEmpty else { return }
 
-        let fixture = try await ActionCLIFixture.make()
+        let fixture = try await ActionCLIFixture.make(
+            installsExecutableVerifierBookmark: false
+        )
         defer { fixture.remove() }
         let bridgeContainer = URL(
             fileURLWithPath: FileManager.default.currentDirectoryPath,
@@ -281,10 +283,7 @@ struct ActionCLIExecutableLifecycleTests {
                 target: simulation.target,
                 triptychID: fixture.assignment.id,
                 cli: cli,
-                environment: environment,
-                sourceRoute: simulation.action == .analyze
-                    ? .researcherProvided
-                    : nil
+                environment: environment
             )
             try Self.verifyExternalInstructionDelivery(
                 actionID: simulation.action,
@@ -299,6 +298,33 @@ struct ActionCLIExecutableLifecycleTests {
                 cli: cli,
                 environment: environment
             )
+            if simulation.action == .analyze {
+                let materialAction = try #require(
+                    started.context.nextActions.first {
+                        $0.kind == .query
+                            && $0.label.contains("formal source boundary")
+                    }
+                )
+                let materialOutput = try cli.run(
+                    Array(materialAction.command.dropFirst()),
+                    stdin: Data(try #require(materialAction.inputTemplate).utf8),
+                    environment: environment
+                )
+                let materialResponse = try Self.decoder().decode(
+                    ResearchContextResponse.self,
+                    from: materialOutput.stdout
+                )
+                #expect(materialResponse.availability == .current)
+                #expect(materialResponse.items.first?.materialContent?.page.bytes
+                    == ActionCLIFixture.sourceMaterial)
+                let serialized = String(
+                    decoding: materialOutput.stdout,
+                    as: UTF8.self
+                )
+                #expect(!serialized.contains(fixture.rootURL.path))
+                #expect(!serialized.contains("file://"))
+                #expect(!serialized.contains("bookmark"))
+            }
             if let marker = simulation.marker {
                 let member = try #require(started.context.boundedWriteSet.first)
                 #expect(member.operations.contains(.modifyMarkdown))
@@ -319,6 +345,37 @@ struct ActionCLIExecutableLifecycleTests {
                         as? [String: Any]
                 )
                 #expect(writeReport["state"] as? String == "committed")
+                if simulation.action == .synthesize
+                    || simulation.action == .write {
+                    let reload = try cli.run(
+                        [
+                            "agent", "reload", "--run",
+                            started.receipt.run.rawValue,
+                        ],
+                        environment: environment
+                    )
+                    let reloaded = try Self.decoder().decode(
+                        ResearchAuthenticatedRunContext.self,
+                        from: reload.stdout
+                    )
+                    let targetRead = try #require(reloaded.nextActions.first {
+                        $0.kind == .query
+                            && $0.label
+                                == "Read the exact current Target revision"
+                    })
+                    let readOutput = try cli.run(
+                        Array(targetRead.command.dropFirst()),
+                        stdin: Data(try #require(targetRead.inputTemplate).utf8),
+                        environment: environment
+                    )
+                    let readResponse = try Self.decoder().decode(
+                        ResearchContextResponse.self,
+                        from: readOutput.stdout
+                    )
+                    #expect(readResponse.availability == .current)
+                    #expect(readResponse.items.first?.exactSource?.content
+                        .contains(marker) == true)
+                }
             } else {
                 #expect(started.context.boundedWriteSet.isEmpty)
             }
@@ -3290,6 +3347,9 @@ private struct ActionCLIFixture {
     static let exactReadSource = Data(
         "\u{FEFF}---\r\ntitle: Exact CLI Read\r\n---\r\n# Exact CLI Read\r\nNo final newline".utf8
     )
+    static let sourceMaterial = Data(
+        "# Synthetic Source\n\nA source-grounded rival is discussed on page 42.\n".utf8
+    )
 
     let rootURL: URL
     let homeURL: URL
@@ -3300,7 +3360,8 @@ private struct ActionCLIFixture {
     let recordID: UUID
 
     static func make(
-        triptychName: String = "Action CLI Fixture"
+        triptychName: String = "Action CLI Fixture",
+        installsExecutableVerifierBookmark: Bool = true
     ) async throws -> Self {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -3343,9 +3404,7 @@ private struct ActionCLIFixture {
         try Data("# Draft Argument\n\nA synthetic work claim.\n".utf8)
             .write(to: works.appendingPathComponent("Draft Argument.md"), options: .atomic)
         let analysisSourceURL = root.appendingPathComponent("Synthetic Source.md")
-        try Data(
-            "# Synthetic Source\n\nA source-grounded rival is discussed on page 42.\n".utf8
-        ).write(to: analysisSourceURL, options: .atomic)
+        try sourceMaterial.write(to: analysisSourceURL, options: .atomic)
 
         let runtime = WorkspaceRuntime(configuration: .live(.init(
             applicationSupportURL: appSupport,
@@ -3389,13 +3448,15 @@ private struct ActionCLIFixture {
                 selection: .localFile(analysisSourceURL)
             )
         )
-        try installExecutableVerifierBookmarkIfRequested(
-            applicationSupportURL: appSupport,
-            triptychID: assignment.id,
-            analysisNoteID: analysisTarget.noteID,
-            sourceURL: analysisSourceURL,
-            fixtureRootURL: root
-        )
+        if installsExecutableVerifierBookmark {
+            try installExecutableVerifierBookmarkIfRequested(
+                applicationSupportURL: appSupport,
+                triptychID: assignment.id,
+                analysisNoteID: analysisTarget.noteID,
+                sourceURL: analysisSourceURL,
+                fixtureRootURL: root
+            )
+        }
         let topicTarget = try await target(
             VaultQualifiedNoteID(vaultID: topicVault.id, relativePath: "Topic.md"),
             role: .topic,

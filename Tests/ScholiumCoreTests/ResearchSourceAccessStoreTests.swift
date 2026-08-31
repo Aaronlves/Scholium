@@ -5,6 +5,51 @@ import Testing
 
 @Suite("Machine-local Research Source Access store", .serialized)
 struct ResearchSourceAccessStoreTests {
+    @Test("Binary pages are read from the same revision-checked descriptor")
+    func exactBinaryPages() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let bytes = Data([0, 255, 13, 10, 42, 99, 128])
+        let source = try fixture.file(named: "Source.pdf", bytes: bytes)
+        let noteID = UUID()
+        let store = fixture.store()
+        let reference = try await store.bindLocalFile(
+            analysisNoteID: noteID,
+            selectedURL: source
+        )
+
+        let first = try await store.readPage(
+            analysisNoteID: noteID,
+            expectedReference: reference,
+            byteOffset: 0,
+            maximumByteCount: 4
+        )
+        let second = try await store.readPage(
+            analysisNoteID: noteID,
+            expectedReference: reference,
+            byteOffset: 4,
+            maximumByteCount: 4
+        )
+        #expect(first.reference == reference)
+        #expect(first.bytes == bytes.prefix(4))
+        #expect(second.bytes == bytes.suffix(3))
+        #expect(first.totalByteCount == bytes.count)
+        #expect(second.totalByteCount == bytes.count)
+
+        try Data([0, 255, 13, 10, 42, 99, 129]).write(
+            to: source,
+            options: .atomic
+        )
+        await #expect(throws: ResearchSourceAccessStoreError.self) {
+            _ = try await store.readPage(
+                analysisNoteID: noteID,
+                expectedReference: reference,
+                byteOffset: 0,
+                maximumByteCount: 4
+            )
+        }
+    }
+
     @Test("A selected regular file reopens through a balanced bookmark lease")
     func bindResolveAndReopen() async throws {
         let fixture = try Fixture()

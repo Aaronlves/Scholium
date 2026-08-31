@@ -112,6 +112,11 @@ Literature Recommendations. Selected local or Zotero source material remains a
 separately validated evidence channel, and the optional first-party Zotero MCP
 transport remains available. Researcher-selected subfolders use a researcher-
 created existing Analysis target rather than an Agent path assertion.
+For a researcher-selected local source, authenticated Research Context delivers
+bounded exact binary pages against the Run-frozen source fingerprint without
+exposing its path, bookmark, or general filesystem access. After a confirmed
+Agent write, reload and the supplied exact reread advance to that committed
+revision while later external drift still fails closed.
 
 These paths establish current engineering reachability, not that long-term
 Agent inheritance or philosophical research quality has already been accepted.

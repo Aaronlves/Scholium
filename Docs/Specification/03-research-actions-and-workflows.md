@@ -124,9 +124,12 @@ relevance, support, confidence, importance, acceptance, or reading.
 Each clause reports **Current**, **Partial**, **Stale**, **Unavailable**, or
 **Invalid Query**. Provider failure never broadens scope, substitutes old
 content, hides an unexecuted clause as empty, or makes stale material
-navigable. Exact source pages preserve UTF-8 bytes, BOM, whitespace, newlines,
-and final newline; continuation remains bound to the same query, identity,
-revision, and range.
+navigable. Exact Note pages preserve UTF-8 bytes, BOM, whitespace, newlines,
+and final newline. A current selected source Material is delivered as bounded
+exact binary pages, including PDFs, from the Run-frozen whole-source
+fingerprint. Each continuation remains bound to the same query, identity,
+revision, prior page, and range. Neither form exposes a path, bookmark, or
+filesystem capability.
 
 Continue Research revalidates every forwarded reference against its current
 owner. Material references must also match the Run-frozen source reference.
@@ -169,6 +172,12 @@ The Application validates, writes atomically, reads back, and records the exact
 outcome. Existing Notes retain the first committed Agent-write preimage and
 last confirmed Agent revision for diff and direct Undo. Created Notes have no
 fabricated empty preimage.
+
+A confirmed self-write advances that ledger member's current revision. Before
+Result finalization, authenticated reload and the Application-supplied exact
+reread use that advanced revision. A later external edit still conflicts or
+stales the Run; the original frozen revision remains the provenance and Undo
+baseline rather than a perpetual post-write read boundary.
 
 The ledger is not a batch transaction. One target's conflict does not roll back
 confirmed siblings. Unknown or in-flight writes must converge before cleanup;

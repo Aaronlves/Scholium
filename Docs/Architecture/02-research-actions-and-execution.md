@@ -249,35 +249,27 @@ start or pair is not repeated. The retired public `agent context` command has no
 compatibility route.
 
 Application derives ordered authenticated `next_actions` from the frozen
-Action, Result Contract, and current Run Activity Ledger. Discuss receives
-an exact-Target read plus bounded Search, one fillable reply, and Finish. Every
-other Action receives exact-Target read, optional selected-evidence and Search
-queries, each ready writable member, and a strict Result template. Each action
-carries `required` or `when_needed`; Check Fidelity marks all frozen inspection
-requests required. Result templates include only required academic fields while
-the complete frozen contract retains optional fields. Query execution creates
-no reading-history or source-use field. CLI help describes those typed contracts
-but does not maintain a second template owner.
+Action, Result Contract, and Run Activity Ledger. Discuss gets an exact read,
+bounded Search, reply, and Finish; other Actions get eligible reads, writes,
+and a strict Result template. Requirements remain typed, and Check Fidelity
+requires its frozen inspections. Templates contain required academic fields;
+the contract retains optional fields. No query creates reading or source-use
+testimony, and CLI help is only an adapter. The frozen Target stays the
+first-write baseline; after a confirmed self-write, the ledger revision drives
+reload, Recommended Reading, and exact inspection. Source or identity drift
+still returns `stale_run`.
 
 Authenticated Run Context schema 18 gives Work Write/Critique Analysis/Topic
 `recommended_reading` and Topic Synthesize Analysis-only reading.
-`RecommendedReadingCoordinator` owns only
-Action eligibility and delivery shaping. It loads the already-revalidated exact
-target source and frozen selected passage/research request, asks Graph for current
-direct Connections, and supplies one ephemeral `RelatedContentSeedSnapshot` to
-`TriptychSearchIndex.relatedContent`. Graph owns direction, predicate, and
-locator; Search contract 3 independently owns exact title/alias mention,
-candidate-role restriction, and focus-weighted lexical ranking over the
-existing Note FTS. The coordinator
-applies fixed per-channel quotas, merges identical Note fingerprints while
-retaining all typed reasons, and chunks executable candidates into ordinary
-schema-4 exact-read requests. It creates no second index, parser, Saved Search,
-source cache, or persistent recommendation state. Channel failure forms Partial
-or Unavailable while bounded Search remains. Direct start, pairing, and
-`reload` all call this same path. A `related_notes` Research Context clause
-resolves one to four exact names through the current catalog and reuses the
-coordinator per seed; Application combines those owner-ranked results without
-persisting a score. `agent related` is its declarative CLI adapter.
+`RecommendedReadingCoordinator` owns eligibility and delivery shaping. It
+combines the revalidated target and frozen request with Graph-owned direct
+Connections and Search-owned title/alias, role, and lexical ranking. Fixed
+quotas merge identical fingerprints while retaining typed reasons, then form
+ordinary exact-read requests. It creates no parser, index, Saved Search, source
+cache, score, or persistent recommendation state. Channel failure is Partial
+or Unavailable; start, pairing, and `reload` use the same path. A
+`related_notes` clause resolves one to four catalog names and reuses this owner;
+`agent related` is its CLI adapter.
 
 Agent-facing material is serialized under an explicit evidence channel.
 `taskDirective` contains public Action, researcher request, safe operation
@@ -295,18 +287,15 @@ read-only projection only after the complete portable Record has been accepted.
 
 ## Research Context
 
-`ResearchContextUseCases` authenticates Session/Run, resolves authorized
-Triptych scope, and snapshots current generation before any provider call. Its
-production provider composes the existing Application Search use case, exact
-Note/section reader, same-snapshot explicit Graph relations, Metadata
-projection, Application Record provider, Settle/Discussion/Method Feedback owner
-reads, and the authenticated Run's already-frozen `ResearchSourceReference`
-plus Zotero bibliographic snapshot when explicitly inspected. Material
-inspection has no search string and cannot enumerate another source: an
-already-authorized closure asks `ResearchSourceAccessStore` only for the
-current status of that Run's selected binding. It never imports `ScholiumCore`
-types across the Application boundary, reaches private JSON/index files
-directly, or copies source bytes, bookmarks, or paths into Research Context.
+`ResearchContextUseCases` authenticates Session/Run, authorizes Triptych scope,
+and snapshots generation before provider calls. The provider composes existing
+Search, exact Note reads, Graph, Metadata, Records, research-state owners, and
+the frozen source/Zotero references. Material inspection cannot search or
+enumerate: an authorized closure asks `ResearchSourceAccessStore` for one page
+of the selected binding. Core balances bookmark access, rejects symbolic or
+nonregular targets, and fingerprints and reads from one no-follow descriptor.
+Application returns a path-free base64 page with whole-source and page
+fingerprints. It imports no Core types and reads no private stores directly.
 Researcher State is separately rebuilt on demand for the Action target Note
 from current Settlement, Critique disposition, and
 attributed active-Discussion owners. It is neither stored by the provider nor
@@ -322,21 +311,15 @@ adapter can only convert an already returned owner value into the closed Source
 Reference Envelope; it cannot fill unknown actor/locator/revision, add a
 confidence score, or broaden scope.
 
-Research Context request schema 6 contains only closed clause schema 6 values
-and uses snake-case Agent input keys throughout. Neither request nor clause
-carries an Agent-selected evidence-eligibility field. Each response item
-instead carries Application-derived `research_evidence` or `reference_only`
-from its closed content kind and current owner state.
-The nested clause version changes with its closed kind and legal-shape set; a
-schema 1 clause therefore cannot silently acquire Material inspection. The
-Application validates the clause's legal query shape and platform capability,
-then dispatches every clause through its current owner. Response schema 6
-retains one ordered outcome for every requested clause, with Current, Partial,
-Stale, Unavailable, or Invalid Query availability and explicit limitations.
-Owner failures become their clause's Unavailable outcome; they do not erase
-other outcomes or masquerade as an empty current channel.
+Research Context request and clause schema 7 use closed snake-case Agent input.
+Evidence eligibility is Application-derived from content kind and owner state,
+never Agent-selected. Clause versions change with their legal shapes, so older
+clauses cannot acquire Material inspection. Application validates shape and
+capability, then dispatches through the current owner. Response schema 7 keeps
+one ordered, limited Current, Partial, Stale, Unavailable, or Invalid Query
+outcome per clause; one owner failure cannot erase the others.
 
-Response schema 6 also copies the Note result's closed `NoteSearchMatchReason`
+Response schema 7 also copies the Note result's closed `NoteSearchMatchReason`
 values from that same Search response. The Application adapter does not
 reconstruct them: authored YAML provenance retains exact source ranges,
 managed Metadata explicitly has none, and
@@ -344,7 +327,7 @@ direct-relation provenance retains relation, direction, anchor, target, and
 explicit Markdown occurrences. A coarse direct-relation or Metadata retrieval
 reason without the corresponding typed match is rejected.
 Search contract 11's structured `callout:` and `has:` match reasons are not
-admitted into Research Context schema 6: those queries return Invalid Query at
+admitted into Research Context schema 7: those queries return Invalid Query at
 this boundary instead of being flattened into a lexical Source Reference.
 
 Exact Note/section reads use a lossless UTF-8 page with a source-range locator.
@@ -356,6 +339,15 @@ continuation, the provider rechecks every binding and returns Stale rather than
 reading a replacement Note or revision. Contracts cap an encoded context
 response below the bridge frame, and `LocalAgentBridgeResponse` preflights the
 complete outer envelope before it writes a frame.
+
+`inspect_materials` is a single-clause request. Its current item contains one
+bounded byte-exact page and no locator outside the closed Material envelope. A
+stateless Material cursor binds Run, Triptych, query, clause, Material identity,
+whole-source fingerprint, prior offset, and prior-page digest. Continuation
+rereads and verifies the prior page before advancing; each page revalidates the
+whole source. The response budget therefore remains below the bridge frame
+without creating a cached source, tokenized extraction, or general file-read
+port.
 
 Continue Result schema 4 and authenticated Run Context schema 18 carry the
 closed Material reference states `current`, `changed`, `missing`, and

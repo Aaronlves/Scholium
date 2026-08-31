@@ -367,6 +367,11 @@ struct ResearchAgentResultOperationsTests {
         #expect(item.contentKind == .sourceMaterial)
         #expect(item.evidenceEligibility == .researchEvidence)
         #expect(item.materialContent?.source == frozen)
+        #expect(item.materialContent?.page.bytes
+            == Data("Exact source fixture bytes.".utf8))
+        #expect(item.materialContent?.page.byteOffset == 0)
+        #expect(item.materialContent?.page.totalByteCount
+            == frozen.fingerprint.byteCount)
         #expect(item.materialContent?.zoteroBibliographicContext?.metadata?.title
             == "Fittingness")
         #expect(item.sourceReference.owner.materialID == frozen.identity.id)
@@ -406,6 +411,78 @@ struct ResearchAgentResultOperationsTests {
         let recordText = String(decoding: try JSONEncoder().encode(record), as: UTF8.self)
         #expect(!recordText.contains("context_use_report"))
         #expect(await script.requestCount() == 1)
+        await runtime.shutdown()
+    }
+
+    @Test("Run-frozen binary Material pages round-trip without exposing a locator")
+    func sourceMaterialPaginationIsExactAndPathFree() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        var source = Data(count: ResearchContextMaterialPage.maximumByteCount + 37)
+        for index in source.indices {
+            source[index] = UInt8(truncatingIfNeeded: index * 31)
+        }
+        try source.write(to: fixture.analysisSourceURL, options: .atomic)
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let analysis = try await researchActionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        _ = try await handle.research.bindSourceAccess(
+            ResearchSourceBindingRequest(
+                target: analysis,
+                selection: .localFile(fixture.analysisSourceURL)
+            )
+        )
+        let prepared = try await preparedAnalysis(handle: handle, fixture: fixture)
+        let clause = try ResearchContextClause(kind: .inspectMaterials, limit: 1)
+        let request = try ResearchContextRequest(clauses: [clause])
+        let first = try await handle.research.queryAgentResearchContext(
+            credential: prepared.credential,
+            run: prepared.handoff.run,
+            request: request
+        )
+        let firstOutcome = try #require(first.outcomes.first)
+        let firstPage = try #require(
+            firstOutcome.items.first?.materialContent?.page
+        )
+        let cursor = try #require(firstOutcome.nextMaterialCursor)
+        #expect(firstPage.bytes.count
+            == ResearchContextMaterialPage.maximumByteCount)
+        #expect(firstPage.byteOffset == 0)
+        #expect(firstPage.totalByteCount == source.count)
+
+        let continuationClause = try ResearchContextClause(
+            id: clause.id,
+            kind: .inspectMaterials,
+            limit: 1,
+            materialCursor: cursor
+        )
+        let second = try await handle.research.queryAgentResearchContext(
+            credential: prepared.credential,
+            run: prepared.handoff.run,
+            request: try ResearchContextRequest(
+                id: request.id,
+                clauses: [continuationClause]
+            )
+        )
+        let secondOutcome = try #require(second.outcomes.first)
+        let secondPage = try #require(
+            secondOutcome.items.first?.materialContent?.page
+        )
+        #expect(secondOutcome.nextMaterialCursor == nil)
+        #expect(firstPage.bytes + secondPage.bytes == source)
+        #expect(secondPage.byteOffset == firstPage.bytes.count)
+
+        let encoded = String(
+            decoding: try JSONEncoder().encode(first),
+            as: UTF8.self
+        )
+        #expect(!encoded.contains(fixture.analysisSourceURL.path))
+        #expect(!encoded.contains("file://"))
+        #expect(!encoded.contains("bookmark"))
         await runtime.shutdown()
     }
 

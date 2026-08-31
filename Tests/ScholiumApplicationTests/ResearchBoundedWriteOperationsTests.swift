@@ -5,6 +5,100 @@ import Testing
 
 @Suite("Authenticated bounded Research write sets", .serialized)
 struct ResearchBoundedWriteOperationsTests {
+    @Test("Synthesize and Write reload and exact reread advance to their own committed revision")
+    func selfWriteAdvancesAuthenticatedReadBoundary() async throws {
+        for actionID in [ResearchActionID.synthesize, .write] {
+            let fixture = try await ResearchFixture.make()
+            defer { fixture.remove() }
+            let runtime = fixture.runtime()
+            let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+            let role: ResearchActionTargetRole = actionID == .synthesize
+                ? .topic
+                : .work
+            let note = actionID == .synthesize ? fixture.topicID : fixture.workID
+            let target = try await researchActionTarget(
+                note,
+                role: role,
+                handle: handle
+            )
+            let helpers = ResearchActionRunOperationsTests()
+            let preparation = try await handle.research.prepareAction(
+                try await helpers.actionRequest(
+                    handle: handle,
+                    actionID: actionID,
+                    target: target
+                )
+            )
+            let handoff = try await handle.research.issueAgentHandoff(
+                runID: preparation.runID
+            )
+            let credential = try await handle.research.pairAgent(
+                run: handoff.run,
+                pairingCode: handoff.pairingCode
+            )
+            _ = try await handle.research.authenticatedAgentContext(
+                credential: credential,
+                run: handoff.run
+            )
+
+            let marker = "Self-write reload marker for \(actionID.rawValue)."
+            let heading = actionID == .synthesize ? "# Agency" : "# Draft Argument"
+            let write = try await handle.research.writeAgentDocument(
+                credential: credential,
+                run: handoff.run,
+                intent: try ResearchDocumentWriteIntent(
+                    role: role,
+                    relativePath: note.relativePath,
+                    content: "\(heading)\n\n\(marker)\n"
+                )
+            )
+            #expect(write.state == .committed)
+
+            let reloaded = try await handle.research.authenticatedAgentContext(
+                credential: credential,
+                run: handoff.run
+            )
+            let rereadAction = try #require(reloaded.nextActions.first {
+                $0.kind == .query
+                    && $0.label == "Read the exact current Target revision"
+            })
+            let template = try #require(rereadAction.inputTemplate)
+            let request = try JSONDecoder().decode(
+                ResearchContextRequest.self,
+                from: Data(template.utf8)
+            )
+            let response = try await handle.research.queryAgentResearchContext(
+                credential: credential,
+                run: handoff.run,
+                request: request
+            )
+            #expect(response.availability == .current)
+            #expect(response.items.first?.exactSource?.content.contains(marker)
+                == true)
+
+            let sourceURL = fixture.rootURL
+                .appendingPathComponent(
+                    actionID == .synthesize ? "Topics" : "Works",
+                    isDirectory: true
+                )
+                .appendingPathComponent(note.relativePath)
+            try Data("\(heading)\n\nGenuine external edit.\n".utf8).write(
+                to: sourceURL,
+                options: .atomic
+            )
+            do {
+                _ = try await handle.research.authenticatedAgentContext(
+                    credential: credential,
+                    run: handoff.run
+                )
+                Issue.record("A genuine external edit must stale the Run.")
+            } catch let error as ResearchAgentConnectionError {
+                #expect(error == .runStale(.targetChanged))
+            }
+            await runtime.shutdown()
+        }
+    }
+
     @Test("Tracked activity survives Session rotation without a wall-clock lease")
     func trackedActivitySurvivesSessionRotation() async throws {
         let fixture = try await ResearchFixture.make()

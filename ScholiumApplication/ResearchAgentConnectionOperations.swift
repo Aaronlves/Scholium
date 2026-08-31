@@ -1610,8 +1610,9 @@ extension WorkspaceHandle {
         guard isWorkReading || isTopicSynthesis else {
             return nil
         }
-        let source = try await loadDocument(action.target.note)
-        guard source.fingerprint == action.target.fingerprint else {
+        let currentTarget = authenticatedCurrentTarget(for: record)
+        let source = try await loadDocument(currentTarget.note)
+        guard source.fingerprint == currentTarget.fingerprint else {
             throw ResearchAgentConnectionError.runStale(.targetChanged)
         }
         let searchIndex = researchAgentConnectionDependencies.searchIndex
@@ -1733,19 +1734,79 @@ extension WorkspaceHandle {
                     guard let self else {
                         throw ResearchAgentConnectionError.runUnavailable
                     }
-                    return try await self.loadDocument(note)
+                    return try await self.researchContextOwnerNote(note)
                 },
-                sourceMaterialStatus: { [weak self] in
+                sourceMaterialPage: { [weak self] byteOffset, maximumByteCount in
                     guard let self else {
-                        return .repairRequired(.bookmarkUnavailable)
+                        return .repairRequired(
+                            .repairRequired(.bookmarkUnavailable)
+                        )
                     }
-                    return await self.researchSourceMaterialStatus(
-                        for: record.snapshot.request.target.noteID
-                    )
+                    guard let sourceReference = evidence.sourceReference else {
+                        return .repairRequired(
+                            .repairRequired(.missingBinding)
+                        )
+                    }
+                    do {
+                        let page = try await self.researchAgentResultDependencies
+                            .researchSourceAccessStore.readPage(
+                                analysisNoteID:
+                                    record.snapshot.request.target.noteID,
+                                expectedReference: sourceReference,
+                                byteOffset: byteOffset,
+                                maximumByteCount: maximumByteCount
+                            )
+                        return .available(ResearchContextOwnerMaterialPage(
+                            reference: page.reference,
+                            bytes: page.bytes,
+                            byteOffset: page.byteOffset,
+                            totalByteCount: page.totalByteCount
+                        ))
+                    } catch let error as ResearchSourceAccessStoreError {
+                        return .repairRequired(.repairRequired(
+                            error.failure.code,
+                            reference: sourceReference
+                        ))
+                    } catch {
+                        return .repairRequired(.repairRequired(
+                            .sourceUnreadable,
+                            reference: sourceReference
+                        ))
+                    }
                 }
             )
         )
         return response
+    }
+
+    private func researchContextOwnerNote(
+        _ note: VaultQualifiedNoteID
+    ) async throws -> ResearchContextOwnerNote {
+        let lease = try await beginResearchControlledSourceObservation()
+        defer { endResearchControlledSourceObservation(lease) }
+        guard let identityBefore = try await researchAgentConnectionDependencies
+            .controlStore.identityRecord(
+            vaultID: note.vaultID,
+            relativePath: note.relativePath
+        ) else {
+            throw ResearchActionRunContractError.targetIdentityChanged
+        }
+        let role = try vault(id: note.vaultID).role
+        let document = try await repository(vaultID: note.vaultID).load(
+            relativePath: note.relativePath
+        )
+        guard let identityAfter = try await researchAgentConnectionDependencies
+            .controlStore.identityRecord(
+            vaultID: note.vaultID,
+            relativePath: note.relativePath
+        ), identityAfter.id == identityBefore.id else {
+            throw ResearchActionRunContractError.targetIdentityChanged
+        }
+        return ResearchContextOwnerNote(
+            document: document,
+            stableID: identityAfter.id,
+            vaultRole: role
+        )
     }
 
     private func validateAuthenticatedAgentRunCurrent(
@@ -1758,17 +1819,17 @@ extension WorkspaceHandle {
             ?? record.completion?.targetFingerprint
             ?? request.target.fingerprint
         do {
-            _ = try await researchActionRunCoordinator.validateResearchActionTarget(
-                request.target,
-                expected: expectedTarget,
-                host: self
-            )
+            guard try await researchActionControlledFingerprint(
+                for: request.target
+            ) == expectedTarget else {
+                throw ResearchActionRunContractError.targetChanged
+            }
         } catch ResearchActionRunContractError.targetChanged {
             throw ResearchAgentConnectionError.runStale(.targetChanged)
-        } catch ResearchActionRunContractError.targetUnavailable {
-            throw ResearchAgentConnectionError.runStale(.targetUnavailable)
         } catch ResearchActionRunContractError.targetIdentityChanged {
             throw ResearchAgentConnectionError.runStale(.targetIdentityChanged)
+        } catch VaultRepositoryError.fileDoesNotExist {
+            throw ResearchAgentConnectionError.runStale(.targetUnavailable)
         } catch {
             throw error
         }
@@ -1804,7 +1865,7 @@ extension WorkspaceHandle {
         let request = record.snapshot.request
         let inspectionTargets = request.actionID == .checkFidelity
             ? request.resolvedFidelityTargets
-            : [request.target]
+            : [authenticatedCurrentTarget(for: record)]
         let targetClauses: [ResearchContextClause] = try
             inspectionTargets.map { target in
                 try ResearchContextClause(
@@ -1818,7 +1879,7 @@ extension WorkspaceHandle {
                     limit: 1
                 )
             }
-        var supportingClauses: [ResearchContextClause] = try
+        let supportingClauses: [ResearchContextClause] = try
             request.materials.map { material in
                 try ResearchContextClause(
                     id: Self.stableAgentUUID(
@@ -1831,16 +1892,16 @@ extension WorkspaceHandle {
                     limit: 1
                 )
             }
-        if includeSourceMaterial {
-            supportingClauses.append(try ResearchContextClause(
+        let sourceMaterialClause = includeSourceMaterial
+            ? try ResearchContextClause(
                 id: Self.stableAgentUUID(
                     runID: record.id,
                     label: "formal-source-material"
                 ),
                 kind: .inspectMaterials,
                 limit: 1
-            ))
-        }
+            )
+            : nil
         var requests: [ResearchContextRequest] = []
         for (family, clauses) in [
             ("target", targetClauses),
@@ -1864,7 +1925,37 @@ extension WorkspaceHandle {
                 ))
             }
         }
+        if let sourceMaterialClause {
+            requests.append(try ResearchContextRequest(
+                id: Self.stableAgentUUID(
+                    runID: record.id,
+                    label: "formal-source-inspection"
+                ),
+                clauses: [sourceMaterialClause]
+            ))
+        }
         return requests
+    }
+
+    /// The Run-frozen Target supplies stable identity and the first-write
+    /// provenance baseline. After a confirmed self-write, the Activity Ledger
+    /// supplies the only current revision accepted by reload and exact reread.
+    private func authenticatedCurrentTarget(
+        for record: LocalResearchExecutionRecord
+    ) -> ResearchActionNoteSnapshot {
+        let frozen = record.snapshot.request.target
+        let revision = record.boundedWriteSet.entries.first(where: {
+            $0.noteID == frozen.noteID
+        })?.expectedRevision
+            ?? record.completion?.targetFingerprint
+            ?? frozen.fingerprint
+        return ResearchActionNoteSnapshot(
+            noteID: frozen.noteID,
+            note: frozen.note,
+            role: frozen.role,
+            fingerprint: revision,
+            title: frozen.title
+        )
     }
 
     private func authenticatedAgentNextActions(

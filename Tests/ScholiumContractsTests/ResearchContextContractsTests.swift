@@ -250,7 +250,7 @@ struct ResearchContextContractsTests {
         #expect(try roundTrip(response).availability == .invalidQuery)
     }
 
-    @Test("Research Context schema 6 rejects Search structured match reasons")
+    @Test("Research Context schema 7 rejects Search structured match reasons")
     func structuredSearchReasonsFailClosed() throws {
         let fixture = Fixture()
         #expect(throws: ResearchContextContractError.self) {
@@ -312,7 +312,14 @@ struct ResearchContextContractsTests {
             sourceReference: envelope,
             title: source.displayName,
             contentKind: .sourceMaterial,
-            materialContent: try ResearchContextMaterialContent(source: source)
+            materialContent: try ResearchContextMaterialContent(
+                source: source,
+                page: ResearchContextMaterialPage(
+                    bytes: Data("source bytes".utf8),
+                    byteOffset: 0,
+                    totalByteCount: source.fingerprint.byteCount
+                )
+            )
         )
         let response = try ResearchContextResponse(
             query: query,
@@ -342,8 +349,73 @@ struct ResearchContextContractsTests {
                 sourceReference: envelope,
                 title: mismatched.displayName,
                 contentKind: .sourceMaterial,
-                materialContent: try ResearchContextMaterialContent(source: mismatched)
+                materialContent: try ResearchContextMaterialContent(
+                    source: mismatched,
+                    page: ResearchContextMaterialPage(
+                        bytes: Data("source bytes".utf8),
+                        byteOffset: 0,
+                        totalByteCount: mismatched.fingerprint.byteCount
+                    )
+                )
             )
+        }
+    }
+
+    @Test("Material pagination is binary exact, single-clause, and cursor bound")
+    func materialPaginationContract() throws {
+        let bytes = Data([0, 255, 10, 13, 42])
+        let page = try ResearchContextMaterialPage(
+            bytes: bytes,
+            byteOffset: 0,
+            totalByteCount: 9
+        )
+        #expect(try roundTrip(page) == page)
+        #expect(page.pageDigest == DocumentFingerprint(data: bytes))
+
+        var encodedPage = try #require(
+            JSONSerialization.jsonObject(
+                with: JSONEncoder().encode(page)
+            ) as? [String: Any]
+        )
+        encodedPage["page_digest"] = try JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(DocumentFingerprint(content: "wrong"))
+        )
+        #expect(throws: ResearchContextContractError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchContextMaterialPage.self,
+                from: JSONSerialization.data(withJSONObject: encodedPage)
+            )
+        }
+
+        let clauseID = UUID()
+        let fingerprint = DocumentFingerprint(
+            sha256: String(repeating: "a", count: 64),
+            byteCount: 9
+        )
+        let cursor = try ResearchContextMaterialPageCursor(
+            clauseID: clauseID,
+            materialID: UUID(),
+            fingerprint: fingerprint,
+            pageStartByteOffset: 0,
+            nextByteOffset: bytes.count,
+            binding: DocumentFingerprint(content: "binding"),
+            pageDigest: page.pageDigest
+        )
+        let continuation = try ResearchContextClause(
+            id: clauseID,
+            kind: .inspectMaterials,
+            limit: 1,
+            materialCursor: cursor
+        )
+        #expect(try roundTrip(continuation) == continuation)
+        #expect(throws: ResearchContextContractError.self) {
+            _ = try ResearchContextRequest(clauses: [
+                continuation,
+                try ResearchContextClause(
+                    kind: .discoverNote,
+                    query: "another clause"
+                ),
+            ])
         }
     }
 

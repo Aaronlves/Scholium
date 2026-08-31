@@ -227,7 +227,7 @@ struct ResearchAgentSessionAuthorityTests {
         #expect(structured.availability == .invalidQuery)
         #expect(structured.items.isEmpty)
         #expect(structured.outcomes.first?.limitations.contains {
-            $0.contains("Research Context schema 6")
+            $0.contains("Research Context schema 7")
         } == true)
 
         let properties = try await handle.research.queryAgentResearchContext(
@@ -542,8 +542,8 @@ struct ResearchAgentSessionAuthorityTests {
                 loadDocument: { _ in
                     throw ResearchAgentSessionTestFailure.unexpectedOwnerAccess
                 },
-                sourceMaterialStatus: {
-                    .repairRequired(.missingBinding)
+                sourceMaterialPage: { _, _ in
+                    .repairRequired(.repairRequired(.missingBinding))
                 }
             )
         )

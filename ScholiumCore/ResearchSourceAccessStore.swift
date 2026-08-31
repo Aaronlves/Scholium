@@ -15,6 +15,27 @@ public struct ResolvedResearchSourceAccess: Hashable, Sendable {
     }
 }
 
+/// One transient page read through the private source binding. The value is
+/// path-free and leaves Core only as typed Application evidence.
+public struct ResolvedResearchSourcePage: Hashable, Sendable {
+    public let reference: ResearchSourceReference
+    public let bytes: Data
+    public let byteOffset: Int
+    public let totalByteCount: Int
+
+    public init(
+        reference: ResearchSourceReference,
+        bytes: Data,
+        byteOffset: Int,
+        totalByteCount: Int
+    ) {
+        self.reference = reference
+        self.bytes = bytes
+        self.byteOffset = byteOffset
+        self.totalByteCount = totalByteCount
+    }
+}
+
 public enum ResearchSourceAccessStoreError: LocalizedError, Sendable {
     case failure(ResearchSourceAccessFailure)
 
@@ -93,6 +114,7 @@ public actor ResearchSourceAccessStore {
     private struct InspectedFile {
         let url: URL
         let fingerprint: DocumentFingerprint
+        let page: Data?
     }
 
     private let triptychID: UUID
@@ -262,6 +284,55 @@ public actor ResearchSourceAccessStore {
         return ResolvedResearchSourceAccess(
             reference: binding.reference,
             fileURL: inspected.url
+        )
+    }
+
+    /// Reopens and fingerprints the exact private binding, then returns one
+    /// byte page from that same no-follow descriptor. Revalidation and the
+    /// page read therefore cannot be split by path substitution.
+    public func readPage(
+        analysisNoteID: UUID,
+        expectedReference: ResearchSourceReference,
+        byteOffset: Int,
+        maximumByteCount: Int
+    ) throws -> ResolvedResearchSourcePage {
+        guard byteOffset >= 0,
+              maximumByteCount > 0,
+              maximumByteCount <= ResearchContextMaterialPage.maximumByteCount,
+              let binding = try binding(analysisNoteID: analysisNoteID),
+              binding.reference == expectedReference else {
+            throw Self.failure(.sourceChanged)
+        }
+        let resolution: ResearchSourceBookmarkResolution
+        do {
+            resolution = try bookmarkAccess.resolve(binding.bookmarkData)
+        } catch {
+            throw Self.failure(.bookmarkUnavailable)
+        }
+        guard !resolution.isStale else { throw Self.failure(.bookmarkStale) }
+        guard bookmarkAccess.start(resolution.url) else {
+            throw Self.failure(.bookmarkUnavailable)
+        }
+        defer { bookmarkAccess.stop(resolution.url) }
+        let canonical = resolution.url.resolvingSymlinksInPath().standardizedFileURL
+        guard canonical.path == binding.canonicalPath else {
+            throw Self.failure(.bookmarkUnavailable)
+        }
+        let inspected = try Self.inspectFile(
+            at: resolution.url,
+            pageOffset: byteOffset,
+            maximumPageByteCount: maximumByteCount
+        )
+        guard inspected.url.path == binding.canonicalPath,
+              inspected.fingerprint == expectedReference.fingerprint,
+              let page = inspected.page else {
+            throw Self.failure(.sourceChanged)
+        }
+        return ResolvedResearchSourcePage(
+            reference: expectedReference,
+            bytes: page,
+            byteOffset: byteOffset,
+            totalByteCount: inspected.fingerprint.byteCount
         )
     }
 
@@ -678,7 +749,16 @@ public actor ResearchSourceAccessStore {
             && !component.contains("\0")
     }
 
-    private nonisolated static func inspectFile(at url: URL) throws -> InspectedFile {
+    private nonisolated static func inspectFile(
+        at url: URL,
+        pageOffset: Int? = nil,
+        maximumPageByteCount: Int? = nil
+    ) throws -> InspectedFile {
+        guard (pageOffset == nil) == (maximumPageByteCount == nil),
+              pageOffset.map({ $0 >= 0 }) ?? true,
+              maximumPageByteCount.map({ $0 > 0 }) ?? true else {
+            throw failure(.sourceUnreadable)
+        }
         guard url.isFileURL else { throw failure(.sourceNotRegular) }
         let standardized = url.standardizedFileURL
         let canonical = standardized.resolvingSymlinksInPath().standardizedFileURL
@@ -738,8 +818,12 @@ public actor ResearchSourceAccessStore {
             throw failure(.sourceUnreadable)
         }
         let expectedByteCount = Int(openedStatus.st_size)
+        guard pageOffset.map({ $0 <= expectedByteCount }) ?? true else {
+            throw failure(.sourceChanged)
+        }
         var hasher = SHA256()
         var byteCount = 0
+        var page = pageOffset.map { _ in Data() }
         do {
             while byteCount < expectedByteCount {
                 let requested = min(
@@ -749,6 +833,21 @@ public actor ResearchSourceAccessStore {
                 guard let data = try handle.read(upToCount: requested),
                       !data.isEmpty else {
                     throw failure(.sourceChanged)
+                }
+                if let pageOffset, let maximumPageByteCount {
+                    let pageEnd = min(
+                        expectedByteCount,
+                        pageOffset + maximumPageByteCount
+                    )
+                    let chunkStart = byteCount
+                    let chunkEnd = byteCount + data.count
+                    let overlapStart = max(chunkStart, pageOffset)
+                    let overlapEnd = min(chunkEnd, pageEnd)
+                    if overlapStart < overlapEnd {
+                        page?.append(data.subdata(in:
+                            (overlapStart - chunkStart)..<(overlapEnd - chunkStart)
+                        ))
+                    }
                 }
                 hasher.update(data: data)
                 byteCount += data.count
@@ -783,7 +882,8 @@ public actor ResearchSourceAccessStore {
         let digest = hasher.finalize().map { String(format: "%02x", $0) }.joined()
         return InspectedFile(
             url: canonical,
-            fingerprint: DocumentFingerprint(sha256: digest, byteCount: byteCount)
+            fingerprint: DocumentFingerprint(sha256: digest, byteCount: byteCount),
+            page: page
         )
     }
 
