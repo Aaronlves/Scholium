@@ -1936,9 +1936,14 @@ function refreshMermaidTheme() {
 function setDynamicStyle(id: string, css: string) {
   const style = document.getElementById(id);
   if (!style || style.textContent === css) return false;
+  const geometry = scrollCoordinator.captureGeometry();
   style.textContent = css;
-  scrollCoordinator.scheduleGeometryReport();
-  void document.fonts.ready.then(scrollCoordinator.scheduleGeometryReport);
+  scrollCoordinator.scheduleGeometryReport(geometry);
+  if (document.fonts.status !== "loaded") {
+    void document.fonts.ready.then(() => {
+      scrollCoordinator.scheduleGeometryReport(geometry);
+    });
+  }
   return true;
 }
 

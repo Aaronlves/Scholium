@@ -3274,6 +3274,85 @@ struct MarkdownEditorWebViewIntegrationTests {
         pasteboard.clearContents()
     }
 
+    @Test("Presentation CSS preserves the semantic Source scroll anchor across reflow")
+    func presentationCSSPreservesSourceScrollAnchor() async throws {
+        let lines = (1...96).map { index in
+            "Research line \(index) keeps one deliberately extended argument in view while the configured editorial measure changes around it."
+        }
+        let source = lines.joined(separator: "\n") + "\n"
+        let target = lines[63]
+        let targetRange = try #require(source.range(of: target))
+        let targetLowerBound = targetRange.lowerBound.utf16Offset(in: source)
+        let targetUpperBound = targetRange.upperBound.utf16Offset(in: source)
+        let harness = EditorHarness(
+            source: source,
+            initialMode: .source,
+            initialWindowSize: NSSize(width: 1_080, height: 520)
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let regularProfile = DocumentAppearanceProfile(name: "Regular Measure")
+        harness.setPresentationCSS(
+            ScholiumDocumentPresentationConfiguration(
+                textScale: ScholiumMetrics.Document.defaultTextScale
+            ).css
+                + "\n"
+                + DocumentAppearanceStyles.css(for: regularProfile)
+        )
+        _ = try await harness.waitUntilPresentation(stage: "regular Source measure") {
+            $0.label == "Markdown source editor"
+                && $0.presentation.rootLineWidth == "72ch"
+        }
+        let requested = EditorScrollAnchor(
+            sourceFingerprint: DocumentFingerprint(content: source).sha256,
+            sourceUTF16Offset: targetLowerBound,
+            blockUTF16LowerBound: targetLowerBound,
+            blockUTF16UpperBound: targetUpperBound,
+            relativeBlockPosition: 0,
+            fallbackFraction: 0.66
+        )
+        try await harness.session.testingApplyScrollAnchor(requested)
+        let before = try #require(
+            try await harness.waitUntilCurrentScrollAnchor {
+                abs($0.sourceUTF16Offset - targetLowerBound) < 4
+            }
+        )
+        let selectionBefore = harness.session.context?.selections
+        let undoBefore = harness.session.context?.undoLabel
+
+        let narrowProfile = DocumentAppearanceProfile(
+            name: "Narrow Measure",
+            settings: .init(lineWidthCharacterUnits: 48)
+        )
+        harness.setPresentationCSS(
+            ScholiumDocumentPresentationConfiguration(
+                textScale: ScholiumMetrics.Document.defaultTextScale
+            ).css
+                + "\n"
+                + DocumentAppearanceStyles.css(for: narrowProfile)
+        )
+        _ = try await harness.waitUntilPresentation(stage: "narrow Source measure") {
+            $0.label == "Markdown source editor"
+                && $0.presentation.rootLineWidth == "48ch"
+        }
+        let after = try await harness.waitUntilStableScrollAnchor {
+            $0.sourceFingerprint == before.sourceFingerprint
+                && $0.blockUTF16LowerBound == before.blockUTF16LowerBound
+                && $0.blockUTF16UpperBound == before.blockUTF16UpperBound
+                && abs($0.sourceUTF16Offset - before.sourceUTF16Offset) < 4
+        }
+
+        #expect(after.sourceFingerprint == before.sourceFingerprint)
+        #expect(after.blockUTF16LowerBound == before.blockUTF16LowerBound)
+        #expect(after.blockUTF16UpperBound == before.blockUTF16UpperBound)
+        #expect(abs(after.sourceUTF16Offset - before.sourceUTF16Offset) < 4)
+        #expect(harness.session.context?.selections == selectionBefore)
+        #expect(harness.session.context?.undoLabel == undoBefore)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
     @Test("Current bridge preserves exact commands, diagnostics, mode chrome, and reconstruction state")
     func bridgeCommandRoundTrip() async throws {
         // Swift Testing can schedule unrelated AppKit suites concurrently.
@@ -3290,6 +3369,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         )
         defer { harness.close() }
 
+        var diagnosticStage = "initial readiness"
+        do {
         try await harness.waitUntilReady()
         #expect(harness.session.isReady)
         #expect(harness.session.isLoaded)
@@ -3304,6 +3385,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
         #expect(initial == original)
 
+        diagnosticStage = "initial focus handoff"
         harness.session.resignFocus()
         try await Task.sleep(for: .milliseconds(150))
         do {
@@ -3315,6 +3397,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         harness.session.focus()
         try await harness.waitUntilFocused()
 
+        diagnosticStage = "initial semantic presentation"
         let accessibility: MarkdownEditorSession.TestingAccessibilitySnapshot
         do {
             accessibility = try await harness.session.testingAccessibilitySnapshot()
@@ -3371,6 +3454,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let calloutSource = "> [!state] Shared claim\n> The same callout must retain its typographic hierarchy."
         let calloutTo = try #require(normalizedOriginal.range(of: calloutSource)?.upperBound)
             .utf16Offset(in: normalizedOriginal)
+        diagnosticStage = "projected Callout interaction"
         try await harness.session.testingClickFirstCalloutText("same callout")
         let pointerDeadline = ContinuousClock().now.advanced(by: .seconds(3))
         while harness.session.context?.selections.first?.head != calloutTo {
@@ -3471,6 +3555,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(live.contentPaddingInlineStart == "20px")
         #expect(live.isFocused)
 
+        diagnosticStage = "Source and Live Preview transitions"
         harness.session.setMode(.source)
         let sourceMode = try await harness.waitUntilPresentation(stage: "Source mode") {
             $0.label == "Markdown source editor"
@@ -3528,6 +3613,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(try await harness.session.currentText(for: harness.documentID) == initial)
         #expect(harness.session.context?.selections.first?.head == bodyEditorOffset)
 
+        diagnosticStage = "exact formatting and mode stress"
         do {
             try await harness.session.perform(.bold)
         } catch {
@@ -3589,6 +3675,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(harness.session.isDirty)
         let insertionOffset = try #require(harness.session.context?.selections.first?.head)
 
+        diagnosticStage = "Web content process recovery"
         // Terminate before the bounded EditorState capture can replace the
         // delta-checked mirror fallback. Recovery must retain the last context
         // selection so the next insertion remains at the end of the source.
@@ -3609,6 +3696,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(Data(afterSelectionRestore.utf8) == Data(expectedAfterSelectionRestore.utf8))
         #expect(Array(afterSelectionRestore.utf16) == Array(expectedAfterSelectionRestore.utf16))
 
+        diagnosticStage = "view reconstruction"
         // Collapse/reopen uses the same explicit recovery capture before
         // SwiftUI dismantles the WKWebView. The retained session must restore
         // exact bytes, selection, bounded undo history, focus, and scroll.
@@ -3616,6 +3704,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         _ = try #require(harness.session.context?.undoLabel)
         let beforeScroll = try await harness.session.testingAccessibilitySnapshot()
         #expect(beforeScroll.scrollExtent > 0)
+        diagnosticStage = "view reconstruction anchor preparation"
         try await harness.session.testingApplyScrollFraction(0.65)
         let fractionScrollAnchor = try await harness.waitUntilScrollAnchor()
         #expect(fractionScrollAnchor.fallbackFraction > 0.2)
@@ -3638,17 +3727,23 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(semanticScrollAnchor.sourceUTF16Offset <= semanticScrollAnchor.blockUTF16UpperBound)
 
         #expect(harness.session.testingRetainedScrollAnchor?.blockUTF16LowerBound == semanticScrollAnchor.blockUTF16LowerBound)
+        diagnosticStage = "view reconstruction state capture"
         try await harness.session.captureStateForViewReconstruction()
         #expect(harness.session.testingRetainedScrollAnchor?.blockUTF16LowerBound == semanticScrollAnchor.blockUTF16LowerBound)
+        diagnosticStage = "view reconstruction detach"
         try await harness.reconstructEditorView()
+        diagnosticStage = "view reconstruction readiness"
         try await harness.waitUntilReady()
         #expect(harness.session.testingRetainedScrollAnchor?.blockUTF16LowerBound == semanticScrollAnchor.blockUTF16LowerBound)
 
+        diagnosticStage = "view reconstruction exact source"
         let afterReopen = try await harness.session.currentText(for: harness.documentID)
         #expect(Data(afterReopen.utf8) == Data(afterSelectionRestore.utf8))
         #expect(harness.session.context?.selections.first == selectionBeforeReconstruction)
         #expect(harness.session.context?.undoLabel != nil)
+        diagnosticStage = "view reconstruction focus"
         try await harness.waitUntilFocused()
+        diagnosticStage = "view reconstruction scroll restoration"
         let restoredScrollAnchor = try await harness.waitUntilCurrentScrollAnchor {
             $0.sourceFingerprint == semanticScrollAnchor.sourceFingerprint
                 && $0.blockUTF16LowerBound == semanticScrollAnchor.blockUTF16LowerBound
@@ -3662,6 +3757,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let restoredAccessibility = try await harness.session.testingAccessibilitySnapshot()
         #expect(restoredAccessibility.isFocused)
 
+        diagnosticStage = "view reconstruction editing and performance"
         try await harness.session.perform(.pastePlain, argument: "?")
         let afterInsertion = try await harness.session.currentText(for: harness.documentID)
         let expectedAfterInsertion = try insertingAtEditorOffset(
@@ -3681,6 +3777,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             $0.durationMilliseconds.isFinite && $0.durationMilliseconds >= 0
                 && $0.observed.values.allSatisfy { $0.isFinite && $0 >= 0 }
         })
+        diagnosticStage = "Source presentation geometry"
         harness.resize(width: 1_080)
         harness.session.setMode(.source)
         let regularSourceGrid = try await harness.waitUntilPresentation(
@@ -3705,6 +3802,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             name: "Narrow Measure",
             settings: .init(lineWidthCharacterUnits: 48)
         )
+        diagnosticStage = "line-width scroll continuity"
         harness.setPresentationCSS(
             ScholiumDocumentPresentationConfiguration(
                 textScale: ScholiumMetrics.Document.defaultTextScale,
@@ -3740,9 +3838,9 @@ struct MarkdownEditorWebViewIntegrationTests {
             anchorAfter.blockUTF16UpperBound - anchorAfter.blockUTF16LowerBound
         ) + 2
         #expect(sourceDistance <= neighboringLineBound)
-        harness.close()
-        try await Task.sleep(for: .milliseconds(500))
+        await harness.closeAndDrain()
 
+        diagnosticStage = "unclosed frontmatter presentation"
         let unclosedSource = "\u{FEFF}---\ntitle: Unclosed\n[[Not a body link]]\n\n| A | B |\n|---|---|\n| $x$ | [^n] |\n\n[^n]: Note\n"
         let unclosedHarness = EditorHarness(source: unclosedSource)
         defer { unclosedHarness.close() }
@@ -3771,18 +3869,24 @@ struct MarkdownEditorWebViewIntegrationTests {
         )
         #expect(Data(unavailableSourceModeSource.utf8) == Data(unclosedSource.utf8))
         #expect(Array(unavailableSourceModeSource.utf16) == Array(unclosedSource.utf16))
-        unclosedHarness.close()
-        try await Task.sleep(for: .milliseconds(300))
+        await unclosedHarness.closeAndDrain()
 
+        diagnosticStage = "Edit and Read presentation matrix"
         let matrixHarness = EditorHarness(source: Self.testingPresentationFixtureSource())
         defer { matrixHarness.close() }
         try await matrixHarness.waitUntilReady()
         let livePresentationScenarios = try await matrixHarness.presentationSnapshots(
-            for: Self.testingPresentationScenarios
+            for: Self.testingPresentationScenarios,
+            height: 1_800
         )
-        matrixHarness.close()
-        try await Task.sleep(for: .milliseconds(300))
+        await matrixHarness.closeAndDrain()
         try await verifyReadSemanticScrollRestoration(liveScenarios: livePresentationScenarios)
+        } catch {
+            Issue.record(
+                "The bridge round-trip failed during \(diagnosticStage): \(error)."
+            )
+            throw error
+        }
     }
 
     private func inserting(_ insertion: String, atUTF16 offset: Int, in source: String) throws -> String {
@@ -3911,9 +4015,11 @@ struct MarkdownEditorWebViewIntegrationTests {
         func waitUntilReady() async throws {
             let clock = ContinuousClock()
             let deadline = clock.now.advanced(by: .seconds(10))
-            while !session.isReady || !session.isLoaded {
+            while !session.isReady || !session.isLoaded
+                    || !session.hasAttachedWebView {
                 if clock.now >= deadline {
-                    Issue.record(Comment(rawValue: session.errorMessage ?? "The WKWebView editor did not become ready."))
+                    Issue.record(Comment(rawValue: session.errorMessage
+                        ?? "The WKWebView editor did not become ready with an attached view."))
                     throw MarkdownEditorSession.SessionError.unavailable
                 }
                 try await Task.sleep(for: .milliseconds(25))
@@ -4066,6 +4172,32 @@ struct MarkdownEditorWebViewIntegrationTests {
             }
         }
 
+        func waitUntilStableScrollAnchor(
+            matching predicate: (EditorScrollAnchor) -> Bool
+        ) async throws -> EditorScrollAnchor {
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(3))
+            var previous: EditorScrollAnchor?
+            var stableSampleCount = 0
+            while true {
+                let anchor = try #require(try await session.currentScrollAnchor())
+                if predicate(anchor), anchor == previous {
+                    stableSampleCount += 1
+                    if stableSampleCount >= 3 { return anchor }
+                } else {
+                    stableSampleCount = predicate(anchor) ? 1 : 0
+                }
+                previous = anchor
+                if clock.now >= deadline {
+                    Issue.record(
+                        "The editor did not stabilize its semantic scroll anchor; latest: \(anchor)."
+                    )
+                    throw MarkdownEditorSession.SessionError.unavailable
+                }
+                try await Task.sleep(for: .milliseconds(25))
+            }
+        }
+
         func waitUntilPresentation(
             stage: String,
             _ predicate: (MarkdownEditorSession.TestingAccessibilitySnapshot) -> Bool
@@ -4086,24 +4218,42 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
 
         func presentationSnapshots(
-            for scenarios: [TestingPresentationScenario]
+            for scenarios: [TestingPresentationScenario],
+            height: CGFloat = 520
         ) async throws -> [(TestingPresentationScenario, MarkdownEditorSession.TestingPresentationSnapshot)] {
             var snapshots: [(TestingPresentationScenario, MarkdownEditorSession.TestingPresentationSnapshot)] = []
+            let requiresCallout = sourceBox.source.contains("> [!")
+            let requiresTable = sourceBox.source.contains("|:---")
+                || sourceBox.source.contains("| ---")
+            let requiresMath = sourceBox.source.contains("$$")
+            let requiresFootnote = sourceBox.source.contains("[^")
             for scenario in scenarios {
                 window.appearance = NSAppearance(named: scenario.appearanceName)
-                window.setContentSize(NSSize(width: scenario.width, height: 520))
+                window.setContentSize(NSSize(width: scenario.width, height: height))
                 sourceBox.userCSS = scenario.liveUserCSS
                 sourceBox.presentationCSS = scenario.presentationCSS
                 _ = try await waitUntilPresentation(stage: scenario.name) {
                     $0.label == "Markdown editor, Edit mode"
                         && $0.presentation.rootTextScale == scenario.expectedTextScale
                         && $0.presentation.documentWidth > 0
+                        && (!requiresCallout || $0.liveCalloutWidgetCount > 0)
+                        && (!requiresTable || $0.semanticTableCount > 0)
+                        && (!requiresMath || $0.renderedMathCount > 0)
+                        && $0.mathErrorCount == 0
+                        && (!requiresFootnote || $0.footnoteReferenceCount > 0)
+                        && (!requiresFootnote || $0.footnoteDefinitionSourceCount > 0)
                 }
                 try await Task.sleep(for: .milliseconds(100))
                 let snapshot = try await waitUntilPresentation(stage: "stable \(scenario.name)") {
                     $0.label == "Markdown editor, Edit mode"
                         && $0.presentation.rootTextScale == scenario.expectedTextScale
                         && $0.presentation.documentWidth > 0
+                        && (!requiresCallout || $0.liveCalloutWidgetCount > 0)
+                        && (!requiresTable || $0.semanticTableCount > 0)
+                        && (!requiresMath || $0.renderedMathCount > 0)
+                        && $0.mathErrorCount == 0
+                        && (!requiresFootnote || $0.footnoteReferenceCount > 0)
+                        && (!requiresFootnote || $0.footnoteDefinitionSourceCount > 0)
                 }
                 snapshots.append((scenario, snapshot.presentation))
             }

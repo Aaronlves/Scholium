@@ -31276,6 +31276,9 @@ ${fence}
         fallbackFraction
       };
     }
+    function captureGeometry() {
+      return { anchor: currentAnchor(), document: editor2.state.doc };
+    }
     function postCurrent() {
       options.post(currentAnchor());
     }
@@ -31319,17 +31322,41 @@ ${fence}
         sessionDroppedFrameCount = 0;
       }, 120);
     }, { passive: true });
+    function validAnchor(anchor) {
+      const documentLength = editor2.state.doc.length;
+      return Number.isSafeInteger(anchor.sourceUTF16Offset) && anchor.sourceUTF16Offset >= 0 && anchor.sourceUTF16Offset <= documentLength && Number.isSafeInteger(anchor.blockUTF16LowerBound) && Number.isSafeInteger(anchor.blockUTF16UpperBound) && anchor.blockUTF16LowerBound >= 0 && anchor.blockUTF16LowerBound <= anchor.sourceUTF16Offset && anchor.blockUTF16UpperBound >= anchor.sourceUTF16Offset && anchor.blockUTF16UpperBound <= documentLength;
+    }
+    function requestedScrollTop(anchor) {
+      if (!validAnchor(anchor)) {
+        const fraction = Number.isFinite(anchor.fallbackFraction) ? Math.max(0, Math.min(1, anchor.fallbackFraction)) : 0;
+        const extent = Math.max(0, editor2.scrollDOM.scrollHeight - editor2.scrollDOM.clientHeight);
+        return extent * fraction;
+      }
+      const relativePosition = Math.max(0, Math.min(1, anchor.relativeBlockPosition));
+      const blockProbe = anchor.sourceUTF16Offset === anchor.blockUTF16LowerBound && anchor.blockUTF16UpperBound > anchor.blockUTF16LowerBound ? anchor.blockUTF16LowerBound + 1 : anchor.sourceUTF16Offset;
+      const block = editor2.lineBlockAt(blockProbe);
+      return Math.max(0, block.top + block.height * relativePosition - 4);
+    }
     let geometryReportScheduled = false;
-    function scheduleGeometryReport() {
+    let pendingGeometrySnapshot;
+    function scheduleGeometryReport(snapshot) {
+      pendingGeometrySnapshot ??= snapshot;
       if (geometryReportScheduled) return;
       geometryReportScheduled = true;
       queueMicrotask(() => {
         geometryReportScheduled = false;
-        const documentSnapshot = editor2.state.doc;
+        const geometrySnapshot = pendingGeometrySnapshot;
+        pendingGeometrySnapshot = void 0;
+        const documentSnapshot = geometrySnapshot?.document ?? editor2.state.doc;
         editor2.requestMeasure({
-          read: () => editor2.state.doc === documentSnapshot,
-          write: (isCurrentDocument) => {
-            if (isCurrentDocument && editor2.state.doc === documentSnapshot) postCurrent();
+          read: () => {
+            if (editor2.state.doc !== documentSnapshot) return void 0;
+            return geometrySnapshot ? requestedScrollTop(geometrySnapshot.anchor) : null;
+          },
+          write: (scrollTop) => {
+            if (scrollTop === void 0 || editor2.state.doc !== documentSnapshot) return;
+            if (scrollTop !== null) editor2.scrollDOM.scrollTop = scrollTop;
+            postCurrent();
           }
         });
       });
@@ -31342,23 +31369,16 @@ ${fence}
     }
     function setAnchor(anchor) {
       options.flushPresentationGeometry();
-      const documentLength = editor2.state.doc.length;
-      const valid = Number.isSafeInteger(anchor.sourceUTF16Offset) && anchor.sourceUTF16Offset >= 0 && anchor.sourceUTF16Offset <= documentLength && Number.isSafeInteger(anchor.blockUTF16LowerBound) && Number.isSafeInteger(anchor.blockUTF16UpperBound) && anchor.blockUTF16LowerBound >= 0 && anchor.blockUTF16LowerBound <= anchor.sourceUTF16Offset && anchor.blockUTF16UpperBound >= anchor.sourceUTF16Offset && anchor.blockUTF16UpperBound <= documentLength;
-      if (!valid) {
+      if (!validAnchor(anchor)) {
         setFraction(anchor.fallbackFraction);
         return;
       }
       const documentSnapshot = editor2.state.doc;
-      const relativePosition = Math.max(0, Math.min(1, anchor.relativeBlockPosition));
       const blockProbe = anchor.sourceUTF16Offset === anchor.blockUTF16LowerBound && anchor.blockUTF16UpperBound > anchor.blockUTF16LowerBound ? anchor.blockUTF16LowerBound + 1 : anchor.sourceUTF16Offset;
-      const requestedScrollTop = () => {
-        const block = editor2.lineBlockAt(blockProbe);
-        return Math.max(0, block.top + block.height * relativePosition - 4);
-      };
       const applyMeasuredAnchor = () => {
         if (editor2.state.doc !== documentSnapshot) return;
         editor2.requestMeasure({
-          read: () => editor2.state.doc === documentSnapshot ? requestedScrollTop() : null,
+          read: () => editor2.state.doc === documentSnapshot ? requestedScrollTop(anchor) : null,
           write: (scrollTop) => {
             if (scrollTop === null || editor2.state.doc !== documentSnapshot) return;
             editor2.scrollDOM.scrollTop = scrollTop;
@@ -31370,7 +31390,7 @@ ${fence}
         if (editor2.state.doc !== documentSnapshot) return;
         editor2.dispatch({ effects: EditorView.scrollIntoView(blockProbe, { y: "start", yMargin: 4 }) });
       };
-      editor2.scrollDOM.scrollTop = requestedScrollTop();
+      editor2.scrollDOM.scrollTop = requestedScrollTop(anchor);
       postCurrent();
       applyScrollEffect();
       applyMeasuredAnchor();
@@ -31384,7 +31404,14 @@ ${fence}
         applyMeasuredAnchor();
       }, 80);
     }
-    return { currentAnchor, postCurrent, scheduleGeometryReport, setAnchor, setFraction };
+    return {
+      captureGeometry,
+      currentAnchor,
+      postCurrent,
+      scheduleGeometryReport,
+      setAnchor,
+      setFraction
+    };
   }
 
   // context-menu.ts
@@ -37678,9 +37705,14 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   function setDynamicStyle(id2, css2) {
     const style = document.getElementById(id2);
     if (!style || style.textContent === css2) return false;
+    const geometry = scrollCoordinator.captureGeometry();
     style.textContent = css2;
-    scrollCoordinator.scheduleGeometryReport();
-    void document.fonts.ready.then(scrollCoordinator.scheduleGeometryReport);
+    scrollCoordinator.scheduleGeometryReport(geometry);
+    if (document.fonts.status !== "loaded") {
+      void document.fonts.ready.then(() => {
+        scrollCoordinator.scheduleGeometryReport(geometry);
+      });
+    }
     return true;
   }
   function flushPresentationStyleAndGeometry() {

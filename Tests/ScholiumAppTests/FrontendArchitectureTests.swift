@@ -5698,8 +5698,33 @@ struct FrontendArchitectureTests {
             anchorTail.range(
                 of: "options.flushPresentationGeometry();"
             ))
-        let anchorGeometry = try #require(anchorTail.range(of: "editor.lineBlockAt(blockProbe)"))
+        let anchorGeometry = try #require(
+            anchorTail.range(of: "requestedScrollTop(anchor)")
+        )
         #expect(anchorBarrier.lowerBound < anchorGeometry.lowerBound)
+        let requestedScrollTop = try #require(
+            scrollSource.range(of: "function requestedScrollTop(anchor: EditorScrollAnchor) {")
+        )
+        #expect(scrollSource[requestedScrollTop.lowerBound...].contains(
+            "editor.lineBlockAt(blockProbe)"
+        ))
+        let dynamicStyle = try #require(
+            editorSource.range(of: "function setDynamicStyle(id: string, css: string) {")
+        )
+        let dynamicStyleTail = editorSource[dynamicStyle.lowerBound...]
+        let capturedGeometry = try #require(
+            dynamicStyleTail.range(of: "scrollCoordinator.captureGeometry()")
+        )
+        let styleMutation = try #require(
+            dynamicStyleTail.range(of: "style.textContent = css")
+        )
+        let measuredRestoration = try #require(
+            dynamicStyleTail.range(of: "scrollCoordinator.scheduleGeometryReport(geometry)")
+        )
+        #expect(capturedGeometry.lowerBound < styleMutation.lowerBound)
+        #expect(styleMutation.lowerBound < measuredRestoration.lowerBound)
+        #expect(scrollSource.contains("editor.requestMeasure({"))
+        #expect(scrollSource.contains("editor.scrollDOM.scrollTop = scrollTop"))
         #expect(
             editorSource.contains(
                 "flushPresentationGeometry: flushPresentationStyleAndGeometry"

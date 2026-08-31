@@ -1,11 +1,18 @@
 import {EditorView} from "@codemirror/view";
+import type {Text} from "@codemirror/state";
 import type {EditorScrollAnchor} from "./protocol";
 import {recordEditorMetric} from "./performance";
 
+export interface EditorGeometrySnapshot {
+  anchor: EditorScrollAnchor;
+  document: Text;
+}
+
 export interface EditorScrollCoordinator {
+  captureGeometry(): EditorGeometrySnapshot;
   currentAnchor(): EditorScrollAnchor;
   postCurrent(): void;
-  scheduleGeometryReport(): void;
+  scheduleGeometryReport(snapshot?: EditorGeometrySnapshot): void;
   setAnchor(anchor: EditorScrollAnchor): void;
   setFraction(fraction: number): void;
 }
@@ -36,6 +43,10 @@ export function createEditorScrollCoordinator(
       relativeBlockPosition,
       fallbackFraction,
     };
+  }
+
+  function captureGeometry(): EditorGeometrySnapshot {
+    return {anchor: currentAnchor(), document: editor.state.doc};
   }
 
   function postCurrent() {
@@ -83,17 +94,58 @@ export function createEditorScrollCoordinator(
     }, 120);
   }, {passive: true});
 
+  function validAnchor(anchor: EditorScrollAnchor) {
+    const documentLength = editor.state.doc.length;
+    return Number.isSafeInteger(anchor.sourceUTF16Offset)
+      && anchor.sourceUTF16Offset >= 0
+      && anchor.sourceUTF16Offset <= documentLength
+      && Number.isSafeInteger(anchor.blockUTF16LowerBound)
+      && Number.isSafeInteger(anchor.blockUTF16UpperBound)
+      && anchor.blockUTF16LowerBound >= 0
+      && anchor.blockUTF16LowerBound <= anchor.sourceUTF16Offset
+      && anchor.blockUTF16UpperBound >= anchor.sourceUTF16Offset
+      && anchor.blockUTF16UpperBound <= documentLength;
+  }
+
+  function requestedScrollTop(anchor: EditorScrollAnchor) {
+    if (!validAnchor(anchor)) {
+      const fraction = Number.isFinite(anchor.fallbackFraction)
+        ? Math.max(0, Math.min(1, anchor.fallbackFraction))
+        : 0;
+      const extent = Math.max(0, editor.scrollDOM.scrollHeight - editor.scrollDOM.clientHeight);
+      return extent * fraction;
+    }
+    const relativePosition = Math.max(0, Math.min(1, anchor.relativeBlockPosition));
+    const blockProbe = anchor.sourceUTF16Offset === anchor.blockUTF16LowerBound
+      && anchor.blockUTF16UpperBound > anchor.blockUTF16LowerBound
+      ? anchor.blockUTF16LowerBound + 1
+      : anchor.sourceUTF16Offset;
+    const block = editor.lineBlockAt(blockProbe);
+    return Math.max(0, block.top + block.height * relativePosition - 4);
+  }
+
   let geometryReportScheduled = false;
-  function scheduleGeometryReport() {
+  let pendingGeometrySnapshot: EditorGeometrySnapshot | undefined;
+  function scheduleGeometryReport(snapshot?: EditorGeometrySnapshot) {
+    pendingGeometrySnapshot ??= snapshot;
     if (geometryReportScheduled) return;
     geometryReportScheduled = true;
     queueMicrotask(() => {
       geometryReportScheduled = false;
-      const documentSnapshot = editor.state.doc;
+      const geometrySnapshot = pendingGeometrySnapshot;
+      pendingGeometrySnapshot = undefined;
+      const documentSnapshot = geometrySnapshot?.document ?? editor.state.doc;
       editor.requestMeasure({
-        read: () => editor.state.doc === documentSnapshot,
-        write: (isCurrentDocument) => {
-          if (isCurrentDocument && editor.state.doc === documentSnapshot) postCurrent();
+        read: () => {
+          if (editor.state.doc !== documentSnapshot) return undefined;
+          return geometrySnapshot
+            ? requestedScrollTop(geometrySnapshot.anchor)
+            : null;
+        },
+        write: (scrollTop) => {
+          if (scrollTop === undefined || editor.state.doc !== documentSnapshot) return;
+          if (scrollTop !== null) editor.scrollDOM.scrollTop = scrollTop;
+          postCurrent();
         },
       });
     });
@@ -110,34 +162,21 @@ export function createEditorScrollCoordinator(
 
   function setAnchor(anchor: EditorScrollAnchor) {
     options.flushPresentationGeometry();
-    const documentLength = editor.state.doc.length;
-    const valid = Number.isSafeInteger(anchor.sourceUTF16Offset)
-      && anchor.sourceUTF16Offset >= 0
-      && anchor.sourceUTF16Offset <= documentLength
-      && Number.isSafeInteger(anchor.blockUTF16LowerBound)
-      && Number.isSafeInteger(anchor.blockUTF16UpperBound)
-      && anchor.blockUTF16LowerBound >= 0
-      && anchor.blockUTF16LowerBound <= anchor.sourceUTF16Offset
-      && anchor.blockUTF16UpperBound >= anchor.sourceUTF16Offset
-      && anchor.blockUTF16UpperBound <= documentLength;
-    if (!valid) {
+    if (!validAnchor(anchor)) {
       setFraction(anchor.fallbackFraction);
       return;
     }
     const documentSnapshot = editor.state.doc;
-    const relativePosition = Math.max(0, Math.min(1, anchor.relativeBlockPosition));
     const blockProbe = anchor.sourceUTF16Offset === anchor.blockUTF16LowerBound
       && anchor.blockUTF16UpperBound > anchor.blockUTF16LowerBound
       ? anchor.blockUTF16LowerBound + 1
       : anchor.sourceUTF16Offset;
-    const requestedScrollTop = () => {
-      const block = editor.lineBlockAt(blockProbe);
-      return Math.max(0, block.top + block.height * relativePosition - 4);
-    };
     const applyMeasuredAnchor = () => {
       if (editor.state.doc !== documentSnapshot) return;
       editor.requestMeasure({
-        read: () => editor.state.doc === documentSnapshot ? requestedScrollTop() : null,
+        read: () => editor.state.doc === documentSnapshot
+          ? requestedScrollTop(anchor)
+          : null,
         write: (scrollTop) => {
           if (scrollTop === null || editor.state.doc !== documentSnapshot) return;
           editor.scrollDOM.scrollTop = scrollTop;
@@ -149,7 +188,7 @@ export function createEditorScrollCoordinator(
       if (editor.state.doc !== documentSnapshot) return;
       editor.dispatch({effects: EditorView.scrollIntoView(blockProbe, {y: "start", yMargin: 4})});
     };
-    editor.scrollDOM.scrollTop = requestedScrollTop();
+    editor.scrollDOM.scrollTop = requestedScrollTop(anchor);
     postCurrent();
     applyScrollEffect();
     applyMeasuredAnchor();
@@ -164,5 +203,12 @@ export function createEditorScrollCoordinator(
     }, 80);
   }
 
-  return {currentAnchor, postCurrent, scheduleGeometryReport, setAnchor, setFraction};
+  return {
+    captureGeometry,
+    currentAnchor,
+    postCurrent,
+    scheduleGeometryReport,
+    setAnchor,
+    setFraction,
+  };
 }
