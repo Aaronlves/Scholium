@@ -1,696 +1,219 @@
 # Specification: Document and Research Interface
 
-[SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md) · Sections 18.4–18.7. Shared
-state presentation belongs to [Scholium Design](../../Design.md#199-cross-functional-state-language).
+[SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md) · Sections 18.4–18.7. Shared state
+presentation belongs to [Scholium Design](../../Design.md#199-cross-functional-state-language).
 
 ## 18.4 Document modes, context, and Metadata
 
-Review, Edit, and Source are modes, not tabs, and follow Section 5.1. Their
-chooser retains exactly one current selection for each live Triptych workspace
-session, owned by the Document presentation rather than by a Note or Document
-tab. Each workspace starts in Edit and carries that mode across Note
-and tab changes. Switching workspace retains the origin selection and restores
-the destination workspace's live selection with its tab group; it does not
-create a per-Note mode history or reconstruct an editor. Window-session
-persistence may restore the three workspace selections as presentation state
-but never writes them to Markdown or a vault. Ordinary scrolling space clears
-initial editor content from chrome. Review owns a
-transient Comment bar and its in-place field; Edit owns a separate formatting
-bar; Source owns neither. Each disappears when the selection clears, focus
-leaves its task, or the document mode changes. The Comment field also
-disappears when the researcher cancels or a save is acknowledged. Neither bar
-appears during a pointer-selection gesture: it is evaluated only after
-primary-button release, while a completed keyboard selection remains immediate.
-At ordinary widths, each compact bar is horizontally centered above its
-completed selection and clamped to the viewport, moving below only when there
-is insufficient space above. While visible, the bar and an expanded Comment
-field retain the same document-coordinate anchor as the document scrolls
-instead of remaining fixed at an obsolete viewport coordinate. Cancelling an
-empty Review Comment releases its input focus and retained action anchor, so
-the next pointer or keyboard selection is immediately available without
-erasing the current visible selection.
+Review, Edit, and Source are modes over one Document, not tabs. Each live
+Triptych workspace session owns one current mode, starting in Edit and retained
+across its Note/tab changes. Switching workspace restores that workspace's
+selection. Mode state never becomes a Note, vault, or Markdown fact.
 
-Saved current-revision Comments use a quiet line treatment and margin
-`text.bubble` marker. One Discussion/range has one marker and Comment count.
-Activation opens the latest matching Comment; its locator returns to Review.
-A mismatch removes the marker and labels the locator noninteractive **Earlier
-revision**. Each Comment retains only its rendered selection, bounded to 2,000
-UTF-16 units, with no surrounding context. The first Agent response atomically
-forms the Record and removes every Discussion Comment from Review; later
-authorized Note changes do not alter this rule.
+Review owns the passage Comment surface; Edit owns formatting; Source owns
+neither. Contextual surfaces appear only after selection completes, remain
+anchored to the source location while scrolling, and disappear when their
+selection, focus, task, or mode ends. Cancelling Comment must not erase the
+visible selection.
 
-Managed New Note selects Edit and focuses the exact body start after commit.
-Editor failure retains the Note with **Retry Edit** and **Source**.
+Current-revision Comments use one quiet source-line treatment and counted
+margin marker per Discussion/range. Activation opens the matching Discussion
+turn; its locator returns to Review. Revision mismatch removes the current
+marker and labels the locator **Earlier revision**. The first Agent response
+forms the Record and removes the active markers.
 
-An exact empty body presents **Empty Note** and **This note has no body
-content.** without starting a renderer. Malformed frontmatter, whitespace,
-unavailable source, unresolved reads, and render failures remain distinct.
+Managed New Note opens Edit at the exact body start after durable commit.
+Editor failure retains the Note and offers **Retry Edit** and **Source**. An
+exact empty body has a distinct quiet state; malformed YAML, whitespace,
+unavailable source, and render failure are not Empty.
 
-The two selection surfaces share one restrained component style: an opaque
-document-adjacent semantic surface, a neutral semantic separator boundary,
-semantic text, and the same Accent focus treatment. Accent does not outline the
-resting bar or its menus. They consume only resolved roles derived from
-Variables. Both bars use the shallow **floating control** Elevation role;
-Edit's custom menus and submenu use the **bounded panel** role. Each visible
-container paints at most one role-owned shadow, and shadow remains secondary to
-its surface and boundary. These surfaces introduce no independent colors,
-blur, glass, or shadow recipes.
+Edit's compact formatting surface presents frequent text styles, Bold, Italic,
+Strikethrough, Highlight, Link, Wikilink/Vector Link, and More. Less frequent
+code, lists, blockquote, Markdown Comment, image, and insertion actions may move
+into one bounded menu without losing menu/keyboard access. Menu labels name
+actions rather than syntax.
 
-Edit's formatting bar keeps the frequent commands visible in this order:
-**Text Style** (Paragraph and Heading 1–6), **Bold**, **Italic**,
-**Strikethrough**, **Highlight**, **Link**, a **Wiki** split control, and
-**More**. Wiki applies a Wikilink directly; its adjacent, undivided chevron
-opens **Supports**, **Opposes**, and **Incompatible** Vector Link actions.
-More contains **Inline Code**, **Code Block**, one **Lists** submenu for bullet,
-numbered, and checkbox lists, **Blockquote**, **Comment** (the Markdown Comment
-wrapper), **Import Image…**, and **Index Image…**. Both image routes also appear
-in Format and Insert. A
-constrained-width presentation may also move Strikethrough and Highlight into
-More without changing command availability. Familiar formatting actions and
-all Vector Link relationship actions use direct monochrome SF Symbols with one
-quiet optical weight; Scholium does not redraw equivalent marks. Wiki remains
-a short text label. Menu rows show action names, never syntax examples; only
-Lists nests.
+Caret suggestions use one bounded panel attached to the editor caret. They keep
+document focus, show only useful identity/path context, fit the viewport, and
+never introduce another text owner. Selection, menus, and suggestion panels use
+the semantic surfaces, boundaries, and elevation roles in §19.
 
-Edit's Wikilink and slash-command suggestions use one caret-anchored bounded
-panel rather than a window, sheet, toolbar, or second text field. It follows the
-editor caret as the document scrolls and flips above only when space below
-is insufficient. The neutral boundary, opaque Document-adjacent surface,
-**bounded panel** Elevation role, 12 CSS px interface labels, direct 14 CSS px
-monochrome SF Symbols, 28 CSS px minimum rows, and Accent-free resting boundary
-match the selection-menu grammar. Note rows may add one quiet, ellipsized path;
-command and Callout-role rows show only names, never delimiters or syntax
-previews. A bare block-safe slash shows four frequent entries; subsequent input
-searches the complete command set while rendering at most seven visible
-matches. The list remains content-fitting and viewport-bounded rather than
-reserving width for absent detail.
+All modes use one adaptive editorial grid and one Appearance **Line width**
+value. Review/Edit use scholarly type; Source uses exact-source type. The
+measure remains centered with readable logical insets and adapts at narrow
+widths and enlarged text. Source soft-wraps visual rows without changing
+logical lines. Layout changes reconfigure the retained editor rather than
+replace its buffer, selection, Undo, composition, scroll, or focus.
 
-All modes use one adaptive editorial-grid configuration for insets, responsive
-threshold, trailing space, text scale, and semantic typography. The selected
-Appearance supplies exactly one **Line width** value: default **72ch**, range
-**48–96ch**, step **1ch**. Scholium provides no built-in preset, full-width
-switch, percentage mode, or per-mode override. Remaining inline space is split
-symmetrically with `max(mode minimum inset, (available width - line width) / 2)`.
-The regular minimum inset is **32 CSS px** in Review/Edit and **40 CSS px** in
-Source; all three reduce to **20 CSS px** below **44rem**. The **32 CSS px** top
-inset and existing trailing scrolling space remain separate. CSS lengths never
-convert to macOS points. `ch` resolves against Review/Edit Body type or Source's
-exact-source type and therefore does not promise an exact character count.
-At ordinary, narrow, mixed-script, and 100%/200% text presentations, all three
-modes retain the shared measure and minimum insets. Edit and Source reconfigure
-one retained editor state; window, split, theme,
-line-width, or text-size changes never replace it or create an Editor window.
+Beta/1.0 interactive writing supports English, Simplified Chinese, and mixed
+content. Every Unicode byte remains preserved and Source-visible. Code,
+mathematics, and inert raw HTML are isolated technical regions. Complete RTL
+chrome/input behavior remains deferred under §17, but all Scholium-owned layout
+uses logical start/end edges.
 
-Each researcher-authored semantic text block preserves its exact Unicode source
-independently of interface language. Beta and 1.0 interactive writing support
-covers English, Simplified Chinese, and mixed English/Chinese content. Other
-scripts remain byte-preserved and available in Source, but complete
-bidirectional rendering, visual cursor and selection behavior, and installed
-RTL input-method behavior are deferred under §17. Scholium never normalizes,
-reconstructs, or silently replaces unsupported source. Code, mathematics, and
-inert raw-HTML source remain left-to-right isolated technical regions. Interface
-language never forces the direction of document prose, all Scholium-owned
-spacing and boundaries use logical start/end edges so later RTL support requires
-no second layout system, and user-authored raw HTML remains inert rather than
-becoming an alternate direction-control or rendering path.
-
-Appearance is machine-local configuration and never Markdown or vault state.
-It stores multiple named configurations, keeps exactly one selected, and
-supports save, rename, duplicate, and deletion while retaining at least one.
-Structured controls configure the shared Line width plus Body, headings, and
-each semantic Callout. Line width applies to Review, Edit, and Source; Body,
-heading, and Callout presentation applies only to Review and Edit.
-The default configuration uses the values in §19.2; Callout controls map
-presentation parameters without changing protected role structure, generated
-accessible role names, or source-controlled fold state. Mathematics remains
-centered and italic, with automatic numbering on the physical right scoped per
-document; code and tables retain their shared app-owned styles.
-Advanced sanitized CSS snippets are an additive extension inside Appearance,
-but Appearance displays no generated CSS preview. Source typography and the
-application interface are not changed by a document configuration; only the
-shared Line width changes Source layout.
+Document Appearance is machine-local. It manages named configurations for line
+width, Body, headings, and semantic Callouts while preserving protected
+structure and accessibility. Source typography and app chrome are not
+themeable. Advanced CSS is additive and optional.
 
 ### 18.4.1 Advanced CSS boundary
 
-Imported snippets are copied into managed Application Support storage;
-Scholium never loads them directly from a research vault and never modifies the
-imported original. They style document content in Review and Edit only. Exact
-visual parity is not required where Edit must preserve editable geometry.
+Imported CSS is copied into managed Application Support storage and applies
+only to document content in Review/Edit. It is scoped to ordinary prose,
+headings, lists, quotations, tables, code, links, emphasis, marks, and rules,
+using bounded visual declarations.
 
-The supported selector surface is bounded to the document root and ordinary
-prose, heading, list, quotation, table, code, link, emphasis, mark, and rule
-elements. Supported declarations are ordinary visual properties such as color,
-background color, font family, font size, font style, font weight, line height,
-letter spacing, text decoration, borders, border radius, padding, and margins.
+Sanitization rejects imports, executable content, external URLs, escaping
+selectors, `!important`, and declarations that hide, reposition, or cover
+protected information. Callouts, footnotes, Comments, provenance, diagnostics,
+conflicts, recovery, and chrome remain app-owned. Invalid snippets stay disabled
+with errors. Rendering failure enters persistent CSS Safe Mode until the
+researcher disables or selectively re-enables managed copies.
 
-Sanitization rejects imports, `!important`, scripts or executable HTML,
-external URLs, selectors escaping the document root, and declarations that
-hide, remove, reposition, or cover protected research information. Callouts,
-footnotes, Review annotations, provenance warnings, diagnostics, conflict and
-recovery controls, and application chrome remain app-owned protected
-components. Their semantic structure and source-controlled state cannot be
-restyled by a snippet.
-
-An invalid snippet is disabled with an adjacent validation error. A rendering
-failure enters persistent CSS Safe Mode and disables enabled snippets until the
-researcher uses **Disable All Snippets** and re-enables selected managed copies.
-Import, duplicate, rename, reorder, edit, reload, remove, and reveal act only on
-those managed copies.
-
-Toolbar: Sidebar and Back/Forward; Library separator; Heading Outline
-and identity; flexible space; Search, Document Mode, and **Records** at
-§19.3's inline-control spacing; Apparatus separator; trailing Inspector.
-Records opens **This Note** with a selection, otherwise **Triptych**. Mode icon/help
-report Review, Edit, or Source. Activation switches Review/Edit and returns
-Source to Review.
-Source remains selectable only under **View > Document Mode**; `Command-R`
-performs the same switch. Controls remain borderless.
-No second identity row, Document Metadata, or More; complete
-Metadata stays in Research. Compact identity is secondary; H1 remains primary.
+The Document toolbar keeps Sidebar and Back/Forward leading, identity and
+outline in the Document region, then Search, Document Mode, Records, and
+trailing Inspector. Source remains available through the Document Mode menu;
+the toolbar button prioritizes Review/Edit and reports its current value.
 Document Text Size is per-window and source-neutral.
 
-The shared sheet edits Metadata from the current workspace catalog at the
-record revision. Labels and values remain; Help explains definitions. Actions
-reveal on hover/focus without reflow. Whitespace groups fields.
-Contributors retain numbered subfields and the neutral segmented kind selector.
-The sheet never changes YAML. `summary` and `keywords`
-route to Source; unknown YAML is not a field. Definitions remain in Settings.
-Archived fields are absent from Add a Field but remain editable or removable.
-About reuses the configured cross-authority order.
+The Metadata sheet edits the current Note's managed record at its exact
+revision. Definitions come from Settings; archived present fields remain
+editable/removable. Authored `summary`/`keywords` route to Source. About reuses
+the configured cross-authority order and never creates another owner.
 
 ## 18.5 Contextual research and Actions
 
-Apparatus contains Research Inspector only; active Discussion and Research
-Records keep distinct ownership. Active Discussion opens as an
-Action sheet. Research Records is an independent, nonrestored native auxiliary
-window keyed to one Triptych. It reads that Triptych rather than following
-unrelated window focus, uses §19.4's initial size, and is resizable down to
-**700 × 520pt**. It has no Workspace Sidebar control or alternate primary-
-interface mode and never appears inside Inspector.
+Apparatus contains Research Inspector only. Active Discussion remains an Action
+sheet. Research Records is a separate, resizable, nonrestored native auxiliary
+window bound to one Triptych; it never follows unrelated window focus or
+appears inside Inspector.
 
-The ordinary entry is a full-window collection on one continuous semantic
-Document surface. The native toolbar hosts the shared **Records / Reading
-Leads** segmented index: equal text segments, a quiet track, and one raised
-selection plate without Accent fill or shared Liquid Glass. Below it, one adaptive header places search and the borderless native
-Scope and filter menus on one scanning row at wide widths and stacks them only
-when space requires it. The toolbar index is the visible collection identity
-without a count; search fills the header. Ready, empty, filtered-empty,
-partial-load, unavailable, and error states retain this compact hierarchy and
-accessible custom targets. The titlebar,
-toolbar, collection header, and content resolve the same Document background
-and use adaptive 1pt rules rather than contrasting bars, materials, or shadows.
-Native traffic lights, dragging, resizing, full screen, key-window appearance,
-and the window menu remain system-owned. Collection and Reading Lead content
-stay below system chrome while Record detail's reading/evidence boundary remains
-visually continuous through the toolbar band. No scroll owner may pass through
-the titlebar.
+Research Records opens collection-first with a native **Records / Reading
+Leads** index, one search/scope/filter header, and flat rule-separated ledgers.
+Rows show the minimum scanning identity: frozen Record Title, focal Note when
+needed, Action, date, and exceptional limitation/blocked state; Reading Leads
+show disposition plus bibliographic identity. Method, reason, uncertainty, and
+complete result remain in detail. Collections support provider-owned ordering,
+bounded pagination, exact filtered total, and retained loaded rows on later-page
+failure.
 
-Records form one flat rule-separated ledger, not cards or date groups. One
-compact 48pt Triptych row owns an unlabeled 28pt Attention gutter, a two-line
-**Record** cell, **Action**, and **Date**. Record is the frozen one-line Record
-Title in the regular 12pt Default interface role; its second line is the focal Note in
-muted 10pt Sans. This Note omits the redundant second line. Attention, Action, and Date
-center against the complete Record cell. Method, source, and complete results
-remain in detail. Attention stays empty
-normally and uses one icon-only exception mark for Blocked or limited,
-unavailable, or missing Analyze Reliability/Coverage. Help and accessibility
-preserve exact values. Action is a centered, text-only neutral capsule with no
-category color or symbol and no independent action semantics. Records default
-to finished time descending and stable identity. Record, Action, and Date
-headers request provider-owned ordering before pagination. The collection has
-no visible content title, explanatory subtitle, Pin, Research Result synopsis,
-source line, or note count. Reading Leads apply the same compact row, column-header, separator,
-and interaction rhythm. The visible header begins with Title: the leading 32pt
-checkbox track retains the accessible Handled label and sits 8pt from Title,
-followed by Author(s), Year, and Publication. Academic row values use the
-interface family throughout: Title uses the regular 12pt Default interface
-role, while Author(s), Year, Publication, and unavailable-field state use the
-11pt Compact interface role. Switching family does not promote supporting
-values to 12pt; capsules remain 10pt Sans. The checkbox remains independent;
-the four academic columns open detail
-without another glyph. Missing bibliographic facts read **Not recorded**.
-Reason, uncertainty, locators, note, and parent context
-stay in detail. Neither collection introduces an icon well, nested card, badge,
-or trailing detached action region.
+Selecting a Record opens one reading-first detail with a narrower optional
+**Evidence** rail. Back restores collection state. The reading plane contains
+Action/time, scholarly title, distinct Method/source context, attributed
+researcher and Agent prose, Research Result, Follow Up, and optional Method
+Feedback. The Evidence rail contains Changes, Effects, Participants, and
+Technical Details without becoming writable source or a second result owner.
 
-Both collections load exact 100-row slices. The first content-column header
-shows the exact filtered total beside Record or Title in muted 10pt tabular
-figures, without parentheses or a “results” suffix. Reaching the loaded boundary
-requests the next slice while preserving collection state. Later-page failure
-retains loaded rows and exposes Retry at that boundary.
+Record prose supports a limited safe read-only Markdown subset: headings,
+emphasis, inline code, lists, quotations, safe web links, internal links, and
+Wikilinks. Unsupported extensions remain visible as literal source. Resolved
+links use ordinary accessible navigation; missing or ambiguous destinations
+remain noninteractive exact text. Generated presentation never rewrites Record
+content.
 
-Selecting a row enters one route-owned detail. The native toolbar owns Back, omits the generic
-Record title, and retains only meaningful destination titles. Back restores the
-collection state.
-A Record detail contains one dominant reading plane and one narrower
-**Evidence** rail at an approximately **64/36** working proportion;
-additional width accrues to reading first. The panes use the Document and
-Apparatus semantic backgrounds respectively. One 1pt adaptive divider and one
-purpose-named reading-evidence structural shadow distinguish the quieter rail
-from the dominant reading plane; both continue to the top of the native
-full-height split. Increase Contrast removes the shadow and relies on the
-strengthened divider and semantic surface difference. Evidence is expanded by default. A
-native trailing-toolbar control hides or shows the whole rail; hiding it gives
-the available width to reading and does not alter Record, route, or Response
-state. Reading Leads use a corresponding single-occurrence detail route. Focus
-changes in other windows never retarget Scope, View, route, filters, or the
-current detail.
+A Reading Lead detail uses one centered flow: reversible
+Unprocessed/Handled disposition, full citation, bibliography, discovery
+locator, reason, uncertainty, researcher note, source/parent destinations, and
+technical identity. Handled means processed only. Grouping and presentation do
+not turn the lead into an Analysis, Zotero match, or evidence.
 
-A Reading Lead detail uses one centered reading flow rather than the Record's
-split workspace. Its header places one independently operable disposition
-button beside the scholarly title. Unprocessed presents the accented
-**Mark as handled** action with a clock; the immediate optimistic state becomes
-a neutral bordered **Handled** button with a checkmark and remains reversible.
-The control retains an accessible action label and current value; concise Help
-and an accessibility hint preserve that Handled means processed only, never
-read, accepted, cited, verified, or endorsed. The selectable full citation
-follows in muted Scholarly body above the information band. Bibliography
-keeps authors, year, publication, DOI, and Zotero item key together. At regular reading widths Bibliography occupies the wider left side
-of one information band and Discovery Locators occupies its bounded right side;
-at genuinely narrow widths the two complete groups stack in the same order.
-Recommendation reason, uncertainty, researcher note, source and parent
-destinations, then closed Technical Details follow the band.
-Bibliography, Record identity, and Technical Details reuse the
-Inspector About label/value grid, with Sans labels and Note names, Scholarly
-body values. DOI, Zotero item key, and Discovery Locators are scholarly
-content and use that same Scholarly value treatment rather than technical
-identity typography. Exact Record and revision identity remains monospaced.
-Missing bibliography or locator facts remain explicit.
-Record and Reading Lead typography follows §19.2's distinction between
-scholarly content and interface indexes. Visual subordination never permits an
-empty, unavailable, or error state to disappear.
+Record participants and evidence remain bounded provenance, not a dossier or
+reading history. Change comparison shows only confirmed Agent modifications.
+Direct Undo appears per eligible Note and uses §8.4 revision requirements.
+Created Notes show provenance but no fabricated preimage/Undo.
 
-The Record header shows Action and finished time once, one scholarly title, and
-only distinct role, Method, or source metadata. Completed is not repeated there;
-Blocked remains visible. **Research Result** remains present when its Result
-Contract has no academic fields and states that exact condition. It and
-every other reading-plane section share the Apparatus heading token. Attributed
-rows align one fixed authorship track with one Serif academic-prose track.
-Researcher and Agent use distinct semantic
-colors and symbols with visible role labels; generic response-kind labels do not
-repeat the author. Records metadata uses spacing and alignment, never middots.
-For a researcher Comment, its selected passage precedes the Comment as three
-tail-truncated Scholarly lines in `mutedText`, without line number or source
-navigation.
-Free-text Research Result fields, attributed statements, saved Researcher
-Response prose, and Reading Lead reason, uncertainty, and researcher note use
-a limited read-only scholarly markup projection over §8.4's exact text fields.
-The closed subset is ATX/Setext headings, strong, emphasis, inline code,
-ordinary ordered/unordered lists, block quotations, safe `http`/`https` links,
-Markdown internal links, and full Note/heading/block Wikilinks with optional
-display text. Every source heading level appears as the same bold body-sized
-section lead. Embeds, images, task lists, tables, callouts, HTML, code blocks,
-strikethrough, highlighting, and every other extension show exact literal
-source instead of disappearing or invoking the Document renderer. There is no
-live preview, source-mode toggle, or Record markup editor. The projection never
-normalizes the stored string, strict validation, fingerprint, Search, or CLI
-value.
+**Follow Up…** starts a new Action from the selected Record, preserving parent
+lineage. Optional **Feedback on Previous Result** writes Method Feedback to the
+parent, not the child. Record deletion is a separately confirmed permanent
+operation and never masquerades as Finder-restorable source deletion.
 
-Safe web links use the system route. A uniquely resolved Markdown internal
-link or full Wikilink opens its current Note, heading, or block through the
-same-Triptych Workspace route. Resolution uses the current Workspace catalog,
-not frozen Record provenance. Missing, ambiguous, unavailable, or stable-
-identity-unresolved links retain their exact authored syntax and do nothing.
-The Record window never publishes these presentation links to Connections,
-backlinks, Search relations, Evidence, or participant state.
-The auxiliary window's Scope remains **This Note / Triptych**. A Record result
-found through global **This Vault** Search still opens this existing Triptych-
-keyed window, reapplies its **Triptych** Scope, selects Records View and the
-exact Record detail, and locates its matched attributed statement when one was
-returned. The window does not add a This Vault control, reconstruct cached
-result prose, or create a second Record-query owner. A continuation child
-Record remains searchable but appears beneath its parent Action/Record rather
-than as another peer row in the ordinary Records collection.
+There is one native trailing Inspector with **Overview** and **Connect** modes.
+Each workspace retains its selected mode; Note/tab/mode changes do not alter it.
+Hiding Inspector moves no content elsewhere. Without a Document it presents
+**No Document Selected**.
 
-Record detail and Result Ready expose the same primary **Follow Up…**. It
-prepares a fresh researcher Action/Run with distinct `continued from` without
-editing the parent. The sheet requires a next Action, Research Request, and
-short finding/question/hypothesis. Optional default-collapsed **Feedback on
-Previous Result** belongs to the parent and authorizes no Skill mutation. Add
-Response, Researcher Response, Evaluation, and Record unread state do not
-exist.
+Overview contains, in order:
 
-The fixed Evidence rail presents **Changes**, **Effects**, **Participants**,
-and **Technical Details**. It owns no Review or Response.
-Every section title shares one height, inset, baseline, and Apparatus heading
-style. Each fact uses one aligned monochrome symbol, title, and short provenance
-text. A fact title uses the 12pt Medium interface Row Title role, never the
-Semibold Section Title role; its provenance uses un-emphasized 10pt Small Sans
-in `mutedText`. Note and Record names, roles, dates, state, and provenance use
-Sans; attributed testimony and academic result prose use Serif.
-A Participants preview contains at most three rows; the focal Note and other
-safely actionable entries lead, while deleted or unresolved provenance remains
-available. When the complete set exceeds three, the title is
-one rounded, keyboard-operable disclosure showing the total and a right
-chevron, then opens a native transient popover with every entry. The popover
-closes through native outside-click,
-Escape, or source navigation and introduces no custom close button, material,
-shadow, or persistent state. Its initial focus belongs to the effect-free scroll
-owner rather than the first evidence row, so pointer opening paints neither a
-keyboard focus frame nor a false hover surface. Tab advances to a row and then
-uses its visible native focus effect; the shared rounded hover surface appears
-only under an actual pointer or press.
-A safely resolved Note destination makes the complete rounded row interactive
-without adding an **Open** glyph or button. **Changes** alone owns source-change
-state, comparison, and recovery. **Effects** states completion, Fidelity, and
-discrepancies without repeating Changes, scores, badges, or color-only meaning.
+1. **Needs Attention** count and route for the current Note;
+2. **About** with nonempty managed/authored values and Edit Metadata; and
+3. optional Analysis Zotero link/manage/open/refresh actions.
 
-The current researcher judgment remains directly readable in the reading
-plane. Its Add/Edit control opens the combined native
-Response sheet; an unsaved draft blocks implicit dismissal and requires
-explicit discard confirmation, while a save or reload blocks all dismissal.
-One
-default-closed **Technical Details** group contains only Record kind, schema,
-integrity, identifier, Method/source identity, and exact participant revisions.
-It uses the same adaptive Inspector About label/value grid rather than a local
-field layout; a narrow region stacks the complete group as one unit.
-The single confirmed permanent-delete route is a named `trash` icon in the
-single-Record header, never on collection rows or inside
-Technical Details. Changes offers read-only **View Changes...** or **Compare
-Changes...** for confirmed Agent changes and only the recovery operations whose
-exact prerequisites remain valid. Saved Method Feedback is Record content; it
-does not expose a Skill mutation or separate authenticated Run.
+It has no generic Research Status, Provenance, Derived State, or inline Zotero
+metadata section. Freshness appears only when pending, stale, failed, or
+unavailable and retains last trustworthy content plus Retry.
 
-Compare Changes is one shared attached single-column diff, never a left/right
-pair. Each document shows path, state, and revisions and can fold; the sole or
-first document opens initially, with **Expand All** and **Collapse All**. Three
-context lines surround changes; longer equal ranges become **N unchanged
-lines**. Record mode selects whole documents only and offers **Return to
-Record** / **Undo Selected Documents...**; Conflict mode offers **Return to
-Editing** / **Reload from Disk**. Full success returns; partial results remain
-visible per document.
+Connect starts with one Incoming/Outgoing control, then role-appropriate groups
+for related Analyses, Topics, and Works. Each direction preserves authored
+relation meaning and exact source anchors. Neutral and Incompatible appear in
+both directions. Groups show relationship clusters and counts; row titles wrap
+and use full-row native activation. The sole scroll owner preserves group
+context without adding a second panel, graph owner, or Combined direction.
+Switching direction changes only the projection and returns scroll to its
+beginning.
 
-Direct Undo is available from that exact Record only while each selected Note
-still equals its final Agent revision and its Run-bound starting evidence is
-intact. Closing and reopening the Records window does not change this factual
-eligibility. Undo never grants authority for another revision and never means
-Note Review.
-There is exactly one native trailing Inspector per window, with **Overview**
-and **Connect** in that order. These are
-mutually exclusive modes inside the Inspector, not split columns, Document
-tabs, panels, or windows. The index uses the shared segmented control with
-two equal centered labels, its quiet track, and one raised selection plate.
-It has no underline, Accent fill, or full-width bottom rule. The selected mode uses
-the shared continuous selection corner;
-its label uses Semibold primary ink. An unselected label uses Regular secondary
-ink. Hover gives an unselected item the same-shaped but quieter local surface
-and primary ink without changing its weight; press and native focus remain
-distinct immediate states with no geometry animation. Labels remain
-horizontally reachable rather than truncating. The selected mode is exposed
-accessibly, Left/Right Arrow changes mode, Tab enters its content, and every
-mode owns at most one vertical scroll.
+Document owns a trailing-centered overlay rail. **Research Actions** presents
+the role-valid Actions from §8.1 in canonical order as neutral icon-only,
+fully named accessible buttons; Settle follows as the quiet current-Note
+judgment. Conditional **Note Review** appears above without becoming an Action
+or notification. The rail never owns lifecycle status.
 
-A new window begins each Triptych workspace in Overview and stores one last
-Inspector mode for each workspace. Restoring a window restores those modes;
-switching notes, Document tabs, or Review/Edit/Source never changes the
-selected workspace's Inspector mode. Switching workspace restores its mode
-without creating another Inspector or changing native split geometry. Hiding
-the Inspector transfers only its Show route under §18.2; no Inspector content
-moves into Document. The Research menu opens an Action without revealing or
-changing the Inspector.
+Action launchers open sheets containing scholarly inputs, target effect,
+read-only context, availability, repair, and **Copy Handoff**. They never expose
+assembled prompts, secrets, registration keys, or technical modes. Closing
+preserves unfinished work. Re-pairing invalidates prior Session authority
+without replacing the Run. Discussion shows Comments, locators, handoff, Close,
+and End, but no manual Agent reply or duplicate Finish.
 
-An Inspector without a Document shows **No Document Selected**, never stale
-content. Selecting a Note restores its retained mode.
+After preparation, persistent Run state belongs to Notifications:
+**Waiting for Agent**, **Running**, **Needs Attention**, **Result Ready**, and
+**Recovery Required**. Updates never activate the app, move focus, or present
+approval sheets. Completion offers Review Result, Follow Up, and explicit
+Dismiss; Dismiss means none of read, review, acceptance, adoption, Undo, or
+cancellation.
 
-Overview presents only compact current-note projections, in this order:
-
-1. **Needs Attention:** count and distinct actionable kinds form a full-row
-   native button opening Workspace Attention for that Note. It has no nested
-   **Show All** row. At zero it retains heading and `0`, without reassurance or
-   a decorative verdict.
-2. **About:** nonempty fields use accessible spacing groups.
-   Research fields use reading blocks; Keywords use neutral capsules. **Edit
-   Metadata** opens the shared sheet; values stay static and selectable.
-   Analysis adds **Link Zotero Item…** or **Manage Zotero Link…**; a binding
-   adds **Open in Zotero** and **Refresh Zotero Metadata…**. Refresh
-   reads only its exact binding and previews mapped fills/updates before
-   **Refresh Metadata**. Manage owns exact selection, conflict
-   preview, **Link/Rebind and Fill**, and Clear. Inspector shows no identity or
-   fetched metadata inline. No Research Status, Provenance,
-   Derived State, or Zotero sections appear.
-
-Pending Agent activity adds one **Note Review** group above **Research Actions**.
-Its icon alone uses Accent; it is not an Action, notification, or popover.
-Activation enters the exact Agent-change Diff; **Mark as Reviewed** exists only
-inside that Diff after the compared changes. Commit requires clean, available,
-conflict-free exact Note and Record revisions; mismatch fails closed. Removing
-or completing Review changes no Action activity notification.
-
-Freshness appears only as a compact actionable line when Refresh is pending,
-stale, failed, or unavailable. It preserves last-known-good projections and
-offers Retry where applicable; it never claims reading, truth, or evidence.
-In Overview it follows the About projection and its Edit Metadata route; it
-is not promoted to a separate section or card.
-
-Connect begins with the shared two-segment single-choice control labelled
-**Incoming Links** and **Outgoing Links**, immediately after its freshness
-state and before the relationship groups. It is centered on the Inspector
-content axis rather than aligned as a leading list row. This is a local Connect view switch,
-not a TriptychWorkspaceNavigator, ModeIndex, Document mode, or Search filter. Every new
-Connect presentation starts at **Outgoing Links**. The live Connect
-presentation owns exactly one current direction selection, not a history keyed
-by window, Note, or prior destination, and writes nothing to window-session
-persistence. Switching direction changes only the visible projection and never
-mutates the graph, source, or Note selection. The control has no Combined or All
-segment. It remains visible when the selected direction is empty so the
-researcher can move directly to the other direction.
-
-Outgoing shows relations authored by the current Note; Incoming shows
-relations authored by another Note toward the current Note. Neutral Related
-and Incompatible relations are undirected and therefore appear in both
-segments, with their same source anchors and an accessible explanation that
-they are shown in both directions. Switching direction retains the three group
-expansion states and returns the scroll position to the beginning of Connect so
-the selected direction's context is immediately visible.
-
-Connect then presents three expanded, independently collapsible groups:
-
-| Target | Groups |
-| --- | --- |
-| Analysis | Neighbor Analyses, Related Topics, Related Works |
-| Topic | Related Sources, Neighbor Topics, Related Works |
-| Work | Related Sources, Related Topics, Neighbor Works |
-
-Within a group, the selected direction orders relationship clusters as
-applicable: Supports, Supports This Note, Opposes, Opposes This Note,
-Incompatible, then neutral Related. Each major group heading shows its total
-for the selected direction. Each relationship cluster begins with a visible,
-non-card subheading containing one direct monochrome SF Symbol, its complete
-relationship name, and a quiet monospaced cluster count. A long cluster's
-subheading may pin immediately below its parent group heading while it scrolls,
-but it is not a disclosure control and does not own expansion state. Individual
-Note rows repeat neither symbol, relationship label, nor count.
-All visible Connect interface language, including Note-row titles, uses the
-system Sans interface family rather than the editorial Serif. Default headings
-and rows use existing secondary or muted text roles; hover and keyboard focus
-may raise the active row to primary text. Connect adds no local gray or color
-Variable, and every default text role continues to meet the §20 contrast floor.
-
-Supports and Supports This Note use `plus.circle`; Opposes and Opposes This
-Note use `minus.circle`; Incompatible uses `xmark.circle`; neutral Related uses
-`link`. Text owns relationship direction and meaning, so inverse forms reuse the
-same decorative symbol. These symbols share one restrained semantic text color
-and never encode truth, force, or value by hue. Titles wrap. Do not open a
-second panel merely to show a title. Preserve source anchors. An empty group
-retains its heading and `0` without **None**. Connect shows the same freshness
-state before its direction control and groups. Stale or failed state keeps the
-last complete graph readable and offers a full-row Retry action.
-
-Relation rows remain single full-row native buttons using the Connect Note-row
-metric owned by §19.3, with no default separators or trailing diagonal-open glyph.
-Their concise pointer help and accessible name state the relationship from the
-current Note's perspective. Primary activation opens the connected Note,
-using the source line when that peer owns the relation occurrence. When the
-distinct source-return route remains applicable, it stays available as an
-explicitly named context and accessibility action without adding a second
-detail panel. Each original group heading is a sticky section header inside
-Connect's sole scroll owner. A relationship subheading may pin only within its
-parent group and hands off to the next subheading; it is never a glyph-only rail
-fixed to a window coordinate. The symbol is decorative and hidden from
-accessibility, but the visible relationship name and count remain in the
-heading. Each Note row is one primary full-row button whose accessible name
-still states the relationship from the current Note's perspective; a distinct
-source anchor remains a named accessibility action after the visual symbol is
-removed.
-
-Document owns a content-fitting, trailing-centered rail in its split item. It
-overlays without changing Document geometry and is neither an Inspector mode
-nor a toolbar item. Research Actions keep their vertical center. Conditional
-Note Review appears immediately above and grows upward without displacement.
-Inspector resizing narrows Document through the native split, so both groups
-follow its trailing edge leftward without another geometry owner. The rail
-disappears with the Document and never persists a window coordinate.
-
-The **Research Actions** group presents Section 8.1's role-valid defaults in
-canonical order as neutral icon-only buttons without visible labels or copied
-Inspector rows. Help and accessibility preserve each Action name. Settle
-follows as the quiet current-Note judgment. A
-pending **Note Review** is a separate surface above this group, never one of its
-items. Completed work is accessed through Research Records, and Agent handoff
-remains inside the selected Action. Discuss reopens the current Note's resumable
-active Discussion and automatically includes its existing line Comments.
-
-Profiles configure only the closed Platform Actions and do not create a custom
-rail group or another visual branch. Availability fails closed while checking;
-§19.6 owns title, explanation, and repair copy. Attention remains in
-Overview/Library.
-
-Each Action is one compact icon-only native button with a direct symbol.
-Launchers have no assigned shortcuts; menu and rail remain keyboard-accessible.
-Their sheets show scholarly inputs and app-owned authority/recovery, never
-assembled prompts, registration keys, Session secrets, or technical modes.
-Actions and sheets retain keyboard, menu, pointer, focus, cancellation, and
-VoiceOver parity. Launchers share §19.3's target metric without default
-separators. Checking, ready, unavailable, error, cancellation recovery, Settle,
-and Settled remain distinct; error and recovery information stays complete.
-
-After preparation, the rail remains a launcher rather than a lifecycle list.
-Waiting, Running, Needs Attention, Result Ready, and Recovery Required belong to
-Notifications; they never enlarge a rail button into a status block. Larger
-interface text or localization may grow the complete rail and button labels
-rather than clip them.
-
-An Action sheet keeps Profile **Research Request** visible and collapses only
-other optional inputs. It presents target effect, read-only Additional Context,
-and repair before **Copy Handoff**. The copied instructions contain only
-Run locator, one-time Pairing Code, local route, and CLI steps; the code is
-never a separate field. Copy freezes when needed but opens no Agent app.
-Success restores Action-button focus; failure retains the sheet and inputs.
-A prepared Run's compact status sheet offers Run status,
-**Copy New Handoff**, **End Action**, and recovery only. Recopy invalidates the
-prior pairing without replacing the Run.
-Closing leaves unfinished Actions active; **End Action** revokes a cancellable
-no-write Run, while confirmed or uncertain work retains Result/recovery.
-Discussion shows Comments, current/earlier locators,
-**Copy Handoff**, **Close**, and **End Discussion…**, but no manual Agent reply,
-Follow Up, or Finish. The first Agent reply forms its Record and dismisses it;
-End preserves unanswered exchange. Pairing/re-pairing, Session
-expiry/revocation, missing Skill-folder access, conflict, unknown write, and
-recovery retain complete text and an executable route without exposing Session
-secrets or internal fingerprints.
-
-Agent activity updates do not activate or focus the app and do not present a
-decision sheet. Relevant extra Notes are added to the current Run Activity
-Ledger and appear in the resulting Record.
-
-The Inspector and Document Action rail show no post-preparation lifecycle.
-**Notifications** owns one
-nonblocking activity per Run through **Waiting for Agent**, **Running**,
-**Needs Attention**, **Result Ready**, and **Recovery Required**. Popover,
-Note, window, and focus changes never remove it. Running offers **Open Action**
-and **End Action…**; completion offers **Review Result**, **Follow Up…**, and
-**Dismiss**. Dismiss removes only the completed item: it is not read, Review,
-acceptance, adoption, Undo, or Run cancellation.
-
-Attention-required activities use the Document stack defined in §18.3.
-
-One multi-Note Action remains one item with quiet affected-Note disclosure;
-each Note keeps independent Review and Undo. Background delivery excludes
-research content and routes only after activation. Arrival itself never opens,
-retargets, focuses, or reviews.
-
-Functional text is never a generic blue link or a separate **Open** button.
-Body and secondary colors, hover surface, focus ring, button semantics, and
-the full hit region make interaction recognizable without depending on color,
-hover, or pointer use.
-
-All section headings across Overview and Connect
-use one Apparatus heading token. Its provisional starting point is 10pt system
-semibold, 0.7pt tracking, and secondary text color. English localization
-supplies uppercase strings; runtime code never forces case, so Chinese and
-other languages retain natural writing.
-
-Inspector layout uses the Apparatus metrics and typography owned by §19.3.
-Short facts share one adaptive section-level grid; long researcher prose uses
-reading blocks; exact paths and revisions remain monospaced. Empty values create
-no rows. Section and row boundaries follow §19.3.
-
-Document has no bottom Research Strip or hidden-Inspector duplicate. Its one
-trailing-centered Action rail remains keyboard/VoiceOver reachable; an Action sheet
-survives launch and restores focus to its originating rail button on
-reactivation. Inspector visibility, mode changes, and projection refresh never
-replace the retained Editor host or its buffer,
-selection, Undo, IME, scroll, or focus state. Report handoff, never agent
-execution.
+One multi-Note Run remains one activity with disclosed affected Notes; each
+Note retains independent Review and Undo. The Inspector, Document mode,
+projection refresh, and pane visibility never replace the retained editor host
+or its state.
 
 ## 18.6 Document-owned state and action meanings
 
-The shared cross-functional presentation vocabulary is canonical in
+Shared presentation vocabulary is owned by
 [Scholium Design §19.9](../../Design.md#199-cross-functional-state-language).
-The table below retains the Document-specific meanings, source-revision
-transitions, and recovery actions that cannot be reduced to a presentation
-state. Its terms are not a second cross-functional state dictionary.
+These Document states retain their source-specific meanings:
 
 | State | Meaning |
 | --- | --- |
-| **Edited** | Active buffer differs from committed source. |
+| **Edited** | Buffer differs from committed source. |
 | **Saving** | Revision-checked commit is running. |
-| **Saved** | Exact canonical Markdown readback matches the validated candidate; derived consumers may still refresh. |
-| **Autosave Failed** | Source commit cannot be proven; retain the buffer and offer Retry or recovery. |
-| **Conflict** | Expected revision differs from disk; retain buffer and compare before destructive reload. |
+| **Saved** | Canonical Markdown readback exactly matches the validated candidate. |
+| **Autosave Failed** | Commit cannot be proven; retain buffer and recovery. |
+| **Conflict** | Expected revision differs from disk; retain buffer and compare. |
 | **Refreshing** | Derived consumers are catching up to committed source. |
-| **Derived State Stale** | A consumer represents an older committed revision. |
+| **Derived State Stale** | A consumer reflects an older committed revision. |
 | **Fully Up to Date** | Source and named consumers share one committed revision. |
 
-Conflict actions are **Compare Changes**, **Reload from Disk**, and **Keep
-Editing**. Comparison supplies the Document-conflict inputs and actions to the
-same single-column exact comparison used by Research Records; it offers
-**Return to Editing** or **Reload from Disk** and no source-change selection.
-Each exact comparison row retains one logical source line while soft-wrapping
-its visible text within the comparison width; wrapping never mutates either
-revision or creates a source line. Editor Undo and Research Record direct Undo
-are never interchangeable; editor `Command-Z` affects only the active editor
-session.
+Conflict offers **Compare Changes**, **Reload from Disk**, and **Keep Editing**.
+Comparison shows exact soft-wrapped source lines without altering either
+revision and returns to Editing or explicit Reload. Editor Undo affects only
+the live editor; Agent direct Undo follows its Record-bound recovery contract.
 
-Autosave and conflict presentation belong to Document, never Actions or
-Research Inspector. After Saving, autosave has exactly three
-terminal Document outcomes: silent **Saved**, persistent **Autosave Failed**,
-or persistent **Conflict**. Ordinary autosave creates no Save button, success
-toast, or saved-with-warning state. Autosave Failed states that the editor
-buffer remains available and retains the existing Retry or recovery route. An
-unresolved Conflict uses the same Document-owned position, states that
-autosave is paused because the file changed outside Scholium, preserves the
-editor buffer, and exposes **Compare Changes**. These inline states remain above
-Document content until state changes or the researcher chooses recovery; they
-never time out or use a bottom overlay.
+After Saving, the only terminal outcomes are silent Saved, persistent Autosave
+Failed, or persistent Conflict. Failures remain above Document content with
+their consequence and repair. There is no Save button, success toast, timeout,
+or saved-with-warning state.
 
-Filesystem metadata and redundant machine-local housekeeping are not Document
-states. Once exact canonical readback proves the candidate, the Document is
-Saved without a technical warning or another write request. If that readback
-cannot prove the candidate, Scholium reports Autosave Failed rather than
-softening uncertainty into success.
-
-Retained interrupted-save candidates share the existing native Recovery sheet
-with durable file-operation recovery; they do not create a version browser,
-Document mode, or Research Action. Each candidate row
-states its current source relationship in text and symbol, exposes a selectable
-read-only exact-source disclosure plus **Copy Candidate** and **Reveal Candidate
-in Finder**, and enables **Restore Candidate…** only for an observed expected or
-already-candidate revision. The confirmation states the editor-flush and final
-revision check. A later mismatch fails as Conflict, keeps the candidate, and
-updates the row on Refresh. Recovery errors remain visible without hiding valid
-entries from the other recovery class.
-
-System-Trash recovery rows are visually and semantically distinct from save
-candidates. They name original source items, known Finder-owned destinations,
-affected Discussions and finished Records, current receipt state, and whether
-the only safe route is forward cleanup or researcher inspection followed by
-**Retain Records and Resolve**. The latter never claims to restore or erase a
-file. File deletion actions use exactly **Move to Trash…** and **Cancel**.
-Standalone Research Record deletion retains its separately named permanent
-confirmation and never presents itself as Finder-restorable.
+Recovery candidates use one native Recovery surface with exact source,
+relationship to canonical source, Copy, Reveal, and Restore only when the
+recorded revision permits it. System-Trash recovery is visibly distinct and
+offers only safe forward cleanup or **Retain Records and Resolve**. Source
+Trash and permanent Record deletion retain separate names and confirmations.
 
 ## 18.7 Simplified Chinese terminology and translation boundary
 
-Beta and 1.0 localize the researcher-facing interface only in English and
-Simplified Chinese; §17 defers additional languages and RTL chrome, while §18.4
-preserves exact Unicode source.
-
-Translate researcher-facing language contextually, not by mechanical token
-replacement. Stable identifiers, enum values, command IDs, paths, exact source,
-researcher prose, and internal vocabulary remain unchanged. Skill names and
-package-authored descriptions stay verbatim. Chinese prose uses full-width
-punctuation.
+Beta/1.0 localizes researcher-facing interface text in English and Simplified
+Chinese. Translate contextually; stable identifiers, enum values, command IDs,
+paths, source, researcher prose, and Skill names remain verbatim.
 
 | English | Approved Simplified Chinese |
 | --- | --- |
@@ -701,7 +224,7 @@ punctuation.
 | Analyses / Topics / Works | 分析 / 议题 / 写作 |
 | Discuss / Analyze / Synthesize / Write | 讨论 / 分析 / 综合 / 写入 |
 | Critique / Check Fidelity | 评析 / 核查 |
-| Research / Review / Judgment (Actions groups) | 研究 / 审查 / 判断 |
+| Research / Review / Judgment | 研究 / 审查 / 判断 |
 | Settle / Settled | 暂定 / 已暂定 |
 | Attention / Connect | 关注 / 连接 |
 | Incoming Links / Outgoing Links | 传入连接 / 传出连接 |
@@ -710,8 +233,9 @@ punctuation.
 | Comment / Discussion / Response | 评论 / 讨论 / 回应 |
 | Research Record | 研究记录 |
 | No Document Selected | 未选择文档 |
-| Expand All Folders / Collapse All Folders | 展开所有文件夹 / 折叠所有文件夹 |
+| Expand / Collapse All Folders | 展开 / 折叠所有文件夹 |
 | Move to Trash… | 移至纸篓… |
 
-System-owned Finder names, paths, stable identifiers, enum/raw values, and
-researcher-authored titles remain verbatim and are never translated.
+Chinese uses full-width punctuation. System-owned Finder names, exact paths,
+stable identifiers, raw values, and researcher-authored titles are never
+translated.

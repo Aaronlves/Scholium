@@ -6,247 +6,160 @@
 
 ### 21.1 Evidence hierarchy
 
-Evidence order is live source and construction, executable tests, isolated QA
-on disposable fixtures, and dated status. Target prose, previews, and
+Evidence strength is: live source/construction, executable tests, isolated QA
+on disposable fixtures, then dated status. Target prose, previews, and
 compilation alone prove no workflow, accessibility, package, signing, or
 performance result. [Implementation Status](../IMPLEMENTATION_STATUS.md) owns
-dated evidence; acceptance reports link to it and the applicable authority
-rather than copying either into another pack.
+dated evidence; acceptance reports link rather than copy it.
 
 ### 21.2 Primary acceptance journeys
 
-**Usable Core** covers:
+**Usable Core** must cover:
 
-- Bootstrap success/failure, registration/restoration, and independent windows;
-- create/open/read/edit/save, Document Find/Replace, versioned Note Search, and
-  explicit cross-vault navigation;
-- Edit/Source fidelity, formatting, Review passage Comment, and Markdown
-  Callout authoring, Wikilink aliases, Analysis Reference completion, image
-  attachment Import/Index, Document statistics, native spelling routes, and mode
-  changes;
-- categorized About/Metadata, optional authored YAML summary/keywords, Settle,
-  and simplified Actions;
-- native split resize/visibility, Document tabs without shell reconstruction,
-  focus, keyboard, light/dark, scaling, minimum width, and core VoiceOver; and
-- external edits, conflicts, stable rename, native system-Trash Note and Folder
-  deletion, whole multi-Note Record cleanup, partial/unknown native outcomes,
-  Finder restoration, externally missing source without Record cascade, Agent
-  direct Undo, save interruption, and cross-window dirty-peer behavior.
+- Bootstrap, registration/restoration, independent windows, and storage failure;
+- create/open/read/edit/autosave, Review/Edit/Source, Find/Replace, Search,
+  Metadata/About, Settle, Library, tabs, and cross-vault navigation;
+- formatting, Comments, Callouts, Wikilinks, Analysis references, image
+  Import/Index, statistics, spelling, and exact YAML/source fidelity;
+- native split behavior, focus, keyboard, light/dark, enlarged text, minimum
+  supported width, and core VoiceOver; and
+- external edits, conflicts, rename/move, system-Trash Note/Folder deletion and
+  partial recovery, Finder restoration, Agent direct Undo, interrupted saves,
+  and multiple-window dirty-peer behavior.
 
-Beta/1.0 additionally cover applicable Research Actions, Skill registrations,
-Skill-routed ordinary references and philosophical lenses, Action Profiles and Result Contracts,
-direct Agent collaboration, process-bound pairing/Sessions, Run Activity Ledgers,
-Research Context, portable Research Records and Researcher Evaluation,
-hierarchical Materials, Research Guidance/Recovery, Connections, Attention,
-Zotero unavailable/read-only behavior, CLI parity, shared Record Search,
-deletion/restore, adaptations, and
-1380/1080/900/minimum-width workspaces.
-Search acceptance separately covers provider/scope authorization, canonical
-Metadata presence and exact string matching with authority-correct provenance, direct relation
-direction, Record attribution and statement locators, Explain/completion,
-Saved Search re-evaluation, App/CLI parity, stale refusal, corruption rebuild,
-and incremental/clean-build equivalence. Passing retrieval fixtures does not
-establish philosophical relevance, evidential support, or researcher
-acceptance.
+Beta/1.0 additionally covers applicable Research Actions, Skills and routed
+references, Profiles/Results, direct Agent start and GUI handoff, secure
+process-bound Sessions, Activity Ledgers, Research Context, portable Records,
+Follow-up/feedback, Connections, Attention, Zotero read-only/unavailable
+behavior, CLI parity, Record Search, adaptations, and declared window sizes.
 
-Direct-Agent evidence includes one Agent-originated `agent start` request and
-one researcher-copied handoff with the Run locator, one-use Pairing Code, and
-Agent-owned CLI steps; direct-start credential storage; pairing-code input
-through stdin; single-use secure pairing; authenticated local Session;
-app-process restart invalidation and same-Run re-pairing; no Pairing Code in an
-argument, URL, vault, file, later prompt, Result, Record, or log; no Session
-secret in any prompt or copied handoff; packaged local-bridge integrity; current-Run
-scope; reload; Research Context; explicit End Action; bounded multi-document
-write and recovery; keyboard/VoiceOver; and an unavailable fallback. It does
-not require an embedded or provider-specific Agent runtime.
+Search acceptance covers scope/provider authorization, Metadata and relation
+provenance, Record attribution/locators, Explain/completion, Saved Search
+re-evaluation, App/CLI parity, stale refusal, corruption rebuild, and
+incremental/clean equivalence. Retrieval success never establishes
+philosophical relevance, evidential support, or researcher acceptance.
 
-For material evidence, use disposable fixtures and retain command, source
-revision, Xcode/SDK, build, fixture identity, result, and artifact location.
+Agent evidence includes one direct start and one copied one-use handoff;
+stdin-only code exchange; Session secrecy, expiry, restart invalidation, and
+re-pairing; authenticated local bridge; current-Run scope; reload; bounded
+Context and multi-document writes; End; recovery; accessibility; and
+unavailable fallback. It does not require an embedded or provider-specific
+Agent runtime.
+
+All material evidence uses disposable fixtures and records command, source
+revision, toolchain, build/artifact, fixture identity, and result.
 
 ### 21.3 Release gates
 
 | Gate | Required condition |
 | --- | --- |
-| **G1 Functional completeness** | Every in-scope requirement has evidence or waiver. |
-| **G2 Workflow independence** | Manual core works without Obsidian, Zotero, agents, or manual filesystem work. |
-| **G3 Source integrity** | Exact-source tests cover malformed YAML, unknown fields, BOM/newlines, comments, targeted edits, atomic failure, and readback. |
-| **G4 Recovery and deletion** | Conflict, Agent direct Undo, interrupted-save recovery, system-Trash receipts, whole-Record cleanup, external deletion/restore, external rename, and derived failures pass fixture journeys. |
-| **G5 Scholarly transparency** | Authoritative Markdown, Discussion turns, Action outputs, Settle, Critique, Fidelity, provenance, authority, agent feedback, and uncertainty remain visibly distinct. |
-| **G6 Accessibility/localization** | Section 20's English and Simplified Chinese interface and declared accessibility threshold is met. |
-| **G7 Performance** | The packaged-app protocol in §21.4 passes on the frozen fixture and approved reference machine. |
+| **G1 Functional completeness** | Every in-scope requirement has evidence or explicit waiver. |
+| **G2 Workflow independence** | Manual core works without Obsidian, Zotero, Agents, or manual filesystem repair. |
+| **G3 Source integrity** | Exact-source tests cover malformed/unknown YAML, BOM/newlines, targeted edits, atomic failure, and readback. |
+| **G4 Recovery and deletion** | Conflict, Agent Undo, save recovery, system-Trash receipts/cleanup, external deletion/restore/rename, and derived failure pass. |
+| **G5 Scholarly transparency** | Source, researcher/Agent content, Discussion, Result, Settle, Critique, Fidelity, provenance, and uncertainty remain distinct. |
+| **G6 Accessibility/localization** | §20's English/Simplified Chinese and accessibility threshold is met. |
+| **G7 Performance** | The packaged-app protocol in §21.4 passes. |
 | **G8 Documentation consistency** | Specification, architecture, status, README, source, and tests do not silently conflict. |
-| **G9 Distribution integrity** | External binaries use a clean exact tag, corresponding GPL source/licenses, no private state, accurate signing/architecture, checksum, and clean-account smoke test. |
-| **G10 Agent research collaboration** | Skill and ordinary-reference routing, Profiles/Result Contracts, process-bound attribution Sessions, Run Activity Ledger mutations, Research Context, Records/Evaluation, and local bridges pass their journeys. |
+| **G9 Distribution integrity** | Distributed artifacts match an exact clean tag, source/licenses, signatures, architecture, checksum, and clean-account smoke test. |
+| **G10 Agent collaboration** | Skills, Profiles/Results, Sessions, Ledger writes, Context, Records, and local bridges pass their journeys. |
 
-Usable Core/0.1 require G1–G4, G6, and G8; G9 applies to any distributed
-artifact. G6/G7 baselines and gaps must not be misrepresented as Beta passes.
-Beta requires every applicable gate including G10. No release gate requires
-provider-specific task creation, auto-submission, background Agent execution,
-or provider-specific Agent launch.
+Usable Core/0.1 requires G1–G4, G6, and G8; G9 applies to every distributed
+artifact. Beta requires every applicable gate including G10. Baseline or partial
+evidence must not be presented as a gate pass.
 
 ### 21.4 Packaged performance gate
 
-Performance evidence has three noninterchangeable classes:
+Performance evidence has three distinct classes:
 
-1. regression microbenchmarks detect internal slowdowns;
-2. scenario measurements exercise an incomplete fixture, fewer than 30
-   retained samples, or a nonrelease artifact; and
-3. product-gate measurements exercise the exact packaged Release app, frozen
-   RDF-1, complete visible boundaries, and the full retained sample set.
+1. microbenchmarks detect internal regression;
+2. scenario measurements use incomplete samples or nonrelease artifacts; and
+3. product-gate measurements use the exact packaged Release app, frozen fixture,
+   complete visible boundary, and full retained sample set.
 
-Only the third class can satisfy G7. Debug builds, unit tests, internal timers,
-human stopwatches, and partial memory series are never substitutes.
+Only product-gate evidence satisfies G7. Each latency metric uses five excluded
+warm-ups and exactly 30 valid retained samples; p95 is nearest-rank.
 
-The release owner has approved these non-Editor Beta limits. Use nearest-rank
-p95 over exactly 30 valid samples after five excluded warm-ups:
-
-| Interaction | p95 limit |
-| --- | ---: |
-| Warm library launch to a usable note list | `< 1,000 ms` |
-| Indexed Note Search query to complete visible results | `< 200 ms` |
-| Warm Review-note activation to interactive rendering | `< 300 ms` |
-| First-use 5,000-word Review activation from a no-document Workspace to interactive rendering | `< 1,000 ms` |
-
-The first-use Review series launches to the no-document Workspace, makes the
-frozen 5,000-word RDF-1 target visibly reachable without selecting it, then
-measures from the researcher's selection action to interactive Review. It has
-no every-sample maximum.
-
-The release owner has approved these Editor Beta limits. Each p95 uses the same
-five-warm-up/30-retained-sample nearest-rank protocol; every retained sample
-must also remain below its maximum:
-
-| Editor interaction | p95 limit | Every-sample maximum |
+| Interaction | p95 | Maximum when required |
 | --- | ---: | ---: |
-| Committed key input to first painted edit | `< 100 ms` | `< 200 ms` |
-| Edit/Source request to visible and accessible requested mode | `< 100 ms` | `< 200 ms` |
-| Cached-preview request to visible and accessible preview | `< 100 ms` | `< 200 ms` |
-| Warm Edit activation to visible, accessible, interactive editor | `< 200 ms` | `< 300 ms` |
-| First-use Edit request after cold-launch first Review to visible, accessible, interactive editor | `< 750 ms` | `< 1,000 ms` |
-| One visible-range projection | `< 3 ms` | `< 5 ms` |
+| Warm Library launch to usable list | < 1,000 ms | — |
+| Indexed Note Search to complete visible results | < 200 ms | — |
+| Warm Review activation to interactive rendering | < 300 ms | — |
+| First-use 5,000-word Review activation | < 1,000 ms | — |
+| Key input to first painted edit | < 100 ms | < 200 ms |
+| Edit/Source request to visible accessible mode | < 100 ms | < 200 ms |
+| Cached preview to visible accessible preview | < 100 ms | < 200 ms |
+| Warm Edit activation | < 200 ms | < 300 ms |
+| First-use Edit after cold-launch Review | < 750 ms | < 1,000 ms |
+| One visible-range projection | < 3 ms | < 5 ms |
 
-The first-use Edit series cold-launches to the no-document Workspace, selects
-the frozen 5,000-word RDF-1 Note through Library, and waits for interactive
-Review as unmeasured setup. It then measures the researcher's Edit request to
-the first visible, accessible, interactive editor. It does not auto-open a
-document or include process launch in the Edit interaction.
+Work exceeding 100 ms must expose accessible nonblocking progress within
+100 ms; progress does not turn incomplete work into a pass. Editor callbacks
+during input/scroll target under 5 ms and yield before a display-refresh
+interval.
 
-An interaction that cannot complete within 100 ms must expose nonblocking,
-accessible progress feedback within `< 100 ms`; feedback does not convert an
-unfinished interaction into a latency pass. During input and scrolling,
-Editor work on the main thread targets `< 5 ms` per callback and must yield
-before one display-refresh interval. A product-gate report that omits any
-approved Editor latency metric, its every-sample maximum, correctness, or the
-retained-memory series fails closed.
+The frozen performance fixture contains 800 Notes and representative folders,
+links, malformed frontmatter, large CJK, and 5,000-word Review/Edit content.
+Separate generated Record fixtures cover current schema and attribution. Fixture
+generators and runner ownership belong to
+[Documents and Editor](../Architecture/06-documents-and-editor.md#documents-and-codemirror).
 
-RDF-1 is the frozen deterministic 800-Note fixture for Library, Search, Review,
-Edit, large CJK source, folders, links, and malformed-frontmatter coverage.
-Research Record provider fixtures remain separate generated inputs with strict
-current-schema attribution, participants, optional citations, calendar
-boundaries, and exact fingerprints. All are disposable test data, never
-research source or product authority. Their generator, manifest, and runner
-ownership belong to [Documents and Editor](../Architecture/06-documents-and-editor.md#documents-and-codemirror).
+The gate uses one clean exactly tagged packaged app, prepared measurement
+driver, unchanged reference-machine record, isolated Application Support and
+preferences, and user-visible/accessibility-complete boundaries. Retain raw
+durations, summary statistics, invalid-sample reasons, correctness, memory,
+machine/artifact/fixture identities, and raw outputs outside research vaults.
+Provenance mismatch, changed process set, missing metrics, incomplete samples,
+or unapproved thresholds fails closed.
 
-The gate must use the exact app produced by the release packager from one clean,
-reviewed, exactly tagged commit. App provenance, tag, commit, source-clean
-state, architecture, and fixture manifest must match. One unchanged machine
-record covers macOS, hardware, power mode, display, foreground applications,
-window size, accessibility settings, and logging. Each metric uses isolated
-Application Support, preferences, bookmarks, and derived state.
-
-Compile and sign the UI measurement driver in a separate preparation phase
-from that same clean exact tag, record its commit, tag, Xcode build, and
-architecture, then let the reference machine cool before measurement. The
-product-gate phase must verify and reuse that prepared driver and must not
-compile code after cooling is confirmed.
-
-The measured boundary is user-visible and accessible: a selectable, unblocked
-library; complete visible Search results; or rendered, interactive Review/Edit
-content after native publication and editor-renderer readiness. Semantic
-projection or an internal callback alone is insufficient. Retain raw durations, p50, p95,
-maximum, mean, valid and invalid sample counts with reasons, correctness,
-machine record, artifact identity, fixture identity, and raw outputs outside
-every research vault. Missing process roles, changed process sets, provenance
-mismatch, incomplete samples, or unapproved thresholds fail closed.
-
-The 100,000-CJK fixture must remain editable at beginning, middle, and end with
-working undo, mode switching, and byte-exact save. After 50 note/mode switches,
-retained editor-renderer counts must remain stable and total
-app-plus-renderer memory must demonstrate bounded, decelerating tail growth:
-the median of the final 10 samples may exceed the preceding 10-sample median
-by no more than 5%, and the final 10-sample span must be smaller than the
-preceding 10-sample span unless both spans are zero. Requiring one incidental
-RSS decrease is not convergence; a monotone sequence can converge, while a
-constant leak fails the deceleration
-condition. These are correctness and stability conditions, not percentile
-results.
+The large-CJK fixture must remain byte-exact and editable at beginning, middle,
+and end with Undo and mode switching. Repeated Note/mode switching must show
+stable editor/renderer counts and bounded decelerating memory growth rather
+than a constant leak. This is a correctness/stability condition, not a
+percentile substitute.
 
 ### 21.5 Source-first Beta distribution
 
 Each source-first Beta release requires:
 
-- a public prerelease tag and label that exactly match package provenance;
-- app marketing version `0.1.1`, its recorded build number, and minimum macOS
-  26;
-- the corresponding exact tagged source under `GPL-3.0-or-later`; and
-- an architecture-labelled `Scholium-<release>-macos-<architecture>.dmg`
-  containing the ad-hoc-signed App, plus an independent
-  `Scholium-CLI-macos.zip`, each with a SHA-256 checksum on the same release
-  page and exact architecture recorded in provenance.
+- exact public prerelease tag/package provenance;
+- recorded app version/build and minimum supported macOS;
+- corresponding `GPL-3.0-or-later` tagged source and license notices;
+- architecture-labelled DMG containing the ad-hoc-signed App plus Applications
+  alias; and
+- separate version-matched CLI archive, with checksums for both artifacts.
 
-Opening the DMG presents one ordinary Finder window containing **Scholium** and
-an **Applications** alias, arranged so dragging the App to Applications is the
-clear primary action. A background or arrow may reinforce that action but must
-not be its only explanation. The DMG contains no installer package, executable
-installation script, CLI, research content, or generated writable state. The
-App bundle contains no CLI executable and has no CLI installation access.
-The CLI ZIP contains the version-matched `scholium` executable, its adjacent
-release resource bundle, and one user-local installer. Both artifacts include
-applicable license texts and notices, identify verified architectures without
-overstating universal support, and contain no real vault, Application Support
-state, bookmark, credential, index, absolute private path, or research content.
+The App bundle contains no CLI or installation authority. The CLI archive
+contains only its executable, adjacent release resources, and user-local
+installer. Neither artifact contains real vaults, private paths, credentials,
+bookmarks, indexes, or generated user state.
 
-After installation, the standalone CLI owns the explicit `scholium update
---check` and `scholium update` lifecycle. The updater uses only the fixed
-official archive and adjacent SHA-256 asset, requires clean exactly tagged
-release provenance, matching architecture, and a valid code signature, and
-replaces the executable and resource bundle as one recoverable transaction.
-Self-update is never background, does not edit PATH or shell profiles, and
-must leave the installed pair unchanged when verification fails.
+CLI self-update uses only fixed official assets, verifies checksum,
+architecture, signature, and provenance, and replaces executable/resources as
+one recoverable transaction. It is explicit, never background, and never edits
+PATH, shell profiles, quarantine, or the App.
 
-Ad-hoc signing is not Developer ID signing, notarization, publisher
-verification, or Gatekeeper acceptance. Testers may approve the trusted GitHub
-download through **System Settings → Privacy & Security → Open Anyway** after
-the first launch attempt. Documentation must never advise disabling Gatekeeper,
-recursively removing quarantine, mutating quarantine from an installer or
-Agent prompt, or installing an untrusted root certificate.
+Ad-hoc signing is not Developer ID signing, notarization, or Gatekeeper
+acceptance. Documentation may describe **Open Anyway** for the trusted download
+but never advise disabling Gatekeeper, stripping quarantine, or installing a
+root certificate.
 
-Before tagging or upload, freeze a reviewed clean commit; audit the tree and
-history for private material; run complete repository verification with
-disposable fixtures; package with the clean-source requirement; inspect App and
-standalone CLI metadata, resources, entitlements, architecture, signatures,
-icon, DMG, CLI ZIP, checksums, and licenses; pass G7; verify the DMG with
-`hdiutil`, mount it read-only, confirm the App and Applications alias are its
-only researcher-visible root items, copy the App through that alias, and
-exercise the copied App plus the exact expanded CLI ZIP in a clean macOS
-account through first launch, Triptych setup, independent CLI installation,
-read/edit/save, Search, conflict/recovery, Inspector/Action, restoration, and
-unavailable integrations.
-No real research vault may be opened during release verification.
+Before distribution, verify the exact clean tag, source/privacy audit,
+repository gates, package contents, metadata, entitlements, architectures,
+signatures, icons, checksums, licenses, read-only DMG, clean-account App
+installation, independent CLI installation, and representative first-launch,
+edit/save, Search, conflict/recovery, Action, and unavailable-integration
+journeys. Use disposable fixtures only.
 
-Developer ID signing, notarization, and stapling are optional future channel
-improvements. If adopted, sign the App and DMG, notarize and staple the DMG as
-the distributed outer container, rebuild from the exact release commit, and
-repeat the complete external smoke test; never re-sign an already tested
-artifact or share a certificate private key outside its responsible
-organization.
+A future notarized channel must rebuild from the exact release commit and repeat
+external verification; never re-sign an already accepted artifact.
 
 ## 22. Unresolved target decisions
 
-Only questions that can still change the target remain here:
+Only current questions that can still change the target belong here:
 
-- promote or revise provisional interface metrics only after the complete
-  adaptation and human visual-acceptance matrix.
+- decide whether any provisional interface metric should become normative after
+  the complete adaptation and human visual-acceptance matrix.
 
-Resolving an item updates its owning canonical section and removes the item
-from this list in the same patch.
+Resolution updates the owning chapter and removes the question in the same
+patch. Git, not this specification, retains decision history.

@@ -6,355 +6,167 @@
 
 ### Visual adaptation
 
-- Support System, Light, and Dark without hard-coded inversion. Preserve
-  hierarchy under Increase Contrast, Reduce Transparency, Reduce Motion,
-  inactive windows, Accent changes, English and Simplified Chinese interface
-  text, 200% document text, and enlarged interface text.
+- Support System, Light, and Dark appearance; inactive windows; Accent changes;
+  Increase Contrast; Reduce Transparency; Reduce Motion; 200% document text;
+  enlarged interface text; and English, Simplified Chinese, and mixed content.
 - Ordinary small text meets at least **4.5:1** contrast; large or bold text
-  meets at least **3:1**. Audit every important custom target below 28 × 28pt.
+  meets at least **3:1**. Important custom targets below 28 × 28pt require
+  explicit audit.
 - Important state uses at least two suitable channels. Color, motion, sound,
   location, hover, drag, secondary click, gesture, and arrow direction are
-  never the sole source of meaning or access.
-- Custom elevation is secondary. Increase Contrast removes soft shadows and
-  strengthens semantic boundaries; Reduce Transparency and inactive-window
-  presentation may weaken them. Floating content remains distinguishable by
-  surface, boundary, label, focus, and placement.
-- Structural depth cues are decorative, noninteractive, hidden from
-  accessibility, mirrored at logical edges, and removable without losing the
-  underlying pane relationship.
-- Text and controls grow or reflow rather than clip. At 200% document text,
-  prose has no page-level horizontal reading scroll; only intrinsically wide
-  tables, code, mathematics, and diagrams may scroll or scale inside their own
-  containers.
+  never the sole meaning or route.
+- Increase Contrast strengthens semantic surfaces and boundaries and may remove
+  soft elevation. Structural depth cues are decorative, noninteractive,
+  accessibility-hidden, logical-edge-based, and removable without losing
+  hierarchy.
+- Text and controls grow or reflow instead of clipping. Enlarged prose has no
+  page-level horizontal reading scroll; intrinsically wide technical objects
+  keep bounded local overflow or scaling.
 
 ### Input, focus, and semantics
 
-- Every core task has keyboard, menu or toolbar, pointer, focus, accessibility,
-  cancellation, and recovery coverage appropriate to the platform control.
-  Drag and secondary click remain redundant routes.
-- Focus is visible and predictable. Native macOS controls and presentations let
-  AppKit preserve the initiating modality: keyboard dismissal returns to the
-  initiating control or the next valid semantic target, while pointer dismissal
-  does not synthesize a keyboard-only focus ring. Feature call sites do not add
-  unconditional `FocusState` restoration around native Buttons or sheets. The
-  shared Scholium segmented component alone owns its focus and Left/Right
-  traversal; feature call sites add none. Removal
-  follows a stable next, previous, then owning-container sequence.
-- Custom controls expose current names, roles, values, selected state,
-  availability, errors, consequences, and recovery actions. Decoration and
-  duplicate symbols stay out of the accessibility tree. Help and hints add
-  missing meaning rather than repeating visible text.
-- State changes that matter without focus movement are announced once and
-  remain inspectable. Progress animation is never the only Running signal;
-  persistent errors remain reachable after announcement.
-- Operation feedback exposes its semantic type, complete message, and explicit
-  Dismiss control in reading order. A redundant Confirmation or Information
-  toast is announced once without moving focus and may time out; Warning,
-  Error, partial-commit, source-integrity, and recovery facts remain selectable
-  and reachable after their one announcement and never rely on color, symbol,
-  motion, position, or timeout alone.
-- Synthetic events cannot certify genuine VoiceOver, Voice Control, Dictation,
-  Full Keyboard Access, installed input methods, or system text services.
-  Release acceptance retains the corresponding human gates.
+- Every core task has appropriate keyboard, menu/toolbar, pointer, focus,
+  cancellation, recovery, and accessibility routes. Drag and secondary click
+  remain redundant.
+- Focus is visible and predictable. Native presentations preserve initiating
+  modality and return focus to the initiator or next valid semantic target.
+  Custom features do not override native focus restoration. Shared custom
+  controls alone own their traversal behavior.
+- Controls expose accurate name, role, value, selection, availability,
+  consequence, error, and recovery. Decorative and duplicate symbols stay out
+  of the accessibility tree.
+- Meaningful state changes are announced once and remain inspectable. Progress
+  animation is supplementary; persistent errors and recovery facts do not time
+  out.
+- Operation feedback exposes semantic type, complete message, and Dismiss or
+  repair in reading order. Field-specific validation remains programmatically
+  associated with its field.
+- Synthetic automation cannot establish genuine VoiceOver, Voice Control,
+  Dictation, Full Keyboard Access, installed input method, or system text
+  service acceptance.
 
 ### Workspace, Library, and navigation
 
-- With no document selected, Document exposes the title and instruction in
-  §18.2 as one read-only VoiceOver group. Its symbol is decorative and the state
-  adds no duplicate creation action or focus target.
-- The Triptych workspace navigator is one vertical single-choice group with
-  selected state, Up/Down traversal, localized Note totals, and inert hidden
-  workspaces. Switching preserves focus on the selected destination until the
-  resulting Document route requires another focus target.
-- During progressive live opening, the available workspace keeps its complete
-  Library keyboard and accessibility routes. Unavailable workspace rows expose
-  an unavailable Note count and do not accept pointer or Arrow-key selection.
-  The persistent derived-state status names background progress without moving
-  focus; completion enables the remaining rows and updates their counts once.
-- Back and Forward expose stable names and current availability in both the
-  toolbar and View menu. A successful visit updates them without moving focus;
-  revisiting a document uses the ordinary source-safe transition and preserves
-  the current content when its destination is unavailable.
-- Library exposes Triptych identity, Attention, filters, disclosure, Add,
-  hierarchy, selected row, and file actions without requiring hover. Note and
-  Folder move, root move, system-Trash deletion, Expand/Collapse All, and
-  contextual creation retain named non-drag accessibility routes.
-- The expanded Library is either at least its declared readable width or
-  natively collapsed. An open but unreadably compressed Sidebar is forbidden.
-  English and Simplified Chinese variants retain workspace, row, and
-  action reachability at that boundary.
-- Attention exposes heading, filter, groups, selected task, issue, Note,
-  locator, state, and actions in one linear order. Loading, stale, and
-  recoverable failure preserve current rows and name Retry.
-- One Action activity exposes its complete state, target, and valid actions
-  directly in the Document banner. A multiple-activity stack begins with one
-  keyboard-focusable disclosure named **Show Action Notifications** whose value
-  states only the exact count requiring attention.
-  Pointer presence and keyboard focus reveal the same downward Action-only
-  expansion; activation or Space pins it, Escape collapses it, and every direct
-  action has a stable name and Run-bound identity. Structural issues, Search
-  Notifications, Notification Type, and All Notifications are absent from that
-  expansion and its accessibility tree. Rear layers are decorative and absent
-  from the tree. Reduce Motion preserves content and disclosure state without
-  geometry animation.
-- While that stack is present, one-time system-notification permission
-  education is neither presented nor announced; it may enter reading order
-  after the stack disappears. Note Review is a separate explicit task route and
-  neither removes nor reprioritizes the stack.
-- Settings window feedback follows window reading order rather than the
-  selected detail section, does not move existing controls, and remains one
-  queued accessible item. Field-specific validation remains adjacent to and
-  programmatically associated with its field.
+- The no-document state is one read-only VoiceOver group with no duplicate
+  creation action.
+- Triptych navigation is one vertical single-choice group with Up/Down
+  traversal, selected state, localized Note totals, and unavailable-state
+  semantics. Progressive loading preserves available Library routes and focus.
+- Back/Forward, Sidebar, Inspector, Notifications, filters, folder disclosure,
+  Add, file actions, and hierarchy remain named and reachable without hover.
+- Library rows preserve selected, focused, inactive, disclosed, drop-target,
+  disabled, loading, stale, empty, and failure distinctions. Note/Folder Move,
+  root placement, system-Trash deletion, and contextual creation have non-drag
+  accessibility actions.
+- Expanded Library and Inspector remain readable or collapse natively; they do
+  not remain open in an unusably compressed state.
+- Attention exposes group, issue, Note, locator, state, actions, freshness, and
+  Retry in a coherent order.
+- Action activity banners expose exact Run identity, state, target, and valid
+  actions. A multi-activity disclosure states its count; keyboard/pointer
+  expansion and pin/collapse are equivalent. Reduce Motion changes transition,
+  not content or state.
+- Settings and workspace feedback remain in window reading order without moving
+  existing controls or obscuring their owners.
 
 ### Document and editor
 
-- Managed New Note announces the created Note once, opens Edit, and places the
-  insertion point at the exact body start without an intermediate Review or
-  Library focus stop. A committed-source/editor-failed state names **Retry
-  Edit** and **Source** and never invites duplicate creation.
-- Review, Edit, and Source expose their current mode, exact content state, and
-  one coherent focus order. Mode changes, external updates, conflict,
-  recovery, window inactivity, and container reconstruction never discard a
-  dirty buffer, composition, selection, Undo, or recovery authority.
-- The Document Mode toolbar button exposes its stable label and current Review,
-  Edit, or Source value. Pointer help is supplementary; menu and keyboard routes
-  remain complete.
-- Review Comment and Edit formatting surfaces are keyboard reachable and stay
-  attached to the finalized selection. The Comment field names its line range
-  and Return, Shift-Return, and Escape behavior without erasing the underlying
-  selection.
-- Each current-revision Review Comment marker is an ordinary keyboard-focusable
-  button whose name states the line range and, when greater than one, Comment
-  count. Focus and pointer hover strengthen the same referenced line treatment;
-  activation opens the focused Discussion turn. The reverse line locator is
-  keyboard reachable. A stale locator names **Earlier revision** and exposes no
-  false current-location action.
-- A finished Record's visually truncated commented passage exposes its complete
-  bounded selected text as the accessibility label. It names no line and offers
-  no stale source-navigation control.
-- Edit suggestions retain document focus and one listbox selection. Up/Down
-  moves, Return accepts, Escape closes, and pointer acceptance has the same
-  result. Marked-text composition opens no suggestion list or forced selection.
-- Document Find exposes its query, options, current/total result, navigation,
-  replacement availability, and close route in one keyboard order. Opening it
-  focuses Find; Escape closes it and returns to the exact editor selection.
-  Match highlighting, current-match state, and replacement availability never
-  rely on color alone.
-- Wikilink alias and Analysis Reference rows expose visible label, canonical
-  target, note role, and path without reading Markdown delimiters aloud.
-  Analysis metadata absence remains absence and never receives an invented
-  author, year, or citation key.
-- Document statistics expose one complete localized accessibility value and
-  identify whether it describes the selection or body. The visual status may
-  yield at narrow widths, but the Edit menu retains a named **Document
-  Statistics** command that announces the same current value.
-- Spelling and grammar retain the standard macOS Edit submenu, shortcuts,
-  contextual commands, correction state, and installed-language behavior.
-- Import Image and Index Image use native file panels with corresponding
-  **Import** and **Index** actions. They expose the copy-versus-absolute-path
-  consequence by name, report copy, catalog, bookmark, source, stale-path, and
-  cleanup failures without losing editor focus or source, and never make drag,
-  paste, or Finder the only route. A pasted image is announced as an Import.
-- English, Simplified Chinese, and mixed English/Chinese Source lines keep the
-  visual cursor, selection, and installed input method consistent with visible
-  content. Other Unicode source remains exact and Source-visible without a
-  complete RTL input or bidirectional-layout promise. Code, mathematics, and
-  inert raw HTML remain isolated technical regions without forcing surrounding
-  prose direction.
-- Tables, footnotes, mathematics, Callouts, links, and Mermaid preserve semantic
-  names, source navigation, focus, and selectable fallback. Generated Mermaid
-  content is not itself a passage Comment target; authored accessibility text
-  is used when present and exact source remains the nonvisual fallback.
-- Link previews and embedded Notes expose one target identity, complete
-  read-only content, a named open route, and a keyboard-scrollable bounded
-  viewport without repeating relationship-type copy. Their nested content
-  never adds a second writable source, focus owner, or recursive embed tree.
-- Autosave Failed and Conflict state the retained-buffer consequence and expose
-  the applicable recovery. A proven save and machine-local housekeeping add no
-  status announcement or Document accessibility item. Agent direct Undo reports
-  its per-document result without moving Document focus.
+- Managed New Note announces once, opens Edit, and places insertion at the exact
+  body start. Durable-source/editor-failure names Retry Edit and Source without
+  inviting another creation.
+- Review, Edit, and Source expose current mode, content state, and one coherent
+  focus order. Mode, window, external-change, conflict, and recovery transitions
+  preserve dirty buffer, composition, selection, Undo, scroll, and recovery.
+- Review Comment and Edit formatting remain attached to the finalized
+  selection and keyboard reachable. Comment markers state line range and count;
+  stale locators state **Earlier revision** without false navigation.
+- Suggestion lists retain document focus and one listbox selection. They do not
+  open during marked-text composition.
+- Document Find exposes query, options, count, navigation, replacement
+  availability, and close in one keyboard order; closing restores the exact
+  editor selection.
+- Statistics identify body versus selection scope. Spelling/grammar preserve
+  system routes. Image Import/Index name the copy-versus-reference consequence
+  and preserve source/focus on failure.
+- English, Chinese, mixed content, and other Unicode source retain consistent
+  visible cursor/selection within the declared support boundary. Technical
+  regions are directionally isolated without changing surrounding prose.
+- Tables, footnotes, mathematics, Callouts, links, Mermaid, previews, and embeds
+  expose semantic names, source/fallback, navigation, and bounded scrolling.
+  Generated Mermaid is not a Comment target; exact source remains its fallback.
+- Autosave Failed and Conflict state the retained-buffer consequence and
+  applicable recovery. Proven Saved state is silent. Agent Undo reports each
+  outcome without moving Document focus.
 
 ### Metadata and portable settings
 
-- Settings exposes one named search field, Application, This Triptych, and
-  Research Guidance groups, the selected destination, and current detail title
-  in one predictable keyboard order. Triptychs detail exposes the active
-  Triptych selector with its registration actions; other destinations do not
-  repeat that control.
-  Filtering retains one selected result and communicates the destination's
-  scope through its group rather than color or position alone. Empty results
-  name the failed query and keep the search field available.
-- Hotkeys exposes each command, menu location, current binding or None state,
-  and Record, Clear, Restore Default, and Restore All Defaults actions. The
-  recorder is an ordinary keyboard-focusable control: activation enters a
-  named recording state, Escape cancels recording, Delete clears the draft,
-  and a captured binding stays a draft until explicit Save. Missing Command,
-  standard macOS reservations, and conflicts name the problem and conflicting
-  command inline; invalid input never changes the menu. Menu labels and
-  shortcut accessibility values update together after Save.
-- Settings names the selected role, global managed-field definitions, Add
-  Field form, value-kind picker, source-type picker, optional Agent-preferred
-  managed-field checkboxes, About managed fields, validation location,
-  dirty/save/conflict state, and separate restore or clear consequences in one
-  keyboard order. Fixed `summary` and `keywords` creation behavior is not a
-  setting or editable technical region.
-- A field definition exposes its immutable exact key and value kind, editable
-  display label and description, controlled choices where applicable, active
-  or archived state, role-wide scope, and current Note-use count. Archive and
-  Restore are named keyboard-focusable actions and state that stored values are
-  retained. Adding or editing a definition changes no Note automatically;
-  invalid keys, labels, descriptions, or choices remain inline drafts and never
-  partially update the resolved catalog.
-- Source-type switching retains every unsaved preference draft. Invalid
-  fields in another role or type remain named and prevent the single atomic
-  save. Revision conflict preserves the draft and offers **Reload Saved
-  Settings**; errors are never color-only or a generic alert.
-- Complete Metadata exposes existing managed key, label, value/summary,
-  direct-edit state, and not-typical status. Authored YAML fields remain
-  separately named and route to Source. Its spacing-defined semantic
-  groups retain accessible group names without duplicate visible headings.
-  Concise field definitions use pointer Help instead of persistent copy.
-  Low-frequency field actions reveal on pointer hover or keyboard focus without
-  reflow and remain in the keyboard and accessibility order when not visible.
-  Each direct editor has one persistent accessible label; contributor items
-  retain their number, kind, subfield labels, and contextual Add/Remove action
-  at 200% text and narrow widths.
-- **Add a Field…** is a searchable grouped chooser with one listbox
-  selection, keyboard acceptance, Escape cancellation, and focus return. It
-  never creates a YAML envelope or adds prescribed body content.
-- About uses the same spacing-defined groups and accessible group names as
-  Complete Metadata. The complete fact grid preserves row/column
-  association under enlargement and reflow. Keywords are individually readable
-  neutral tokens in source order, not color-coded status or unlabeled chips.
-- The Zotero Link and Fill sheet exposes one named search field, exact item key,
-  title, author/date context, library identity, result selection, current read
-  progress, proposed empty Metadata fields, retained conflicts with current and
-  Zotero values, and its single completion consequence in linear keyboard and
-  accessibility order. Same-key results in different libraries remain distinct.
-  Loading never removes Cancel; unavailable, no-result, changed-server,
-  changed-item, source-revision, binding-revision, Metadata-revision, partial-
-  commit, and retry states remain textually distinct and persistent. Abstract,
-  tags, `summary`, `keywords`, Markdown, and Zotero non-write boundaries are
-  visible before commit. Clear Link states that any previously filled Metadata
-  is retained. A bound-item refresh names its exact one-item scope, current
-  value, proposed Zotero value, fill/update consequence, and no-change state;
-  it never depends on a spinner or color to communicate progress or completion.
-  Native list selection, default/cancel actions, sheet dismissal, and
-  initiating-focus return remain platform-owned.
+- Settings exposes search, navigation group, selected destination, scope, and
+  detail in predictable order. Empty search retains the query and names the
+  absence.
+- Hotkeys expose command, menu location, binding, recording state, validation,
+  Save, Clear, and Restore. Invalid drafts never change menus.
+- Metadata settings expose role, field definitions, applicability, About order,
+  Agent preferences, dirty/save/conflict state, and exact recovery consequence.
+  Invalid or conflicting drafts remain local and named.
+- Field definitions expose immutable key/kind, editable label/description,
+  choices, lifecycle, scope, and use count. Archive/Restore retain stored values
+  and change no Note automatically.
+- Metadata/About retain accessible semantic groups, field labels, contributor
+  structure, source-authority distinction, and complete values at narrow width
+  and enlarged text. Hover-revealed actions remain in keyboard/accessibility
+  order without reflow.
+- Zotero link/refresh exposes exact item and library identity, current values,
+  proposed fills/updates, retained conflicts, progress, partial commit,
+  cancellation, and retry. Abstract/tags/YAML/Markdown/non-write boundaries are
+  visible before commit.
 
 ### Search, Inspector, and Research Actions
 
-- Search exposes provider, scope, query, result count, match reason, freshness,
-  and destination without color-only meaning. Completion and results share one
-  listbox position; only one owns selection. Explain Query is keyboard and
-  VoiceOver reachable and presents the Application explanation without
-  reparsing the query.
-- Research Search and Document Find have distinct accessible names, shortcuts,
-  focus owners, scopes, and results; neither is announced as the other.
-- Invalid, ambiguous, provider-mismatch, unavailable, stale, and empty Search
-  states remain distinct and retain an edit or retry target. Note and Record
-  results identify their source context and restore focus at the exact available
-  destination.
-- Inspector's Overview and Connect form one shared horizontal
-  segmented single-choice group. Selection remains identifiable without hover. At regular, compact,
-  enlarged-text, and supported English, Simplified Chinese, and mixed-script
-  presentations, About fields adapt as one complete grid and error/recovery
-  text remains untruncated.
-- An already-visible Inspector without a selected Document exposes **No
-  Document Selected** as one read-only content state; it never becomes an empty
-  accessibility subtree, repeats origin-Note content, moves focus, or collapses
-  itself.
-- Connect exposes one named Link Direction control with Incoming and Outgoing
-  values. Changing direction keeps focus on the control, returns the scroll
-  owner to the beginning, and announces an empty destination. Undirected rows
-  state that they appear in both directions.
-- The trailing-centered Document control rail exposes a conditional **Note
-  Review** accessibility group above **Research Actions**. Note Review exists
-  only while pending; its Accent icon is not its only distinction. Neutral
-  icon-only Action buttons expose complete names and Help in visible
-  top-to-bottom order. Review appearance does not move the Actions group's
-  center. Opening Inspector moves both groups with Document but changes neither
-  reading nor focus order. Unavailable Actions name the first executable repair.
-- Pairing and re-pairing expose one linear order through target, local-connection
-  explanation, Copy Handoff, status, and recovery. One-use codes remain inside
-  the complete copied handoff; credentials and opaque identifiers are never
-  separate fields the researcher must read or enter.
-- Agent activity updates do not present permission sheets, activate the app, or
-  move focus. Conflicts, unavailable targets, and recovery duties surface only
-  through their owning Run/notification routes with complete text labels and
-  keyboard-reachable recovery actions.
-- Copy Handoff success closes preparation and returns focus to the originating
-  Action rail button. Result arrival announces no focus change; the persistent
-  Action-level notification and its summarized Document stack remain explicit
-  routes to that exact activity and its Record, while the Triptych bell remains
-  the complete queue route.
-- Follow-up exposes a named finding/question/hypothesis control, its short
-  statement, next Action, and Research Request in reading order. Optional
-  **Feedback on Previous Result** is a labelled default-collapsed disclosure;
-  dirty, saving, stale, failed, and explicit-clear states never rely on color.
+- Research Search and Document Find have distinct names, shortcuts, focus,
+  scope, and results.
+- Search exposes provider, scope, query, completion/result selection, count,
+  match reason, freshness, destination, and Explain Query. Invalid, ambiguous,
+  provider mismatch, unavailable, partial, stale, and empty remain distinct.
+- Inspector Overview/Connect and Incoming/Outgoing are labelled single-choice
+  groups with visible selection and keyboard traversal. No-document Inspector
+  remains a nonempty read-only state.
+- Connect states direction textually; undirected rows say they appear in both
+  directions. Navigation and source-return routes remain separately named.
+- Document Action rail exposes conditional Note Review separately from Research
+  Actions. Icon-only buttons have complete names, Help, availability, and first
+  executable repair. Opening Inspector does not alter reading or focus order.
+- Pairing and re-pairing present one linear flow. Codes remain inside copied
+  handoff; secrets and opaque identifiers are never separate researcher fields.
+  Agent updates neither activate the app nor move focus.
+- Follow-up exposes lineage, statement, next Action, request, and optional
+  default-collapsed Method Feedback with distinct dirty/saving/stale/error/clear
+  states.
 
 ### Research Records
 
-- The Workspace Records control remains keyboard and VoiceOver reachable with
-  no Document selected, names its Triptych scope, and opens the complete
-  Triptych collection. With a resolved current Note it names and opens This
-  Note scope instead.
-- Scope and View are separately named controls. Collections expose ordered
-  headers, sort direction, exact filtered total, loading and Retry at the list
-  boundary, and one complete destination per row. Loaded rows remain available
-  during later-page failure.
-- Record rows communicate exceptional Attention, Action, focal Note, and date
-  in one accessible row value. Reading Lead rows expose the independently
-  operable handled control before the bibliographic destination; its accessible
-  value preserves the bounded meaning in §18.5.
-- Selecting detail removes the collection from the active accessibility tree.
-  Back restores the retained collection. Evidence Shown/Hidden is a current
-  value; hiding removes the rail from the active tree without disturbing the
-  reading order.
-- Record detail reads author before attributed prose. Participants disclose the
-  total and become a control only when a complete popover exists; dismissal
-  returns focus to the heading.
-- Rendered Record headings expose one consistent level-three heading role even
-  when the authored marker used another level. Strong, emphasis, inline code,
-  list, and quotation distinctions remain available without color alone.
-  Resolved web and internal links use native attributed-text link semantics,
-  keyboard focus, VoiceOver labels, and the ordinary activation route rather
-  than a pointer-only gesture. Missing or ambiguous internal destinations read
-  as their exact literal authored syntax and expose no false action.
-- The reading plane exposes **Follow Up…** and any Method Feedback before the Evidence rail. The
-  rail reads Changes, Effects, Participants, and Technical Details in that
-  order at minimum width and enlarged mixed-script settings.
-  Compare Changes exposes document
-  disclosure state, selected complete documents, changed rows, folded unchanged
-  counts, and per-document undo outcomes; focus returns to the Result or
-  Conflict owner selected by its footer action.
-- A pending Note Review is exposed through one named Review action, never an
-  automatically presented banner. Activating it enters the exact Agent-change
-  Diff; **Mark as Reviewed** exists only inside that Diff, follows the compared
-  changes in reading order, and remains unavailable until its exact saved-source
-  and Record projection preconditions hold. Review neither enters a feedback
-  queue nor changes the Activity Notification Stack's accessibility tree.
-- Reading Lead detail retains one order from disposition and full citation
-  through bibliography, discovery, reason, uncertainty, note, source, parent,
-  and technical identity. Narrow or enlarged presentation stacks complete
-  groups without changing that order.
-- System-Trash source deletion, permanent Research Record deletion, and
-  evaluation editing use distinct named controls, confirmation, current state,
-  consequences, and focus restoration. The system-Trash confirmation exposes
-  every source item, whole-Record consequence, unaffected participants, active
-  Discussion consequence, and non-atomic recovery boundary to VoiceOver in
-  reading order. Unknown-outcome and forward-cleanup recovery actions have
-  distinct accessible names. Empty, unavailable, partial, and error states
-  remain named and keyboard reachable.
+- Records remains available with Triptych scope when no Document is selected
+  and This Note scope when one is selected.
+- Scope/View, collection headers, ordering, exact total, pagination, loading,
+  partial state, and Retry are named. Loaded rows survive later-page failure.
+- Selecting detail removes the collection from the active tree; Back restores
+  it. Evidence visibility changes the tree without disturbing reading order.
+- Record detail reads authorship before attributed prose. Links use native
+  semantics; unresolved destinations remain exact nonactions.
+- Follow Up and Method Feedback precede Evidence. Change comparison exposes
+  document selection, changed/unchanged structure, and per-document Undo.
+- Note Review begins only through its named action; Mark as Reviewed exists only
+  inside the exact Diff.
+- Reading Lead detail preserves the order of disposition, citation,
+  bibliography, discovery, reason, uncertainty, note, source, parent, and
+  technical identity.
+- Source deletion, permanent Record deletion, and feedback editing use distinct
+  labels, confirmations, consequences, recovery, and focus restoration.
 
 ### Acceptance threshold
 
-Test long labels in English and Simplified Chinese, mixed English/Chinese
-content, minimum width, every file-operation/error state, and native/editor focus
-transitions. Beta and 1.0 require complete keyboard and VoiceOver coverage for
-the declared core and no unresolved critical or high-severity accessibility
-defects. Their interface-language threshold covers only English and Simplified
-Chinese resources, layout, and accessible names. Additional translations,
-right-to-left chrome and navigation, and complete human acceptance of RTL
-document input are deferred under §17; exact Unicode source preservation remains
-mandatory. The release owner decides the acceptable medium-severity ceiling.
+Test long English and Simplified Chinese labels, mixed content, enlarged text,
+minimum supported widths, file/error/recovery states, and native/editor focus
+transitions. Beta/1.0 require complete keyboard and VoiceOver coverage for the
+declared core and no unresolved critical or high-severity accessibility
+defects. Human acceptance is required for assistive technologies and input
+methods; additional languages and complete RTL acceptance remain deferred.

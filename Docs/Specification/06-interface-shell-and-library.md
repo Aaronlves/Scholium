@@ -4,491 +4,191 @@
 
 ## 18. Canonical interface contract
 
-Sections 1–17 own scholarly and product meaning. This section defines its
-native presentation and state ownership without restating each workflow.
+Sections 1–17 own scholarly and workflow meaning. This chapter owns native shell
+and Library presentation without restating those workflows.
 
 ### 18.1 Interface principles
 
-- Keep Document the largest, most stable region; navigation, Metadata,
-  research context, diagnostics, and agent assistance remain subordinate.
+- Keep Document the largest and most stable region. Navigation, Metadata,
+  research context, diagnostics, and Agent assistance remain subordinate.
 - Prefer native macOS windows, split views, inspectors, toolbars, menus, sheets,
-  alerts, file panels, controls, selection, and focus. Custom presentation must
-  preserve equivalent menu, keyboard, accessibility, cancel, and recovery.
-- Give every mutable fact one owner. Route commands to the focused window or
-  document; identities, repositories, indexes, watchers, and registries are
-  shared workspace services, not view state.
-- Derive Review, Edit, Source, Search, and research views reversibly from
-  authoritative Markdown. Metadata is a distinct portable authority keyed by
-  stable Note identity; neither source nor metadata projections reconstruct
-  the other writable owner.
-- Distinguish source, researcher prose, agent content, Discussion turns,
-  Action output, Settle, Critique, Connect, and diagnostics by text and
-  structure, not color alone.
-- Preserve menu, toolbar, keyboard, pointer, focus, accessibility, cancel,
-  compare, retry, conflict, and recovery routes. Hover, drag, color, motion,
-  secondary click, and gestures are never the only route to a core task.
-- Gate all workspace composition behind the single Application Support
-  bootstrap owner. A storage failure is an app-root state, not a workspace
-  sheet, alert loop, hidden temporary runtime, or view-local fallback.
+  alerts, file panels, controls, selection, and focus.
+- Give every mutable fact one owner. Commands route to the focused
+  window/document; identities, repositories, indexes, watchers, and registries
+  are shared workspace services, not view state.
+- Derive reading and research projections reversibly from authoritative
+  Markdown. Managed Metadata remains a separate portable authority.
+- Distinguish source, researcher prose, Agent content, Discussion, Result,
+  Settle, Critique, Connect, and diagnostics through text and structure, not
+  color alone.
+- Preserve menu, toolbar, keyboard, pointer, focus, accessibility,
+  cancellation, conflict, and recovery routes. Hover, drag, color, motion,
+  secondary click, and gesture are supplementary.
+- Construct no workspace until Application Support bootstrap is Ready.
 
 ### 18.2 Workspace shell and Document tabs
 
-The configured shell exists only after Application Support reaches Ready.
-While storage is unavailable, no workspace route, window session, repository,
-watcher, index, or restore task may be constructed, and workspace commands are
-disabled rather than queued against a hidden runtime.
+Each configured window contains one native split view:
 
-Each configured window contains exactly one native split view with three
-sibling items:
+1. **Sidebar**: Scholium/Triptych identity, Analyses–Topics–Works navigation,
+   Triptych Notifications, and the selected workspace's Library.
+2. **Document**: the selected Note or the restrained no-document state.
+3. **Apparatus**: the trailing Research Inspector's read-only Overview and
+   Connect projections.
 
-1. **Sidebar:** a Library navigation region containing Scholium and Triptych
-   identity; one vertical **Analyses / Topics / Works**
-   TriptychWorkspaceNavigator; one stable Triptych Attention entry; one
-   selected-workspace Library source region; and Library-local disclosure,
-   Filter, and Add controls. Settings is not a Library destination.
-2. **Document:** selected note or the restrained no-document empty state.
-3. **Apparatus:** Research Inspector's read-only Overview and Connect
-   projections. It never owns Research Action launchers, buffers, autosave,
-   Undo, or conflicts;
-   full chronology belongs to Research Records.
+The native window and split controller own frame, dividers, collapse,
+compression, fullscreen, and toolbar geometry. Scholium owns semantic order,
+readable peripheral thresholds, and the one initial Inspector reveal request.
+It never continuously reasserts divider positions. All planes are opaque and
+the system separator is the sole interactive boundary. Design §19 owns the
+single decorative Sidebar-edge depth cue.
 
-The workspace uses the initial content size owned by §19.4, not a minimum. Scene state owns route
-identity and restoration; the native window and split controller own divider,
-compression, collapse, fullscreen, and frame geometry. Scholium never
-persists, restores, observes, or continuously reasserts divider geometry. The only additional
-initial condition is the one-time first-Apparatus-reveal request owned by
-§19.3, after the native split is attached. That request yields to the remaining Document space
-and native bounds; it is not a minimum, maximum, restored divider value, or
-later-reveal preference. After that one transition, the native container and
-direct user resizing remain authoritative. The Library and Apparatus readable-
-thickness metrics are owned by §19.3. The
-native split must keep each expanded peripheral plane at or above its boundary;
-Apparatus has no application-defined maximum. These are neither preferred
-widths, restored divider values, nor parallel geometry owners. Library remains
-a semantic Sidebar and Apparatus a semantic Inspector. All three planes are
-opaque, and the native tracking separator remains the sole interactive
-inter-pane boundary and divider-geometry owner.
-At the Sidebar–Document edge alone, the Workspace adds §19.3's secondary
-**document-navigation boundary** depth cue. It is visually continuous from the
-top of the window through the titlebar/toolbar band to the bottom, falls only
-into Sidebar, and remains behind the native toolbar and tracking separator.
-It neither obscures nor intercepts system chrome, changes divider geometry, or
-creates another boundary. It is absent while Sidebar is collapsed, uses the
-logical Sidebar edge, remains structurally mirrorable for the deferred
-right-to-left interface scope in §18.7, and never appears between Document and
-Apparatus.
+New windows show Library, hide Inspector, and begin in Analyses/Overview.
+Visibility and workspace session state are installed before first presentation,
+then native state is authoritative. Each workspace retains Library filters and
+disclosure, selected tab, live Document mode, and Inspector mode. A transition
+commits only after source safety succeeds; failure preserves the exact origin
+workspace and buffer.
 
-New windows show Library and hide Apparatus. Initial or restored peripheral
-visibility is installed before the native split's first presentation; the
-window never draws an expanded Apparatus and then retracts it during launch.
-Restore applies both visibility values once; then native collapsed state is authoritative and the model only
-mirrors Library and Apparatus visibility for labels, commands, and the next
-session. Menu, toolbar, and content actions send explicit per-window intents to
-the native controller; model observation never continuously reasserts split
-state. Notes/tabs never reconstruct the shell or change peripheral
-visibility. The selected workspace is per-window presentation state, not a
-Note, vault, or Markdown fact. Each workspace retains its own filters,
-disclosure, source-list scroll, selected tab, live Document mode, and
-Inspector mode. A workspace transition saves or fails safely before it commits
-the destination session; it never replaces a dirty buffer or presents the
-destination identity over retained origin content. A new window's first
-workspace and first Inspector reveal begin in Analyses and Overview.
+The native toolbar has stable leading Sidebar and Back/Forward controls,
+Document identity/actions in the center, and trailing Inspector control.
+Back/Forward traverse successful document visits only. The toolbar is stable
+during loading and uses live safe areas. Pane visibility is expressed by the
+actual pane, not duplicate controls or persistent custom selection styling.
 
-The native titlebar owns traffic-light, drag, and height geometry. Its one
-window toolbar exists inert from the first configured frame;
-loading may replace items but not move traffic lights or change band height.
-Opaque regions extend beneath it, and controls use the live safe area rather
-than a measured toolbar height.
+The Inspector remains hideable whenever visible and showable only with a
+Target. If an already-visible Inspector loses its Document, it presents **No
+Document Selected** without stale content or automatic collapse. Research
+Records is a separate Triptych-bound window.
 
-Sidebar and Inspector each keep one visibility control at a stable position in
-that native toolbar. Sidebar and the window-local Back/Forward pair occupy the
-fixed leading zone before the first tracking separator and remain beside the
-traffic lights as the Sidebar resizes or collapses. Back/Forward traverse the
-nonpersistent sequence of successfully visited Documents and never become a
-source, editor, Undo, tab, or per-Note mode history. The Inspector control
-occupies the fixed trailing edge after the Inspector tracking separator. Native
-collapsed state changes each visibility item's accessible Show/Hide label,
-value, and explicit per-window action; collapse and expansion never transfer a
-control, change toolbar item topology, or add a pane-local duplicate. Visibility
-is expressed by the actual pane rather than a persistent selection underline or
-custom active enclosure. Tracking separators remain structural bounds. Add no
-split-item accessory row, custom title strip, Inspector replacement, ellipsis,
-fixed height, automatic glass-like item, or Liquid Glass.
+With two or more open documents in the selected workspace, a Document-owned tab
+strip appears only in the middle plane. One window-local controller partitions
+tabs by vault role and presents only the selected workspace's group. A stable
+Note appears at most once per window. Closing flushes safely and selects a
+neighbor only within the current group; closing the last tab returns to the
+no-document state.
 
-Notifications never enters the Document toolbar. While Sidebar is visible, the
-stable Triptych-owned control beside its identity is the workspace-chrome
-entry and preferred popover anchor; collapsing Sidebar removes that control
-without transferring its count or symbol. Inspector retains its distinct
-current-Note summary. A focus-neutral Document activity stack is a temporary
-direct Action surface only while one or more Action activities require
-researcher attention under §18.5; it is not another count, state owner, or
-complete-queue anchor. **Window → Notifications**
-prefers the visible Triptych entry, then expands the visible Action activity
-stack in place, then uses a nonempty Inspector summary. Without a visible
-anchor, showing Sidebar restores the Triptych route.
+Closing a window, switching route, or terminating must preserve any failing
+save/conflict buffer and provide Retry. Window-session persistence is
+best-effort only after source safety. Cold launch begins with no document
+selected unless the researcher explicitly opens one.
 
-The Inspector toolbar control and View command send one explicit intent through
-the exact window coordinator to the native split.
-The Inspector routes share selected-document availability and preserve native
-transition and geometry. Inspector Show remains visible but disabled without a
-Target; a visible Inspector can always be hidden. If a workspace transition
-leaves an already-visible Inspector without a selected Document, Apparatus
-retains its structure and presents one restrained **No Document Selected**
-content state rather than an empty plane, stale origin projection, or automatic
-collapse. Research Records remains a separate Triptych-bound auxiliary window;
-opening it from the document toolbar reapplies **This Note** Scope when a
-resolved Note is selected and **Triptych** Scope when no Document is selected,
-without changing Inspector state.
+The Sidebar header shows the Scholium wordmark, Triptych identity, and
+Triptych Notifications. The no-document state contains only a decorative
+document symbol, **No Document Selected**, and **Select a note in the Library
+to read or edit.** as one read-only accessibility group.
 
-With two or more documents in the selected workspace, a Document-owned strip
-appears only in the middle item. One window-local tab owner partitions tabs by
-vault role; each tab references one retained editor session, and the single
-native tab controller presents only the active group. Inactive groups remain
-layout-neutral, inert, and accessibility-hidden while their sessions remain
-available for return. Scholium supplies equal-width selection and
-save-before-transition. One stable document has at most one tab in a window;
-repeated open or **Open in New Tab** selects its owning workspace and existing
-tab. Close flushes and selects a retained neighbor only inside the current
-group; last close returns that workspace to no-note. Tabs create no window
-group, parallel controller, split, or toolbar owner.
+Menus follow task ownership:
 
-Window close, route handoff, and application termination are bounded. A
-content flush, save, or conflict failure keeps the affected window and exact
-buffer available with a retry path. Machine-local window-session or layout
-persistence is best-effort after content is safe; its failure is diagnosed but
-does not veto close or misreport a source-save failure. Late asynchronous work may
-not act on a newer route, window, document, or close attempt.
+- **File**: Triptych/window, New Note, Import, Duplicate, Rename, Move, Reveal,
+  and system-Trash actions.
+- **Edit**: editing, Find, formatting, and Edit Metadata.
+- **View**: Back/Forward, Search, Document mode/text size, Sidebar, and Inspector.
+- **Research**: role-valid Actions and Triptych Records.
+- **Window**: standard windows plus Notifications.
+- **Settings**: one searchable native list/detail window with **Application**,
+  **This Triptych**, and **Research Guidance** groups.
 
-An ordinary application-cold launch opens the selected Triptych with no
-document selected; it does not restore or implicitly open a previous document.
-Only an explicit researcher route, such as an intentional document open, may
-bypass that no-note starting state.
+Settings search indexes static page/control metadata, not research or Skill
+content. Triptychs, Document Appearance, and Hotkeys are Application settings;
+Metadata Profiles and Attention are Triptych settings; Skills, Action Profiles,
+Agent Access, and integrations are Research Guidance. Scope is explicit where a
+page mixes This Triptych and This Mac.
 
-The Library BrandHeader sits below window controls. A static Scholium wordmark
-occupies its own identity line. The next line pairs the Triptych identity menu
-with one logical-trailing Triptych Notifications control on §19.3's peripheral
-page edge; neither turns the wordmark into a second toolbar. The control uses a
-direct `bell` SF Symbol and places an exact nonzero Triptych
-total beside, never over, that symbol. Its resting background is transparent;
-one complete interaction surface appears only for hover, keyboard focus, press,
-or the open popover. Traffic-light alignment is visual reference only, never
-derived geometry. No-note is
-one centered `doc.text` symbol, **No Document Selected**, and the secondary
-sentence **Select a note in the Library to read or edit.** It has no card,
-button, motion, focus target, source state, or duplicate creation route. The
-symbol is decorative; the two visible strings form one VoiceOver-readable
-group. No Collapse Note, custom `<<`, Recents, or Quick Open exists.
-
-Menus follow researcher tasks:
-
-- **File:** Triptych/window create/open; direct **New Note** at the focused
-  vault root; Import; Duplicate; Rename; Move; Reveal.
-- **Edit:** editing and **Edit Metadata…**.
-- **View:** Back/Forward, Search, document mode/text size, Sidebar, Research
-  Inspector.
-- **Window:** standard window navigation plus **Notifications**. The command is
-  enabled only when the focused window has a visible Triptych or Inspector
-  Notifications anchor or a visible Action activity stack. It opens the
-  complete queue from a stable entry and expands the Action-only stack in
-  place from the Document route.
-- **Research:** role-valid Actions and **Triptych Records**, never Notifications.
-- **Settings:** one searchable native list/detail window restores its last
-  destination. The titlebar retains native traffic-light and drag geometry but
-  hides the redundant window-title label and toolbar items. The transparent
-  unified titlebar sits over a native split's actual full-height Navigation and
-  detail planes rather than a separately painted window background; pane color,
-  native divider, and content remain continuous beneath it. The navigation plane
-  starts with search rather than a repeated Settings heading. Triptych registration and selection remain inside the
-  Triptychs detail; navigation exposes no global Triptych selector.
-  Static page, section, control, and command metadata supplies Settings search;
-  authored Skill, reference, YAML, profile, and document content is never
-  indexed into it. Navigation has three explicit groups: **Application** owns
-  Triptychs, Document Appearance, and Hotkeys; **This Triptych** owns Metadata
-  Profiles and Attention; **Research Guidance** owns Skills,
-  Action Profiles, Agent Access, and External Tools & Citations. Scoped detail
-  sections say **This Triptych** or **This Mac** where one page presents both.
-  No General or Advanced destination becomes an unrelated catch-all.
-- Hotkeys is machine-local and exposes only the closed catalog of frequent
-  Scholium-specific menu commands. Recording requires Command, rejects a
-  duplicate active binding and standard macOS reservation inline, and supports
-  explicit clear, per-command default restoration, and complete default
-  restoration. Accepted changes update the corresponding menu shortcut
-  immediately. Standard macOS commands, including Settings, window, document,
-  Edit, Find, formatting, and text-size conventions, retain their system or
-  application-defined shortcuts and never enter this remapping surface.
+Hotkeys is machine-local and limited to frequent Scholium-specific menu
+commands. It requires Command, rejects conflicts and reserved shortcuts, and
+supports clear and restore. Standard macOS commands remain outside remapping.
 
 ### 18.3 Library and Search
 
-- TriptychWorkspaceNavigator is Library's top-level vertical navigation. Its
-  three full-width rows appear in stable Analyses, Topics, Works order and
-  expose no role description, icon, Attention count, progress, or pipeline
-  mark. The selected row uses Semibold primary ink plus one persistent native-
-  style Navigation selection surface. An unselected row uses Regular secondary
-  ink; hover or focus adds the same purpose-owned continuous shape with a
-  quieter surface and primary ink, without changing weight or geometry. Rows
-  have no underline, Accent mark, capsule band, enclosing border, shadow, or
-  full-width rule. The group exposes one selected workspace, uses Up/Down Arrow
-  within the group, and lets Tab continue into the selected workspace without
-  pointer activation creating a keyboard-only focus ring.
-- Each workspace row places the last trustworthy exact count of ordinary
-  Notes in that role vault at its logical trailing edge. The count is
-  noninteractive neutral inventory
-  metadata: system Sans, monospaced digits, and `mutedText` in selected,
-  unselected, hover, focus, and inactive-window states. Zero remains visible;
-  an unavailable first result uses an em dash rather than claiming zero; a
-  refresh retains the last trustworthy count. The row's accessible name or
-  value states the workspace and localized Note count.
-- Live application opening may publish the selected workspace's first
-  trustworthy Vault projection before the complete Triptych projection. Once
-  that Vault's Library is usable, the shell removes its full-page Loading state
-  and keeps those rows interactive while one persistent derived-state progress
-  status names the remaining background work. Workspace rows without a first
-  trustworthy projection retain the em dash and remain unavailable; they never
-  claim zero or stage an empty destination. Graph, shared Search, Attention
-  totals, Research Records, and Research Actions remain unavailable rather than
-  presenting a selected-Vault subset as complete. One later complete generation
-  atomically supplies all three Vaults and those cross-Vault projections without
-  replacing, clearing, or moving focus from the usable Library. Snapshot and CLI
-  delivery continue to wait for a complete Triptych projection.
-- One native **Filter** menu groups Integrity, Metadata, Order, and
-  Actions with at most one submenu level. Its icon-only entry hides the
-  redundant outer menu indicator; native submenu chevrons remain. Current
-  Library rows and filters have no Review, Unreviewed, Qualified, or
-  Unqualified state.
-- One icon-only disclosure button sits beside Filter. When any Folder in the
-  current tree is visibly expanded, it presents **Collapse All Folders** with
-  one direct collapse symbol and collapses the complete tree; otherwise it
-  presents **Expand All Folders** with one direct expand symbol and expands the
-  complete tree. It never constructs either mark by stacking glyphs.
-  It is unavailable when the tree contains no expandable Folder. The action
-  mutates only the current vault's Library disclosure set and never source,
-  order, selection, or another window. Every successful in-app Note navigation
-  independently switches Library to that Note's exact Triptych Scope and
-  Library, clears filters only when they exclude that Note, expands
-  only its ancestors, and scrolls only as much as needed without transferring
-  keyboard focus. Manually browsing a different Scope remains possible until
-  the next document navigation.
-- Notes outside folders appear at vault root as ordinary Library rows.
-- Folder/note rows form one hierarchy at one semantic callout size and use the
-  Library row metric owned by §19.3, growing rather than clipping when text
-  requires it. Folder and unselected Note titles use Regular; only the selected
-  Note uses Semibold. Use color, indentation, symbols, and this restrained
-  selection weight—not size or permanent Folder emphasis. One leading semantic
-  slot contains either a folder disclosure or a Note symbol; a folder never
-  repeats both disclosure and folder icon. Notes are one line without sublines,
-  use middle truncation for the Beta, and expose full titles through pointer
-  help and accessibility names. The Beta adds no custom marquee, fade-mask
-  reveal, or scroll-linked title motion. At most one redundant
-  state mark precedes title; selected, focused, disclosed, drop-target, and
-  inactive-selected remain distinct, and selection stays visible off-focus.
-- Folder and Note rows scroll as one native hierarchy; no Folder becomes a
-  sticky section or floating group row. The Library header and its
-  Filter/disclosure/Add controls remain outside the Source List scroll owner
-  and stay available while the hierarchy scrolls.
-- Every enabled, unselected Note and Folder row provides one restrained
-  full-row hover response. Selection remains the stronger persistent state and
-  does not change on hover; pointer feedback never becomes the only route to
-  activation or any row action.
-- A draggable ordinary Note uses one process-private identity-and-revision
-  payload, never source text. A draggable ordinary Folder uses one
-  process-private vault-and-path payload. An eligible Folder row and the
-  Library header advertise Move and provide a restrained temporary target
-  surface; every other row rejects the drop. Note
-  completion uses the ordinary revision-checked Move transaction; Folder
-  completion uses the ordinary complete-descendant flush-and-recheck Move
-  transaction. Both resume through the established derived refresh path.
-- The Library header Add menu offers direct **New
-  Note** and **New Folder** at the current vault root. A secondary click in
-  unoccupied Source List space offers the same two actions without becoming
-  their only route.
-  Every ordinary folder row offers direct **New Note** and **New Folder**, then
-  **Rename Folder…**, **Move Folder…**, conditional subtree expansion/collapse,
-  Copy Relative Path, Reveal in Finder, and destructive **Move Folder and Notes
-  to Trash…**. Equivalent accessibility actions provide non-secondary-click
-  routes. Neither creation action opens a sheet. Library enumerates empty real
-  directories. Protected machine-managed folders and ambiguous
-  projections retain only safe nonmutating navigation.
-- After a successful New Note source-and-identity commit, Library immediately
-  installs and opens an exact source-bound row explicitly marked ahead of
-  disposable derived state. It does not wait for Triptych-wide identity
-  reconciliation, graph, Search, or research projection rebuilds, and it never
-  presents placeholder graph values as current. The Workspace queues one
-  complete background refresh before releasing its source-mutation lease;
-  matching watcher work cannot start a competing rebuild, and the resulting
-  complete generation replaces the temporary row. Library clears filters that
-  could exclude the created row, expands that row's folder ancestors, retains
-  unrelated disclosure and ordinary sorting, and scrolls the selected row into
-  view once. This reveal does not transfer keyboard focus.
-  The Document transition itself opens Edit and transfers focus to the exact
-  body insertion point only after editor mode acknowledgement. This explicit
-  writing focus is separate from Library reveal and remains recoverable when
-  the editor fails after the durable source commit.
-- Library shows no total. Triptych Notifications treats zero as the
-  steady state, **1–3** unresolved items as its primary design condition, and
-  larger queues as exceptional accumulation rather than a separate mode or
-  hard cap. Its stable BrandHeader control always remains a direct entry. At
-  zero it uses secondary ink without a visible number. At nonzero the warning
-  symbol and exact aggregate Triptych total use Attention ink; the number
-  remains beside the symbol and never becomes a notification badge. Its resting
-  background remains transparent in both states. Hover, keyboard focus, press,
-  and the open popover apply the shared shallow interaction surface behind the
-  complete symbol-and-count target; the symbol never owns a separate circle.
-  It neither auto-opens, steals focus, pulses, nor repeats attention-seeking
-  motion. Opening it presents the complete Triptych queue without changing the
-  selected workspace, source content, Document, or Sidebar selection.
-  Inspector may open the same queue with a current-Note subset. Notifications is
-  not Library navigation.
-- One or more **Needs Attention**, **Result Ready**, or **Recovery Required**
-  Action activities present one content-fitting **Activity Notification Stack**
-  in a horizontally centred window overlay one compact inset from the top
-  application edge. It may cover the toolbar and Document without changing
-  reading geometry. One activity exposes its
-  state, Action, target, and valid actions on the banner itself. Multiple
-  activities collapse into one front control that states the exact Action
-  total plus the latest target and state; at most two additional decorative
-  surfaces remain visibly offset behind it, so plurality is evident without
-  pointer input. Pointer presence or keyboard focus expands the Action banners
-  downward over the Document without reflow; activation or Space pins that
-  expansion, and Escape or the expanded header collapses it. Each expanded row
-  operates only its exact Run. The stack contains no Search Notifications,
-  Notification Type, structural issue, or All Notifications route and never
-  becomes the complete Triptych queue. It has no independent selection,
-  filter, unread state, or timeout; each completed activity retains only its
-  own explicit **Dismiss**. Waiting and Running
-  remain in the persistent queue and Triptych total without occupying
-  Document. When no attention-requiring Action remains, the stack disappears;
-  Reduce Motion retains the collapsed layers, direct actions, and expansion
-  state without geometry animation. Note Review is not a notification and
-  never enters this overlay priority. A persistent window Warning or Error
-  replaces the Action stack until explicitly dismissed; the stack returns
-  afterward when attention-requiring Actions remain. A pending one-time system-
-  notification permission prompt waits while either surface is present and may
-  appear only after both disappear. Dismissing that education
-  never stands in for a system choice: **Settings → Notifications → System
-  Result Notifications** always reports the current authorization state and
-  offers Enable or the native System Settings route as applicable.
-- Window operation feedback is divided by consequence. Redundant, noncritical
-  Confirmation or Information uses one content-fitting transient toast centred
-  one compact inset from the bottom window edge; it overlays without reflow,
-  announces once, offers Dismiss, and leaves after a bounded dwell. Warning,
-  Error, partial-commit, and recovery feedback uses one persistent horizontally
-  centred overlay one compact inset from the top window edge, may cover the toolbar,
-  never times out, and precedes the Action stack. Distinct items queue instead of accumulating
-  visible cards. The operation owner retains Retry, Compare, or recovery;
-  presentation owns only type, order, copy, announcement, and dismissal.
-- Settings window-level operation feedback is centred across Sidebar and detail
-  one compact inset from the top window edge as a non-reflowing overlay. It may
-  cover the transparent native titlebar without changing either pane's
-  content geometry. It remains stable across destination changes and never
-  appears to belong to one settings section. Field validation, a conflicting
-  draft, and other control-specific repair remain adjacent to their owning
-  field. Settings applies the same transient-versus-persistent lifetime rule and
-  presents one queued item at a time.
-- Refresh preserves the last trustworthy Triptych total. A first load with no
-  trustworthy result never claims zero; checking uses the control's bounded
-  native progress state. Failure without a trustworthy result presents a
-  visible non-counting unavailable state from the same control and exposes
-  Retry in the popover. Resolving or dismissing the final item removes only the
-  visible number and Attention emphasis; the focused control remains stable.
-- The complete Notifications queue uses one native transient popover session owned by the exact
-  Workspace window, never an application-wide Scene, sheet, inline destination,
-  custom panel, or always-on-top surface. The complete queue's preferred bounded
-  content size is **420 × 480pt**. The Triptych entry anchors that complete
-  queue and Inspector anchors its current-Note subset. The temporary Activity
-  Notification Stack uses no popover; it presents only Action activities and
-  their direct actions in place. These presentations share Triptych-owned
-  activity state without widening the stack into the complete queue.
-  Native transient behavior closes it after outside activation or Escape;
-  opening a Note or Resynthesize also dismisses it. It has no custom or manual
-  close control. Closing the popover never removes an Action activity; only the
-  completed activity's explicit **Dismiss** action does. Reopening within the same Workspace may retain
-  its session filter and selection. Activating a different Workspace window
-  resets query, notification-type filter, selected task, and current-Note subset; the
-  machine-local structural-dismissal ledger and persistent Action activities
-  are unaffected. The Triptych entry opens the complete queue; Inspector entry
-  adds the current Note; the Activity Notification Stack expands its current
-  Action-only set in place. Switching workspace neither filters nor retargets
-  an already open Triptych queue.
-- The Notifications popover presents **Action Activities** once per Run, then
-  groups structural Attention as **Identity & Metadata** (Malformed Metadata,
-  Unresolved Identity), **Structure & Connections** (Possible Orphan, Broken
-  Connection, Ambiguous Connection), and **Revision & Research** (Changed Since
-  Settled, Synthesis Material Changed). Each group shows its visible count.
-  Each row follows one issue-first order: a quiet semantic issue capsule, `/`,
-  one short observable reason, resolved Note title, exact relative path and
-  optional line, then only real available actions aligned to the logical
-  trailing edge. It does not repeat the issue name inside the reason or use a
-  middot as structural punctuation.
-  Ordinary rows provide Inspect and timed Dismiss. Synthesis Material Changed
-  retains Inspect, Resynthesize, and Leave Unchanged. Inspect opens the Note in
-  the exact owning Workspace without global window search or notification and
-  dismisses the popover; its session selection remains available if the same
-  Workspace reopens Attention before the task changes.
-- **Search Notifications** searches localized Action state/action copy, target
-  titles, affected Note titles, and localized visible structural issue type
-  and developer-owned reason copy. The
-  **Notification Type** filter explicitly offers All Notifications, Action
-  Activities, All Issues, and each grouped issue type; selecting an issue type
-  never masquerades as a global filter while silently hiding Action activity.
-- A system-notification click carries exact Triptych, Run, Record, target, and
-  finalized fingerprint identity. During cold launch it waits only until that
-  Triptych's first authoritative snapshot can validate or reject the route;
-  it never guesses a destination, opens an unvalidated Record, or disappears
-  merely because initialization has not completed.
-- Loading retains the popover structure; refreshing, stale, or failed refresh
-  retains the last trustworthy list when one exists and exposes status plus
-  Retry; failure without a prior result shows a complete error; an empty queue
-  shows a quiet completion state. The heading and search/filter controls remain
-  top-aligned in ready, loading, empty, stale, and complete-error states; only
-  the list or state region below them consumes the remaining height. When
-  resolution, refresh, or dismissal removes
-  the selected item, focus moves next, previous, then the popover filter/search
-  control. Count updates use the same Scope and dismissal ledger as the popover.
-- The stable Library header contains the adaptive Folder disclosure control,
-  Filter, and Add. The disclosure control is unavailable when there is no
-  expandable Folder. Matching icon-only controls use the header target metric
-  owned by §19.3, secondary ink at rest, primary ink plus the shared shallow
-  semantic interaction surface on hover, native keyboard focus, and the same
-  purpose-owned continuous corner recipe. They add no persistent Accent tint,
-  independent radius, hover animation, scale, or shadow.
-- Ordinary workspace navigation stages the target session and Library source
-  list from the latest accepted Workspace snapshot while the last committed
-  workspace session remains intact, then commits the destination atomically
-  after document safety succeeds. It never replaces trustworthy content with a
-  full-page Loading state merely because an in-memory projection crosses an
-  asynchronous boundary. A staged target failure retains the prior workspace,
-  tabs, Document, Inspector, and content and reports the failure.
-- Library empty, loading, and error states align to the peripheral page edge
-  and begin one section step below the Library header. They never borrow the
-  tighter OutlineRow surface inset. An initial load with no trustworthy
-  projection uses one system indeterminate progress indicator and the explicit
-  **Loading Library…** name; it does not use a shimmer or skeleton.
-- A Note or Folder row exposes destructive **Move to Trash…** through its
-  context menu and named accessibility action. The focused window also exposes
-  the equivalent File-menu command with the standard Command-Delete shortcut.
-  It always presents the bounded confirmation owned by section 6 before any
-  native move. Confirmation cancellation or preflight failure restores the
-  originating row and focus. After a committed move, focus moves to the next
-  row, previous row, then Library; an open page for absent source closes while
-  unrelated tabs and document focus remain intact. Finder, not Library, owns
-  browsing or restoring system-Trash content.
-- Shared Search follows Section 13: one compact centered surface, always-visible
-  provider-specific scope, no empty sheet, and bounded Note or Record results
-  that identify match context, source freshness, and destination. Typing a
-  valid field prefix may open one bounded capability-driven completion list;
-  scope-authorized property keys participate, optional Note identities may
-  participate, and a controlled property value completes after `=`. Accepting an item edits only
-  the visible query text. Completion and results
-  never expose two simultaneous keyboard selections or turn Search into an
-  advanced workspace. **Explain Query** presents the typed explanation carried
-  by the Application Search response and shared with CLI under §13. The Search
-  surface may present a compact summary with an explicit route to the complete
-  explanation or expose the complete explanation on demand; it need not reserve
-  a permanent explanation row for every query. Whatever presentation is used
-  remains discoverable and never reparses query text or constructs a second
-  interpretation. Provider mismatch,
-  ambiguous identity, not-applicable clauses, invalid syntax, unavailable
-  Graph, partial Record corpus, stale source, and no matches retain distinct
-  inline states. A partial Record corpus keeps every readable Record available
-  beneath one nonblocking limitation banner; it never replaces the collection
-  with a modal failure or an empty state.
+The vertical Triptych workspace navigator presents Analyses, Topics, and Works
+in stable order as peer destinations. The selected row uses one restrained
+native navigation selection; rows show localized exact Note counts without
+role descriptions, progress, pipeline state, or Attention badges. Unknown
+initial count is unavailable, not zero.
+
+Live opening may make the selected vault's trustworthy Library usable before
+cross-vault projections are complete. Unavailable workspace rows remain
+disabled; one persistent progress status names remaining work. Search, Graph,
+Attention totals, Records, and Actions remain unavailable until their complete
+authoritative generation exists. Completion must not replace usable Library
+content or move focus.
+
+Library provides:
+
+- one native Filter menu for Integrity, Metadata, Order, and Actions;
+- one adaptive Expand/Collapse All control;
+- one Add menu for immediate New Note and New Folder;
+- a single scrollable hierarchy of real folders and Notes, including root Notes
+  and empty folders; and
+- explicit empty, loading, stale, and recoverable error states.
+
+Folder and Note rows use one quiet hierarchy. Selection stays visible when
+inactive; hover is weaker than selection. Titles expose full accessibility
+names and pointer help when visually truncated. Folder disclosure, selection,
+drop target, disabled, and focus states remain distinct.
+
+New Note/Folder, Rename, Move, Copy Relative Path, Reveal, Expand/Collapse, and
+system-Trash actions are available through menu and named accessibility routes;
+secondary click and drag are redundant. Note drag payloads contain identity and
+revision, Folder payloads contain vault and path, never source text. Invalid,
+cross-vault, stale, self/descendant, protected, or ambiguous drops fail without
+source change.
+
+A successful New Note commit installs and opens its exact Library row
+immediately, then performs one derived refresh. Filters that would hide it are
+cleared, only its ancestors expand, unrelated disclosure and sort remain, and
+Library reveal does not steal editor focus. If editor activation fails after
+source commit, the UI offers Retry Edit/Source without duplicate creation.
+
+Triptych Notifications has one stable Sidebar entry and exact nonzero total.
+It opens the complete Action/Attention queue without changing the selected
+workspace or Document. Zero is quiet; nonzero uses Attention semantics but not
+a badge, unread model, animation, or auto-open.
+
+Attention-required Action activities may appear as one top-centered
+**Activity Notification Stack** over the window without reflow. One activity
+shows its exact state, Action, target, and actions; multiple activities expand
+to distinct Run-bound rows. It excludes structural Attention and never becomes
+the complete queue. Waiting/Running remain in the complete queue; Note Review
+is not a notification. Reduce Motion preserves all content and controls without
+geometry animation.
+
+Window operation feedback follows consequence:
+
+- redundant Confirmation/Information may use one dismissible transient toast;
+- Warning, Error, partial commit, and recovery use one persistent notice with
+  complete consequence and repair; and
+- field validation stays adjacent to its field.
+
+The operation owner retains Retry, Compare, or recovery. Presentation owns
+order, announcement, and dismissal only. Persistent feedback never times out.
+
+The complete Notifications queue is a window-owned native popover. Sidebar
+opens Triptych scope; Inspector may open a current-Note subset. Popover closure
+does not dismiss persistent Action activity. The queue presents Action
+activities, then grouped structural issues with exact reason, Note/path
+location, and only valid actions. Search/filter changes only this presentation.
+Stale or failed refresh retains last trustworthy content and Retry; empty and
+unavailable remain distinct.
+
+System-notification routes carry exact Triptych, Run, Record, target, and
+fingerprint identity. Cold launch waits for authoritative validation rather
+than guessing or dropping the route. System permission education never
+preempts more consequential Action or recovery feedback.
+
+Workspace switching stages the destination from trustworthy source and commits
+atomically after source safety. It never replaces the origin with a full-page
+loading state during background work. Library loading uses an explicit system
+progress indicator rather than skeleton decoration.
+
+System-Trash actions always use §6 confirmation. After a committed move, focus
+advances to the next row, previous row, then Library; only absent documents
+close. Finder owns restoration.
+
+Shared Search follows §13: one compact centered surface, visible scope, bounded
+provider-specific results, typed completion, Explain Query, exact freshness,
+and distinct invalid, ambiguous, unavailable, partial, stale, and empty states.
+Completion edits visible query text only and shares one keyboard selection with
+results. A partial Record corpus keeps validated Records usable beneath a
+nonblocking limitation.

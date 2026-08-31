@@ -3,58 +3,43 @@
 - **Status:** Canonical product, interface, and release specification
 - **Applies to:** Scholium for macOS and its agent-facing CLI
 
-This is the sole entry point and closed manifest for target product,
-interface, accessibility, release, and stable-decision authority. Only the
-chapters listed below are normative. Structure belongs to
-[IMPLEMENTATION_ARCHITECTURE.md](IMPLEMENTATION_ARCHITECTURE.md); reachability,
-open work, and evidence belong to
+This file is the sole entry point and closed manifest for target product
+behavior. Only the chapters below are normative. Structural ownership belongs
+to [IMPLEMENTATION_ARCHITECTURE.md](IMPLEMENTATION_ARCHITECTURE.md); dated
+reachability and evidence belong to
 [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md). Apple HIG and the selected
-SDK own platform behavior; this set owns Scholium's research semantics and
-governance.
+SDK own platform conventions; this set owns Scholium's research semantics.
 
 ## Set contract
 
-The three document sets have distinct jobs:
-
-| Set | May contain | Must not contain |
-| --- | --- | --- |
-| Specification | Stable target behavior, terminology, interface semantics, accessibility, release requirements, and unresolved target decisions | Current reachability, module/type descriptions, test counts, or operator instructions |
-| Implementation Architecture | Current module, runtime, dependency, state-owner, persistence, and delivery structure | Alternative product rules, acceptance results, or release claims |
-| Implementation Status | Dated reachability, open work, verification evidence, and acceptance boundaries | New target rules or structural design authority |
-
-Operational guides may explain current tools but create no fourth authority.
+The specification contains stable target behavior, terminology, interface and
+accessibility requirements, release gates, and unresolved target questions. It
+does not contain implementation structure, current reachability, test results,
+operator instructions, or decision history. Architecture and status documents
+must not create alternative product rules.
 
 ## Canonical chapters
 
-Read this manifest first, then only the chapters required by the task. A
-cross-chapter change must update every owning chapter in one patch without
-copying the same rule into a new summary.
-
 | Chapter | Owns |
 | --- | --- |
-| [Foundation and Triptych](Specification/01-foundation-and-triptych.md) | Sections 1–4: terminology, product authority, Triptych structure, and Works organization. |
-| [Notes and File Operations](Specification/02-notes-and-file-operations.md) | Sections 5–7: common Note behavior, system-Trash deletion, settlement, annotation, and Discussion. |
-| [Research Actions and Workflows](Specification/03-research-actions-and-workflows.md) | Sections 8–11: Actions and the Analysis, Topic, and Work workflows. |
-| [Connect, Search, and Recovery](Specification/04-connect-search-and-recovery.md) | Sections 12–14: Connections, Search, Attention, Agent changes, saves, and recovery. |
-| [Integrations, Onboarding, and Boundaries](Specification/05-integrations-onboarding-and-boundaries.md) | Sections 15–17: Zotero, onboarding, permanent boundaries, and deferred capabilities. |
-| [Interface Shell and Library](Specification/06-interface-shell-and-library.md) | Sections 18.1–18.3: global interface principles, workspace shell, Library, and Search presentation. |
-| [Document and Research Interface](Specification/07-document-and-research-interface.md) | Sections 18.4–18.7: Document modes, Research Inspector, Document-owned state meanings, and terminology. |
-| [Scholium Design](../Design.md) | Section 19: Scholarly Editorialism, visual language, design Variables, component and pattern presentation, layout, icon, motion, and interface writing. |
-| [Accessibility and Adaptation](Specification/09-accessibility-and-adaptation.md) | Section 20: cross-cutting accessibility and adaptation requirements. |
-| [Release and Open Decisions](Specification/10-release-and-open-decisions.md) | Sections 21–22: release requirements, acceptance, and unresolved target decisions. |
-| [Metadata and Critique](Specification/11-metadata-and-critique.md) | Appendices A–B: authored YAML allowlist, managed Metadata definitions, About and Agent preferences, and bundled Critique requirements. |
+| [Foundation and Triptych](Specification/01-foundation-and-triptych.md) | §§1–4: terminology, authority, Triptych, and Works organization. |
+| [Notes and File Operations](Specification/02-notes-and-file-operations.md) | §§5–7: Note behavior, file operations, deletion, Settle, annotation, and Discussion. |
+| [Research Actions and Workflows](Specification/03-research-actions-and-workflows.md) | §§8–11: Actions and the Analysis, Topic, and Work workflows. |
+| [Connect, Search, and Recovery](Specification/04-connect-search-and-recovery.md) | §§12–14: Connections, Search, Attention, save, and recovery. |
+| [Integrations, Onboarding, and Boundaries](Specification/05-integrations-onboarding-and-boundaries.md) | §§15–17: Zotero, onboarding, permanent boundaries, and deferrals. |
+| [Interface Shell and Library](Specification/06-interface-shell-and-library.md) | §§18.1–18.3: shell, Library, and Search presentation. |
+| [Document and Research Interface](Specification/07-document-and-research-interface.md) | §§18.4–18.7: Document, Inspector, Records, states, and terminology. |
+| [Scholium Design](../Design.md) | §19: visual language, Variables, components, patterns, motion, and writing. |
+| [Accessibility and Adaptation](Specification/09-accessibility-and-adaptation.md) | §20: cross-cutting accessibility and adaptation. |
+| [Release and Open Decisions](Specification/10-release-and-open-decisions.md) | §§21–22: release requirements and unresolved target questions. |
+| [Metadata and Critique](Specification/11-metadata-and-critique.md) | Appendices A–B: metadata catalogs and bundled Critique requirements. |
 
 ## Reading routes
 
-- A Note/source/file-operation task starts with Notes and File Operations, then adds the
-  relevant storage, interface, or accessibility chapter only when affected.
-- A Research Action task starts with Research Actions and Workflows and adds
-  the exact role workflow, interface, or release chapter it changes.
-- Sidebar, file-tree, Document, and editor tasks add the owning interface and
-  Accessibility chapters; visual-language changes also add Scholium Design.
-  Parser and implementation detail stays in Implementation Architecture.
-- Release work reads Release and Open Decisions plus the current verification
-  chapter rooted at [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md).
+Read this manifest, then the owning workflow chapter. Add the relevant interface
+and accessibility chapters for user-facing changes, §19 for visual-language
+changes, and §21 plus current implementation status for release work.
+Architecture owns parser, module, runtime, and persistence mechanics.
 
-Section numbers and meanings remain unique across the closed set. Each rule
-appears only in its owning canonical location.
+Section meanings are unique across this set. Put each rule in one owning
+chapter and link to it instead of restating it.

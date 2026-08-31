@@ -4,173 +4,127 @@
 
 ## Appendix A. Metadata catalogs and settings
 
-Appendix A defines the closed authored-YAML allowlist, built-in managed
-catalogs, and Triptych-extensible Analysis, Topic, and Work field definitions.
-The workspace resolves authored and managed authorities into one role catalog;
-app facts and integrations belong to neither.
+This appendix owns the authored-YAML allowlist, built-in managed catalogs, and
+Triptych-extensible field definitions. Authored source, managed Metadata, app
+facts, and integrations remain separate authorities.
 
 ### Shared authored YAML
 
 | YAML key | Shape | Rule |
 | --- | --- | --- |
-| `summary` | Nonempty multiline text | Short navigation description of the current Note. |
-| `keywords` | Nonempty text list | Researcher-defined retrieval terms. |
+| `summary` | Multiline text | Optional researcher-authored navigation description. |
+| `keywords` | Text list | Optional researcher-authored retrieval terms. |
 
-Both keys are optional values in Analysis, Topic, and Work. Managed creation
-always writes `summary: null` and `keywords: []`; these placeholders count as
-absent until populated. They remain authored source and are edited in Source,
-not in the Metadata sheet. Any other YAML is
-losslessly preserved custom source without canonical semantics or managed-field
-aliases.
+Managed creation writes `summary: null` and `keywords: []`; both count as absent
+until populated. They are edited in Source. Every other YAML key is preserved
+exactly as custom source without canonical or managed-field semantics.
 
 ### Analyses
 
-All 52 built-in Analysis managed fields are optional researcher-owned values. The Source
-group contains choice `type`; text `title`, `short_title`, `original_title`,
-`reviewed_title`, `genre`, `medium`, `version`, and `language`; and CreatorList
-`authors`, `editors`, `translators`, `collection_editors`,
-`container_authors`, `original_authors`, and `reviewed_authors`. The Publication
-group contains source-safe date text `publication_date`,
-`original_publication_date`, and `event_date`; and text `publication_status`,
-`container_title`, `container_title_short`, `series_title`, `series_number`,
-`volume`, `volume_title`, `issue`, `pages`, `chapter_number`, `edition`,
-`number_of_volumes`, `publisher`, `publisher_place`, `original_publisher`,
-`original_publisher_place`, `institution`, `report_number`, `event_title`, and
-`event_place`.
+All built-in Analysis fields are optional researcher-owned managed values.
 
-| Presentation group | Managed keys and shapes |
+| Group | Keys and shapes |
 | --- | --- |
-| Access & Identifiers | source-safe date text `accessed_date`; text `doi`, `isbn`, `issn`, `url`, `pmid`, `pmcid`, `arxiv_id`, `archive`, `archive_collection`, `archive_location`, `archive_place`, `call_number` |
+| Source | choice `type`; text `title`, `short_title`, `original_title`, `reviewed_title`, `genre`, `medium`, `version`, `language`; CreatorList `authors`, `editors`, `translators`, `collection_editors`, `container_authors`, `original_authors`, `reviewed_authors` |
+| Publication dates | `publication_date`, `original_publication_date`, `event_date` |
+| Publication text | `publication_status`, `container_title`, `container_title_short`, `series_title`, `series_number`, `volume`, `volume_title`, `issue`, `pages`, `chapter_number`, `edition`, `number_of_volumes` |
+| Publication agents/events | `publisher`, `publisher_place`, `original_publisher`, `original_publisher_place`, `institution`, `report_number`, `event_title`, `event_place` |
+| Access & Identifiers | date text `accessed_date`; text `doi`, `isbn`, `issn`, `url`, `pmid`, `pmcid`, `arxiv_id`, `archive`, `archive_collection`, `archive_location`, `archive_place`, `call_number` |
 
-A CreatorList is a nonempty ordered sequence of mappings. A person requires
-nonempty `family` and may have `given`, `suffix`, `non_dropping_particle`, and
-`dropping_particle`. A literal creator contains only nonempty `literal`.
-Person and literal forms never mix and unknown members are invalid. Scholium
-does not split, invert, transliterate, or normalize names.
+A CreatorList is a nonempty ordered list of either person mappings with required
+`family` and optional `given`, `suffix`, `non_dropping_particle`, and
+`dropping_particle`, or a literal mapping with only nonempty `literal`.
+Scholium does not split, invert, transliterate, or normalize names.
 
-`type` is one of the following stable values and has one deterministic future
-CSL output:
+`type` is one of: `journal_article`, `book`, `chapter`,
+`encyclopedia_entry`, `thesis`, `manuscript`, `report`, `preprint`,
+`conference_paper`, `presentation`, `webpage`, `review`, `dataset`,
+`software`, `archival_item`, `correspondence`, `audiovisual`, or `other`.
 
-| Analysis type | CSL type |
-| --- | --- |
-| `journal_article` | `article-journal` |
-| `book` | `book` |
-| `chapter` | `chapter` |
-| `encyclopedia_entry` | `entry-encyclopedia` |
-| `thesis` | `thesis` |
-| `manuscript` | `manuscript` |
-| `report` | `report` |
-| `preprint` | `article` |
-| `conference_paper` | `paper-conference` |
-| `presentation` | `speech` |
-| `webpage` | `webpage` |
-| `review` | `review-book` |
-| `dataset` | `dataset` |
-| `software` | `software` |
-| `archival_item` | `document` |
-| `correspondence` | `personal_communication` |
-| `audiovisual` | `motion_picture` |
-| `other` | `document` |
+Source-type profiles own applicable fields and recommended discovery order.
+`other` permits the complete catalog. Agent-preferred fields must be applicable
+and shape-known but remain optional. The required `source_type` creation input
+only routes creation and derives managed `type`.
 
-The built-in source-type catalog owns applicable fields and recommended order.
-Journal articles, books, chapters/encyclopedia entries, theses,
-manuscript/report/preprint, conference/presentation, webpages, reviews,
-archival/correspondence, and dataset/software/audiovisual families use their
-ordinary bibliographic fields; `other` permits the complete catalog.
-Recommended is discovery order only. Settings may mark only applicable,
-shape-known managed fields Agent-preferred. Every such field remains optional.
-The required `source_type` input is a creation-routing discriminator from which
-Scholium derives managed `type`; it is not a Settings-selectable metadata
-requirement.
-
-Default About order is Source `type`, `authors`; Publication
-`publication_date`; then Authored YAML `summary`, `keywords`. Managed `title`
-participates in Analysis identity and remains editable in Metadata but is not
-repeated in About. Applicable built-in and custom managed fields can be added
-to a Note on demand without creating or changing YAML.
+Default About shows managed `type`, `authors`, and `publication_date`, then
+authored `summary` and `keywords`. Managed `title` resolves Analysis identity
+but is not repeated in About.
 
 ### Topics
 
-| Authority | Key | Shape | Default About | Rule |
-| --- | --- | --- | --- | --- |
-| Scholium Metadata | `aliases` | Nonempty text list | Topic Description | Search and link alternatives. |
-| Authored YAML | `summary` | Multiline text | Authored YAML | Navigation declaration. |
-| Authored YAML | `keywords` | Nonempty text list | Authored YAML | Researcher retrieval terms. |
+| Authority | Key | Shape | Default group |
+| --- | --- | --- | --- |
+| Managed Metadata | `aliases` | Text list | Topic Description |
+| Authored YAML | `summary` | Multiline text | Authored YAML |
+| Authored YAML | `keywords` | Text list | Authored YAML |
 
-Topic identity is first H1, then filename. YAML `title`, `aliases`,
-`research_unit`, `scope`, `limitations`, and `tags` are custom source without
-canonical meaning.
+Topic identity is first H1, then filename. Similar-looking custom YAML keys have
+no canonical meaning.
 
 ### Works
 
-| Authority | Key | Shape | Default About | Rule |
-| --- | --- | --- | --- | --- |
-| Scholium Metadata | `work_type` | Choice | Work Description | `paper`, `chapter`, `book`, `talk`, `review`, `teaching`, or `other`. |
-| Scholium Metadata | `coauthors` | Nonempty text list | Work Description | Co-authors when relevant. |
-| Authored YAML | `summary` | Multiline text | Authored YAML | Navigation declaration. |
-| Authored YAML | `keywords` | Nonempty text list | Authored YAML | Researcher retrieval terms. |
+| Authority | Key | Shape | Default group |
+| --- | --- | --- | --- |
+| Managed Metadata | `work_type` | `paper`, `chapter`, `book`, `talk`, `review`, `teaching`, or `other` | Work Description |
+| Managed Metadata | `coauthors` | Text list | Work Description |
+| Authored YAML | `summary` | Multiline text | Authored YAML |
+| Authored YAML | `keywords` | Text list | Authored YAML |
 
-Work identity is first H1, then filename. YAML `title`, `work_type`,
-`coauthors`, `kind`, `authors`, `venue`, `research_unit`, `scope`,
-`limitations`, `tags`, `status`, and `deadline` are custom source without
-canonical meaning.
+Work identity is first H1, then filename. Similar-looking custom YAML keys,
+including status or deadline fields, have no canonical meaning.
 
 ### Shared presentation and settings rules
 
-Group order is Analysis **Source → Publication → Access & Identifiers → Custom
-Metadata → Authored YAML**, Topic **Topic Description → Custom Metadata →
-Authored YAML**, and Work **Work Description → Custom Metadata → Authored
-YAML**. One resolved workspace catalog owns membership. Metadata and About
-distinguish groups through whitespace while retaining group names for assistive
-technology instead of visible repeated headings. About shows only selected,
-nonempty values. Authored `keywords` render as neutral content capsules.
+Group order is:
+
+- Analysis: Source, Publication, Access & Identifiers, Custom Metadata, Authored
+  YAML;
+- Topic: Topic Description, Custom Metadata, Authored YAML;
+- Work: Work Description, Custom Metadata, Authored YAML.
+
+Metadata and About preserve group semantics for accessibility but use whitespace
+instead of repeated visible headings. About shows selected nonempty values;
+keywords are neutral content capsules.
 
 Defined, applicable, recommended, Agent-preferred, present, and About-visible
-are separate states. Source-type profiles own built-in applicability and
-recommendation order; custom Analysis fields apply to every source type without
-becoming recommended. About selection and Agent preference never create a
-value, and every Agent-preferred field remains optional.
+are independent. Definitions and preferences never create or require a Note
+value.
 
-`settings.json` stores three independent values under one exact-byte revision
-and one atomic save: stable managed-field definitions by role, About
-profiles by role, and Analysis Agent field preferences by source type. A custom
-definition uses a lowercase snake-case key and one of text, multiline text,
-text list, number, boolean, source-safe date, or controlled choice. It cannot
-shadow a built-in or authored-YAML key. Its key, value kind, and order do not
-change; label and optional description may change; controlled choices may only
-be appended. Archive and Restore are reversible. Archived fields retain stored
-values, validation, editing, and Search but leave Add Field, About selection,
-and Agent preferences. Adding it changes no Note and does not select it elsewhere.
-Every preference names a shape-known managed field applicable to its source
-type, but remains guidance:
-an Agent may omit it without blocking creation or creating a placeholder.
-Restore About defaults does not alter definitions or Agent preferences. The fixed authored
-YAML scaffold is Application-owned creation policy, not Settings content;
-Settings cannot add, remove, reorder, or require `summary`, `keywords`, or any
-other authored field.
+One revision-checked `settings.json` stores managed-field definitions, About
+profiles, and Analysis Agent preferences. A custom field uses a lowercase
+snake-case key and text, multiline text, text list, number, boolean, source-safe
+date, or controlled-choice shape. It cannot shadow built-in or authored YAML.
+Key, value kind, and order are immutable; label/description may change and
+choices may only be appended.
+
+Archive/Restore preserves stored values and Search/editing validation while
+removing the field from new-value, About-selection, and Agent-preference
+choices. Restore About defaults changes no definitions or Agent preferences.
+The fixed authored-YAML scaffold is creation policy, not editable Settings.
 
 ## Appendix B. Bundled Critique Method requirements
 
-The bundled Critique Skill must inspect the bounded Work context and applicable
-Analyses and Topics; distinguish what those notes report, support, dispute, or
-leave uncertain from the agent's own reconstruction or evaluation; and treat
-neither neutral links nor transitive paths as evidence.
+The bundled Critique Skill inspects the bounded Work plus applicable Analyses
+and Topics. It distinguishes what those Notes report, support, dispute, or leave
+uncertain from the Agent's own reconstruction and evaluation. Neutral links and
+transitive paths are never evidence.
 
-For the whole Work it addresses material strengths, weaknesses, method fit,
-source and perspective coverage, conceptual and argumentative command,
-sustained contribution, defensibility, omissions, implications, objections,
-alternatives, and priorities. These are conditional burdens relative to the
-Work's genre, scope, and inspected evidence, not a score or universal method.
-For a selected passage it identifies the exact target, issue, significance,
-research basis, and recommendation without judging the whole Work. It records
-material access limits and uncertainty when they constrain the assessment, but
-does not inventory what the Agent read. It never
-certifies novelty, publishability, doctoral level, field completeness, or
-researcher competence. Any Traced, Untraced, Disputed, or Beyond Sources label
-remains an attributed agent judgment, never a Scholium status.
+Whole-Work Critique addresses material strengths, weaknesses, method fit,
+source/perspective coverage, conceptual and argumentative command, sustained
+contribution, defensibility, omissions, implications, objections, alternatives,
+and revision priorities as warranted by genre, scope, and inspected evidence.
+It is not a score or universal method.
 
-Critique never modifies the target Work. A recommended source change requires
-current Write authority. The Critique registration identifies one
-researcher-owned Action Skill folder; Scholium does not read, edit, validate,
-or restore its contents. This specification states requirements without
-duplicating the user-managed Skill's complete prose.
+Passage Critique identifies the exact target, issue, significance, research
+basis, and recommendation without generalizing to the complete Work. Every
+Critique records material access limits and uncertainty but does not inventory
+reading. It never certifies novelty, publishability, doctoral level, field
+completeness, or researcher competence.
+
+**Traced**, **Untraced**, **Disputed**, and **Beyond Sources** remain attributed
+Agent judgments, not Scholium statuses. Critique never modifies the Work; a
+source change requires current Write authority.
+
+The Critique registration identifies one researcher-owned Skill folder.
+Scholium does not read, edit, validate, snapshot, or restore its contents. This
+appendix specifies outcomes without duplicating that Skill's method prose.
