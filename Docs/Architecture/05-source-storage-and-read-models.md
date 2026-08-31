@@ -139,8 +139,8 @@ The returned URL remains machine-local recovery evidence only.
 After every source receipt is `movedToSystemTrash`,
 `PortableResearchRecordStore` discards affected active Discussions and deletes
 each previewed finished Record with exact-fingerprint compare-and-swap. A
-durable deletion marker makes retry idempotent. Note Review activities are
-pruned, then local executions and Agent change evidence are removed. Settlement,
+durable deletion marker makes retry idempotent. Local executions and Agent
+change evidence are then removed. Settlement,
 stable identity, source-access records, Zotero bindings, and Critique
 associations are not cleanup targets. The Note-deletion marker shares the
 portable-store lock with active Discussion, Settlement, and finished Record

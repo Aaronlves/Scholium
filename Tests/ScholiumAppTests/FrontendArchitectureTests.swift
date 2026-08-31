@@ -33,6 +33,12 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
+        let windowManagementSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/UI/Components/ScholiumWindowManagement.swift"
+            ),
+            encoding: .utf8
+        )
         let designSystemSource = try String(
             contentsOf: repository.appendingPathComponent(
                 "Scholium/UI/Foundation/ScholiumDesignSystem.swift"
@@ -86,6 +92,13 @@ struct FrontendArchitectureTests {
         )
         #expect(componentsSource.contains(".onKeyPress(.space)"))
         #expect(componentsSource.contains("guard kind.dismissesAutomatically"))
+        #expect(windowManagementSource.contains("fittingSizeDidChange"))
+        #expect(
+            windowManagementSource.contains(
+                "while let superview = frameView.superview"
+            )
+        )
+        #expect(!windowManagementSource.contains("fullWidthTitlebarView"))
         #expect(!source.contains("WindowFeedbackStack"))
         #expect(!settingsSource.contains("WorkspaceSettingsFeedbackStack"))
         #expect(source.contains("refreshStatusNotice"))
@@ -435,7 +448,7 @@ struct FrontendArchitectureTests {
         #expect(noteSource.contains("private var readProjectionTaskIdentity: String"))
         #expect(noteSource.contains("noteFingerprint.sha256"))
         #expect(noteSource.contains("if note.document.hasExactEmptyBody"))
-        #expect(noteSource.contains("scholium.emptyNoteReview"))
+        #expect(noteSource.contains("scholium.emptyRenderedReview"))
         #expect(noteSource.contains("This note has no body content."))
         #expect(noteSource.contains("documentSession.isEnteringManagedCreation"))
         #expect(noteSource.contains("Retry Edit"))
@@ -2177,6 +2190,20 @@ struct FrontendArchitectureTests {
         let actionStackSource = componentsSource[
             actionStackStart.lowerBound..<actionStackEnd.lowerBound
         ]
+        let settlementRowStart = try #require(
+            attentionSource.range(
+                of: "struct SettlementRequirementNotificationRow: View"
+            )
+        )
+        let settlementRowEnd = try #require(
+            attentionSource.range(
+                of: "struct AttentionQueueRow: View",
+                range: settlementRowStart.upperBound..<attentionSource.endIndex
+            )
+        )
+        let settlementRowSource = attentionSource[
+            settlementRowStart.lowerBound..<settlementRowEnd.lowerBound
+        ]
         #expect(attentionSource.contains("TextField(\"Search Notifications\""))
         #expect(attentionSource.contains("Picker(\"Notification Type\""))
         #expect(attentionSource.contains("Text(\"Action Activities\")"))
@@ -2210,14 +2237,20 @@ struct FrontendArchitectureTests {
         #expect(!attentionSource.contains("presentedActivityRunID"))
         #expect(!attentionSource.contains("notification.actionDetail"))
         #expect(actionStackSource.contains("directBanner(for: latest)"))
+        #expect(actionStackSource.contains("directSettlementBanner("))
+        #expect(actionStackSource.contains("settlementRequirement:"))
+        #expect(actionStackSource.contains("reviewSettlementChanges:"))
         #expect(actionStackSource.contains("ResearchActivityNotificationBannerRow("))
+        #expect(actionStackSource.contains("SettlementRequirementNotificationRow("))
+        #expect(settlementRowSource.contains("Button(\"Review Changes\""))
+        #expect(!settlementRowSource.contains("Button(\"Settle\""))
         #expect(actionStackSource.contains("private var expandedRows"))
         #expect(actionStackSource.contains("return VStack(spacing:"))
         #expect(actionStackSource.contains("if isExpanded"))
         #expect(!actionStackSource.contains("summaryHeight"))
         #expect(actionStackSource.contains("expansionRequestGeneration"))
-        #expect(actionStackSource.contains("Show Action Notifications"))
-        #expect(actionStackSource.contains("Hide Action Notifications"))
+        #expect(actionStackSource.contains("Show Notifications"))
+        #expect(actionStackSource.contains("Hide Notifications"))
         #expect(!actionStackSource.contains(".onChange(of: summaryIsFocused)"))
         #expect(!String(actionStackSource).localizedCaseInsensitiveContains("popover"))
         #expect(contentSource.contains("actionNotificationStackExpansionGeneration"))
@@ -2548,33 +2581,19 @@ struct FrontendArchitectureTests {
         #expect(actionsSource.contains("struct DocumentResearchActionRail"))
         #expect(actionsSource.contains("scholium.documentActionRail"))
         #expect(actionsSource.contains("scholium.documentActionRail.actions"))
-        #expect(actionsSource.contains("scholium.documentReviewGroup"))
         #expect(contentSource.contains(".overlay(alignment: .trailing)"))
         #expect(!contentSource.contains(".overlay(alignment: .topTrailing)"))
-        #expect(
-            contentSource.contains(
-                ".alignmentGuide(VerticalAlignment.center)"
-            )
-        )
-        #expect(
-            contentSource.contains(
-                "+ actionRailCenterOffset"
-            )
-        )
-        #expect(actionsSource.contains("static func verticalCenterOffset("))
-        #expect(
-            actionsSource.contains(
-                "if noteReviewState?.status == .needsReview {\n                reviewGroup\n            }\n\n            researchActionGroup"
-            )
-        )
+        #expect(!contentSource.contains("+ actionRailCenterOffset"))
+        #expect(!actionsSource.contains("verticalCenterOffset"))
+        #expect(sharedComponentsSource.contains("SettlementRequirementNotificationRow("))
+        #expect(contentSource.contains("settlementRequirement: currentSettlementRequirement"))
         #expect(actionsSource.contains("ScholiumContentControlButtonStyle("))
         #expect(actionsSource.contains(".scholiumEditorialSurface(.floatingControl"))
         #expect(actionsSource.contains(".fixedSize(horizontal: true, vertical: false)"))
-        #expect(actionsSource.contains("scholium.documentActionRail.review"))
+        #expect(!actionsSource.contains("scholium.documentActionRail.review"))
         #expect(actionsSource.contains(".accessibilityLabel(Text(verbatim: item.title))"))
         #expect(actionsSource.contains("railIcon("))
         #expect(!actionsSource.contains("title: Text(verbatim: item.title)"))
-        #expect(actionsSource.components(separatedBy: ".accent").count - 1 == 2)
         #expect(!actionsSource.contains("ResearchActionsInspectorView"))
         #expect(!actionsSource.contains("ResearchActionVisualSection"))
         #expect(!actionsSource.contains("BuiltInActionVisualGroup"))

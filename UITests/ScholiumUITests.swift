@@ -146,7 +146,7 @@ final class ScholiumUITests: XCTestCase {
         if name.contains(
             "testActionNotificationProofPresentationKeepsTheStackExact"
         ) {
-            try seedNoteReviewCutoverFixture()
+            try seedSettlementReminderFixture()
         }
         if name.contains(
             "testAmbiguousExternalRenameRequiresExplicitIdentityConfirmation"

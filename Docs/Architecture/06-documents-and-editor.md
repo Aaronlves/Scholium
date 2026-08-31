@@ -37,11 +37,7 @@ Each retained `DocumentSessionModel` owns:
 - a revision-bound semantic source scroll anchor plus normalized fallback;
 - autosave and in-flight save tasks with stale tokens;
 - rendered Review projection state; and
-- save error, conflict, retry, and comparison presentation state;
-- the session-only Note Review task presentation identity: the current sorted
-  pending activity IDs, any explicitly dismissed matching identity, and whether
-  that task is attached. Durable Note Review truth remains in the portable Note
-  Review store, not this presentation value.
+- save error, conflict, retry, and comparison presentation state.
 
 CodeMirror remains authoritative while editing. The boundary uses
 generation-bound full-buffer reads at explicit lifecycle edges, an

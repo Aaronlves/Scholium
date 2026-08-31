@@ -129,7 +129,7 @@ struct ResearchRecordChangesSection: View {
         }
         if modifiedChanges.isEmpty {
             return String(
-                localized: "Created Notes have visible provenance and Note Review, but no fabricated before-source comparison or direct Undo."
+                localized: "Created Notes have visible provenance and require Settlement, but no fabricated before-source comparison or direct Undo."
             )
         }
         if createdChanges.isEmpty {
@@ -138,7 +138,7 @@ struct ResearchRecordChangesSection: View {
             )
         }
         return String(
-            localized: "Compare modified Notes below. Created Notes retain visible provenance and Note Review without a fabricated before-source comparison."
+            localized: "Compare modified Notes below. Created Notes retain visible provenance and require Settlement without a fabricated before-source comparison."
         )
     }
 

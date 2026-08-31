@@ -154,8 +154,7 @@ beginning.
 Document owns a trailing-centered overlay rail. **Research Actions** presents
 the role-valid Actions from §8.1 in canonical order as neutral icon-only,
 fully named accessible buttons; Settle follows as the quiet current-Note
-judgment. Conditional **Note Review** appears above without becoming an Action
-or notification. The rail never owns lifecycle status.
+judgment. The rail never owns lifecycle status or a separate review milestone.
 
 Action launchers open sheets containing scholarly inputs, target effect,
 read-only context, availability, repair, and **Copy Handoff**. They never expose
@@ -172,7 +171,7 @@ Dismiss; Dismiss means none of read, review, acceptance, adoption, Undo, or
 cancellation.
 
 One multi-Note Run remains one activity with disclosed affected Notes; each
-Note retains independent Review and Undo. The Inspector, Document mode,
+Note retains independent Settlement and Undo. The Inspector, Document mode,
 projection refresh, and pane visibility never replace the retained editor host
 or its state.
 

@@ -470,7 +470,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(model.errorMessage == "fixture refresh failed")
     }
 
-    @Test("A normalized Needs Review candidate is dirty and directly saveable")
+    @Test("A normalized repair candidate is dirty and directly saveable")
     func repairableCandidateDiffersFromRawSettings() throws {
         let raw = Data(#"{"visibleFields":[" authors ","authors"]}"#.utf8)
         let decoded = try JSONDecoder().decode(

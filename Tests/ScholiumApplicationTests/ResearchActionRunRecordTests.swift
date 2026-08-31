@@ -1684,9 +1684,9 @@ extension ResearchActionRunOperationsTests {
         #expect(completedSnapshot.research.resultArrivals.contains {
             $0.recordID == portable.id
         })
-        #expect(completedSnapshot.research.noteReviewStates.first {
-            $0.noteID == work.noteID
-        }?.status == .noAgentChangesToReview)
+        #expect(completedSnapshot.research.settlementRequirements.allSatisfy {
+            $0.noteID != work.noteID
+        })
         #expect(try await handle.snapshot().research.critiques.allSatisfy { critique in
             !critique.rounds.contains { $0.id == action.runID }
         })

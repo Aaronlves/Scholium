@@ -226,11 +226,21 @@ preserving unrelated tabs and focus.
 Settle binds an optional rationale, date, and researcher identity to the exact
 saved fingerprint of any Analysis, Topic, or Work. Save failure, conflict,
 unknown identity, or revision mismatch blocks it. Repeating Settle replaces the
-current marker. A later fingerprint preserves the judgment and may expose
-**Changed Since Settled** and **Settle Again**.
+current marker. The marker also covers every confirmed Agent-change activity
+for that Note that exists when Settle commits. A later saved fingerprint or a
+later confirmed Agent change preserves the prior judgment but makes the current
+revision **Not Settled** and exposes **Settle Again**.
 
-Each Note has one portable Settlement marker. It is not a Record, verdict,
-source version, restore point, retention policy, or Agent requirement.
+A persistent in-app Settlement reminder appears only after a confirmed Agent
+source change or after a previously Settled Note changes. It remains until
+Settle succeeds for the exact current saved revision. Opening Records, viewing
+or closing a Diff, editing, restoring, changing windows, or dismissing another
+notification never clears it. A never-Settled Note with no confirmed Agent
+source change has no reminder.
+
+Each Note has one portable Settlement marker and no separate reviewed marker.
+It is not a Record, verdict, source version, restore point, retention policy,
+or Agent requirement.
 
 ### 7.2 Discussion, Comment, and written annotation
 

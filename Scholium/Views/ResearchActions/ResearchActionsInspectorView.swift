@@ -283,11 +283,10 @@ extension WorkspaceResearchActivityRepairReason {
 struct DocumentResearchActionRail: View {
     let presentation: ResearchActionsPresentation
     let freshness: ResearchProjectionFreshness
-    let noteReviewState: WorkspaceNoteReviewState?
+    let settlementIsRequired: Bool
     let focusRequest: ResearchActionFocusRequest?
     let registerFocusOwner: (ResearchActionID) -> Void
     let select: (ResearchActionItemPresentation) -> Void
-    let openReview: () -> Void
     let retryRefresh: () -> Void
     let retryCancellationRecovery: (UUID) -> Void
     let settle: (String?) async throws -> Void
@@ -300,13 +299,7 @@ struct DocumentResearchActionRail: View {
     @FocusState private var focusedActionID: ResearchActionID?
 
     var body: some View {
-        VStack(alignment: .trailing, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            if noteReviewState?.status == .needsReview {
-                reviewGroup
-            }
-
-            researchActionGroup
-        }
+        researchActionGroup
         .fixedSize(horizontal: true, vertical: false)
         .onChange(of: focusRequest) { _, request in
             guard let request else { return }
@@ -322,13 +315,6 @@ struct DocumentResearchActionRail: View {
             focusRestorationTask?.cancel()
             focusRestorationTask = nil
         }
-    }
-
-    nonisolated static func verticalCenterOffset(showsReview: Bool) -> CGFloat {
-        guard showsReview else { return 0 }
-        let reviewGroupHeight = ScholiumMetrics.Apparatus.actionRowMinimumHeight
-            + 2 * ScholiumGrid.Spacing.labelAccessoryGap
-        return (reviewGroupHeight + ScholiumGrid.Spacing.inlineControlGap) / 2
     }
 
     private var researchActionGroup: some View {
@@ -385,41 +371,10 @@ struct DocumentResearchActionRail: View {
         .accessibilityIdentifier("scholium.researchAction.\(item.id.rawValue)")
     }
 
-    private var reviewGroup: some View {
-        VStack(spacing: 0) {
-            reviewButton
-        }
-        .padding(ScholiumGrid.Spacing.labelAccessoryGap)
-        .scholiumEditorialSurface(.floatingControl, in: railShape)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Note Review")
-        .accessibilityIdentifier("scholium.documentReviewGroup")
-    }
-
-    private var reviewButton: some View {
-        Button(action: openReview) {
-            railIcon(
-                systemImage: "doc.text.magnifyingglass",
-                restingRole: .accent,
-                emphasizedRole: .accent
-            )
-        }
-        .buttonStyle(railButtonStyle())
-        .help("Review this Note's Agent changes")
-        .accessibilityLabel("Review")
-        .accessibilityValue(reviewAccessibilityValue)
-        .accessibilityHint("Opens this Note's Agent changes")
-        .accessibilityIdentifier("scholium.documentActionRail.review")
-    }
-
-    private var reviewAccessibilityValue: String {
-        let count = noteReviewState?.pendingActivities.count ?? 0
-        return String(localized: "Needs Review, \(count) Agent activities")
-    }
-
     private var settlementButton: some View {
         let isCurrent = presentation.latestSettlement?.fingerprint
             == presentation.target?.fingerprint
+            && !settlementIsRequired
         return Button {
             presentsSettlement = true
         } label: {

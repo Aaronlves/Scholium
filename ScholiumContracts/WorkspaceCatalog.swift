@@ -1,20 +1,5 @@
 import Foundation
 
-/// Current applicability of a researcher Settlement. It is not a scholarly
-/// qualification and never contributes to Search.
-public struct WorkspaceSettlementState: Codable, Hashable, Sendable {
-    public let settledFingerprint: DocumentFingerprint
-    public let changedSinceSettled: Bool
-
-    public init(
-        settledFingerprint: DocumentFingerprint,
-        changedSinceSettled: Bool
-    ) {
-        self.settledFingerprint = settledFingerprint
-        self.changedSinceSettled = changedSinceSettled
-    }
-}
-
 public struct WorkspaceCatalogNote: Codable, Hashable, Identifiable, Sendable {
     public var id: String { reference.id }
     public let reference: VaultNoteReference
@@ -69,7 +54,6 @@ public struct WorkspaceCatalogNote: Codable, Hashable, Identifiable, Sendable {
 
 public enum AttentionQueueKind: String, Codable, CaseIterable, Sendable {
     case possibleOrphan = "possible_orphan"
-    case changedSinceSettled = "changed_since_settled"
     case synthesisMaterialChanged = "synthesis_material_changed"
     case malformedMetadata = "malformed_metadata"
     case brokenConnection = "broken_connection"
@@ -79,7 +63,6 @@ public enum AttentionQueueKind: String, Codable, CaseIterable, Sendable {
     public var displayName: String {
         switch self {
         case .possibleOrphan: "Possible Orphan"
-        case .changedSinceSettled: "Changed Since Settled"
         case .synthesisMaterialChanged: "Synthesis Material Changed"
         case .malformedMetadata: "Malformed Metadata"
         case .brokenConnection: "Broken Connection"
@@ -312,7 +295,6 @@ public enum WorkspaceCatalogBuilder {
     public static func build(
         vaults: [RegisteredVault],
         documents: [UUID: [NoteDocument]],
-        settlementStates: [String: WorkspaceSettlementState] = [:],
         additionalAttention: [AttentionQueueItem] = [],
         graph: GraphSnapshot? = nil,
         identityAmbiguitiesByVault: [UUID: [NoteIdentityAmbiguity]] = [:],
@@ -324,7 +306,6 @@ public enum WorkspaceCatalogBuilder {
             vaults: vaults,
             documents: documents,
             semanticDocuments: [:],
-            settlementStates: settlementStates,
             additionalAttention: additionalAttention,
             graph: graph,
             identityAmbiguitiesByVault: identityAmbiguitiesByVault,
@@ -338,7 +319,6 @@ public enum WorkspaceCatalogBuilder {
         vaults: [RegisteredVault],
         documents: [UUID: [NoteDocument]],
         semanticDocuments: [VaultQualifiedNoteID: MarkdownSemanticDocument],
-        settlementStates: [String: WorkspaceSettlementState] = [:],
         additionalAttention: [AttentionQueueItem] = [],
         graph: GraphSnapshot? = nil,
         identityAmbiguitiesByVault: [UUID: [NoteIdentityAmbiguity]] = [:],
@@ -382,7 +362,6 @@ public enum WorkspaceCatalogBuilder {
                     stableNoteID: stableNoteID?.uuidString.lowercased()
                 )
                 references[reference.id] = reference
-                let settlement = settlementStates[reference.id]
                 notes.append(WorkspaceCatalogNote(
                     reference: reference,
                     title: ResearchNoteTitleResolver.resolve(
@@ -423,14 +402,6 @@ public enum WorkspaceCatalogBuilder {
                         note: reference,
                         message: "Invalid YAML",
                         locator: SourceLocator(file: document.relativePath, line: 1, column: 1)
-                    ))
-                }
-                if settlement?.changedSinceSettled == true {
-                    attention.append(AttentionQueueItem(
-                        kind: .changedSinceSettled,
-                        severity: .warning,
-                        note: reference,
-                        message: "Changed after this revision was settled"
                     ))
                 }
             }

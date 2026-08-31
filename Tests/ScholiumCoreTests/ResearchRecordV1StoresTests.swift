@@ -791,6 +791,50 @@ struct ResearchRecordV1StoresTests {
             .filter { $0.hasSuffix(".json") }.count == 1)
     }
 
+    @Test("Unsupported Settlement bytes remain unchanged and nonauthorizing")
+    func unsupportedSettlementIsPreserved() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = try fixture.portableStore()
+        let noteID = UUID()
+        _ = try await store.settle(
+            noteID: noteID,
+            fingerprint: DocumentFingerprint(content: "legacy"),
+            rationale: nil
+        )
+        let url = fixture.control
+            .appendingPathComponent(
+                "research-records/v1/settlements",
+                isDirectory: true
+            )
+            .appendingPathComponent(noteID.uuidString.lowercased() + ".json")
+        var object = try #require(
+            JSONSerialization.jsonObject(with: Data(contentsOf: url))
+                as? [String: Any]
+        )
+        object["schema_version"] = 1
+        var settlement = try #require(object["settlement"] as? [String: Any])
+        settlement.removeValue(forKey: "coveredActivities")
+        object["settlement"] = settlement
+        let legacyBytes = try JSONSerialization.data(
+            withJSONObject: object,
+            options: [.sortedKeys]
+        )
+        try legacyBytes.write(to: url)
+
+        let listing = try await store.settlementListing()
+        #expect(listing.settlements.isEmpty)
+        #expect(listing.issues.map(\.fileName) == [url.lastPathComponent])
+        await #expect(throws: PortableResearchRecordError.self) {
+            _ = try await store.settle(
+                noteID: noteID,
+                fingerprint: DocumentFingerprint(content: "current"),
+                rationale: nil
+            )
+        }
+        #expect(try Data(contentsOf: url) == legacyBytes)
+    }
+
     @Test("Portable Settle state rejects absolute paths before writing")
     func settlementRejectsAbsolutePaths() async throws {
         let fixture = try Fixture()
@@ -1638,8 +1682,8 @@ struct ResearchRecordV1StoresTests {
         #expect(try reconciled.finalizedResultFingerprint() == resultFingerprint)
     }
 
-    @Test("Note Review derives and cumulatively covers confirmed Record activities")
-    func noteReviewCoverage() async throws {
+    @Test("Settle derives the current Note's confirmed Agent activities")
+    func settlementCoversCurrentAgentActivities() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = try fixture.portableStore()
@@ -1701,30 +1745,16 @@ struct ResearchRecordV1StoresTests {
             finishedAt: base.finishedAt
         )
         _ = try await store.createFinishedRecord(changed)
-        let manifest = try await store.listing().sourceManifestHash
-        let review = try await store.markCurrentNoteReviewed(
+        let settlement = try await store.settle(
             noteID: participant.noteID,
-            observedRevision: ending,
-            expectedRecordSourceManifestHash: manifest,
-            reviewedAt: Date(timeIntervalSince1970: 50)
+            fingerprint: ending,
+            rationale: nil,
+            settledAt: Date(timeIntervalSince1970: 50)
         )
-        #expect(review.coveredActivities == [PortableResearchNoteActivityReference(
+        #expect(settlement.coveredActivities == [SettlementActivityReference(
             recordID: changed.id,
             noteID: participant.noteID
         )])
-        #expect(try await store.noteReviewListing().reviews == [review])
-
-        #expect(try await store.noteReviewListing().reviews.allSatisfy {
-            $0.noteID != secondNoteID
-        })
-
-        await #expect(throws: PortableResearchNoteReviewMutationError.noPendingAgentChanges) {
-            _ = try await store.markCurrentNoteReviewed(
-                noteID: participant.noteID,
-                observedRevision: ending,
-                expectedRecordSourceManifestHash: manifest
-            )
-        }
 
         let lateBase = try makePortableRecord(
             id: UUID(uuidString: "ABABABAB-ABAB-ABAB-ABAB-ABABABABABAB")!
@@ -1759,35 +1789,27 @@ struct ResearchRecordV1StoresTests {
             finishedAt: lateBase.finishedAt
         )
         _ = try await store.createFinishedRecord(lateRecord)
-        #expect(try await store.noteReviewListing().reviews.first?
-            .coveredActivities.count == 1)
-        let updatedManifest = try await store.listing().sourceManifestHash
-        let updated = try await store.markCurrentNoteReviewed(
+        #expect(try await store.latestSettlement(noteID: participant.noteID)?
+            .coveredActivities == settlement.coveredActivities)
+        let updated = try await store.settle(
             noteID: participant.noteID,
-            observedRevision: laterEnding,
-            expectedRecordSourceManifestHash: updatedManifest,
-            reviewedAt: Date(timeIntervalSince1970: 60)
+            fingerprint: laterEnding,
+            rationale: nil,
+            settledAt: Date(timeIntervalSince1970: 60)
         )
         #expect(Set(updated.coveredActivities) == [
-            PortableResearchNoteActivityReference(
+            SettlementActivityReference(
                 recordID: changed.id,
                 noteID: participant.noteID
             ),
-            PortableResearchNoteActivityReference(
+            SettlementActivityReference(
                 recordID: lateRecord.id,
                 noteID: participant.noteID
             ),
         ])
-
-        try await store.removeNoteReviewActivities(recordIDs: [changed.id])
-        #expect(try await store.noteReviewListing().reviews.first?.coveredActivities == [
-            PortableResearchNoteActivityReference(
-                recordID: lateRecord.id,
-                noteID: participant.noteID
-            ),
-        ])
-        try await store.removeNoteReviewActivities(recordIDs: [lateRecord.id])
-        #expect(try await store.noteReviewListing().reviews.isEmpty)
+        #expect(updated.coveredActivities.allSatisfy {
+            $0.noteID != secondNoteID
+        })
     }
 
     private func makePortableRecord(

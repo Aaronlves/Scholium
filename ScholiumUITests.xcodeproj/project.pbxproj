@@ -21,7 +21,7 @@
 		A1000000000000000000001E = {isa = PBXBuildFile; fileRef = A1000000000000000000001F; };
 		A1000000000000000000001F = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScholiumUpgradeSafetyUITests.swift; sourceTree = "<group>"; };
 		A10000000000000000000020 = {isa = PBXBuildFile; fileRef = A10000000000000000000021; };
-		A10000000000000000000021 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ScholiumUITests+NoteReviewCutover.swift"; sourceTree = "<group>"; };
+		A10000000000000000000021 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ScholiumUITests+ResearchRecords.swift"; sourceTree = "<group>"; };
 		A10000000000000000000003 = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ScholiumUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A10000000000000000000004 = {isa = PBXGroup; children = (A10000000000000000000005, A10000000000000000000006); sourceTree = "<group>"; };
 		A10000000000000000000005 = {isa = PBXGroup; children = (A10000000000000000000002, A10000000000000000000013, A10000000000000000000015, A10000000000000000000017, A10000000000000000000019, A1000000000000000000001B, A10000000000000000000021, A1000000000000000000001D, A1000000000000000000001F); path = UITests; sourceTree = "<group>"; };

@@ -1018,7 +1018,7 @@ public enum ResearchActionRunContractError: LocalizedError, Sendable {
         case .unresolvedWriteRecovery(let id):
             "Action run \(id.uuidString) has an unresolved document-write recovery and cannot be cancelled or finalized."
         case .committedWritesRequireCompletion(let id):
-            "Action run \(id.uuidString) has confirmed Agent changes. Submit its Result to preserve Research Record and Note Review provenance before ending it."
+            "Action run \(id.uuidString) has confirmed Agent changes. Submit its Result to preserve Research Record and Settlement provenance before ending it."
         case .activeResultRequired:
             "This Note already has an active Action with saved Agent changes awaiting its Research Result. Resume that Action instead of starting another."
         }

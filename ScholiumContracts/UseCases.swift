@@ -215,11 +215,6 @@ public protocol ResearchRecordUseCases: Sendable {
     func researchRecordChangeState(
         recordID: UUID
     ) async throws -> ResearchRecordChangeState
-    func markCurrentNoteReviewed(
-        noteID: UUID,
-        expectedRevision: DocumentFingerprint,
-        expectedRecordSourceManifestHash: String
-    ) async throws -> PortableResearchNoteReview
     func undoResearchRecordChanges(
         recordID: UUID,
         selectedNoteIDs: Set<UUID>,

@@ -189,7 +189,7 @@ readback, conflict, diff, and recovery. It does not certify source fidelity,
 philosophical quality, preservation of the researcher's thesis, or acceptance.
 Raw filesystem edits remain ordinary external changes.
 
-### 8.4 Result Contract, one Research Record, and researcher review
+### 8.4 Result Contract, one Research Record, and researcher inspection
 
 Each Run freezes one **Result Contract**. The Application supplies machine
 facts; the Agent supplies one concise **Record Title** and irreducible academic
@@ -228,13 +228,10 @@ researcher-authored **Method Feedback** comment bound to its immutable result
 fingerprint. It authorizes no Agent access or Skill mutation and creates no
 score, queue, profile, training state, or automatic method change.
 
-**Mark Current Note Reviewed** is a researcher milestone for one exact saved
-revision and its pending Agent-change activities. Later Agent changes reopen
-Needs Review; reading a Record, closing a window, restoring source, or editing
-the Note does not mark review. Review implies neither acceptance, Settle,
-truth, adoption, nor Fidelity.
-
-Only confirmed Agent source changes produce change review. A modified change
+Only confirmed Agent source changes create a Settlement reminder. Settle is the
+sole durable researcher completion fact for that exact saved revision and the
+then-current Agent-change activities. Inspecting a Record or Diff creates no
+separate reviewed state and never clears the reminder. A modified change
 compares the first committed Agent-write preimage with the last confirmed Agent
 revision. Refresh may replace provisional starting evidence only before the
 first Agent commit.

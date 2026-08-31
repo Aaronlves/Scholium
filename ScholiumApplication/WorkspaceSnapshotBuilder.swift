@@ -535,16 +535,8 @@ enum WorkspaceSnapshotBuilder {
             .listing()
         let finishedResearchRecordListing = try await dependencies
             .portableResearchRecordStore.listing()
-        let noteReviewListing = try await dependencies.portableResearchRecordStore
-            .noteReviewListing()
         let activeDiscussionListing = try await dependencies
             .portableResearchRecordStore.activeDiscussions()
-        let latestSettlementByNoteID = Dictionary(
-            settlements.map { ($0.noteID, $0) },
-            uniquingKeysWith: { lhs, rhs in
-                lhs.settledAt >= rhs.settledAt ? lhs : rhs
-            }
-        )
         let researchStateDuration = researchStateStart.duration(to: clock.now)
         let searchDocumentProjectionStart = clock.now
         var searchDocuments: [SearchIndexDocument] = []
@@ -606,19 +598,6 @@ enum WorkspaceSnapshotBuilder {
                 ($0.vault.id, $0.activeDocuments)
             }
         )
-        var settlementStates: [String: WorkspaceSettlementState] = [:]
-        for loaded in loadedVaults {
-            for document in loaded.activeDocuments {
-                guard case .resolved(let noteID) = loaded.identityStates[document.relativePath],
-                      let settlement = latestSettlementByNoteID[noteID] else { continue }
-                let referenceID = "\(loaded.vault.id.uuidString):\(document.relativePath)"
-                let changedSinceSettled = settlement.fingerprint != document.fingerprint
-                settlementStates[referenceID] = WorkspaceSettlementState(
-                    settledFingerprint: settlement.fingerprint,
-                    changedSinceSettled: changedSinceSettled
-                )
-            }
-        }
         let synthesisMaterialChangedAttention = Self.synthesisMaterialChangedAttention(
             records: finishedResearchRecordListing.records,
             loadedVaults: loadedVaults
@@ -644,7 +623,6 @@ enum WorkspaceSnapshotBuilder {
             vaults: loadedVaults.map(\.vault),
             documents: documentsByVault,
             semanticDocuments: semanticDocuments,
-            settlementStates: settlementStates,
             additionalAttention: synthesisMaterialChangedAttention,
             graph: graph,
             stableNoteIDs: stableNoteIDs,
@@ -761,9 +739,6 @@ enum WorkspaceSnapshotBuilder {
         healthIssues.append(contentsOf: localExecutionListing.issues.map {
             "Local Research Execution \($0.fileName): \($0.reason)"
         })
-        healthIssues.append(contentsOf: noteReviewListing.issues.map {
-            "Note Review \($0.fileName): \($0.reason)"
-        })
         let critiqueAssociations = critiquesByID.values.sorted {
             if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
             return $0.id.uuidString < $1.id.uuidString
@@ -772,10 +747,10 @@ enum WorkspaceSnapshotBuilder {
             executions: localExecutionListing.records,
             records: finishedResearchRecordListing.records
         )
-        let noteReviewStates = noteReviewStates(
+        let settlementRequirements = settlementRequirements(
             records: finishedResearchRecordListing.records,
-            reviews: noteReviewListing.reviews,
-            loadedVaults: loadedVaults
+            settlements: settlements,
+            catalog: catalog
         )
         let resultArrivals = finishedResearchRecordListing.records.compactMap {
             record -> WorkspaceResearchResultArrival? in
@@ -828,8 +803,7 @@ enum WorkspaceSnapshotBuilder {
             critiques: critiqueAssociations,
             recoveryRecords: recoveryRecords,
             activities: activities,
-            noteReviews: noteReviewListing.reviews,
-            noteReviewStates: noteReviewStates,
+            settlementRequirements: settlementRequirements,
             resultArrivals: resultArrivals,
             healthIssues: Array(Set(healthIssues)).sorted()
         )
@@ -1056,58 +1030,53 @@ enum WorkspaceSnapshotBuilder {
         }
     }
 
-    private static func noteReviewStates(
+    private static func settlementRequirements(
         records: [PortableResearchRecord],
-        reviews: [PortableResearchNoteReview],
-        loadedVaults: [LoadedVault]
-    ) -> [WorkspaceNoteReviewState] {
-        var currentRevisions: [UUID: DocumentFingerprint] = [:]
-        for loaded in loadedVaults {
-            for document in loaded.activeDocuments {
-                guard case .resolved(let noteID) = loaded.identityStates[
-                    document.relativePath
-                ] else { continue }
-                currentRevisions[noteID] = document.fingerprint
-            }
-        }
-        let reviewByNoteID = Dictionary(
-            uniqueKeysWithValues: reviews.map { ($0.noteID, $0) }
+        settlements: [SettlementRecord],
+        catalog: WorkspaceCatalogSnapshot
+    ) -> [WorkspaceSettlementRequirement] {
+        let settlementByNoteID = Dictionary(
+            uniqueKeysWithValues: settlements.map { ($0.noteID, $0) }
         )
-        var activitiesByNoteID: [UUID: [PortableResearchNoteActivityReference]] = [:]
+        var activitiesByNoteID: [UUID: [SettlementActivityReference]] = [:]
         for record in records {
             for change in record.confirmedChanges {
                 activitiesByNoteID[change.noteID, default: []].append(
-                    PortableResearchNoteActivityReference(
+                    SettlementActivityReference(
                         recordID: record.id,
                         noteID: change.noteID
                     )
                 )
             }
         }
-        let noteIDs = Set(currentRevisions.keys)
-            .union(activitiesByNoteID.keys)
-            .union(reviewByNoteID.keys)
-        return noteIDs.map { noteID in
-            let review = reviewByNoteID[noteID]
-            let covered = Set(review?.coveredActivities ?? [])
+        return catalog.notes.compactMap { note -> WorkspaceSettlementRequirement? in
+            guard let stableNoteID = note.reference.stableNoteID,
+                  let noteID = UUID(uuidString: stableNoteID) else { return nil }
+            let settlement = settlementByNoteID[noteID]
+            let covered = Set(settlement?.coveredActivities ?? [])
             let pending = (activitiesByNoteID[noteID] ?? [])
                 .filter { !covered.contains($0) }
                 .sorted { $0.recordID.uuidString < $1.recordID.uuidString }
-            let status: WorkspaceNoteReviewStatus
-            if !pending.isEmpty {
-                status = .needsReview
-            } else if review != nil {
-                status = .noAgentChangesAwaitingReview
+            let reason: WorkspaceSettlementRequirementReason
+            if let settlement,
+               settlement.fingerprint != note.fingerprint {
+                reason = .changedSinceSettlement
+            } else if !pending.isEmpty {
+                reason = .agentChanges
             } else {
-                status = .noAgentChangesToReview
+                return nil
             }
-            return WorkspaceNoteReviewState(
+            return WorkspaceSettlementRequirement(
                 noteID: noteID,
-                currentRevision: currentRevisions[noteID],
-                status: status,
+                note: VaultQualifiedNoteID(
+                    vaultID: note.reference.vaultID,
+                    relativePath: note.reference.relativePath
+                ),
+                title: note.title,
+                currentRevision: note.fingerprint,
+                reason: reason,
                 pendingActivities: pending,
-                lastReviewedAt: review?.reviewedAt,
-                lastReviewedRevision: review?.observedRevision
+                previousSettlement: settlement
             )
         }.sorted { $0.noteID.uuidString < $1.noteID.uuidString }
     }

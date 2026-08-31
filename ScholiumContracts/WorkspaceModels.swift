@@ -366,36 +366,41 @@ public enum WorkspaceResearchActivityRepairReason: String, Hashable, Sendable {
     case resultRequired
 }
 
-public enum WorkspaceNoteReviewStatus: String, Hashable, Sendable {
-    case noAgentChangesToReview
-    case needsReview
-    case noAgentChangesAwaitingReview
+public enum WorkspaceSettlementRequirementReason: String, Hashable, Sendable {
+    case agentChanges
+    case changedSinceSettlement
 }
 
-public struct WorkspaceNoteReviewState: Hashable, Identifiable, Sendable {
+/// A delivery-neutral reminder that the current saved Note revision is not
+/// covered by its latest Settlement. It is derived from source, Records, and
+/// the one Settlement marker and is never independently writable.
+public struct WorkspaceSettlementRequirement: Hashable, Identifiable, Sendable {
     public let noteID: UUID
-    public let currentRevision: DocumentFingerprint?
-    public let status: WorkspaceNoteReviewStatus
-    public let pendingActivities: [PortableResearchNoteActivityReference]
-    public let lastReviewedAt: Date?
-    public let lastReviewedRevision: DocumentFingerprint?
+    public let note: VaultQualifiedNoteID
+    public let title: String
+    public let currentRevision: DocumentFingerprint
+    public let reason: WorkspaceSettlementRequirementReason
+    public let pendingActivities: [SettlementActivityReference]
+    public let previousSettlement: SettlementRecord?
 
     public var id: UUID { noteID }
 
     public init(
         noteID: UUID,
-        currentRevision: DocumentFingerprint?,
-        status: WorkspaceNoteReviewStatus,
-        pendingActivities: [PortableResearchNoteActivityReference] = [],
-        lastReviewedAt: Date? = nil,
-        lastReviewedRevision: DocumentFingerprint? = nil
+        note: VaultQualifiedNoteID,
+        title: String,
+        currentRevision: DocumentFingerprint,
+        reason: WorkspaceSettlementRequirementReason,
+        pendingActivities: [SettlementActivityReference] = [],
+        previousSettlement: SettlementRecord? = nil
     ) {
         self.noteID = noteID
+        self.note = note
+        self.title = title
         self.currentRevision = currentRevision
-        self.status = status
+        self.reason = reason
         self.pendingActivities = pendingActivities
-        self.lastReviewedAt = lastReviewedAt
-        self.lastReviewedRevision = lastReviewedRevision
+        self.previousSettlement = previousSettlement
     }
 }
 
@@ -500,8 +505,7 @@ public struct WorkspaceResearchSnapshot: Sendable {
     public let critiques: [CritiqueAssociation]
     public let recoveryRecords: [TriptychMutationRecoveryRecord]
     public let activities: [WorkspaceResearchActivity]
-    public let noteReviews: [PortableResearchNoteReview]
-    public let noteReviewStates: [WorkspaceNoteReviewState]
+    public let settlementRequirements: [WorkspaceSettlementRequirement]
     public let resultArrivals: [WorkspaceResearchResultArrival]
     public let healthIssues: [String]
 
@@ -515,8 +519,7 @@ public struct WorkspaceResearchSnapshot: Sendable {
         critiques: [CritiqueAssociation],
         recoveryRecords: [TriptychMutationRecoveryRecord] = [],
         activities: [WorkspaceResearchActivity] = [],
-        noteReviews: [PortableResearchNoteReview] = [],
-        noteReviewStates: [WorkspaceNoteReviewState] = [],
+        settlementRequirements: [WorkspaceSettlementRequirement] = [],
         resultArrivals: [WorkspaceResearchResultArrival] = [],
         healthIssues: [String]
     ) {
@@ -530,8 +533,7 @@ public struct WorkspaceResearchSnapshot: Sendable {
         self.critiques = critiques
         self.recoveryRecords = recoveryRecords
         self.activities = activities
-        self.noteReviews = noteReviews
-        self.noteReviewStates = noteReviewStates
+        self.settlementRequirements = settlementRequirements
         self.resultArrivals = resultArrivals
         self.healthIssues = healthIssues
     }

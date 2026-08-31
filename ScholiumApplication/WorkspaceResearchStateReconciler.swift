@@ -164,8 +164,7 @@ enum WorkspaceResearchStateReconciler {
             critiques: research.critiques,
             recoveryRecords: research.recoveryRecords,
             activities: research.activities,
-            noteReviews: research.noteReviews,
-            noteReviewStates: research.noteReviewStates,
+            settlementRequirements: research.settlementRequirements,
             resultArrivals: research.resultArrivals,
             healthIssues: Array(Set(healthIssues)).sorted()
         )

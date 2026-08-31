@@ -124,17 +124,10 @@ struct WorkspaceCatalogTests {
         let malformed = note("Claim.md", "---\ntitle: [broken\n---\nUse [[Missing Note]].")
         let snapshot = WorkspaceCatalogBuilder.build(
             vaults: [source, work],
-            documents: [source.id: [sourceDoc], work.id: [malformed]],
-            settlementStates: [
-                ref(source, sourceDoc).id: WorkspaceSettlementState(
-                    settledFingerprint: DocumentFingerprint(content: "previous"),
-                    changedSinceSettled: true
-                ),
-            ]
+            documents: [source.id: [sourceDoc], work.id: [malformed]]
         )
 
         #expect(snapshot.attention.contains { $0.kind == .possibleOrphan })
-        #expect(snapshot.attention.contains { $0.kind == .changedSinceSettled })
         #expect(snapshot.attention.contains { $0.kind == .malformedMetadata })
         let broken = snapshot.attention.first { $0.kind == .brokenConnection }
         #expect(broken?.note.relativePath == "Claim.md")
@@ -204,7 +197,7 @@ struct WorkspaceCatalogTests {
             relativePath: "Reasons.md"
         )
         let item = AttentionQueueItem(
-            kind: .changedSinceSettled,
+            kind: .malformedMetadata,
             severity: .warning,
             note: reference,
             message: "The committed source changed.",
@@ -340,13 +333,7 @@ struct WorkspaceCatalogTests {
         let removed = note("Removed/Deleted.md", "Isolated")
         let snapshot = WorkspaceCatalogBuilder.build(
             vaults: [topics],
-            documents: [topics.id: [archived, removed]],
-            settlementStates: [
-                ref(topics, archived).id: WorkspaceSettlementState(
-                    settledFingerprint: DocumentFingerprint(content: "older"),
-                    changedSinceSettled: true
-                ),
-            ]
+            documents: [topics.id: [archived, removed]]
         )
 
         #expect(snapshot.attention.contains {

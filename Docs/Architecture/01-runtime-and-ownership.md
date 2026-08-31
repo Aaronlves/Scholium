@@ -278,8 +278,9 @@ identities. Structured projection joins validated Metadata with authored YAML
 and unknown YAML is not queryable. Core owns the Note
 provider's disposable SQLite schema, staging/validation/recovery, read
 transactions, cancellation, deterministic ranking, and in-memory **This Note**
-matcher. The portable Record store supplies exact decoded schema-18 Records,
-schema-1 Note Reviews, and their source-byte fingerprints; Application owns the rebuildable Record query
+matcher. The portable Record store supplies exact decoded schema-18 Records and
+their source-byte fingerprints plus schema-2 Settlements with covered
+Agent-change activity references; Application owns the rebuildable Record query
 projection and provider routing, authorizes visible scope before query, and is
 the only Search capability exposed to GUI and CLI. No adapter, window model, or
 Agent route owns another parser, resolver, Record corpus, or ranking rule.
@@ -378,7 +379,7 @@ remain blocked until save or authoritative reload resolves. The comparison
 sheet separately owns only its current document-fold, equal-range-fold,
 selection, loading, and per-document operation presentation. These transient
 values are keyed to one Record and current sheet lifetime; none owns durable
-authorization, source bytes, Record, Response, or Note Review state.
+authorization, source bytes, Record, Response, or Settlement state.
 `WindowSearchController` owns Search/temporary Find execution and
 cancellation, provider-aware exact result-freshness validation, generation or
 Record-manifest reruns, and serialized Saved Search loading and persistence. It
@@ -711,8 +712,7 @@ projects direct and
 derived relations as single full-row targets, pins the original collapsible
 group header within its sole vertical scroll, and retains the distinct source
 anchor as a named secondary action without a trailing glyph. Actions resolves
-the public role-valid closed Platform Action matrix, presents it under quiet
-Research and Review headings, and keeps Settle under
+the public role-valid closed Platform Action matrix and keeps Settle under
 Judgment. Every launcher remains the same direct full-row operation and invokes
 its exact Inspector-supplied window route; focused routing belongs to menu
 commands rather than row activation. Pointer activation does not write keyboard

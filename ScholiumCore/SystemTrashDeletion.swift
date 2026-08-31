@@ -569,9 +569,6 @@ public actor NoteSystemTrashDeletionCoordinator {
                         throw ResearchRecordStoreV1Error.recordNotFound(target.id)
                     }
                 }
-                try await portableRecordStore.removeNoteReviewActivities(
-                    recordIDs: [target.id]
-                )
                 plan = SystemTrashDeletionPlan(
                     preview: plan.preview,
                     sourceReceipts: plan.sourceReceipts,

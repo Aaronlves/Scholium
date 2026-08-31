@@ -101,13 +101,17 @@ struct WindowControllerArchitectureTests {
                 dismissalDaysChanges: dismissalDays.eraseToAnyPublisher(),
                 activityChanges: Just<[ResearchActivityNotification]>([])
                     .eraseToAnyPublisher(),
+                settlementRequirementChanges:
+                    Just<[WorkspaceSettlementRequirement]>([])
+                    .eraseToAnyPublisher(),
                 refresh: {},
                 resynthesize: { _ in },
                 openAction: { _ in },
                 endAction: { _ in },
                 reviewResult: { _ in },
                 followUp: { _ in },
-                dismissActivity: { _ in }
+                dismissActivity: { _ in },
+                reviewChanges: { _ in }
             )
         )
         var invalidations = 0
@@ -2342,7 +2346,7 @@ struct WindowControllerArchitectureTests {
         #expect(!toolbarSource.contains("@ObservedObject var shellState"))
     }
 
-    @Test("Records, Notifications, and Document keep Follow-up, Changes, and Note Review distinct")
+    @Test("Records, Notifications, and Document keep Changes and Settlement distinct")
     func researchRecordProcessingSurface() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -2425,19 +2429,11 @@ struct WindowControllerArchitectureTests {
         #expect(zip(overviewOrder, overviewOrder.dropFirst()).allSatisfy {
             $0.0 < $0.1
         })
-        #expect(!inspector.contains("reviewSection"))
-        #expect(!inspector.contains("openNoteReview"))
-        let documentRailOrder = [
-            "                reviewGroup",
-            "            researchActionGroup",
-        ].compactMap { actionRail.range(of: $0)?.lowerBound }
-        #expect(documentRailOrder.count == 2)
-        #expect(documentRailOrder[0] < documentRailOrder[1])
-        #expect(actionRail.contains("if noteReviewState?.status == .needsReview"))
-        #expect(actionRail.contains("Button(action: openReview)"))
-        #expect(actionRail.contains(".accessibilityLabel(\"Note Review\")"))
-        #expect(actionRail.contains("Needs Review, \\(count) Agent activities"))
-        #expect(actionRail.contains("Opens this Note's Agent changes"))
+        #expect(actionRail.contains("settlementIsRequired"))
+        #expect(actionRail.contains("&& !settlementIsRequired"))
+        #expect(notifications.contains("SettlementRequirementNotificationRow"))
+        #expect(notifications.contains("Button(\"Review Changes\""))
+        #expect(processing.contains("require Settlement"))
         #expect(!recordBrowser.contains("scholium.researchRecord.effects.changes"))
         #expect(!processing.contains("restoreEditorFocus"))
         #expect(!processing.contains("restoreComparisonFocus"))
@@ -2502,16 +2498,6 @@ struct WindowControllerArchitectureTests {
         #expect(noteContent.contains(
             "isDocumentExpanded ? \"Expanded\" : \"Collapsed\""
         ))
-        for removedNoteReviewBannerBoundary in [
-            "scholium.noteReview.task",
-            "Review Current Note",
-            "Button(\"View Changes…\")",
-            "Button(\"Mark Current Note Reviewed\")",
-            "reconcileNoteReviewTask",
-            "noteReviewBlockingReason",
-        ] {
-            #expect(!noteContent.contains(removedNoteReviewBannerBoundary))
-        }
         for sharedComparisonBoundary in [
             "ExactSourceComparisonSheetLayout",
             "ExactSourceComparisonView",

@@ -132,9 +132,10 @@
   remains a nonempty read-only state.
 - Connect states direction textually; undirected rows say they appear in both
   directions. Navigation and source-return routes remain separately named.
-- Document Action rail exposes conditional Note Review separately from Research
-  Actions. Icon-only buttons have complete names, Help, availability, and first
-  executable repair. Opening Inspector does not alter reading or focus order.
+- Document Action rail exposes Research Actions and Settle without a parallel
+  review milestone. Icon-only buttons have complete names, Help, availability,
+  and first executable repair. Opening Inspector does not alter reading or
+  focus order.
 - Pairing and re-pairing present one linear flow. Codes remain inside copied
   handoff; secrets and opaque identifiers are never separate researcher fields.
   Agent updates neither activate the app nor move focus.
@@ -154,8 +155,10 @@
   semantics; unresolved destinations remain exact nonactions.
 - Follow Up and Method Feedback precede Evidence. Change comparison exposes
   document selection, changed/unchanged structure, and per-document Undo.
-- Note Review begins only through its named action; Mark as Reviewed exists only
-  inside the exact Diff.
+- A Settlement reminder names the Note, exact pending state, Agent-change count
+  when present, then Review Changes in reading order. It has no Settle or
+  Dismiss route; opening or closing the exact Diff does not complete it, and
+  the Document Action Rail retains the accessible Settle route.
 - Reading Lead detail preserves the order of disposition, citation,
   bibliography, discovery, reason, uncertainty, note, source, parent, and
   technical identity.

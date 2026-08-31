@@ -250,11 +250,11 @@ authorization, navigation, or operation lifecycle.
 | `Segmented Control` | Shared bounded text-only single-choice input with native-equivalent focus/traversal. | §§18.4–18.5 |
 | `Source List` | Quiet hierarchical Note navigation with complete content states. | §18.3 |
 | `Connection Direction Control` | Switch Incoming/Outgoing without changing graph authority. | §§12, 18.5 |
-| `Document Action Rail` | Keep role-valid Actions and separate Note Review at the Document edge. | §§8.1, 18.5 |
+| `Document Action Rail` | Keep role-valid Actions and Settle at the Document edge. | §§7.1, 8.1, 18.5 |
 | `Triptych Notifications Entry` | Open the complete Action/Attention queue with exact nonzero total. | §§13, 18.2–18.3 |
-| `Activity Notification Stack` | Present attention-requiring Run actions without becoming the queue. | §§18.3, 18.5 |
+| `Activity Notification Stack` | Present attention-requiring Run actions and the current Note's Settlement reminder without becoming the queue. | §§7.1, 18.3, 18.5 |
 | `Operation Feedback` | Present transient information or persistent consequence/repair. | §§18.2–18.5, 20 |
-| `Review Action / Diff` | Enter exact Agent changes; mark reviewed only inside Diff. | §§8.4, 18.5 |
+| `Agent Change Diff` | Inspect exact Agent changes without completing Settlement. | §§7.1, 8.4, 18.5 |
 | `Recovery Notice` | Present candidate, consequence, and safe repair from the workflow owner. | §§14, 18.6 |
 | `Document Find Bar` | Find/replace in the current unsaved buffer while preserving editor state. | §§13, 18.4 |
 | `Review Comment Anchor` | Locate current Discussion Comments without becoming authored annotation. | §§7.2, 18.4 |
@@ -281,7 +281,7 @@ Patterns combine components around one task without copying workflow authority.
 | `Research Action` | Launch, track, review, follow up, dismiss, or recover one Run. | §§8–11, 18.5 |
 | `Conflict / Recovery` | Retain bytes, compare exact revisions, and expose safe repair. | §§14, 18.4–18.6 |
 | `Research Records` | Read portable results and evidence without reconstructing Markdown. | §§8.4, 18.5 |
-| `Note Review` | Inspect Agent changes and mark only the exact Diff reviewed. | §§8.4, 18.5 |
+| `Settlement Reminder` | Keep Review Changes visible in the shared notification stack until the current revision is Settled from the Document Action Rail. | §§7.1, 8.4, 18.3–18.5 |
 | `Bootstrap Agent Preparation` | Prepare an external project without granting research access. | §16 |
 
 ### 19.9 Cross-functional state language
@@ -307,7 +307,7 @@ and first repair through redundant channels; keeps exact domain meaning with
 the workflow owner; preserves focus/cancellation/source/recovery; and never
 relies solely on color, motion, hover, position, or timeout.
 
-Settle, Result arrival, Dismiss, Follow-up, Method Feedback, and Note Review
+Settle, Result arrival, Dismiss, Follow-up, and Method Feedback
 remain their own workflow meanings. Page/pane states use `Content State`;
 field validation, compact rows, operation feedback, and recovery notices keep
 their purpose-owned presentations while using this vocabulary.

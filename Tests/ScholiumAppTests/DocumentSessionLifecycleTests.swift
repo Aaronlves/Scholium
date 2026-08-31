@@ -12,21 +12,31 @@ struct DocumentSessionLifecycleTests {
         #expect(DocumentTopSurfacePresentation.resolve(
             hasPersistentFeedback: true,
             hasActionNotifications: true,
+            hasSettlementReminder: true,
             hasNotificationPermissionNotice: true
         ) == .persistentFeedback)
         #expect(DocumentTopSurfacePresentation.resolve(
             hasPersistentFeedback: false,
             hasActionNotifications: true,
+            hasSettlementReminder: false,
             hasNotificationPermissionNotice: true
-        ) == .actionNotificationStack)
+        ) == .researchNotifications)
         #expect(DocumentTopSurfacePresentation.resolve(
             hasPersistentFeedback: false,
             hasActionNotifications: false,
+            hasSettlementReminder: true,
+            hasNotificationPermissionNotice: true
+        ) == .researchNotifications)
+        #expect(DocumentTopSurfacePresentation.resolve(
+            hasPersistentFeedback: false,
+            hasActionNotifications: false,
+            hasSettlementReminder: false,
             hasNotificationPermissionNotice: true
         ) == .notificationPermissionNotice)
         #expect(DocumentTopSurfacePresentation.resolve(
             hasPersistentFeedback: false,
             hasActionNotifications: false,
+            hasSettlementReminder: false,
             hasNotificationPermissionNotice: false
         ) == .none)
     }

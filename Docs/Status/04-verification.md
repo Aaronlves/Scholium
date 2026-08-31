@@ -28,6 +28,24 @@ The ad-hoc App requires the documented Gatekeeper override.
 
 ## Focused interface evidence
 
+- On 2026-09-01, the Settlement single-owner cutover passed the Debug product
+  build; 41 Core storage tests, 16 Contract tests, 48 Application tests, and
+  180 App tests; documentation and interface-localization validators;
+  retired-path residue checks; and UI-test-target compilation. The automated
+  state journey proves that an Agent change requires Settlement, exact-revision
+  Settle clears the reminder, and a later researcher edit reopens it. Two
+  bounded XCUITests passed in 28.500 and 29.213 seconds: the persistent
+  Settlement reminder opens Review Changes, has no Settle or Dismiss action,
+  survives Records inspection, and clears only after Action Rail Settlement;
+  the same reminder shares one expandable top stack with Action notifications,
+  whose own Dismiss remains independent, without reflowing the Document. The
+  updated top-overlay layout owner also passed its focused architecture test.
+  The one complete gate attempt passed 207 Web tests and reached 465/466 Core
+  tests; its only failure was an unrelated Search corruption-recovery fixture
+  with a transient SQLite disk-I/O error. That exact Search test passed alone
+  in a fresh scratch directory. Per the one-complete-gate rule, the full gate
+  was not rerun. No human interface acceptance ran.
+
 - On 2026-08-31, Agent activity focused suites and all non-App gates passed; a
   stale Application schema assertion was corrected and its 17-test owner
   passed. App remained 675/676: the unrelated editor WKWebView rerun failed a
@@ -409,11 +427,9 @@ The ad-hoc App requires the documented Gatekeeper override.
   Search and editor floating controls, Callout focus, footnote/link preview,
   selection completion, semantic color, corner, typography, spacing, and
   component-cadence ownership.
-- The 2026-08-10 Records/Review correction passed 3 focused App tests across 3
-  owning suites. The bounded Note Review/Compare UI journey passed in 119.354
-  seconds and proved automatic task presentation, same-set dismissal, Overview
-  reopening, new-set reopening, stable Records frame, and no pointer-generated
-  Compare focus. The complementary Response journey passed in 57.615 seconds,
+- The 2026-08-10 Records comparison correction passed 3 focused App tests
+  across 3 owning suites. Its former independent reviewed-state journey is
+  superseded. The complementary Response journey passed in 57.615 seconds,
   retaining progressive Method Feedback, stale draft recovery, and no
   pointer-generated Edit Response focus.
 - One final isolated Debug QA read exactly 100 current-schema synthetic Records
@@ -576,48 +592,6 @@ The bounded Records-window repair passed its one owning frame test. One
 disposable ordinary-product QA with 100 portable Records then preserved the
 same `X=355 Y=110 W=760 H=680` frame through list, detail, and returned list;
 the proof shell was not used.
-
-The Note-level Review foundation passed 89 focused tests across four Contracts,
-Core, and Application suites with the Xcode 27 toolchain. Evidence covers
-schema-8 Record round trip and schema-7 rejection; strict schema-1 Note Review;
-one-Run/one-Record participant facts; cumulative coverage; Review A isolation
-from Note B; a late Record reopening pending work; no-change Action completion;
-first-committed Agent baselines; Review-independent direct Undo; exact source
-and Record-manifest rejection; post-commit reconciliation; and researcher edits
-not resurrecting covered activities. Documentation authority, diff checks, and
-the Debug product build passed for this stage. Interface owning tests, bounded
-UI journeys, localization validation, and the one current-tree final gate are
-recorded only after their later stages complete.
-
-The interface cutover then passed 142 focused tests across ten App suites. It
-covers progressive Add/Edit Response, Evaluation-first optional Method
-Feedback, atomic draft and stale-state protection, read-only Changes,
-window-lifetime exact Undo, removal of Action-sheet Result review, Overview's
-Attention/Review/About order, the Document task boundary, exact-window routing,
-notification isolation, Action lifecycle, and Records frame stability. The
-first pass exposed one retired `Review Result` Action-sheet assertion; the
-final batch passed after deleting that requirement. Documentation authority,
-interface localization, diff checks, and the Debug product build passed.
-
-Three complementary ordinary-product UI Automation journeys then passed
-together in 230.634 seconds. They cover one multi-Note Record visible from its
-origin and changed Note; stable Records frame through list, detail, Compare,
-and return; read-only View/Compare not completing Review; one Note clearing two
-older activities while another remains pending; a later Agent change reopening
-Review; progressive Evaluation-first Response editing with optional Method
-Feedback; atomic durable save; stale external Response preserving the local
-draft; and one deduplicated no-change Result arrival without Note Review.
-
-The single final ordinary-product QA uses a disposable Triptych initialized
-before fixture injection. Its portable store contains exactly 100 unique
-schema-8 Records, all associated with QA Topic: 60 have confirmed Topic
-changes, 40 have no source change, 20 also change QA Work, 25 contain an
-Evaluation, and 12 also contain Method Feedback. The live **This Note** Records
-AX tree reported `100 results`; opening a saved-Response Record exposed its
-Evaluation and Method Feedback. After the real
-workspace watcher rebuilt the research snapshot, QA Topic Overview reported
-`Needs Review · 3 Agent activities`. This is disposable Debug QA evidence, not
-packaged or researcher acceptance.
 
 This remains bounded development evidence, not an installed App/CLI journey or
 human acceptance. Genuine VoiceOver, physical

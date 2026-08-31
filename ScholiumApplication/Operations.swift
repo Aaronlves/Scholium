@@ -645,19 +645,6 @@ public actor ResearchOperations:
         return try await handle.researchRecordChangeState(recordID: recordID)
     }
 
-    public func markCurrentNoteReviewed(
-        noteID: UUID,
-        expectedRevision: DocumentFingerprint,
-        expectedRecordSourceManifestHash: String
-    ) async throws -> PortableResearchNoteReview {
-        let handle = try await reference.requireHandle()
-        return try await handle.markCurrentNoteReviewed(
-            noteID: noteID,
-            expectedRevision: expectedRevision,
-            expectedRecordSourceManifestHash: expectedRecordSourceManifestHash
-        )
-    }
-
     public func undoResearchRecordChanges(
         recordID: UUID,
         selectedNoteIDs: Set<UUID>,

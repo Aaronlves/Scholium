@@ -190,9 +190,6 @@ struct DocumentFeatureState {
     let pendingIdentityRebinding: NoteIdentityPendingRebinding?
     let identityMigrationFailureMessage: String?
     let isResolvingIdentity: Bool
-    let noteReviewState: WorkspaceNoteReviewState?
-    let researchRecordSourceManifestHash: String
-    let researchRecordProjectionIsComplete: Bool
 }
 
 struct DocumentFeatureActions {
@@ -1380,7 +1377,7 @@ struct NoteContentView: View {
             indicator: .symbol("doc")
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityIdentifier("scholium.emptyNoteReview")
+        .accessibilityIdentifier("scholium.emptyRenderedReview")
     }
 
     private func managedCreationEditorFailure(_ error: String) -> some View {
@@ -2495,10 +2492,7 @@ private extension CritiqueFindingDispositionDecision {
         identityAmbiguity: nil,
         pendingIdentityRebinding: nil,
         identityMigrationFailureMessage: nil,
-        isResolvingIdentity: false,
-        noteReviewState: nil,
-        researchRecordSourceManifestHash: "",
-        researchRecordProjectionIsComplete: false
+        isResolvingIdentity: false
     )
     let actions = DocumentFeatureActions(
         requestIdentityResolution: {},

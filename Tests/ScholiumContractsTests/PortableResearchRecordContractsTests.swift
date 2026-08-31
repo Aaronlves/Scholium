@@ -696,41 +696,34 @@ struct PortableResearchRecordContractsTests {
         ) == evaluated)
     }
 
-    @Test("Note Review round trips independently and schema 7 Records fail closed")
-    func noteReviewRoundTripAndRecordSchemaCut() throws {
+    @Test("Settlement activity is strict and schema 7 Records fail closed")
+    func settlementActivityAndRecordSchemaCut() throws {
         let record = try makeRecord()
         let noteID = try #require(record.confirmedChanges.first?.noteID)
-        let review = try PortableResearchNoteReview(
+        let activity = SettlementActivityReference(
+            recordID: record.id,
+            noteID: noteID
+        )
+        let settlement = SettlementRecord(
             noteID: noteID,
-            observedRevision: DocumentFingerprint(content: "saved source"),
-            reviewedAt: Date(timeIntervalSince1970: 40),
-            coveredActivities: [PortableResearchNoteActivityReference(
-                recordID: record.id,
-                noteID: noteID
-            )]
+            fingerprint: DocumentFingerprint(content: "saved source"),
+            settledAt: Date(timeIntervalSince1970: 40),
+            coveredActivities: [activity]
         )
-        let reviewData = try JSONEncoder.scholium.encode(review)
+        let settlementData = try JSONEncoder.scholium.encode(settlement)
         #expect(try JSONDecoder.scholium.decode(
-            PortableResearchNoteReview.self,
-            from: reviewData
-        ) == review)
-        var reviewObject = try #require(
-            JSONSerialization.jsonObject(with: reviewData) as? [String: Any]
+            SettlementRecord.self,
+            from: settlementData
+        ) == settlement)
+        let activityData = try JSONEncoder.scholium.encode(activity)
+        var activityObject = try #require(
+            JSONSerialization.jsonObject(with: activityData) as? [String: Any]
         )
-        reviewObject["schema_version"] = 0
-        #expect(throws: PortableResearchNoteReviewError.self) {
+        activityObject["unexpected_owner"] = true
+        #expect(throws: SettlementActivityReferenceError.self) {
             _ = try JSONDecoder.scholium.decode(
-                PortableResearchNoteReview.self,
-                from: JSONSerialization.data(withJSONObject: reviewObject)
-            )
-        }
-        reviewObject["schema_version"] = PortableResearchNoteReview
-            .currentSchemaVersion
-        reviewObject["unexpected_review_owner"] = true
-        #expect(throws: PortableResearchNoteReviewError.self) {
-            _ = try JSONDecoder.scholium.decode(
-                PortableResearchNoteReview.self,
-                from: JSONSerialization.data(withJSONObject: reviewObject)
+                SettlementActivityReference.self,
+                from: JSONSerialization.data(withJSONObject: activityObject)
             )
         }
 

@@ -65,6 +65,11 @@
   focused Space, or Window → Notifications; they expose no complete-queue
   search, filter, structural issue, or popover and own neither Dismiss nor
   activity state.
+- The current Note's **Current Revision Not Settled** reminder shares the same
+  top-centered stack and expansion with Action notifications and exposes Review
+  Changes only. It has no Settle, Dismiss, or timeout; Settle remains in the
+  Document Action Rail. The complete Notifications queue includes every pending
+  Settlement reminder between Action activities and structural issues.
 
 ## Document and Research Inspector
 
@@ -106,12 +111,8 @@
   and Outgoing direct relations. Role-valid Platform Actions and Settle now live
   in one neutral icon-only group centered along the Document's trailing edge.
   The rail overlays without reflow and follows the Document edge leftward when
-  the native Inspector opens. A pending Note Review appears as a separate group
-  above it without moving the Action center and is the only Accent icon; the
-  former auto-presented Review banner and Inspector Review row are absent.
-  Review still routes to this Note's Research Records; opening it directly in
-  Diff and placing Mark as Reviewed inside that Diff remain open implementation
-  work.
+  the native Inspector opens. It has no separate reviewed-state group or
+  reviewed action.
 - An already-visible Inspector with no selected Document presents a restrained
   No Document Selected state instead of a blank plane or stale origin content.
 - Every current Analysis Overview exposes **Link Zotero Item…** or **Manage
@@ -162,7 +163,7 @@
   current system authorization plus Enable or System Settings recovery after
   the one-time education surface is dismissed. Arrival alone never opens, retargets, focuses,
   reviews, or activates Records. One Action may summarize multiple affected
-  Notes, whose Review/Undo states remain independent.
+  Notes, whose Settlement/Undo states remain independent.
 
 ## Search, Notifications, and Research Records
 
@@ -174,16 +175,19 @@
   is unreadable. Skills likewise exposes bounded, confirmed repair actions
   only for its typed invalid machine-local folder owner.
 - Notifications is one transient anchored popover per workspace backed by a
-  persistent process-level Action activity model. It keeps the existing
+  persistent process-level Action activity model plus derived Settlement
+  requirements. It keeps the existing
   structural source/conflict/recovery Attention rows and their Inspect,
   Resynthesize, Leave Unchanged, timed dismiss, and Retry routes without merging
   those semantics with Action Dismiss. Sidebar, current-Note Inspector, and the
   Sidebar and current-Note Inspector share the same native complete-queue
   popover session. The Document activity stack never opens that popover; it
-  presents only its own Action rows and operations inline.
+  presents its own Action rows and the current Note's Settlement reminder
+  inline.
 - Notifications search uses localized Action state/action names, structural
   issue types and reasons, empty/refresh copy, and the explicit All, Action
-  Activities, All Issues, or concrete issue-type filter. Window operation
+  Activities, Settlement Reminders, All Issues, or concrete issue-type filter.
+  Window operation
   feedback is typed and ordered: Confirmation and Information use a narrow
   bottom-centred window overlay, while Warning and Error persist at the
   top-centred edge; both use a compact outer-edge inset, top feedback may cover

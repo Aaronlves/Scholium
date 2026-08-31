@@ -646,68 +646,6 @@ extension WorkspaceHandle {
         )
     }
 
-    func markCurrentNoteReviewed(
-        noteID: UUID,
-        expectedRevision: DocumentFingerprint,
-        expectedRecordSourceManifestHash: String
-    ) async throws -> PortableResearchNoteReview {
-        try requireActive()
-        guard let current = try await currentResearchSource(noteID: noteID) else {
-            throw PortableResearchNoteReviewMutationError.sourceUnavailable
-        }
-        guard current.document.fingerprint == expectedRevision else {
-            throw PortableResearchNoteReviewMutationError.sourceChanged
-        }
-        let review: PortableResearchNoteReview
-        do {
-            review = try await researchWorkspaceDependencies.portableResearchRecordStore
-                .markCurrentNoteReviewed(
-                noteID: noteID,
-                observedRevision: expectedRevision,
-                expectedRecordSourceManifestHash: expectedRecordSourceManifestHash
-            )
-        } catch let storeError as ResearchRecordStoreV1Error {
-            guard case .replacementCommitUncertain(let reason) = storeError else {
-                throw storeError
-            }
-            let records = try await researchWorkspaceDependencies.portableResearchRecordStore.listing()
-            let reviews = try await researchWorkspaceDependencies.portableResearchRecordStore
-                .noteReviewListing()
-            let required = Set(records.records.compactMap { record ->
-                PortableResearchNoteActivityReference? in
-                guard record.confirmedChanges.contains(where: {
-                    $0.noteID == noteID
-                }) else { return nil }
-                return PortableResearchNoteActivityReference(
-                    recordID: record.id,
-                    noteID: noteID
-                )
-            })
-            if records.issues.isEmpty,
-               reviews.issues.isEmpty,
-               records.sourceManifestHash == expectedRecordSourceManifestHash,
-               let reconciled = reviews.reviews.first(where: {
-                   $0.noteID == noteID
-                       && $0.observedRevision == expectedRevision
-                       && required.isSubset(of: Set($0.coveredActivities))
-               }) {
-                review = reconciled
-            } else {
-                try? await refreshAfterResearchCommit("The uncertain Note Review")
-                throw ScholiumApplicationError.operationCommitUncertain(
-                    operation: "The Note Review",
-                    reason: reason
-                )
-            }
-        }
-        guard let readback = try await currentResearchSource(noteID: noteID),
-              readback.document.fingerprint == expectedRevision else {
-            throw PortableResearchNoteReviewMutationError.sourceChanged
-        }
-        try await refreshAfterResearchCommit("The Note Review")
-        return review
-    }
-
     func undoResearchRecordChanges(
         recordID: UUID,
         selectedNoteIDs: Set<UUID>,

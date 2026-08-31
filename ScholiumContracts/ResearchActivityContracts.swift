@@ -1,5 +1,60 @@
 import Foundation
 
+/// One Agent-confirmed source-change activity acknowledged by a Settlement.
+/// The Record/Note pair stays stable when one Record changes several Notes.
+public struct SettlementActivityReference: Codable, Hashable, Identifiable,
+    Sendable
+{
+    public let recordID: UUID
+    public let noteID: UUID
+
+    public var id: String {
+        "\(recordID.uuidString.lowercased()):\(noteID.uuidString.lowercased())"
+    }
+
+    public init(recordID: UUID, noteID: UUID) {
+        self.recordID = recordID
+        self.noteID = noteID
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case recordID = "record_id"
+        case noteID = "note_id"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let fields = try decoder.container(
+            keyedBy: SettlementActivityReferenceAnyCodingKey.self
+        )
+        let allowed = Set(CodingKeys.allCases.map(\.stringValue))
+        if let unknown = fields.allKeys.first(where: {
+            !allowed.contains($0.stringValue)
+        }) {
+            throw SettlementActivityReferenceError.unsupportedField(
+                unknown.stringValue
+            )
+        }
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            recordID: try container.decode(UUID.self, forKey: .recordID),
+            noteID: try container.decode(UUID.self, forKey: .noteID)
+        )
+    }
+}
+
+public enum SettlementActivityReferenceError: LocalizedError, Hashable,
+    Sendable
+{
+    case unsupportedField(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .unsupportedField(let field):
+            "The Settlement activity contains unsupported field \(field)."
+        }
+    }
+}
+
 /// A researcher-owned judgment that one exact saved revision is sufficiently
 /// stable for current work. It is neither a truth claim nor qualification.
 public struct SettlementRecord: Codable, Hashable, Identifiable, Sendable {
@@ -9,6 +64,7 @@ public struct SettlementRecord: Codable, Hashable, Identifiable, Sendable {
     public let settledAt: Date
     public let researcher: String
     public let rationale: String?
+    public let coveredActivities: [SettlementActivityReference]
 
     public init(
         id: UUID = UUID(),
@@ -16,7 +72,8 @@ public struct SettlementRecord: Codable, Hashable, Identifiable, Sendable {
         fingerprint: DocumentFingerprint,
         settledAt: Date = Date(),
         researcher: String = "Researcher",
-        rationale: String? = nil
+        rationale: String? = nil,
+        coveredActivities: [SettlementActivityReference] = []
     ) {
         self.id = id
         self.noteID = noteID
@@ -25,6 +82,27 @@ public struct SettlementRecord: Codable, Hashable, Identifiable, Sendable {
         self.researcher = researcher.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalized = rationale?.trimmingCharacters(in: .whitespacesAndNewlines)
         self.rationale = normalized?.isEmpty == false ? normalized : nil
+        self.coveredActivities = coveredActivities.sorted {
+            if $0.recordID != $1.recordID {
+                return $0.recordID.uuidString < $1.recordID.uuidString
+            }
+            return $0.noteID.uuidString < $1.noteID.uuidString
+        }
+    }
+}
+
+private struct SettlementActivityReferenceAnyCodingKey: CodingKey {
+    let stringValue: String
+    let intValue: Int?
+
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+        intValue = nil
+    }
+
+    init?(intValue: Int) {
+        stringValue = String(intValue)
+        self.intValue = intValue
     }
 }
 

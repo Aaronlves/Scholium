@@ -1046,7 +1046,7 @@ extension ScholiumUITests {
         let fingerprint: [String: Any]
     }
 
-    struct QANoteReviewRecordSeed {
+    struct QASettlementRecordSeed {
         struct Participant {
             let relativePath: String
             let role: String
@@ -1307,11 +1307,11 @@ extension ScholiumUITests {
 
     /// Seeds current portable Action Records through the real store boundary.
     /// The pre-Agent revisions are deliberately unavailable synthetic exact
-    /// fingerprints: the UI journey verifies association, pending Review, and
-    /// read-only comparison ownership without manufacturing recoverable source
-    /// bytes or granting Undo authority.
-    func seedNoteReviewRecords(
-        _ seeds: [QANoteReviewRecordSeed]
+    /// fingerprints: the UI journey verifies association, a pending Settlement
+    /// reminder, and read-only comparison ownership without manufacturing
+    /// recoverable source bytes or granting Undo authority.
+    func seedSettlementRecords(
+        _ seeds: [QASettlementRecordSeed]
     ) throws {
         try prepareCurrentResearchRecordFixtureState()
         let triptychID = try triptychID(at: triptychDirectory)
@@ -1374,7 +1374,7 @@ extension ScholiumUITests {
             }
             guard !materialNoteIDs.contains(primary.noteID.uuidString) else {
                 throw NSError(
-                    domain: "ScholiumUITests.NoteReviewFixture",
+                    domain: "ScholiumUITests.SettlementFixture",
                     code: 1,
                     userInfo: [
                         NSLocalizedDescriptionKey:
@@ -1405,7 +1405,7 @@ extension ScholiumUITests {
                     "author": "agent",
                     "kind": "agent_feedback",
                     "attribution": "Synthetic QA Agent",
-                    "text": "This disposable Record exists only to verify the current Note Review interface.",
+                    "text": "This disposable Record exists only to verify the current Settlement reminder interface.",
                     "created_at": seed.finishedAt,
                 ]],
                 "result_disposition": "completed",
@@ -1422,24 +1422,24 @@ extension ScholiumUITests {
         }
     }
 
-    func seedNoteReviewCutoverFixture() throws {
-        let origin = QANoteReviewRecordSeed.Participant(
+    func seedSettlementReminderFixture() throws {
+        let origin = QASettlementRecordSeed.Participant(
             relativePath: "QA Autosave A.md",
             role: "analysis",
             title: "QA Autosave A"
         )
-        let topic = QANoteReviewRecordSeed.Participant(
+        let topic = QASettlementRecordSeed.Participant(
             relativePath: "QA Topic.md",
             role: "topic",
             title: "QA Topic"
         )
-        let work = QANoteReviewRecordSeed.Participant(
+        let work = QASettlementRecordSeed.Participant(
             relativePath: "QA Work.md",
             role: "work",
             title: "QA Work"
         )
-        try seedNoteReviewRecords([
-            QANoteReviewRecordSeed(
+        try seedSettlementRecords([
+            QASettlementRecordSeed(
                 recordID: UUID(
                     uuidString: "8A410000-0000-4000-8000-000000000001"
                 )!,
@@ -1449,7 +1449,7 @@ extension ScholiumUITests {
                 changedRelativePaths: [topic.relativePath, work.relativePath],
                 finishedAt: "2026-08-09T03:01:00Z"
             ),
-            QANoteReviewRecordSeed(
+            QASettlementRecordSeed(
                 recordID: UUID(
                     uuidString: "8A410000-0000-4000-8000-000000000002"
                 )!,
@@ -1720,11 +1720,7 @@ extension ScholiumUITests {
             || name.contains("testResearchActionsRemainUsableInLightAndDarkAppearances")
             || name.contains("testLineCommentAgentReplyArchivesRecord")
             || name.contains("testCritiqueActionUsesTriptychWorkingMethodWithoutAdHocPrompting")
-            || name.contains(
-                "testNoChangeActionResultsShareDocumentTopWithoutCreatingNoteReview"
-            )
-            || name.contains("testDocumentActionRailCentersActionsAndPlacesReviewAbove")
-            || name.contains("testNoteReviewCutoverAcrossRecordsAndNotes")
+            || name.contains("testSettlementReminderPersistsUntilSettle")
             || name.contains("testPartialResearchRecordCorpusKeepsReadableRows")
             || name.contains("testResearcherResponseProgressiveEditingAndStaleDraft")
             || name.contains("testResearchActionPanelFits") {
@@ -1762,32 +1758,6 @@ extension ScholiumUITests {
                 "Normative QA Nexus",
             ]
         )
-        if name.contains(
-            "testNoChangeActionResultsShareDocumentTopWithoutCreatingNoteReview"
-        ) {
-            let topicURL = topics.appendingPathComponent("QA Topic.md")
-            let source = try source(at: topicURL)
-            let opening = (1...18).map { index in
-                "Synthetic reading context \(index) precedes the stable Document anchor and contains no private research material."
-            }.joined(separator: "\n\n")
-            let closing = (19...36).map { index in
-                "Synthetic reading context \(index) follows the stable Document anchor and keeps this disposable fixture scrollable."
-            }.joined(separator: "\n\n")
-            let extendedSource = source
-                + "\n\n## Notification priority reading fixture\n\n"
-                + opening
-                + "\n\nNotification priority reading anchor remains in context.\n\n"
-                + closing
-                + "\n"
-            try write(
-                extendedSource,
-                to: topicURL
-            )
-            try updateStoredNoteFingerprint(
-                relativePath: "QA Topic.md",
-                source: extendedSource
-            )
-        }
         if name.contains(
             "testSidebarWorkspaceLibraryAndTriptychAttentionWindowJourney"
         ) {

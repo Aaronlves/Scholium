@@ -2440,6 +2440,9 @@ final class WindowModel: ObservableObject {
                 .eraseToAnyPublisher(),
             activityChanges: shellState.$researchActivityNotifications
                 .eraseToAnyPublisher(),
+            settlementRequirementChanges: researchController.$records
+                .map { $0?.settlementRequirements ?? [] }
+                .eraseToAnyPublisher(),
             refresh: { [weak self] in
                 await self?.refreshWorkspaceCatalog()
             },
@@ -2488,6 +2491,16 @@ final class WindowModel: ObservableObject {
                 #endif
                 guard let result = notification.result else { return }
                 self.researchResultNotificationDismissal?(result)
+            },
+            reviewChanges: { [weak self] requirement in
+                guard let self,
+                      let triptychID = self.workspaceAssignment?.id else { return }
+                self.presentationRouter.researchRecordsWindowRequest =
+                    ResearchRecordsWindowRequest(
+                        triptychID: triptychID,
+                        noteID: requirement.noteID,
+                        initialView: .records
+                    )
             }
         )
     )

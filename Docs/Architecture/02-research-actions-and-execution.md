@@ -48,7 +48,7 @@ transactions.
 Per-window `ResearchActionController` owns only selected Action/Profile,
 researcher Action-input drafts, presentation identity, progress/cancellation,
 errors, and the current Run projection. It owns no source, method, Session,
-result, Record, researcher Response, Note Review, provider, or mutation
+result, Record, researcher Response, Settlement, provider, or mutation
 authority.
 
 ## Availability and preparation
@@ -496,9 +496,9 @@ fingerprints, Agent activity outcomes, and researcher-owned
 Method Feedback. Activity outcomes retain the exact portable target, operation,
 terminal result, and source, managed-Metadata, or Zotero-binding revision domain;
 they exclude capability handles, request fingerprints, warning text, recovery
-locators, credentials, and Agent reasoning. The same store owns
-schema-1 `PortableResearchNoteReview` files as
-the single cumulative portable Note Review boundary. Analyze recommendation
+locators, credentials, and Agent reasoning. The same store owns one schema-2
+Settlement per Note. Settle derives and records the current confirmed `(Record
+ID, Note ID)` Agent-change activities under the Record listing lock. Analyze recommendation
 mutation and Method Feedback replacement use one revision-safe replacement
 primitive under portable coordination and lock, distinguish pre-commit refusal
 from post-commit uncertainty, and read back before success. Record schemas 1
@@ -528,7 +528,7 @@ Record mutation use case.
 `saveMethodFeedback` uses exact Record ID, expected Method Feedback revision,
 and finalized-result fingerprint. It validates both tokens under the same lock
 and replaces the parent Record's feedback in one Record write; a stale token
-rejects the candidate. Note Review, Method Feedback, and recommendation
+rejects the candidate. Settlement, Method Feedback, and recommendation
 disposition remain excluded from finalized-result identity. Record deletion
 removes those partitions and writes the existing minimal machine-local
 tombstone; no other operation can recreate or reparent them.
@@ -544,12 +544,11 @@ authorized writes.
 byte-diff owner for both Record confirmed-change pairs and Document conflict
 inputs; the projections remain disposable and non-Codable.
 
-Application owns `markCurrentNoteReviewed` and
-`undoResearchRecordChanges`. Note Review first verifies the controlled Note's
-exact saved revision, then asks the portable store to derive every currently
-pending `(Record ID, Note ID)` activity under the Record listing lock and
-expected source-manifest hash. The cumulative covered set, observed revision,
-and review time are the only durable Review facts.
+Application owns `settle` and `undoResearchRecordChanges`. Settle first verifies
+the controlled Note's exact saved revision, then asks the portable store to
+derive every current `(Record ID, Note ID)` Agent-change activity under the
+Record listing lock. Fingerprint, covered activities, rationale, researcher,
+and time are the only durable Settlement facts.
 
 Direct undo preflights every selected confirmed change against the portable
 Record, exact `(Run ID, Note ID)` `AgentChangeEvidenceStore` binding and
@@ -559,21 +558,22 @@ starting source only while current source still equals the ending revision,
 using the ordinary revision-checked repository save. A stable rename is
 resolved before that save. Application returns observed
 per-document recovery facts; multi-document requests are not a durable
-transaction. Undo does not read or write Note Review, and every attempted
+transaction. Undo does not read or write Settlement, and every attempted
 source replacement triggers refresh even when readback is uncertain.
 
-`WorkspaceSnapshotBuilder` derives activities, Note Reviews, and Result arrivals
-from current Local Execution, exact schema-18 Records, and schema-1 Note Reviews.
+`WorkspaceSnapshotBuilder` derives Action activities, Settlement requirements,
+and Result arrivals from current Local Execution, exact schema-18 Records, and
+schema-2 Settlements.
 The bounded projections omit authority and research content. Needs Attention
 follows current entry/recovery state. A formed Record evolves its Action item to
-Result Ready; confirmed changes create per-Note Review, but one Action creates
+Result Ready; confirmed changes create per-Note Settlement requirements, but one Action creates
 at most one Run/Record Result arrival with one affected-Notes list. Local
-Execution, Record, and Note Review remain durable owners.
+Execution, Record, and Settlement remain durable owners.
 
 The Action sheet stops at ordinary or researcher Follow-up preparation and
 handoff. Persistent Run status, End, Result routing, and recovery belong to the
 Action-level Notifications item rather than the Inspector launcher. It contains
-no finalized Result or Note Review subtree. The Records detail is the sole
+no finalized Result or Settlement subtree. The Records detail is the sole
 current result-reading surface: its reading plane owns **Follow Up…** and
 parent-owned Method Feedback, while its Evidence rail owns Changes, Effects,
 Participants, and Technical Details. Its shared exact-comparison
@@ -736,8 +736,8 @@ authority. A source change makes only the affected check stale.
 System-Trash preparation rejects any relevant active or write-recovering local
 execution. After all native source receipts commit, its recovery plan discards
 affected active Discussions, deletes each associated finished Record as a
-whole using its exact byte fingerprint, prunes Note Review references, and
-purges local execution and Agent-change evidence. An external source absence
+whole using its exact byte fingerprint, and purges local execution and
+Agent-change evidence. An external source absence
 without that plan performs none of this cleanup. Unsupported pre-production files
 remain byte-unchanged, unread, and nonauthorizing; current decoders do not
 interpret them as configuration, execution, or Record authority.

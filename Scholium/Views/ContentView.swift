@@ -72,9 +72,6 @@ struct ContentView: View {
     }
 
     var body: some View {
-        let actionRailCenterOffset = DocumentResearchActionRail.verticalCenterOffset(
-            showsReview: currentNoteReviewState?.status == .needsReview
-        )
         ScholiumWorkspaceSplitView(
             initialLibraryVisible: shellLibraryVisible,
             initialApparatusVisible: shellApparatusVisible,
@@ -125,10 +122,6 @@ struct ContentView: View {
                         documentResearchActionRail
                             .padding(.trailing, ScholiumGrid.Spacing.sectionSeparation)
                     }
-                }
-                .alignmentGuide(VerticalAlignment.center) { dimensions in
-                    dimensions[VerticalAlignment.center]
-                        + actionRailCenterOffset
                 }
                 .zIndex(5)
             }
@@ -484,9 +477,9 @@ struct ContentView: View {
         appState.currentNote?.workspaceSnapshot?.stableIdentity.resolvedID
     }
 
-    private var currentNoteReviewState: WorkspaceNoteReviewState? {
+    private var currentSettlementRequirement: WorkspaceSettlementRequirement? {
         guard let noteID = currentNoteStableID else { return nil }
-        return researchController.records?.noteReviewStates.first {
+        return researchController.records?.settlementRequirements.first {
             $0.noteID == noteID
         }
     }
@@ -528,10 +521,12 @@ struct ContentView: View {
 
     private var currentDocumentActivityNotificationCount: Int {
         guard let noteID = currentNoteStableID else { return 0 }
-        return shellState.researchActivityNotifications.count { notification in
+        let actionCount = shellState.researchActivityNotifications.count {
+            notification in
             notification.targetNoteID == noteID
                 || notification.affectedNotes.contains { $0.noteID == noteID }
         }
+        return actionCount + (currentSettlementRequirement == nil ? 0 : 1)
     }
 
     private var documentActivityNotifications: [ResearchActivityNotification] {
@@ -606,12 +601,7 @@ struct ContentView: View {
             identityAmbiguity: appState.currentDocumentIdentityAmbiguity,
             pendingIdentityRebinding: appState.currentDocumentPendingIdentityRebinding,
             identityMigrationFailureMessage: appState.currentDocumentIdentityMigrationFailure?.message,
-            isResolvingIdentity: appState.isResolvingIdentity,
-            noteReviewState: currentNoteReviewState,
-            researchRecordSourceManifestHash: researchController.records?
-                .finishedResearchRecordSourceManifestHash ?? "",
-            researchRecordProjectionIsComplete: researchController.records?
-                .finishedResearchRecordProjectionIsComplete ?? false
+            isResolvingIdentity: appState.isResolvingIdentity
         )
     }
 
@@ -838,13 +828,16 @@ struct ContentView: View {
 
     private var sidebarAttentionTotal: Int? {
         let activityCount = shellState.researchActivityNotifications.count
+        let settlementCount = researchController.records?
+            .settlementRequirements.count ?? 0
         let issueCount = AttentionPreferences.visibleTotalCount(
             catalog: appState.workspaceCatalog,
             assignment: appState.workspaceAssignment,
             dismissalLedgerData: attentionDismissalLedgerData
         )
-        if let issueCount { return issueCount + activityCount }
-        return activityCount > 0 ? activityCount : nil
+        if let issueCount { return issueCount + activityCount + settlementCount }
+        let persistentCount = activityCount + settlementCount
+        return persistentCount > 0 ? persistentCount : nil
     }
 
     private var sidebarWorkspaceNoteCounts: SidebarWorkspaceNoteCounts {
@@ -1115,6 +1108,7 @@ struct ContentView: View {
         switch DocumentTopSurfacePresentation.resolve(
             hasPersistentFeedback: !shellState.persistentFeedbackItems.isEmpty,
             hasActionNotifications: !documentActivityNotifications.isEmpty,
+            hasSettlementReminder: currentSettlementRequirement != nil,
             hasNotificationPermissionNotice: permission != nil
         ) {
         case .none:
@@ -1132,17 +1126,27 @@ struct ContentView: View {
                     )
                 )
             }
-        case .actionNotificationStack:
+        case .researchNotifications:
             ResearchActivityNotificationStack(
                 notifications: documentActivityNotifications,
+                settlementRequirement: currentSettlementRequirement,
                 expansionRequestGeneration:
                     shellState.actionNotificationStackExpansionGeneration,
-                openAction: { appState.attentionPopoverSession.openAction($0) },
-                endAction: { appState.attentionPopoverSession.endAction($0) },
+                reviewSettlementChanges: { _ in
+                    windowCoordinator.actions.showNoteResearchRecords()
+                },
+                openAction: {
+                    appState.attentionPopoverSession.openAction($0)
+                },
+                endAction: {
+                    appState.attentionPopoverSession.endAction($0)
+                },
                 reviewResult: {
                     appState.attentionPopoverSession.reviewResult($0)
                 },
-                followUp: { appState.attentionPopoverSession.followUp($0) },
+                followUp: {
+                    appState.attentionPopoverSession.followUp($0)
+                },
                 dismiss: {
                     appState.attentionPopoverSession.dismissActivity($0)
                 }
@@ -1199,17 +1203,13 @@ struct ContentView: View {
         DocumentResearchActionRail(
             presentation: appState.researchActionsPresentation(),
             freshness: researchProjectionFreshness,
-            noteReviewState: currentNoteReviewState,
+            settlementIsRequired: currentSettlementRequirement != nil,
             focusRequest: researchActionFocusRequest,
             registerFocusOwner: {
                 pendingResearchActionFocusID = $0
                 researchActionDismissalFocusDisposition = .preserveInputModality
             },
             select: openResearchAction,
-            openReview: {
-                guard currentNoteReviewState?.status == .needsReview else { return }
-                windowCoordinator.actions.showNoteResearchRecords()
-            },
             retryRefresh: {
                 Task { await appState.retryDerivedRefresh() }
             },

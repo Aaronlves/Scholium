@@ -287,7 +287,7 @@ public enum ResearchRecordChangeRecoveryOperationError: LocalizedError, Hashable
 public extension PortableResearchRecord {
     /// Fingerprint of the finalized Agent/Scholium result partition. Mutable
     /// researcher-owned recommendation disposition and response fields are
-    /// excluded by construction. Note Review is a separate portable object.
+    /// excluded by construction. Settlement is a separate portable judgment.
     func finalizedResultFingerprint() throws -> DocumentFingerprint {
         let partition = PortableResearchFinalizedResultPartition(
             schemaVersion: schemaVersion,

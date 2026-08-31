@@ -21,7 +21,7 @@ struct AttentionPresentationStateTests {
             message: "Possible orphan."
         )
         let second = AttentionQueueItem(
-            kind: .changedSinceSettled,
+            kind: .malformedMetadata,
             severity: .warning,
             note: reference,
             message: "The committed source changed."
@@ -84,7 +84,7 @@ struct AttentionPresentationStateTests {
             .possibleOrphan, .brokenConnection, .ambiguousConnection,
         ]))
         #expect(Set(AttentionIssueGroup.revisionAndResearch.kinds) == Set([
-            .changedSinceSettled, .synthesisMaterialChanged,
+            .synthesisMaterialChanged,
         ]))
     }
 
@@ -146,10 +146,10 @@ struct AttentionPresentationStateTests {
             message: "No incoming or outgoing links"
         )
         let changed = AttentionQueueItem(
-            kind: .changedSinceSettled,
+            kind: .malformedMetadata,
             severity: .warning,
             note: reference,
-            message: "Changed after this revision was settled"
+            message: "Invalid YAML"
         )
 
         let result = AttentionStructuralNotificationSearch.apply(
@@ -177,7 +177,7 @@ struct AttentionPresentationStateTests {
             AttentionNotificationCopy.emptyDescription(
                 noteScoped: false,
                 locale: locale
-            ) == "此范围内没有需要关注的 Action 活动或可见派生问题。"
+            ) == "此范围内没有需要关注的 Action 活动、暂定提醒或可见派生问题。"
         )
         #expect(
             AttentionNotificationCopy.refreshing(locale: locale)
@@ -204,10 +204,6 @@ struct AttentionPresentationStateTests {
         )
         let issueMessages = [
             ("Invalid YAML", "YAML 无效"),
-            (
-                "Changed after this revision was settled",
-                "此修订暂定后发生了更改"
-            ),
             ("No incoming or outgoing links", "没有传入或传出链接"),
             ("Identity not confirmed", "身份尚未确认"),
             ("Multiple candidates", "有多个候选项"),

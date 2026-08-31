@@ -111,8 +111,17 @@ struct AttentionQueueView: View {
         session.visibleActivityNotifications(for: presentation)
     }
 
+    private var visibleSettlementRequirements: [WorkspaceSettlementRequirement] {
+        session.visibleSettlementRequirements(
+            for: presentation,
+            locale: locale
+        )
+    }
+
     private var visibleItemIDs: [String] {
-        visibleActivityNotifications.map(activityItemID) + visibleItems.map(\.id)
+        visibleActivityNotifications.map(activityItemID)
+            + visibleSettlementRequirements.map(settlementItemID)
+            + visibleItems.map(\.id)
     }
 
     private var dismissedCount: Int {
@@ -126,13 +135,16 @@ struct AttentionQueueView: View {
             Divider()
 
             if visibleActivityNotifications.isEmpty,
+               visibleSettlementRequirements.isEmpty,
                !session.catalogIsAvailable, session.isRefreshing {
                 loadingState
             } else if visibleActivityNotifications.isEmpty,
+                      visibleSettlementRequirements.isEmpty,
                       !session.catalogIsAvailable, let error = session.catalogError {
                 completeErrorState(error)
             } else if visibleItems.isEmpty
-                        && visibleActivityNotifications.isEmpty {
+                        && visibleActivityNotifications.isEmpty
+                        && visibleSettlementRequirements.isEmpty {
                 emptyState
             } else {
                 queueList
@@ -225,6 +237,7 @@ struct AttentionQueueView: View {
         Picker("Notification Type", selection: notificationFilter) {
             Text("All Notifications").tag(AttentionNotificationFilter.all)
             Text("Action Activities").tag(AttentionNotificationFilter.activities)
+            Text("Settlement Reminders").tag(AttentionNotificationFilter.settlements)
             Text("All Issues").tag(AttentionNotificationFilter.issues)
             ForEach(AttentionIssueGroup.allCases) { group in
                 Section(ScholiumL10n.dynamicString(group.title)) {
@@ -273,6 +286,22 @@ struct AttentionQueueView: View {
                     }
                 } header: {
                     Text("ACTION ACTIVITIES")
+                }
+            }
+            if !visibleSettlementRequirements.isEmpty {
+                Section {
+                    ForEach(visibleSettlementRequirements) { requirement in
+                        SettlementRequirementNotificationRow(
+                            requirement: requirement,
+                            reviewChanges: {
+                                session.reviewChanges(requirement)
+                            }
+                        )
+                        .tag(settlementItemID(requirement))
+                    }
+                } header: {
+                    Text("Settlement Reminders")
+                        .textCase(.uppercase)
                 }
             }
             ForEach(AttentionIssueGroup.allCases) { group in
@@ -391,6 +420,12 @@ struct AttentionQueueView: View {
 
     private func activityItemID(_ notification: ResearchActivityNotification) -> String {
         "action:\(notification.runID.uuidString.lowercased())"
+    }
+
+    private func settlementItemID(
+        _ requirement: WorkspaceSettlementRequirement
+    ) -> String {
+        "settlement:\(requirement.noteID.uuidString.lowercased())"
     }
 
     private func noteTitle(for item: AttentionQueueItem) -> String {
@@ -581,6 +616,111 @@ struct ResearchActivityNotificationRow: View {
 
     private var actionTitle: String {
         ResearchActivityNotificationCopy.actionTitle(notification.actionID)
+    }
+}
+
+/// Persistent Note-level reminder derived from current source, Research
+/// Records, and the one Settlement marker. It has no dismissal path: only a
+/// successful Settle of the exact current revision removes it.
+struct SettlementRequirementNotificationRow: View {
+    let requirement: WorkspaceSettlementRequirement
+    let reviewChanges: () -> Void
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(
+                alignment: .center,
+                spacing: ScholiumGrid.Spacing.nestedContentInset
+            ) {
+                identity
+                controls
+                    .fixedSize(horizontal: true, vertical: false)
+                    .layoutPriority(1)
+            }
+            VStack(
+                alignment: .leading,
+                spacing: ScholiumGrid.Spacing.inlineControlGap
+            ) {
+                identity
+                controls
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+        .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(
+            "scholium.notification.settlement.\(requirement.noteID.uuidString)"
+        )
+    }
+
+    private var identity: some View {
+        HStack(
+            alignment: .center,
+            spacing: ScholiumGrid.Spacing.labelAccessoryGap
+        ) {
+            Image(systemName: "exclamationmark.circle")
+                .font(ScholiumTypography.interface(.body))
+                .scholiumForeground(.attention)
+                .accessibilityHidden(true)
+            Text("Current Revision Not Settled")
+                .font(ScholiumTypography.interface(.rowTitle))
+                .fixedSize(horizontal: true, vertical: false)
+            if !requirement.pendingActivities.isEmpty {
+                Text("\(requirement.pendingActivities.count) Agent Changes")
+                    .font(
+                        ScholiumTypography.interface(
+                            .small,
+                            emphasis: .medium
+                        )
+                    )
+                    .scholiumForeground(.secondaryText)
+                    .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
+                    .padding(
+                        .vertical,
+                        ScholiumGrid.Spacing.opticalAlignmentAdjustment
+                    )
+                    .background(
+                        ScholiumColorRole.raisedSurfaceBackground.color,
+                        in: Capsule(style: .continuous)
+                    )
+                    .scholiumBoundary(
+                        .subtleBoundary,
+                        in: Capsule(style: .continuous)
+                    )
+            }
+            Text("—")
+                .font(ScholiumTypography.interface(.small))
+                .scholiumForeground(.mutedText)
+                .accessibilityHidden(true)
+            Text(verbatim: requirement.title)
+                .font(ScholiumTypography.interface(.body))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .layoutPriority(-1)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilitySummary)
+    }
+
+    private var controls: some View {
+        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Button("Review Changes", action: reviewChanges)
+        }
+        .controlSize(.small)
+    }
+
+    private var accessibilitySummary: String {
+        if requirement.pendingActivities.isEmpty {
+            return String.localizedStringWithFormat(
+                String(localized: "Current Revision Not Settled, %@"),
+                requirement.title
+            )
+        }
+        return String.localizedStringWithFormat(
+            String(localized: "Current Revision Not Settled, %@, %lld Agent Changes"),
+            requirement.title,
+            Int64(requirement.pendingActivities.count)
+        )
     }
 }
 

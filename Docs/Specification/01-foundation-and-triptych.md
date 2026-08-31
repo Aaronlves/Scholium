@@ -85,7 +85,8 @@ Discussion turns; and Agent changes. Later completion, editing, incorporation,
 or Settle never erases provenance.
 
 Use sparse visible labels. Vault placement communicates Note role; About and
-Research Records carry detail, and warnings appear only when actionable.
+Research Records carry detail, and reminders appear only when the current
+revision requires a researcher action.
 
 ## 3. The Scholium Triptych
 

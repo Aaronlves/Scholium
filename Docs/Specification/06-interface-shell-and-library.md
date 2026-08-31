@@ -146,13 +146,16 @@ It opens the complete Action/Attention queue without changing the selected
 workspace or Document. Zero is quiet; nonzero uses Attention semantics but not
 a badge, unread model, animation, or auto-open.
 
-Attention-required Action activities may appear as one top-centered
-**Activity Notification Stack** over the window without reflow. One activity
-shows its exact state, Action, target, and actions; multiple activities expand
-to distinct Run-bound rows. It excludes structural Attention and never becomes
-the complete queue. Waiting/Running remain in the complete queue; Note Review
-is not a notification. Reduce Motion preserves all content and controls without
-geometry animation.
+Attention-required Action activities and the current Note's Settlement reminder
+may appear in the top-centered **Activity Notification Stack** over the window
+without reflow. One item shows its exact state, target, and notification-valid
+actions; multiple Action activities and the Settlement reminder share one
+summary and expand to distinct rows. A Settlement reminder shows **Review
+Changes**, has no Settle or Dismiss action, and persists until the exact current
+revision is Settled through the Document Action Rail. The stack excludes
+structural Attention and never becomes the complete queue. Waiting/Running
+remain in the complete queue. Reduce Motion preserves all content and controls
+without geometry animation.
 
 Window operation feedback follows consequence:
 
@@ -166,9 +169,10 @@ order, announcement, and dismissal only. Persistent feedback never times out.
 
 The complete Notifications queue is a window-owned native popover. Sidebar
 opens Triptych scope; Inspector may open a current-Note subset. Popover closure
-does not dismiss persistent Action activity. The queue presents Action
-activities, then grouped structural issues with exact reason, Note/path
-location, and only valid actions. Search/filter changes only this presentation.
+does not dismiss persistent Action activity or complete a Settlement reminder.
+The queue presents Action activities, then Settlement reminders, then grouped
+structural issues with exact reason, Note/path location, and only valid actions.
+Search/filter changes only this presentation.
 Stale or failed refresh retains last trustworthy content and Retry; empty and
 unavailable remain distinct.
 

@@ -1134,10 +1134,23 @@ final class WindowAttachmentView: NSView {
 /// chrome without leaving AppKit above it in the pointer event path.
 private final class ScholiumWindowTopOverlayHostingView<Content: View>:
     NSHostingView<Content> {
+    var fittingSizeDidChange: (() -> Void)?
+    private var lastReportedFittingSize = NSSize.zero
+
     override var mouseDownCanMoveWindow: Bool { false }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
         true
+    }
+
+    override func layout() {
+        super.layout()
+        let currentFittingSize = fittingSize
+        guard currentFittingSize != lastReportedFittingSize else { return }
+        lastReportedFittingSize = currentFittingSize
+        DispatchQueue.main.async { [weak self] in
+            self?.fittingSizeDidChange?()
+        }
     }
 }
 
@@ -1212,6 +1225,9 @@ struct ScholiumWindowTopOverlayHost<Overlay: View>: NSViewRepresentable {
                 )
                 hostingView.wantsLayer = true
                 hostingView.layer?.zPosition = 10_000
+                hostingView.fittingSizeDidChange = { [weak self] in
+                    self?.layoutHost()
+                }
                 self.hostingView = hostingView
             }
             layoutHost()
@@ -1223,15 +1239,9 @@ struct ScholiumWindowTopOverlayHost<Overlay: View>: NSViewRepresentable {
         func attach(to window: NSWindow) {
             guard let hostingView,
                   let contentView = window.contentView else { return }
-            let frameView: NSView
-            if let titlebarView = fullWidthTitlebarView(in: window) {
-                frameView = titlebarView
-            } else {
-                var rootView = contentView
-                while let superview = rootView.superview {
-                    rootView = superview
-                }
-                frameView = rootView
+            var frameView = contentView
+            while let superview = frameView.superview {
+                frameView = superview
             }
             if self.window === window,
                self.frameView === frameView,
@@ -1244,23 +1254,6 @@ struct ScholiumWindowTopOverlayHost<Overlay: View>: NSViewRepresentable {
             self.frameView = frameView
             frameView.addSubview(hostingView, positioned: .above, relativeTo: nil)
             layoutHost()
-        }
-
-        private func fullWidthTitlebarView(in window: NSWindow) -> NSView? {
-            var candidate = window.standardWindowButton(.closeButton)?.superview
-            let minimumWidth = window.frame.width * 0.9
-            let minimumHeight = max(
-                ScholiumGrid.Dimension.minimumCustomTarget,
-                window.frame.height - window.contentLayoutRect.height
-            )
-            while let view = candidate {
-                if view.bounds.width >= minimumWidth,
-                   view.bounds.height >= minimumHeight {
-                    return view
-                }
-                candidate = view.superview
-            }
-            return nil
         }
 
         func detach() {

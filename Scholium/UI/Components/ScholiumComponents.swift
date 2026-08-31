@@ -557,8 +557,8 @@ struct SidebarTriptychAttentionEntry: View {
     }
 }
 
-/// Compact Run-bound operations shared by the Document Action banner and the
-/// complete Notifications queue. The caller owns surrounding information.
+/// Compact Run-bound operations shared by the Document notification stack and
+/// the complete Notifications queue. The caller owns surrounding information.
 struct ResearchActivityNotificationControls: View {
     private enum ControlFocus: Hashable {
         case openAction
@@ -665,9 +665,10 @@ struct ResearchActivityNotificationControls: View {
     }
 }
 
-/// One direct Action banner or a bounded, Action-only stack. Durable activity
-/// state and operations stay with their existing owners; this view owns only
-/// disclosure, pointer preview, keyboard focus, and presentation.
+/// One direct notification or a bounded stack shared by Settlement reminders
+/// and Action activity. Durable state and operations stay with their existing
+/// owners; this view owns only disclosure, pointer preview, keyboard focus,
+/// and presentation.
 struct ResearchActivityNotificationStack: View {
     @Environment(\.locale) private var locale
     @Environment(\.scholiumReduceMotion) private var reduceMotion
@@ -676,7 +677,9 @@ struct ResearchActivityNotificationStack: View {
     @State private var isPinnedExpanded = false
 
     let notifications: [ResearchActivityNotification]
+    let settlementRequirement: WorkspaceSettlementRequirement?
     let expansionRequestGeneration: UInt64
+    let reviewSettlementChanges: (WorkspaceSettlementRequirement) -> Void
     let openAction: (ResearchActivityNotification) -> Void
     let endAction: (ResearchActivityNotification) -> Void
     let reviewResult: (ResearchActivityNotification) -> Void
@@ -685,13 +688,33 @@ struct ResearchActivityNotificationStack: View {
 
     @ViewBuilder
     var body: some View {
-        if let latest = notifications.first {
-            if notifications.count == 1 {
+        if notificationCount == 1, let settlementRequirement {
+            directSettlementBanner(for: settlementRequirement)
+        } else if let latest = notifications.first {
+            if notificationCount == 1 {
                 directBanner(for: latest)
             } else {
-                multipleActivityStack()
+                multipleNotificationStack()
             }
         }
+    }
+
+    private func directSettlementBanner(
+        for requirement: WorkspaceSettlementRequirement
+    ) -> some View {
+        let shape = notificationShape
+        return SettlementRequirementNotificationRow(
+            requirement: requirement,
+            reviewChanges: { reviewSettlementChanges(requirement) }
+        )
+        .padding(.horizontal, ScholiumMetrics.Workspace.compactNoticeHorizontalInset)
+        .padding(.vertical, ScholiumMetrics.Workspace.compactNoticeVerticalInset)
+        .scholiumContentFittingWidth(
+            maximumWidth: ScholiumMetrics.ActivityNotificationStack.maximumWidth
+        )
+        .scholiumEditorialSurface(.floatingControl, in: shape)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("scholium.researchActivityNotificationStack")
     }
 
     private func directBanner(
@@ -716,7 +739,7 @@ struct ResearchActivityNotificationStack: View {
         .accessibilityIdentifier("scholium.researchActivityNotificationStack")
     }
 
-    private func multipleActivityStack() -> some View {
+    private func multipleNotificationStack() -> some View {
         let shape = notificationShape
         return VStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
             summaryButton(shape: shape)
@@ -739,8 +762,8 @@ struct ResearchActivityNotificationStack: View {
             .onChange(of: expansionRequestGeneration) { _, _ in
                 isPinnedExpanded = true
             }
-            .onChange(of: notifications.map(\.runID)) { _, runIDs in
-                if runIDs.count < 2 { isPinnedExpanded = false }
+            .onChange(of: notificationIdentities) { _, identities in
+                if identities.count < 2 { isPinnedExpanded = false }
             }
             .onKeyPress(.escape) {
                 guard isExpanded else { return .ignored }
@@ -820,6 +843,20 @@ struct ResearchActivityNotificationStack: View {
     private var expandedRows: some View {
         ScrollView {
             LazyVStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                if let settlementRequirement {
+                    SettlementRequirementNotificationRow(
+                        requirement: settlementRequirement,
+                        reviewChanges: {
+                            reviewSettlementChanges(settlementRequirement)
+                        }
+                    )
+                    .padding(.horizontal, ScholiumMetrics.Workspace.compactNoticeHorizontalInset)
+                    .padding(.vertical, ScholiumMetrics.Workspace.compactNoticeVerticalInset)
+                    .scholiumEditorialSurface(
+                        .floatingControl,
+                        in: notificationShape
+                    )
+                }
                 ForEach(notifications) { notification in
                     ResearchActivityNotificationBannerRow(
                         notification: notification,
@@ -885,13 +922,13 @@ struct ResearchActivityNotificationStack: View {
 
     private var visibleLayerCount: Int {
         min(
-            notifications.count,
+            notificationCount,
             ScholiumMetrics.ActivityNotificationStack.visibleLayerLimit
         )
     }
 
     private var isExpanded: Bool {
-        notifications.count > 1
+        notificationCount > 1
             && (isPinnedExpanded || isHovering || summaryIsFocused)
     }
 
@@ -907,12 +944,15 @@ struct ResearchActivityNotificationStack: View {
 
     private var countTitle: String {
         return String.localizedStringWithFormat(
-            ScholiumL10n.string("%lld Actions", locale: locale),
-            Int64(notifications.count)
+            ScholiumL10n.string("%lld Notifications", locale: locale),
+            Int64(notificationCount)
         )
     }
 
     private var latestSummary: String {
+        if let settlementRequirement {
+            return "\(ScholiumL10n.string("Current Revision Not Settled", locale: locale)) — \(settlementRequirement.title)"
+        }
         guard let latest = notifications.first else { return "" }
         let target = latest.targetTitle.isEmpty
             ? ScholiumL10n.string("Research Action", locale: locale)
@@ -927,10 +967,28 @@ struct ResearchActivityNotificationStack: View {
     private var disclosureLabel: String {
         ScholiumL10n.string(
             isExpanded
-                ? "Hide Action Notifications"
-                : "Show Action Notifications",
+                ? "Hide Notifications"
+                : "Show Notifications",
             locale: locale
         )
+    }
+
+    private var notificationCount: Int {
+        notifications.count + (settlementRequirement == nil ? 0 : 1)
+    }
+
+    private var notificationIdentities: [String] {
+        var identities = settlementRequirement.map {
+            [
+                "settlement:\($0.noteID.uuidString):"
+                    + "\($0.currentRevision.sha256):"
+                    + "\($0.currentRevision.byteCount)"
+            ]
+        } ?? []
+        identities.append(contentsOf: notifications.map {
+            "action:\($0.runID.uuidString)"
+        })
+        return identities
     }
 
 }

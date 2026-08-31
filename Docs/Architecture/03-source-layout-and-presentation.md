@@ -211,10 +211,10 @@ Notifications is one native transient SwiftUI popover owned by each exact
 utility panel, or always-on-top surface. Per-Workspace
 `AttentionPresentationState` owns only filter, selected item, an optional
 Inspector workspace subset, and an optional current-Note subset;
-`AttentionPopoverSession` adapts that state
-and the current immutable structural queue plus application-owned Action
-activities only to the Sidebar and Inspector anchors without duplicating
-either. A typed `AttentionPresentationRequest` separates complete-queue
+`AttentionPopoverSession` adapts that state and the current immutable structural
+queue plus application-owned Action activities and derived Settlement
+requirements to the Sidebar and Inspector anchors without duplicating either.
+A typed `AttentionPresentationRequest` separates complete-queue
 popover requests from a window-local Action-stack expansion request. The
 Document stack never opens or retains a popover Run selection; it renders one
 Action directly or an ordered set of Action rows in place.
@@ -231,10 +231,13 @@ entry; workspace rows
 instead consume neutral ordinary-active-Note totals, and zero remains a real
 inventory value. The Document toolbar consumes
 no Notifications count, observation, item, action, reserved width, or popover
-anchor. `ContentView` filters the same immutable Action activity array to
-Needs Attention, Result Ready, and Recovery Required and projects one
-presentation-only top-centred window overlay; the stack adds no queue or dismissal
-state. A missing first catalog remains checking, and a failed first load
+anchor. `ContentView` filters the same immutable Action activity array to Needs
+Attention, Result Ready, and Recovery Required, joins the current Note's
+Settlement requirement, and projects one presentation-only top-centred window
+overlay whose shared summary and rows contain both notification kinds; the
+Settlement row routes to Review Changes while Settle remains owned by the
+Document Action Rail. The stack adds no queue, Settlement, or dismissal state. A missing
+first catalog remains checking, and a failed first load
 presents an unavailable Retry state rather than zero. Sidebar opens the complete
 Triptych queue; Inspector may add the active Note. One Action is already fully
 operable in its Document banner. Multiple Actions share one summary and expand

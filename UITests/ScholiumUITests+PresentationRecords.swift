@@ -117,10 +117,34 @@ extension ScholiumUITests {
 
     @MainActor
     func testActionNotificationProofPresentationKeepsTheStackExact() throws {
-        let document = app.webViews.firstMatch
-        XCTAssertTrue(document.waitForExistence(timeout: 5))
-        let documentFrameBeforeAction = document.frame
         let window = app.windows.firstMatch
+        selectVault(
+            "scholium.vault.topic_knowledge",
+            waitingFor: "scholium.noteRow.QA Topic.md"
+        )
+        openNote("QA Topic.md", expectedTitle: "QA Topic", in: window)
+        let document = app.webViews.firstMatch
+        XCTAssertTrue(document.waitForExistence(timeout: 8))
+        let documentFrameBeforeAction = document.frame
+        let stack = app.descendants(matching: .any)[
+            "scholium.researchActivityNotificationStack"
+        ]
+        XCTAssertTrue(
+            stack.waitForExistence(timeout: 20),
+            "The seeded Settlement reminder did not reach the shared stack."
+        )
+        XCTAssertTrue(accessibilityText(of: stack).contains("3 Notifications"))
+        stack.click()
+        XCTAssertTrue(
+            window.buttons["Review Changes"].waitForExistence(timeout: 5)
+        )
+        XCTAssertFalse(
+            window.descendants(matching: .any)[
+                "scholium.researchActivityNotificationRows"
+            ].buttons["Settle"].exists
+        )
+        stack.click()
+
         let qaMenu = app.menuBars.menuBarItems["QA"]
         XCTAssertTrue(qaMenu.waitForExistence(timeout: 5))
         qaMenu.click()
@@ -128,58 +152,42 @@ extension ScholiumUITests {
         XCTAssertTrue(present.waitForExistence(timeout: 3))
         present.click()
 
-        let stack = app.descendants(matching: .any)[
-            "scholium.researchActivityNotificationStack"
-        ]
         XCTAssertTrue(stack.waitForExistence(timeout: 8))
-        let dismiss = stack.buttons["Dismiss"].firstMatch
+        XCTAssertTrue(accessibilityText(of: stack).contains("3 Notifications"))
+        stack.click()
+        let dismiss = window.buttons["Dismiss"].firstMatch
         XCTAssertTrue(
             dismiss.waitForExistence(timeout: 5),
-            "A single Action notification must expose its action directly in the banner."
+            "The shared stack must expose the Action row when expanded."
         )
+        let expandedRows = window.descendants(matching: .any)[
+            "scholium.researchActivityNotificationRows"
+        ]
+        XCTAssertTrue(expandedRows.waitForExistence(timeout: 5))
+        XCTAssertTrue(window.buttons["Review Changes"].exists)
         XCTAssertFalse(app.popovers.firstMatch.exists)
         XCTAssertEqual(document.frame, documentFrameBeforeAction)
-        XCTAssertTrue(document.frame.intersects(stack.frame))
+        XCTAssertTrue(document.frame.intersects(expandedRows.frame))
         XCTAssertEqual(stack.frame.midX, window.frame.midX, accuracy: 2)
         XCTAssertEqual(
             stack.frame.minY - window.frame.minY,
             16,
             accuracy: 4
         )
-        XCTAssertLessThanOrEqual(
-            stack.frame.height,
-            76,
-            "A direct Action banner may adapt to two compact rows but must not become a notification card."
-        )
         let screenshot = XCTAttachment(screenshot: window.screenshot())
-        screenshot.name = "Compact top-centred Action"
+        screenshot.name = "Shared Settlement and Action notification stack"
         screenshot.lifetime = .keepAlways
         add(screenshot)
 
         XCTAssertTrue(dismiss.isHittable)
         dismiss.click()
         XCTAssertTrue(
-            waitUntil(timeout: 5) { !stack.exists },
-            "Pointer activation must dismiss the inline Action operation."
+            waitUntil(timeout: 5) {
+                stack.exists && window.buttons["Review Changes"].exists
+            },
+            "Dismissing the Action must retain the persistent Settlement reminder."
         )
-        XCTAssertFalse(app.popovers.firstMatch.exists)
-
-        qaMenu.click()
-        XCTAssertTrue(present.waitForExistence(timeout: 3))
-        present.click()
-        XCTAssertTrue(stack.waitForExistence(timeout: 8))
-        let keyboardDismiss = stack.buttons["Dismiss"].firstMatch
-        XCTAssertTrue(keyboardDismiss.waitForExistence(timeout: 5))
-        let keyboardFocus = NSPredicate(format: "hasKeyboardFocus == true")
-        for _ in 0..<32 where !keyboardFocus.evaluate(with: keyboardDismiss) {
-            app.typeKey(.tab, modifierFlags: [])
-        }
-        XCTAssertTrue(
-            keyboardFocus.evaluate(with: keyboardDismiss),
-            "Tab must reach the inline Action operation."
-        )
-        app.typeKey(.space, modifierFlags: [])
-        XCTAssertTrue(waitUntil(timeout: 5) { !stack.exists })
+        XCTAssertTrue(accessibilityText(of: stack).contains("2 Notifications"))
         XCTAssertFalse(app.popovers.firstMatch.exists)
     }
 

@@ -20,7 +20,8 @@ enum AttentionQueuePopoverAnchor: Equatable, Sendable {
 }
 
 /// One window-level Notifications request either opens the complete queue from
-/// a stable anchor or expands the Document's Action-only stack in place.
+/// a stable anchor or expands the Document's shared notification stack in
+/// place when Action activity requires attention.
 enum AttentionPresentationRequest: Equatable, Sendable {
     case queue(
         anchor: AttentionQueuePopoverAnchor,
@@ -40,6 +41,8 @@ final class AttentionPopoverSession: ObservableObject {
     struct Dependencies {
         let dismissalDaysChanges: AnyPublisher<Int, Never>
         let activityChanges: AnyPublisher<[ResearchActivityNotification], Never>
+        let settlementRequirementChanges:
+            AnyPublisher<[WorkspaceSettlementRequirement], Never>
         let refresh: @MainActor () async -> Void
         let resynthesize: @MainActor (AttentionQueueItem) -> Void
         let openAction: @MainActor (ResearchActivityNotification) -> Void
@@ -47,12 +50,15 @@ final class AttentionPopoverSession: ObservableObject {
         let reviewResult: @MainActor (ResearchActivityNotification) -> Void
         let followUp: @MainActor (ResearchActivityNotification) -> Void
         let dismissActivity: @MainActor (ResearchActivityNotification) -> Void
+        let reviewChanges: @MainActor (WorkspaceSettlementRequirement) -> Void
     }
 
     @Published private(set) var presentedAnchor: AttentionPopoverAnchor?
     @Published private(set) var dismissalDays: Int
     @Published private(set) var activityNotifications:
         [ResearchActivityNotification] = []
+    @Published private(set) var settlementRequirements:
+        [WorkspaceSettlementRequirement] = []
 
     let presentation: AttentionPresentationState
     private let discoveryController: DiscoveryController
@@ -99,6 +105,12 @@ final class AttentionPopoverSession: ObservableObject {
             .sink { [weak self] notifications in
                 guard let self else { return }
                 activityNotifications = notifications
+            }
+            .store(in: &observations)
+        dependencies.settlementRequirementChanges
+            .removeDuplicates()
+            .sink { [weak self] requirements in
+                self?.settlementRequirements = requirements
             }
             .store(in: &observations)
     }
@@ -185,6 +197,44 @@ final class AttentionPopoverSession: ObservableObject {
         )
     }
 
+    func visibleSettlementRequirements(
+        for presentation: AttentionPresentationState,
+        locale: Locale = .current
+    ) -> [WorkspaceSettlementRequirement] {
+        guard presentation.notificationFilter.showsSettlements else { return [] }
+        let workspaceVaultID = presentation.workspaceSlot.flatMap {
+            workspaceController.state.assignment?.vault(for: $0)?.id
+        }
+        let query = presentation.filter.query
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(
+                options: [.caseInsensitive, .diacriticInsensitive],
+                locale: locale
+            )
+        return settlementRequirements.filter { requirement in
+            if let workspaceVaultID,
+               requirement.note.vaultID != workspaceVaultID {
+                return false
+            }
+            if let noteScope = presentation.noteScope,
+               requirement.note != noteScope {
+                return false
+            }
+            guard !query.isEmpty else { return true }
+            let searchable = [
+                ScholiumL10n.string("Current Revision Not Settled", locale: locale),
+                ScholiumL10n.string("Review Changes", locale: locale),
+                ScholiumL10n.string("Settle", locale: locale),
+                requirement.title,
+                requirement.note.relativePath,
+            ].joined(separator: " ")
+            return searchable.folding(
+                options: [.caseInsensitive, .diacriticInsensitive],
+                locale: locale
+            ).contains(query)
+        }
+    }
+
     func noteTitle(for item: AttentionQueueItem) -> String {
         if let title = projectionController.catalog?.notes.first(where: {
             $0.reference.vaultID == item.note.vaultID
@@ -236,6 +286,12 @@ final class AttentionPopoverSession: ObservableObject {
     func dismissActivity(_ notification: ResearchActivityNotification) {
         dependencies.dismissActivity(notification)
     }
+
+    func reviewChanges(_ requirement: WorkspaceSettlementRequirement) {
+        dismiss()
+        dependencies.reviewChanges(requirement)
+    }
+
 }
 
 enum ResearchActivityNotificationQuery {

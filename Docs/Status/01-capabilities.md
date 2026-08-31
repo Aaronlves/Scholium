@@ -80,7 +80,7 @@
 - Note and Folder deletion prepare exact source/folder inventories, associated
   Critiques, active Discussions, and whole finished Records before confirmation.
   All source items move first; durable recovery then resumes Discussion, exact-
-  fingerprint Record, Note Review, and machine-local evidence cleanup. A
+  fingerprint Record, and machine-local evidence cleanup. A
   multi-Note Record is deleted as one object when any participant is affected.
 - Settlement, source access, stable identity, Zotero binding, and Critique
   association are retained. External source absence without a Scholium plan
@@ -105,8 +105,9 @@
   interrupted-write candidates remain distinct. Direct Undo and candidate
   restore each recheck the current revision and preserve evidence when
   replacement cannot be proven safe.
-- Settle stores one replaceable researcher judgment for an exact saved revision.
-  A Work can retain one attributed current Critique without changing the Work.
+- Settle stores one replaceable researcher judgment for an exact saved revision
+  and the current confirmed Agent-change activities. A Work can retain one
+  attributed current Critique without changing the Work.
 
 ## Search, Connections, and Attention
 
@@ -371,9 +372,9 @@
   IDs so selected Materials remain distinct from confirmed-change-only
   participants. In-text citations remain optional academic content. Analyze Records retain one explicit Scholium-source,
   external-Zotero, or researcher-provided route without inventing source
-  evidence. One cumulative schema-1 portable Note Review per Note owns
-  exact observed revision, time, and covered `(Record ID, Note ID)` activities.
-  Schema-18 Records reject every earlier schema; unsupported
+  evidence. One schema-2 portable Settlement per Note owns exact saved revision,
+  time, researcher judgment, and covered `(Record ID, Note ID)` Agent-change
+  activities. Schema-18 Records reject every earlier schema; unsupported
   files remain byte-unchanged, unread, and nonauthorizing. Schema 18 also
   retains each terminal Agent activity's exact portable target, operation,
   outcome, and typed source, managed-Metadata, or Zotero-binding revisions after
@@ -382,10 +383,10 @@
 - Confirmed Agent change comparison uses one exact byte-diff owner shared with
   Document conflict input. Application safely undoes complete selected
   documents from the first committed Agent baseline, including after a stable-
-  identity rename. Undo is independent of Note Review; each document uses an
+  identity rename. Undo is independent of Settlement; each document uses an
   independent ordinary revision-checked repository transaction.
 - Workspace research snapshots derive Waiting, Running, Needs Attention,
-  Result Ready, and Recovery Required activity inputs plus Note Review state
+  Result Ready, and Recovery Required activity inputs plus Settlement requirements
   and one-shot Result arrivals without
   persisting a second workflow owner or
   projecting credentials, source bytes, or tool traces.

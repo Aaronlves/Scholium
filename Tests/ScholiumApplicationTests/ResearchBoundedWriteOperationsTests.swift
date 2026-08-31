@@ -2389,43 +2389,30 @@ struct ResearchBoundedWriteOperationsTests {
         )
         #expect(reconciled.documents.map(\.status) == [.alreadyAtStartingRevision])
 
-        var noteReviewSnapshot = try await handle.snapshot()
-        #expect(noteReviewSnapshot.research.noteReviewStates.first {
-            $0.noteID == change.noteID
-        }?.status == .needsReview)
-        await #expect(throws: PortableResearchNoteReviewMutationError.sourceChanged) {
-            _ = try await handle.research.markCurrentNoteReviewed(
-                noteID: change.noteID,
-                expectedRevision: change.endingRevision,
-                expectedRecordSourceManifestHash: noteReviewSnapshot.research
-                    .finishedResearchRecordSourceManifestHash
-            )
-        }
-        await #expect(
-            throws: PortableResearchNoteReviewMutationError.recordProjectionChanged
-        ) {
-            _ = try await handle.research.markCurrentNoteReviewed(
-                noteID: change.noteID,
-                expectedRevision: changeStartingRevision,
-                expectedRecordSourceManifestHash: "stale-record-projection"
-            )
-        }
-        enum InjectedNoteReviewReadbackFault: Error { case afterRename }
-        await handle.services.portableResearchRecordStore.setPostCommitFaultForTesting { _ in
-            throw InjectedNoteReviewReadbackFault.afterRename
-        }
-        _ = try await handle.research.markCurrentNoteReviewed(
-            noteID: change.noteID,
-            expectedRevision: changeStartingRevision,
-            expectedRecordSourceManifestHash: noteReviewSnapshot.research
-                .finishedResearchRecordSourceManifestHash
+        var settlementSnapshot = try await handle.snapshot()
+        let pendingSettlement = try #require(
+            settlementSnapshot.research.settlementRequirements.first {
+                $0.noteID == change.noteID
+            }
         )
-        await handle.services.portableResearchRecordStore
-            .setPostCommitFaultForTesting(nil)
-        noteReviewSnapshot = try await handle.snapshot()
-        #expect(noteReviewSnapshot.research.noteReviewStates.first {
-            $0.noteID == change.noteID
-        }?.status == .noAgentChangesAwaitingReview)
+        #expect(pendingSettlement.reason == .agentChanges)
+        #expect(pendingSettlement.currentRevision == changeStartingRevision)
+        #expect(pendingSettlement.pendingActivities == [
+            SettlementActivityReference(
+                recordID: record.id,
+                noteID: change.noteID
+            ),
+        ])
+
+        _ = try await handle.research.settle(
+            moved.destination,
+            expectedRevision: changeStartingRevision,
+            rationale: nil
+        )
+        settlementSnapshot = try await handle.snapshot()
+        #expect(settlementSnapshot.research.settlementRequirements.allSatisfy {
+            $0.noteID != change.noteID
+        })
 
         let researcherSource = externalSource + "\nResearcher later edit.\n"
         let researcherRevision = DocumentFingerprint(content: researcherSource)
@@ -2435,15 +2422,26 @@ struct ResearchBoundedWriteOperationsTests {
             ),
             options: .atomic
         )
-        noteReviewSnapshot = try await handle.refresh()
+        settlementSnapshot = try await handle.refresh()
         let afterResearcherEdit = try #require(
-            noteReviewSnapshot.research.noteReviewStates.first {
+            settlementSnapshot.research.settlementRequirements.first {
                 $0.noteID == change.noteID
             }
         )
-        #expect(afterResearcherEdit.status == .noAgentChangesAwaitingReview)
+        #expect(afterResearcherEdit.reason == .changedSinceSettlement)
         #expect(afterResearcherEdit.currentRevision == researcherRevision)
-        #expect(afterResearcherEdit.lastReviewedRevision == change.startingRevision)
+        #expect(afterResearcherEdit.previousSettlement?.fingerprint
+            == changeStartingRevision)
+
+        _ = try await handle.research.settle(
+            moved.destination,
+            expectedRevision: researcherRevision,
+            rationale: "Re-settled after the researcher edit."
+        )
+        settlementSnapshot = try await handle.snapshot()
+        #expect(settlementSnapshot.research.settlementRequirements.allSatisfy {
+            $0.noteID != change.noteID
+        })
         try FileManager.default.removeItem(
             at: fixture.analysesURL.appendingPathComponent(
                 moved.destination.relativePath

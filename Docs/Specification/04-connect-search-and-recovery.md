@@ -138,20 +138,24 @@ Research Context reuses this owner under
 [§8.2](03-research-actions-and-workflows.md#82-agent-entry-local-pairing-layered-delivery-and-research-context)
 and adds no second parser, resolver, index, or confidence score.
 
-**Notifications** combines persistent Action activities with derived
-Triptych-wide structural Attention. These remain separate owners and dismissal
-semantics. Structural Attention may report:
+**Notifications** combines persistent Action activities, derived Settlement
+reminders, and Triptych-wide structural Attention. These remain separate
+owners and completion or dismissal semantics. Structural Attention may report:
 
 - **Possible Orphan** only when a Note has no resolved incoming or outgoing
   Connection;
-- Changed Since Settled, Broken/Ambiguous Connections, malformed Metadata, or
-  unresolved identity; and
+- Broken/Ambiguous Connections, malformed Metadata, or unresolved identity;
+  and
 - **Synthesis Material Changed** only when a completed Synthesize Record proves
   an exact Analysis participant and recorded revision that later changed.
 
 Attention never declares a Note wrong, outdated, Superseded, accepted, or
 philosophically deficient. Warnings are dismissible against their exact
 identity/revision and may recur after a later change.
+
+Settlement reminders are not structural Attention and have no Dismiss action.
+They follow §7.1 and recur only from a later saved revision or confirmed Agent
+change after the covering Settlement.
 
 ## 14. Save, Agent changes, and recovery
 

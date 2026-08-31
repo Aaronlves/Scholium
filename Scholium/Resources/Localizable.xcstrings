@@ -694,18 +694,34 @@
         }
       }
     },
-    "%lld Actions" : {
+    "%lld Notifications" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "%lld Actions"
+            "value" : "%lld Notifications"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%lld 个研究操作"
+            "value" : "%lld 条通知"
+          }
+        }
+      }
+    },
+    "%lld Agent Changes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%lld Agent Changes"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 项 Agent 更改"
           }
         }
       }
@@ -5845,22 +5861,6 @@
         }
       }
     },
-    "Changed Since Settled" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Changed Since Settled"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "暂定后有更改"
-          }
-        }
-      }
-    },
     "Changed after Agent work" : {
       "localizations" : {
         "en" : {
@@ -5873,22 +5873,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在 Agent 工作后已更改"
-          }
-        }
-      }
-    },
-    "Changed after this revision was settled" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Changed after this revision was settled"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此修订暂定后发生了更改"
           }
         }
       }
@@ -7591,16 +7575,6 @@
         }
       }
     },
-    "Close Note Review" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "关闭文档审阅"
-          }
-        }
-      }
-    },
     "Close Search" : {
       "localizations" : {
         "en" : {
@@ -8038,18 +8012,18 @@
         }
       }
     },
-    "Compare modified Notes below. Created Notes retain visible provenance and Note Review without a fabricated before-source comparison." : {
+    "Compare modified Notes below. Created Notes retain visible provenance and require Settlement without a fabricated before-source comparison." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Compare modified Notes below. Created Notes retain visible provenance and Note Review without a fabricated before-source comparison."
+            "value" : "Compare modified Notes below. Created Notes retain visible provenance and require Settlement without a fabricated before-source comparison."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "可在下方比较被修改的笔记。新建笔记仍保留可见来源记录与笔记审阅，但不会虚构修改前的源文本比较。"
+            "value" : "可在下方比较被修改的笔记。新建笔记仍保留可见来源记录并需要暂定，但不会虚构修改前的源文本比较。"
           }
         }
       }
@@ -9885,18 +9859,18 @@
         }
       }
     },
-    "Created Notes have visible provenance and Note Review, but no fabricated before-source comparison or direct Undo." : {
+    "Created Notes have visible provenance and require Settlement, but no fabricated before-source comparison or direct Undo." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Created Notes have visible provenance and Note Review, but no fabricated before-source comparison or direct Undo."
+            "value" : "Created Notes have visible provenance and require Settlement, but no fabricated before-source comparison or direct Undo."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新建笔记具有可见来源记录与笔记审阅，但不会虚构修改前的源文本比较，也不提供直接撤销。"
+            "value" : "新建笔记具有可见来源记录并需要暂定，但不会虚构修改前的源文本比较，也不提供直接撤销。"
           }
         }
       }
@@ -10033,12 +10007,50 @@
         }
       }
     },
-    "Current Note marked reviewed" : {
+    "Current Revision Not Settled" : {
       "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Current Revision Not Settled"
+          }
+        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "当前文档已标记为已审阅"
+            "value" : "当前版本尚未暂定"
+          }
+        }
+      }
+    },
+    "Current Revision Not Settled, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Current Revision Not Settled, %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前版本尚未暂定，%@"
+          }
+        }
+      }
+    },
+    "Current Revision Not Settled, %@, %lld Agent Changes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Current Revision Not Settled, %1$@, %2$lld Agent Changes"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前版本尚未暂定，%1$@，%2$lld 项 Agent 更改"
           }
         }
       }
@@ -14266,12 +14278,12 @@
         }
       }
     },
-    "Hide Action Notifications" : {
+    "Hide Notifications" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "收起研究操作通知"
+            "value" : "收起通知"
           }
         }
       }
@@ -17265,16 +17277,6 @@
         }
       }
     },
-    "Mark Current Note Reviewed" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "将当前文档标记为已审阅"
-          }
-        }
-      }
-    },
     "Mark Handled" : {
       "localizations" : {
         "zh-Hans" : {
@@ -18691,36 +18693,6 @@
         }
       }
     },
-    "Needs Review · %lld Agent activities" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "需要审阅 · %lld 项 Agent 活动"
-          }
-        }
-      }
-    },
-    "Needs Review, %arg Agent activities" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "需要审阅，%arg 项 Agent 活动"
-          }
-        }
-      }
-    },
-    "Needs Review, %lld Agent activities" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "需要审阅，%lld 项 Agent 活动"
-          }
-        }
-      }
-    },
     "Needs attention" : {
       "localizations" : {
         "en" : {
@@ -18994,34 +18966,34 @@
         }
       }
     },
-    "No Action activity or visible derived issue needs attention for this Note." : {
+    "No Action activity, Settlement reminder, or visible derived issue needs attention for this Note." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "No Action activity or visible derived issue needs attention for this Note."
+            "value" : "No Action activity, Settlement reminder, or visible derived issue needs attention for this Note."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此笔记没有需要关注的 Action 活动或可见派生问题。"
+            "value" : "此笔记没有需要关注的 Action 活动、暂定提醒或可见派生问题。"
           }
         }
       }
     },
-    "No Action activity or visible derived issue needs attention in this Scope." : {
+    "No Action activity, Settlement reminder, or visible derived issue needs attention in this Scope." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "No Action activity or visible derived issue needs attention in this Scope."
+            "value" : "No Action activity, Settlement reminder, or visible derived issue needs attention in this Scope."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此范围内没有需要关注的 Action 活动或可见派生问题。"
+            "value" : "此范围内没有需要关注的 Action 活动、暂定提醒或可见派生问题。"
           }
         }
       }
@@ -20450,16 +20422,6 @@
         }
       }
     },
-    "Note Review" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "文档审阅"
-          }
-        }
-      }
-    },
     "Note Summary" : {
       "localizations" : {
         "zh-Hans" : {
@@ -21628,16 +21590,6 @@
         }
       }
     },
-    "Opens this Note's Research Records without changing Review state" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "打开这篇文档的研究记录，但不更改审阅状态"
-          }
-        }
-      }
-    },
     "Operation" : {
       "localizations" : {
         "en" : {
@@ -22761,22 +22713,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "可能孤立"
-          }
-        }
-      }
-    },
-    "Possible orphan structure, Changed Since Settled, broken or ambiguous Connections, malformed metadata, and unresolved note identity." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Possible orphan structure, Changed Since Settled, broken or ambiguous Connections, malformed metadata, and unresolved note identity."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "可能的孤立结构、暂定后有更改、断裂或歧义连接、格式错误的元数据，以及未解决的笔记身份。"
           }
         }
       }
@@ -27664,6 +27600,22 @@
         }
       }
     },
+    "Review Changes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Review Changes"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "审阅更改"
+          }
+        }
+      }
+    },
     "Review Current Note in Source" : {
       "localizations" : {
         "zh-Hans" : {
@@ -27908,16 +27860,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "继续前请先处理源文档冲突。"
-          }
-        }
-      }
-    },
-    "Review this Note's Agent changes" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "审阅此文档的 Agent 更改"
           }
         }
       }
@@ -30532,6 +30474,22 @@
         }
       }
     },
+    "Settlement Reminders" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Settlement Reminders"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂定提醒"
+          }
+        }
+      }
+    },
     "Settle preserves the exact saved revision of that Note. Temporary Action recovery is managed separately." : {
       "localizations" : {
         "en" : {
@@ -30660,12 +30618,12 @@
         }
       }
     },
-    "Show Action Notifications" : {
+    "Show Notifications" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "展开研究操作通知"
+            "value" : "展开通知"
           }
         }
       }

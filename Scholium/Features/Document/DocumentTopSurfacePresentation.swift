@@ -3,17 +3,20 @@
 /// defines presentation priority only.
 enum DocumentTopSurfacePresentation: Equatable {
     case persistentFeedback
-    case actionNotificationStack
+    case researchNotifications
     case notificationPermissionNotice
     case none
 
     static func resolve(
         hasPersistentFeedback: Bool,
         hasActionNotifications: Bool,
+        hasSettlementReminder: Bool,
         hasNotificationPermissionNotice: Bool
     ) -> Self {
         if hasPersistentFeedback { return .persistentFeedback }
-        if hasActionNotifications { return .actionNotificationStack }
+        if hasActionNotifications || hasSettlementReminder {
+            return .researchNotifications
+        }
         if hasNotificationPermissionNotice { return .notificationPermissionNotice }
         return .none
     }
