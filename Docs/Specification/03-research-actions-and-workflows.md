@@ -228,13 +228,18 @@ researcher-authored **Method Feedback** comment bound to its immutable result
 fingerprint. It authorizes no Agent access or Skill mutation and creates no
 score, queue, profile, training state, or automatic method change.
 
-Only confirmed Agent source changes create a Settlement reminder. Settle is the
-sole durable researcher completion fact for that exact saved revision and the
-then-current Agent-change activities. Inspecting a Record or Diff creates no
-separate reviewed state and never clears the reminder. A modified change
-compares the first committed Agent-write preimage with the last confirmed Agent
-revision. Refresh may replace provisional starting evidence only before the
-first Agent commit.
+Within a Research Action, only confirmed Agent source changes create a
+Settlement reminder. Settle is the sole durable researcher completion fact for
+that exact saved revision and the then-current Agent-change activities.
+Inspecting a Record or Diff creates no separate reviewed state and never clears
+the reminder. **Agent Changes** is a
+temporary read-only presentation of one exact `(Record ID, Note ID)` activity,
+not Run, Record, Note, Settlement, or viewed state. A modified activity compares
+the first committed Agent-write preimage with the last confirmed Agent revision;
+Refresh may replace provisional starting evidence only before the first Agent
+commit. A created Note instead identifies its creating Run and current content
+without fabricating an empty starting revision. Later source changes make the
+comparison an **Earlier Revision** and are never mapped onto current prose.
 
 Direct Undo is revision-checked recovery, not delayed authorization or review.
 It restores one selected Note from its exact Run-bound preimage only while

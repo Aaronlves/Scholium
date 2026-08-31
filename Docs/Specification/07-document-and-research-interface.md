@@ -118,9 +118,27 @@ technical identity. Handled means processed only. Grouping and presentation do
 not turn the lead into an Analysis, Zotero match, or evidence.
 
 Record participants and evidence remain bounded provenance, not a dossier or
-reading history. Change comparison shows only confirmed Agent modifications.
-Direct Undo appears per eligible Note and uses §8.4 revision requirements.
-Created Notes show provenance but no fabricated preimage/Undo.
+reading history. **Agent Changes** is a temporary read-only comparison
+presentation, not a fourth Document mode, Records collection state, or durable
+review state. A Settlement reminder opens it directly for one exact `(Record
+ID, Note ID)` activity; Record Evidence may open the same presentation for its
+selected activity. A modified activity shows only its first committed
+Agent-write preimage through its last confirmed Agent revision. A created Note
+shows **Created by this Run** and current content without a fabricated empty
+baseline.
+
+Several uncovered activities never become one cumulative diff. They appear one
+at a time in confirmation order, with exact position and deterministic
+**Previous** and **Next** routes. A Record affecting several Notes opens the
+activity for the current Note and names the other affected Notes as
+destinations rather than hiding or merging them. Ordinary Review continues to
+show the current complete Note. If current saved source differs from the
+activity ending revision, Agent
+Changes labels the comparison **Earlier Revision** and never overlays it on
+current prose. Closing returns to the originating context, records no
+viewed/unread progress, and never clears Settlement. Settle remains in the
+Document Action Rail. Direct Undo remains per eligible Note and uses §8.4
+revision requirements; created Notes have no fabricated preimage/Undo.
 
 **Follow Up…** starts a new Action from the selected Record, preserving parent
 lineage. Optional **Feedback on Previous Result** writes Method Feedback to the

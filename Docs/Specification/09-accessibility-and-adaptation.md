@@ -155,10 +155,15 @@
   semantics; unresolved destinations remain exact nonactions.
 - Follow Up and Method Feedback precede Evidence. Change comparison exposes
   document selection, changed/unchanged structure, and per-document Undo.
-- A Settlement reminder names the Note, exact pending state, Agent-change count
-  when present, then Review Changes in reading order. It has no Settle or
-  Dismiss route; opening or closing the exact Diff does not complete it, and
-  the Document Action Rail retains the accessible Settle route.
+- A Settlement reminder names the Note, exact pending state, and Agent-change
+  count when present. A nonzero count is followed by Review Changes in reading
+  order; no such action is invented otherwise. Agent Changes names the
+  Note, Action/Run, exact activity position and revisions, change kind, and any
+  Earlier Revision or Created by this Run state. Before/After and inserted,
+  removed, or changed structure remain perceivable without color. Previous and
+  Next have keyboard, pointer, focus, and accessibility equivalents. Neither
+  surface has Settle or Dismiss; closing Agent Changes records no review state,
+  and the Document Action Rail retains the accessible Settle route.
 - Reading Lead detail preserves the order of disposition, citation,
   bibliography, discovery, reason, uncertainty, note, source, parent, and
   technical identity.

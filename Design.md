@@ -254,7 +254,7 @@ authorization, navigation, or operation lifecycle.
 | `Triptych Notifications Entry` | Open the complete Action/Attention queue with exact nonzero total. | §§13, 18.2–18.3 |
 | `Activity Notification Stack` | Present attention-requiring Run actions and the current Note's Settlement reminder without becoming the queue. | §§7.1, 18.3, 18.5 |
 | `Operation Feedback` | Present transient information or persistent consequence/repair. | §§18.2–18.5, 20 |
-| `Agent Change Diff` | Inspect exact Agent changes without completing Settlement. | §§7.1, 8.4, 18.5 |
+| `Agent Changes` | Present one temporary exact `(Record, Note)` Agent activity at a time without creating review state or completing Settlement. | §§7.1, 8.4, 18.5 |
 | `Recovery Notice` | Present candidate, consequence, and safe repair from the workflow owner. | §§14, 18.6 |
 | `Document Find Bar` | Find/replace in the current unsaved buffer while preserving editor state. | §§13, 18.4 |
 | `Review Comment Anchor` | Locate current Discussion Comments without becoming authored annotation. | §§7.2, 18.4 |
@@ -281,7 +281,7 @@ Patterns combine components around one task without copying workflow authority.
 | `Research Action` | Launch, track, review, follow up, dismiss, or recover one Run. | §§8–11, 18.5 |
 | `Conflict / Recovery` | Retain bytes, compare exact revisions, and expose safe repair. | §§14, 18.4–18.6 |
 | `Research Records` | Read portable results and evidence without reconstructing Markdown. | §§8.4, 18.5 |
-| `Settlement Reminder` | Keep Review Changes visible in the shared notification stack until the current revision is Settled from the Document Action Rail. | §§7.1, 8.4, 18.3–18.5 |
+| `Settlement Reminder` | Keep the reminder visible until the current revision is Settled from the Document Action Rail; route uncovered Agent activity directly to one temporary Agent Changes presentation at a time. | §§7.1, 8.4, 18.3–18.5 |
 | `Bootstrap Agent Preparation` | Prepare an external project without granting research access. | §16 |
 
 ### 19.9 Cross-functional state language

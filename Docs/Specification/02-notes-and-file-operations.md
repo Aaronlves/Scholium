@@ -233,10 +233,13 @@ revision **Not Settled** and exposes **Settle Again**.
 
 A persistent in-app Settlement reminder appears only after a confirmed Agent
 source change or after a previously Settled Note changes. It remains until
-Settle succeeds for the exact current saved revision. Opening Records, viewing
-or closing a Diff, editing, restoring, changing windows, or dismissing another
-notification never clears it. A never-Settled Note with no confirmed Agent
-source change has no reminder.
+Settle succeeds for the exact current saved revision. When uncovered confirmed
+Agent-change activities exist, **Review Changes** opens their temporary
+activity-scoped **Agent Changes** presentation; a later non-Agent save never
+fabricates an Agent activity or comparison. Opening or closing that
+presentation, editing, restoring, changing windows, or dismissing another
+notification never clears the reminder. A never-Settled Note with no confirmed
+Agent source change has no reminder.
 
 Each Note has one portable Settlement marker and no separate reviewed marker.
 It is not a Record, verdict, source version, restore point, retention policy,

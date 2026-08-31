@@ -150,12 +150,15 @@ Attention-required Action activities and the current Note's Settlement reminder
 may appear in the top-centered **Activity Notification Stack** over the window
 without reflow. One item shows its exact state, target, and notification-valid
 actions; multiple Action activities and the Settlement reminder share one
-summary and expand to distinct rows. A Settlement reminder shows **Review
-Changes**, has no Settle or Dismiss action, and persists until the exact current
-revision is Settled through the Document Action Rail. The stack excludes
-structural Attention and never becomes the complete queue. Waiting/Running
-remain in the complete queue. Reduce Motion preserves all content and controls
-without geometry animation.
+summary and expand to distinct rows. A Settlement reminder with uncovered
+Agent-change activities shows **Review Changes**, which bypasses the Records
+collection and opens the exact temporary **Agent Changes** activity; a reminder
+caused only by a later non-Agent save does not invent that action. The reminder
+has no Settle or Dismiss action and persists until the exact current revision is
+Settled through the Document Action Rail. The stack excludes structural
+Attention and never becomes the complete queue. Waiting/Running remain in the
+complete queue. Reduce Motion preserves all content and controls without
+geometry animation.
 
 Window operation feedback follows consequence:
 
