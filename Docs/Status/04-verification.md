@@ -28,18 +28,27 @@ The ad-hoc App requires the documented Gatekeeper override.
 
 ## Focused interface evidence
 
-- On 2026-09-01, the Settlement single-owner cutover passed the Debug product
+- On 2026-09-01, the Settlement single-owner cutover and its activity-scoped
+  Agent Changes extension passed the Debug product
   build; 41 Core storage tests, 16 Contract tests, 48 Application tests, and
   180 App tests; documentation and interface-localization validators;
   retired-path residue checks; and UI-test-target compilation. The automated
   state journey proves that an Agent change requires Settlement, exact-revision
   Settle clears the reminder, and a later researcher edit reopens it. Two
-  bounded XCUITests passed in 28.500 and 29.213 seconds: the persistent
-  Settlement reminder opens Review Changes, has no Settle or Dismiss action,
-  survives Records inspection, and clears only after Action Rail Settlement;
-  the same reminder shares one expandable top stack with Action notifications,
-  whose own Dismiss remains independent, without reflowing the Document. The
-  updated top-overlay layout owner also passed its focused architecture test.
+  earlier bounded XCUITests passed in 28.500 and 29.213 seconds. The updated
+  persistent-reminder journey then passed in 31.966 seconds: Review Changes
+  opens the temporary activity-scoped Agent Changes sheet directly; its
+  Previous, Next, and Close routes remain accessible; Next advances the exact
+  activity position; unavailable historical source fails closed rather than
+  fabricating a diff; it has no Settle or Dismiss action; closing preserves the
+  reminder; and only Action Rail Settlement clears it. The adjacent stack
+  journey still proves that the same
+  reminder shares one expandable top stack with Action notifications, whose
+  own Dismiss remains independent, without reflowing the Document. The focused
+  App evidence also passed 27 Research Record model tests, 99 frontend
+  architecture tests, and 58 window-controller architecture tests. The updated
+  top-overlay and exact-comparison accessibility owners passed their focused
+  architecture checks.
   The one complete gate attempt passed 207 Web tests and reached 465/466 Core
   tests; its only failure was an unrelated Search corruption-recovery fixture
   with a transient SQLite disk-I/O error. That exact Search test passed alone

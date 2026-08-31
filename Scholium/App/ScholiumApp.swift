@@ -569,6 +569,9 @@ private struct ScholiumResearchRecordsRoot: View {
                                 noteID: noteID
                             )
                     },
+                    loadDocument: { note in
+                        try await capabilities.documents.load(note)
+                    },
                     undoChanges: {
                         recordID, noteIDs, resultFingerprint in
                         try await capabilities.research.records

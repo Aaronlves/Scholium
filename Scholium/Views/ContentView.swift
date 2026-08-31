@@ -484,6 +484,23 @@ struct ContentView: View {
         }
     }
 
+    private func presentAgentChanges(
+        for requirement: WorkspaceSettlementRequirement
+    ) {
+        guard let records = researchController.records?.finishedResearchRecords,
+              let presentation = AgentChangesPresentation(
+                  requirement: requirement,
+                  records: records
+              ) else {
+            appState.presentFeedback(
+                String(localized: "Agent Changes are unavailable because their exact Research Records could not be resolved."),
+                kind: .warning
+            )
+            return
+        }
+        presentationRouter.present(.agentChanges(presentation))
+    }
+
     private var currentNoteDocumentSession: DocumentSessionModel? {
         if let descriptor = appState.currentDocumentDescriptor {
             return appState.documentController.session(for: descriptor.sessionKey)
@@ -1059,6 +1076,27 @@ struct ContentView: View {
                 },
                 dismiss: { appState.presentationRouter.dismissSheet() }
             )
+        case .agentChanges(let presentation):
+            AgentChangesView(
+                presentation: presentation,
+                loadComparison: { recordID, noteID in
+                    try await researchController.researchRecordComparison(
+                        recordID: recordID,
+                        noteID: noteID
+                    )
+                },
+                loadChangeState: { recordID in
+                    try await researchController.researchRecordChangeState(
+                        recordID: recordID
+                    )
+                },
+                loadDocument: { note in
+                    try await researchController.researchNoteDocument(note)
+                },
+                openNote: { noteID, note in
+                    appState.requestOpenNote(note, stableNoteID: noteID)
+                }
+            )
         }
     }
 
@@ -1132,8 +1170,8 @@ struct ContentView: View {
                 settlementRequirement: currentSettlementRequirement,
                 expansionRequestGeneration:
                     shellState.actionNotificationStackExpansionGeneration,
-                reviewSettlementChanges: { _ in
-                    windowCoordinator.actions.showNoteResearchRecords()
+                reviewSettlementChanges: { requirement in
+                    presentAgentChanges(for: requirement)
                 },
                 openAction: {
                     appState.attentionPopoverSession.openAction($0)

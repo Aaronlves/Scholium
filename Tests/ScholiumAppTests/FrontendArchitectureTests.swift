@@ -2243,6 +2243,9 @@ struct FrontendArchitectureTests {
         #expect(actionStackSource.contains("ResearchActivityNotificationBannerRow("))
         #expect(actionStackSource.contains("SettlementRequirementNotificationRow("))
         #expect(settlementRowSource.contains("Button(\"Review Changes\""))
+        #expect(settlementRowSource.contains(
+            "if !requirement.pendingActivities.isEmpty"
+        ))
         #expect(!settlementRowSource.contains("Button(\"Settle\""))
         #expect(actionStackSource.contains("private var expandedRows"))
         #expect(actionStackSource.contains("return VStack(spacing:"))
@@ -2254,6 +2257,10 @@ struct FrontendArchitectureTests {
         #expect(!actionStackSource.contains(".onChange(of: summaryIsFocused)"))
         #expect(!String(actionStackSource).localizedCaseInsensitiveContains("popover"))
         #expect(contentSource.contains("actionNotificationStackExpansionGeneration"))
+        #expect(contentSource.contains("presentAgentChanges(for: requirement)"))
+        #expect(!contentSource.contains(
+            "reviewSettlementChanges: { _ in\n                    windowCoordinator.actions.showNoteResearchRecords()"
+        ))
         #expect(!contentSource.contains(".scholiumAttentionPopover(anchor: .activityStack"))
     }
 

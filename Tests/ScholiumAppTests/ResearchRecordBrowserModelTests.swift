@@ -97,6 +97,44 @@ struct ResearchRecordBrowserModelTests {
             == [created])
     }
 
+    @Test("Settlement Agent Changes stays activity-scoped in confirmation order")
+    func settlementAgentChangesPresentationOrder() throws {
+        let noteID = deterministicUUID(201)
+        let early = try makeChangedAction(
+            id: deterministicUUID(220),
+            noteID: noteID,
+            title: "Early change",
+            finishedAt: Date(timeIntervalSince1970: 100)
+        )
+        let late = try makeChangedAction(
+            id: deterministicUUID(210),
+            noteID: noteID,
+            title: "Late change",
+            finishedAt: Date(timeIntervalSince1970: 200)
+        )
+        let requirement = WorkspaceSettlementRequirement(
+            noteID: noteID,
+            note: early.participatingNotes[0].note,
+            title: "Current Note",
+            currentRevision: late.confirmedChanges[0].endingRevision,
+            reason: .agentChanges,
+            pendingActivities: [
+                SettlementActivityReference(recordID: late.id, noteID: noteID),
+                SettlementActivityReference(recordID: early.id, noteID: noteID),
+            ]
+        )
+
+        let presentation = try #require(AgentChangesPresentation(
+            requirement: requirement,
+            records: [late, early],
+            id: deterministicUUID(230)
+        ))
+
+        #expect(presentation.activities.map(\.record.id) == [early.id, late.id])
+        #expect(presentation.activities.allSatisfy { $0.change.noteID == noteID })
+        #expect(presentation.initialActivityID == presentation.activities[0].id)
+    }
+
     @Test("Review-result routing grants direct undo only to the exact live window")
     func reviewResultRoutingOwnsTransientDirectUndoEligibility() throws {
         let record = try makeChangedAction(
@@ -1634,7 +1672,8 @@ struct ResearchRecordBrowserModelTests {
     private func makeChangedAction(
         id: UUID,
         noteID: UUID,
-        title: String
+        title: String,
+        finishedAt: Date = Date(timeIntervalSince1970: 100)
     ) throws -> PortableResearchRecord {
         let starting = DocumentFingerprint(content: "starting \(title)")
         let ending = DocumentFingerprint(content: "ending \(title)")
@@ -1672,7 +1711,7 @@ struct ResearchRecordBrowserModelTests {
                     kind: .agentFeedback,
                     attribution: "Agent",
                     text: "The source was changed.",
-                    createdAt: Date(timeIntervalSince1970: 100)
+                    createdAt: finishedAt
                 )
             ],
             fidelityCompletion: .notRequired,
@@ -1684,8 +1723,8 @@ struct ResearchRecordBrowserModelTests {
                     endingRevision: ending
                 )
             ],
-            startedAt: Date(timeIntervalSince1970: 90),
-            finishedAt: Date(timeIntervalSince1970: 100)
+            startedAt: finishedAt.addingTimeInterval(-10),
+            finishedAt: finishedAt
         )
     }
 

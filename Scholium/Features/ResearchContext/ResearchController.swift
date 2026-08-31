@@ -176,6 +176,18 @@ final class ResearchController: ObservableObject {
         )
     }
 
+    func researchRecordChangeState(
+        recordID: UUID
+    ) async throws -> ResearchRecordChangeState {
+        try await requireRecords().researchRecordChangeState(recordID: recordID)
+    }
+
+    func researchNoteDocument(
+        _ note: VaultQualifiedNoteID
+    ) async throws -> NoteDocument {
+        try await requireDocuments().load(note)
+    }
+
     private func refreshRecordProjection(after operation: String) async throws {
         do {
             try await refreshResearchProjection()

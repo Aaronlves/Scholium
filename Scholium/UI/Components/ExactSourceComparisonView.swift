@@ -48,6 +48,7 @@ struct ExactSourceComparisonSheetLayout<
             idealHeight: ScholiumMetrics.ResearchSheet.Comparison.idealHeight
         )
         .scholiumSurface(.boundedPanel)
+        .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isModal)
         .accessibilityIdentifier(identifier)
     }

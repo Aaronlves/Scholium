@@ -694,22 +694,6 @@
         }
       }
     },
-    "%lld Notifications" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%lld Notifications"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld 条通知"
-          }
-        }
-      }
-    },
     "%lld Agent Changes" : {
       "localizations" : {
         "en" : {
@@ -764,6 +748,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Agent 创建的 %lld 篇笔记"
+          }
+        }
+      }
+    },
+    "%lld Notifications" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%lld Notifications"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 条通知"
           }
         }
       }
@@ -2352,6 +2352,22 @@
         }
       }
     },
+    "Activity %lld of %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Activity %1$lld of %2$lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 %1$lld 项，共 %2$lld 项"
+          }
+        }
+      }
+    },
     "Actual Size (100%)" : {
       "localizations" : {
         "en" : {
@@ -2958,6 +2974,36 @@
         }
       }
     },
+    "Agent Changes" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 更改"
+          }
+        }
+      }
+    },
+    "Agent Changes Unavailable" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 更改不可用"
+          }
+        }
+      }
+    },
+    "Agent Changes are unavailable because their exact Research Records could not be resolved." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法解析对应的精确研究记录，因此 Agent 更改不可用。"
+          }
+        }
+      }
+    },
     "Agent Feedback" : {
       "localizations" : {
         "zh-Hans" : {
@@ -3036,6 +3082,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Agent 访问策略"
+          }
+        }
+      }
+    },
+    "Agent activity is attributed to its Run and recorded with exact document changes; relevant Notes do not require separate approval." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 活动会归属于对应运行，并与精确的文档更改一起记录；相关笔记无需另行批准。"
           }
         }
       }
@@ -3214,16 +3270,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "智能体设置错误：%@"
-          }
-        }
-      }
-    },
-    "Agent activity is attributed to its Run and recorded with exact document changes; relevant Notes do not require separate approval." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Agent 活动会归属于对应运行，并与精确的文档更改一起记录；相关笔记无需另行批准。"
           }
         }
       }
@@ -5841,6 +5887,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "居中，斜体，序号靠右"
+          }
+        }
+      }
+    },
+    "Change" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "更改"
           }
         }
       }
@@ -9875,6 +9931,16 @@
         }
       }
     },
+    "Created by this Run" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由本次运行创建"
+          }
+        }
+      }
+    },
     "Created revision" : {
       "localizations" : {
         "en" : {
@@ -9955,6 +10021,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "当前"
+          }
+        }
+      }
+    },
+    "Current Content" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当前内容"
           }
         }
       }
@@ -10994,6 +11070,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "不同版本"
+          }
+        }
+      }
+    },
+    "Direct Undo" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "直接撤销"
+          }
+        }
+      }
+    },
+    "Direct Undo…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "直接撤销…"
           }
         }
       }
@@ -14278,22 +14374,22 @@
         }
       }
     },
-    "Hide Notifications" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "收起通知"
-          }
-        }
-      }
-    },
     "Hide Evidence" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "隐藏证据"
+          }
+        }
+      }
+    },
+    "Hide Notifications" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收起通知"
           }
         }
       }
@@ -15396,6 +15492,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "检查进程中断后保留的精确保存候选内容，以及未能正常完成的文件操作记录。"
+          }
+        }
+      }
+    },
+    "Inspect one confirmed Agent activity at a time. Closing does not settle this Note." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次检查一项已确认的 Agent 活动。关闭不会暂定此笔记。"
           }
         }
       }
@@ -17907,6 +18013,16 @@
         }
       }
     },
+    "Modified" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已修改"
+          }
+        }
+      }
+    },
     "Modify Complete Source" : {
       "localizations" : {
         "en" : {
@@ -18942,6 +19058,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "新笔记已创建，源文本模式已就绪。"
+          }
+        }
+      }
+    },
+    "Next" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一项"
           }
         }
       }
@@ -22075,6 +22201,16 @@
         }
       }
     },
+    "Other Affected Notes" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其他受影响的笔记"
+          }
+        }
+      }
+    },
     "Out of Date" : {
       "localizations" : {
         "zh-Hans" : {
@@ -22801,6 +22937,16 @@
         }
       }
     },
+    "Preparing Agent Changes…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在准备 Agent 更改…"
+          }
+        }
+      }
+    },
     "Preparing Exact Comparison…" : {
       "localizations" : {
         "en" : {
@@ -23049,6 +23195,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "预览…"
+          }
+        }
+      }
+    },
+    "Previous" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上一项"
           }
         }
       }
@@ -27590,16 +27746,6 @@
         }
       }
     },
-    "Review Current Note" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "审阅当前文档"
-          }
-        }
-      }
-    },
     "Review Changes" : {
       "localizations" : {
         "en" : {
@@ -27612,6 +27758,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "审阅更改"
+          }
+        }
+      }
+    },
+    "Review Current Note" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "审阅当前文档"
           }
         }
       }
@@ -27716,6 +27872,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "查看派生警告和可恢复的研究问题"
+          }
+        }
+      }
+    },
+    "Review exact document revisions, then select complete documents to restore from Before Agent Work." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "检查精确的文档版本，然后选择要恢复至“Agent 工作前”版本的完整文档。"
           }
         }
       }
@@ -28038,6 +28204,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "路由元数据"
+          }
+        }
+      }
+    },
+    "Run" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "运行"
           }
         }
       }
@@ -30474,22 +30650,6 @@
         }
       }
     },
-    "Settlement Reminders" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Settlement Reminders"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "暂定提醒"
-          }
-        }
-      }
-    },
     "Settle preserves the exact saved revision of that Note. Temporary Action recovery is managed separately." : {
       "localizations" : {
         "en" : {
@@ -30538,6 +30698,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已暂定"
+          }
+        }
+      }
+    },
+    "Settlement Reminders" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Settlement Reminders"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂定提醒"
           }
         }
       }
@@ -30618,16 +30794,6 @@
         }
       }
     },
-    "Show Notifications" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "展开通知"
-          }
-        }
-      }
-    },
     "Show Attention" : {
       "localizations" : {
         "zh-Hans" : {
@@ -30644,6 +30810,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "显示证据"
+          }
+        }
+      }
+    },
+    "Show Notifications" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "展开通知"
           }
         }
       }
@@ -36684,6 +36860,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "视图"
+          }
+        }
+      }
+    },
+    "View Agent Changes…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查看 Agent 更改…"
           }
         }
       }

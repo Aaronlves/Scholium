@@ -2367,6 +2367,9 @@ struct WindowControllerArchitectureTests {
         let processing = try source(
             "Scholium/Views/ResearchRecord/ResearchRecordProcessingViews.swift"
         )
+        let agentChanges = try source(
+            "Scholium/Views/ResearchRecord/AgentChangesView.swift"
+        )
         let followUp = try source(
             "Scholium/Views/ResearchRecord/ResearchRecordFollowUpViews.swift"
         )
@@ -2474,7 +2477,8 @@ struct WindowControllerArchitectureTests {
         }
 
         for changeRecoveryBoundary in [
-            "Button(\"Compare Changes…\")",
+            "Button(\"View Agent Changes…\")",
+            "Button(\"Direct Undo…\")",
             "Button(\"Undo Selected Documents…\")",
             "Return to Record",
             "canDirectlyUndo",
@@ -2494,6 +2498,19 @@ struct WindowControllerArchitectureTests {
         }
         #expect(processing.contains("String(localized: \"Expanded\")"))
         #expect(processing.contains("String(localized: \"Collapsed\")"))
+        for temporaryAgentChangesBoundary in [
+            "title: \"Agent Changes\"",
+            "Activity \\(selectedIndex + 1) of \\(presentation.activities.count)",
+            "Label(\"Previous\"",
+            "Label(\"Next\"",
+            "Created by this Run",
+            "Earlier revision",
+            "ExactSourceComparisonView(",
+        ] {
+            #expect(agentChanges.contains(temporaryAgentChangesBoundary))
+        }
+        #expect(!agentChanges.contains("Button(\"Settle\""))
+        #expect(!agentChanges.contains("Button(\"Dismiss\""))
         #expect(noteContent.contains(".accessibilityLabel(conflict.relativePath)"))
         #expect(noteContent.contains(
             "isDocumentExpanded ? \"Expanded\" : \"Collapsed\""
@@ -2501,6 +2518,7 @@ struct WindowControllerArchitectureTests {
         for sharedComparisonBoundary in [
             "ExactSourceComparisonSheetLayout",
             "ExactSourceComparisonView",
+            ".accessibilityElement(children: .contain)",
             "\\(count) unchanged lines",
             "contextLineCount = 3",
         ] {

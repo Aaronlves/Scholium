@@ -26,10 +26,35 @@ extension ScholiumUITests {
         XCTAssertTrue(reviewChanges.waitForExistence(timeout: 8))
         reviewChanges.click()
 
-        let recordsWindow = app.windows["Research Records"]
-        XCTAssertTrue(recordsWindow.waitForExistence(timeout: 8))
-        recordsWindow.buttons[XCUIIdentifierCloseWindow].click()
-        XCTAssertTrue(waitUntil(timeout: 5) { !recordsWindow.exists })
+        let agentChanges = workspace.descendants(matching: .any)[
+            "scholium.agentChanges"
+        ]
+        XCTAssertTrue(agentChanges.waitForExistence(timeout: 8))
+        let position = agentChanges.descendants(matching: .any)[
+            "scholium.agentChanges.position"
+        ]
+        XCTAssertTrue(position.exists)
+        XCTAssertTrue(accessibilityText(of: position).contains("Activity 1 of 2"))
+        let previous = agentChanges.buttons[
+            "scholium.agentChanges.previous"
+        ]
+        XCTAssertTrue(previous.exists)
+        let next = agentChanges.buttons[
+            "scholium.agentChanges.next"
+        ]
+        XCTAssertTrue(next.exists)
+        XCTAssertTrue(agentChanges.descendants(matching: .any)[
+            "scholium.agentChanges.unavailable"
+        ].waitForExistence(timeout: 8))
+        next.click()
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            self.accessibilityText(of: position).contains("Activity 2 of 2")
+        })
+        XCTAssertTrue(previous.isEnabled)
+        XCTAssertFalse(agentChanges.buttons["Settle"].exists)
+        XCTAssertFalse(agentChanges.buttons["Dismiss"].exists)
+        agentChanges.buttons["scholium.agentChanges.close"].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !agentChanges.exists })
 
         focusWorkspaceWindow(workspace)
         XCTAssertTrue(reminder.waitForExistence(timeout: 8))

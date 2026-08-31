@@ -66,10 +66,15 @@
   search, filter, structural issue, or popover and own neither Dismiss nor
   activity state.
 - The current Note's **Current Revision Not Settled** reminder shares the same
-  top-centered stack and expansion with Action notifications and exposes Review
-  Changes only. It has no Settle, Dismiss, or timeout; Settle remains in the
-  Document Action Rail. The complete Notifications queue includes every pending
-  Settlement reminder between Action activities and structural issues.
+  top-centered stack and expansion with Action notifications. When exact
+  pending Agent activities exist, Review Changes opens the temporary
+  activity-scoped Agent Changes sheet directly; Previous and Next follow
+  confirmation order, and closing the sheet records no viewed state. A
+  changed-since-Settlement revision without a pending Agent activity presents
+  no fabricated comparison action. The reminder has no Settle, Dismiss, or
+  timeout; Settle remains in the Document Action Rail. The complete
+  Notifications queue includes every pending Settlement reminder between
+  Action activities and structural issues.
 
 ## Document and Research Inspector
 

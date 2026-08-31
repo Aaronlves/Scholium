@@ -11,6 +11,7 @@ enum WindowSheetRoute: Identifiable {
     case transactionRecovery
     case identityResolution(NoteIdentityAmbiguity)
     case zoteroBinding(ZoteroBindingPanelRoute)
+    case agentChanges(AgentChangesPresentation)
 
     var id: String {
         switch self {
@@ -24,6 +25,8 @@ enum WindowSheetRoute: Identifiable {
         case .transactionRecovery: "transaction-recovery"
         case .identityResolution(let ambiguity): "identity-resolution:\(ambiguity.id)"
         case .zoteroBinding(let route): route.id
+        case .agentChanges(let presentation):
+            "agent-changes:\(presentation.id.uuidString.lowercased())"
         }
     }
 }

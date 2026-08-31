@@ -704,7 +704,9 @@ struct SettlementRequirementNotificationRow: View {
 
     private var controls: some View {
         HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            Button("Review Changes", action: reviewChanges)
+            if !requirement.pendingActivities.isEmpty {
+                Button("Review Changes", action: reviewChanges)
+            }
         }
         .controlSize(.small)
     }

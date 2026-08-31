@@ -27,6 +27,8 @@ struct ResearchRecordBrowserContext {
         @MainActor (UUID) async throws -> ResearchRecordChangeState
     let comparison:
         @MainActor (UUID, UUID) async throws -> ExactSourceComparison
+    let loadDocument:
+        @MainActor (VaultQualifiedNoteID) async throws -> NoteDocument
     let undoChanges:
         @MainActor (
             UUID,

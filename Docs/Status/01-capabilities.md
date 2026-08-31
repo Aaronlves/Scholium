@@ -381,10 +381,14 @@
   the machine-local write ledgers compact. Credentials,
   prompts, absolute paths, raw transport logs, and token counts are excluded.
 - Confirmed Agent change comparison uses one exact byte-diff owner shared with
-  Document conflict input. Application safely undoes complete selected
-  documents from the first committed Agent baseline, including after a stable-
-  identity rename. Undo is independent of Settlement; each document uses an
-  independent ordinary revision-checked repository transaction.
+  Document conflict input. The temporary Agent Changes presentation shows one
+  exact `(Record ID, Note ID)` activity at a time, orders pending activities by
+  confirmation time, marks superseded source as an Earlier revision, and shows
+  a created Note's current content without inventing an empty baseline.
+  Application safely undoes complete selected documents from the first
+  committed Agent baseline, including after a stable-identity rename. Undo is
+  independent of Settlement; each document uses an independent ordinary
+  revision-checked repository transaction.
 - Workspace research snapshots derive Waiting, Running, Needs Attention,
   Result Ready, and Recovery Required activity inputs plus Settlement requirements
   and one-shot Result arrivals without

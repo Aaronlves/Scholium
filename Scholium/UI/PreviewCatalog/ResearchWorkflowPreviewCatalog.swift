@@ -149,6 +149,9 @@ private struct ResearchResultReviewProof: View {
                     }
                     return comparison
                 },
+                loadDocument: { _ in
+                    throw ResearchRecordChangeRecoveryError.recordUnavailable
+                },
                 undoChanges: { _, noteIDs, _ in
                     ResearchRecordChangesUndoResult(
                         record: fixture.record,

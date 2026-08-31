@@ -154,8 +154,10 @@ finalized result, attributed record, continuity relation, Reading Lead links,
 the researcher **Follow Up…** entry, and parent-owned Method Feedback. The fixed
 Evidence rail presents Changes, Effects, Participants, then Technical Details.
 Follow-up opens ordinary Action preparation plus an optional default-collapsed
-Feedback on Previous Result field. Changes reads exact
-current source state and opens the shared comparison without writing Review. One
+Feedback on Previous Result field. Changes resolves a temporary
+`AgentChangesPresentation` from the Record's confirmed `(Record ID, Note ID)`
+activities and opens the shared exact comparison without writing Review. Direct
+Undo remains a separate recovery sheet with its own immutable grant. One
 default-closed Technical Details group
 owns schema, identity, and exact revision hashes; confirmed Research Record deletion
 remains in the Record header. Record
@@ -234,9 +236,12 @@ no Notifications count, observation, item, action, reserved width, or popover
 anchor. `ContentView` filters the same immutable Action activity array to Needs
 Attention, Result Ready, and Recovery Required, joins the current Note's
 Settlement requirement, and projects one presentation-only top-centred window
-overlay whose shared summary and rows contain both notification kinds; the
-Settlement row routes to Review Changes while Settle remains owned by the
-Document Action Rail. The stack adds no queue, Settlement, or dismissal state. A missing
+overlay whose shared summary and rows contain both notification kinds. A
+Settlement row with pending Agent activities resolves their exact Records and
+routes directly to a window-local `AgentChangesPresentation`; a non-Agent
+post-Settlement source change exposes no fabricated comparison action. Settle
+remains owned by the Document Action Rail. Neither the stack nor the temporary
+Agent Changes sheet adds queue, Settlement, viewed, or dismissal state. A missing
 first catalog remains checking, and a failed first load
 presents an unavailable Retry state rather than zero. Sidebar opens the complete
 Triptych queue; Inspector may add the active Note. One Action is already fully

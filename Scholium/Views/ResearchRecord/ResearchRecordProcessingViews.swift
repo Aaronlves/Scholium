@@ -27,7 +27,8 @@ struct ResearchRecordChangesSection: View {
     @State private var isReloading = false
     @State private var isReloadRequired = false
     @State private var errorMessage: String?
-    @State private var isPresentingComparison = false
+    @State private var isPresentingAgentChanges = false
+    @State private var isPresentingDirectUndo = false
 
     private var modifiedChanges: [PortableResearchConfirmedChange] {
         ResearchRecordChangePresentation.modified(record.confirmedChanges)
@@ -55,9 +56,17 @@ struct ResearchRecordChangesSection: View {
                 identifier: "scholium.researchRecord.changes.status"
             )
 
-            if !modifiedChanges.isEmpty {
+            if !record.confirmedChanges.isEmpty {
                 HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                    compareChangesButton
+                    Button("View Agent Changes…") {
+                        isPresentingAgentChanges = true
+                    }
+                    .accessibilityIdentifier(
+                        "scholium.researchRecord.changes.agentChanges"
+                    )
+                    if canDirectlyUndo, !modifiedChanges.isEmpty {
+                        directUndoButton
+                    }
                     if isLoading || isReloading {
                         ProgressView()
                             .controlSize(.small)
@@ -90,9 +99,31 @@ struct ResearchRecordChangesSection: View {
                 }
             }
         }
-        .task(id: record.id) { await loadChangeState() }
+        .task(id: record.id) {
+            guard canDirectlyUndo, !modifiedChanges.isEmpty else { return }
+            await loadChangeState()
+        }
         .sheet(
-            isPresented: $isPresentingComparison
+            isPresented: $isPresentingAgentChanges
+        ) {
+            if let presentation = AgentChangesPresentation(
+                record: record,
+                preferredNoteID: model.contextNoteID,
+                id: record.id
+            ) {
+                AgentChangesView(
+                    presentation: presentation,
+                    loadComparison: context.comparison,
+                    loadChangeState: context.changeState,
+                    loadDocument: context.loadDocument,
+                    openNote: { noteID, note in
+                        context.openNote(noteID, note, nil)
+                    }
+                )
+            }
+        }
+        .sheet(
+            isPresented: $isPresentingDirectUndo
         ) {
             if let changeState {
                 ResearchRecordComparisonSheet(
@@ -142,14 +173,14 @@ struct ResearchRecordChangesSection: View {
         )
     }
 
-    private var compareChangesButton: some View {
-        Button("Compare Changes…") { isPresentingComparison = true }
+    private var directUndoButton: some View {
+        Button("Direct Undo…") { isPresentingDirectUndo = true }
             .disabled(
                 changeState == nil || isReloading
                     || isReloadRequired
             )
             .accessibilityIdentifier(
-                "scholium.researchRecord.changes.compare"
+                "scholium.researchRecord.changes.directUndo"
             )
     }
 
@@ -304,8 +335,8 @@ private struct ResearchRecordComparisonSheet: View {
 
     var body: some View {
         ExactSourceComparisonSheetLayout(
-            title: "Compare Changes",
-            detail: "Agent changes appear in one unified diff. Select complete documents only when direct undo is available in this window.",
+            title: "Direct Undo",
+            detail: "Review exact document revisions, then select complete documents to restore from Before Agent Work.",
             identifier: "scholium.researchRecord.comparison"
         ) {
             Button("Expand All") {
