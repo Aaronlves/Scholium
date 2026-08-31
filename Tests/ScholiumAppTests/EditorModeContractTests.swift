@@ -58,9 +58,20 @@ struct EditorModeContractTests {
             #expect(source.contains(token), "Missing fixed editor-contract construct: \(token)")
         }
 
-        #expect(specification.contains("Inactive content should\n  match Review"))
-        #expect(specification.contains("reveals syntax only around the active\n  construct"))
-        #expect(specification.contains("Source** edits complete Markdown and YAML"))
-        #expect(specification.contains("using exact-source typography"))
+        let normalizedSpecification = specification
+            .split(whereSeparator: \Character.isWhitespace)
+            .joined(separator: " ")
+        #expect(normalizedSpecification.contains(
+            "**Edit** modifies the exact body through a reversible semantic projection."
+        ))
+        #expect(normalizedSpecification.contains(
+            "It shares Review typography and components, reveals syntax only for the active construct"
+        ))
+        #expect(normalizedSpecification.contains(
+            "**Source** edits complete Markdown and YAML with logical source-line numbers and exact-source typography."
+        ))
+        #expect(normalizedSpecification.contains(
+            "Review and Edit may differ only where editing requires caret, selection, composition, or active syntax."
+        ))
     }
 }
