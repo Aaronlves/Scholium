@@ -152,7 +152,7 @@ struct ContentView: View {
                         value: shellState.feedbackItems
                     )
                     .animation(
-                        ScholiumMotion.activityNotificationStackPreview(
+                        ScholiumMotion.activityNotificationStackExpansion(
                             reduceMotion: reduceMotion
                         ),
                         value: documentActivityNotifications.map(\.runID)
@@ -1479,49 +1479,24 @@ private struct ResearchNotificationPermissionView: View {
     let dismiss: () -> Void
 
     var body: some View {
-        HStack(
-            alignment: .center,
-            spacing: ScholiumGrid.Spacing.inlineControlGap
+        ScholiumNotificationBanner(
+            systemImage: "bell",
+            colorRole: .secondaryText,
+            title: title,
+            detail: detail,
+            maximumWidth: ScholiumMetrics.ActivityNotificationStack.maximumWidth,
+            accessibilityIdentifier: identifier
         ) {
-            Image(systemName: symbol)
-                .font(ScholiumTypography.interface(.body, emphasis: .strong))
-                .scholiumForeground(.secondaryText)
-                .accessibilityHidden(true)
-            VStack(
-                alignment: .leading,
-                spacing: ScholiumGrid.Spacing.labelAccessoryGap
-            ) {
-                Text(title)
-                    .font(ScholiumTypography.interface(.rowTitle))
-                Text(detail)
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                actionButton
+                Button(action: dismiss) {
+                    Image(systemName: "xmark")
+                        .accessibilityLabel("Dismiss")
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
             }
-            actionButton
-            Button(action: dismiss) {
-                Image(systemName: "xmark")
-                    .accessibilityLabel("Dismiss")
-            }
-            .buttonStyle(.borderless)
-            .controlSize(.small)
         }
-        .padding(.horizontal, ScholiumMetrics.Workspace.compactNoticeHorizontalInset)
-        .padding(.vertical, ScholiumMetrics.Workspace.compactNoticeVerticalInset)
-        .scholiumContentFittingWidth(maximumWidth: 520)
-        .scholiumEditorialSurface(
-            .floatingControl,
-            in: RoundedRectangle(
-                cornerRadius: ScholiumShape.inlineStatusCornerRadius,
-                style: .continuous
-            )
-        )
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier(identifier)
-    }
-
-    private var symbol: String {
-        "bell"
     }
 
     @ViewBuilder
@@ -1531,19 +1506,21 @@ private struct ResearchNotificationPermissionView: View {
             .buttonStyle(.bordered)
     }
 
-    private var title: LocalizedStringResource {
+    private var title: String {
         switch kind {
-        case .enableNotifications: "Get Notified When Results Are Ready"
-        case .openNotificationSettings: "Notifications Are Off"
+        case .enableNotifications:
+            String(localized: "Get Notified When Results Are Ready")
+        case .openNotificationSettings:
+            String(localized: "Notifications Are Off")
         }
     }
 
-    private var detail: LocalizedStringResource {
+    private var detail: String {
         switch kind {
         case .enableNotifications:
-            "Scholium can notify you when the app is in the background."
+            String(localized: "Scholium can notify you when the app is in the background.")
         case .openNotificationSettings:
-            "Turn on Scholium notifications in System Settings if you want background alerts."
+            String(localized: "Turn on Scholium notifications in System Settings if you want background alerts.")
         }
     }
 

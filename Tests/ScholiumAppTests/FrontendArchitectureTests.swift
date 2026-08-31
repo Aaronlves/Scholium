@@ -74,6 +74,23 @@ struct FrontendArchitectureTests {
         #expect(settingsSource.contains("settingsModel.feedbackItems.first"))
         #expect(settingsSource.contains("ScholiumOperationFeedback("))
         #expect(componentsSource.contains("struct ScholiumOperationFeedback: View"))
+        #expect(componentsSource.contains("struct ScholiumNotificationBanner<Actions: View>"))
+        #expect(componentsSource.contains("private var transientToast: some View"))
+        #expect(componentsSource.contains("private var persistentNotice: some View"))
+        #expect(componentsSource.contains(".lineLimit(1)"))
+        let toastStart = try #require(
+            componentsSource.range(of: "private var transientToast: some View")
+        )
+        let persistentNoticeStart = try #require(
+            componentsSource.range(
+                of: "private var persistentNotice: some View",
+                range: toastStart.upperBound..<componentsSource.endIndex
+            )
+        )
+        let toastSource = componentsSource[
+            toastStart.lowerBound..<persistentNoticeStart.lowerBound
+        ]
+        #expect(!toastSource.contains("Button(action: dismiss)"))
         #expect(
             componentsSource.contains(
                 ".scholiumContentFittingWidth(maximumWidth: maximumWidth)"
@@ -84,13 +101,8 @@ struct FrontendArchitectureTests {
                 "ProposedViewSize(width: availableWidth, height: nil)"
             )
         )
-        #expect(componentsSource.contains("@FocusState private var dismissIsFocused: Bool"))
-        #expect(
-            componentsSource.contains(
-                ".scholiumActivationFocus(\n                $dismissIsFocused,\n                presentation: .native"
-            )
-        )
-        #expect(componentsSource.contains(".onKeyPress(.space)"))
+        #expect(componentsSource.contains("Button(\"Dismiss\", action: dismiss)"))
+        #expect(componentsSource.contains(".keyboardShortcut(.cancelAction)"))
         #expect(componentsSource.contains("guard kind.dismissesAutomatically"))
         #expect(windowManagementSource.contains("fittingSizeDidChange"))
         #expect(
@@ -1799,7 +1811,7 @@ struct FrontendArchitectureTests {
                 "struct ScholiumEditorialIconControl<NativeControl: View>"
             ))
         #expect(componentsSource.contains(".menuStyle(.button)"))
-        #expect(componentsSource.contains(".buttonStyle(.plain)"))
+        #expect(componentsSource.contains(".buttonStyle(.borderless)"))
         #expect(
             sidebarSource.components(
                 separatedBy: "ScholiumEditorialIconControl("
@@ -2236,24 +2248,28 @@ struct FrontendArchitectureTests {
         ))
         #expect(!attentionSource.contains("presentedActivityRunID"))
         #expect(!attentionSource.contains("notification.actionDetail"))
-        #expect(actionStackSource.contains("directBanner(for: latest)"))
-        #expect(actionStackSource.contains("directSettlementBanner("))
+        #expect(actionStackSource.contains("if let firstItem = items.first"))
+        #expect(actionStackSource.contains("banner(for: firstItem, disclosure: disclosure)"))
         #expect(actionStackSource.contains("settlementRequirement:"))
         #expect(actionStackSource.contains("reviewSettlementChanges:"))
         #expect(actionStackSource.contains("ResearchActivityNotificationBannerRow("))
-        #expect(actionStackSource.contains("SettlementRequirementNotificationRow("))
+        #expect(actionStackSource.contains("SettlementRequirementNotificationBanner("))
         #expect(settlementRowSource.contains("Button(\"Review Changes\""))
         #expect(settlementRowSource.contains(
             "if !requirement.pendingActivities.isEmpty"
         ))
         #expect(!settlementRowSource.contains("Button(\"Settle\""))
         #expect(actionStackSource.contains("private var expandedRows"))
+        #expect(actionStackSource.contains("ForEach(Array(items.dropFirst()))"))
         #expect(actionStackSource.contains("return VStack(spacing:"))
         #expect(actionStackSource.contains("if isExpanded"))
         #expect(!actionStackSource.contains("summaryHeight"))
+        #expect(!actionStackSource.contains("summaryButton"))
+        #expect(!actionStackSource.contains("notificationSummary"))
         #expect(actionStackSource.contains("expansionRequestGeneration"))
-        #expect(actionStackSource.contains("Show Notifications"))
-        #expect(actionStackSource.contains("Hide Notifications"))
+        #expect(componentsSource.contains("Show Notifications"))
+        #expect(componentsSource.contains("Hide Notifications"))
+        #expect(componentsSource.contains("scholium.notificationStack.disclosure"))
         #expect(!actionStackSource.contains(".onChange(of: summaryIsFocused)"))
         #expect(!String(actionStackSource).localizedCaseInsensitiveContains("popover"))
         #expect(contentSource.contains("actionNotificationStackExpansionGeneration"))
@@ -2592,7 +2608,7 @@ struct FrontendArchitectureTests {
         #expect(!contentSource.contains(".overlay(alignment: .topTrailing)"))
         #expect(!contentSource.contains("+ actionRailCenterOffset"))
         #expect(!actionsSource.contains("verticalCenterOffset"))
-        #expect(sharedComponentsSource.contains("SettlementRequirementNotificationRow("))
+        #expect(sharedComponentsSource.contains("SettlementRequirementNotificationBanner("))
         #expect(contentSource.contains("settlementRequirement: currentSettlementRequirement"))
         #expect(actionsSource.contains("ScholiumContentControlButtonStyle("))
         #expect(actionsSource.contains(".scholiumEditorialSurface(.floatingControl"))

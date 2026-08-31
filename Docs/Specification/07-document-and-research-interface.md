@@ -131,9 +131,12 @@ Several uncovered activities never become one cumulative diff. They appear one
 at a time in confirmation order, with exact position and deterministic
 **Previous** and **Next** routes. A Record affecting several Notes opens the
 activity for the current Note and names the other affected Notes as
-destinations rather than hiding or merging them. Ordinary Review continues to
-show the current complete Note. If current saved source differs from the
-activity ending revision, Agent
+destinations rather than hiding or merging them. The comparison keeps Note,
+change kind, Action, abbreviated Run identity, and current-revision state in one
+compact reading header; full Run, Record, and path identity remains available
+through progressive detail instead of occupying the comparison vertically.
+Ordinary Review continues to show the current complete Note. If current saved
+source differs from the activity ending revision, Agent
 Changes labels the comparison **Earlier Revision** and never overlays it on
 current prose. Closing returns to the originating context, records no
 viewed/unread progress, and never clears Settlement. Settle remains in the

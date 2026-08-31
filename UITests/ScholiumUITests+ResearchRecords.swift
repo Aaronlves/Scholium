@@ -20,9 +20,6 @@ extension ScholiumUITests {
         ]
         XCTAssertTrue(reminder.waitForExistence(timeout: 20))
         let reviewChanges = workspace.buttons["Review Changes"]
-        if !reviewChanges.exists {
-            reminder.click()
-        }
         XCTAssertTrue(reviewChanges.waitForExistence(timeout: 8))
         reviewChanges.click()
 
@@ -46,6 +43,10 @@ extension ScholiumUITests {
         XCTAssertTrue(agentChanges.descendants(matching: .any)[
             "scholium.agentChanges.unavailable"
         ].waitForExistence(timeout: 8))
+        let comparisonScreenshot = XCTAttachment(screenshot: workspace.screenshot())
+        comparisonScreenshot.name = "Compact Agent Changes presentation"
+        comparisonScreenshot.lifetime = .keepAlways
+        add(comparisonScreenshot)
         next.click()
         XCTAssertTrue(waitUntil(timeout: 5) {
             self.accessibilityText(of: position).contains("Activity 2 of 2")

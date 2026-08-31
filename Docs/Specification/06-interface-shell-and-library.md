@@ -149,20 +149,24 @@ a badge, unread model, animation, or auto-open.
 Attention-required Action activities and the current Note's Settlement reminder
 may appear in the top-centered **Activity Notification Stack** over the window
 without reflow. One item shows its exact state, target, and notification-valid
-actions; multiple Action activities and the Settlement reminder share one
-summary and expand to distinct rows. A Settlement reminder with uncovered
-Agent-change activities shows **Review Changes**, which bypasses the Records
-collection and opens the exact temporary **Agent Changes** activity; a reminder
-caused only by a later non-Agent save does not invent that action. The reminder
-has no Settle or Dismiss action and persists until the exact current revision is
-Settled through the Document Action Rail. The stack excludes structural
-Attention and never becomes the complete queue. Waiting/Running remain in the
-complete queue. Reduce Motion preserves all content and controls without
-geometry animation.
+actions. With multiple items, the foremost real notification remains visible;
+hover or one explicit disclosure reveals the remaining real notifications
+downward. The disclosure names the exact count but never inserts a synthetic
+summary row. Each notification keeps at most one primary action beside one
+bounded More menu; copy is limited to its key state and target and truncates
+before displacing operations. A Settlement reminder with uncovered Agent-change
+activities shows **Review Changes**, which bypasses the Records collection and
+opens the exact temporary **Agent Changes** activity; a reminder caused only by
+a later non-Agent save does not invent that action. The reminder has no Settle
+or Dismiss action and persists until the exact current revision is Settled
+through the Document Action Rail. The stack excludes structural Attention and
+never becomes the complete queue. Waiting/Running remain in the complete queue.
+Reduce Motion preserves all content and controls without geometry animation.
 
 Window operation feedback follows consequence:
 
-- redundant Confirmation/Information may use one dismissible transient toast;
+- redundant Confirmation/Information may use one concise transient toast with
+  a bounded dwell and no redundant dismissal control;
 - Warning, Error, partial commit, and recovery use one persistent notice with
   complete consequence and repair; and
 - field validation stays adjacent to its field.

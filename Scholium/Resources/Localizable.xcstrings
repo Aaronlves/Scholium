@@ -229,6 +229,22 @@
         }
       }
     },
+    "%@, %@, Run %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@, Run %3$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@、%2$@、运行 %3$@"
+          }
+        }
+      }
+    },
     "%@, %lld %@" : {
       "localizations" : {
         "en" : {
@@ -768,6 +784,16 @@
         }
       }
     },
+    "%lld Other Notes" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 条其他笔记"
+          }
+        }
+      }
+    },
     "%lld Results" : {
       "localizations" : {
         "en" : {
@@ -1107,6 +1133,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "标记了 %lld 个问题"
+          }
+        }
+      }
+    },
+    "%lld of %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld of %2$lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "第 %1$lld 项，共 %2$lld 项"
           }
         }
       }
@@ -2368,6 +2410,16 @@
         }
       }
     },
+    "Activity Details" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "活动详情"
+          }
+        }
+      }
+    },
     "Actual Size (100%)" : {
       "localizations" : {
         "en" : {
@@ -3082,6 +3134,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Agent 访问策略"
+          }
+        }
+      }
+    },
+    "Agent activity" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agent 活动"
           }
         }
       }
@@ -19082,6 +19144,16 @@
         }
       }
     },
+    "Next Activity" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "下一活动"
+          }
+        }
+      }
+    },
     "Next use: %@" : {
       "localizations" : {
         "zh-Hans" : {
@@ -20803,6 +20875,16 @@
         }
       }
     },
+    "One Agent activity at a time. Closing does not settle the Note." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次查看一项 Agent 活动。关闭不会结算笔记。"
+          }
+        }
+      }
+    },
     "One machine or custom property is preserved in Source mode." : {
       "localizations" : {
         "en" : {
@@ -22211,6 +22293,16 @@
         }
       }
     },
+    "Other Notes" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其他笔记"
+          }
+        }
+      }
+    },
     "Out of Date" : {
       "localizations" : {
         "zh-Hans" : {
@@ -23205,6 +23297,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "上一项"
+          }
+        }
+      }
+    },
+    "Previous Activity" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上一活动"
           }
         }
       }
@@ -30794,6 +30896,16 @@
         }
       }
     },
+    "Show Activity Details" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示活动详情"
+          }
+        }
+      }
+    },
     "Show Attention" : {
       "localizations" : {
         "zh-Hans" : {
@@ -31234,6 +31346,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "技能文件夹不可用"
+          }
+        }
+      }
+    },
+    "Skill prose and its references can guide scholarly work. They cannot change Platform Actions, Session attribution, exact revisions, conflicts, or recovery." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "技能文本及其参考文件可以指导学术工作，但不能更改平台操作、会话归属、精确修订、冲突或恢复。"
           }
         }
       }
@@ -32748,6 +32870,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "方法可以指导学术工作，但无法隐藏或扩展这些由应用拥有的事实。"
+          }
+        }
+      }
+    },
+    "The Method may guide scholarly work, while Scholium records the Agent's activity and preserves these app-owned recovery facts." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "方法可以指导学术工作；Scholium 会记录 Agent 活动，并保留这些由应用拥有的恢复事实。"
           }
         }
       }

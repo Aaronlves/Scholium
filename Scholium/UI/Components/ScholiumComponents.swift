@@ -562,10 +562,8 @@ struct SidebarTriptychAttentionEntry: View {
 struct ResearchActivityNotificationControls: View {
     private enum ControlFocus: Hashable {
         case openAction
-        case endAction
         case reviewResult
-        case followUp
-        case dismiss
+        case more
     }
 
     let notification: ResearchActivityNotification
@@ -594,34 +592,28 @@ struct ResearchActivityNotificationControls: View {
                         reviewResult()
                         return .handled
                     }
-                Button("Follow Up…", action: followUp)
+                Menu {
+                    Button("Follow Up…", action: followUp)
+                        .accessibilityIdentifier(
+                            "scholium.notification.action.followUp.\(notification.runID.uuidString)"
+                        )
+                    Button("Dismiss", action: dismiss)
+                        .accessibilityIdentifier(
+                            "scholium.notification.action.dismiss.\(notification.runID.uuidString)"
+                        )
+                } label: {
+                    Label("More", systemImage: "ellipsis.circle")
+                }
                     .accessibilityIdentifier(
-                        "scholium.notification.action.followUp.\(notification.runID.uuidString)"
+                        "scholium.notification.action.more.\(notification.runID.uuidString)"
                     )
                     .scholiumActivationFocus(
                         $focusedControl,
-                        equals: .followUp,
+                        equals: .more,
                         presentation: .native
                     )
-                    .onKeyPress(.space) {
-                        followUp()
-                        return .handled
-                    }
-                Button("Dismiss", action: dismiss)
-                    .accessibilityIdentifier(
-                        "scholium.notification.action.dismiss.\(notification.runID.uuidString)"
-                    )
-                    .scholiumActivationFocus(
-                        $focusedControl,
-                        equals: .dismiss,
-                        presentation: .native
-                    )
-                    .onKeyPress(.space) {
-                        dismiss()
-                        return .handled
-                    }
             } else {
-                Button("Open Action", action: openAction)
+                Button("Open", action: openAction)
                     .accessibilityIdentifier(
                         "scholium.notification.action.open.\(notification.runID.uuidString)"
                     )
@@ -634,21 +626,24 @@ struct ResearchActivityNotificationControls: View {
                         openAction()
                         return .handled
                     }
-                Button("End Action…", role: .destructive) {
-                    confirmsEndAction = true
+                Menu {
+                    Button("End Action…", role: .destructive) {
+                        confirmsEndAction = true
+                    }
+                    .accessibilityIdentifier(
+                        "scholium.notification.action.end.\(notification.runID.uuidString)"
+                    )
+                } label: {
+                    Label("More", systemImage: "ellipsis.circle")
                 }
                 .accessibilityIdentifier(
-                    "scholium.notification.action.end.\(notification.runID.uuidString)"
+                    "scholium.notification.action.more.\(notification.runID.uuidString)"
                 )
                 .scholiumActivationFocus(
                     $focusedControl,
-                    equals: .endAction,
+                    equals: .more,
                     presentation: .native
                 )
-                .onKeyPress(.space) {
-                    confirmsEndAction = true
-                    return .handled
-                }
             }
         }
         .controlSize(.small)
@@ -665,14 +660,176 @@ struct ResearchActivityNotificationControls: View {
     }
 }
 
+/// The shared visual grammar for top-of-window notifications. Domain owners
+/// supply state and operations; the banner owns concise copy, truncation,
+/// adaptation, surface treatment, and accessibility grouping.
+struct ScholiumNotificationBanner<Actions: View>: View {
+    let systemImage: String
+    let colorRole: ScholiumColorRole
+    let title: String
+    let detail: String?
+    let maximumWidth: CGFloat
+    let accessibilityIdentifier: String
+    @ViewBuilder let actions: () -> Actions
+
+    var body: some View {
+        HStack(
+            alignment: .center,
+            spacing: ScholiumGrid.Spacing.nestedContentInset
+        ) {
+            ScholiumNotificationBannerCopy(
+                systemImage: systemImage,
+                colorRole: colorRole,
+                title: title,
+                detail: detail
+            )
+            actions()
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(1)
+        }
+        .scholiumNotificationBannerSurface(
+            maximumWidth: maximumWidth,
+            accessibilityIdentifier: accessibilityIdentifier
+        )
+    }
+}
+
+private struct ScholiumNotificationBannerCopy: View {
+    let systemImage: String
+    let colorRole: ScholiumColorRole
+    let title: String
+    let detail: String?
+
+    var body: some View {
+        HStack(
+            alignment: .center,
+            spacing: ScholiumGrid.Spacing.inlineControlGap
+        ) {
+            Image(systemName: systemImage)
+                .font(ScholiumTypography.interface(.body, emphasis: .strong))
+                .scholiumForeground(colorRole)
+                .accessibilityHidden(true)
+            VStack(
+                alignment: .leading,
+                spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment
+            ) {
+                Text(verbatim: title)
+                    .font(ScholiumTypography.interface(.rowTitle))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                if let detail, !detail.isEmpty {
+                    Text(verbatim: detail)
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.secondaryText)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+            }
+            .layoutPriority(-1)
+        }
+    }
+}
+
+private struct ScholiumNotificationBannerSurfaceModifier: ViewModifier {
+    let maximumWidth: CGFloat
+    let accessibilityIdentifier: String
+
+    func body(content: Content) -> some View {
+        content
+            .padding(
+                .horizontal,
+                ScholiumMetrics.Workspace.compactNoticeHorizontalInset
+            )
+            .padding(
+                .vertical,
+                ScholiumMetrics.Workspace.compactNoticeVerticalInset
+            )
+            .scholiumContentFittingWidth(maximumWidth: maximumWidth)
+            .scholiumEditorialSurface(.floatingControl, in: notificationShape)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier(accessibilityIdentifier)
+    }
+
+    private var notificationShape: RoundedRectangle {
+        RoundedRectangle(
+            cornerRadius: ScholiumShape.inlineStatusCornerRadius,
+            style: .continuous
+        )
+    }
+}
+
+private extension View {
+    func scholiumNotificationBannerSurface(
+        maximumWidth: CGFloat,
+        accessibilityIdentifier: String
+    ) -> some View {
+        modifier(
+            ScholiumNotificationBannerSurfaceModifier(
+                maximumWidth: maximumWidth,
+                accessibilityIdentifier: accessibilityIdentifier
+            )
+        )
+    }
+}
+
+private struct ResearchActivityStackDisclosure {
+    let count: Int
+    let isExpanded: Bool
+    let toggle: () -> Void
+}
+
+private struct ResearchActivityStackDisclosureButton: View {
+    let disclosure: ResearchActivityStackDisclosure
+
+    var body: some View {
+        Button(action: disclosure.toggle) {
+            HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                Text(verbatim: "\(disclosure.count)")
+                Image(
+                    systemName: disclosure.isExpanded
+                        ? "chevron.up"
+                        : "chevron.down"
+                )
+            }
+        }
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+        .help(disclosureLabel)
+        .accessibilityLabel(disclosureLabel)
+        .accessibilityValue("\(disclosure.count) Notifications")
+        .accessibilityIdentifier("scholium.notificationStack.disclosure")
+    }
+
+    private var disclosureLabel: String {
+        if disclosure.isExpanded {
+            return String(localized: "Hide Notifications")
+        }
+        return String(localized: "Show Notifications")
+    }
+}
+
+private enum ResearchActivityNotificationStackItem: Identifiable {
+    case settlement(WorkspaceSettlementRequirement)
+    case action(ResearchActivityNotification)
+
+    var id: String {
+        switch self {
+        case .settlement(let requirement):
+            "settlement:\(requirement.noteID.uuidString):"
+                + "\(requirement.currentRevision.sha256):"
+                + "\(requirement.currentRevision.byteCount)"
+        case .action(let notification):
+            "action:\(notification.runID.uuidString)"
+        }
+    }
+}
+
 /// One direct notification or a bounded stack shared by Settlement reminders
-/// and Action activity. Durable state and operations stay with their existing
-/// owners; this view owns only disclosure, pointer preview, keyboard focus,
-/// and presentation.
+/// and Action activity. The first real notification stays fixed while the
+/// remaining real notifications reveal below it through hover or disclosure.
 struct ResearchActivityNotificationStack: View {
     @Environment(\.locale) private var locale
     @Environment(\.scholiumReduceMotion) private var reduceMotion
-    @FocusState private var summaryIsFocused: Bool
     @State private var isHovering = false
     @State private var isPinnedExpanded = false
 
@@ -688,67 +845,34 @@ struct ResearchActivityNotificationStack: View {
 
     @ViewBuilder
     var body: some View {
-        if notificationCount == 1, let settlementRequirement {
-            directSettlementBanner(for: settlementRequirement)
-        } else if let latest = notifications.first {
+        if let firstItem = items.first {
             if notificationCount == 1 {
-                directBanner(for: latest)
+                banner(for: firstItem, disclosure: nil)
+                    .accessibilityIdentifier(
+                        "scholium.researchActivityNotificationStack"
+                    )
             } else {
-                multipleNotificationStack()
+                multipleNotificationStack(firstItem: firstItem)
             }
         }
     }
 
-    private func directSettlementBanner(
-        for requirement: WorkspaceSettlementRequirement
+    private func multipleNotificationStack(
+        firstItem: ResearchActivityNotificationStackItem
     ) -> some View {
         let shape = notificationShape
-        return SettlementRequirementNotificationRow(
-            requirement: requirement,
-            reviewChanges: { reviewSettlementChanges(requirement) }
+        let disclosure = ResearchActivityStackDisclosure(
+            count: notificationCount,
+            isExpanded: isExpanded,
+            toggle: { isPinnedExpanded.toggle() }
         )
-        .padding(.horizontal, ScholiumMetrics.Workspace.compactNoticeHorizontalInset)
-        .padding(.vertical, ScholiumMetrics.Workspace.compactNoticeVerticalInset)
-        .scholiumContentFittingWidth(
-            maximumWidth: ScholiumMetrics.ActivityNotificationStack.maximumWidth
-        )
-        .scholiumEditorialSurface(.floatingControl, in: shape)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("scholium.researchActivityNotificationStack")
-    }
-
-    private func directBanner(
-        for notification: ResearchActivityNotification
-    ) -> some View {
-        let shape = notificationShape
-        return ResearchActivityNotificationBannerRow(
-            notification: notification,
-            openAction: { openAction(notification) },
-            endAction: { endAction(notification) },
-            reviewResult: { reviewResult(notification) },
-            followUp: { followUp(notification) },
-            dismiss: { dismiss(notification) }
-        )
-        .padding(.horizontal, ScholiumMetrics.Workspace.compactNoticeHorizontalInset)
-        .padding(.vertical, ScholiumMetrics.Workspace.compactNoticeVerticalInset)
-        .scholiumContentFittingWidth(
-            maximumWidth: ScholiumMetrics.ActivityNotificationStack.maximumWidth
-        )
-        .scholiumEditorialSurface(.floatingControl, in: shape)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("scholium.researchActivityNotificationStack")
-    }
-
-    private func multipleNotificationStack() -> some View {
-        let shape = notificationShape
-        return VStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            summaryButton(shape: shape)
+        return VStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+            banner(for: firstItem, disclosure: disclosure)
             if isExpanded {
                 expandedRows
                     .transition(
-                        ScholiumMotion.transientStatusTransition(
-                            reduceMotion: reduceMotion,
-                            edge: .top
+                        ScholiumMotion.activityNotificationStackExpansionTransition(
+                            reduceMotion: reduceMotion
                         )
                     )
             }
@@ -772,106 +896,23 @@ struct ResearchActivityNotificationStack: View {
                 return .handled
             }
             .animation(
-                ScholiumMotion.activityNotificationStackPreview(
+                ScholiumMotion.activityNotificationStackExpansion(
                     reduceMotion: reduceMotion
                 ),
                 value: isExpanded
             )
-    }
-
-    private func summaryButton(shape: RoundedRectangle) -> some View {
-        Button {
-            isPinnedExpanded.toggle()
-        } label: {
-            notificationSummary(expanded: isExpanded)
-                .padding(.horizontal, ScholiumMetrics.Workspace.compactNoticeHorizontalInset)
-                .padding(.vertical, ScholiumMetrics.Workspace.compactNoticeVerticalInset)
-                .contentShape(shape)
-        }
-        .buttonStyle(
-            ResearchActivityNotificationStackButtonStyle(
-                isHovering: isHovering,
-                isFocused: summaryIsFocused,
-                shape: shape
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(countTitle)
+            .accessibilityIdentifier(
+                "scholium.researchActivityNotificationStack"
             )
-        )
-        .scholiumContentFittingWidth(
-            maximumWidth: ScholiumMetrics.ActivityNotificationStack.maximumWidth
-        )
-        .scholiumEditorialSurface(.floatingControl, in: shape)
-        .scholiumActivationFocus($summaryIsFocused)
-        .onKeyPress(.space) {
-            isPinnedExpanded.toggle()
-            return .handled
-        }
-        .help(disclosureLabel)
-        .accessibilityLabel(disclosureLabel)
-        .accessibilityValue("\(countTitle), \(latestSummary)")
-        .accessibilityIdentifier("scholium.researchActivityNotificationStack")
-    }
-
-    private func notificationSummary(expanded: Bool) -> some View {
-        HStack(
-            alignment: .center,
-            spacing: ScholiumGrid.Spacing.inlineControlGap
-        ) {
-            Image(systemName: "bell")
-                .font(
-                    ScholiumTypography.interface(
-                        .body,
-                        emphasis: .strong
-                    )
-                )
-                .scholiumForeground(.attention)
-                .accessibilityHidden(true)
-            Text(countTitle)
-                .font(ScholiumTypography.interface(.rowTitle))
-                .fixedSize(horizontal: true, vertical: false)
-            Text(verbatim: latestSummary)
-                .font(ScholiumTypography.interface(.small))
-                .scholiumForeground(.secondaryText)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .layoutPriority(-1)
-            Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                .font(ScholiumTypography.interface(.small, emphasis: .medium))
-                .scholiumForeground(.mutedText)
-                .accessibilityHidden(true)
-        }
     }
 
     private var expandedRows: some View {
         ScrollView {
             LazyVStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                if let settlementRequirement {
-                    SettlementRequirementNotificationRow(
-                        requirement: settlementRequirement,
-                        reviewChanges: {
-                            reviewSettlementChanges(settlementRequirement)
-                        }
-                    )
-                    .padding(.horizontal, ScholiumMetrics.Workspace.compactNoticeHorizontalInset)
-                    .padding(.vertical, ScholiumMetrics.Workspace.compactNoticeVerticalInset)
-                    .scholiumEditorialSurface(
-                        .floatingControl,
-                        in: notificationShape
-                    )
-                }
-                ForEach(notifications) { notification in
-                    ResearchActivityNotificationBannerRow(
-                        notification: notification,
-                        openAction: { openAction(notification) },
-                        endAction: { endAction(notification) },
-                        reviewResult: { reviewResult(notification) },
-                        followUp: { followUp(notification) },
-                        dismiss: { dismiss(notification) }
-                    )
-                    .padding(.horizontal, ScholiumMetrics.Workspace.compactNoticeHorizontalInset)
-                    .padding(.vertical, ScholiumMetrics.Workspace.compactNoticeVerticalInset)
-                    .scholiumEditorialSurface(
-                        .floatingControl,
-                        in: notificationShape
-                    )
+                ForEach(Array(items.dropFirst())) { item in
+                    banner(for: item, disclosure: nil)
                 }
             }
         }
@@ -929,7 +970,7 @@ struct ResearchActivityNotificationStack: View {
 
     private var isExpanded: Bool {
         notificationCount > 1
-            && (isPinnedExpanded || isHovering || summaryIsFocused)
+            && (isPinnedExpanded || isHovering)
     }
 
     private var maximumLayerOffset: CGFloat {
@@ -949,54 +990,92 @@ struct ResearchActivityNotificationStack: View {
         )
     }
 
-    private var latestSummary: String {
-        if let settlementRequirement {
-            return "\(ScholiumL10n.string("Current Revision Not Settled", locale: locale)) — \(settlementRequirement.title)"
-        }
-        guard let latest = notifications.first else { return "" }
-        let target = latest.targetTitle.isEmpty
-            ? ScholiumL10n.string("Research Action", locale: locale)
-            : latest.targetTitle
-        let state = ResearchActivityNotificationCopy.stateTitle(
-            latest.state,
-            locale: locale
-        )
-        return "\(state) — \(target)"
-    }
-
-    private var disclosureLabel: String {
-        ScholiumL10n.string(
-            isExpanded
-                ? "Hide Notifications"
-                : "Show Notifications",
-            locale: locale
-        )
-    }
-
     private var notificationCount: Int {
-        notifications.count + (settlementRequirement == nil ? 0 : 1)
+        items.count
+    }
+
+    private var items: [ResearchActivityNotificationStackItem] {
+        var result = settlementRequirement.map {
+            [ResearchActivityNotificationStackItem.settlement($0)]
+        } ?? []
+        result.append(contentsOf: notifications.map {
+            ResearchActivityNotificationStackItem.action($0)
+        })
+        return result
     }
 
     private var notificationIdentities: [String] {
-        var identities = settlementRequirement.map {
-            [
-                "settlement:\($0.noteID.uuidString):"
-                    + "\($0.currentRevision.sha256):"
-                    + "\($0.currentRevision.byteCount)"
-            ]
-        } ?? []
-        identities.append(contentsOf: notifications.map {
-            "action:\($0.runID.uuidString)"
-        })
-        return identities
+        items.map(\.id)
     }
 
+    @ViewBuilder
+    private func banner(
+        for item: ResearchActivityNotificationStackItem,
+        disclosure: ResearchActivityStackDisclosure?
+    ) -> some View {
+        switch item {
+        case .settlement(let requirement):
+            SettlementRequirementNotificationBanner(
+                requirement: requirement,
+                disclosure: disclosure,
+                reviewChanges: { reviewSettlementChanges(requirement) }
+            )
+        case .action(let notification):
+            ResearchActivityNotificationBannerRow(
+                notification: notification,
+                disclosure: disclosure,
+                openAction: { openAction(notification) },
+                endAction: { endAction(notification) },
+                reviewResult: { reviewResult(notification) },
+                followUp: { followUp(notification) },
+                dismiss: { dismiss(notification) }
+            )
+        }
+    }
+}
+
+private struct SettlementRequirementNotificationBanner: View {
+    let requirement: WorkspaceSettlementRequirement
+    let disclosure: ResearchActivityStackDisclosure?
+    let reviewChanges: () -> Void
+
+    var body: some View {
+        ScholiumNotificationBanner(
+            systemImage: "exclamationmark.circle",
+            colorRole: .attention,
+            title: String(localized: "Current Revision Not Settled"),
+            detail: detail,
+            maximumWidth: ScholiumMetrics.ActivityNotificationStack.maximumWidth,
+            accessibilityIdentifier:
+                "scholium.notification.settlement.\(requirement.noteID.uuidString)"
+        ) {
+            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                if !requirement.pendingActivities.isEmpty {
+                    Button("Review Changes", action: reviewChanges)
+                }
+                if let disclosure {
+                    ResearchActivityStackDisclosureButton(
+                        disclosure: disclosure
+                    )
+                }
+            }
+            .controlSize(.small)
+        }
+    }
+
+    private var detail: String {
+        guard !requirement.pendingActivities.isEmpty else {
+            return requirement.title
+        }
+        return "\(requirement.title) · \(requirement.pendingActivities.count) Agent Changes"
+    }
 }
 
 private struct ResearchActivityNotificationBannerRow: View {
     @Environment(\.locale) private var locale
 
     let notification: ResearchActivityNotification
+    let disclosure: ResearchActivityStackDisclosure?
     let openAction: () -> Void
     let endAction: () -> Void
     let reviewResult: () -> Void
@@ -1004,84 +1083,31 @@ private struct ResearchActivityNotificationBannerRow: View {
     let dismiss: () -> Void
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(
-                alignment: .center,
-                spacing: ScholiumGrid.Spacing.nestedContentInset
-            ) {
-                identity
-                controls
-                    .fixedSize(horizontal: true, vertical: false)
-                    .layoutPriority(1)
-            }
-            .fixedSize(horizontal: true, vertical: false)
-            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                identity
-                controls
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier(
-            "scholium.notification.action.\(notification.runID.uuidString)"
-        )
-    }
-
-    private var identity: some View {
-        HStack(
-            alignment: .center,
-            spacing: ScholiumGrid.Spacing.labelAccessoryGap
+        ScholiumNotificationBanner(
+            systemImage: stateSymbol,
+            colorRole: stateColor,
+            title: stateTitle,
+            detail: "\(actionTitle) · \(targetTitle)",
+            maximumWidth: ScholiumMetrics.ActivityNotificationStack.maximumWidth,
+            accessibilityIdentifier:
+                "scholium.notification.action.\(notification.runID.uuidString)"
         ) {
-            Image(systemName: stateSymbol)
-                .font(ScholiumTypography.interface(.body))
-                .scholiumForeground(stateColor)
-                .accessibilityHidden(true)
-            Text(verbatim: stateTitle)
-                .font(ScholiumTypography.interface(.rowTitle))
-                .fixedSize(horizontal: true, vertical: false)
-            actionCapsule
-            Text("—")
-                .font(ScholiumTypography.interface(.small))
-                .scholiumForeground(.mutedText)
-                .accessibilityHidden(true)
-            Text(verbatim: targetTitle)
-                .font(ScholiumTypography.interface(.body))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .layoutPriority(-1)
+            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                ResearchActivityNotificationControls(
+                    notification: notification,
+                    openAction: openAction,
+                    endAction: endAction,
+                    reviewResult: reviewResult,
+                    followUp: followUp,
+                    dismiss: dismiss
+                )
+                if let disclosure {
+                    ResearchActivityStackDisclosureButton(
+                        disclosure: disclosure
+                    )
+                }
+            }
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(stateTitle), \(actionTitle), \(targetTitle)")
-    }
-
-    private var actionCapsule: some View {
-        Text(verbatim: actionTitle)
-            .font(ScholiumTypography.interface(.small, emphasis: .medium))
-            .scholiumForeground(.secondaryText)
-            .lineLimit(1)
-            .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
-            .padding(.vertical, ScholiumGrid.Spacing.opticalAlignmentAdjustment)
-            .background(
-                ScholiumColorRole.raisedSurfaceBackground.color,
-                in: Capsule(style: .continuous)
-            )
-            .scholiumBoundary(
-                .subtleBoundary,
-                in: Capsule(style: .continuous)
-            )
-            .fixedSize(horizontal: true, vertical: false)
-            .accessibilityHidden(true)
-    }
-
-    private var controls: some View {
-        ResearchActivityNotificationControls(
-            notification: notification,
-            openAction: openAction,
-            endAction: endAction,
-            reviewResult: reviewResult,
-            followUp: followUp,
-            dismiss: dismiss
-        )
     }
 
     private var targetTitle: String {
@@ -1119,23 +1145,6 @@ private struct ResearchActivityNotificationBannerRow: View {
         case .needsAttention, .recoveryRequired: .attention
         case .waitingForAgent, .running, .resultReady: .secondaryText
         }
-    }
-}
-
-private struct ResearchActivityNotificationStackButtonStyle: ButtonStyle {
-    let isHovering: Bool
-    let isFocused: Bool
-    let shape: RoundedRectangle
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scholiumContentInteractionSurface(
-                isHovering: isHovering,
-                isFocused: isFocused,
-                isPressed: configuration.isPressed,
-                in: shape
-            )
-            .opacity(configuration.isPressed ? 0.78 : 1)
     }
 }
 
@@ -1629,11 +1638,9 @@ struct ScholiumRecoveryNotice<Action: View>: View {
 }
 
 /// Shared presentation for ordered operation feedback. Feature owners retain
-/// queue state and operation semantics; this component owns only visible type,
-/// copy, announcement, bounded transient lifetime, and explicit dismissal.
+/// queue state and operation semantics; this component owns concise toast copy,
+/// persistent notification grammar, announcement, and bounded lifetime.
 struct ScholiumOperationFeedback: View {
-    @FocusState private var dismissIsFocused: Bool
-
     let id: UUID
     let message: String
     let kind: ScholiumFeedbackKind
@@ -1642,31 +1649,35 @@ struct ScholiumOperationFeedback: View {
     let dismiss: () -> Void
 
     var body: some View {
+        Group {
+            if kind.dismissesAutomatically {
+                transientToast
+            } else {
+                persistentNotice
+            }
+        }
+        .task(id: id) {
+            AccessibilityNotification.Announcement(
+                "\(kind.accessibilityLabel). \(message)"
+            ).post()
+            guard kind.dismissesAutomatically else { return }
+            try? await Task.sleep(for: ScholiumFeedbackPolicy.transientLifetime)
+            guard !Task.isCancelled else { return }
+            dismiss()
+        }
+    }
+
+    private var transientToast: some View {
         HStack(alignment: .center, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Image(systemName: kind.symbol)
                 .font(ScholiumTypography.interface(.body))
                 .scholiumForeground(kind.colorRole)
                 .accessibilityHidden(true)
-            feedbackMessage
-            Button(action: dismiss) {
-                Label("Dismiss", systemImage: "xmark")
-                    .labelStyle(.iconOnly)
-            }
-            .buttonStyle(.plain)
-            .frame(
-                minWidth: ScholiumGrid.Dimension.minimumCustomTarget,
-                minHeight: ScholiumGrid.Dimension.minimumCustomTarget
-            )
-            .contentShape(Rectangle())
-            .scholiumActivationFocus(
-                $dismissIsFocused,
-                presentation: .native
-            )
-            .onKeyPress(.space) {
-                dismiss()
-                return .handled
-            }
-            .help("Dismiss")
+            Text(verbatim: message)
+                .font(ScholiumTypography.interface(.small))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .textSelection(.enabled)
         }
         .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
         .padding(.vertical, ScholiumMetrics.Notice.verticalInset)
@@ -1684,32 +1695,45 @@ struct ScholiumOperationFeedback: View {
         .accessibilityIdentifier(
             "\(accessibilityIdentifierPrefix).\(kind.accessibilityIdentifierSuffix)"
         )
-        .task(id: id) {
-            AccessibilityNotification.Announcement(
-                "\(kind.accessibilityLabel). \(message)"
-            ).post()
-            guard kind.dismissesAutomatically else { return }
-            try? await Task.sleep(for: ScholiumFeedbackPolicy.transientLifetime)
-            guard !Task.isCancelled else { return }
-            dismiss()
-        }
     }
 
-    @ViewBuilder
-    private var feedbackMessage: some View {
-        if kind.dismissesAutomatically {
-            Text(message)
-                .font(ScholiumTypography.interface(.small))
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-                .textSelection(.enabled)
-        } else {
-            Text(message)
-                .font(ScholiumTypography.interface(.small))
-                .fixedSize(horizontal: false, vertical: true)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+    private var persistentNotice: some View {
+        HStack(
+            alignment: .center,
+            spacing: ScholiumGrid.Spacing.nestedContentInset
+        ) {
+            ScholiumNotificationBannerCopy(
+                systemImage: kind.symbol,
+                colorRole: kind.colorRole,
+                title: kind.accessibilityLabel,
+                detail: message
+            )
+            Button("Dismiss", action: dismiss)
+                .controlSize(.small)
+                .keyboardShortcut(.cancelAction)
         }
+        .padding(
+            .horizontal,
+            ScholiumMetrics.Workspace.compactNoticeHorizontalInset
+        )
+        .padding(
+            .vertical,
+            ScholiumMetrics.Workspace.compactNoticeVerticalInset
+        )
+        .scholiumContentFittingWidth(maximumWidth: maximumWidth)
+        .scholiumEditorialSurface(
+            .floatingControl,
+            in: RoundedRectangle(
+                cornerRadius: ScholiumShape.inlineStatusCornerRadius,
+                style: .continuous
+            )
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(kind.accessibilityLabel)
+        .accessibilityValue(message)
+        .accessibilityIdentifier(
+            "\(accessibilityIdentifierPrefix).\(kind.accessibilityIdentifierSuffix)"
+        )
     }
 }
 

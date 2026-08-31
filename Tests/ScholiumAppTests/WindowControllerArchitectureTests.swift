@@ -2500,15 +2500,21 @@ struct WindowControllerArchitectureTests {
         #expect(processing.contains("String(localized: \"Collapsed\")"))
         for temporaryAgentChangesBoundary in [
             "title: \"Agent Changes\"",
-            "Activity \\(selectedIndex + 1) of \\(presentation.activities.count)",
-            "Label(\"Previous\"",
-            "Label(\"Next\"",
+            "Text(\"\\(selectedIndex + 1) of \\(presentation.activities.count)\")",
+            ".help(\"Previous Activity\")",
+            ".help(\"Next Activity\")",
+            "activitySummary",
+            "activityDetails",
+            "Other Notes",
             "Created by this Run",
             "Earlier revision",
             "ExactSourceComparisonView(",
         ] {
             #expect(agentChanges.contains(temporaryAgentChangesBoundary))
         }
+        #expect(!agentChanges.contains("private var activityIdentity"))
+        #expect(agentChanges.contains("private var shortRunID"))
+        #expect(agentChanges.contains("scholium.agentChanges.details"))
         #expect(!agentChanges.contains("Button(\"Settle\""))
         #expect(!agentChanges.contains("Button(\"Dismiss\""))
         #expect(noteContent.contains(".accessibilityLabel(conflict.relativePath)"))

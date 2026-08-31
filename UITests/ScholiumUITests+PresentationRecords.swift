@@ -54,12 +54,10 @@ extension ScholiumUITests {
         XCTAssertEqual(confirmation.label, "Confirmation")
         XCTAssertEqual(warning.label, "Warning")
         XCTAssertTrue(
-            accessibilityText(of: confirmation.staticTexts.firstMatch)
-                .contains("QA transient confirmation")
+            confirmation.staticTexts["QA transient confirmation"].exists
         )
         XCTAssertTrue(
-            accessibilityText(of: warning.staticTexts.firstMatch)
-                .contains("QA persistent warning")
+            warning.staticTexts["QA persistent warning"].exists
         )
 
         XCTAssertEqual(document.frame, documentFrameBeforeFeedback)
@@ -67,6 +65,10 @@ extension ScholiumUITests {
         XCTAssertTrue(
             document.frame.intersects(confirmation.frame),
             "Transient feedback must overlay Document instead of taking layout space."
+        )
+        XCTAssertFalse(
+            confirmation.buttons["Dismiss"].exists,
+            "A bounded transient toast must not add a redundant dismissal control."
         )
         XCTAssertEqual(warning.frame.midX, window.frame.midX, accuracy: 2)
         XCTAssertEqual(confirmation.frame.midX, window.frame.midX, accuracy: 2)
@@ -98,19 +100,7 @@ extension ScholiumUITests {
         XCTAssertTrue(warning.exists, "Warnings must remain until explicit dismissal.")
         let dismiss = warning.buttons["Dismiss"]
         XCTAssertTrue(dismiss.waitForExistence(timeout: 3))
-        let keyboardFocus = NSPredicate(format: "hasKeyboardFocus == true")
-        for _ in 0..<32 where !keyboardFocus.evaluate(with: dismiss) {
-            app.typeKey(.tab, modifierFlags: [])
-        }
-        XCTAssertTrue(
-            keyboardFocus.evaluate(with: dismiss),
-            "Tab must give Dismiss observable native keyboard focus."
-        )
-        let focusedScreenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
-        focusedScreenshot.name = "Persistent feedback keyboard focus"
-        focusedScreenshot.lifetime = .keepAlways
-        add(focusedScreenshot)
-        app.typeKey(.space, modifierFlags: [])
+        app.typeKey(.escape, modifierFlags: [])
         XCTAssertTrue(waitUntil(timeout: 3) { !warning.exists })
         XCTAssertTrue(document.exists)
     }
@@ -134,16 +124,27 @@ extension ScholiumUITests {
             "The seeded Settlement reminder did not reach the shared stack."
         )
         XCTAssertTrue(accessibilityText(of: stack).contains("3 Notifications"))
-        stack.click()
+        let disclosure = window.buttons[
+            "scholium.notificationStack.disclosure"
+        ]
+        XCTAssertTrue(disclosure.waitForExistence(timeout: 5))
+
+        stack.hover()
+        let expandedRows = window.descendants(matching: .any)[
+            "scholium.researchActivityNotificationRows"
+        ]
+        XCTAssertTrue(
+            expandedRows.waitForExistence(timeout: 5),
+            "Hover must reveal the remaining real notifications downward."
+        )
         XCTAssertTrue(
             window.buttons["Review Changes"].waitForExistence(timeout: 5)
         )
         XCTAssertFalse(
-            window.descendants(matching: .any)[
-                "scholium.researchActivityNotificationRows"
-            ].buttons["Settle"].exists
+            expandedRows.buttons["Settle"].exists
         )
-        stack.click()
+        document.hover()
+        XCTAssertTrue(waitUntil(timeout: 5) { !expandedRows.exists })
 
         let qaMenu = app.menuBars.menuBarItems["QA"]
         XCTAssertTrue(qaMenu.waitForExistence(timeout: 5))
@@ -154,15 +155,18 @@ extension ScholiumUITests {
 
         XCTAssertTrue(stack.waitForExistence(timeout: 8))
         XCTAssertTrue(accessibilityText(of: stack).contains("3 Notifications"))
-        stack.click()
-        let dismiss = window.buttons["Dismiss"].firstMatch
+        disclosure.click()
+        XCTAssertTrue(expandedRows.waitForExistence(timeout: 5))
+        let more = window.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "identifier BEGINSWITH %@",
+                "scholium.notification.action.more."
+            )
+        ).firstMatch
         XCTAssertTrue(
-            dismiss.waitForExistence(timeout: 5),
+            more.waitForExistence(timeout: 5),
             "The shared stack must expose the Action row when expanded."
         )
-        let expandedRows = window.descendants(matching: .any)[
-            "scholium.researchActivityNotificationRows"
-        ]
         XCTAssertTrue(expandedRows.waitForExistence(timeout: 5))
         XCTAssertTrue(window.buttons["Review Changes"].exists)
         XCTAssertFalse(app.popovers.firstMatch.exists)
@@ -179,7 +183,10 @@ extension ScholiumUITests {
         screenshot.lifetime = .keepAlways
         add(screenshot)
 
-        XCTAssertTrue(dismiss.isHittable)
+        XCTAssertTrue(more.isHittable)
+        more.click()
+        let dismiss = app.menuItems["Dismiss"].firstMatch
+        XCTAssertTrue(dismiss.waitForExistence(timeout: 5))
         dismiss.click()
         XCTAssertTrue(
             waitUntil(timeout: 5) {

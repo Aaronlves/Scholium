@@ -1506,6 +1506,7 @@ enum ScholiumMetrics {
             static let idealWidth: CGFloat = 900
             static let minimumHeight: CGFloat = 560
             static let idealHeight: CGFloat = 720
+            static let detailPopoverWidth = ScholiumGrid.foundationUnit * 105
             static let disclosureIndicatorWidth = ScholiumGrid.foundationUnit * 3.5
             static let documentStateMinimumHeight = ScholiumGrid.foundationUnit * 40
         }
@@ -3070,10 +3071,18 @@ enum ScholiumMotion {
         return .move(edge: edge).combined(with: .opacity)
     }
 
-    static func activityNotificationStackPreview(
+    static func activityNotificationStackExpansion(
         reduceMotion: Bool
     ) -> Animation? {
-        reduceMotion ? nil : .easeOut(duration: 0.16)
+        reduceMotion ? nil : .snappy(duration: 0.22, extraBounce: 0)
+    }
+
+    static func activityNotificationStackExpansionTransition(
+        reduceMotion: Bool
+    ) -> AnyTransition {
+        guard !reduceMotion else { return .identity }
+        return .offset(y: -ScholiumGrid.Spacing.inlineControlGap)
+            .combined(with: .opacity)
     }
 }
 

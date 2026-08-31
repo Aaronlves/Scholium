@@ -28,6 +28,18 @@ The ad-hoc App requires the documented Gatekeeper override.
 
 ## Focused interface evidence
 
+- On 2026-09-01, the compact Agent Changes and top-notification refinement
+  passed the Debug product build, documentation and interface-localization
+  validators, 99 frontend architecture tests, and 58 window-controller
+  architecture tests. Three bounded XCUITests passed in 31.403, 40.775, and
+  27.089 seconds. They prove the temporary one-activity comparison retains
+  Previous/Next and no Settle/Dismiss path; a multi-item stack keeps a real
+  notification foremost, expands actual rows through hover and explicit
+  disclosure, and moves secondary operations into More; and a concise
+  variable-width toast times out without Dismiss while persistent feedback
+  remains top-centered and supports its single Dismiss through Escape. This is
+  focused automated evidence, not a complete UI gate or human acceptance.
+
 - On 2026-09-01, the Settlement single-owner cutover and its activity-scoped
   Agent Changes extension passed the Debug product
   build; 41 Core storage tests, 16 Contract tests, 48 Application tests, and

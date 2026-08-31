@@ -161,7 +161,10 @@
   Note, Action/Run, exact activity position and revisions, change kind, and any
   Earlier Revision or Created by this Run state. Before/After and inserted,
   removed, or changed structure remain perceivable without color. Previous and
-  Next have keyboard, pointer, focus, and accessibility equivalents. Neither
+  Next have keyboard, pointer, focus, and accessibility equivalents. Compact
+  visual identity never abbreviates the accessible Run identity, and the
+  progressive activity-detail control exposes full Record and Note-path text.
+  Neither
   surface has Settle or Dismiss; closing Agent Changes records no review state,
   and the Document Action Rail retains the accessible Settle route.
 - Reading Lead detail preserves the order of disposition, citation,

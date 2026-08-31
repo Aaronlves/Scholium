@@ -252,6 +252,7 @@ authorization, navigation, or operation lifecycle.
 | `Connection Direction Control` | Switch Incoming/Outgoing without changing graph authority. | §§12, 18.5 |
 | `Document Action Rail` | Keep role-valid Actions and Settle at the Document edge. | §§7.1, 8.1, 18.5 |
 | `Triptych Notifications Entry` | Open the complete Action/Attention queue with exact nonzero total. | §§13, 18.2–18.3 |
+| `Top Notification Banner` | Give Action, Settlement, permission, and persistent operation notices one concise adaptive grammar. | §§18.3–18.5, 20 |
 | `Activity Notification Stack` | Present attention-requiring Run actions and the current Note's Settlement reminder without becoming the queue. | §§7.1, 18.3, 18.5 |
 | `Operation Feedback` | Present transient information or persistent consequence/repair. | §§18.2–18.5, 20 |
 | `Agent Changes` | Present one temporary exact `(Record, Note)` Agent activity at a time without creating review state or completing Settlement. | §§7.1, 8.4, 18.5 |

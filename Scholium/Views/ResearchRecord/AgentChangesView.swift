@@ -142,6 +142,7 @@ struct AgentChangesView: View {
     @State private var currentState: ResearchRecordChangeCurrentState?
     @State private var currentStateError: String?
     @State private var hasLoadedCurrentState = false
+    @State private var showsActivityDetails = false
 
     init(
         presentation: AgentChangesPresentation,
@@ -163,7 +164,7 @@ struct AgentChangesView: View {
     var body: some View {
         ExactSourceComparisonSheetLayout(
             title: "Agent Changes",
-            detail: "Inspect one confirmed Agent activity at a time. Closing does not settle this Note.",
+            detail: "One Agent activity at a time. Closing does not settle the Note.",
             identifier: "scholium.agentChanges"
         ) {
             navigationControls
@@ -173,9 +174,7 @@ struct AgentChangesView: View {
                     alignment: .leading,
                     spacing: ScholiumGrid.Spacing.sectionSeparation
                 ) {
-                    activityIdentity
-                    ScholiumStructuralRule()
-                    currentRevisionStatus
+                    activityHeader
                     activityContent
                 }
                 .padding(ScholiumGrid.Spacing.sectionSeparation)
@@ -207,114 +206,194 @@ struct AgentChangesView: View {
 
     private var navigationControls: some View {
         HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            Text("Activity \(selectedIndex + 1) of \(presentation.activities.count)")
-                .font(ScholiumTypography.interface(.compact))
-                .scholiumForeground(.secondaryText)
-                .accessibilityIdentifier("scholium.agentChanges.position")
             Button {
                 selectActivity(at: selectedIndex - 1)
             } label: {
-                Label("Previous", systemImage: "chevron.left")
+                Image(systemName: "chevron.left")
             }
             .disabled(selectedIndex == 0)
+            .help("Previous Activity")
+            .accessibilityLabel("Previous Activity")
             .accessibilityIdentifier("scholium.agentChanges.previous")
+
+            Text("\(selectedIndex + 1) of \(presentation.activities.count)")
+                .font(ScholiumTypography.interface(.compact))
+                .scholiumForeground(.secondaryText)
+                .accessibilityLabel(
+                    "Activity \(selectedIndex + 1) of \(presentation.activities.count)"
+                )
+                .accessibilityIdentifier("scholium.agentChanges.position")
+
             Button {
                 selectActivity(at: selectedIndex + 1)
             } label: {
-                Label("Next", systemImage: "chevron.right")
+                Image(systemName: "chevron.right")
             }
             .disabled(selectedIndex == presentation.activities.count - 1)
+            .help("Next Activity")
+            .accessibilityLabel("Next Activity")
             .accessibilityIdentifier("scholium.agentChanges.next")
         }
         .controlSize(.small)
     }
 
-    private var activityIdentity: some View {
+    private var activityHeader: some View {
         VStack(
             alignment: .leading,
-            spacing: ScholiumGrid.Spacing.nestedContentInset
+            spacing: ScholiumGrid.Spacing.inlineControlGap
         ) {
-            Text(verbatim: selectedActivity.participant.title)
-                .font(ScholiumTypography.scholarly(.sectionTitle))
-                .accessibilityHeading(.h2)
-
-            LabeledContent("Action") {
-                Text(verbatim: actionName)
-            }
-            LabeledContent("Run") {
-                Text(verbatim: selectedActivity.record.id.uuidString.lowercased())
-                    .font(ScholiumTypography.exact(.small))
-                    .textSelection(.enabled)
-            }
-            LabeledContent("Record") {
-                Text(verbatim: selectedActivity.record.title.value)
-                    .textSelection(.enabled)
-            }
-            LabeledContent("Note") {
-                Text(verbatim: selectedActivity.participant.note.relativePath)
-                    .font(ScholiumTypography.exact(.small))
-                    .textSelection(.enabled)
-            }
-            LabeledContent("Change") {
-                Text(changeKindTitle)
+            HStack(
+                alignment: .firstTextBaseline,
+                spacing: ScholiumGrid.Spacing.nestedContentInset
+            ) {
+                Text(verbatim: selectedActivity.participant.title)
+                    .font(ScholiumTypography.scholarly(.sectionTitle))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .layoutPriority(1)
+                    .accessibilityHeading(.h2)
+                Spacer(minLength: 0)
+                currentRevisionStatus
             }
 
-            if otherAffectedParticipants.isEmpty == false {
+            ViewThatFits(in: .horizontal) {
+                HStack(
+                    spacing: ScholiumGrid.Spacing.inlineControlGap
+                ) {
+                    activitySummary
+                    Spacer(minLength: 0)
+                    activityUtilities
+                }
                 VStack(
                     alignment: .leading,
-                    spacing: ScholiumGrid.Spacing.labelAccessoryGap
+                    spacing: ScholiumGrid.Spacing.inlineControlGap
                 ) {
-                    Text("Other Affected Notes")
-                        .font(
-                            ScholiumTypography.interface(
-                                .compact,
-                                emphasis: .strong
-                            )
-                        )
+                    activitySummary
+                    activityUtilities
+                }
+            }
+
+            if let currentStateError {
+                Text(verbatim: currentStateError)
+                    .font(ScholiumTypography.interface(.small))
+                    .scholiumForeground(.secondaryText)
+                    .lineLimit(2)
+                    .truncationMode(.tail)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("scholium.agentChanges.identity")
+    }
+
+    private var activitySummary: some View {
+        HStack(
+            spacing: ScholiumGrid.Spacing.labelAccessoryGap
+        ) {
+            Label(changeKindTitle, systemImage: changeKindSymbol)
+            Text("·")
+                .scholiumForeground(.mutedText)
+                .accessibilityHidden(true)
+            Text(verbatim: actionName)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Text("·")
+                .scholiumForeground(.mutedText)
+                .accessibilityHidden(true)
+            Text(verbatim: "Run \(shortRunID)")
+                .font(ScholiumTypography.exact(.small))
+                .fixedSize(horizontal: true, vertical: false)
+        }
+        .font(ScholiumTypography.interface(.compact))
+        .scholiumForeground(.secondaryText)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "\(changeKindText), \(actionName), Run \(fullRunID)"
+        )
+    }
+
+    private var currentRevisionStatus: some View {
+        Label(
+            currentRevisionStatusTitle,
+            systemImage: currentRevisionStatusSymbol
+        )
+        .font(ScholiumTypography.interface(.compact, emphasis: .medium))
+        .scholiumForeground(currentRevisionStatusColor)
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)
+        .accessibilityIdentifier("scholium.agentChanges.currentStatus")
+    }
+
+    private var activityUtilities: some View {
+        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            if !otherAffectedParticipants.isEmpty {
+                Menu {
                     ForEach(otherAffectedParticipants) { participant in
                         Button {
                             dismiss()
                             openNote(participant.noteID, participant.note)
                         } label: {
                             Label(participant.title, systemImage: "doc.text")
-                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .buttonStyle(.borderless)
                     }
+                } label: {
+                    Label(
+                        "Other Notes",
+                        systemImage: "doc.on.doc"
+                    )
                 }
+                .accessibilityIdentifier("scholium.agentChanges.otherNotes")
+            }
+
+            Button {
+                showsActivityDetails.toggle()
+            } label: {
+                Label("Activity Details", systemImage: "info.circle")
+                    .labelStyle(.iconOnly)
+            }
+            .help("Show Activity Details")
+            .accessibilityLabel("Show Activity Details")
+            .accessibilityIdentifier("scholium.agentChanges.details")
+            .popover(isPresented: $showsActivityDetails) {
+                activityDetails
             }
         }
-        .font(ScholiumTypography.interface(.body))
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("scholium.agentChanges.identity")
+        .controlSize(.small)
     }
 
-    @ViewBuilder
-    private var currentRevisionStatus: some View {
+    private var activityDetails: some View {
         VStack(
             alignment: .leading,
-            spacing: ScholiumGrid.Spacing.labelAccessoryGap
+            spacing: ScholiumGrid.Spacing.nestedContentInset
         ) {
-            Label(
-                currentRevisionStatusTitle,
-                systemImage: currentRevisionStatusSymbol
-            )
-                .font(
-                    ScholiumTypography.interface(
-                        .rowTitle,
-                        emphasis: .strong
-                    )
-                )
-                .scholiumForeground(currentRevisionStatusColor)
-            if let currentStateError {
-                Text(currentStateError)
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
+            Text("Activity Details")
+                .font(ScholiumTypography.interface(.sectionTitle))
+                .accessibilityHeading(.h2)
+            LabeledContent("Action") {
+                Text(verbatim: actionName)
+            }
+            LabeledContent("Run") {
+                Text(verbatim: fullRunID)
+                    .font(ScholiumTypography.exact(.small))
+                    .textSelection(.enabled)
+            }
+            LabeledContent("Record") {
+                Text(verbatim: selectedActivity.record.title.value)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+            }
+            LabeledContent("Note") {
+                Text(verbatim: selectedActivity.participant.note.relativePath)
+                    .font(ScholiumTypography.exact(.small))
+                    .lineLimit(2)
+                    .truncationMode(.middle)
                     .textSelection(.enabled)
             }
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("scholium.agentChanges.currentStatus")
+        .font(ScholiumTypography.interface(.body))
+        .padding(ScholiumGrid.Spacing.sectionSeparation)
+        .frame(width: ScholiumMetrics.ResearchSheet.Comparison.detailPopoverWidth)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("scholium.agentChanges.activityDetails")
     }
 
     @ViewBuilder
@@ -401,6 +480,28 @@ struct AgentChangesView: View {
         }
     }
 
+    private var changeKindText: String {
+        switch selectedActivity.change.kind {
+        case .modified: String(localized: "Modified")
+        case .created: String(localized: "Created by this Run")
+        }
+    }
+
+    private var changeKindSymbol: String {
+        switch selectedActivity.change.kind {
+        case .modified: "pencil.line"
+        case .created: "doc.badge.plus"
+        }
+    }
+
+    private var fullRunID: String {
+        selectedActivity.record.id.uuidString.lowercased()
+    }
+
+    private var shortRunID: String {
+        String(fullRunID.prefix(8))
+    }
+
     private var otherAffectedParticipants: [PortableResearchNoteRevision] {
         selectedActivity.affectedParticipants.filter {
             $0.noteID != selectedActivity.participant.noteID
@@ -448,6 +549,7 @@ struct AgentChangesView: View {
         currentState = nil
         currentStateError = nil
         hasLoadedCurrentState = false
+        showsActivityDetails = false
     }
 
     private func loadSelectedActivity() async {

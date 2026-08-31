@@ -60,21 +60,24 @@
   the exact aggregate count, and unavailable first load never claims zero.
 - Needs Attention, Result Ready, and Recovery Required Action activities also
   project one exact-count Document notification stack. It exposes at most three
-  visible layers. One Action exposes its valid operations directly. Multiple
-  Actions expand downward into bounded inline rows through hover, focus, click,
-  focused Space, or Window → Notifications; they expose no complete-queue
-  search, filter, structural issue, or popover and own neither Dismiss nor
-  activity state.
+  visible layers. The foremost real notification stays visible; its count
+  disclosure or pointer hover expands the remaining real rows downward without
+  inserting a synthetic summary. Copy truncates before its controls, and each
+  Action exposes one primary operation plus a bounded More menu. The stack
+  exposes no complete-queue search, filter, structural issue, or popover and
+  owns neither Dismiss nor activity state.
 - The current Note's **Current Revision Not Settled** reminder shares the same
   top-centered stack and expansion with Action notifications. When exact
   pending Agent activities exist, Review Changes opens the temporary
   activity-scoped Agent Changes sheet directly; Previous and Next follow
-  confirmation order, and closing the sheet records no viewed state. A
-  changed-since-Settlement revision without a pending Agent activity presents
-  no fabricated comparison action. The reminder has no Settle, Dismiss, or
-  timeout; Settle remains in the Document Action Rail. The complete
-  Notifications queue includes every pending Settlement reminder between
-  Action activities and structural issues.
+  confirmation order. Its compact reading header keeps the Note, change kind,
+  Action, abbreviated Run identity, and current-revision state together; full
+  Run, Record, and path identity moves to Activity Details. Closing the sheet
+  records no viewed state. A changed-since-Settlement revision without a
+  pending Agent activity presents no fabricated comparison action. The reminder
+  has no Settle, Dismiss, or timeout; Settle remains in the Document Action
+  Rail. The complete Notifications queue includes every pending Settlement
+  reminder between Action activities and structural issues.
 
 ## Document and Research Inspector
 
@@ -194,9 +197,11 @@
   Activities, Settlement Reminders, All Issues, or concrete issue-type filter.
   Window operation
   feedback is typed and ordered: Confirmation and Information use a narrow
-  bottom-centred window overlay, while Warning and Error persist at the
-  top-centred edge; both use a compact outer-edge inset, top feedback may cover
-  toolbar space, and neither changes Document geometry. Settings presents the
+  single-line, content-fitting bottom-centred toast with no dismissal control,
+  while Warning and Error use the shared concise notification grammar and
+  persist at the top-centred edge with one visible Dismiss plus Escape. Both use
+  a compact outer-edge inset, top feedback may cover toolbar space, and neither
+  changes Document geometry. Settings presents the
   same queue one item at a time from the transparent titlebar band in a top-centred
   window overlay that does not reflow panes. Toolbar title and items are absent;
   a native split's actual Navigation and detail surfaces and divider extend behind
