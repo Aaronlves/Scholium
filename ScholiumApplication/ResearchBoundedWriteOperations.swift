@@ -706,6 +706,20 @@ extension WorkspaceHandle {
         }) else {
             throw ResearchBoundedWriteSetError.targetNotAuthorized
         }
+        let requestFingerprint = try Self.fingerprint(intent)
+        let operationID = Self.stableOperationID(
+            material: "\(authenticated.runID.uuidString.lowercased()):zotero-binding-write:\(intent.requestID.uuidString.lowercased())"
+        )
+        if let existing = execution.zoteroBindingWriteRecords.first(where: {
+            $0.id == operationID
+        }) {
+            return try await reconcileOrReturnZoteroBindingWrite(
+                existing,
+                execution: execution,
+                entry: entry,
+                intent: intent
+            )
+        }
         guard entry.role == .analysis,
               entry.state == .ready,
               entry.allowedOperations.contains(intent.operation),
@@ -731,20 +745,6 @@ extension WorkspaceHandle {
             nil
         case .createNote, .modifyMarkdown, .modifySource, .modifyMetadata:
             throw ResearchBoundedWriteSetError.invalidWrite
-        }
-        let requestFingerprint = try Self.fingerprint(intent)
-        let operationID = Self.stableOperationID(
-            material: "\(authenticated.runID.uuidString.lowercased()):zotero-binding-write:\(intent.requestID.uuidString.lowercased())"
-        )
-        if let existing = execution.zoteroBindingWriteRecords.first(where: {
-            $0.id == operationID
-        }) {
-            return try await reconcileOrReturnZoteroBindingWrite(
-                existing,
-                execution: execution,
-                entry: entry,
-                intent: intent
-            )
         }
 
         guard let sessions = researchBoundedWriteDependencies.researchAgentSessions else {
@@ -1071,7 +1071,7 @@ extension WorkspaceHandle {
               write.operation == intent.operation else {
             throw ResearchBoundedWriteSetError.invalidWriteRecord
         }
-        guard write.state == .writing else {
+        guard [.writing, .recoveryRequired].contains(write.state) else {
             return zoteroBindingWriteResult(write, entry: entry)
         }
         let observed = try await researchBoundedWriteDependencies.controlStore.zoteroBindings()
@@ -2056,7 +2056,10 @@ extension WorkspaceHandle {
               entry.note.relativePath == intent.relativePath else {
             throw ResearchBoundedWriteSetError.invalidWriteRecord
         }
-        if write.state == .writing {
+        if write.state == .writing
+            || (write.state == .recoveryRequired
+                && write.operation == .modifyMetadata
+                && write.recoveryRecordID == nil) {
             let observedRevision: DocumentFingerprint?
             let state: ResearchDocumentWriteState
             var recoveryRecordID: UUID?

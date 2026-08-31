@@ -226,6 +226,253 @@ struct ResearchBoundedWriteOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("Exact Zotero binding retry reconciles an unknown outcome without another write")
+    func zoteroBindingRecoveryRetryConverges() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let connection = try await prepareWritableRun(handle: handle, fixture: fixture)
+        _ = try await handle.research.extendAgentWriteSet(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: try ResearchWriteSetExtensionIntent(
+                targets: [try ResearchWriteSetTargetSelector(
+                    role: .analysis,
+                    relativePath: "Analysis.md",
+                    operations: [.setZoteroBinding]
+                )],
+                academicReason: "Retain one exact portable source relationship."
+            )
+        )
+        let execution = try await handle.services.localResearchExecutionStore.record(
+            id: connection.preparation.runID
+        )
+        let entry = try #require(execution.boundedWriteSet.entries.first)
+        let expectedRevision = try #require(entry.zoteroBindingsRevision)
+        let requestID = UUID(uuidString: "00000000-0000-4000-8000-000000000702")!
+        let intent = try ResearchZoteroBindingWriteIntent(
+            requestID: requestID,
+            role: .analysis,
+            relativePath: "Analysis.md",
+            operation: .setZoteroBinding,
+            library: .group(42),
+            itemKey: "intended42"
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        let requestFingerprint = DocumentFingerprint(data: try encoder.encode(intent))
+        let operationDigest = DocumentFingerprint(content: [
+            connection.preparation.runID.uuidString.lowercased(),
+            "zotero-binding-write",
+            requestID.uuidString.lowercased(),
+        ].joined(separator: ":")).sha256
+        let operationID = try #require(UUID(uuidString: [
+            String(operationDigest.prefix(8)),
+            String(operationDigest.dropFirst(8).prefix(4)),
+            String(operationDigest.dropFirst(12).prefix(4)),
+            String(operationDigest.dropFirst(16).prefix(4)),
+            String(operationDigest.dropFirst(20).prefix(12)),
+        ].joined(separator: "-")))
+        let intended = try AnalysisZoteroBinding(
+            noteID: entry.noteID,
+            library: .group(42),
+            itemKey: "intended42"
+        )
+        _ = try await handle.services.localResearchExecutionStore
+            .beginZoteroBindingWrite(try ResearchZoteroBindingWriteRecord(
+                id: operationID,
+                runID: connection.preparation.runID,
+                target: entry.handle,
+                operation: .setZoteroBinding,
+                requestFingerprint: requestFingerprint,
+                expectedRevision: expectedRevision,
+                intendedBinding: intended,
+                state: .writing,
+                startedAt: Date()
+            ))
+
+        _ = try await handle.services.controlStore.setZoteroBinding(
+            AnalysisZoteroBinding(
+                noteID: entry.noteID,
+                library: .user,
+                itemKey: "external1"
+            ),
+            expectedRevision: expectedRevision
+        )
+        let unresolved = try await handle.research.writeAgentZoteroBinding(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: intent
+        )
+        #expect(unresolved.operationID == operationID)
+        #expect(unresolved.state == .recoveryRequired)
+
+        let current = try await handle.services.controlStore.zoteroBindings()
+        _ = try await handle.services.controlStore.setZoteroBinding(
+            intended,
+            expectedRevision: current.revision
+        )
+        let recovered = try await handle.research.writeAgentZoteroBinding(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: intent
+        )
+        #expect(recovered.operationID == operationID)
+        #expect(recovered.state == .committed)
+        #expect(try await handle.services.controlStore.zoteroBindings()
+            .binding(for: entry.noteID) == intended)
+
+        let run = try await handle.research.actionRunDetails(
+            id: connection.preparation.runID
+        )
+        let receipt = try await handle.research.submitAgentResult(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            submission: try makeTestAgentResultSubmission(
+                for: run,
+                literatureRecommendations: []
+            )
+        )
+        #expect(receipt.recordFormed)
+        let record = try await handle.services.portableResearchRecordStore.record(
+            id: connection.preparation.runID
+        )
+        #expect(record.activityOutcomes.first { $0.id == operationID }?.state
+            == .committed)
+        await runtime.shutdown()
+    }
+
+    @Test("Exact Metadata retry reconciles an unknown outcome without another write")
+    func metadataRecoveryRetryConverges() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let connection = try await prepareWritableRun(handle: handle, fixture: fixture)
+        _ = try await handle.research.extendAgentWriteSet(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: try ResearchWriteSetExtensionIntent(
+                targets: [try ResearchWriteSetTargetSelector(
+                    role: .analysis,
+                    relativePath: "Analysis.md",
+                    operations: [.modifyMetadata],
+                    metadataKeys: ["language"]
+                )],
+                academicReason: "Record one exact language declaration."
+            )
+        )
+        let execution = try await handle.services.localResearchExecutionStore.record(
+            id: connection.preparation.runID
+        )
+        let entry = try #require(execution.boundedWriteSet.entries.first)
+        let requestID = UUID(uuidString: "00000000-0000-4000-8000-000000000703")!
+        let intent = try ResearchDocumentWriteIntent(
+            requestID: requestID,
+            role: .analysis,
+            relativePath: "Analysis.md",
+            operation: .modifyMetadata,
+            metadata: [try CanonicalPropertyInput(
+                key: "language",
+                value: .string("en")
+            )]
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        let requestFingerprint = DocumentFingerprint(data: try encoder.encode(intent))
+        let operationDigest = DocumentFingerprint(content: [
+            connection.preparation.runID.uuidString.lowercased(),
+            "write",
+            requestID.uuidString.lowercased(),
+        ].joined(separator: ":")).sha256
+        let operationID = try #require(UUID(uuidString: [
+            String(operationDigest.prefix(8)),
+            String(operationDigest.dropFirst(8).prefix(4)),
+            String(operationDigest.dropFirst(12).prefix(4)),
+            String(operationDigest.dropFirst(16).prefix(4)),
+            String(operationDigest.dropFirst(20).prefix(12)),
+        ].joined(separator: "-")))
+        let initialMetadata = try await handle.services.controlStore.noteMetadata(
+            noteID: entry.noteID
+        )
+        var intendedFields = initialMetadata?.record.fields ?? [:]
+        intendedFields["language"] = .string("en")
+        let intendedRevision = DocumentFingerprint(
+            data: try NoteMetadataRecord(
+                noteID: entry.noteID,
+                fields: intendedFields
+            ).encodedPortableData()
+        )
+        _ = try await handle.services.localResearchExecutionStore.beginDocumentWrite(
+            try ResearchDocumentWriteRecord(
+                id: operationID,
+                runID: connection.preparation.runID,
+                target: entry.handle,
+                actor: .agent,
+                operation: .modifyMetadata,
+                requestFingerprint: requestFingerprint,
+                expectedRevision: entry.metadataRevision,
+                intendedRevision: intendedRevision,
+                state: .writing,
+                startedAt: Date()
+            )
+        )
+
+        var externalFields = initialMetadata?.record.fields ?? [:]
+        externalFields["language"] = .string("fr")
+        _ = try await handle.services.controlStore.saveNoteMetadata(
+            noteID: entry.noteID,
+            fields: externalFields,
+            expectedRevision: entry.metadataRevision
+        )
+        let unresolved = try await handle.research.writeAgentDocument(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: intent
+        )
+        #expect(unresolved.operationID == operationID)
+        #expect(unresolved.state == .recoveryRequired)
+
+        let current = try #require(
+            try await handle.services.controlStore.noteMetadata(noteID: entry.noteID)
+        )
+        _ = try await handle.services.controlStore.saveNoteMetadata(
+            noteID: entry.noteID,
+            fields: intendedFields,
+            expectedRevision: current.revision
+        )
+        let recovered = try await handle.research.writeAgentDocument(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: intent
+        )
+        #expect(recovered.operationID == operationID)
+        #expect(recovered.state == .committed)
+        #expect(try await handle.services.controlStore.noteMetadata(
+            noteID: entry.noteID
+        )?.record.fields == intendedFields)
+
+        let run = try await handle.research.actionRunDetails(
+            id: connection.preparation.runID
+        )
+        let receipt = try await handle.research.submitAgentResult(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            submission: try makeTestAgentResultSubmission(
+                for: run,
+                literatureRecommendations: []
+            )
+        )
+        #expect(receipt.recordFormed)
+        let record = try await handle.services.portableResearchRecordStore.record(
+            id: connection.preparation.runID
+        )
+        #expect(record.activityOutcomes.first { $0.id == operationID }?.state
+            == .committed)
+        await runtime.shutdown()
+    }
+
     @Test("Authenticated Analysis creation freezes a safe field plan and records one created mutation")
     func authenticatedAnalysisCreationIsIdempotentAndPortable() async throws {
         let fixture = try await ResearchFixture.make()

@@ -905,7 +905,15 @@ public actor LocalResearchExecutionStore {
                 throw ResearchBoundedWriteSetError.invalidWriteRecord
             }
             var write = current.documentWriteRecords[writeIndex]
-            if write.state != .writing {
+            if write.state == .recoveryRequired {
+                guard write.operation == .modifyMetadata,
+                      write.recoveryRecordID == nil,
+                      recoveryRecordID == nil,
+                      [.committed, .abandoned, .recoveryRequired].contains(state)
+                else {
+                    throw ResearchBoundedWriteSetError.invalidWriteRecord
+                }
+            } else if write.state != .writing {
                 guard write.state == state,
                       write.observedRevision == observedRevision,
                       write.warning == warning,
@@ -1010,7 +1018,12 @@ public actor LocalResearchExecutionStore {
                 throw ResearchBoundedWriteSetError.invalidWriteRecord
             }
             var write = current.zoteroBindingWriteRecords[writeIndex]
-            if write.state != .writing {
+            if write.state == .recoveryRequired {
+                guard [.committed, .abandoned, .recoveryRequired].contains(state)
+                else {
+                    throw ResearchBoundedWriteSetError.invalidWriteRecord
+                }
+            } else if write.state != .writing {
                 guard write.state == state,
                       write.observedRevision == observedRevision,
                       write.warning == warning else {
