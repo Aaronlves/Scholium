@@ -113,10 +113,9 @@ struct ActionCLIExecutableLifecycleTests {
                 "ApplicationSupport",
                 isDirectory: true
             ),
-            workspaceRegistryStorageURL: fixture.homeURL.appendingPathComponent(
-                "registry",
-                isDirectory: true
-            )
+            workspaceRegistryStorageURL: fixture.homeURL
+                .appendingPathComponent("ApplicationSupport", isDirectory: true)
+                .appendingPathComponent("Workspace", isDirectory: true)
         )))
         defer { Task { await runtime.shutdown() } }
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
@@ -3315,7 +3314,7 @@ private struct ActionCLIFixture {
             )
         let home = root.appendingPathComponent("home", isDirectory: true)
         let appSupport = home.appendingPathComponent("ApplicationSupport", isDirectory: true)
-        let registry = home.appendingPathComponent("registry", isDirectory: true)
+        let registry = appSupport.appendingPathComponent("Workspace", isDirectory: true)
         let analyses = root.appendingPathComponent("Analyses", isDirectory: true)
         let topics = root.appendingPathComponent("Topics", isDirectory: true)
         let works = root.appendingPathComponent("Works", isDirectory: true)

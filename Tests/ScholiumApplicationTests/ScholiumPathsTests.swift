@@ -68,8 +68,8 @@ struct ScholiumPathsTests {
         #expect(FileManager.default.fileExists(atPath: container.path))
     }
 
-    @Test("An isolated CLI home also isolates workspace registry state")
-    func isolatedCLIWorkspaceState() throws {
+    @Test("An isolated App and CLI share one workspace registry")
+    func isolatedAppAndCLIWorkspaceState() throws {
         let isolatedHome = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         let state = try ScholiumPaths.workspaceRegistryURL(
@@ -78,7 +78,8 @@ struct ScholiumPathsTests {
         )
 
         #expect(state.standardizedFileURL == isolatedHome
-            .appendingPathComponent("registry", isDirectory: true)
+            .appendingPathComponent("ApplicationSupport", isDirectory: true)
+            .appendingPathComponent("Workspace", isDirectory: true)
             .standardizedFileURL)
     }
 

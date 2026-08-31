@@ -205,7 +205,8 @@ public enum ScholiumPaths {
     ) throws -> URL {
         if environment["SCHOLIUM_HOME"] != nil {
             return (homeURL ?? cliHomeURL(environment: environment, fileManager: fileManager))
-                .appendingPathComponent("registry", isDirectory: true)
+                .appendingPathComponent("ApplicationSupport", isDirectory: true)
+                .appendingPathComponent("Workspace", isDirectory: true)
         }
         return try sharedApplicationSupportURL(fileManager: fileManager)
             .appendingPathComponent("Workspace", isDirectory: true)

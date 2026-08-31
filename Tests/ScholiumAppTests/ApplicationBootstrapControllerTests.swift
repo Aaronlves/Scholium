@@ -1,4 +1,5 @@
 import Foundation
+import ScholiumApplication
 import Testing
 @testable import ScholiumApp
 
@@ -69,6 +70,26 @@ struct ApplicationBootstrapControllerTests {
             ] as? NSNumber
         ).intValue
         #expect(homeMode == 0o700)
+    }
+
+    @Test("An isolated App and CLI resolve the same workspace registry")
+    func isolatedAppAndCLIShareWorkspaceRegistry() throws {
+        let home = testRoot()
+        let environment = ["SCHOLIUM_HOME": home.path]
+        defer { try? FileManager.default.removeItem(at: home) }
+
+        let appSupport = try ApplicationBootstrapController.resolveStorageURL(
+            environment: environment,
+            bundleIdentifier: ScholiumRuntimeIsolation.qaBundleIdentifier
+        )
+        let cliRegistry = try ScholiumPaths.workspaceRegistryURL(
+            homeURL: home,
+            environment: environment
+        )
+
+        #expect(cliRegistry.standardizedFileURL == appSupport
+            .appendingPathComponent("Workspace", isDirectory: true)
+            .standardizedFileURL)
     }
 
     @Test("WorkspaceStore refuses an Application Support path below a regular file")
