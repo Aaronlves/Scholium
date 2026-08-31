@@ -584,7 +584,7 @@ extension ResearchActionRunCoordinator {
             noteSnapshots[note.noteID] = note
         }
         let writeRecords = stored.documentWriteRecords
-        var firstCommittedWrites: [UUID: ResearchDocumentWriteRecord] = [:]
+        var firstCommittedSourceWrites: [UUID: ResearchDocumentWriteRecord] = [:]
         for entry in stored.boundedWriteSet.entries {
             if entry.expectsAbsence { continue }
             let firstCommitted = writeRecords
@@ -592,10 +592,12 @@ extension ResearchActionRunCoordinator {
                     $0.target == entry.handle
                         && $0.actor == .agent
                         && $0.state == .committed
+                        && [.createNote, .modifyMarkdown, .modifySource]
+                            .contains($0.operation)
                 }
                 .min(by: { $0.startedAt < $1.startedAt })
             if let firstCommitted {
-                firstCommittedWrites[entry.noteID] = firstCommitted
+                firstCommittedSourceWrites[entry.noteID] = firstCommitted
             }
             if noteSnapshots[entry.noteID] == nil {
                 let startingRevision: DocumentFingerprint?
@@ -630,7 +632,7 @@ extension ResearchActionRunCoordinator {
         var changes: [PortableResearchConfirmedChange] = []
         if let confirmedWrite {
             for note in confirmedWrite.confirmedModifiedNotes {
-                guard let firstCommitted = firstCommittedWrites[note.noteID],
+                guard let firstCommitted = firstCommittedSourceWrites[note.noteID],
                       let ending = confirmedWrite.observedFingerprints[note.noteID]
                 else { continue }
                 let starting = firstCommitted.operation == .createNote
@@ -645,6 +647,7 @@ extension ResearchActionRunCoordinator {
                 ))
             }
         }
+        let activityOutcomes = try portableActivityOutcomes(stored: stored)
         let discrepancies: [PortableResearchDiscrepancy] = []
 
         let academicResults = try actionSnapshot.resultContract.academicFields.map {
@@ -659,6 +662,9 @@ extension ResearchActionRunCoordinator {
         var participantIDs: Set<UUID> = [actionSnapshot.target.noteID]
         participantIDs.formUnion(snapshot.request.materials.map(\.noteID))
         participantIDs.formUnion(changes.map(\.noteID))
+        participantIDs.formUnion(activityOutcomes.compactMap { outcome in
+            noteSnapshots[outcome.noteID] == nil ? nil : outcome.noteID
+        })
         let participatingNotes = try participantIDs.map { noteID in
             guard let note = noteSnapshots[noteID] else {
                 throw ResearchActionRunContractError.invalidCompletion(
@@ -724,11 +730,139 @@ extension ResearchActionRunCoordinator {
             academicResults: academicResults,
             fidelityCompletion: try portableFidelityCompletion(for: completion),
             confirmedChanges: changes,
+            activityOutcomes: activityOutcomes,
             discrepancies: discrepancies,
             literatureRecommendations: literatureRecommendations,
             startedAt: snapshot.preparedAt,
             finishedAt: completion.completedAt
         )
+    }
+
+    private func portableActivityOutcomes(
+        stored: LocalResearchExecutionRecord
+    ) throws -> [PortableResearchActivityOutcome] {
+        let entries = Dictionary(
+            uniqueKeysWithValues: stored.boundedWriteSet.entries.map {
+                ($0.handle, $0)
+            }
+        )
+        let abandonedConflicts = Dictionary(
+            stored.writeConflictResolutionRecords.compactMap { resolution in
+                resolution.action == .abandonWrite
+                    && resolution.state == .abandoned
+                    ? (resolution.conflictOperationID, resolution)
+                    : nil
+            },
+            uniquingKeysWith: { first, second in
+                first.resolvedAt >= second.resolvedAt ? first : second
+            }
+        )
+        let documentOutcomes = try stored.documentWriteRecords.map { write in
+            guard let entry = entries[write.target],
+                  let finishedAt = write.finishedAt else {
+                throw ResearchActionRunContractError.invalidCompletion(
+                    "A completed document activity has no exact target or terminal timestamp."
+                )
+            }
+            let domain: PortableResearchActivityRevisionDomain = switch write.operation {
+            case .createNote, .modifyMarkdown, .modifySource: .source
+            case .modifyMetadata: .managedMetadata
+            case .setZoteroBinding, .clearZoteroBinding:
+                throw ResearchActionRunContractError.invalidCompletion(
+                    "A Zotero-binding activity was stored as a document write."
+                )
+            }
+            let abandoned = write.state == .conflict
+                ? abandonedConflicts[write.id]
+                : nil
+            do {
+                return try PortableResearchActivityOutcome(
+                    id: write.id,
+                    noteID: entry.noteID,
+                    note: entry.note,
+                    role: entry.role,
+                    title: entry.title,
+                    operation: write.operation,
+                    revisionDomain: domain,
+                    state: abandoned == nil
+                        ? try portableActivityState(write.state)
+                        : .abandoned,
+                    expectedRevision: write.expectedRevision,
+                    intendedRevision: write.intendedRevision,
+                    observedRevision: write.observedRevision,
+                    startedAt: write.startedAt,
+                    finishedAt: abandoned?.resolvedAt ?? finishedAt
+                )
+            } catch {
+                throw ResearchActionRunContractError.invalidCompletion(
+                    "The \(write.operation.rawValue) document activity could not form portable typed revision evidence: \(error.localizedDescription)"
+                )
+            }
+        }
+        let bindingOutcomes = try stored.zoteroBindingWriteRecords.map { write in
+            guard let entry = entries[write.target],
+                  let finishedAt = write.finishedAt else {
+                throw ResearchActionRunContractError.invalidCompletion(
+                    "A completed Zotero-binding activity has no exact target or terminal timestamp."
+                )
+            }
+            do {
+                return try PortableResearchActivityOutcome(
+                    id: write.id,
+                    noteID: entry.noteID,
+                    note: entry.note,
+                    role: entry.role,
+                    title: entry.title,
+                    operation: write.operation,
+                    revisionDomain: .zoteroBinding,
+                    state: try portableActivityState(write.state),
+                    expectedRevision: write.expectedRevision,
+                    intendedRevision: nil,
+                    observedRevision: write.observedRevision,
+                    intendedZoteroBinding: write.intendedBinding,
+                    startedAt: write.startedAt,
+                    finishedAt: finishedAt
+                )
+            } catch {
+                throw ResearchActionRunContractError.invalidCompletion(
+                    "The \(write.operation.rawValue) Zotero-binding activity could not form portable typed revision evidence: \(error.localizedDescription)"
+                )
+            }
+        }
+        return (documentOutcomes + bindingOutcomes).sorted {
+            if $0.startedAt != $1.startedAt { return $0.startedAt < $1.startedAt }
+            return $0.id.uuidString < $1.id.uuidString
+        }
+    }
+
+    private func portableActivityState(
+        _ state: ResearchDocumentWriteState
+    ) throws -> PortableResearchActivityOutcomeState {
+        switch state {
+        case .committed: .committed
+        case .unchanged: .unchanged
+        case .conflict: .conflict
+        case .abandoned: .abandoned
+        case .writing, .recoveryRequired:
+            throw ResearchActionRunContractError.invalidCompletion(
+                "An unfinished document activity cannot enter a portable Record."
+            )
+        }
+    }
+
+    private func portableActivityState(
+        _ state: ResearchZoteroBindingWriteState
+    ) throws -> PortableResearchActivityOutcomeState {
+        switch state {
+        case .committed: .committed
+        case .unchanged: .unchanged
+        case .conflict: .conflict
+        case .abandoned: .abandoned
+        case .writing, .recoveryRequired:
+            throw ResearchActionRunContractError.invalidCompletion(
+                "An unfinished Zotero-binding activity cannot enter a portable Record."
+            )
+        }
     }
 
     private func portableFidelityCompletion(
@@ -1030,7 +1164,10 @@ extension ResearchActionRunCoordinator {
         }
 
         let handlesWithCommittedWrites = Set(writes.compactMap { write in
-            write.state == .committed && write.intendedRevision != write.expectedRevision
+            write.state == .committed
+                && [.createNote, .modifyMarkdown, .modifySource]
+                    .contains(write.operation)
+                && write.intendedRevision != write.expectedRevision
                 ? write.target
                 : nil
         })

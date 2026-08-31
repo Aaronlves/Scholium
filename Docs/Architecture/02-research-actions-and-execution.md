@@ -210,8 +210,8 @@ the Application does not prepare, attach, or expose a post-write Fidelity
 child. A separate Fidelity Run is created only through the researcher-visible
 Check Fidelity Action.
 This chapter owns pairing, Session, and Run lifecycle. [Research Guidance](04-research-guidance.md)
-owns the Skill, Profile, collaboration-policy, and citation
-configuration consumed during preparation.
+owns the Skill, Profile, and citation configuration consumed during
+preparation.
 
 An external Agent workspace registers every exact Protocol and current Action Skill
 source returned by `WorkspaceSkillDiscovery` through its host's project-level
@@ -287,7 +287,7 @@ Zotero metadata, Records, and provider responses as typed data. Evidence text
 cannot alter the other two layers, Session, activity ledger, tools, or next Action.
 
 Result and Method Feedback prose remains an opaque exact string throughout
-Agent submission, strict schema-17 decoding, Record validation, hashing,
+Agent submission, strict schema-18 decoding, Record validation, hashing,
 persistence, CLI reading, Search projection, and replacement. No Core or
 Application operation parses scholarly markup, resolves a Record-authored
 link, or reconstructs source from a rendered value. Presentation may derive a
@@ -429,7 +429,10 @@ current roles, lifecycle, and containment, then automatically appends every
 valid target. No App permission coordinator, subset sheet, collaboration
 policy, or per-document researcher decision participates.
 
-Schema 6 members may independently track `modify_metadata` for an existing
+Schema 7 members have no wall-clock expiry: they survive Session rotation or
+re-pairing until the Run or member ends. Every operation still revalidates its
+Session, identity, operation, and revision.
+Members may independently track `modify_metadata` for an existing
 Note and freeze its portable Metadata revision, including proven absence for a
 first record. `set_zotero_binding` and `clear_zotero_binding` apply only to an
 existing Analysis and freeze the global portable binding revision in addition
@@ -495,21 +498,27 @@ Record; a different payload fails closed. An interrupted committed
 source/finalization gap is repaired from the Run and transaction evidence
 unless a Record deletion tombstone forbids recreation.
 
-`PortableResearchRecordStore` owns strict schema-17 Records, including the
+`PortableResearchRecordStore` owns schema-18 Records, including the
 frozen Record Title, explicit Analyze source route, exact source-byte
-fingerprints, and researcher-owned Method Feedback. The same store owns
+fingerprints, Agent activity outcomes, and researcher-owned
+Method Feedback. Activity outcomes retain the exact portable target, operation,
+terminal result, and source, managed-Metadata, or Zotero-binding revision domain;
+they exclude capability handles, request fingerprints, warning text, recovery
+locators, credentials, and Agent reasoning. The same store owns
 schema-1 `PortableResearchNoteReview` files as
 the single cumulative portable Note Review boundary. Analyze recommendation
 mutation and Method Feedback replacement use one revision-safe replacement
 primitive under portable coordination and lock, distinguish pre-commit refusal
 from post-commit uncertainty, and read back before success. Record schemas 1
-through 14 have no decoder or mutation route; their bytes remain untouched and
+through 17 have no decoder or mutation route; their bytes remain untouched and
 nonauthorizing when encountered.
 
-Schema 17 contains no source-use report or actually-used Materials list.
+Schema 18 contains no source-use report or actually-used Materials list.
 Action participants are the Target, every explicit frozen Material, and every
-Note with a confirmed Agent change; dynamically queried Notes never become
-participants. In-text citations remain optional authored academic content and
+existing Note with a recorded Agent activity or confirmed Agent change;
+dynamically queried Notes never become participants. A failed absent-target
+creation remains identifiable inside its activity outcome without fabricating a
+Note revision. In-text citations remain optional authored academic content and
 are not reconstructed from query or delivery history. The Action identity
 retains the Application-established frozen Material Note IDs so projections
 never confuse a confirmed-change-only participant with a selected Material.
@@ -520,7 +529,7 @@ or construct another Record index. List validates the stable Note UUID against
 the current catalog or the snapshot's historical participants, filters the
 Record-owned `participatingNotes`, and emits the snapshot's complete source
 manifest plus exact Record fingerprints. Read selects one exact Record UUID and
-returns the decoded schema-17 value with its same-snapshot fingerprint. Either
+returns the decoded schema-18 value with its same-snapshot fingerprint. Either
 adapter refuses an incomplete projection or missing fingerprint and exposes no
 Record mutation use case.
 
@@ -562,7 +571,7 @@ transaction. Undo does not read or write Note Review, and every attempted
 source replacement triggers refresh even when readback is uncertain.
 
 `WorkspaceSnapshotBuilder` derives activities, Note Reviews, and Result arrivals
-from current Local Execution, exact schema-17 Records, and schema-1 Note Reviews.
+from current Local Execution, exact schema-18 Records, and schema-1 Note Reviews.
 The bounded projections omit authority and research content. Needs Attention
 follows current entry/recovery state. A formed Record evolves its Action item to
 Result Ready; confirmed changes create per-Note Review, but one Action creates
@@ -653,7 +662,11 @@ The CLI and authenticated Agent Session remain the owners of Agent autonomous
 Continue Research. A created Continue response attaches the child locator to
 the existing Session and returns the child's complete authenticated Context,
 including its fresh minimum `required_skills`; it requires neither another
-pairing nor an initial reload. Only after the next Record safely forms does that child
+pairing nor an initial reload. The CLI stores the same Session credential under
+the returned child locator before reporting success, so later `agent reload`
+addresses that child directly. Session bindings retain the immediate parent Run;
+re-pairing or revoking any ancestor recursively removes every derived descendant
+without affecting independent Runs. Only after the next Record safely forms does that child
 persist `ResearchContinuationLineage(.continueResearch)` with its parent Run;
 the parent relation is rebuildable. The child remains one portable Record and
 one Search result for audit, while the Records collection folds it beneath the

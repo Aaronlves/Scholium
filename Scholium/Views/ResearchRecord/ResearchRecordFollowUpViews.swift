@@ -16,7 +16,7 @@ struct ResearchRecordFollowUpSection: View {
                 .scholiumApparatusHeadingStyle()
                 .accessibilityHeading(.h2)
 
-            Text("Start a new Action from this completed Result. Scholium will resolve the current Skill assignment, Profile, materials, permissions, and write boundary again.")
+            Text("Start a new Action from this completed Result. Scholium will resolve the current Skill, Profile, materials, and document revisions, then track the new Run separately.")
                 .font(ScholiumTypography.interface(.compact))
                 .scholiumForeground(.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)

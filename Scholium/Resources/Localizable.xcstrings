@@ -5618,12 +5618,12 @@
         }
       }
     },
-    "Can update this %@. Additional context stays read-only unless you approve a later request for specific Notes." : {
+    "Can update this %@. The Agent may add other relevant Notes to this Run before changing them." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "可以更新当前%@。除非您之后批准针对特定笔记的请求，否则附加上下文保持只读。"
+            "value" : "可以更新当前%@。智能体也可先将其他相关笔记加入此次运行，再进行更改。"
           }
         }
       }
@@ -31630,12 +31630,12 @@
         }
       }
     },
-    "Start a new Action from this completed Result. Scholium will resolve the current Skill assignment, Profile, materials, permissions, and write boundary again." : {
+    "Start a new Action from this completed Result. Scholium will resolve the current Skill, Profile, materials, and document revisions, then track the new Run separately." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "从此已完成的结果启动新操作。Scholium 将重新解析当前技能分配、配置、材料、权限和写入边界。"
+            "value" : "从此已完成的结果启动新操作。Scholium 将重新解析当前技能、配置、材料和文档修订，并单独追踪新的运行。"
           }
         }
       }

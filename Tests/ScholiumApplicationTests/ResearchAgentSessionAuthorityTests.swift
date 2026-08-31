@@ -847,6 +847,121 @@ struct ResearchAgentSessionAuthorityTests {
         }
     }
 
+    @Test("Continue may attach to a finalized parent only when explicitly requested")
+    func continuationAttachmentRequiresExplicitFinalizedParentAllowance() async throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let authority = try ResearchAgentSessionAuthority(
+            random: FixedResearchRandomSource()
+        )
+        let triptychID = UUID()
+        let parentID = UUID()
+        let issued = try await authority.issueAgentSession(
+            runID: parentID,
+            triptychID: triptychID,
+            canWrite: true,
+            now: now,
+            sessionValidity: 300,
+            userID: 501
+        )
+        await authority.finalizeRun(parentID)
+
+        await #expect(throws: ResearchAgentSessionError.sessionRejected) {
+            _ = try await authority.attachRun(
+                runID: UUID(),
+                triptychID: triptychID,
+                canWrite: false,
+                to: issued.credential,
+                authorizedBy: issued.run,
+                now: now,
+                userID: 501
+            )
+        }
+
+        let childID = UUID()
+        let child = try await authority.attachRun(
+            runID: childID,
+            triptychID: triptychID,
+            canWrite: false,
+            to: issued.credential,
+            authorizedBy: issued.run,
+            allowFinalizedParent: true,
+            now: now,
+            userID: 501
+        )
+        #expect((try await authority.authenticate(
+            issued.credential,
+            run: child,
+            requiresWrite: false,
+            now: now,
+            userID: 501
+        )).runID == childID)
+    }
+
+    @Test("Re-pairing any ancestor recursively revokes every derived descendant")
+    func repairingAncestorRevokesNestedDescendants() async throws {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let authority = try ResearchAgentSessionAuthority(
+            random: FixedResearchRandomSource()
+        )
+        let triptychID = UUID()
+        let parentID = UUID()
+        let issued = try await authority.issueAgentSession(
+            runID: parentID,
+            triptychID: triptychID,
+            canWrite: true,
+            now: now,
+            sessionValidity: 300,
+            userID: 501
+        )
+        let childID = UUID()
+        let child = try await authority.attachRun(
+            runID: childID,
+            triptychID: triptychID,
+            canWrite: false,
+            to: issued.credential,
+            authorizedBy: issued.run,
+            now: now,
+            userID: 501
+        )
+        let grandchildID = UUID()
+        let grandchild = try await authority.attachRun(
+            runID: grandchildID,
+            triptychID: triptychID,
+            canWrite: false,
+            to: issued.credential,
+            authorizedBy: child,
+            now: now,
+            userID: 501
+        )
+
+        _ = try await authority.issuePairing(
+            runID: childID,
+            triptychID: triptychID,
+            canWrite: false,
+            now: now,
+            userID: 501
+        )
+
+        #expect((try await authority.authenticate(
+            issued.credential,
+            run: issued.run,
+            requiresWrite: false,
+            now: now,
+            userID: 501
+        )).runID == parentID)
+        for revoked in [child, grandchild] {
+            await #expect(throws: ResearchAgentSessionError.sessionRejected) {
+                _ = try await authority.authenticate(
+                    issued.credential,
+                    run: revoked,
+                    requiresWrite: false,
+                    now: now,
+                    userID: 501
+                )
+            }
+        }
+    }
+
     @Test("Re-pairing a parent revokes its derived child locator without revoking an independent Run")
     func repairingParentRevokesDerivedChildAuthority() async throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)

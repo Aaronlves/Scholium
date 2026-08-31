@@ -74,11 +74,11 @@ actor ResearchAgentSessionAuthority {
         let triptychID: UUID
         let locator: ResearchRunLocator
         let canWrite: Bool
-        /// Root Run whose authenticated authority attached this locator.
-        /// Nil means the Run owns independent Session authority. A derived
-        /// Fidelity locator must disappear when that root is re-paired or
-        /// revoked; persisted Run lineage alone never keeps bearer access.
-        let sessionRootRunID: UUID?
+        /// Immediate Run whose authenticated authority attached this locator.
+        /// Nil means the Run owns independent Session authority. Revocation
+        /// walks these parent links so every derived descendant disappears
+        /// when any ancestor is re-paired or revoked.
+        let sessionParentRunID: UUID?
         var activeSessionID: UUID?
         var isFinalized: Bool
     }
@@ -136,7 +136,7 @@ actor ResearchAgentSessionAuthority {
             triptychID: triptychID,
             locator: locator,
             canWrite: canWrite,
-            sessionRootRunID: nil,
+            sessionParentRunID: nil,
             activeSessionID: nil,
             isFinalized: false
         )
@@ -185,7 +185,7 @@ actor ResearchAgentSessionAuthority {
             triptychID: triptychID,
             locator: locator,
             canWrite: canWrite,
-            sessionRootRunID: nil,
+            sessionParentRunID: nil,
             activeSessionID: credential.sessionID,
             isFinalized: false
         )
@@ -287,7 +287,7 @@ actor ResearchAgentSessionAuthority {
         triptychID: UUID,
         canWrite: Bool,
         to credential: ResearchConnectionCredential,
-        sessionRootRunID: UUID? = nil,
+        sessionParentRunID: UUID? = nil,
         now: Date = Date(),
         userID: uid_t = geteuid()
     ) throws -> ResearchRunLocator {
@@ -307,7 +307,7 @@ actor ResearchAgentSessionAuthority {
             triptychID: triptychID,
             locator: locator,
             canWrite: canWrite,
-            sessionRootRunID: sessionRootRunID,
+            sessionParentRunID: sessionParentRunID,
             activeSessionID: credential.sessionID,
             isFinalized: false
         )
@@ -318,16 +318,16 @@ actor ResearchAgentSessionAuthority {
     }
 
     /// Atomically attaches one child only while the supplied parent locator
-    /// remains an unfinished binding in the same authenticated Session. This
-    /// prevents a prepared child from gaining access after concurrent parent
-    /// finalization and makes outcome-unknown retry return the existing child
-    /// locator instead of issuing a duplicate.
+    /// remains an authenticated binding in the same Session. Ordinary derived
+    /// work requires an unfinished parent; Continue Research explicitly allows
+    /// its safely finalized parent while preserving the same revocation chain.
     func attachRun(
         runID: UUID,
         triptychID: UUID,
         canWrite: Bool,
         to credential: ResearchConnectionCredential,
         authorizedBy parent: ResearchRunLocator,
+        allowFinalizedParent: Bool = false,
         now: Date = Date(),
         userID: uid_t = geteuid()
     ) throws -> ResearchRunLocator {
@@ -335,7 +335,7 @@ actor ResearchAgentSessionAuthority {
             credential,
             run: parent,
             requiresWrite: false,
-            allowFinalized: false,
+            allowFinalized: allowFinalizedParent,
             now: now,
             userID: userID
         )
@@ -343,14 +343,12 @@ actor ResearchAgentSessionAuthority {
               authenticatedParent.runID != runID else {
             throw ResearchAgentSessionError.sessionRejected
         }
-        let sessionRootRunID = runs[parent]?.sessionRootRunID
-            ?? authenticatedParent.runID
         if let existing = sessions[credential.sessionID]?.runLocators
             .compactMap({ locator -> ResearchRunLocator? in
                 guard let binding = runs[locator],
                       binding.runID == runID,
                       binding.triptychID == triptychID,
-                      binding.sessionRootRunID == sessionRootRunID,
+                      binding.sessionParentRunID == authenticatedParent.runID,
                       binding.activeSessionID == credential.sessionID,
                       !binding.isFinalized else {
                     return nil
@@ -366,7 +364,7 @@ actor ResearchAgentSessionAuthority {
             triptychID: triptychID,
             canWrite: canWrite,
             to: credential,
-            sessionRootRunID: sessionRootRunID,
+            sessionParentRunID: authenticatedParent.runID,
             now: now,
             userID: userID
         )
@@ -488,9 +486,21 @@ actor ResearchAgentSessionAuthority {
     }
 
     private func revokeAuthorizationLineage(rootRunID: UUID) {
+        var revokedRunIDs: Set<UUID> = [rootRunID]
+        var addedDescendant = true
+        while addedDescendant {
+            addedDescendant = false
+            for binding in runs.values {
+                guard let parentRunID = binding.sessionParentRunID,
+                      revokedRunIDs.contains(parentRunID),
+                      revokedRunIDs.insert(binding.runID).inserted else {
+                    continue
+                }
+                addedDescendant = true
+            }
+        }
         let locators = runs.values.filter {
-            $0.runID == rootRunID
-                || $0.sessionRootRunID == rootRunID
+            revokedRunIDs.contains($0.runID)
         }.map(\.locator)
         for locator in locators {
             mutationLeases = mutationLeases.filter {

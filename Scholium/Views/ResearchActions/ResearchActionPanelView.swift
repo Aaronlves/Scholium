@@ -1129,7 +1129,7 @@ struct ResearchActionPanelView: View {
             ?? String(localized: "note", table: "Localizable", bundle: .module)
         return platform.operations.contains(.modifyInitialNote)
             ? String(
-                localized: "Can update this \(role). Additional context stays read-only unless you approve a later request for specific Notes.",
+                localized: "Can update this \(role). The Agent may add other relevant Notes to this Run before changing them.",
                 table: "Localizable",
                 bundle: .module
             )

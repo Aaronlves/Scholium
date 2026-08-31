@@ -793,8 +793,7 @@ struct LocalAgentBridgeTests {
             title: "Agency",
             allowedOperations: [.modifyMarkdown],
             expectedRevision: DocumentFingerprint(content: "before"),
-            activityOrigin: .initialAction,
-            expiresAt: Date().addingTimeInterval(60)
+            activityOrigin: .initialAction
         )
         let result = ResearchDocumentWriteResult(
             operationID: UUID(),

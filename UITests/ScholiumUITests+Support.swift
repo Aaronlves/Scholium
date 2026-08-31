@@ -1175,7 +1175,7 @@ extension ScholiumUITests {
         }
 
         var portableRecord: [String: Any] = [
-            "schema_version": 17,
+            "schema_version": 18,
             "id": recordID.uuidString,
             "triptych_id": triptychID.uuidString,
             "record_title": createsSynthesisAttention
@@ -1221,6 +1221,7 @@ extension ScholiumUITests {
             "academic_results": [],
             "fidelity_completion": "unverified",
             "confirmed_changes": [],
+            "activity_outcomes": [],
             "discrepancies": [],
             "literature_recommendations": createsSynthesisAttention ? [] : [[
                 "id": recommendationID.uuidString,
@@ -1382,7 +1383,7 @@ extension ScholiumUITests {
                 )
             }
             let record: [String: Any] = [
-                "schema_version": 17,
+                "schema_version": 18,
                 "id": seed.recordID.uuidString,
                 "triptych_id": triptychID.uuidString,
                 "record_title": seed.title,
@@ -1411,6 +1412,7 @@ extension ScholiumUITests {
                 "academic_results": [],
                 "fidelity_completion": "unverified",
                 "confirmed_changes": confirmedChanges,
+                "activity_outcomes": [],
                 "discrepancies": [],
                 "literature_recommendations": [],
                 "started_at": "2026-08-09T03:00:00Z",
@@ -1468,7 +1470,7 @@ extension ScholiumUITests {
             at: destination.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        try Data("{\"schema_version\":17".utf8).write(
+        try Data("{\"schema_version\":18".utf8).write(
             to: destination,
             options: .atomic
         )

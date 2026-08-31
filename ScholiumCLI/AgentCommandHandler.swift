@@ -328,6 +328,14 @@ extension ScholiumCLI {
                 credential: credential,
                 request: request
             )
+            if let nextRun = result.nextRun {
+                try await persistNewCredential(
+                    credential,
+                    for: nextRun,
+                    operations: operations,
+                    credentialStore: credentialStore
+                )
+            }
             try writeAgentJSON(result)
             return
         }

@@ -23,7 +23,7 @@ remain separate scholarly Actions.
 
 A **Run** is the only working object for one Action. It owns the task, initial
 research object, frozen Action configuration context, Result Contract, current operation
-availability, short-lived Run Activity Ledger, per-document transaction results,
+availability, Run-lifetime Activity Ledger, per-document transaction results,
 status, and one temporary result payload. It limits Research Context queries
 but never owns the Triptych, a provider, an index, or a query response. The
 researcher sees only **In Progress**, **Needs Attention**, or **Ended**, with
@@ -313,17 +313,18 @@ Skill-file edits remain ordinary external filesystem work. Third-party
 disclosure and external-service writes retain their separate privacy and
 consequence boundaries.
 
-The hidden, short-lived **Run Activity Ledger** is an attribution and recovery
-owner, not an authorization allowlist. The initial object enters it at Run
-creation. Before the first mutation of another document, the Agent declares the
-exact target and intended operation; Scholium resolves the stable identity,
-role, starting revision or proven absence, and automatically appends it. The
-ledger then records each attempted operation and its confirmed, unchanged,
-conflicted, unknown, abandoned, or recovery-required outcome. It contains no
-document bytes, research plan, write order, academic relation, or persistent
-target group. Request, Run-total, and payload limits are resource bounds;
-exceeding one returns a smaller continuation requirement rather than a request
-for researcher permission.
+The hidden, Run-lifetime **Run Activity Ledger** owns attribution and recovery,
+not authorization. It starts with the initial object. Before another document's
+first mutation, the Agent declares its exact target and operation; Scholium
+resolves identity, role, revision or absence and appends it. The ledger records
+each attempt and its confirmed, unchanged, conflicted, unknown, abandoned, or
+recovery-required outcome, but no bytes, plan, order, academic relation, or
+persistent target group. Request, Run-total, and payload limits are resource
+bounds, never approval requests.
+
+Members have no wall-clock expiry: they survive Session rotation and re-pairing
+until the Run or member ends. Every operation still revalidates live Session,
+identity, containment, operation, and its source, Metadata, or binding revision.
 
 The operation is always explicit: `create_note`, `modify_markdown`,
 `modify_source`, `modify_metadata`, `set_zotero_binding`, or
@@ -477,10 +478,10 @@ edits do not resurrect covered activities, and the retained revision prevents
 calling newer source reviewed. Review means neither acceptance, truth,
 adoption, Settle, nor fidelity.
 
-Only confirmed Agent changes create Review work. The origin always participates
-in its one Record; other Notes participate only when they were explicit frozen
-Materials, received a confirmed change, or joined a Discussion. Dynamically
-read Notes never become Record participants merely because they were delivered.
+Only confirmed Agent source changes create Review work. The origin always
+participates; other existing Notes participate as frozen Materials, recorded
+activity targets, confirmed source changes, or Discussion members. Delivery
+alone never makes a dynamically read Note participate.
 Each Note projects the same one-Run/one-Record identity. Participant-only links
 do not need Review. A no-change Action finalizes, ends, and emits one deduplicated
 Result-arrived notice without another decision.
@@ -521,10 +522,10 @@ Portable Records remain one strict closed schema under
 `.scholium/research-records/v1/`; unknown schema/fields fail closed. The same
 portable owner stores one current cumulative Note Review fact per Note,
 separate from Record bytes and excluded from finalized-result identity. A Record
-retains its frozen Record Title, attributed researcher and Agent statements, participating exact Note
-revisions, Action, minimal method provenance, confirmed
-changes, discrepancies, Fidelity completion, the explicit Analyze source route,
-Analyze-only Literature
+retains its frozen Record Title, attributed statements, participating Note
+revisions, Action, minimal method provenance, confirmed changes, discrepancies,
+Fidelity completion, Analyze source route, terminal Agent activity target,
+operation, result, and typed source/Metadata/binding revisions, Analyze-only Literature
 Recommendations, and current Method Feedback. Method Feedback is excluded from
 the finalized-result fingerprint. It excludes raw secrets,
 bookmarks, absolute paths, method/folder snapshots, prompts, token counts,
@@ -613,7 +614,10 @@ an Agent act rather than researcher intent.
 Agent **Continue Research** remains initiated through the authenticated
 CLI/Agent Run protocol. A created Continue response returns the child Context
 and `required_skills` through the existing Session, without pairing or initial
-reload. Researcher **Follow Up…** instead creates a new researcher-initiated
+reload. Before returning success, the CLI stores that Session credential under
+the child locator for later reload. Immediate-parent bindings make ancestor
+re-pair or revocation recursively revoke derived descendants, not independent
+Runs. Researcher **Follow Up…** instead creates a new researcher-initiated
 Run through ordinary Action preparation and a fresh handoff; it never reuses
 the parent Session or any parent write authority. Both child Records remain
 portable and searchable and retain their precise lineage while the Records

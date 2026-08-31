@@ -444,6 +444,184 @@ public struct PortableResearchConfirmedChange: Codable, Hashable, Identifiable, 
     }
 }
 
+/// The revision namespace used by one Scholium-observed Agent activity.
+/// Fingerprints from different namespaces are never compared or promoted to
+/// source revisions merely because they share the same digest representation.
+public enum PortableResearchActivityRevisionDomain: String, Codable, Hashable,
+    Sendable
+{
+    case source
+    case managedMetadata = "managed_metadata"
+    case zoteroBinding = "zotero_binding"
+}
+
+/// A terminal, Scholium-established result retained after the machine-local
+/// activity ledger is compacted. In-progress and recovery-required states are
+/// deliberately excluded because a Run cannot form a Record while they exist.
+public enum PortableResearchActivityOutcomeState: String, Codable, Hashable,
+    Sendable
+{
+    case committed
+    case unchanged
+    case conflict
+    case abandoned
+}
+
+/// Portable attribution for one exact Agent mutation attempt. Capability
+/// handles, request fingerprints, warnings, recovery locators, credentials,
+/// and Agent reasoning remain machine-local.
+public struct PortableResearchActivityOutcome: Codable, Hashable, Identifiable,
+    Sendable
+{
+    public let id: UUID
+    public let noteID: UUID
+    public let note: VaultQualifiedNoteID
+    public let role: ResearchActionTargetRole
+    public let title: String
+    public let operation: ResearchDocumentWriteOperation
+    public let revisionDomain: PortableResearchActivityRevisionDomain
+    public let state: PortableResearchActivityOutcomeState
+    public let expectedRevision: DocumentFingerprint?
+    public let intendedRevision: DocumentFingerprint?
+    public let observedRevision: DocumentFingerprint?
+    public let intendedZoteroBinding: AnalysisZoteroBinding?
+    public let startedAt: Date
+    public let finishedAt: Date
+
+    public init(
+        id: UUID,
+        noteID: UUID,
+        note: VaultQualifiedNoteID,
+        role: ResearchActionTargetRole,
+        title: String,
+        operation: ResearchDocumentWriteOperation,
+        revisionDomain: PortableResearchActivityRevisionDomain,
+        state: PortableResearchActivityOutcomeState,
+        expectedRevision: DocumentFingerprint?,
+        intendedRevision: DocumentFingerprint?,
+        observedRevision: DocumentFingerprint?,
+        intendedZoteroBinding: AnalysisZoteroBinding? = nil,
+        startedAt: Date,
+        finishedAt: Date
+    ) throws {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let revisionsAreValid = [
+            expectedRevision,
+            intendedRevision,
+            observedRevision,
+        ].compactMap { $0 }.allSatisfy(
+            PortableResearchRecordValidation.isValidFingerprint
+        )
+        let operationShapeIsValid: Bool = switch revisionDomain {
+        case .source:
+            [.createNote, .modifyMarkdown, .modifySource].contains(operation)
+                && intendedRevision != nil
+                && (operation == .createNote) == (expectedRevision == nil)
+                && intendedZoteroBinding == nil
+        case .managedMetadata:
+            operation == .modifyMetadata
+                && intendedRevision != nil
+                && intendedZoteroBinding == nil
+        case .zoteroBinding:
+            operation.isZoteroBindingOperation
+                && role == .analysis
+                && expectedRevision != nil
+                && intendedRevision == nil
+                && (operation == .setZoteroBinding)
+                    == (intendedZoteroBinding != nil)
+                && (intendedZoteroBinding == nil
+                    || intendedZoteroBinding?.noteID == noteID)
+        }
+        guard !title.isEmpty,
+              title.utf8.count <= 1_024,
+              !PortableResearchRecordValidation.containsAbsolutePath(title),
+              PortableResearchRecordValidation.isValidNote(note),
+              revisionsAreValid,
+              operationShapeIsValid,
+              startedAt.timeIntervalSinceReferenceDate.isFinite,
+              finishedAt.timeIntervalSinceReferenceDate.isFinite,
+              finishedAt >= startedAt else {
+            throw PortableResearchRecordError.invalidActivityOutcome
+        }
+        self.id = id
+        self.noteID = noteID
+        self.note = note
+        self.role = role
+        self.title = title
+        self.operation = operation
+        self.revisionDomain = revisionDomain
+        self.state = state
+        self.expectedRevision = expectedRevision
+        self.intendedRevision = intendedRevision
+        self.observedRevision = observedRevision
+        self.intendedZoteroBinding = intendedZoteroBinding
+        self.startedAt = startedAt
+        self.finishedAt = finishedAt
+    }
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case id
+        case noteID = "note_id"
+        case note, role, title, operation
+        case revisionDomain = "revision_domain"
+        case state
+        case expectedRevision = "expected_revision"
+        case intendedRevision = "intended_revision"
+        case observedRevision = "observed_revision"
+        case intendedZoteroBinding = "intended_zotero_binding"
+        case startedAt = "started_at"
+        case finishedAt = "finished_at"
+    }
+
+    public init(from decoder: Decoder) throws {
+        try PortableResearchRecordValidation.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.allCases.map(\.stringValue)
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        try self.init(
+            id: container.decode(UUID.self, forKey: .id),
+            noteID: container.decode(UUID.self, forKey: .noteID),
+            note: container.decode(
+                PortableResearchStrictNoteID.self,
+                forKey: .note
+            ).value,
+            role: container.decode(ResearchActionTargetRole.self, forKey: .role),
+            title: container.decode(String.self, forKey: .title),
+            operation: container.decode(
+                ResearchDocumentWriteOperation.self,
+                forKey: .operation
+            ),
+            revisionDomain: container.decode(
+                PortableResearchActivityRevisionDomain.self,
+                forKey: .revisionDomain
+            ),
+            state: container.decode(
+                PortableResearchActivityOutcomeState.self,
+                forKey: .state
+            ),
+            expectedRevision: container.decodeIfPresent(
+                PortableResearchStrictFingerprint.self,
+                forKey: .expectedRevision
+            )?.value,
+            intendedRevision: container.decodeIfPresent(
+                PortableResearchStrictFingerprint.self,
+                forKey: .intendedRevision
+            )?.value,
+            observedRevision: container.decodeIfPresent(
+                PortableResearchStrictFingerprint.self,
+                forKey: .observedRevision
+            )?.value,
+            intendedZoteroBinding: container.decodeIfPresent(
+                PortableResearchStrictZoteroBinding.self,
+                forKey: .intendedZoteroBinding
+            )?.value,
+            startedAt: container.decode(Date.self, forKey: .startedAt),
+            finishedAt: container.decode(Date.self, forKey: .finishedAt)
+        )
+    }
+}
+
 public enum PortableResearchDiscrepancyKind: String, Codable, Hashable, Sendable {
     case changedButNotReported = "changed_but_not_reported"
     case reportedButUnmodified = "reported_but_unmodified"
@@ -519,7 +697,7 @@ public enum PortableResearchFidelityCompletion: String, Codable, Hashable, Senda
 /// validated nonconversational Action. It deliberately has no generic metadata
 /// dictionary, so machine-local execution fields cannot leak through encoding.
 public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable {
-    public static let currentSchemaVersion = 17
+    public static let currentSchemaVersion = 18
 
     public let schemaVersion: Int
     public let id: UUID
@@ -543,6 +721,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
     public let academicResults: [PortableResearchAcademicFieldResult]
     public let fidelityCompletion: PortableResearchFidelityCompletion
     public let confirmedChanges: [PortableResearchConfirmedChange]
+    public let activityOutcomes: [PortableResearchActivityOutcome]
     public let discrepancies: [PortableResearchDiscrepancy]
     public let literatureRecommendations: [ResearchLiteratureRecommendation]
     public let startedAt: Date
@@ -567,6 +746,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         academicResults: [PortableResearchAcademicFieldResult] = [],
         fidelityCompletion: PortableResearchFidelityCompletion,
         confirmedChanges: [PortableResearchConfirmedChange] = [],
+        activityOutcomes: [PortableResearchActivityOutcome] = [],
         discrepancies: [PortableResearchDiscrepancy] = [],
         literatureRecommendations: [ResearchLiteratureRecommendation] = [],
         startedAt: Date,
@@ -578,6 +758,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
             uniquingKeysWith: { first, _ in first }
         )
         let statementIDs = statements.map(\.id)
+        let activityOutcomeIDs = activityOutcomes.map(\.id)
         let discrepancyIDs = discrepancies.map(\.id)
         let recommendationIDs = literatureRecommendations.map(\.id)
         let academicFieldIDs = academicResults.map(\.id)
@@ -590,11 +771,16 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
               statements.count <= 4_096,
               academicResults.count <= 24,
               confirmedChanges.count <= 256,
+              activityOutcomes.count <= 256,
               discrepancies.count <= 256,
               literatureRecommendations.count <= 256,
               participatingByID.count == participatingNotes.count,
               Set(statementIDs).count == statementIDs.count,
               Set(academicFieldIDs).count == academicFieldIDs.count,
+              Set(activityOutcomeIDs).count == activityOutcomeIDs.count,
+              activityOutcomes.allSatisfy({ outcome in
+                  outcome.startedAt >= startedAt && outcome.finishedAt <= finishedAt
+              }),
               zip(statements, statements.dropFirst()).allSatisfy({ pair in
                   pair.0.createdAt <= pair.1.createdAt
               }),
@@ -615,6 +801,13 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
                       return false
                   }
                   return true
+              }),
+              activityOutcomes.allSatisfy({ outcome in
+                  guard let participant = participatingByID[outcome.noteID] else {
+                      return true
+                  }
+                  return participant.note == outcome.note
+                      && participant.role == outcome.role
               }),
               discrepancies.allSatisfy({ discrepancy in
                   participatingByID[discrepancy.noteID] != nil
@@ -647,6 +840,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
                   continuationLineage == nil,
                   fidelityCompletion == .notApplicable,
                   confirmedChanges.isEmpty,
+                  activityOutcomes.isEmpty,
                   methodFeedbackComment == nil,
                   discrepancies.isEmpty,
                   literatureRecommendations.isEmpty else {
@@ -675,6 +869,10 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         self.confirmedChanges = confirmedChanges.sorted {
             $0.noteID.uuidString < $1.noteID.uuidString
         }
+        self.activityOutcomes = activityOutcomes.sorted {
+            if $0.startedAt != $1.startedAt { return $0.startedAt < $1.startedAt }
+            return $0.id.uuidString < $1.id.uuidString
+        }
         self.discrepancies = discrepancies.sorted {
             if $0.noteID != $1.noteID { return $0.noteID.uuidString < $1.noteID.uuidString }
             return $0.id.uuidString < $1.id.uuidString
@@ -702,6 +900,7 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
         case academicResults = "academic_results"
         case fidelityCompletion = "fidelity_completion"
         case confirmedChanges = "confirmed_changes"
+        case activityOutcomes = "activity_outcomes"
         case discrepancies
         case literatureRecommendations = "literature_recommendations"
         case startedAt = "started_at"
@@ -774,6 +973,10 @@ public struct PortableResearchRecord: Codable, Hashable, Identifiable, Sendable 
                 [PortableResearchConfirmedChange].self,
                 forKey: .confirmedChanges
             ),
+            activityOutcomes: container.decode(
+                [PortableResearchActivityOutcome].self,
+                forKey: .activityOutcomes
+            ),
             discrepancies: container.decode(
                 [PortableResearchDiscrepancy].self,
                 forKey: .discrepancies
@@ -820,6 +1023,7 @@ public enum PortableResearchRecordError: LocalizedError, Hashable, Sendable {
     case invalidNoteRevision
     case invalidMethodReference
     case invalidConfirmedChange
+    case invalidActivityOutcome
     case invalidRecordTitle
     case invalidRecord
 
@@ -837,6 +1041,8 @@ public enum PortableResearchRecordError: LocalizedError, Hashable, Sendable {
             "The portable Research Record contains an invalid Method reference."
         case .invalidConfirmedChange:
             "The portable Research Record contains an invalid confirmed change."
+        case .invalidActivityOutcome:
+            "The portable Research Record contains an invalid Agent activity outcome."
         case .invalidRecordTitle:
             "The portable Research Record title must be one concise line."
         case .invalidRecord:
@@ -902,6 +1108,36 @@ private struct PortableResearchStrictNoteID: Decodable {
         )
         guard PortableResearchRecordValidation.isValidNote(value) else {
             throw PortableResearchRecordError.invalidNoteRevision
+        }
+    }
+}
+
+private struct PortableResearchStrictZoteroBinding: Decodable {
+    let value: AnalysisZoteroBinding
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case noteID = "note_id"
+        case library
+        case itemKey = "item_key"
+    }
+
+    init(from decoder: Decoder) throws {
+        try PortableResearchRecordValidation.rejectUnknownFields(
+            in: decoder,
+            allowed: CodingKeys.allCases.map(\.stringValue)
+        )
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        do {
+            value = try AnalysisZoteroBinding(
+                noteID: container.decode(UUID.self, forKey: .noteID),
+                library: container.decode(
+                    ZoteroLibraryIdentity.self,
+                    forKey: .library
+                ),
+                itemKey: container.decode(String.self, forKey: .itemKey)
+            )
+        } catch {
+            throw PortableResearchRecordError.invalidActivityOutcome
         }
     }
 }

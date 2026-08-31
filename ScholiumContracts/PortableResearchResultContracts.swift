@@ -306,6 +306,7 @@ public extension PortableResearchRecord {
             academicResults: academicResults,
             fidelityCompletion: fidelityCompletion,
             confirmedChanges: confirmedChanges,
+            activityOutcomes: activityOutcomes,
             discrepancies: discrepancies,
             literatureRecommendations: literatureRecommendations.map(
                 PortableResearchFinalizedRecommendation.init
@@ -337,6 +338,7 @@ private struct PortableResearchFinalizedResultPartition: Encodable {
     let academicResults: [PortableResearchAcademicFieldResult]
     let fidelityCompletion: PortableResearchFidelityCompletion
     let confirmedChanges: [PortableResearchConfirmedChange]
+    let activityOutcomes: [PortableResearchActivityOutcome]
     let discrepancies: [PortableResearchDiscrepancy]
     let literatureRecommendations: [PortableResearchFinalizedRecommendation]
     let startedAt: Date

@@ -953,6 +953,210 @@ extension ResearchActionRunOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("Portable Records retain metadata and Zotero outcomes without inventing source changes")
+    func portableRecordRetainsTypedActivityOutcomes() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let topic = try await researchActionTarget(
+            fixture.topicID,
+            role: .topic,
+            handle: handle
+        )
+        let analysis = try await researchActionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let sourceBefore = try await handle.documents.load(fixture.analysisID)
+        let action = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .synthesize,
+                target: actionNote(topic)
+            )
+        )
+        let run = try await handle.research.actionRunDetails(id: action.runID)
+        let client = try await connectTestResearchAgent(to: run, handle: handle)
+        let tracked = try await handle.research.extendAgentWriteSet(
+            credential: client.credential,
+            run: client.run,
+            intent: try ResearchWriteSetExtensionIntent(
+                targets: [try ResearchWriteSetTargetSelector(
+                    role: .analysis,
+                    relativePath: "Analysis.md",
+                    operations: [
+                        .modifyMetadata,
+                        .setZoteroBinding,
+                        .clearZoteroBinding,
+                    ],
+                    metadataKeys: ["language"]
+                )],
+                academicReason: "Record one metadata update and the exact source binding used."
+            )
+        )
+        #expect(tracked.state == .recorded)
+
+        let metadataWrite = try await handle.research.writeAgentDocument(
+            credential: client.credential,
+            run: client.run,
+            intent: try ResearchDocumentWriteIntent(
+                role: .analysis,
+                relativePath: "Analysis.md",
+                operation: .modifyMetadata,
+                metadata: [try CanonicalPropertyInput(
+                    key: "language",
+                    value: .string("en")
+                )]
+            )
+        )
+        #expect(metadataWrite.state == .committed)
+        #expect(try await handle.documents.load(fixture.analysisID).fingerprint
+            == sourceBefore.fingerprint)
+
+        let setBinding = try await handle.research.writeAgentZoteroBinding(
+            credential: client.credential,
+            run: client.run,
+            intent: try ResearchZoteroBindingWriteIntent(
+                role: .analysis,
+                relativePath: "Analysis.md",
+                operation: .setZoteroBinding,
+                library: .group(42),
+                itemKey: "item_42"
+            )
+        )
+        #expect(setBinding.state == .committed)
+
+        let beforeExternalBinding = try await handle.services.controlStore
+            .zoteroBindings()
+        _ = try await handle.services.controlStore.setZoteroBinding(
+            AnalysisZoteroBinding(
+                noteID: analysis.noteID,
+                library: .user,
+                itemKey: "EXTERNAL1"
+            ),
+            expectedRevision: beforeExternalBinding.revision
+        )
+        let bindingConflict = try await handle.research.writeAgentZoteroBinding(
+            credential: client.credential,
+            run: client.run,
+            intent: try ResearchZoteroBindingWriteIntent(
+                role: .analysis,
+                relativePath: "Analysis.md",
+                operation: .clearZoteroBinding
+            )
+        )
+        #expect(bindingConflict.state == .conflict)
+        let clearBinding = try await handle.research.writeAgentZoteroBinding(
+            credential: client.credential,
+            run: client.run,
+            intent: try ResearchZoteroBindingWriteIntent(
+                role: .analysis,
+                relativePath: "Analysis.md",
+                operation: .clearZoteroBinding
+            )
+        )
+        #expect(clearBinding.state == .committed)
+
+        let metadataBeforeExternalChange = try #require(
+            try await handle.services.controlStore.noteMetadata(
+                noteID: analysis.noteID
+            )
+        )
+        _ = try await handle.services.controlStore.saveNoteMetadata(
+            noteID: analysis.noteID,
+            fields: ["language": .string("fr")],
+            expectedRevision: metadataBeforeExternalChange.revision
+        )
+        let abandonedMetadataWrite = try await handle.research.writeAgentDocument(
+            credential: client.credential,
+            run: client.run,
+            intent: try ResearchDocumentWriteIntent(
+                role: .analysis,
+                relativePath: "Analysis.md",
+                operation: .modifyMetadata,
+                metadata: [try CanonicalPropertyInput(
+                    key: "language",
+                    value: .string("de")
+                )]
+            )
+        )
+        #expect(abandonedMetadataWrite.state == .conflict)
+        let abandonment = try await handle.research.resolveAgentWriteConflict(
+            credential: client.credential,
+            run: client.run,
+            intent: try ResearchWriteConflictResolutionIntent(
+                role: .analysis,
+                relativePath: "Analysis.md",
+                action: .abandonWrite
+            )
+        )
+        #expect(abandonment.state == .abandoned)
+
+        _ = try await submitTestAgentResult(
+            makeTestAgentResultSubmission(for: run),
+            client: client,
+            handle: handle
+        )
+        let record = try await handle.services.portableResearchRecordStore.record(
+            id: action.runID
+        )
+        #expect(record.confirmedChanges.isEmpty)
+        #expect(Set(record.participatingNotes.map(\.noteID)) == [
+            topic.noteID,
+            analysis.noteID,
+        ])
+        let analysisParticipant = try #require(record.participatingNotes.first {
+            $0.noteID == analysis.noteID
+        })
+        #expect(analysisParticipant.startingRevision == sourceBefore.fingerprint)
+        #expect(analysisParticipant.endingRevision == sourceBefore.fingerprint)
+        #expect(Set(record.activityOutcomes.map(\.id)) == Set([
+            metadataWrite.operationID,
+            setBinding.operationID,
+            bindingConflict.operationID,
+            clearBinding.operationID,
+            abandonedMetadataWrite.operationID,
+        ]))
+        let outcomes = Dictionary(
+            uniqueKeysWithValues: record.activityOutcomes.map { ($0.id, $0) }
+        )
+        #expect(outcomes[metadataWrite.operationID]?.revisionDomain
+            == .managedMetadata)
+        #expect(outcomes[metadataWrite.operationID]?.state == .committed)
+        #expect(outcomes[setBinding.operationID]?.revisionDomain == .zoteroBinding)
+        #expect(outcomes[setBinding.operationID]?.state == .committed)
+        #expect(outcomes[setBinding.operationID]?.intendedZoteroBinding?.itemKey
+            == "ITEM_42")
+        #expect(outcomes[bindingConflict.operationID]?.revisionDomain
+            == .zoteroBinding)
+        #expect(outcomes[bindingConflict.operationID]?.state == .conflict)
+        #expect(outcomes[bindingConflict.operationID]?.intendedZoteroBinding == nil)
+        #expect(outcomes[clearBinding.operationID]?.revisionDomain == .zoteroBinding)
+        #expect(outcomes[clearBinding.operationID]?.state == .committed)
+        #expect(outcomes[abandonedMetadataWrite.operationID]?.revisionDomain
+            == .managedMetadata)
+        #expect(outcomes[abandonedMetadataWrite.operationID]?.state == .abandoned)
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        let encoded = try encoder.encode(record)
+        let portableSource = String(decoding: encoded, as: UTF8.self)
+        for machineLocalField in [
+            "request_fingerprint", "recovery_record_id", "warning", "handle",
+        ] {
+            #expect(!portableSource.contains("\"\(machineLocalField)\""))
+        }
+        let compacted = try await handle.services.localResearchExecutionStore.record(
+            id: action.runID
+        )
+        #expect(compacted.documentWriteRecords.isEmpty)
+        #expect(compacted.zoteroBindingWriteRecords.isEmpty)
+        await runtime.shutdown()
+    }
+
     @Test("Unavailable current Action Fidelity remains explicit in its portable record")
     func unavailableActionFidelityIsRecordedAsUnverified() async throws {
         let fixture = try await ResearchFixture.make()

@@ -223,7 +223,6 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
     public let analysisCreationPlans: [ResearchAnalysisCreationSourcePlan]
     public var expectation: ResearchWriteSetTargetExpectation
     public let activityOrigin: ResearchWriteSetActivityOrigin
-    public let expiresAt: Date
     public var state: ResearchWriteSetEntryState
     public var metadataRevision: DocumentFingerprint?
     public var zoteroBindingsRevision: DocumentFingerprint?
@@ -241,7 +240,6 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         metadataRevision: DocumentFingerprint? = nil,
         zoteroBindingsRevision: DocumentFingerprint? = nil,
         activityOrigin: ResearchWriteSetActivityOrigin,
-        expiresAt: Date,
         state: ResearchWriteSetEntryState = .ready
     ) throws {
         let operations = Array(Set(allowedOperations)).sorted {
@@ -268,7 +266,6 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
               ResearchBoundedWriteValidation.validFingerprint(expectedRevision),
               !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               title.utf8.count <= 1_024,
-              expiresAt.timeIntervalSinceReferenceDate.isFinite,
               state != .consumed else {
             throw ResearchBoundedWriteSetError.invalidEntry
         }
@@ -283,7 +280,6 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         analysisCreationPlans = []
         expectation = .existing(expectedRevision: expectedRevision)
         self.activityOrigin = activityOrigin
-        self.expiresAt = expiresAt
         self.state = state
         self.metadataRevision = metadataRevision
         self.zoteroBindingsRevision = zoteroBindingsRevision
@@ -297,14 +293,12 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         title: String,
         analysisCreationPlans: [ResearchAnalysisCreationSourcePlan] = [],
         activityOrigin: ResearchWriteSetActivityOrigin,
-        expiresAt: Date,
         state: ResearchWriteSetEntryState = .ready
     ) throws {
         let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard ResearchBoundedWriteValidation.validPath(note.relativePath),
               !title.isEmpty,
               title.utf8.count <= 1_024,
-              expiresAt.timeIntervalSinceReferenceDate.isFinite,
               state != .consumed,
               (role == .analysis)
                 == (Set(analysisCreationPlans.map(\.sourceType))
@@ -324,7 +318,6 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         }
         expectation = .absent
         self.activityOrigin = activityOrigin
-        self.expiresAt = expiresAt
         self.state = state
         metadataRevision = nil
         zoteroBindingsRevision = nil
@@ -358,7 +351,6 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         case analysisCreationPlans = "analysis_creation_plans"
         case expectation
         case activityOrigin = "activity_origin"
-        case expiresAt = "expires_at"
         case state
         case metadataRevision = "metadata_revision"
         case zoteroBindingsRevision = "zotero_bindings_revision"
@@ -403,7 +395,6 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
                 ResearchWriteSetActivityOrigin.self,
                 forKey: .activityOrigin
             )
-        let expiresAt = try container.decode(Date.self, forKey: .expiresAt)
         let state = try container.decode(ResearchWriteSetEntryState.self, forKey: .state)
         let metadataRevision = try container.decodeIfPresent(
             DocumentFingerprint.self,
@@ -431,7 +422,6 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
                 metadataRevision: metadataRevision,
                 zoteroBindingsRevision: zoteroBindingsRevision,
                 activityOrigin: origin,
-                expiresAt: expiresAt,
                 state: state
             )
         case .absent:
@@ -448,7 +438,6 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
                 title: title,
                 analysisCreationPlans: analysisCreationPlans,
                 activityOrigin: origin,
-                expiresAt: expiresAt,
                 state: state
             )
         case .created(let committedRevision):
@@ -466,7 +455,6 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
                 title: title,
                 analysisCreationPlans: analysisCreationPlans,
                 activityOrigin: origin,
-                expiresAt: expiresAt,
                 state: .ready
             )
             self.expectation = .created(
@@ -478,7 +466,7 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
 }
 
 public struct ResearchBoundedWriteSet: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 6
+    public static let currentSchemaVersion = 7
     public static let maximumEntriesPerRequest = 16
     public static let maximumEntriesPerRun = 64
     public static let maximumWritesPerRun = 256

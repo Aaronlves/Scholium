@@ -5,6 +5,62 @@ import Testing
 
 @Suite("Authenticated bounded Research write sets", .serialized)
 struct ResearchBoundedWriteOperationsTests {
+    @Test("Tracked activity survives Session rotation without a wall-clock lease")
+    func trackedActivitySurvivesSessionRotation() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let connection = try await prepareWritableRun(handle: handle, fixture: fixture)
+        let tracked = try await handle.research.extendAgentWriteSet(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: try ResearchWriteSetExtensionIntent(
+                targets: [try ResearchWriteSetTargetSelector(
+                    role: .topic,
+                    relativePath: "Agency.md",
+                    operations: [.modifyMarkdown]
+                )],
+                academicReason: "Continue one relevant topic across a rotated Session."
+            )
+        )
+        #expect(tracked.state == .recorded)
+
+        let replacement = try await handle.research.issueAgentHandoff(
+            runID: connection.preparation.runID
+        )
+        await #expect(throws: ResearchAgentSessionError.sessionRejected) {
+            _ = try await handle.research.authenticatedAgentContext(
+                credential: connection.credential,
+                run: connection.handoff.run
+            )
+        }
+        let replacementCredential = try await handle.research.pairAgent(
+            run: replacement.run,
+            pairingCode: replacement.pairingCode
+        )
+        let reloaded = try await handle.research.authenticatedAgentContext(
+            credential: replacementCredential,
+            run: replacement.run
+        )
+        #expect(reloaded.boundedWriteSet.contains {
+            $0.role == .topic && $0.relativePath == "Agency.md"
+        })
+        let write = try await handle.research.writeAgentDocument(
+            credential: replacementCredential,
+            run: replacement.run,
+            intent: try ResearchDocumentWriteIntent(
+                role: .topic,
+                relativePath: "Agency.md",
+                content: "# Agency\n\nContinued after Session rotation.\n"
+            )
+        )
+        #expect(write.state == .committed)
+        #expect(try await handle.documents.load(fixture.topicID).rawContent
+            .contains("Continued after Session rotation."))
+        await runtime.shutdown()
+    }
+
     @Test("Only Agent writes can enter the bounded Research write ledger")
     func boundedWriteActorIsAgentOnly() {
         let starting = DocumentFingerprint(content: "starting")
@@ -1374,6 +1430,73 @@ struct ResearchBoundedWriteOperationsTests {
             $0.runID == connection.preparation.runID && $0.state == .running
         })
 
+        await runtime.shutdown()
+    }
+
+    @Test("A stale activity registration settles and the same Run can retry and finalize")
+    func staleActivityRegistrationConverges() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let connection = try await prepareWritableRun(handle: handle, fixture: fixture)
+        let gate = ResearchCreationTestGate()
+        await handle.setResearchActivityPostInstallBarrierForTesting {
+            await gate.wait()
+        }
+
+        let intent = try extensionIntent(includeWork: false)
+        let tracking = Task {
+            try await handle.research.extendAgentWriteSet(
+                credential: connection.credential,
+                run: connection.handoff.run,
+                intent: intent
+            )
+        }
+        #expect(await gate.waitUntilArrived())
+        let topicURL = fixture.rootURL
+            .appendingPathComponent("Topics", isDirectory: true)
+            .appendingPathComponent("Agency.md")
+        try Data("---\ntitle: Agency\n---\n# Agency\n\nChanged during tracking.\n".utf8)
+            .write(to: topicURL, options: .atomic)
+        await gate.release()
+        await #expect(throws: ResearchBoundedWriteSetError.staleAuthorization) {
+            try await tracking.value
+        }
+        await handle.setResearchActivityPostInstallBarrierForTesting(nil)
+
+        var execution = try await handle.services.localResearchExecutionStore
+            .record(id: connection.preparation.runID)
+        #expect(execution.writeSetExtensionRecords.map(\.state) == [.stale])
+        #expect(execution.writeSetExtensionRecords.allSatisfy { !$0.isUnresolved })
+
+        _ = try await handle.refresh()
+        let retried = try await handle.research.extendAgentWriteSet(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            intent: intent
+        )
+        #expect(retried.state == .recorded)
+        execution = try await handle.services.localResearchExecutionStore
+            .record(id: connection.preparation.runID)
+        #expect(execution.writeSetExtensionRecords.allSatisfy { !$0.isUnresolved })
+
+        let run = try await handle.research.actionRunDetails(
+            id: connection.preparation.runID
+        )
+        let receipt = try await handle.research.submitAgentResult(
+            credential: connection.credential,
+            run: connection.handoff.run,
+            submission: try makeTestAgentResultSubmission(
+                for: run,
+                literatureRecommendations: []
+            )
+        )
+        #expect(receipt.recordFormed)
+        let completed = try await handle.services.localResearchExecutionStore
+            .record(id: connection.preparation.runID)
+        #expect(completed.isCompacted)
+        #expect(completed.writeSetExtensionRecords.isEmpty)
         await runtime.shutdown()
     }
 

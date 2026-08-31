@@ -126,7 +126,8 @@
   Cancel while reading, and presents **Done** when every mapped value is current.
 - Action sheets keep Profile Research Request visible, place only other
   optional inputs under Additional Instructions, and explain target mutation
-  and read-only Additional Context. Later Agent operations add relevant Notes
+  plus the Agent's ability to add other relevant Notes to the current Run.
+  Later Agent operations add relevant Notes
   to the Run Activity Ledger without interrupting the researcher; **End Action**
   remains separate. Sheets expose preparation and handoff without
   exposing credentials, registration keys, protocol internals, or

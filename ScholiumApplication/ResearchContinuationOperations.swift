@@ -327,7 +327,9 @@ extension WorkspaceHandle {
                 runID: childRunID,
                 triptychID: authenticated.triptychID,
                 canWrite: canWrite,
-                to: credential
+                to: credential,
+                authorizedBy: run,
+                allowFinalizedParent: true
             )
         }
         if decision.state == .allowed {

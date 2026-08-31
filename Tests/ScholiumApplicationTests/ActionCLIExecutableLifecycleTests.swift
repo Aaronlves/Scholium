@@ -618,8 +618,7 @@ struct ActionCLIExecutableLifecycleTests {
             title: fixture.analysisTarget.title,
             allowedOperations: [.modifyMarkdown],
             expectedRevision: fixture.analysisTarget.fingerprint,
-            activityOrigin: .initialAction,
-            expiresAt: Date().addingTimeInterval(600)
+            activityOrigin: .initialAction
         )
         let writeView = ResearchBoundedWriteSetViewEntry(writeEntry)
         let writeOperationID = UUID()
@@ -1203,8 +1202,7 @@ struct ActionCLIExecutableLifecycleTests {
             title: "Agency",
             allowedOperations: [.modifyMarkdown],
             expectedRevision: DocumentFingerprint(content: "before"),
-            activityOrigin: .initialAction,
-            expiresAt: Date().addingTimeInterval(600)
+            activityOrigin: .initialAction
         )
         let observedIDs = LockedAgentWriteRequestIDs()
         let observedBindingIDs = LockedAgentWriteRequestIDs()
@@ -1221,8 +1219,7 @@ struct ActionCLIExecutableLifecycleTests {
             allowedOperations: [.setZoteroBinding, .clearZoteroBinding],
             expectedRevision: DocumentFingerprint(content: "analysis"),
             zoteroBindingsRevision: DocumentFingerprint(content: "[]"),
-            activityOrigin: .agentActivity,
-            expiresAt: Date().addingTimeInterval(600)
+            activityOrigin: .agentActivity
         )
         let entryRevision = try #require(entry.expectedRevision)
         let relatedSeeds = [
@@ -1725,7 +1722,7 @@ struct ActionCLIExecutableLifecycleTests {
         let unreadableRecordURL = fixture.rootURL.appendingPathComponent(
             ".scholium/research-records/v1/records/00000000-0000-4000-8000-000000000003.json"
         )
-        try Data("{\"schema_version\":17".utf8).write(
+        try Data("{\"schema_version\":18".utf8).write(
             to: unreadableRecordURL,
             options: .atomic
         )
@@ -1934,42 +1931,60 @@ struct ActionCLIExecutableLifecycleTests {
             recordFormed: true,
             message: "The canonical Result formed one Research Record."
         )
+        let childRun = try #require(ResearchRunLocator(
+            rawValue: "continuedchildrunabcdef"
+        ))
+        let childContext = try Self.minimalContext(
+            run: childRun,
+            actionID: .write
+        )
+        let handoffContext = try ResearchContinuationHandoffContext(
+            parentRecordID: UUID(),
+            initiator: .agent,
+            academicPurpose: continuation.academicPurpose,
+            handoff: continuation.handoff,
+            referenceChecks: []
+        )
         let expectedContinuation = try ResearchContinuationResult(
-            state: .stale,
-            message: "The fixture returns a stale continuation response."
+            state: .created,
+            nextRun: childRun,
+            handoffContext: handoffContext,
+            context: childContext,
+            message: "The fixture creates a child Run in the same Session."
         )
         let observed = LockedAgentLifecycleRequests()
         let server = try LocalAgentBridgeServer(
             applicationSupportURL: bridgeContainer
         ) { request in
-            guard request.run == run else {
-                throw LocalAgentBridgeError.permissionDenied
-            }
             switch request.operation {
             case .preflightAnalysisCreation, .start:
                 throw LocalAgentBridgeError.invalidRequest
             case .pair:
-                guard request.pairingCode == code else {
+                guard request.run == run,
+                      request.pairingCode == code else {
                     throw LocalAgentBridgeError.permissionDenied
                 }
                 return .credential(credential)
             case .context:
-                guard request.credential == credential else {
+                guard request.credential == credential,
+                      request.run == run || request.run == childRun else {
                     throw LocalAgentBridgeError.permissionDenied
                 }
-                return .context(try Self.minimalContext(
-                    run: run,
-                    actionID: .critique
-                ))
+                if request.run == childRun {
+                    return .context(childContext)
+                }
+                return .context(try Self.minimalContext(run: run, actionID: .critique))
             case .submitResult:
-                guard request.credential == credential,
+                guard request.run == run,
+                      request.credential == credential,
                       let submission = request.resultSubmission else {
                     throw LocalAgentBridgeError.permissionDenied
                 }
                 observed.capture(result: submission)
                 return .resultReceipt(expectedReceipt)
             case .continueResearch:
-                guard request.credential == credential,
+                guard request.run == run,
+                      request.credential == credential,
                       let continuation = request.continuationRequest else {
                     throw LocalAgentBridgeError.permissionDenied
                 }
@@ -2025,12 +2040,44 @@ struct ActionCLIExecutableLifecycleTests {
             stdin: try encoder.encode(continuation),
             environment: environment
         )
-        #expect(try decoder.decode(
+        let decodedContinuation = try decoder.decode(
             ResearchContinuationResult.self,
             from: continuationOutput.stdout
-        ) == expectedContinuation)
+        )
+        #expect(decodedContinuation.state == .created)
+        #expect(decodedContinuation.nextRun == childRun)
+        #expect(decodedContinuation.handoffContext?.parentRecordID
+            == handoffContext.parentRecordID)
+        #expect(decodedContinuation.handoffContext?.academicPurpose
+            == continuation.academicPurpose)
+        #expect(decodedContinuation.handoffContext?.handoff
+            == continuation.handoff)
+        #expect(decodedContinuation.context?.brief == childContext.brief)
         #expect(observed.continuation == continuation)
         #expect(!String(decoding: continuationOutput.stdout, as: UTF8.self).contains(
+            credential.secret
+        ))
+        let childCredentialURL = credentialURL
+            .deletingLastPathComponent()
+            .appendingPathComponent(childRun.rawValue + ".json")
+        #expect(FileManager.default.fileExists(atPath: childCredentialURL.path))
+        let storedChildCredential = try #require(
+            JSONSerialization.jsonObject(with: Data(contentsOf: childCredentialURL))
+                as? [String: Any]
+        )
+        #expect(storedChildCredential["run"] as? String == childRun.rawValue)
+        let reloadOutput = try cli.run(
+            ["agent", "reload", "--run", childRun.rawValue],
+            environment: environment
+        )
+        let reloadedChildContext = try decoder.decode(
+            ResearchAuthenticatedRunContext.self,
+            from: reloadOutput.stdout
+        )
+        #expect(reloadedChildContext.brief == childContext.brief)
+        #expect(reloadedChildContext.requiredSkills == childContext.requiredSkills)
+        #expect(reloadedChildContext.resultContract == childContext.resultContract)
+        #expect(!String(decoding: reloadOutput.stdout, as: UTF8.self).contains(
             credential.secret
         ))
         try cli.expectFailure(

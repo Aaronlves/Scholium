@@ -297,7 +297,10 @@
 - A Run owns one bounded, automatically expandable Activity Ledger. Registering
   another valid target records it without a researcher permission sheet. Every
   mutation still requires a nonreusable transaction lease and the exact
-  repository transaction. One member's conflict does not roll back confirmed siblings.
+  repository transaction. Ledger schema 7 gives members no independent
+  wall-clock expiry, so Session rotation or re-pairing preserves the unfinished
+  Run's tracked activity while every operation still revalidates its current
+  revision. One member's conflict does not roll back confirmed siblings.
 - Authenticated `create_note` freezes proven absence, reserved identity, the
   fixed YAML scaffold, and an optional Analysis field/shape/preference plan.
   `modify_markdown` changes body only; `modify_source` accepts the complete
@@ -335,7 +338,7 @@
 - An explicitly researcher-started `researcher_provided` Check Fidelity Run
   exposes the exact checks plus a typed Citation constraint. Without a formal
   source envelope, Citation must be `unavailable`; Note YAML URLs remain
-  authored metadata. The Fidelity Run forms its own schema-17 Record with
+  authored metadata. The Fidelity Run forms its own schema-18 Record with
   explicit unverified evidence rather than a fabricated source claim; Analyze
   records the same limitation through its bounded self-check without creating
   a parent/child Fidelity pair.
@@ -356,15 +359,18 @@
 - Comments, attributed Discussion turns, completed Action results, explicit
   frozen Material participants, confirmed effects, discrepancies, Fidelity outcome, Literature
   Recommendations, and parent-owned Method Feedback persist through strict
-  schema-17 Records. Dynamic reading and source-use testimony are not persisted;
+  schema-18 Records. Dynamic reading and source-use testimony are not persisted;
   the Action identity retains only Application-established frozen Material Note
   IDs so selected Materials remain distinct from confirmed-change-only
   participants. In-text citations remain optional academic content. Analyze Records retain one explicit Scholium-source,
   external-Zotero, or researcher-provided route without inventing source
   evidence. One cumulative schema-1 portable Note Review per Note owns
   exact observed revision, time, and covered `(Record ID, Note ID)` activities.
-  Schema-14 Records reject every earlier schema; unsupported
-  files remain byte-unchanged, unread, and nonauthorizing. Credentials,
+  Schema-18 Records reject every earlier schema; unsupported
+  files remain byte-unchanged, unread, and nonauthorizing. Schema 18 also
+  retains each terminal Agent activity's exact portable target, operation,
+  outcome, and typed source, managed-Metadata, or Zotero-binding revisions after
+  the machine-local write ledgers compact. Credentials,
   prompts, absolute paths, raw transport logs, and token counts are excluded.
 - Confirmed Agent change comparison uses one exact byte-diff owner shared with
   Document conflict input. Application safely undoes complete selected
@@ -388,7 +394,7 @@
 - The Triptych-keyed Research Records window and Search consume the same Record
   provider. Reading Leads are a rebuildable projection of recommendation
   occurrences; handling and researcher notes update the parent Record.
-- Strict schema-17 prose strings now remain byte-for-byte opaque through
+- Strict schema-18 prose strings now remain byte-for-byte opaque through
   submission, validation, storage, hashing, Search, and CLI reading while a
   disposable Contracts projection recognizes the closed Record scholarly-
   markup subset. Navigation reuses current fail-closed Note/heading/block

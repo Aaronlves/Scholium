@@ -292,8 +292,7 @@ struct ResearchAgentResultContractsTests {
             title: "Agency",
             allowedOperations: [.modifyMarkdown],
             expectedRevision: DocumentFingerprint(content: "before"),
-            activityOrigin: .initialAction,
-            expiresAt: Date(timeIntervalSince1970: 600)
+            activityOrigin: .initialAction
         )
         let writeSet = try ResearchBoundedWriteSet(
             runID: runID,
@@ -317,6 +316,15 @@ struct ResearchAgentResultContractsTests {
         }
         let entries = try #require(object["entries"] as? [[String: Any]])
         var entryObject = try #require(entries.first)
+        #expect(entryObject["expires_at"] == nil)
+        entryObject["expires_at"] = "1970-01-01T00:10:00Z"
+        #expect(throws: ResearchBoundedWriteSetError.self) {
+            _ = try JSONDecoder().decode(
+                ResearchBoundedWriteSetEntry.self,
+                from: JSONSerialization.data(withJSONObject: entryObject)
+            )
+        }
+        entryObject.removeValue(forKey: "expires_at")
         entryObject["reusable_capability"] = "no"
         #expect(throws: ResearchBoundedWriteSetError.self) {
             _ = try JSONDecoder().decode(

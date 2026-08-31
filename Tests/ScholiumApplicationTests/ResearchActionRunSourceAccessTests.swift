@@ -522,7 +522,7 @@ extension ResearchActionRunOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("A Zotero-only Analyze completes into a portable schema-17 Record")
+    @Test("A Zotero-only Analyze completes into a portable schema-18 Record")
     func zoteroOnlyAnalyzeCompletesPortableRecord() async throws {
         let fixture = try await ResearchFixture.make(analysisZoteroKey: "META0001")
         defer { fixture.remove() }
@@ -567,7 +567,7 @@ extension ResearchActionRunOperationsTests {
                 .first { $0.action?.actionID == .analyze }
         )
         #expect(record.schemaVersion == PortableResearchRecord.currentSchemaVersion)
-        #expect(record.schemaVersion == 17)
+        #expect(record.schemaVersion == 18)
         #expect(record.analysisSourceRoute == .externalZotero)
         #expect(record.sourceReference == nil)
         #expect(record.zoteroBibliographicContext == context)

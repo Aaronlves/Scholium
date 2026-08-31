@@ -99,12 +99,13 @@ struct PortableResearchRecordContractsTests {
         #expect(Set(object.keys) == [
             "schema_version", "id", "triptych_id", "record_title", "kind", "action", "method",
             "participating_notes", "statements",
-            "fidelity_completion", "confirmed_changes", "discrepancies",
+            "fidelity_completion", "confirmed_changes", "activity_outcomes",
+            "discrepancies",
             "literature_recommendations", "started_at", "finished_at",
             "primary_note_id", "result_disposition",
             "academic_results",
         ])
-        #expect(object["schema_version"] as? Int == 17)
+        #expect(object["schema_version"] as? Int == 18)
         #expect(object["record_title"] as? String == "The remaining pressure")
         #expect(object["fidelity_completion"] as? String == "not_required")
         let changes = try #require(object["confirmed_changes"] as? [[String: Any]])
@@ -124,7 +125,151 @@ struct PortableResearchRecordContractsTests {
         ) == record)
     }
 
-    @Test("Schema 17 requires a frozen title and rejects every retired schema")
+    @Test("Activity outcomes keep exact targets and never mix revision domains")
+    func activityOutcomeRevisionDomainsAreClosed() throws {
+        let base = try makeRecord(includeMaterialParticipant: true)
+        let topic = try #require(base.participatingNotes.first {
+            $0.role == .topic
+        })
+        let analysis = try #require(base.participatingNotes.first {
+            $0.role == .analysis
+        })
+        let sourceEnding = DocumentFingerprint(content: "# Topic\nAgent revision\n")
+        let metadataExpected = DocumentFingerprint(content: "metadata before")
+        let metadataIntended = DocumentFingerprint(content: "metadata after")
+        let bindingExpected = DocumentFingerprint(content: "bindings before")
+        let bindingObserved = DocumentFingerprint(content: "bindings after")
+        let outcomes = try [
+            PortableResearchActivityOutcome(
+                id: UUID(),
+                noteID: topic.noteID,
+                note: topic.note,
+                role: topic.role,
+                title: topic.title,
+                operation: .modifyMarkdown,
+                revisionDomain: .source,
+                state: .committed,
+                expectedRevision: topic.startingRevision,
+                intendedRevision: sourceEnding,
+                observedRevision: sourceEnding,
+                startedAt: Date(timeIntervalSince1970: 11),
+                finishedAt: Date(timeIntervalSince1970: 12)
+            ),
+            PortableResearchActivityOutcome(
+                id: UUID(),
+                noteID: analysis.noteID,
+                note: analysis.note,
+                role: analysis.role,
+                title: analysis.title,
+                operation: .modifyMetadata,
+                revisionDomain: .managedMetadata,
+                state: .unchanged,
+                expectedRevision: metadataExpected,
+                intendedRevision: metadataIntended,
+                observedRevision: metadataExpected,
+                startedAt: Date(timeIntervalSince1970: 13),
+                finishedAt: Date(timeIntervalSince1970: 14)
+            ),
+            PortableResearchActivityOutcome(
+                id: UUID(),
+                noteID: analysis.noteID,
+                note: analysis.note,
+                role: analysis.role,
+                title: analysis.title,
+                operation: .setZoteroBinding,
+                revisionDomain: .zoteroBinding,
+                state: .conflict,
+                expectedRevision: bindingExpected,
+                intendedRevision: nil,
+                observedRevision: bindingObserved,
+                intendedZoteroBinding: try AnalysisZoteroBinding(
+                    noteID: analysis.noteID,
+                    library: .group(42),
+                    itemKey: "item_42"
+                ),
+                startedAt: Date(timeIntervalSince1970: 15),
+                finishedAt: Date(timeIntervalSince1970: 16)
+            ),
+        ]
+        let record = try PortableResearchRecord(
+            id: base.id,
+            triptychID: base.triptychID,
+            title: base.title,
+            kind: base.kind,
+            action: base.action,
+            method: base.method,
+            sourceReference: base.sourceReference,
+            zoteroBibliographicContext: base.zoteroBibliographicContext,
+            analysisSourceRoute: base.analysisSourceRoute,
+            continuationLineage: base.continuationLineage,
+            primaryNoteID: base.primaryNoteID,
+            participatingNotes: base.participatingNotes,
+            statements: base.statements,
+            resultDisposition: base.resultDisposition,
+            academicResults: base.academicResults,
+            fidelityCompletion: base.fidelityCompletion,
+            confirmedChanges: base.confirmedChanges,
+            activityOutcomes: outcomes,
+            discrepancies: base.discrepancies,
+            literatureRecommendations: base.literatureRecommendations,
+            startedAt: base.startedAt,
+            finishedAt: base.finishedAt
+        )
+        let data = try JSONEncoder.scholium.encode(record)
+        let source = String(decoding: data, as: UTF8.self)
+        #expect(source.contains("managed_metadata"))
+        #expect(source.contains("zotero_binding"))
+        #expect(!source.contains("request_fingerprint"))
+        #expect(!source.contains("recovery_record_id"))
+        #expect(!source.contains("warning"))
+        #expect(try JSONDecoder.scholium.decode(
+            PortableResearchRecord.self,
+            from: data
+        ) == record)
+
+        var object = try #require(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        var encodedOutcomes = try #require(
+            object["activity_outcomes"] as? [[String: Any]]
+        )
+        let bindingIndex = try #require(encodedOutcomes.firstIndex {
+            $0["intended_zotero_binding"] != nil
+        })
+        var encodedBinding = try #require(
+            encodedOutcomes[bindingIndex]["intended_zotero_binding"]
+                as? [String: Any]
+        )
+        encodedBinding["credential"] = "must not decode"
+        encodedOutcomes[bindingIndex]["intended_zotero_binding"] = encodedBinding
+        object["activity_outcomes"] = encodedOutcomes
+        #expect(throws: PortableResearchRecordError.self) {
+            _ = try JSONDecoder.scholium.decode(
+                PortableResearchRecord.self,
+                from: JSONSerialization.data(withJSONObject: object)
+            )
+        }
+
+        #expect(throws: PortableResearchRecordError.invalidActivityOutcome) {
+            _ = try PortableResearchActivityOutcome(
+                id: UUID(),
+                noteID: analysis.noteID,
+                note: analysis.note,
+                role: analysis.role,
+                title: analysis.title,
+                operation: .modifyMetadata,
+                revisionDomain: .source,
+                state: .committed,
+                expectedRevision: metadataExpected,
+                intendedRevision: metadataIntended,
+                observedRevision: metadataIntended,
+                startedAt: Date(timeIntervalSince1970: 17),
+                finishedAt: Date(timeIntervalSince1970: 18)
+            )
+        }
+    }
+
+    @Test("Schema 18 requires a frozen title and rejects every retired schema")
     func currentSchemaIsStrict() throws {
         for invalidTitle in ["", "line one\nline two", "/Users/researcher/private.md"] {
             #expect(throws: PortableResearchRecordError.self) {
@@ -175,6 +320,17 @@ struct PortableResearchRecordContractsTests {
             JSONSerialization.jsonObject(with: encoded) as? [String: Any]
         )
         object.removeValue(forKey: "literature_recommendations")
+        #expect(throws: (any Error).self) {
+            _ = try JSONDecoder.scholium.decode(
+                PortableResearchRecord.self,
+                from: JSONSerialization.data(withJSONObject: object)
+            )
+        }
+
+        object = try #require(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        object.removeValue(forKey: "activity_outcomes")
         #expect(throws: (any Error).self) {
             _ = try JSONDecoder.scholium.decode(
                 PortableResearchRecord.self,

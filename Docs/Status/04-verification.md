@@ -28,13 +28,10 @@ The ad-hoc App requires the documented Gatekeeper override.
 
 ## Focused interface evidence
 
-- On 2026-08-31, direct Agent collaboration passed verification: 207 Web,
-  464 Core plus 3 performance, 158 Contracts, 284 Application,
-  16 bridge, 1 architecture, 676 App, and 15 executable CLI tests; the signed
-  sandbox bridge probe and Release build passed. Targets enter the Run Activity
-  Ledger automatically, Continue creates an
-  attributed child Run, and no collaboration policy, Agent Access setting, or
-  permission sheet remains. XCUITest and human acceptance were not run.
+- On 2026-08-31, Agent activity focused suites and all non-App gates passed; a
+  stale Application schema assertion was corrected and its 17-test owner
+  passed. App remained 675/676: the unrelated editor WKWebView rerun failed a
+  scroll threshold, 109 versus 25. No XCUITest or human acceptance ran.
 
 - On 2026-08-30, the Notifications and inline-feedback cutover passed 13 Core
   and 112 App tests, both validators, retired-path guards, and two UI journeys

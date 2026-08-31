@@ -249,11 +249,11 @@ struct ScholiumLocalizationTests {
         #expect(
             String(
                 format: ScholiumL10n.string(
-                    "Can update this %@. Additional context stays read-only unless you approve a later request for specific Notes.",
+                    "Can update this %@. The Agent may add other relevant Notes to this Run before changing them.",
                     locale: simplifiedChinese
                 ),
                 "议题"
-            ) == "可以更新当前议题。除非您之后批准针对特定笔记的请求，否则附加上下文保持只读。"
+            ) == "可以更新当前议题。智能体也可先将其他相关笔记加入此次运行，再进行更改。"
         )
         #expect(
             ScholiumL10n.string(

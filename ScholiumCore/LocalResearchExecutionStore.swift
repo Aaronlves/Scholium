@@ -284,8 +284,7 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
                 title: note.title,
                 allowedOperations: action.authority.writeOperations,
                 expectedRevision: note.fingerprint,
-                activityOrigin: .initialAction,
-                expiresAt: snapshot.preparedAt.addingTimeInterval(24 * 60 * 60)
+                activityOrigin: .initialAction
             )
         }
         return try ResearchBoundedWriteSet(
@@ -598,9 +597,19 @@ public actor LocalResearchExecutionStore {
             guard current.triptychID == extensionRecord.triptychID else {
                 throw ResearchBoundedWriteSetError.invalidExtensionRecord
             }
-            if let existing = current.writeSetExtensionRecords.first(where: {
+            if let existingIndex = current.writeSetExtensionRecords.firstIndex(where: {
                 $0.id == extensionRecord.id
             }) {
+                let existing = current.writeSetExtensionRecords[existingIndex]
+                if existing.state == .stale,
+                   existing.runID == extensionRecord.runID,
+                   existing.triptychID == extensionRecord.triptychID,
+                   existing.intent == extensionRecord.intent,
+                   existing.intentDigest == extensionRecord.intentDigest,
+                   existing.candidates == extensionRecord.candidates {
+                    current.writeSetExtensionRecords[existingIndex] = extensionRecord
+                    return
+                }
                 guard existing == extensionRecord else {
                     throw ResearchBoundedWriteSetError.invalidExtensionRecord
                 }
@@ -796,7 +805,6 @@ public actor LocalResearchExecutionStore {
                       refreshedEntry.zoteroBindingsRevision
                         == entry.zoteroBindingsRevision,
                       refreshedEntry.activityOrigin == entry.activityOrigin,
-                      refreshedEntry.expiresAt == entry.expiresAt,
                       refreshedEntry.state == .ready else {
                     throw ResearchBoundedWriteSetError.invalidConflictResolution
                 }

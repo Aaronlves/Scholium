@@ -80,7 +80,7 @@ struct ResearchActionHandoffPresentationTests {
         #expect(actionPanel.contains("Text(\"Target\")"))
         #expect(actionPanel.contains("Text(actionEffectLabel)"))
         #expect(actionPanel.contains(
-            "Additional context stays read-only unless you approve a later request"
+            "The Agent may add other relevant Notes to this Run before changing them"
         ))
         #expect(actionPanel.contains("localized: \"Does not change research documents.\""))
         #expect(actionPanel.contains("Label(\"Handoff ready\""))
