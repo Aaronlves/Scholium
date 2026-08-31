@@ -1096,9 +1096,6 @@ extension ResearchActionRunCoordinator {
         let writeSet = stored.boundedWriteSet
         let writes = stored.documentWriteRecords
         let bindingWrites = stored.zoteroBindingWriteRecords
-        let resolvedConflictIDs = Set(
-            stored.writeConflictResolutionRecords.map(\.conflictOperationID)
-        )
         let hasPendingWriteRecovery = try await host.hasPendingResearchWriteRecovery(
             runID: snapshot.runID,
             writes: writes
@@ -1109,7 +1106,7 @@ extension ResearchActionRunCoordinator {
         }
         if writeSet.entries.isEmpty { blockers.append("empty write set") }
         if !writeSet.entries.allSatisfy({
-            [.ready, .consumed, .stale, .abandoned].contains($0.state)
+            [.ready, .consumed, .conflict, .stale, .abandoned].contains($0.state)
         }) { blockers.append("unfinished target") }
         if !writes.allSatisfy({
             ![.writing, .recoveryRequired].contains($0.state)
@@ -1117,9 +1114,6 @@ extension ResearchActionRunCoordinator {
         if !bindingWrites.allSatisfy({
             ![.writing, .recoveryRequired].contains($0.state)
         }) { blockers.append("unfinished binding write") }
-        if !writes.filter({ $0.state == .conflict }).allSatisfy({
-            resolvedConflictIDs.contains($0.id)
-        }) { blockers.append("unresolved conflict") }
         if hasPendingWriteRecovery { blockers.append("pending recovery") }
         guard blockers.isEmpty else {
             throw ResearchActionRunContractError.invalidCompletion(

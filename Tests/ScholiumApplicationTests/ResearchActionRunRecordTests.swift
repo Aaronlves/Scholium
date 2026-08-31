@@ -1237,6 +1237,76 @@ extension ResearchActionRunOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("A determined document conflict can finalize without forced retry or abandonment")
+    func documentConflictRemainsPortableWithoutResolution() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let topic = try await researchActionTarget(
+            fixture.topicID,
+            role: .topic,
+            handle: handle
+        )
+        let initial = try await handle.documents.load(fixture.topicID)
+        let action = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .synthesize,
+                target: actionNote(topic)
+            )
+        )
+        let run = try await handle.research.actionRunDetails(id: action.runID)
+        let client = try await connectTestResearchAgent(to: run, handle: handle)
+
+        let externalSource = initial.rawContent + "\nExternal concurrent revision.\n"
+        try Data(externalSource.utf8).write(
+            to: fixture.rootURL
+                .appendingPathComponent("Topics", isDirectory: true)
+                .appendingPathComponent("Agency.md"),
+            options: .atomic
+        )
+        _ = try await handle.refresh()
+        let conflict = try await handle.research.writeAgentDocument(
+            credential: client.credential,
+            run: client.run,
+            intent: try ResearchDocumentWriteIntent(
+                role: .topic,
+                relativePath: "Agency.md",
+                content: initial.body + "\nAgent proposed revision.\n"
+            )
+        )
+        #expect(conflict.state == .conflict)
+
+        let receipt = try await submitTestAgentResult(
+            makeTestAgentResultSubmission(for: run),
+            client: client,
+            handle: handle
+        )
+        #expect(receipt.recordFormed)
+        let record = try await handle.services.portableResearchRecordStore.record(
+            id: action.runID
+        )
+        #expect(record.confirmedChanges.isEmpty)
+        let outcome = try #require(record.activityOutcomes.first {
+            $0.id == conflict.operationID
+        })
+        #expect(outcome.state == .conflict)
+        #expect(outcome.expectedRevision == initial.fingerprint)
+        #expect(outcome.observedRevision == DocumentFingerprint(content: externalSource))
+        let participant = try #require(record.participatingNotes.first {
+            $0.noteID == topic.noteID
+        })
+        #expect(participant.startingRevision == initial.fingerprint)
+        #expect(participant.endingRevision == DocumentFingerprint(content: externalSource))
+        let compacted = try await handle.services.localResearchExecutionStore.record(
+            id: action.runID
+        )
+        #expect(compacted.isCompacted)
+        #expect(compacted.writeConflictResolutionRecords.isEmpty)
+        await runtime.shutdown()
+    }
+
     @Test("Unavailable current Action Fidelity remains explicit in its portable record")
     func unavailableActionFidelityIsRecordedAsUnverified() async throws {
         let fixture = try await ResearchFixture.make()
