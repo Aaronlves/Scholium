@@ -121,9 +121,9 @@ struct ScholiumLocalizationTests {
         )
         #expect(
             ScholiumL10n.string(
-                "Archive and Reset Method Access…",
+                "Archive and Reset Skill Access…",
                 locale: simplifiedChinese
-            ) == "归档并重置方法访问…"
+            ) == "归档并重置技能访问…"
         )
         #expect(
             ScholiumL10n.string(
@@ -229,18 +229,6 @@ struct ScholiumLocalizationTests {
         #expect(
             ScholiumL10n.string("Loading…", locale: simplifiedChinese)
                 == "正在加载…"
-        )
-        #expect(
-            ScholiumL10n.string(
-                "Allow Selected Notes",
-                locale: simplifiedChinese
-            ) == "允许所选笔记"
-        )
-        #expect(
-            ScholiumL10n.string(
-                "Continue Without Additional Notes",
-                locale: simplifiedChinese
-            ) == "不添加其他笔记并继续"
         )
         #expect(
             ScholiumL10n.string(

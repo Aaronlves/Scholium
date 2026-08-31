@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 import ScholiumContracts
 
-enum BundledResearchMethodDefaults {
+enum BundledResearchSkillDefaults {
     struct Definition: Sendable {
         let actionID: ResearchActionID
         let displayName: String
@@ -175,9 +175,6 @@ enum BundledResearchMethodDefaults {
             registrations.append(try ResearchSkillRegistration(
                 actionID: definition.actionID,
                 displayName: definition.displayName,
-                primaryMarkdown: .triptychControl(
-                    "skill-folders/\(folderName)/SKILL.md"
-                ),
                 skillFolder: .triptychControl("skill-folders/\(folderName)"),
                 isEnabled: definition.isEnabled
             ))
@@ -186,19 +183,6 @@ enum BundledResearchMethodDefaults {
             throw ResearchConfigurationStoreError.unsafeStorage
         }
         return registrations
-    }
-
-    static func primarySource(for actionID: ResearchActionID) throws -> String {
-        guard let definition = definitions.first(where: { $0.actionID == actionID }) else {
-            throw ResearchConfigurationStoreError.invalidMethod(actionID.rawValue)
-        }
-        return String(
-            decoding: try BundledResearchSkillResources.data(
-                directory: definition.resourceDirectory,
-                relativePath: "SKILL.md"
-            ),
-            as: UTF8.self
-        )
     }
 
 }

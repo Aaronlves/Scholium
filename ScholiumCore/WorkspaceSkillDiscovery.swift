@@ -4,7 +4,6 @@ import ScholiumContracts
 public enum WorkspaceSkillDiscoveryError: LocalizedError, Hashable, Sendable {
     case workspaceRootMismatch(expected: String, actual: String)
     case unavailableMethodFolder(ResearchActionID)
-    case invalidMethodMetadata(actionID: ResearchActionID, reason: String)
 
     public var errorDescription: String? {
         switch self {
@@ -12,8 +11,6 @@ public enum WorkspaceSkillDiscoveryError: LocalizedError, Hashable, Sendable {
             "The Skill discovery workspace root does not own this Triptych control directory. Expected \(expected); received \(actual)."
         case .unavailableMethodFolder(let actionID):
             "The current \(actionID.rawValue) Method folder is unavailable for project Skill discovery."
-        case .invalidMethodMetadata(let actionID, let reason):
-            "The current \(actionID.rawValue) Method cannot be exposed for project Skill discovery. \(reason)"
         }
     }
 }
@@ -56,36 +53,18 @@ extension ResearchConfigurationStore {
         for registration in registrations.document.registrations
             where registration.isEnabled
         {
-            let method = try methodSnapshot(for: registration.actionID)
-            guard let folderPath = method.skillFolderPath,
-                  method.skillFolderIsAvailable == true else {
+            let binding = try skillBindingSnapshot(for: registration.actionID)
+            guard binding.skillFolderIsAvailable else {
                 throw WorkspaceSkillDiscoveryError.unavailableMethodFolder(
                     registration.actionID
                 )
             }
-            let folder = URL(fileURLWithPath: folderPath, isDirectory: true)
+            let folder = URL(
+                fileURLWithPath: binding.skillFolderPath,
+                isDirectory: true
+            )
                 .resolvingSymlinksInPath().standardizedFileURL
             let discoveryName = registration.actionID.projectSkillName
-            let entry = folder.appendingPathComponent("SKILL.md")
-                .standardizedFileURL
-            let entryValues = try? entry.resourceValues(
-                forKeys: [.isRegularFileKey, .isSymbolicLinkKey]
-            )
-            guard entry.deletingLastPathComponent() == folder,
-                  entryValues?.isRegularFile == true,
-                  entryValues?.isSymbolicLink != true,
-                  let entrySource = try? String(contentsOf: entry, encoding: .utf8),
-                  entrySource == method.primaryMarkdownSource else {
-                throw WorkspaceSkillDiscoveryError.invalidMethodMetadata(
-                    actionID: registration.actionID,
-                    reason: "The registered folder's SKILL.md must be the exact current primary Method."
-                )
-            }
-            try Self.validateDiscoveryMetadata(
-                entrySource,
-                expectedName: discoveryName,
-                actionID: registration.actionID
-            )
             sources.append(try WorkspaceSkillSource(
                 name: discoveryName,
                 sourceDirectory: folder.path,
@@ -102,34 +81,4 @@ extension ResearchConfigurationStore {
         )
     }
 
-    private static func validateDiscoveryMetadata(
-        _ source: String,
-        expectedName: String,
-        actionID: ResearchActionID
-    ) throws {
-        let document = NoteDocument(relativePath: "SKILL.md", rawContent: source)
-        guard document.frontmatterState == .valid else {
-            throw WorkspaceSkillDiscoveryError.invalidMethodMetadata(
-                actionID: actionID,
-                reason: "SKILL.md must have valid YAML frontmatter."
-            )
-        }
-        guard document.parsedFrontmatter["name"]?.scalarString == expectedName else {
-            throw WorkspaceSkillDiscoveryError.invalidMethodMetadata(
-                actionID: actionID,
-                reason: "Its name must remain \(expectedName)."
-            )
-        }
-        let rawDescription = document.parsedFrontmatter["description"]?.scalarString
-        let description = rawDescription?.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-        guard let description, !description.isEmpty,
-              description.utf8.count <= 2_048 else {
-            throw WorkspaceSkillDiscoveryError.invalidMethodMetadata(
-                actionID: actionID,
-                reason: "Its description must be nonempty and no larger than 2,048 UTF-8 bytes."
-            )
-        }
-    }
 }

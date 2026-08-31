@@ -348,18 +348,6 @@ extension ResearchActionRunCoordinator {
             )
             : nil
         let evidenceKey = directFidelityEvidenceKey
-        let reused: ResearchActionRunCompletion?
-        if let evidenceKey, snapshot.request.actionID == .checkFidelity {
-            reused = try await completedFidelityEvidence(
-                for: evidenceKey,
-                excluding: submission.runID
-            )
-        } else {
-            reused = nil
-        }
-        let outcomes = reused?.fidelityOutcomes
-            ?? submission.fidelityOutcomes
-        if reused != nil { state = .complete }
         let completion = ResearchActionRunCompletion(
             runID: submission.runID,
             actionID: snapshot.request.actionID,
@@ -369,11 +357,10 @@ extension ResearchActionRunCoordinator {
             materialFingerprints: finalMaterialFingerprints,
             summary: stored.completion?.summary ?? submission.summary,
             didModifyTarget: didConfirmTargetWrite,
-            fidelityOutcomes: outcomes,
+            fidelityOutcomes: submission.fidelityOutcomes,
             fidelityTargetResults: fidelityTargetResults,
             literatureRecommendations: submission.literatureRecommendations,
             fidelityEvidenceKey: evidenceKey,
-            reusedFidelityRunID: reused?.runID,
             childRunIDs: submittedChildRunIDs,
             completedAt: stored.completion?.completedAt ?? submission.submittedAt,
             derivedRefreshWarning: stored.completion?.derivedRefreshWarning
@@ -442,7 +429,6 @@ extension ResearchActionRunCoordinator {
             fidelityTargetResults: completion.fidelityTargetResults ?? [],
             literatureRecommendations: completion.literatureRecommendations,
             fidelityEvidenceKey: completion.fidelityEvidenceKey,
-            reusedFidelityRunID: completion.reusedFidelityRunID,
             childRunIDs: completion.childRunIDs ?? [],
             completedAt: completion.completedAt,
             derivedRefreshWarning: refreshWarning
@@ -822,7 +808,6 @@ extension ResearchActionRunCoordinator {
                     fidelityTargetResults: completion.fidelityTargetResults ?? [],
                     literatureRecommendations: completion.literatureRecommendations,
                     fidelityEvidenceKey: completion.fidelityEvidenceKey,
-                    reusedFidelityRunID: completion.reusedFidelityRunID,
                     childRunIDs: completion.childRunIDs ?? [],
                     completedAt: completion.completedAt,
                     derivedRefreshWarning: completion.derivedRefreshWarning
@@ -883,22 +868,6 @@ extension ResearchActionRunCoordinator {
         let document = try await repository(vaultID: note.vaultID)
             .load(relativePath: note.relativePath)
         return document.fingerprint == fingerprint
-    }
-
-    func completedFidelityEvidence(
-        for key: ResearchFidelityEvidenceKey,
-        excluding runID: UUID?
-    ) async throws -> ResearchActionRunCompletion? {
-        try await authoritativeActionRecords().first { record in
-            guard record.snapshot.request.actionID == .checkFidelity,
-                  let completion = record.completion else {
-                return false
-            }
-            return completion.runID != runID
-                && completion.state == .complete
-                && completion.fidelityEvidenceKey == key
-                && !completion.fidelityOutcomes.isEmpty
-        }?.completion
     }
 
 }

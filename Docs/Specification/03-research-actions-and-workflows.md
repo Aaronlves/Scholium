@@ -22,8 +22,8 @@ assembles context without creating another Action mode; Analyze and Synthesize
 remain separate scholarly Actions.
 
 A **Run** is the only working object for one Action. It owns the task, initial
-research object, frozen Method Context, Result Contract, current capability
-availability, short-lived Bounded Write Set, per-document transaction results,
+research object, frozen Action configuration context, Result Contract, current operation
+availability, short-lived Run Activity Ledger, per-document transaction results,
 status, and one temporary result payload. It limits Research Context queries
 but never owns the Triptych, a provider, an index, or a query response. The
 researcher sees only **In Progress**, **Needs Attention**, or **Ended**, with
@@ -41,25 +41,29 @@ required. A Profile cannot declare Search, reading, Metadata, Zotero,
 mutation, recovery, roles, operations, or permission.
 
 Each available Action resolves one enabled **Research Skill Registration** with
-a hidden relation key, visible name, Action, primary Markdown entry, optional
-folder, and enabled state. The entry is the academic Method authority: edits
-may change intellectual procedure and content, but never select Actions or
-System Skills, grant operations or permissions, or alter lifecycle, Result,
-conflict, or recovery. Operational prose is nonauthorizing; `required_skills`,
-System Skills, and typed contracts retain those owners. Scholium exposes the folder
-only through authorized project discovery and defines no package schema,
-version, dependency graph, manifest, digest, history, marketplace, or plug-in
+a hidden relation key, visible name, Action, researcher-owned folder location,
+and enabled state. Files in that folder may define intellectual procedure and
+content for the external Agent, but they never select Actions or Protocols,
+grant operations or permissions, or alter lifecycle, Result, conflict, or
+recovery. Operational prose is nonauthorizing; `required_skills`, Protocols,
+and typed contracts retain those owners. Scholium defines no package schema,
+version, dependency graph, content digest, history, marketplace, or plug-in
 contract.
 
-The optional Skill folder is ordinary researcher-owned filesystem content.
-Portable registration contains only a Triptych-relative location or a
-machine-local marker; Application Support alone retains any absolute primary
-Method/folder path and security-scoped bookmark under the opaque registration
-key. An absolute path never enters a portable Record or copied handoff.
-Workspace setup reports the exact current folder without enumerating, copying,
-snapshotting, uploading, or executing it. The host reads registered `SKILL.md`
-and routed references. Missing or inaccessible entries block external
-deployment; runtime Context substitutes neither prose nor path.
+The Action Skill folder and every file beneath it are ordinary
+researcher-owned filesystem content. Portable registration contains only a
+Triptych-relative folder location or a machine-local marker; Application
+Support alone retains any absolute folder path and a read-only security-scoped
+bookmark under the opaque registration key. An absolute path never enters a
+portable Record or copied handoff. Scholium may provision a new Triptych's
+initial user copies from bundled templates once, before publishing their
+registrations. After that handoff it does not open, enumerate, parse, validate,
+copy, snapshot, upload, replace, restore, or write any file in those folders.
+Settings offers **Assign Skill Folder...** and **Show Skill Folder in Finder...**;
+the researcher and external Agents read or edit contents through ordinary
+filesystem tools. Workspace setup reports only the exact current folder to
+authorized project discovery. A missing or inaccessible folder blocks
+external deployment; runtime Context substitutes neither prose nor path.
 
 **Philosophical lenses** are substantive ordinary references routed explicitly
 by `SKILL.md` only when relevant. They may refine perspective, procedure, and
@@ -68,35 +72,35 @@ Connection, or safety override; filenames and Wikilinks select nothing.
 Pre-cutover `.scholium/practices` bytes remain untouched and nonauthorizing;
 Scholium neither reads nor migrates them.
 
-If the machine-local Skill locator document is invalid, Skills exposes a
+If the machine-local Skill-folder locator document is invalid, Skills exposes a
 confirmed archive-and-reset action. Scholium preserves the exact invalid file
 under a unique sibling recovery name, installs an empty current locator
 document, and requires affected external Skills to be selected again on that
 Mac. Portable registrations, Skill and reference files, Research Records,
 and vault files remain unchanged; I/O or unsafe storage is not silently reset.
 
-Run creation freezes relation, Skill entry/revision, folder path, and Result
-Contract. Context gives required Skill and frozen revision; the Agent verifies
-loaded bytes before use. Later registration,
-Skill-entry, or Profile edits affect new Runs only; Scholium does not freeze or
-track folder contents. References are read through the Agent's local file
-capability only when the registered Skill routes them. A new Triptych begins with
-editable current default Skills and bundled lens references. Updates never overwrite
-researcher edits. **Restore Default…** means the current app-bundled default
-and states the replacement consequence before writing.
+Run creation freezes the registration relation, registration-document
+revision, resolved folder path in machine-local execution state, and Result
+Contract. Context identifies the required Action Skill and frozen registration
+revision, not a content revision. Later registration or Profile edits affect
+new Runs only. Scholium neither freezes nor tracks folder contents and cannot
+attest which external file revision an Agent loaded. References are read
+through the Agent host's local file capability only when the user-managed Skill
+routes them. A new Triptych begins with user-owned copies provisioned from the
+current bundled templates; subsequent launches and updates never overwrite,
+repair, or restore researcher edits.
 
 Bundled defaults may state research burdens, not one universal method or
 researcher grade. Scoped Agent judgments never certify novelty,
 publishability, doctoral level, field completeness, or acceptance.
 
-Scholium-mediated Skill improvement replaces only the exact expected
-`SKILL.md` and reads it back. Ordinary references are edited through ordinary
-filesystem tools. There is no recovery copy, revision list,
-version browser, comparison history, package lineage, or past-method
-reproduction promise.
-Research Records retain only the hidden registration relation, then-visible
-Skill name, and Profile revision, never Skill text, reference names, or folder
-contents.
+Scholium has no Skill-content editor or Skill-improvement mutation route.
+Researchers and external Agents edit any Skill files through ordinary
+filesystem tools. Scholium provides no recovery copy, revision list, version
+browser, comparison history, package lineage, or past-content reproduction
+promise. Research Records retain only the hidden registration relation,
+then-visible Skill name, and Profile revision, never Skill text, reference
+names, content revision, or folder contents.
 
 The method/context stack has fixed roles:
 
@@ -182,15 +186,21 @@ expired current-schema credentials; unsafe or unknown entries authorize
 nothing. Result finalization revokes writes but retains the binding until that
 expiry for Continue Research, with no extra `end`.
 
-The App and CLI use one per-user loopback bridge with bounded messages,
-timeouts, and version checks. It owns no research or recovery state and exposes
-no relay, LAN, or public endpoint. Cloud copy is not a Session. Mechanics belong to
+App and CLI share one per-user loopback bridge. The App alone creates and
+rotates one process-generation secret in current-user-only Application Support;
+the CLI reads that secret and performs mutual challenge-response before request
+decoding. An Agent without it cannot call the bridge directly, and a secret it
+creates itself is not trusted; the supported Agent route is to invoke the CLI.
+This transport boundary does not restrict the Agent's independent filesystem
+access to a researcher-owned Skill folder. Frames stay bounded, versioned, and timed. Bridge
+owns no research/recovery state and exposes no relay, LAN, or public
+endpoint. Cloud copy is not a Session. Mechanics belong to
 [Research Actions and Execution](../Architecture/02-research-actions-and-execution.md#pairing-and-delivery).
 
 Delivery is progressive:
 
 - workspace setup registers all System and enabled Action Skills;
-- each Run sends Brief, minimum `required_skills`, frozen Method revision,
+- each Run sends Brief, minimum `required_skills`, frozen registration revision,
   Result Contract, and typed `next_actions`—never Skill prose or path;
   Target/Fidelity reads and terminal actions are `required`; supporting
   evidence, Search, and writes are `when_needed`;
@@ -210,7 +220,7 @@ Delivery is progressive:
 available but cannot replace required Skills, override Core, or widen authority.
 
 `reload` revalidates exact Target, Materials, and formal source and returns the
-frozen current packet. Drift returns `stale_run`; no later method or cached
+frozen current packet. Drift returns `stale_run`; no later registration, Profile, or cached
 Context response is substituted. A read or Search call proves response delivery,
 not evidential use. Scholium requests, infers, and persists no reading history
 or source-use testimony.
@@ -228,8 +238,8 @@ search. Each clause fixes Triptych scope, its legal query or section selector,
 and an item limit. The Agent does not declare evidential eligibility;
 Application derives each item's eligibility from content kind and currentness. A query
 cannot choose a provider, source-kind/purpose cross-product, Run, Triptych, or
-authorization scope. Application binds current Run, Session,
-Triptych, authorized scope, and generation before provider execution. Research
+scope. Application binds current Run, Session,
+Triptych, task scope, and generation before provider execution. Research
 Context composes the one Search capability, exact Note/section read, explicit
 direct Relations, canonical Metadata, Research Records, the current Run's
 selected source binding, and only researcher-state facts whose existing owner
@@ -292,38 +302,28 @@ Research Context reads only the portable Settlement judgment and its exact
 fingerprint. Settle creates no machine-local source version, recovery pin,
 importance, stance, adoption, or separately retrievable state item.
 
-### 8.3 Collaboration policy, Bounded Write Set, and exact writes
+### 8.3 Direct collaboration, Run Activity Ledger, and exact writes
 
-Each Triptych has exactly one collaboration policy:
+Scholium has no Triptych collaboration policy, per-Action permission profile,
+Skill trust score, or per-document approval sheet. The researcher beginning or
+handing off a Run establishes the research task. Within that task, the Agent
+may add any relevant Analysis, Topic, or Work target and may initiate a related
+next Action without asking the researcher to approve each document again.
+Skill-file edits remain ordinary external filesystem work. Third-party
+disclosure and external-service writes retain their separate privacy and
+consequence boundaries.
 
-1. **Ask Me Every Time**;
-2. **Ask Me Only for Works**; or
-3. **Full Access**.
-
-There is no per-Action or per-Skill standing override and no method-digest
-permission subject. The policy controls when Scholium interrupts the
-researcher; it is not a trust score, bearer credential, or capability source.
-The researcher selecting an Action already authorizes reading task-relevant
-Triptych material and the displayed operation on its initial object. That
-object enters the Run's Bounded Write Set without a redundant second prompt.
-Reading a Work does not trigger the Works policy.
-
-Adding extra documents is a distinct consequential operation. Ask Me Every
-Time presents one bounded set and permits a subset; Ask Me Only for Works asks
-only when it changes a Work; Full Access binds a valid set without a sheet. A
-sheet's sole denial is **Continue Without Additional Notes**; **End Action**
-separately ends the whole Run. The same policy governs a next Run. Skill-entry
-edits require a researcher-initiated method-improvement action. No
-policy authorizes third-party disclosure.
-
-The **Bounded Write Set** is hidden, short-lived, expandable, and owned only by
-its Run. Each member binds Triptych, stable existing-document identity or one
-explicitly authorized new identity, vault role, permitted operation, exact
-expected revision or proven absence, expiry, and authorization provenance.
-It contains no document bytes, research plan, write order, academic relation,
-or persistent group. Single-request member count, Run-total member count, and
-encoded payload have explicit testable limits; exceeding one returns a bounded
-continuation result rather than widening authority.
+The hidden, short-lived **Run Activity Ledger** is an attribution and recovery
+owner, not an authorization allowlist. The initial object enters it at Run
+creation. Before the first mutation of another document, the Agent declares the
+exact target and intended operation; Scholium resolves the stable identity,
+role, starting revision or proven absence, and automatically appends it. The
+ledger then records each attempted operation and its confirmed, unchanged,
+conflicted, unknown, abandoned, or recovery-required outcome. It contains no
+document bytes, research plan, write order, academic relation, or persistent
+target group. Request, Run-total, and payload limits are resource bounds;
+exceeding one returns a smaller continuation requirement rather than a request
+for researcher permission.
 
 The operation is always explicit: `create_note`, `modify_markdown`,
 `modify_source`, `modify_metadata`, `set_zotero_binding`, or
@@ -332,58 +332,63 @@ The operation is always explicit: `create_note`, `modify_markdown`,
 including YAML, and never reconstructs it from a projection. `modify_metadata`
 changes only granted keys in the portable Metadata record and never changes
 Markdown.
-`create_note` binds a proven-absent path, one authorized new identity, the
+`modify_markdown` requires a provable body boundary: closed frontmatter stays
+byte-exact despite YAML diagnostics; an unclosed delimiter cannot be safely
+separated from the body.
+`create_note` binds a proven-absent path, one reserved new identity, the
 fixed authored-YAML scaffold, and for Analysis an allowed source type plus
 optional typed initial fields. It is idempotent only for the same hidden creation operation;
 after creation the identity is no longer new. Body authority cannot rewrite
-frontmatter, Metadata authority is limited to exact granted managed keys, and
-either source authority is insufficient for integration binding. Binding authority
-is insufficient for Markdown. A `modify_source` member is still limited to
+frontmatter, Metadata mutation is limited to exact declared managed keys, and
+either source operation is distinct from integration binding. Binding mutation
+is distinct from Markdown. A `modify_source` activity is still limited to
 its one existing Note identity, expected revision, Run, and operation
-capability; its complete candidate must be valid UTF-8 and have valid or absent
+lease; its complete candidate must be valid UTF-8 and have valid or absent
 frontmatter before the repository transaction begins. Agent Analysis creation
 must satisfy source-type applicability for every value it does provide.
 Settings-preferred fields are guidance only; omission never blocks creation or
 produces placeholders. Typed authored values replace only the fixed `summary`
 or `keywords` placeholder in the same creation request.
 
-One authorization may bind several exact documents, but every actual mutation
-uses a nonreusable short-lived capability bound to the current unique writable
-Session, Run, complete allowed document set, and each member's expected
-revision. Each call names one member and has one hidden idempotent operation
-identity. Before writing, Scholium revalidates Session, Run, membership,
-identity, role, operation, containment, current revision, and policy facts that
-can revoke unused Full Access authority. Before Agent access, each existing
-writable Note receives one exact Run-bound starting revision used only for
+One Run may track several exact documents, but every actual mutation uses a
+nonreusable short-lived transaction lease bound to the current Session, Run,
+activity-ledger revision, exact target, expected revision, and operation
+identity. The lease prevents replay and transaction confusion; it is not a
+researcher permission decision or an Agent-held master credential. Before
+writing, Scholium revalidates Session attribution, Run, activity membership,
+identity, role, operation, containment, and current revision. Before the first
+Agent write, each existing tracked Note receives one exact Run-bound starting revision used only for
 Agent diff and direct Undo. Existing-note source writes build and validate the
-bounded body, complete source, or property candidate, atomically replace, read
+declared body, complete source, or property candidate, atomically replace, read
 back, and advance that evidence's exact ending revision. Creation
 instead re-proves absence, claims the exact
 path without fallback naming, and must jointly read back both source and its
 reserved stable identity. It has no fabricated empty-source revision or
 change preimage. A confirmed Scholium write advances only that member's expected
-revision; a confirmed creation consumes that one-use new-identity authority.
+revision; a confirmed creation consumes that one reserved new identity.
 
-The set is not a batch transaction. One member's conflict, external change,
+The ledger is not a batch transaction. One member's conflict, external change,
 failure, or abandonment does not roll back confirmed siblings, revoke
 unchanged references, or create a child Run. An external change makes only the
 affected member stale. Already-submitted file transactions must reach a known
-written/not-written/recovery-needed result; policy tightening or manual End
-cannot pretend to cancel them. Manual End cancels only a Run without confirmed
+written/not-written/recovery-needed result; manual End cannot pretend to cancel
+them. Manual End cancels only a Run without confirmed
 writes. A confirmed change requires Result submission so Record and Review
 provenance cannot be discarded; unknown writes and recovery duties block End.
 Run cleanup
-removes the write set only after every transaction converges; transaction recovery may outlive it only as
+compacts the activity ledger only after every transaction converges; transaction recovery may outlive it only as
 the existing machine-owned recovery duty.
 
-Direct Agent editing is the product model. Each mutation proceeds through the
-current Run's exact Bounded Write Set and one-document transaction. Scholium
-guarantees scope, identity, revision, transaction truth, exact displaced bytes,
+Direct Agent editing is the product model. Each CLI-mediated mutation proceeds
+through the current Run's Activity Ledger and one-document transaction.
+Scholium guarantees attribution, identity, revision, transaction truth, exact displaced bytes,
 conflict, readback, and recovery. It does not certify fidelity to a source,
 preservation of the researcher's thesis, philosophical quality, or researcher
 acceptance. Those remain method, attributed reasons, visible changes,
 recovery, optional researcher-initiated Check Fidelity, and researcher
-judgment.
+judgment. Raw filesystem edits remain ordinary external changes because
+Scholium cannot reliably distinguish an Agent, researcher, Obsidian, sync tool,
+or another editor merely from a filesystem event.
 
 ### 8.4 Result Contract, one Research Record, and researcher review
 
@@ -547,7 +552,7 @@ Recommendations remain occurrences inside their parent Record under
 [§15.3](05-integrations-onboarding-and-boundaries.md#153-literature-recommendations-and-the-zotero-boundary);
 **Reading Leads** is only their collection projection, not another durable kind.
 
-### 8.5 Attribution, continuity, method improvement, and failure
+### 8.5 Attribution, continuity, feedback, and failure
 
 Scholium-owned records keep four authorship classes distinct:
 
@@ -579,11 +584,10 @@ the next Action's Research Request. Scholium supplies the `continued from`
 Record relationship and records whether the lineage is Agent Continue Research
 or researcher Follow-up.
 
-Full Access may create the next Run directly; the other policies use the same
-single decision rule and ask only when required. The new Run independently
-resolves current Skill, Profile, policy, Result Contract, and
-write set. It does not inherit document handles, transaction state, method,
-permission decision, Research Context response, candidates, rank, cache,
+An authenticated Agent may create the next Run directly without another
+permission decision. The new Run independently resolves current Skill,
+Profile, Result Contract, and Activity Ledger. It does not inherit document
+handles, transaction state, method, Research Context response, candidates, rank, cache,
 availability, or future Assembly. Handoff references are re-resolved against
 current owner, revision, scope, and generation. A selected source-Material
 reference reports current, changed, missing, or unavailable from the existing
@@ -603,8 +607,8 @@ the Run boundary. Requery proves neither completeness nor correctness.
 
 The next Record alone stores `continued from` after it safely forms; `continued
 as` is derived in reverse and never rewrites the prior Record. Rejection or
-abandonment changes no prior completion. Agent-initiated continuation under
-Full Access remains an Agent act rather than researcher intent.
+abandonment changes no prior completion. Agent-initiated continuation remains
+an Agent act rather than researcher intent.
 
 Agent **Continue Research** remains initiated through the authenticated
 CLI/Agent Run protocol. A created Continue response returns the child Context
@@ -619,29 +623,13 @@ top-level row.
 The Follow-up sheet may reveal one optional, secondary, default-collapsed
 **Feedback on Previous Result** field. Saving it writes Method Feedback to the
 parent Record, not to the child request or Result, and authorizes no Agent
-access. A parent Record with current feedback exposes **Improve Current
-Method...**. Starting that action, not Full Access, Follow-up, or source
-disposition, creates one
-separately paired improvement Run bound to the parent Record, exact comment
-revision/text, finalized Result fingerprint, original registration relation,
-current Skill entry and its exact revision. It
-inherits no ordinary Action context, Result operation, Bounded Write Set, or
-blanket folder authority.
-
-The Agent may replace exactly one current `SKILL.md`,
-or return one `diagnosed_no_change`/`unavailable` diagnosis after judging
-whether the issue concerns method, execution, material, provider, request, or
-preference. CLI obtains machine revisions from authenticated context rather
-than researcher copying. Every replacement uses one nonreusable short-lived
-capability, expected-revision transaction, and exact read-back. A committed
-file edit can reconcile after interruption
-without a second write. A successful read-back edit or safely saved diagnosis
-deletes only the still-exact comment; modified comments remain. Identical
-terminal retry is idempotent and different input fails closed. A deleted Record
-deletes its comment; a missing registration leaves it readable and manually
-removable but cannot redirect it to another Skill. Local Execution retains
-only the one current improvement Run and one terminal outcome: there is no
-feedback queue, processed state, history, or automatic evolution.
+access or Skill mutation. It remains readable and replaceable as researcher
+feedback until the researcher removes it or deletes the Record. Scholium does
+not interpret it as a queue or processed state, clear it after an external
+edit, start a separate improvement Run, or redirect it to another Skill. The
+researcher may open the Action's assigned folder from Settings and use the
+feedback while editing externally; that independent edit has no Scholium-
+verified causal or revision link to the Record.
 
 Conflict, cancellation, timeout, unavailable provider, missing method,
 unreadable source, invalid contract, and unknown write result remain accurate
@@ -713,7 +701,7 @@ Neither field is a completion grade.
    the Topic is the initial write member. It states its bounded material basis,
    preserves methodological asymmetry, and distinguishes any local provisional
    stopping point from practical cutoff or lack of progress.
-4. Additional exact documents may join the same Run's Bounded Write Set under
+4. Additional exact documents may join the same Run's Activity Ledger under
    Section 8.3; they do not become child Runs or a persistent target group.
 5. Use Check Fidelity for an affected exact revision only when the researcher
    explicitly initiates that Action, then let the researcher decide whether
@@ -754,9 +742,9 @@ scoped research burdens without certifying maturity, originality, or readiness;
 this is an attributed assessment, never an automatic diagnostic. Passage
 remains bounded unless the researcher broadens it.
 
-The Action uses the current registered Critique Skill. **Edit Critique
-Skill...** opens **Settings → Research Guidance → Skills → Critique**, where
-the Skill entry, optional folder path, and explicit default restoration belong.
+The Action uses the current registered Critique Skill folder. **Settings →
+Research Guidance → Skills → Critique** assigns or reveals that folder; all
+content editing occurs outside Scholium.
 
 ### 11.4 Critique form
 

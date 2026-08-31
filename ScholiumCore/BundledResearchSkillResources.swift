@@ -27,18 +27,24 @@ public enum BundledResearchSkillResources {
         let root = try skillDirectory(directory)
         let url = root.appendingPathComponent(relativePath).standardizedFileURL
         guard url.path.hasPrefix(root.path + "/") else {
-            throw ResearchConfigurationStoreError.invalidMethod(relativePath)
+            throw ResearchConfigurationStoreError.invalidDocument(
+                "Bundled Protocol Skill path is invalid: \(relativePath)"
+            )
         }
         let values = try url.resourceValues(
             forKeys: [.isRegularFileKey, .isSymbolicLinkKey]
         )
         guard values.isRegularFile == true, values.isSymbolicLink != true else {
-            throw ResearchConfigurationStoreError.invalidMethod(url.path)
+            throw ResearchConfigurationStoreError.invalidDocument(
+                "Bundled Protocol Skill resource is invalid: \(url.path)"
+            )
         }
         let data = try Data(contentsOf: url, options: [.mappedIfSafe])
         guard data.count <= 1_048_576,
               String(data: data, encoding: .utf8) != nil else {
-            throw ResearchConfigurationStoreError.invalidMethod(url.path)
+            throw ResearchConfigurationStoreError.invalidDocument(
+                "Bundled Protocol Skill resource is invalid: \(url.path)"
+            )
         }
         return data
     }
@@ -48,7 +54,9 @@ public enum BundledResearchSkillResources {
             forResource: "Skills",
             withExtension: nil
         ) else {
-            throw ResearchConfigurationStoreError.invalidMethod("bundled Skills")
+            throw ResearchConfigurationStoreError.invalidDocument(
+                "Bundled Protocol Skills are unavailable."
+            )
         }
         let root = skillsRoot
             .appendingPathComponent(directory, isDirectory: true)
@@ -57,7 +65,9 @@ public enum BundledResearchSkillResources {
             forKeys: [.isDirectoryKey, .isSymbolicLinkKey]
         )
         guard values.isDirectory == true, values.isSymbolicLink != true else {
-            throw ResearchConfigurationStoreError.invalidMethod(root.path)
+            throw ResearchConfigurationStoreError.invalidDocument(
+                "Bundled Protocol Skill root is invalid: \(root.path)"
+            )
         }
         return root.resolvingSymlinksInPath().standardizedFileURL
     }

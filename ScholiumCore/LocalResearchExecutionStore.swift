@@ -16,7 +16,6 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
     public var zoteroBindingWriteRecords: [ResearchZoteroBindingWriteRecord]
     public var writeConflictResolutionRecords: [ResearchWriteConflictResolutionRecord]
     public var continuationRequests: [ResearchContinuationRequestRecord]
-    public var methodImprovementRun: ResearchMethodImprovementRun?
     public var resultPayload: ResearchRunResultPayload?
     public var writeReport: ResearchRunWriteReport?
     public var completion: ResearchActionRunCompletion?
@@ -36,7 +35,6 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
         zoteroBindingWriteRecords: [ResearchZoteroBindingWriteRecord] = [],
         writeConflictResolutionRecords: [ResearchWriteConflictResolutionRecord] = [],
         continuationRequests: [ResearchContinuationRequestRecord] = [],
-        methodImprovementRun: ResearchMethodImprovementRun? = nil,
         resultPayload: ResearchRunResultPayload? = nil,
         writeReport: ResearchRunWriteReport? = nil,
         completion: ResearchActionRunCompletion? = nil,
@@ -101,14 +99,6 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
             snapshot.actionSnapshot.authority.writableNotes.map(\.noteID)
         )
         let writeSetIDs = Set(resolvedWriteSet.entries.map(\.noteID))
-        let methodImprovementMatches = methodImprovementRun.map { improvement in
-            improvement.parentRecordID == snapshot.runID
-                && improvement.triptychID == triptychID
-                && improvement.registrationKey
-                    == snapshot.actionSnapshot.method.registration.key
-                && improvement.actionID
-                    == snapshot.actionSnapshot.actionID
-        } ?? true
         let operationalShapeMatches = isCompacted
             ? preparedInstructions.isEmpty
                 && resolvedWriteSet.entries.isEmpty
@@ -164,7 +154,6 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
               continuationRequests.allSatisfy({
                   $0.parentRunID == snapshot.runID && $0.triptychID == triptychID
               }),
-              methodImprovementMatches,
               resultPayload?.runID == snapshot.runID || resultPayload == nil,
               writeReport?.runID == snapshot.runID || writeReport == nil,
               isCompacted || writeReport.map({ report in
@@ -192,7 +181,6 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
         self.zoteroBindingWriteRecords = zoteroBindingWriteRecords
         self.writeConflictResolutionRecords = writeConflictResolutionRecords
         self.continuationRequests = continuationRequests
-        self.methodImprovementRun = methodImprovementRun
         self.resultPayload = resultPayload
         self.writeReport = writeReport
         self.completion = completion
@@ -211,7 +199,6 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
         case zoteroBindingWriteRecords = "zotero_binding_write_records"
         case writeConflictResolutionRecords = "write_conflict_resolution_records"
         case continuationRequests = "continuation_requests"
-        case methodImprovementRun = "method_improvement_run"
         case resultPayload = "result_payload"
         case writeReport = "write_report"
         case completion
@@ -261,10 +248,6 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
                 [ResearchContinuationRequestRecord].self,
                 forKey: .continuationRequests
             ),
-            methodImprovementRun: container.decodeIfPresent(
-                ResearchMethodImprovementRun.self,
-                forKey: .methodImprovementRun
-            ),
             resultPayload: container.decodeIfPresent(
                 ResearchRunResultPayload.self,
                 forKey: .resultPayload
@@ -301,7 +284,7 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
                 title: note.title,
                 allowedOperations: action.authority.writeOperations,
                 expectedRevision: note.fingerprint,
-                authorizationBasis: .initialAction,
+                activityOrigin: .initialAction,
                 expiresAt: snapshot.preparedAt.addingTimeInterval(24 * 60 * 60)
             )
         }
@@ -319,7 +302,7 @@ public struct LocalResearchExecutionRecord: Codable, Hashable, Identifiable, Sen
 struct LocalResearchExecutionEnvelope: Codable, Hashable, Sendable {
     static let formatIdentifier = "org.scholium.local-research-execution"
     static let currentFormatRevision = 1
-    static let currentPayloadRevision = 1
+    static let currentPayloadRevision = 2
 
     enum AuthorityState: String, Codable, Hashable, Sendable {
         case live
@@ -575,7 +558,7 @@ public actor LocalResearchExecutionStore {
     }
 
     /// Replaces a finalized Run's operational journal with the small receipt
-    /// still needed for continuation, Method improvement, and idempotency.
+    /// still needed for continuation and idempotency.
     @discardableResult
     public func compactCompleted(runID: UUID) throws -> LocalResearchExecutionRecord {
         try update(runID) { current in
@@ -668,28 +651,11 @@ public actor LocalResearchExecutionStore {
                 }
                 return
             }
-            guard pending.expiresAt > decidedAt else {
-                current.writeSetExtensionRecords[index] = try ResearchWriteSetExtensionRecord(
-                    id: pending.id,
-                    runID: pending.runID,
-                    triptychID: pending.triptychID,
-                    intent: pending.intent,
-                    intentDigest: pending.intentDigest,
-                    candidates: pending.candidates,
-                    policy: pending.policy,
-                    policyRevision: pending.policyRevision,
-                    state: .expired,
-                    receivedAt: pending.receivedAt,
-                    expiresAt: pending.expiresAt,
-                    decidedAt: decidedAt
-                )
-                return
-            }
             let allowedHandles = entries.map(\.handle).sorted {
                 $0.rawValue < $1.rawValue
             }
-            guard state == .allowedSubset || entries.isEmpty,
-                  state != .allowedSubset || !entries.isEmpty,
+            guard state == .recorded || entries.isEmpty,
+                  state != .recorded || !entries.isEmpty,
                   Set(allowedHandles).isSubset(of: Set(pending.candidates.map(\.handle)))
             else {
                 throw ResearchBoundedWriteSetError.invalidExtensionRecord
@@ -744,8 +710,6 @@ public actor LocalResearchExecutionStore {
                 intent: pending.intent,
                 intentDigest: pending.intentDigest,
                 candidates: pending.candidates,
-                policy: pending.policy,
-                policyRevision: pending.policyRevision,
                 state: state,
                 allowedHandles: allowedHandles,
                 receivedAt: pending.receivedAt,
@@ -831,9 +795,7 @@ public actor LocalResearchExecutionStore {
                         || refreshedEntry.metadataRevision == entry.metadataRevision),
                       refreshedEntry.zoteroBindingsRevision
                         == entry.zoteroBindingsRevision,
-                      refreshedEntry.authorizationBasis == entry.authorizationBasis,
-                      refreshedEntry.authorizationPolicy == entry.authorizationPolicy,
-                      refreshedEntry.policyRevision == entry.policyRevision,
+                      refreshedEntry.activityOrigin == entry.activityOrigin,
                       refreshedEntry.expiresAt == entry.expiresAt,
                       refreshedEntry.state == .ready else {
                     throw ResearchBoundedWriteSetError.invalidConflictResolution
@@ -1156,123 +1118,6 @@ public actor LocalResearchExecutionStore {
         }
     }
 
-    /// Installs the one current, explicitly researcher-started Method
-    /// improvement Run on its source Action execution. A later feedback
-    /// revision replaces the terminal prior Run instead of creating history.
-    @discardableResult
-    public func installMethodImprovement(
-        _ improvement: ResearchMethodImprovementRun
-    ) throws -> LocalResearchExecutionRecord {
-        try update(improvement.parentRecordID) { record in
-            guard record.triptychID == improvement.triptychID,
-                  record.completion.map({
-                      [.complete, .unverified].contains($0.state)
-                  }) == true,
-                  record.resultPayload != nil else {
-                throw ResearchMethodImprovementError.runUnavailable
-            }
-            if let existing = record.methodImprovementRun,
-               existing.id == improvement.id {
-                guard existing == improvement else {
-                    throw ResearchMethodImprovementError.invalidContract
-                }
-                return
-            }
-            if let existing = record.methodImprovementRun,
-               existing.state == .writing {
-                throw ResearchMethodImprovementError.runUnavailable
-            }
-            record.methodImprovementRun = improvement
-        }
-    }
-
-    public func methodImprovement(
-        id: UUID
-    ) throws -> ResearchMethodImprovementRun {
-        let listing = try self.listing()
-        guard listing.issues.isEmpty,
-              let improvement = listing.records.compactMap(
-                \.methodImprovementRun
-              ).first(where: { $0.id == id }) else {
-            throw ResearchMethodImprovementError.runUnavailable
-        }
-        return improvement
-    }
-
-    @discardableResult
-    public func beginMethodImprovement(
-        runID: UUID,
-        submission: ResearchMethodImprovementSubmission,
-        submissionFingerprint: DocumentFingerprint
-    ) throws -> LocalResearchExecutionRecord {
-        let improvement = try methodImprovement(id: runID)
-        return try update(improvement.parentRecordID) { record in
-            guard let current = record.methodImprovementRun,
-                  current.id == runID else {
-                throw ResearchMethodImprovementError.runUnavailable
-            }
-            if current.state == .writing {
-                guard current.submissionFingerprint == submissionFingerprint,
-                      current.pendingSubmission == submission else {
-                    throw ResearchMethodImprovementError.resultAlreadySubmitted
-                }
-                return
-            }
-            guard current.state == .prepared else {
-                throw ResearchMethodImprovementError.resultAlreadySubmitted
-            }
-            record.methodImprovementRun = try current.beginning(
-                submission: submission,
-                submissionFingerprint: submissionFingerprint
-            )
-        }
-    }
-
-    @discardableResult
-    public func completeMethodImprovement(
-        runID: UUID,
-        submissionFingerprint: DocumentFingerprint,
-        receipt: ResearchMethodImprovementReceipt
-    ) throws -> LocalResearchExecutionRecord {
-        let improvement = try methodImprovement(id: runID)
-        return try update(improvement.parentRecordID) { record in
-            guard let current = record.methodImprovementRun,
-                  current.id == runID else {
-                throw ResearchMethodImprovementError.runUnavailable
-            }
-            if current.state == .completed {
-                guard current.submissionFingerprint == submissionFingerprint,
-                      current.receipt == receipt else {
-                    throw ResearchMethodImprovementError.resultAlreadySubmitted
-                }
-                return
-            }
-            guard current.state == .writing,
-                  current.submissionFingerprint == submissionFingerprint else {
-                throw ResearchMethodImprovementError.runUnavailable
-            }
-            record.methodImprovementRun = try current.completing(
-                submissionFingerprint: submissionFingerprint,
-                receipt: receipt
-            )
-        }
-    }
-
-    @discardableResult
-    public func cancelMethodImprovement(
-        runID: UUID
-    ) throws -> LocalResearchExecutionRecord {
-        let improvement = try methodImprovement(id: runID)
-        return try update(improvement.parentRecordID) { record in
-            guard let current = record.methodImprovementRun,
-                  current.id == runID else {
-                throw ResearchMethodImprovementError.runUnavailable
-            }
-            if current.state == .cancelled { return }
-            record.methodImprovementRun = try current.cancelling()
-        }
-    }
-
 
     /// Verifies the stable authority envelope needed to scope System Trash.
     /// An unsupported payload remains visible in diagnostics but does not make
@@ -1437,13 +1282,11 @@ public actor LocalResearchExecutionStore {
             [.writing, .recoveryRequired].contains($0.state)
         }) { return .live }
         if record.writeSetExtensionRecords.contains(where: {
-            [.pending, .allowedSubset].contains($0.state)
+            [.pending, .recorded].contains($0.state)
         }) { return .live }
         if record.continuationRequests.contains(where: {
             [.pending, .allowed, .created].contains($0.state)
         }) { return .live }
-        if let state = record.methodImprovementRun?.state,
-           [.prepared, .writing].contains(state) { return .live }
         return .terminal
     }
 
@@ -1515,7 +1358,7 @@ public actor LocalResearchExecutionStore {
         parentRunID: UUID,
         requestID: UUID,
         state: ResearchContinuationRequestState,
-        authorizationBasis: ResearchContinuationAuthorizationBasis? = nil,
+        origin: ResearchContinuationOrigin? = nil,
         childRunID: UUID? = nil,
         decidedAt: Date
     ) throws -> LocalResearchExecutionRecord {
@@ -1528,26 +1371,23 @@ public actor LocalResearchExecutionStore {
             let current = record.continuationRequests[index]
             if current.state == state, current.childRunID == childRunID { return }
             let allowedTransition: Bool = switch (current.state, state) {
-            case (.pending, .allowed), (.pending, .declined),
-                 (.pending, .stale), (.pending, .expired),
+            case (.pending, .allowed), (.pending, .stale),
                  (.allowed, .created), (.allowed, .stale): true
             default: false
             }
             guard allowedTransition else {
                 throw ResearchContinuationContractError.invalidRecord
             }
-            let resolvedBasis = authorizationBasis
-                ?? (state == .created ? current.authorizationBasis : nil)
+            let resolvedOrigin = origin
+                ?? (state == .created ? current.origin : nil)
             record.continuationRequests[index] = try ResearchContinuationRequestRecord(
                 id: current.id,
                 parentRunID: current.parentRunID,
                 triptychID: current.triptychID,
                 request: current.request,
                 requestFingerprint: current.requestFingerprint,
-                policy: current.policy,
-                policyRevision: current.policyRevision,
                 state: state,
-                authorizationBasis: resolvedBasis,
+                origin: resolvedOrigin,
                 receivedAt: current.receivedAt,
                 expiresAt: current.expiresAt,
                 decidedAt: decidedAt,
@@ -1790,8 +1630,6 @@ public actor LocalResearchExecutionStore {
               existing.completedAt == replacement.completedAt,
               existing.fidelityEvidenceKey == nil
                   || existing.fidelityEvidenceKey == replacement.fidelityEvidenceKey,
-              existing.reusedFidelityRunID == nil
-                  || existing.reusedFidelityRunID == replacement.reusedFidelityRunID,
               existing.derivedRefreshWarning == nil
                   || existing.derivedRefreshWarning == replacement.derivedRefreshWarning,
               Set(existing.fidelityOutcomes).isSubset(of: Set(replacement.fidelityOutcomes)),

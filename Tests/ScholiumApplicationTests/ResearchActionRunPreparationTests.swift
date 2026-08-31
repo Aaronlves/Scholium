@@ -30,7 +30,9 @@ extension ResearchActionRunOperationsTests {
         )
         #expect(preflight.instructions.contains("authenticated Agent CLI"))
         #expect(preflight.instructions.contains("frozen Result Contract"))
-        #expect(preflight.instructions.contains("grounds any literature recommendations"))
+        #expect(preflight.instructions.contains("scholium-analyze"))
+        #expect(preflight.instructions.contains("does not read"))
+        #expect(!preflight.instructions.contains("grounds any literature recommendations"))
         try await handle.research.cancelActionRun(runID: preflight.runID)
         await runtime.shutdown()
     }

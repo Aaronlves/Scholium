@@ -493,8 +493,8 @@ struct LocalAgentBridgeTests {
         }
     }
 
-    @Test("A loopback peer is accepted and bridge state persists no credential")
-    func loopbackAndSecretBoundary() throws {
+    @Test("A secret-authenticated local peer is accepted and bridge state persists no credential")
+    func localPeerAndSecretBoundary() async throws {
         let fixture = try BridgeFixture()
         defer { fixture.remove() }
         let reached = LockedFlag()
@@ -509,11 +509,22 @@ struct LocalAgentBridgeTests {
         }
         defer { server.stop() }
 
-        let port = LocalAgentBridgeLocation.port(
+        let authenticationURL = LocalAgentBridgeLocation.authenticationURL(
             applicationSupportURL: fixture.support
         )
-        #expect(LocalAgentBridgeLocation.host == "127.0.0.1")
-        #expect(port >= 49_152)
+        var authenticationStatus = stat()
+        #expect(lstat(authenticationURL.path, &authenticationStatus) == 0)
+        #expect(authenticationStatus.st_uid == geteuid())
+        #expect(authenticationStatus.st_mode & S_IFMT == S_IFREG)
+        #expect(authenticationStatus.st_mode & 0o777 == 0o600)
+        #expect(authenticationStatus.st_size
+            == LocalAgentBridgeAuthentication.nonceByteCount)
+        let directoryMode = try #require(
+            FileManager.default.attributesOfItem(atPath: fixture.support.path)[
+                .posixPermissions
+            ] as? NSNumber
+        ).intValue
+        #expect(directoryMode == 0o700)
         let response = try LocalAgentBridgeClient(
             applicationSupportURL: fixture.support,
             timeout: 0.5
@@ -531,6 +542,8 @@ struct LocalAgentBridgeTests {
             #expect(!String(decoding: try Data(contentsOf: url), as: UTF8.self)
                 .contains(credential.secret))
         }
+        #expect(await server.stopAndWait())
+        #expect(!FileManager.default.fileExists(atPath: authenticationURL.path))
     }
 
     @Test("Malformed, oversized, and idle connections fail closed")
@@ -545,13 +558,80 @@ struct LocalAgentBridgeTests {
         let port = LocalAgentBridgeLocation.port(
             applicationSupportURL: fixture.support
         )
-        #expect(try sendRawFrame(Data("{}".utf8), to: port).error?.code
+        let secret = try Data(contentsOf: LocalAgentBridgeLocation.authenticationURL(
+            applicationSupportURL: fixture.support
+        ))
+        #expect(try sendRawFrame(Data("{}".utf8), to: port, secret: secret).error?.code
             == .invalidRequest)
         #expect(try sendRawPrefix(
             UInt32(LocalAgentBridgeLocation.maximumFrameByteCount + 1),
-            to: port
+            to: port,
+            secret: secret
         ).error?.code == .invalidFrame)
         #expect(try sendNothing(to: port).error?.code == .timeout)
+    }
+
+    @Test("A peer without the transport secret is denied before request decoding")
+    func unauthenticatedPeerFailsClosed() throws {
+        let fixture = try BridgeFixture()
+        defer { fixture.remove() }
+        let reached = LockedFlag()
+        let server = try LocalAgentBridgeServer(
+            applicationSupportURL: fixture.support,
+            timeout: 0.2
+        ) { _ in
+            reached.set()
+            throw TestFailure.expected
+        }
+        defer { server.stop() }
+
+        let response = try sendRawFrame(
+            LocalAgentBridgeWireCoding.encode(try pairRequest()),
+            to: LocalAgentBridgeLocation.port(
+                applicationSupportURL: fixture.support
+            ),
+            secret: Data(repeating: 0, count: 32),
+            verifyServer: false
+        )
+
+        #expect(response.error?.code == .permissionDenied)
+        #expect(!reached.value)
+    }
+
+    @Test("A peer-created transport secret is replaced and never trusted")
+    func peerCannotMintTransportSecret() throws {
+        let fixture = try BridgeFixture()
+        defer { fixture.remove() }
+        let authenticationURL = LocalAgentBridgeLocation.authenticationURL(
+            applicationSupportURL: fixture.support
+        )
+        let forged = Data(repeating: 0xA5, count: 32)
+        try forged.write(to: authenticationURL, options: .atomic)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o600],
+            ofItemAtPath: authenticationURL.path
+        )
+        let reached = LockedFlag()
+        let server = try LocalAgentBridgeServer(
+            applicationSupportURL: fixture.support,
+            timeout: 0.2
+        ) { _ in
+            reached.set()
+            return .credential(try testCredential())
+        }
+        defer { server.stop() }
+
+        #expect(try Data(contentsOf: authenticationURL) != forged)
+        let response = try sendRawFrame(
+            LocalAgentBridgeWireCoding.encode(try pairRequest()),
+            to: LocalAgentBridgeLocation.port(
+                applicationSupportURL: fixture.support
+            ),
+            secret: forged,
+            verifyServer: false
+        )
+        #expect(response.error?.code == .permissionDenied)
+        #expect(!reached.value)
     }
 
     @Test("The largest legal exact-source page fits its complete bridge response envelope")
@@ -713,7 +793,7 @@ struct LocalAgentBridgeTests {
             title: "Agency",
             allowedOperations: [.modifyMarkdown],
             expectedRevision: DocumentFingerprint(content: "before"),
-            authorizationBasis: .initialAction,
+            activityOrigin: .initialAction,
             expiresAt: Date().addingTimeInterval(60)
         )
         let result = ResearchDocumentWriteResult(
@@ -736,94 +816,6 @@ struct LocalAgentBridgeTests {
             == "Old exact source cleanup is pending.")
     }
 
-    @Test("Method improvement context and one-file submission round-trip without exposing a capability")
-    func methodImprovementRoundTrip() throws {
-        let locator = try #require(ResearchRunLocator(
-            rawValue: "methodimprovementrunabcd"
-        ))
-        let credential = try testCredential()
-        let registration = try ResearchSkillRegistration(
-            actionID: .write,
-            displayName: "Write Method",
-            primaryMarkdown: .machineLocal()
-        )
-        let method = try ResearchMethodSnapshot(
-            registration: registration,
-            primaryMarkdownSource: "# Write Method\n"
-        )
-        let improvement = try ResearchMethodImprovementRun(
-            id: UUID(),
-            parentRecordID: UUID(),
-            triptychID: UUID(),
-            registrationKey: registration.key,
-            actionID: .write,
-            method: method,
-            feedbackRevision: UUID(),
-            feedbackText: "Clarify one preservation boundary.",
-            expectedResultFingerprint: DocumentFingerprint(content: "result")
-        )
-        let context = try ResearchMethodImprovementContext(
-            run: locator,
-            improvement: improvement
-        )
-        let contextRequest = try LocalAgentBridgeRequest(
-            operation: .methodImprovementContext,
-            run: locator,
-            credential: credential
-        )
-        #expect(try LocalAgentBridgeWireCoding.decode(
-            LocalAgentBridgeRequest.self,
-            from: LocalAgentBridgeWireCoding.encode(contextRequest)
-        ).operation == .methodImprovementContext)
-        let submission = try ResearchMethodImprovementSubmission(
-            requestID: UUID(),
-            feedbackRevision: improvement.feedbackRevision,
-            expectedResultFingerprint: improvement.expectedResultFingerprint,
-            targetID: "primary-method",
-            expectedTargetRevision: method.primaryMarkdownRevision,
-            disposition: .diagnosedNoChange,
-            diagnosis: "The issue concerns execution rather than the Method."
-        )
-        let submitRequest = try LocalAgentBridgeRequest(
-            operation: .submitMethodImprovement,
-            run: locator,
-            credential: credential,
-            methodImprovementSubmission: submission
-        )
-        let decodedRequest = try LocalAgentBridgeWireCoding.decode(
-            LocalAgentBridgeRequest.self,
-            from: LocalAgentBridgeWireCoding.encode(submitRequest)
-        )
-        #expect(decodedRequest.methodImprovementSubmission == submission)
-        #expect(!String(reflecting: decodedRequest).contains(credential.secret))
-
-        let contextResponse = try LocalAgentBridgeResponse(
-            correlationID: contextRequest.correlationID,
-            methodImprovementContext: context
-        )
-        #expect(try LocalAgentBridgeWireCoding.decode(
-            LocalAgentBridgeResponse.self,
-            from: LocalAgentBridgeWireCoding.encode(contextResponse)
-        ).methodImprovementContext == context)
-        let receipt = try ResearchMethodImprovementReceipt(
-            runID: improvement.id,
-            requestID: submission.requestID,
-            disposition: submission.disposition,
-            targetID: submission.targetID,
-            startingRevision: submission.expectedTargetRevision,
-            endingRevision: submission.expectedTargetRevision,
-            feedbackCleared: true,
-            diagnosis: submission.diagnosis
-        )
-        let receiptResponse = try LocalAgentBridgeResponse(
-            correlationID: submitRequest.correlationID,
-            methodImprovementReceipt: receipt
-        )
-        #expect(try LocalAgentBridgeWireCoding.decode(
-            LocalAgentBridgeResponse.self,
-            from: LocalAgentBridgeWireCoding.encode(receiptResponse)
-        ).methodImprovementReceipt == receipt)
-    }
 
     @Test("A closed App remains unavailable and a second listener is rejected")
     func absenceAndOwnership() throws {
@@ -849,24 +841,28 @@ struct LocalAgentBridgeTests {
 
     private func sendRawFrame(
         _ data: Data,
-        to port: UInt16
+        to port: UInt16,
+        secret: Data,
+        verifyServer: Bool = true
     ) throws -> LocalAgentBridgeResponse {
-        let length = UInt32(data.count)
-        let header = Data([
-            UInt8((length >> 24) & 0xff), UInt8((length >> 16) & 0xff),
-            UInt8((length >> 8) & 0xff), UInt8(length & 0xff),
-        ])
         return try withConnectedSocket(to: port) { descriptor in
-            try writeAll(header + data, to: descriptor)
+            let clientTag = try authenticate(
+                descriptor,
+                secret: secret,
+                verifyServer: verifyServer
+            )
+            try writeFrame(clientTag + data, to: descriptor)
             return try readResponse(from: descriptor)
         }
     }
 
     private func sendRawPrefix(
         _ length: UInt32,
-        to port: UInt16
+        to port: UInt16,
+        secret: Data
     ) throws -> LocalAgentBridgeResponse {
         try withConnectedSocket(to: port) { descriptor in
+            _ = try authenticate(descriptor, secret: secret)
             try writeAll(Data([
                 UInt8((length >> 24) & 0xff), UInt8((length >> 16) & 0xff),
                 UInt8((length >> 8) & 0xff), UInt8(length & 0xff),
@@ -899,6 +895,53 @@ struct LocalAgentBridgeTests {
         }
         guard connected == 0 else { throw TestFailure.socket }
         return try body(descriptor)
+    }
+
+    private func authenticate(
+        _ descriptor: Int32,
+        secret: Data,
+        verifyServer: Bool = true
+    ) throws -> Data {
+        let clientNonce = try LocalAgentBridgeAuthentication.randomBytes()
+        try writeFrame(clientNonce, to: descriptor)
+        let challenge = try readFrame(from: descriptor)
+        guard challenge.count == LocalAgentBridgeAuthentication.challengeByteCount
+        else { throw TestFailure.socket }
+        let serverNonce = Data(challenge.prefix(
+            LocalAgentBridgeAuthentication.nonceByteCount
+        ))
+        let serverTag = Data(challenge.suffix(
+            LocalAgentBridgeAuthentication.authenticationTagByteCount
+        ))
+        if verifyServer {
+            guard LocalAgentBridgeAuthentication.verify(
+                tag: serverTag,
+                role: .server,
+                secret: secret,
+                clientNonce: clientNonce,
+                serverNonce: serverNonce
+            ) else { throw TestFailure.socket }
+        }
+        return LocalAgentBridgeAuthentication.tag(
+            role: .client,
+            secret: secret,
+            clientNonce: clientNonce,
+            serverNonce: serverNonce
+        )
+    }
+
+    private func writeFrame(_ data: Data, to descriptor: Int32) throws {
+        let length = UInt32(data.count)
+        try writeAll(Data([
+            UInt8((length >> 24) & 0xff), UInt8((length >> 16) & 0xff),
+            UInt8((length >> 8) & 0xff), UInt8(length & 0xff),
+        ]) + data, to: descriptor)
+    }
+
+    private func readFrame(from descriptor: Int32) throws -> Data {
+        let header = try readExactly(4, from: descriptor)
+        let length = header.reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
+        return try readExactly(Int(length), from: descriptor)
     }
 
     private func readResponse(from descriptor: Int32) throws -> LocalAgentBridgeResponse {
@@ -989,11 +1032,13 @@ private func testFidelityContext(
     let registration = try ResearchSkillRegistration(
         actionID: .checkFidelity,
         displayName: "Fidelity Method",
-        primaryMarkdown: .machineLocal()
+        skillFolder: .machineLocal()
     )
-    let method = try ResearchMethodSnapshot(
+    let method = try ResearchSkillBindingSnapshot(
         registration: registration,
-        primaryMarkdownSource: "# Fidelity\n"
+        registrationRevision: DocumentFingerprint(content: "registrations"),
+        skillFolderPath: "/Users/researcher/Skills/check-fidelity",
+        skillFolderIsAvailable: true
     )
     return try ResearchAuthenticatedRunContext(
         brief: ResearchRunBrief(
@@ -1012,7 +1057,7 @@ private func testFidelityContext(
                 researchState: true,
                 zotero: false,
                 writeInitialObject: false,
-                extendWriteSet: false
+                trackActivity: false
             )
         ),
         requiredSkills: [

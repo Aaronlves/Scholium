@@ -145,6 +145,14 @@ public struct NoteDocument: Sendable {
         return .absent
     }
 
+    /// Body-only mutation is safe whenever the body boundary is exact. A
+    /// closed YAML envelope retains that boundary even when its YAML value is
+    /// diagnostically invalid; an unclosed opening delimiter does not.
+    public var hasProvableBodyBoundary: Bool {
+        rawFrontmatter != nil
+            || !Self.hasFrontmatterOpeningDelimiter(rawContent)
+    }
+
     private let prefix: String
     private let closingDelimiter: String
 
@@ -252,10 +260,9 @@ public struct NoteDocument: Sendable {
     }
 
     private func rebuild(body newBody: String, edits: [String: FrontmatterEditValue]) throws -> String {
-        guard rawFrontmatter != nil
-                || !Self.hasFrontmatterOpeningDelimiter(rawContent) else {
+        guard hasProvableBodyBoundary else {
             throw VaultRepositoryError.invalidFrontmatter(
-                "The existing YAML frontmatter is incomplete or malformed."
+                "The existing YAML frontmatter has no closing delimiter, so its body boundary cannot be proved."
             )
         }
         guard !edits.isEmpty else {

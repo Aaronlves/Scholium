@@ -110,9 +110,9 @@ if rg -n --hidden \
 fi
 
 # The pre-release Skill-package, standing-permission, custom-Action, workflow,
-# and additional-Note owners have no compatibility surface. Keep production
-# code and shipped resources on the registration/Profile/policy/Run-owned
-# write-set model after the clean cutover.
+# and additional-Note decision owners have no compatibility surface. Keep
+# production code and shipped resources on the registration/Profile/Run-owned
+# activity model after the clean cutover.
 LEGACY_RESEARCH_ROOTS=(
   "${ROOT}/Scholium"
   "${ROOT}/ScholiumCLI"
@@ -207,14 +207,15 @@ if rg -n --hidden \
   exit 1
 fi
 
-# Pairing and Session bearer values must be explicitly unwrapped only by the
-# complete researcher-to-Agent handoff and narrow wire/protected-storage
-# adapters. General Codable/printable conformance would leak authority.
+# Pairing and Session bearer values and one-use mutation leases must be
+# explicitly unwrapped only by the complete researcher-to-Agent handoff and
+# narrow wire/protected-storage adapters. General Codable/printable conformance
+# would leak transport identity or transaction binding.
 if rg -n -U \
   'public struct (ResearchPairingCode|ResearchConnectionCredential|ResearchAgentHandoff):[^{]*\bCodable\b' \
   "${ROOT}/ScholiumContracts/ResearchAgentConnectionContracts.swift" \
   || rg -n -U \
-  'struct Research(Write|MethodWrite)Capability:[^{]*\bCodable\b' \
+  'struct ResearchMutationLease:[^{]*\bCodable\b' \
   "${ROOT}/ScholiumApplication/ResearchAgentSessionAuthority.swift"; then
   echo "Agent secret guard failed: a bearer value became generally Codable." >&2
   exit 1
@@ -442,7 +443,9 @@ PYTHONPYCACHEPREFIX="${SCRATCH}-pycache" python3 -m py_compile \
   "${ROOT}/Tools/Scripts/capture-performance-environment.py" \
   "${ROOT}/Tools/Scripts/summarize-performance-results.py" \
   "${ROOT}/Tools/Scripts/sample-app-process-memory.py" \
+  "${ROOT}/Tools/Scripts/validate-entitlements.py" \
   "${ROOT}/Tools/Scripts/qa-upgrade-manifest.py"
+python3 "${ROOT}/Tools/Scripts/validate-entitlements.py" --self-test
 python3 "${ROOT}/Tools/Scripts/qa-upgrade-manifest.py" self-test
 python3 "${ROOT}/Tools/Scripts/sample-app-process-memory.py" --self-test
 python3 "${ROOT}/Tools/Scripts/summarize-performance-results.py" --self-test

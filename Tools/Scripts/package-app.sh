@@ -36,6 +36,8 @@ IDENTITY="${CODE_SIGN_IDENTITY:--}"
 DEPLOYMENT_TARGET="26.0"
 SDK_VERSION="${SCHOLIUM_SDK_VERSION:-$(xcrun --sdk macosx --show-sdk-version)}"
 LICENSE_SOURCE="${ROOT}/Tools/Packaging/Licenses"
+python3 "${ROOT}/Tools/Scripts/validate-entitlements.py" app \
+  "${ROOT}/Tools/Packaging/Scholium.entitlements"
 [[ -s "${LICENSE_SOURCE}/Mermaid-and-transitive-NOTICES.txt" ]] || {
   print -u2 "Missing bundled Mermaid runtime notices. Run Tools/Scripts/build-editor.sh."
   exit 66
@@ -228,14 +230,8 @@ CLI_ENTITLEMENTS="${SCRATCH}/cli-entitlements.plist"
 codesign -d --entitlements :- \
   "${CLI_STAGE}/scholium" \
   > "${CLI_ENTITLEMENTS}" 2>/dev/null || true
-if rg -q 'com\.apple\.security\.app-sandbox' "${CLI_ENTITLEMENTS}"; then
-  print -u2 "Refusing to package the standalone CLI with App Sandbox entitlements."
-  exit 65
-fi
-if rg -q 'com\.apple\.security\.application-groups' "${CLI_ENTITLEMENTS}"; then
-  print -u2 "Refusing to package the standalone CLI with an App Group entitlement."
-  exit 65
-fi
+python3 "${ROOT}/Tools/Scripts/validate-entitlements.py" cli \
+  "${CLI_ENTITLEMENTS}"
 codesign --force --options runtime \
   --entitlements "${ROOT}/Tools/Packaging/Scholium.entitlements" \
   --sign "${IDENTITY}" "${STAGING_APP}"
@@ -243,18 +239,8 @@ codesign --verify --deep --strict --verbose=2 "${STAGING_APP}"
 APP_ENTITLEMENTS="${SCRATCH}/app-entitlements.plist"
 codesign -d --entitlements :- "${STAGING_APP}" \
   > "${APP_ENTITLEMENTS}" 2>/dev/null || true
-if ! rg -q 'com\.apple\.security\.app-sandbox' "${APP_ENTITLEMENTS}"; then
-  print -u2 "Refusing to package Scholium without App Sandbox."
-  exit 65
-fi
-if rg -q 'com\.apple\.security\.application-groups' "${APP_ENTITLEMENTS}"; then
-  print -u2 "Refusing to package Scholium with an App Group entitlement."
-  exit 65
-fi
-if rg -q '/\.local/' "${APP_ENTITLEMENTS}"; then
-  print -u2 "Refusing to grant Scholium access to the CLI installation directory."
-  exit 65
-fi
+python3 "${ROOT}/Tools/Scripts/validate-entitlements.py" app \
+  "${APP_ENTITLEMENTS}"
 if [[ -e "${STAGING_APP}/Contents/Helpers/scholium" ]]; then
   print -u2 "Refusing to embed the independently distributed CLI in Scholium.app."
   exit 65

@@ -728,7 +728,6 @@ public actor WorkspaceRuntime {
             )
             _ = try await researchConfiguration.registrationSnapshot()
             _ = try await researchConfiguration.profileSnapshot()
-            _ = try await researchConfiguration.collaborationSnapshot()
             _ = try await researchConfiguration.citationMethodSnapshot()
         } catch let error as NoteMetadataError {
             if case .recoveryRequired(let issue) = error {

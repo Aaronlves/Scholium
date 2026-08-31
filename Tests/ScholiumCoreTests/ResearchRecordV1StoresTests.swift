@@ -1967,14 +1967,18 @@ struct ResearchRecordV1StoresTests {
             ),
             actionID: actionID,
             displayName: profile.displayName,
-            primaryMarkdown: .machineLocal()
+            skillFolder: .machineLocal()
         )
         return try ResearchActionSnapshot(
             definition: definition,
             target: target,
-            method: try ResearchMethodSnapshot(
+            method: try ResearchSkillBindingSnapshot(
                 registration: registration,
-                primaryMarkdownSource: "# \(profile.displayName)\n\nExact test method.\n"
+                registrationRevision: DocumentFingerprint(
+                    content: "registrations"
+                ),
+                skillFolderPath: "/Users/researcher/Skills/\(actionID.rawValue)",
+                skillFolderIsAvailable: true
             ),
             resolvedProfile: try ResearchActionResolvedProfileSnapshot(
                 profile: profile,

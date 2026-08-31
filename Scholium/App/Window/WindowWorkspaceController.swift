@@ -68,7 +68,6 @@ final class WindowWorkspaceController: ObservableObject {
     private var preferredOpeningVault: WorkspaceVaultSlot = .paperAnalysis
     private var recoveryGeneration: UInt64 = 0
     private var recoveryTaskCancellation: (@MainActor () -> Void)?
-    private var permissionRefreshTask: Task<Void, Never>?
 
     init(workspaceStore: WorkspaceStore, requestedTriptychID: UUID?) {
         self.workspaceStore = workspaceStore
@@ -98,8 +97,6 @@ final class WindowWorkspaceController: ObservableObject {
         recoveryGeneration &+= 1
         recoveryTaskCancellation?()
         recoveryTaskCancellation = nil
-        permissionRefreshTask?.cancel()
-        permissionRefreshTask = nil
         isRecovering = false
     }
 
@@ -236,12 +233,6 @@ final class WindowWorkspaceController: ObservableObject {
         )
         state.activeServicesID = activation.workspaceID
         activeCapabilities = activation.capabilities
-        permissionRefreshTask?.cancel()
-        permissionRefreshTask = Task { [workspaceStore] in
-            await workspaceStore.refreshPendingResearchAgentPermissions(
-                in: activation.workspaceID
-            )
-        }
         return WindowWorkspaceReplacement(
             previousAssignment: previousAssignment
         )

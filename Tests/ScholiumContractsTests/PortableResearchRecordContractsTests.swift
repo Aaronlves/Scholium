@@ -838,11 +838,13 @@ struct PortableResearchRecordContractsTests {
             ),
             actionID: .synthesize,
             displayName: "Synthesize",
-            primaryMarkdown: .machineLocal()
+            skillFolder: .machineLocal()
         )
-        let method = try ResearchMethodSnapshot(
+        let method = try ResearchSkillBindingSnapshot(
             registration: registration,
-            primaryMarkdownSource: "# Synthesize\n\nExact method.\n"
+            registrationRevision: DocumentFingerprint(content: "registrations"),
+            skillFolderPath: "/Users/researcher/Skills/synthesize",
+            skillFolderIsAvailable: true
         )
         let resolvedProfile = try ResearchActionResolvedProfileSnapshot(
             profile: profile,

@@ -11,7 +11,7 @@ native presentation, interface composition, and localization.
   the bounded native window-shell adapters described below.
 - `Scholium/UI/PreviewCatalog` contains the retained deterministic Debug-only
   research-workflow catalog for the modular Skill-run sheet, categorized
-  Research Guidance, bounded write-set permission, the production Agent Result
+  Research Guidance, the production Agent Result
   Review surface with synthetic records, and the resizable Triptych-keyed
   Research Records window.
   It resolves or mutates no production

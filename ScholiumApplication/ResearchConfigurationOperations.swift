@@ -37,89 +37,44 @@ extension ResearchOperations {
         )
     }
 
-    public func collaborationPolicy() async throws -> ResearchCollaborationPolicySnapshot {
-        let handle = try await reference.requireHandle()
-        return try await handle.currentCollaborationPolicy()
-    }
-
-    public func saveCollaborationPolicy(
-        _ document: ResearchCollaborationPolicyDocument,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchCollaborationPolicySnapshot {
-        let handle = try await reference.requireHandle()
-        return try await handle.saveCurrentCollaborationPolicy(
-            document,
-            expectedRevision: expectedRevision
-        )
-    }
-
-    public func researchMethod(
+    public func researchSkillBinding(
         for actionID: ResearchActionID
-    ) async throws -> ResearchMethodSnapshot {
+    ) async throws -> ResearchSkillBindingSnapshot {
         let handle = try await reference.requireHandle()
-        return try await handle.currentResearchMethod(for: actionID)
+        return try await handle.currentResearchSkillBinding(for: actionID)
     }
 
-    public func saveResearchMethod(
-        registrationKey: ResearchSkillRegistrationKey,
-        source: String,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchMethodSnapshot {
-        let handle = try await reference.requireHandle()
-        return try await handle.saveCurrentResearchMethod(
-            registrationKey: registrationKey,
-            source: source,
-            expectedRevision: expectedRevision
-        )
-    }
-
-    public func registerExternalResearchMethod(
+    public func registerExternalResearchSkillFolder(
         actionID: ResearchActionID,
         displayName: String,
-        primaryMarkdownPath: String,
-        skillFolderPath: String?,
+        skillFolderPath: String,
         expectedRegistrationRevision: DocumentFingerprint
-    ) async throws -> ResearchMethodSnapshot {
+    ) async throws -> ResearchSkillBindingSnapshot {
         let handle = try await reference.requireHandle()
-        return try await handle.registerExternalResearchMethod(
+        return try await handle.registerExternalResearchSkillFolder(
             actionID: actionID,
             displayName: displayName,
-            primaryMarkdownPath: primaryMarkdownPath,
             skillFolderPath: skillFolderPath,
             expectedRegistrationRevision: expectedRegistrationRevision
         )
     }
 
-    public func createResearchMethod(
-        actionID: ResearchActionID,
-        displayName: String,
-        source: String,
-        expectedRegistrationRevision: DocumentFingerprint
-    ) async throws -> ResearchMethodSnapshot {
+    public func researchSkillFolderAccess(
+        for actionID: ResearchActionID
+    ) async throws -> any ResearchSkillFolderAccess {
         let handle = try await reference.requireHandle()
-        return try await handle.createResearchMethod(
-            actionID: actionID,
-            displayName: displayName,
-            source: source,
-            expectedRegistrationRevision: expectedRegistrationRevision
-        )
-    }
-
-    public func restoreDefaultResearchMethod(
-        actionID: ResearchActionID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchMethodSnapshot {
-        let handle = try await reference.requireHandle()
-        return try await handle.restoreDefaultResearchMethod(
-            actionID: actionID,
-            expectedRevision: expectedRevision
+        return try await handle.currentResearchSkillFolderAccess(
+            for: actionID
         )
     }
 
     @discardableResult
-    public func preserveInvalidMachineLocalMethodLocatorsAndReset() async throws -> URL? {
+    public func preserveInvalidMachineLocalSkillFolderLocatorsAndReset() async throws
+        -> URL?
+    {
         let handle = try await reference.requireHandle()
-        return try await handle.preserveInvalidMachineLocalMethodLocatorsAndReset()
+        return try await handle
+            .preserveInvalidMachineLocalSkillFolderLocatorsAndReset()
     }
 
 }
@@ -169,110 +124,51 @@ extension WorkspaceHandle {
         )
     }
 
-    func currentCollaborationPolicy() async throws
-        -> ResearchCollaborationPolicySnapshot
-    {
-        try requireActive()
-        guard let snapshot = try await services.researchConfigurationStore
-            .collaborationSnapshot() else {
-            throw ResearchConfigurationStoreError.missingCollaborationPolicy
-        }
-        return snapshot
-    }
-
-    func saveCurrentCollaborationPolicy(
-        _ document: ResearchCollaborationPolicyDocument,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchCollaborationPolicySnapshot {
-        try requireActive()
-        let lease = try await beginResearchConfigurationMutation()
-        defer { endResearchConfigurationMutation(lease) }
-        return try await services.researchConfigurationStore.saveCollaborationPolicy(
-            document,
-            expectedRevision: expectedRevision
-        )
-    }
-
-    func currentResearchMethod(
+    func currentResearchSkillBinding(
         for actionID: ResearchActionID
-    ) async throws -> ResearchMethodSnapshot {
+    ) async throws -> ResearchSkillBindingSnapshot {
         try requireActive()
-        return try await services.researchConfigurationStore.methodSnapshot(
+        return try await services.researchConfigurationStore.skillBindingSnapshot(
             for: actionID
         )
     }
 
-    func saveCurrentResearchMethod(
-        registrationKey: ResearchSkillRegistrationKey,
-        source: String,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchMethodSnapshot {
-        try requireActive()
-        let lease = try await beginResearchConfigurationMutation()
-        defer { endResearchConfigurationMutation(lease) }
-        return try await services.researchConfigurationStore.savePrimaryMethod(
-            registrationKey: registrationKey,
-            source: source,
-            expectedRevision: expectedRevision
-        )
-    }
-
-    func registerExternalResearchMethod(
+    func registerExternalResearchSkillFolder(
         actionID: ResearchActionID,
         displayName: String,
-        primaryMarkdownPath: String,
-        skillFolderPath: String?,
+        skillFolderPath: String,
         expectedRegistrationRevision: DocumentFingerprint
-    ) async throws -> ResearchMethodSnapshot {
+    ) async throws -> ResearchSkillBindingSnapshot {
         try requireActive()
         let lease = try await beginResearchConfigurationMutation()
         defer { endResearchConfigurationMutation(lease) }
-        return try await services.researchConfigurationStore.registerExternalMethod(
+        return try await services.researchConfigurationStore
+            .registerExternalSkillFolder(
             actionID: actionID,
             displayName: displayName,
-            primaryMarkdownPath: primaryMarkdownPath,
             skillFolderPath: skillFolderPath,
             expectedRegistrationRevision: expectedRegistrationRevision
         )
     }
 
-    func createResearchMethod(
-        actionID: ResearchActionID,
-        displayName: String,
-        source: String,
-        expectedRegistrationRevision: DocumentFingerprint
-    ) async throws -> ResearchMethodSnapshot {
+    func currentResearchSkillFolderAccess(
+        for actionID: ResearchActionID
+    ) async throws -> any ResearchSkillFolderAccess {
         try requireActive()
-        let lease = try await beginResearchConfigurationMutation()
-        defer { endResearchConfigurationMutation(lease) }
-        return try await services.researchConfigurationStore.createPrimaryMethod(
-            actionID: actionID,
-            displayName: displayName,
-            source: source,
-            expectedRegistrationRevision: expectedRegistrationRevision
-        )
-    }
-
-    func restoreDefaultResearchMethod(
-        actionID: ResearchActionID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchMethodSnapshot {
-        try requireActive()
-        let lease = try await beginResearchConfigurationMutation()
-        defer { endResearchConfigurationMutation(lease) }
-        return try await services.researchConfigurationStore.restoreDefaultPrimaryMethod(
-            actionID: actionID,
-            expectedRevision: expectedRevision
+        return try await services.researchConfigurationStore.skillFolderAccess(
+            for: actionID
         )
     }
 
     @discardableResult
-    func preserveInvalidMachineLocalMethodLocatorsAndReset() async throws -> URL? {
+    func preserveInvalidMachineLocalSkillFolderLocatorsAndReset() async throws
+        -> URL?
+    {
         try requireActive()
         let lease = try await beginResearchConfigurationMutation()
         defer { endResearchConfigurationMutation(lease) }
         return try await services.researchConfigurationStore
-            .preserveInvalidMachineLocalMethodLocatorsAndReset()
+            .preserveInvalidMachineLocalSkillFolderLocatorsAndReset()
     }
 
 }

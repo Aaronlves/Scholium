@@ -165,6 +165,22 @@
         }
       }
     },
+    "%@, %@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$@, %3$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@，%2$@，%3$@"
+          }
+        }
+      }
+    },
     "%@, %@, %@, %@" : {
       "localizations" : {
         "en" : {
@@ -1721,6 +1737,22 @@
         }
       }
     },
+    "A selected Analysis changed after Synthesize" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "A selected Analysis changed after Synthesize"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "某篇已选分析在综合后发生了更改"
+          }
+        }
+      }
+    },
     "ABOUT THIS ANALYSIS" : {
       "localizations" : {
         "en" : {
@@ -2130,6 +2162,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "操作配置决定学术输入与结果的形式；不会授予权限，也不会改变会话、写入、修订、冲突或恢复规则。"
+          }
+        }
+      }
+    },
+    "Action Skills are researcher-owned folders. Scholium records their assignment and availability only; it never reads, validates, creates, replaces, or edits their files. Protected Protocols remain separate system sources. Neither kind grants permissions or alters Session, revision, conflict, or recovery rules." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "操作技能是研究者所有的文件夹。Scholium 只记录其分配关系和可用性；绝不读取、验证、创建、替换或编辑其中的文件。受保护协议是独立的系统来源。两者都不会授予权限，也不会改变会话、修订、冲突或恢复规则。"
           }
         }
       }
@@ -2900,26 +2942,6 @@
         }
       }
     },
-    "Agent Access" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Agent 访问"
-          }
-        }
-      }
-    },
-    "Agent Access Unavailable" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Agent 访问不可用"
-          }
-        }
-      }
-    },
     "Agent Feedback" : {
       "localizations" : {
         "zh-Hans" : {
@@ -3180,12 +3202,12 @@
         }
       }
     },
-    "Agent write-set extensions ask you every time by default. You can change the Triptych collaboration policy later in Research Guidance Settings." : {
+    "Agent activity is attributed to its Run and recorded with exact document changes; relevant Notes do not require separate approval." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "智能体写入集合扩展默认每次都会询问你。稍后可在“研究指导”设置中更改该脉络的协作策略。"
+            "value" : "Agent 活动会归属于对应运行，并与精确的文档更改一起记录；相关笔记无需另行批准。"
           }
         }
       }
@@ -3497,36 +3519,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "允许编辑"
-          }
-        }
-      }
-    },
-    "Allow Next Action" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "允许下一项操作"
-          }
-        }
-      }
-    },
-    "Allow Selected Notes" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "允许所选笔记"
-          }
-        }
-      }
-    },
-    "Allow machine-validated extensions within this Triptych without another sheet. Every actual write still requires a nonreusable capability bound to the complete approved set and that document's expected revision." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "允许在本脉络内通过机器校验后直接扩展，不再显示确认表。每次实际写入仍须使用不可重用的能力；该能力绑定完整获准集合及相应文档的预期修订。"
           }
         }
       }
@@ -4331,26 +4323,6 @@
         }
       }
     },
-    "Archive and Reset Method Access?" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "归档并重置方法访问？"
-          }
-        }
-      }
-    },
-    "Archive and Reset Method Access…" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "归档并重置方法访问…"
-          }
-        }
-      }
-    },
     "Archive and Reset Recovery Policy?" : {
       "localizations" : {
         "zh-Hans" : {
@@ -4437,38 +4409,6 @@
         }
       }
     },
-    "Ask Me Every Time" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Ask Me Every Time"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "每次都询问我"
-          }
-        }
-      }
-    },
-    "Ask Me Only for Works" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Ask Me Only for Works"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "仅修改作品时询问我"
-          }
-        }
-      }
-    },
     "Ask for confirmation before permanently deleting only this portable record" : {
       "localizations" : {
         "en" : {
@@ -4481,32 +4421,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "确认后仅永久删除此可移植记录"
-          }
-        }
-      }
-    },
-    "Ask for every additional change" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Ask for every additional change"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "每次新增更改都询问"
-          }
-        }
-      }
-    },
-    "Ask once for each proposed extension set. The researcher may allow a subset; approved members remain valid only for the current Run." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "每个拟议扩展集合询问一次。研究者可只允许其中一部分；获准成员仅在当前运行内有效。"
           }
         }
       }
@@ -4538,12 +4452,32 @@
         }
       }
     },
-    "Assign one Skill to each Action. Its SKILL.md routes ordinary references, including philosophical lenses." : {
+    "Assign Skill Folder…" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "为每项操作指定一个技能。其 SKILL.md 会路由普通参考文件，包括哲学透镜。"
+            "value" : "指定技能文件夹…"
+          }
+        }
+      }
+    },
+    "Assign one researcher-owned Skill folder to each Action. Manage every file in Finder or your preferred editor; Scholium does not inspect or edit Skill contents." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "为每项操作指定一个由研究者所有的技能文件夹。请在 Finder 或你偏好的编辑器中管理其中的所有文件；Scholium 不会检查或编辑技能内容。"
+          }
+        }
+      }
+    },
+    "Assign the Action Skill folder in Research Guidance." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在“研究指引”中指定操作技能文件夹。"
           }
         }
       }
@@ -5943,6 +5877,22 @@
         }
       }
     },
+    "Changed after this revision was settled" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Changed after this revision was settled"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此修订暂定后发生了更改"
+          }
+        }
+      }
+    },
     "Changed since Agent revision" : {
       "localizations" : {
         "en" : {
@@ -6834,38 +6784,12 @@
         }
       }
     },
-    "Choose an ordinary local Skill folder. Scholium records its path but does not inspect its other contents." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choose an ordinary local Skill folder. Scholium records its path but does not inspect its other contents."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择一个普通的本地技能文件夹。Scholium 会记录其路径，但不会检查其中的其他内容。"
-          }
-        }
-      }
-    },
     "Choose fields an authenticated Agent must provide when it creates this source type. Source Type is always required." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "选择经过认证的 Agent 创建此来源类型时必须提供的字段。来源类型始终必填。"
-          }
-        }
-      }
-    },
-    "Choose one Triptych-wide rule for when Scholium asks before extending a Run's bounded write set. This choice never grants blanket writes and is not attached to a Skill or Agent." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择一项适用于整个脉络的规则，决定 Scholium 在扩展运行的有界写入集合前何时询问。此选择从不授予笼统写入权限，也不附属于某项技能或智能体。"
           }
         }
       }
@@ -7016,26 +6940,6 @@
         }
       }
     },
-    "Choose the primary Markdown for this Research Skill." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择此研究技能的主 Markdown 文件。"
-          }
-        }
-      }
-    },
-    "Choose the primary Markdown inside the selected Skill folder." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择所选技能文件夹内的主 Markdown 文件。"
-          }
-        }
-      }
-    },
     "Choose the requested kind of file or folder." : {
       "localizations" : {
         "en" : {
@@ -7048,6 +6952,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "请选择所要求类型的文件或文件夹。"
+          }
+        }
+      }
+    },
+    "Choose the researcher-owned folder that an external Agent should load for this Action. Scholium records only the folder relation and does not inspect its contents." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请选择外部 Agent 应为此操作加载的研究者自有文件夹。Scholium 只记录文件夹关联，不会检查其中的内容。"
           }
         }
       }
@@ -7096,26 +7010,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "选择您控制的三个文件夹。"
-          }
-        }
-      }
-    },
-    "Choose when Scholium asks to extend a Run’s bounded write set." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择 Scholium 何时询问是否扩展运行的有界写入集合。"
-          }
-        }
-      }
-    },
-    "Choose when an Agent may extend a Run’s bounded write set in this Triptych." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "选择何时允许 Agent 扩展此脉络中一次运行的限定写入集。"
           }
         }
       }
@@ -7263,6 +7157,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "引文"
+          }
+        }
+      }
+    },
+    "Cleaning Up Action…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在清理研究操作…"
           }
         }
       }
@@ -8927,16 +8831,6 @@
         }
       }
     },
-    "Continue Without Additional Notes" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "不添加其他笔记并继续"
-          }
-        }
-      }
-    },
     "Continue the current Discussion." : {
       "localizations" : {
         "zh-Hans" : {
@@ -8979,16 +8873,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "受控选项，每行一个"
-          }
-        }
-      }
-    },
-    "Copied the complete Method improvement handoff." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已复制完整的方法改进交接信息。"
           }
         }
       }
@@ -9554,16 +9438,6 @@
         }
       }
     },
-    "Could Not Update Agent Access" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法更新 Agent 访问"
-          }
-        }
-      }
-    },
     "Could Not Update Citation Method" : {
       "localizations" : {
         "en" : {
@@ -9852,16 +9726,6 @@
         }
       }
     },
-    "Create New Skill…" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "新建技能…"
-          }
-        }
-      }
-    },
     "Create Note" : {
       "localizations" : {
         "en" : {
@@ -9874,16 +9738,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "创建笔记"
-          }
-        }
-      }
-    },
-    "Create Research Skill" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "创建研究技能"
           }
         }
       }
@@ -12043,28 +11897,12 @@
         }
       }
     },
-    "Each Platform Action routes to one current Skill. SKILL.md selects task-relevant ordinary references, including philosophical lenses, from its local folder." : {
+    "Each Platform Action routes to one researcher-owned Skill folder. Scholium assigns or reveals the folder but never reads or edits its contents." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "每项平台操作都路由到一个当前技能。SKILL.md 会从本地文件夹中选择与任务相关的普通参考文件，包括哲学透镜。"
-          }
-        }
-      }
-    },
-    "Each Triptych owns directly editable Working Methods. Bundled references are used only when you explicitly compare or restore." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Each Triptych owns directly editable Working Methods. Bundled references are used only when you explicitly compare or restore."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "每个脉络都拥有可直接编辑的工作方法。只有在研究者明确比较或恢复时才会使用内置参考版本。"
+            "value" : "每项平台操作都关联一个由研究者所有的技能文件夹。Scholium 只负责指定或显示该文件夹，绝不读取或编辑其中的内容。"
           }
         }
       }
@@ -12247,38 +12085,12 @@
         }
       }
     },
-    "Edit Method" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Edit Method"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "编辑方法"
-          }
-        }
-      }
-    },
     "Edit Note…" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "编辑备注…"
-          }
-        }
-      }
-    },
-    "Edit Primary Markdown" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "编辑主 Markdown"
           }
         }
       }
@@ -12346,44 +12158,12 @@
         }
       }
     },
-    "Editable Triptych Working Method" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Editable Triptych Working Method"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "可编辑的脉络工作方法"
-          }
-        }
-      }
-    },
     "Editable When Present" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "存在时可编辑"
-          }
-        }
-      }
-    },
-    "Editable for this Triptych. A working method may be changed, disabled, replaced, or restored from its bundled reference." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Editable for this Triptych. A working method may be changed, disabled, replaced, or restored from its bundled reference."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "可为当前脉络直接编辑。工作方法可以更改、停用、替换，或从内置参考版本恢复。"
           }
         }
       }
@@ -12572,18 +12352,12 @@
         }
       }
     },
-    "Enable the working method in Research Guidance." : {
+    "Enable the Action Skill in Research Guidance." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Enable the working method in Research Guidance."
-          }
-        },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请在“研究指导”中启用该工作方法。"
+            "value" : "请在“研究指引”中启用操作技能。"
           }
         }
       }
@@ -14174,32 +13948,6 @@
         }
       }
     },
-    "Frozen write set (%lld)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Frozen write set (%lld)"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "冻结写入集合（%lld）"
-          }
-        }
-      }
-    },
-    "Full Triptych Access" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "完整脉络访问"
-          }
-        }
-      }
-    },
     "Full citation" : {
       "localizations" : {
         "zh-Hans" : {
@@ -14906,6 +14654,22 @@
         }
       }
     },
+    "Identity not confirmed" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Identity not confirmed"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "身份尚未确认"
+          }
+        }
+      }
+    },
     "Identity recovery failed. %@" : {
       "localizations" : {
         "en" : {
@@ -15170,16 +14934,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "导入的 Markdown 会显示在此处，直到您选择分析、议题或写作。"
-          }
-        }
-      }
-    },
-    "Improve Current Method…" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "改进当前方法…"
           }
         }
       }
@@ -15682,22 +15436,6 @@
         }
       }
     },
-    "Install Working Methods" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Install Working Methods"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "安装工作方法"
-          }
-        }
-      }
-    },
     "Install and Verify" : {
       "localizations" : {
         "zh-Hans" : {
@@ -15730,22 +15468,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "从本地目录安装…"
-          }
-        }
-      }
-    },
-    "Install or restore the working method in Research Guidance." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Install or restore the working method in Research Guidance."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请在“研究指导”中安装或恢复该工作方法。"
           }
         }
       }
@@ -15938,6 +15660,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已恢复中断的保存"
+          }
+        }
+      }
+    },
+    "Invalid YAML" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Invalid YAML"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "YAML 无效"
+          }
+        }
+      }
+    },
+    "Invalid relationship endpoint" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Invalid relationship endpoint"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关联端点无效"
           }
         }
       }
@@ -16961,16 +16715,6 @@
         }
       }
     },
-    "Loading Agent Access Policy…" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在载入 Agent 访问策略…"
-          }
-        }
-      }
-    },
     "Loading Attention…" : {
       "localizations" : {
         "en" : {
@@ -17320,16 +17064,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "方法反馈"
-          }
-        }
-      }
-    },
-    "METHOD IMPROVEMENT HANDOFF" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "方法改进交接"
           }
         }
       }
@@ -18029,16 +17763,6 @@
         }
       }
     },
-    "Method Access Needs Repair" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "方法访问需要修复"
-          }
-        }
-      }
-    },
     "Method Feedback" : {
       "localizations" : {
         "en" : {
@@ -18061,22 +17785,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "方法反馈评论"
-          }
-        }
-      }
-    },
-    "Method Improvement Handoff" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Method Improvement Handoff"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "方法改进交接"
           }
         }
       }
@@ -18129,6 +17837,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在迁移由应用管理的记录…"
+          }
+        }
+      }
+    },
+    "Missing Note" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Missing Note"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "笔记缺失"
+          }
+        }
+      }
+    },
+    "Missing block" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Missing block"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "块缺失"
+          }
+        }
+      }
+    },
+    "Missing heading" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Missing heading"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "标题缺失"
           }
         }
       }
@@ -18693,6 +18449,54 @@
         }
       }
     },
+    "Multiple candidates" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Multiple candidates"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有多个候选项"
+          }
+        }
+      }
+    },
+    "Multiple matching Notes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Multiple matching Notes"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有多个匹配的笔记"
+          }
+        }
+      }
+    },
+    "Multiple matching headings" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Multiple matching headings"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "有多个匹配的标题"
+          }
+        }
+      }
+    },
     "My Library" : {
       "localizations" : {
         "zh-Hans" : {
@@ -19186,198 +18990,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "后续用途：%@"
-          }
-        }
-      }
-    },
-    "A selected Analysis changed after Synthesize" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "A selected Analysis changed after Synthesize"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "某篇已选分析在综合后发生了更改"
-          }
-        }
-      }
-    },
-    "Changed after this revision was settled" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Changed after this revision was settled"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此修订暂定后发生了更改"
-          }
-        }
-      }
-    },
-    "Identity not confirmed" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Identity not confirmed"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "身份尚未确认"
-          }
-        }
-      }
-    },
-    "Invalid relationship endpoint" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Invalid relationship endpoint"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "关联端点无效"
-          }
-        }
-      }
-    },
-    "Invalid YAML" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Invalid YAML"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "YAML 无效"
-          }
-        }
-      }
-    },
-    "Missing block" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Missing block"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "块缺失"
-          }
-        }
-      }
-    },
-    "Missing heading" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Missing heading"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "标题缺失"
-          }
-        }
-      }
-    },
-    "Missing Note" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Missing Note"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "笔记缺失"
-          }
-        }
-      }
-    },
-    "Multiple candidates" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Multiple candidates"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "有多个候选项"
-          }
-        }
-      }
-    },
-    "Multiple matching headings" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Multiple matching headings"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "有多个匹配的标题"
-          }
-        }
-      }
-    },
-    "Multiple matching Notes" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Multiple matching Notes"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "有多个匹配的笔记"
-          }
-        }
-      }
-    },
-    "No incoming or outgoing links" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "No incoming or outgoing links"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "没有传入或传出链接"
           }
         }
       }
@@ -20285,6 +19897,22 @@
         }
       }
     },
+    "No incoming or outgoing links" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "No incoming or outgoing links"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "没有传入或传出链接"
+          }
+        }
+      }
+    },
     "No interrupted save candidate or recorded file operation needs inspection." : {
       "localizations" : {
         "zh-Hans" : {
@@ -20822,6 +20450,16 @@
         }
       }
     },
+    "Note Review" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文档审阅"
+          }
+        }
+      }
+    },
     "Note Summary" : {
       "localizations" : {
         "zh-Hans" : {
@@ -20860,16 +20498,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "笔记身份"
-          }
-        }
-      }
-    },
-    "Note identity, role, operation, current revision, and Triptych collaboration policy remain current." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "笔记身份、角色、操作、当前修订和脉络协作策略均保持当前状态。"
           }
         }
       }
@@ -21990,6 +21618,16 @@
         }
       }
     },
+    "Opens this Note's Agent changes" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开此文档的 Agent 更改"
+          }
+        }
+      }
+    },
     "Opens this Note's Research Records without changing Review state" : {
       "localizations" : {
         "zh-Hans" : {
@@ -22265,16 +21903,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "可选。仅描述方法本身的问题；关于执行或来源结果的判断应填写在上方评价中。"
-          }
-        }
-      }
-    },
-    "Optional. Keep the note about this result; use Improve Current Method only for an explicit method-change comment." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "可选。此处保留对该结果的备注；只有明确提出方法修改意见时才使用“改进当前方法”。"
           }
         }
       }
@@ -23253,22 +22881,6 @@
         }
       }
     },
-    "Preparing Method improvement" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Preparing Method improvement"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在准备方法改进"
-          }
-        }
-      }
-    },
     "Preparing Research Records" : {
       "localizations" : {
         "en" : {
@@ -23505,12 +23117,12 @@
         }
       }
     },
-    "Previous Method access was preserved at %@." : {
+    "Previous Skill-folder access was preserved at %@." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已在 %@ 保留先前的方法访问权限。"
+            "value" : "先前的技能文件夹访问数据已保存在 %@。"
           }
         }
       }
@@ -23544,26 +23156,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "之前在 %arg"
-          }
-        }
-      }
-    },
-    "Primary Markdown unavailable" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "主 Markdown 不可用"
-          }
-        }
-      }
-    },
-    "Primary Research Skill Markdown" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "研究技能的主 Markdown"
           }
         }
       }
@@ -23903,22 +23495,6 @@
         }
       }
     },
-    "QA Action notification proof is unavailable until the Triptych research projection is ready." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "QA Action notification proof is unavailable until the Triptych research projection is ready."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "三联窗研究投影就绪后才能呈现 QA 研究操作通知验证界面。"
-          }
-        }
-      }
-    },
     "QA" : {
       "localizations" : {
         "en" : {
@@ -23931,6 +23507,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "质量保证"
+          }
+        }
+      }
+    },
+    "QA Action notification proof is unavailable until the Triptych research projection is ready." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "QA Action notification proof is unavailable until the Triptych research projection is ready."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "三联窗研究投影就绪后才能呈现 QA 研究操作通知验证界面。"
           }
         }
       }
@@ -24952,16 +24544,6 @@
         }
       }
     },
-    "References and philosophical lenses are ordinary files routed by SKILL.md." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "参考文件与哲学透镜均为由 SKILL.md 路由的普通文件。"
-          }
-        }
-      }
-    },
     "Refresh" : {
       "localizations" : {
         "en" : {
@@ -24990,22 +24572,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "刷新关注事项"
-          }
-        }
-      }
-    },
-    "Refresh failed. Showing the last available results. %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Refresh failed. Showing the last available results. %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "刷新失败。目前显示上次可用的结果。%@"
           }
         }
       }
@@ -25098,18 +24664,18 @@
         }
       }
     },
-    "Refreshing — showing the last available results." : {
+    "Refresh failed. Showing the last available results. %@" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Refreshing — showing the last available results."
+            "value" : "Refresh failed. Showing the last available results. %@"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "正在刷新——目前显示上次可用的结果。"
+            "value" : "刷新失败。目前显示上次可用的结果。%@"
           }
         }
       }
@@ -25190,6 +24756,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在刷新派生状态…"
+          }
+        }
+      }
+    },
+    "Refreshing — showing the last available results." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Refreshing — showing the last available results."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在刷新——目前显示上次可用的结果。"
           }
         }
       }
@@ -26460,6 +26042,16 @@
         }
       }
     },
+    "Research Actions" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "研究操作"
+          }
+        }
+      }
+    },
     "Research Folders" : {
       "localizations" : {
         "en" : {
@@ -27245,16 +26837,6 @@
         }
       }
     },
-    "Restore Scholium Default…" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "恢复 Scholium 默认值…"
-          }
-        }
-      }
-    },
     "Restore Selected Notes" : {
       "localizations" : {
         "en" : {
@@ -27544,6 +27126,26 @@
         }
       }
     },
+    "Retry Action Cleanup" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试操作清理"
+          }
+        }
+      }
+    },
+    "Retry Actions" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重试操作"
+          }
+        }
+      }
+    },
     "Retry Cancellation" : {
       "localizations" : {
         "en" : {
@@ -27698,6 +27300,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "重试加载更多研究记录"
+          }
+        }
+      }
+    },
+    "Retrying Action Cleanup" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在重试操作清理"
           }
         }
       }
@@ -28296,6 +27908,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "继续前请先处理源文档冲突。"
+          }
+        }
+      }
+    },
+    "Review this Note's Agent changes" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "审阅此文档的 Agent 更改"
           }
         }
       }
@@ -29436,36 +29058,6 @@
         }
       }
     },
-    "Scholium creates one ordinary Markdown document. Link its title exactly from a primary Method to include it in Research Context." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scholium 会创建一个普通 Markdown 文档。从主方法中精确链接其标题，即可将其纳入研究上下文。"
-          }
-        }
-      }
-    },
-    "Scholium creates one ordinary local Skill folder with SKILL.md. Add references to that folder and route them explicitly from the Skill." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scholium 会创建一个含 SKILL.md 的普通本地技能文件夹。请将参考文件加入该文件夹，并从技能中明确路由。"
-          }
-        }
-      }
-    },
-    "Scholium creates one ordinary local folder and registers only this primary Markdown. It does not create a package, version, dependency graph, or resource manifest." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scholium 会创建一个普通本地文件夹，并且只注册其中的主 Markdown。它不会创建软件包、版本、依赖图或资源清单。"
-          }
-        }
-      }
-    },
     "Scholium does not claim that a multi-file operation is atomic across vaults or filesystems. These durable records identify what was restored and what still needs inspection." : {
       "localizations" : {
         "en" : {
@@ -29861,22 +29453,12 @@
         }
       }
     },
-    "Scholium will preserve the invalid machine-local Method access file under a unique recovery name and reset only local paths and bookmarks. Portable Method registrations, Method Markdown, and vault files will not be changed; external Methods must be registered again on this Mac." : {
+    "Scholium will preserve the invalid machine-local Skill access file under a unique recovery name and reset only local folder paths and read-only bookmarks. Portable Action bindings, Skill files, and vault files will not be changed; external Skill folders must be assigned again on this Mac." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Scholium 会用唯一的恢复名称保留无效的机器本地方法访问文件，并且只重置本地路径和书签。便携方法注册、方法 Markdown 和研究库文件都不会被更改；外部方法需要在这台 Mac 上重新注册。"
-          }
-        }
-      }
-    },
-    "Scholium will preserve the invalid machine-local Skill access file under a unique recovery name and reset only local paths and bookmarks. Portable Skill registrations, Skill files, and vault files will not be changed; external Skills must be registered again on this Mac." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scholium 会用唯一的恢复名称保留无效的本机技能访问文件，并且只重置本地路径与书签。便携式技能注册、技能文件和知识库文件均不会改变；外部技能必须在此 Mac 上重新注册。"
+            "value" : "Scholium 会用唯一的恢复名称保留无效的本机技能访问文件，并只重置本地文件夹路径和只读书签。可移植的操作关联、技能文件和库中文件都不会改变；你需要在这台 Mac 上重新指定外部技能文件夹。"
           }
         }
       }
@@ -30966,6 +30548,26 @@
         }
       }
     },
+    "Settle this Note" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "暂定此文档"
+          }
+        }
+      }
+    },
+    "Settle this Note again" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再次暂定此文档"
+          }
+        }
+      }
+    },
     "Settled" : {
       "localizations" : {
         "en" : {
@@ -31148,6 +30750,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "显示边栏"
+          }
+        }
+      }
+    },
+    "Show Skill Folder in Finder…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Finder 中显示技能文件夹…"
           }
         }
       }
@@ -31472,12 +31084,22 @@
         }
       }
     },
-    "Skill prose and its references can guide scholarly work. They cannot change Platform Actions, Sessions, collaboration policy, bounded writes, exact revisions, conflicts, or recovery." : {
+    "Skill folder" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "技能文本及其参考文件可指导学术工作。它们不能改变平台操作、会话、协作策略、有界写入、准确修订、冲突或恢复。"
+            "value" : "技能文件夹"
+          }
+        }
+      }
+    },
+    "Skill folder unavailable" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "技能文件夹不可用"
           }
         }
       }
@@ -31566,6 +31188,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "软件"
+          }
+        }
+      }
+    },
+    "Some Research Records Are Unavailable" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "部分研究记录不可用"
           }
         }
       }
@@ -31998,12 +31630,12 @@
         }
       }
     },
-    "Start a new Action from this completed Result. Scholium will resolve the current Method, Profile, materials, permissions, and write boundary again." : {
+    "Start a new Action from this completed Result. Scholium will resolve the current Skill assignment, Profile, materials, permissions, and write boundary again." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "从此已完成的结果启动新操作。Scholium 将重新解析当前方法、配置、材料、权限和写入边界。"
+            "value" : "从此已完成的结果启动新操作。Scholium 将重新解析当前技能分配、配置、材料、权限和写入边界。"
           }
         }
       }
@@ -32068,32 +31700,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "仅起始修订，第 %1$lld 行，行尾为 %2$@：%3$@"
-          }
-        }
-      }
-    },
-    "Starts a separate Method improvement Run from Feedback on the previous Result" : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "从对上一个结果的反馈启动单独的方法改进运行"
-          }
-        }
-      }
-    },
-    "Starts a separate paired Method improvement Run from the saved feedback" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Starts a separate paired Method improvement Run from the saved feedback"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "根据已保存的反馈启动一次独立配对的方法改进运行"
           }
         }
       }
@@ -32858,6 +32464,16 @@
         }
       }
     },
+    "The Action Skill folder needs repair in Research Guidance." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "操作技能文件夹需要在“研究指引”中修复。"
+          }
+        }
+      }
+    },
     "The Agent continued this Action; the continuation remains attached here." : {
       "localizations" : {
         "zh-Hans" : {
@@ -32988,22 +32604,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "方法反馈评论已在其他位置更改。编辑器中保留了你的本地文本。"
-          }
-        }
-      }
-    },
-    "The Method improvement handoff could not be copied." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "The Method improvement handoff could not be copied."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "无法复制方法改进交接。"
           }
         }
       }
@@ -33730,32 +33330,12 @@
         }
       }
     },
-    "The local Method improvement Run is ready. Copy the complete handoff to the Agent." : {
+    "The machine-local Skill-folder access registry is unreadable. Its original bytes can be archived before resetting local folder access; portable Action bindings and research vault files remain unchanged." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "本机方法改进运行已就绪。请将完整交接信息复制给智能体。"
-          }
-        }
-      }
-    },
-    "The machine-local Method access registry is unreadable. Its original bytes can be archived before resetting local Method access; portable registrations and research vault files remain unchanged." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "机器本地的方法访问注册表无法读取。重置本地方法访问之前，可以先归档其原始字节；便携注册和研究库文件保持不变。"
-          }
-        }
-      }
-    },
-    "The machine-local Skill access registry is unreadable. Its original bytes can be archived before resetting local Skill access; portable registrations and research vault files remain unchanged." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "本机技能访问注册表无法读取。重置本地技能访问前可先归档其原始字节；便携式注册与研究知识库文件保持不变。"
+            "value" : "本机技能文件夹访问登记无法读取。重置本地文件夹访问前可先归档其原始字节；可移植的操作关联和研究库文件不会改变。"
           }
         }
       }
@@ -33872,16 +33452,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "原段落已无法可靠定位到唯一位置。讨论仍然完整，但此锚点需要重新附着。"
-          }
-        }
-      }
-    },
-    "The policy only controls when Scholium asks to extend one Run's bounded write set. It is not attached to a Skill or Agent and never grants blanket writes." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此策略仅控制 Scholium 在何时询问是否扩展单次运行的有界写入集合。它不附属于技能或智能体，也从不授予笼统写入权限。"
           }
         }
       }
@@ -34222,6 +33792,16 @@
         }
       }
     },
+    "The user and external Agents may read or edit this folder independently of Scholium." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "用户和外部 Agent 可以独立于 Scholium 读取或编辑此文件夹。"
+          }
+        }
+      }
+    },
     "The visited note '%@' is no longer available. Scholium kept the current document open." : {
       "localizations" : {
         "en" : {
@@ -34267,22 +33847,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "请在“研究指导”中修复此工作流。"
-          }
-        }
-      }
-    },
-    "The working method needs repair in Research Guidance." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "The working method needs repair in Research Guidance."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "请在“研究指导”中修复此工作方法。"
           }
         }
       }
@@ -34747,22 +34311,6 @@
         }
       }
     },
-    "This Triptych does not yet have editable Working Methods." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "This Triptych does not yet have editable Working Methods."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此脉络尚未安装可编辑的工作方法。"
-          }
-        }
-      }
-    },
     "This Triptych’s portable .scholium control folder is incompatible or damaged. Archive the entire folder unchanged, then let Scholium rebuild current control state. Analyses, Topics, and Works remain untouched." : {
       "localizations" : {
         "zh-Hans" : {
@@ -34921,16 +34469,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此草稿保持只读，不产生当前状态。"
-          }
-        }
-      }
-    },
-    "This edits SKILL.md only. Reference files, including philosophical lenses, keep their own exact bytes." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此操作只编辑 SKILL.md。包括哲学透镜在内的参考文件会保留各自的准确字节。"
           }
         }
       }
@@ -35351,16 +34889,6 @@
         }
       }
     },
-    "This replaces the current primary Markdown with the default shipped by this Scholium build." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "这会用当前 Scholium 版本附带的默认值替换当前主 Markdown。"
-          }
-        }
-      }
-    },
     "This required field does not apply to the selected Source Type." : {
       "localizations" : {
         "zh-Hans" : {
@@ -35471,22 +34999,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此源文本会成为每篇新笔记的一部分，并可能随三联体同步。请勿在此存储密码、访问令牌或本机路径。"
-          }
-        }
-      }
-    },
-    "This starts a new independent Run with current permissions for the selected Action and target." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "This starts a new independent Run with current permissions for the selected Action and target."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "这会为所选操作和目标，以当前权限启动新的独立运行。"
           }
         }
       }
@@ -37643,22 +37155,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "作品类型"
-          }
-        }
-      }
-    },
-    "Working Method" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Working Method"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "工作方法"
           }
         }
       }

@@ -212,11 +212,13 @@ struct ResearchSourceAccessContractsTests {
             key: ResearchSkillRegistrationKey(rawValue: UUID()),
             actionID: .analyze,
             displayName: profile.displayName,
-            primaryMarkdown: .machineLocal()
+            skillFolder: .machineLocal()
         )
-        let method = try ResearchMethodSnapshot(
+        let method = try ResearchSkillBindingSnapshot(
             registration: registration,
-            primaryMarkdownSource: "# Analyze\n\nExact method.\n"
+            registrationRevision: DocumentFingerprint(content: "registrations"),
+            skillFolderPath: "/Users/researcher/Skills/analyze",
+            skillFolderIsAvailable: true
         )
         return try ResearchActionSnapshot(
             definition: .analyze,

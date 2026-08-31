@@ -251,15 +251,17 @@ instructions. Claude Code may add only a minimal missing `CLAUDE.md` that
 refers to the applicable `AGENTS.md`.
 
 The CLI's read-only project Skill-source manifest contains every installed
-release-managed System Skill and every enabled current Method folder for the
+release-managed Protocol and every enabled current Action Skill folder for the
 selected Triptych, including an explicitly registered machine-local folder.
 It scans no arbitrary directory, creates nothing, and never invents a missing
 source. The concise setup instruction tells the external Agent to register each
 exact returned source through its own host's project-level Skill mechanism and
 reload discovery if that host requires it. Scholium does not prescribe or
 simulate a host-specific link, copy, package, plug-in, or global installation
-scheme. The Agent copies or edits no Skill bytes and substitutes no other
-Scholium Skill. Registration grants no `.scholium` mutation, research read,
+scheme. Setup edits no source bytes. After discovery, the researcher and Agent
+may read or edit the researcher-owned Action Skill folder directly; that file
+access is outside Scholium authority and never applies to release-managed
+Protocols. Registration grants no `.scholium` mutation, research read,
 Action, Session, Run, or write authority.
 
 The prompt otherwise prefers Scholium tools for research work, preserves
@@ -279,11 +281,10 @@ The illustration and its key metaphor are decorative and absent from the
 accessibility tree; the numbered text and native controls provide the complete
 linear task.
 
-Bootstrap silently adopts **Ask Me Every Time** for additional Run write-set
-members and next Actions and states: “Agent changes will ask for permission
-every time. You can change this later for this Triptych in Research Guidance
-Settings.” It does not ask the researcher to understand a permission matrix
-before opening the workspace.
+Bootstrap explains that a paired Agent may add task-relevant documents and
+continue related research without repeated approval sheets; Scholium records
+those operations and forms a Research Record. It does not ask the researcher
+to configure or understand a permission matrix before opening the workspace.
 
 Failure retains setup input. Success opens one configured workspace after the
 optional Agent step is either confirmed or deferred, and closes Bootstrap only
@@ -331,9 +332,9 @@ The researcher-governed Skills contract requires protected platform protocol;
 one current editable Skill registration per available Action; Skill-routed
 ordinary references, including philosophical lenses; optional local
 folder-path registration;
-academic-only Action Profiles; one Triptych collaboration policy; Run-owned
-Bounded Write Sets; portable Research Records; and protected Zotero and local
-Agent transports.
+academic-only Action Profiles; Run-owned Activity Ledgers; portable Research
+Records; and protected Zotero and local Agent transports. Scholium does not add
+per-document or per-continuation approval policy on top of the researcher's Run.
 
 Outside the Beta/1.0 scope: document/project/HTML/PDF/DOCX export;
 Skill marketplace, executable extensions, automated Skill evolution,
@@ -350,16 +351,15 @@ Direct local Agent start and pairing are bounded Run connections, not an embedde
 runtime, background Agent manager, auto-submission system, streamed tool-state
 viewer, general host-approval surface, relay, or cloud orchestration service.
 Scholium does not launch or supervise an Agent merely because a Run exists.
-Collaboration settings therefore expose only one Triptych policy. Scholium has
-no selected-Agent preference, remembered Agent application, launch control, or
+Scholium has no selected-Agent preference, remembered Agent application, launch control, or
 durable Agent-readiness authority. The bounded first-launch preparation prompt
 configures only an external project's ordinary environment and grants no
 research access. A direct `agent start` request or the current Run's copied
 handoff establishes the researcher-initiated research Session; Pairing Code is
 required only for the GUI-created handoff route.
 
-File-backed Skills, registrations, and Action Profiles are Settings-owned
-Research Guidance; Skill references remain ordinary folder files. None are a
+Action-folder registrations and Action Profiles are Settings-owned Research
+Guidance; Action Skill contents remain ordinary researcher-owned files. None are a
 marketplace, executable
 runtime, specialized request taxonomy, or philosophical authority. Finder
 remains authoritative for Markdown, ordinary Skill-folder contents, and
@@ -367,13 +367,12 @@ attachment bytes; §3.3 owns the portable catalog and machine-local bookmark
 boundary. Zotero remains authoritative for bibliography and Zotero-managed PDFs;
 external Agents remain authoritative for optional open-ended work.
 
-Project-level Agent Skill registrations are nonauthoritative discovery
-pointers to the same current System and Method folders already owned by the
-installed release or Research Guidance. They create no second editable copy,
-package lifecycle, inheritance, sharing, capability, or permission. Researcher
-changes remain on that one current Method and are never
-silently replaced or offered a new default merely because a release ships
-different default bytes; **Restore Default** remains explicit. The protected
+Project-level Agent registrations are nonauthoritative discovery pointers to
+the release-managed Protocol folders and the current researcher-owned Action
+Skill folders. They create no second editable copy, package lifecycle,
+inheritance, sharing, capability, or permission. Researcher changes remain in
+the selected folder and Scholium never silently replaces, repairs, or restores
+them merely because a release ships different template bytes. The protected
 Core Protocol is not researcher-editable and follows the compatible installed
 CLI resource bundle across upgrades. Conditional adapters are registered System
 Skills and become required only when the typed Run Context names them.

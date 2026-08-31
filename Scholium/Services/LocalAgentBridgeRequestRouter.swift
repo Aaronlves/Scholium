@@ -9,16 +9,13 @@ final class LocalAgentBridgeRequestRouter {
     typealias EditorFlusher = @MainActor @Sendable (UUID) async throws -> Void
 
     private let runtime: WorkspaceRuntime
-    private let researchAgentPermissionClaims: ResearchAgentPermissionClaimCoordinator
     private let flushEditors: EditorFlusher
 
     init(
         runtime: WorkspaceRuntime,
-        researchAgentPermissionClaims: ResearchAgentPermissionClaimCoordinator,
         flushEditors: @escaping EditorFlusher
     ) {
         self.runtime = runtime
-        self.researchAgentPermissionClaims = researchAgentPermissionClaims
         self.flushEditors = flushEditors
     }
 
@@ -69,15 +66,10 @@ final class LocalAgentBridgeRequestRouter {
                   let credential = request.credential else {
                 throw LocalAgentBridgeError.invalidRequest
             }
-            let context = try await runtime.researchAgentInitialContext(
+            return .context(try await runtime.researchAgentInitialContext(
                 credential: credential,
                 run: run
-            )
-            return context.fold(
-                action: LocalAgentBridgeHandlerResult.context,
-                methodImprovement:
-                    LocalAgentBridgeHandlerResult.methodImprovementContext
-            )
+            ))
         case .query:
             guard let run = request.run,
                   let credential = request.credential,
@@ -107,7 +99,7 @@ final class LocalAgentBridgeRequestRouter {
                     request: reply
                 )
             )
-        case .extendWriteSet:
+        case .trackActivity:
             guard let run = request.run,
                   let credential = request.credential,
                   let intent = request.writeSetIntent else {
@@ -123,12 +115,6 @@ final class LocalAgentBridgeRequestRouter {
                 run: run,
                 intent: intent
             )
-            if let record = delivery.record, record.isUnresolved {
-                researchAgentPermissionClaims.receive(
-                    .writeSetExtension(record),
-                    intent: .submit
-                )
-            }
             return .writeSet(delivery.result)
         case .writeDocument:
             guard let run = request.run,
@@ -201,53 +187,11 @@ final class LocalAgentBridgeRequestRouter {
                 allowFinalized: true
             )
             try await flushEditors(triptychID)
-            let result = try await runtime.continueResearch(
+            return .continuation(try await runtime.continueResearch(
                 credential: credential,
                 run: run,
                 request: continuation
-            )
-            if result.state == .pendingResearcherDecision {
-                let decision = try await runtime.researchContinuationRequest(
-                    credential: credential,
-                    run: run,
-                    request: continuation
-                )
-                researchAgentPermissionClaims.receive(
-                    .continuation(decision),
-                    intent: .submit
-                )
-            }
-            return .continuation(result)
-        case .methodImprovementContext:
-            guard let run = request.run,
-                  let credential = request.credential else {
-                throw LocalAgentBridgeError.invalidRequest
-            }
-            return .methodImprovementContext(
-                try await runtime.researchMethodImprovementContext(
-                    credential: credential,
-                    run: run
-                )
-            )
-        case .submitMethodImprovement:
-            guard let run = request.run,
-                  let credential = request.credential,
-                  let submission = request.methodImprovementSubmission else {
-                throw LocalAgentBridgeError.invalidRequest
-            }
-            let triptychID = try await runtime.researchAgentWorkspaceID(
-                credential: credential,
-                run: run,
-                allowFinalized: true
-            )
-            try await flushEditors(triptychID)
-            return .methodImprovementReceipt(
-                try await runtime.submitResearchMethodImprovement(
-                    credential: credential,
-                    run: run,
-                    submission: submission
-                )
-            )
+            ))
         case .end:
             guard let run = request.run,
                   let credential = request.credential else {

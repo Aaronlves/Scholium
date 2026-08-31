@@ -35,7 +35,6 @@ struct InterfaceUtilityOwnershipTests {
             "Scholium/App/ScholiumApp.swift",
             "Scholium/Views/BootstrapAgentPreparationView.swift",
             "Scholium/Views/WorkspaceSettingsView.swift",
-            "Scholium/Views/ResearchRecord/ResearchRecordProcessingViews.swift",
             "Scholium/Views/Note/TransactionRecoveryView.swift",
         ] {
             let consumer = try source(path)

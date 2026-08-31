@@ -16,7 +16,7 @@ public enum PlatformActionOperation: String, Codable, CaseIterable, Hashable, Se
     case useZotero = "use_zotero"
     case discuss
     case modifyInitialNote = "modify_initial_note"
-    case extendWriteSet = "extend_write_set"
+    case trackActivity = "track_activity"
     case checkFidelity = "check_fidelity"
     case continueResearch = "continue_research"
 }
@@ -30,13 +30,13 @@ public struct PlatformActionDefinition: Codable, Hashable, Identifiable, Sendabl
     public let optionalSelectors: [PlatformActionSelector]
     public let operations: [PlatformActionOperation]
 
-    /// The closed mutation kinds an authenticated Run may request for a new
-    /// Bounded Write Set member. The Action's initial writable target remains
-    /// governed by `ResearchAuthorityEnvelope.writeOperations`; extension
-    /// authority is always a later researcher or policy decision.
-    public var extensionWriteOperations: [ResearchDocumentWriteOperation] {
+    /// The closed mutation kinds an authenticated Run may record for another
+    /// activity target. The Action's initial target remains governed by
+    /// `ResearchAuthorityEnvelope.writeOperations`; adding another valid
+    /// target is automatic and creates no researcher permission decision.
+    public var activityWriteOperations: [ResearchDocumentWriteOperation] {
         guard operations.contains(.modifyInitialNote),
-              operations.contains(.extendWriteSet) else { return [] }
+              operations.contains(.trackActivity) else { return [] }
         var operations: [ResearchDocumentWriteOperation] = [
             .createNote, .modifyMarkdown, .modifySource, .modifyMetadata,
         ]
@@ -101,19 +101,19 @@ public enum PlatformActionCatalog {
             allowedTargetRoles: [.analysis],
             requiredSelectors: [.source],
             optionalSelectors: [.focalNotes],
-            operations: [.search, .read, .inspectRelations, .inspectMetadata, .queryRecords, .useZotero, .modifyInitialNote, .extendWriteSet, .checkFidelity, .continueResearch]
+            operations: [.search, .read, .inspectRelations, .inspectMetadata, .queryRecords, .useZotero, .modifyInitialNote, .trackActivity, .checkFidelity, .continueResearch]
         ),
         try! PlatformActionDefinition(
             actionID: .synthesize,
             allowedTargetRoles: [.topic],
             optionalSelectors: [.focalNotes, .passage],
-            operations: [.search, .read, .inspectRelations, .inspectMetadata, .queryRecords, .useZotero, .modifyInitialNote, .extendWriteSet, .checkFidelity, .continueResearch]
+            operations: [.search, .read, .inspectRelations, .inspectMetadata, .queryRecords, .useZotero, .modifyInitialNote, .trackActivity, .checkFidelity, .continueResearch]
         ),
         try! PlatformActionDefinition(
             actionID: .write,
             allowedTargetRoles: [.work],
             optionalSelectors: [.focalNotes, .passage],
-            operations: [.search, .read, .inspectRelations, .inspectMetadata, .queryRecords, .useZotero, .modifyInitialNote, .extendWriteSet, .checkFidelity, .continueResearch]
+            operations: [.search, .read, .inspectRelations, .inspectMetadata, .queryRecords, .useZotero, .modifyInitialNote, .trackActivity, .checkFidelity, .continueResearch]
         ),
         try! PlatformActionDefinition(
             actionID: .critique,

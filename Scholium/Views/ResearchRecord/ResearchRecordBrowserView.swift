@@ -33,8 +33,6 @@ struct ResearchRecordBrowserContext {
             Set<UUID>,
             DocumentFingerprint
         ) async throws -> ResearchRecordChangesUndoResult
-    let startMethodImprovement:
-        @MainActor (UUID) async throws -> ResearchAgentHandoff
     let deletePermanently: @MainActor (UUID) async throws -> Void
     let openNote: @MainActor (UUID, VaultQualifiedNoteID, Int?) -> Void
 }

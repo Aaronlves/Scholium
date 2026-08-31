@@ -20,7 +20,7 @@ extension WorkspaceServices {
 struct ResolvedResearchActionContext: Sendable {
     let availability: ResearchActionAvailability
     let actionID: ResearchActionID
-    let method: ResearchMethodSnapshot
+    let method: ResearchSkillBindingSnapshot
     let platformInputs: ResearchActionPlatformInputs
     let academicInputs: ResearchAcademicFieldValues
     let resultContract: ResearchResultContract
@@ -30,7 +30,7 @@ struct ResolvedResearchActionContext: Sendable {
 private struct ResolvedResearchActionCandidate: Sendable {
     let availability: ResearchActionAvailability
     let actionID: ResearchActionID
-    let method: ResearchMethodSnapshot?
+    let method: ResearchSkillBindingSnapshot?
 }
 
 extension WorkspaceHandle {
@@ -495,7 +495,7 @@ extension WorkspaceHandle {
             profileDocumentRevision: profileSnapshot.revision
         )
         let method = try await researchActionResolverDependencies
-            .researchConfigurationStore.methodSnapshot(
+            .researchConfigurationStore.skillBindingSnapshot(
             for: definition.id
         )
         guard method.registration.isEnabled else {
@@ -590,7 +590,7 @@ extension WorkspaceHandle {
                 for: definition.id
             )
             let method = try? await researchActionResolverDependencies
-                .researchConfigurationStore.methodSnapshot(
+                .researchConfigurationStore.skillBindingSnapshot(
                 for: definition.id
             )
             let runState = runAvailability[actionID]

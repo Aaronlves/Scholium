@@ -598,7 +598,9 @@ public struct ResearchActionRunPreparation: Codable, Hashable, Sendable {
     public let snapshot: ResearchActionRunSnapshot
     public let instructions: String
     public let state: ResearchActionRunState
-    public let reusedCompletion: ResearchActionRunCompletion?
+    /// Present when loading this same Run after it has completed. A new Run
+    /// never reuses another Run's scholarly result.
+    public let completion: ResearchActionRunCompletion?
     /// The authoritative preparation committed, but a disposable workspace
     /// projection did not refresh. Callers must retain this preparation and
     /// retry only refresh, never the actionID mutation.
@@ -611,14 +613,14 @@ public struct ResearchActionRunPreparation: Codable, Hashable, Sendable {
         snapshot: ResearchActionRunSnapshot,
         instructions: String,
         state: ResearchActionRunState = .prepared,
-        reusedCompletion: ResearchActionRunCompletion? = nil,
+        completion: ResearchActionRunCompletion? = nil,
         derivedRefreshWarning: String? = nil,
         nextActions: [AgentCommandAction] = []
     ) {
         self.snapshot = snapshot
         self.instructions = instructions
         self.state = state
-        self.reusedCompletion = reusedCompletion
+        self.completion = completion
         self.derivedRefreshWarning = derivedRefreshWarning
         self.nextActions = nextActions.isEmpty ? nil : nextActions
     }
@@ -774,12 +776,9 @@ public struct ResearchActionRunCompletion: Codable, Hashable, Sendable {
     public let fidelityOutcomes: [FidelityCheckOutcome]
     public let fidelityTargetResults: [ResearchActionFidelityTargetResult]?
     public let literatureRecommendations: [ResearchLiteratureRecommendationSubmission]?
-    /// Deterministic identity of the exact final revision, evidence, checks,
-    /// and resolved skill resources audited by this completion.
+    /// Run-local identity of the exact final revision, evidence, and checks
+    /// audited by this completion. It makes no claim about Skill-file bytes.
     public let fidelityEvidenceKey: ResearchFidelityEvidenceKey?
-    /// When non-nil, this run reused already-completed Fidelity evidence
-    /// instead of persisting a duplicate audit result.
-    public let reusedFidelityRunID: UUID?
     public let childRunIDs: [UUID]?
     public let completedAt: Date
     /// A committed completion can carry a recoverable derived-refresh warning.
@@ -800,7 +799,6 @@ public struct ResearchActionRunCompletion: Codable, Hashable, Sendable {
         fidelityTargetResults: [ResearchActionFidelityTargetResult] = [],
         literatureRecommendations: [ResearchLiteratureRecommendationSubmission]? = nil,
         fidelityEvidenceKey: ResearchFidelityEvidenceKey? = nil,
-        reusedFidelityRunID: UUID? = nil,
         childRunIDs: [UUID] = [],
         completedAt: Date = Date(),
         derivedRefreshWarning: String? = nil,
@@ -820,7 +818,6 @@ public struct ResearchActionRunCompletion: Codable, Hashable, Sendable {
             : fidelityTargetResults
         self.literatureRecommendations = literatureRecommendations
         self.fidelityEvidenceKey = fidelityEvidenceKey
-        self.reusedFidelityRunID = reusedFidelityRunID
         self.childRunIDs = childRunIDs.isEmpty ? nil : childRunIDs
         self.completedAt = completedAt
         self.derivedRefreshWarning = derivedRefreshWarning
@@ -828,9 +825,9 @@ public struct ResearchActionRunCompletion: Codable, Hashable, Sendable {
     }
 }
 
-/// A stable audit key. A changed Target, Material revision, check,
-/// registered Skill entry or Profile revision creates a new key
-/// and therefore cannot silently reuse stale Fidelity evidence.
+/// A stable audit key. Target, Material, check, and citation changes create a
+/// new key. The Run identity prevents cross-Run reuse because Scholium does
+/// not read or fingerprint researcher-owned Skill contents.
 public struct ResearchFidelityEvidenceKey: Codable, Hashable, Sendable {
     public let revision: DocumentFingerprint
 
@@ -880,7 +877,7 @@ public struct ResearchFidelityEvidenceKey: Codable, Hashable, Sendable {
         }
         let method = snapshot.actionSnapshot.method
         lines.append(
-            "method:\(method.registration.key.description):\(method.primaryMarkdownRevision.sha256):\(method.primaryMarkdownRevision.byteCount)"
+            "method-binding:\(method.registration.key.description):\(method.registrationRevision.sha256):\(method.registrationRevision.byteCount):run:\(snapshot.runID.uuidString.lowercased())"
         )
         revision = DocumentFingerprint(content: lines.joined(separator: "\n"))
     }

@@ -159,7 +159,7 @@ struct ResearchActionRunContractsTests {
         let valid = try snapshot(
             target: analysis,
             scope: .whole,
-            method: try method(primarySource: "# Fidelity\n")
+            method: try method()
         )
         let contradictory = ResearchActionRunRequest(
             actionID: .analyze,
@@ -239,7 +239,7 @@ struct ResearchActionRunContractsTests {
                 with: encoder.encode(try snapshot(
                     target: target(role: .analysis),
                     scope: nil,
-                    method: method(primarySource: "# Exact Action")
+                    method: method()
                 ))
             ) as? [String: Any]
         )
@@ -352,7 +352,7 @@ struct ResearchActionRunContractsTests {
                 with: encoder.encode(try snapshot(
                     target: target(role: .analysis),
                     scope: nil,
-                    method: method(primarySource: "# Exact Action")
+                    method: method()
                 ))
             ) as? [String: Any]
         )
@@ -481,9 +481,10 @@ struct ResearchActionRunContractsTests {
 
     }
 
-    @Test("Fidelity evidence identity changes with revision, scope, and exact Skill entry")
+    @Test("Fidelity evidence identity is Run-local and changes with source or scope")
     func fidelityEvidenceIdentity() throws {
         let target = target(role: .analysis)
+        let runID = UUID()
         let anchor = CommentAnchor(
             fingerprint: target.fingerprint,
             utf8Range: 0..<5,
@@ -492,36 +493,36 @@ struct ResearchActionRunContractsTests {
             endLine: 1,
             quotation: "claim"
         )
-        let exactMethod = try method(
-            primarySource: "# Fidelity\n\nCheck exact content.\n"
-        )
+        let exactMethod = try method()
         let whole = try snapshot(
             target: target,
             scope: .whole,
-            method: exactMethod
+            method: exactMethod,
+            runID: runID
         )
         let implicitWhole = try snapshot(
             target: target,
             scope: nil,
-            method: exactMethod
+            method: exactMethod,
+            runID: runID
         )
         let passage = try snapshot(
             target: target,
             scope: .passage(anchor),
-            method: exactMethod
+            method: exactMethod,
+            runID: runID
         )
-        let changedSkill = try snapshot(
+        let anotherRun = try snapshot(
             target: target,
             scope: .whole,
-            method: method(
-                primarySource: "# Fidelity\n\nCheck exact content and roles.\n"
-            )
+            method: exactMethod
         )
         let changedCitationStyle = try snapshot(
             target: target,
             scope: .whole,
             method: exactMethod,
-            citationStyle: "chicago-author-date"
+            citationStyle: "chicago-author-date",
+            runID: runID
         )
         let makeKey: (ResearchActionRunSnapshot) -> ResearchFidelityEvidenceKey = {
             ResearchFidelityEvidenceKey(
@@ -534,7 +535,7 @@ struct ResearchActionRunContractsTests {
         #expect(makeKey(whole) == makeKey(whole))
         #expect(makeKey(whole) == makeKey(implicitWhole))
         #expect(makeKey(whole) != makeKey(passage))
-        #expect(makeKey(whole) != makeKey(changedSkill))
+        #expect(makeKey(whole) != makeKey(anotherRun))
         #expect(makeKey(whole) != makeKey(changedCitationStyle))
         #expect(ResearchFidelityEvidenceKey(
             snapshot: whole,
@@ -589,8 +590,9 @@ struct ResearchActionRunContractsTests {
     private func snapshot(
         target: ResearchActionNoteSnapshot,
         scope: ResearchActionScope?,
-        method: ResearchMethodSnapshot,
-        citationStyle: String? = "apa-7"
+        method: ResearchSkillBindingSnapshot,
+        citationStyle: String? = "apa-7",
+        runID: UUID = UUID()
     ) throws -> ResearchActionRunSnapshot {
         let actionTarget = ResearchActionNoteSnapshot(
             noteID: target.noteID,
@@ -638,6 +640,7 @@ struct ResearchActionRunContractsTests {
             )
         )
         return try ResearchActionRunSnapshot(
+            runID: runID,
             request: ResearchActionRunRequest(
                 actionID: .checkFidelity,
                 target: target,
@@ -649,7 +652,7 @@ struct ResearchActionRunContractsTests {
         )
     }
 
-    private func method(primarySource: String) throws -> ResearchMethodSnapshot {
+    private func method() throws -> ResearchSkillBindingSnapshot {
         let registration = try ResearchSkillRegistration(
             key: ResearchSkillRegistrationKey(
                 rawValue: UUID(
@@ -658,11 +661,13 @@ struct ResearchActionRunContractsTests {
             ),
             actionID: .checkFidelity,
             displayName: "Content Fidelity",
-            primaryMarkdown: .machineLocal()
+            skillFolder: .machineLocal()
         )
-        return try ResearchMethodSnapshot(
+        return try ResearchSkillBindingSnapshot(
             registration: registration,
-            primaryMarkdownSource: primarySource
+            registrationRevision: DocumentFingerprint(content: "registrations"),
+            skillFolderPath: "/Users/researcher/Skills/content-fidelity",
+            skillFolderIsAvailable: true
         )
     }
 

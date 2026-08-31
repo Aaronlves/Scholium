@@ -32,7 +32,7 @@ struct ResearchActionContractsTests {
         let data = try encoder.encode(snapshot)
         let encoded = String(decoding: data, as: UTF8.self)
 
-        #expect(encoded.contains(#""schema_version":5"#))
+        #expect(encoded.contains(#""schema_version":6"#))
         #expect(encoded.contains(#""action_id":"analyze""#))
         #expect(encoded.contains(#""registration""#))
         #expect(encoded.contains(#""result_contract""#))
@@ -216,11 +216,13 @@ struct ResearchActionContractsTests {
             ),
             actionID: definition.id,
             displayName: profile.displayName,
-            primaryMarkdown: .machineLocal()
+            skillFolder: .machineLocal()
         )
-        let method = try ResearchMethodSnapshot(
+        let method = try ResearchSkillBindingSnapshot(
             registration: registration,
-            primaryMarkdownSource: "# \(profile.displayName)\n\nExact method.\n"
+            registrationRevision: DocumentFingerprint(content: "registrations"),
+            skillFolderPath: "/Users/researcher/Skills/\(definition.id.rawValue)",
+            skillFolderIsAvailable: true
         )
         let platformInputs = try ResearchActionPlatformInputs(
             fidelityChecks: definition.id == .checkFidelity ? [.content] : []

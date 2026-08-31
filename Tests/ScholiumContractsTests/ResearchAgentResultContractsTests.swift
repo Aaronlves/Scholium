@@ -230,7 +230,7 @@ struct ResearchAgentResultContractsTests {
         }
     }
 
-    @Test("Continue Research records are strict and preserve one bounded non-authorizing handoff")
+    @Test("Continue Research records are strict and preserve one bounded attributed handoff")
     func strictContinuationRecord() throws {
         let item = try ResearchContinuationHandoffItem(
             content: "The prior source reconstructs the distinction narrowly.",
@@ -251,8 +251,6 @@ struct ResearchAgentResultContractsTests {
             triptychID: UUID(),
             request: request,
             requestFingerprint: request.contentFingerprint(),
-            policy: .askEveryTime,
-            policyRevision: DocumentFingerprint(content: "policy"),
             state: .pending,
             receivedAt: now,
             expiresAt: now.addingTimeInterval(600)
@@ -294,7 +292,7 @@ struct ResearchAgentResultContractsTests {
             title: "Agency",
             allowedOperations: [.modifyMarkdown],
             expectedRevision: DocumentFingerprint(content: "before"),
-            authorizationBasis: .initialAction,
+            activityOrigin: .initialAction,
             expiresAt: Date(timeIntervalSince1970: 600)
         )
         let writeSet = try ResearchBoundedWriteSet(

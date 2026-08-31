@@ -16,7 +16,7 @@ It is the always-on authority for the Run's instruction, evidence, Method,
 capability, and Application-contract boundaries. Authenticated CLI responses
 identify required Skills but do not transmit Skill prose or source paths.
 
-The current Run Brief, required Skill identities and Method revision, Result
+The current Run Brief, required Skill identities and registration revision, Result
 Contract, bounded write-set view, and Research Context carry changing task
 facts. Do not copy those facts into this Skill.
 

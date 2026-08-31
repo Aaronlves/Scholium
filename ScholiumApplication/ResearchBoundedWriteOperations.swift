@@ -237,97 +237,9 @@ extension ResearchOperations {
         )
     }
 
-    public func resolveAgentWriteSetExtension(
-        requestID: UUID,
-        state: ResearchWriteSetExtensionState,
-        allowedHandles: [ResearchWriteTargetHandle]
-    ) async throws -> ResearchWriteSetExtensionRecord {
-        let handle = try await reference.requireHandle()
-        return try await handle.resolveResearchWriteSetExtension(
-            requestID: requestID,
-            state: state,
-            allowedHandles: allowedHandles
-        )
-    }
-
-    public func pendingAgentWriteSetExtensions(
-        at now: Date = Date()
-    ) async throws -> [ResearchWriteSetExtensionRecord] {
-        let handle = try await reference.requireHandle()
-        return try await handle.pendingResearchWriteSetExtensions(at: now)
-    }
-
-    public func agentWriteSetExtension(
-        requestID: UUID,
-        at now: Date = Date()
-    ) async throws -> ResearchWriteSetExtensionRecord {
-        let handle = try await reference.requireHandle()
-        return try await handle.researchWriteSetExtension(
-            requestID: requestID,
-            at: now
-        )
-    }
 }
 
 extension WorkspaceHandle {
-    func pendingResearchWriteSetExtensions(
-        at now: Date
-    ) async throws -> [ResearchWriteSetExtensionRecord] {
-        try requireActive()
-        let listing = try await researchBoundedWriteDependencies.localResearchExecutionStore.listing()
-        guard listing.issues.isEmpty else {
-            throw ResearchBoundedWriteSetError.invalidExtensionRecord
-        }
-        var result: [ResearchWriteSetExtensionRecord] = []
-        for execution in listing.records {
-            for request in execution.writeSetExtensionRecords where request.isUnresolved {
-                if request.expiresAt <= now {
-                    _ = try await researchBoundedWriteDependencies.localResearchExecutionStore
-                        .resolveWriteSetExtension(
-                            runID: request.runID,
-                            requestID: request.id,
-                            state: .expired,
-                            entries: [],
-                            decidedAt: now
-                        )
-                } else {
-                    result.append(request)
-                }
-            }
-        }
-        return result.sorted { $0.receivedAt < $1.receivedAt }
-    }
-
-    func researchWriteSetExtension(
-        requestID: UUID,
-        at now: Date
-    ) async throws -> ResearchWriteSetExtensionRecord {
-        try requireActive()
-        let listing = try await researchBoundedWriteDependencies.localResearchExecutionStore.listing()
-        guard listing.issues.isEmpty,
-              let execution = listing.records.first(where: { record in
-                  record.writeSetExtensionRecords.contains { $0.id == requestID }
-              }),
-              let request = execution.writeSetExtensionRecords.first(where: {
-                  $0.id == requestID
-              }) else {
-            throw ResearchBoundedWriteSetError.targetUnavailable
-        }
-        if request.isUnresolved, request.expiresAt <= now {
-            _ = try await researchBoundedWriteDependencies.localResearchExecutionStore
-                .resolveWriteSetExtension(
-                    runID: request.runID,
-                    requestID: request.id,
-                    state: .expired,
-                    entries: [],
-                    decidedAt: now
-                )
-            return try await researchBoundedWriteDependencies.localResearchExecutionStore
-                .writeSetExtension(runID: request.runID, requestID: request.id)
-        }
-        return request
-    }
-
     func extendResearchWriteSet(
         credential: ResearchConnectionCredential,
         run: ResearchRunLocator,
@@ -344,7 +256,7 @@ extension WorkspaceHandle {
         )
         let action = try activeResearchAction(execution)
         let platform = try platformAction(action.actionID)
-        guard platform.operations.contains(.extendWriteSet),
+        guard platform.operations.contains(.trackActivity),
               platform.operations.contains(.modifyInitialNote) else {
             throw ResearchAgentConnectionError.capabilityUnavailable
         }
@@ -362,11 +274,11 @@ extension WorkspaceHandle {
                 record: nil,
                 result: ResearchWriteSetExtensionResult(
                     requestID: requestID,
-                    state: .continueWithoutChanges,
+                    state: .unchanged,
                     entries: execution.boundedWriteSet.entries.map(
                         ResearchBoundedWriteSetViewEntry.init
                     ),
-                    message: "Every requested document is already in this Run's bounded write set."
+                    message: "Every requested document is already tracked for this Run."
                 )
             )
         }
@@ -379,7 +291,6 @@ extension WorkspaceHandle {
                 <= ResearchBoundedWriteSet.maximumEntriesPerRun else {
             throw ResearchBoundedWriteSetError.limitExceeded
         }
-        let policy = try await currentCollaborationPolicy()
         let intentDigest = try Self.fingerprint(intent)
         let candidateRevision = try Self.fingerprint(candidates)
         let requestID = Self.stableOperationID(
@@ -393,8 +304,6 @@ extension WorkspaceHandle {
             intent: intent,
             intentDigest: intentDigest,
             candidates: candidates,
-            policy: policy.document.policy,
-            policyRevision: policy.revision,
             state: .pending,
             receivedAt: now,
             expiresAt: now.addingTimeInterval(10 * 60)
@@ -409,75 +318,18 @@ extension WorkspaceHandle {
         if !stored.isUnresolved {
             return extensionDelivery(stored, execution: execution)
         }
-        let collaborationRequest = try ResearchCollaborationRequest(
-            kind: .writeSetExtension,
-            requestedWritableRoles: Set(candidates.map(\.role))
+        _ = try await approveResearchWriteSetExtension(
+            stored,
+            allowedHandles: candidates.map(\.handle),
+            origin: .agentActivity,
+            decidedAt: now
         )
-        let disposition = ResearchCollaborationPolicyResolver.evaluate(
-            policy: policy.document.policy,
-            request: collaborationRequest
+        execution = try await researchBoundedWriteDependencies.localResearchExecutionStore.record(
+            id: authenticated.runID
         )
-        if disposition == .mayProceed {
-            _ = try await approveResearchWriteSetExtension(
-                stored,
-                allowedHandles: candidates.map(\.handle),
-                basis: .collaborationPolicy,
-                decidedAt: now
-            )
-            execution = try await researchBoundedWriteDependencies.localResearchExecutionStore.record(
-                id: authenticated.runID
-            )
-        }
         let current = try await researchBoundedWriteDependencies.localResearchExecutionStore
             .writeSetExtension(runID: authenticated.runID, requestID: requestID)
         return extensionDelivery(current, execution: execution)
-    }
-
-    func resolveResearchWriteSetExtension(
-        requestID: UUID,
-        state: ResearchWriteSetExtensionState,
-        allowedHandles: [ResearchWriteTargetHandle],
-        decidedAt: Date = Date()
-    ) async throws -> ResearchWriteSetExtensionRecord {
-        try requireActive()
-        let listing = try await researchBoundedWriteDependencies.localResearchExecutionStore.listing()
-        guard listing.issues.isEmpty,
-              let execution = listing.records.first(where: { record in
-                  record.writeSetExtensionRecords.contains { $0.id == requestID }
-              }),
-              let request = execution.writeSetExtensionRecords.first(where: {
-                  $0.id == requestID
-              }) else {
-            throw ResearchBoundedWriteSetError.targetUnavailable
-        }
-        guard request.isUnresolved else { return request }
-        switch state {
-        case .allowedSubset:
-            _ = try await approveResearchWriteSetExtension(
-                request,
-                allowedHandles: allowedHandles,
-                basis: .explicitResearcherDecision,
-                decidedAt: decidedAt
-            )
-        case .continueWithoutChanges, .cancelled:
-            guard allowedHandles.isEmpty else {
-                throw ResearchBoundedWriteSetError.invalidExtensionRecord
-            }
-            _ = try await researchBoundedWriteDependencies.localResearchExecutionStore
-                .resolveWriteSetExtension(
-                    runID: request.runID,
-                    requestID: request.id,
-                    state: state,
-                    entries: [],
-                    decidedAt: decidedAt
-                )
-        case .pending, .stale, .expired:
-            throw ResearchBoundedWriteSetError.invalidExtensionRecord
-        }
-        return try await researchBoundedWriteDependencies.localResearchExecutionStore.writeSetExtension(
-            runID: request.runID,
-            requestID: request.id
-        )
     }
 
     func writeResearchDocument(
@@ -529,13 +381,6 @@ extension WorkspaceHandle {
             }
             throw ResearchBoundedWriteSetError.staleAuthorization
         }
-        try await validateCurrentPolicy(
-            for: entry,
-            runID: authenticated.runID,
-            wasUsed: execution.documentWriteRecords.contains {
-                $0.target == entry.handle && $0.state == .committed
-            }
-        )
         if intent.operation == .createNote {
             return try await createResearchDocument(
                 credential: credential,
@@ -572,7 +417,7 @@ extension WorkspaceHandle {
         let changeSet: NoteChangeSet
         switch intent.operation {
         case .modifyMarkdown:
-            guard current.frontmatterState != .malformed else {
+            guard current.hasProvableBodyBoundary else {
                 throw ResearchBoundedWriteSetError.operationNotAuthorized
             }
             changeSet = .body(intent.content)
@@ -664,20 +509,20 @@ extension WorkspaceHandle {
         guard let sessions = researchBoundedWriteDependencies.researchAgentSessions else {
             throw ResearchAgentConnectionError.secureRandomUnavailable
         }
-        let writeSetRevision = try execution.boundedWriteSet.authorizationRevision()
-        let capability = try await sessions.issueWriteCapability(
+        let activityLedgerRevision = try execution.boundedWriteSet.ledgerRevision()
+        let lease = try await sessions.issueMutationLease(
             credential: credential,
             run: run,
-            writeSetRevision: writeSetRevision,
+            activityLedgerRevision: activityLedgerRevision,
             target: entry.handle,
             expectedRevision: expectedRevision,
             operationID: operationID
         )
-        try await sessions.consumeWriteCapability(
-            capability,
+        try await sessions.consumeMutationLease(
+            lease,
             credential: credential,
             run: run,
-            writeSetRevision: writeSetRevision,
+            activityLedgerRevision: activityLedgerRevision,
             target: entry.handle,
             expectedRevision: expectedRevision,
             operationID: operationID
@@ -817,15 +662,6 @@ extension WorkspaceHandle {
             }
             throw ResearchBoundedWriteSetError.staleAuthorization
         }
-        try await validateCurrentPolicy(
-            for: entry,
-            runID: authenticated.runID,
-            wasUsed: execution.documentWriteRecords.contains {
-                $0.target == entry.handle && $0.state == .committed
-            } || execution.zoteroBindingWriteRecords.contains {
-                $0.target == entry.handle && $0.state == .committed
-            }
-        )
         let currentDocument = try await exactCurrentDocument(for: entry)
         guard currentDocument.fingerprint == entry.expectedRevision else {
             throw ResearchBoundedWriteSetError.staleAuthorization
@@ -860,20 +696,20 @@ extension WorkspaceHandle {
         guard let sessions = researchBoundedWriteDependencies.researchAgentSessions else {
             throw ResearchAgentConnectionError.secureRandomUnavailable
         }
-        let writeSetRevision = try execution.boundedWriteSet.authorizationRevision()
-        let capability = try await sessions.issueWriteCapability(
+        let activityLedgerRevision = try execution.boundedWriteSet.ledgerRevision()
+        let lease = try await sessions.issueMutationLease(
             credential: credential,
             run: run,
-            writeSetRevision: writeSetRevision,
+            activityLedgerRevision: activityLedgerRevision,
             target: entry.handle,
             expectedRevision: expectedRevision,
             operationID: operationID
         )
-        try await sessions.consumeWriteCapability(
-            capability,
+        try await sessions.consumeMutationLease(
+            lease,
             credential: credential,
             run: run,
-            writeSetRevision: writeSetRevision,
+            activityLedgerRevision: activityLedgerRevision,
             target: entry.handle,
             expectedRevision: expectedRevision,
             operationID: operationID
@@ -1078,21 +914,21 @@ extension WorkspaceHandle {
         guard let sessions = researchBoundedWriteDependencies.researchAgentSessions else {
             throw ResearchAgentConnectionError.secureRandomUnavailable
         }
-        let writeSetRevision = try initialExecution.boundedWriteSet
-            .authorizationRevision()
-        let capability = try await sessions.issueWriteCapability(
+        let activityLedgerRevision = try initialExecution.boundedWriteSet
+            .ledgerRevision()
+        let lease = try await sessions.issueMutationLease(
             credential: credential,
             run: run,
-            writeSetRevision: writeSetRevision,
+            activityLedgerRevision: activityLedgerRevision,
             target: entry.handle,
             expectedRevision: expectedMetadataRevision,
             operationID: operationID
         )
-        try await sessions.consumeWriteCapability(
-            capability,
+        try await sessions.consumeMutationLease(
+            lease,
             credential: credential,
             run: run,
-            writeSetRevision: writeSetRevision,
+            activityLedgerRevision: activityLedgerRevision,
             target: entry.handle,
             expectedRevision: expectedMetadataRevision,
             operationID: operationID
@@ -1224,7 +1060,7 @@ extension WorkspaceHandle {
         case .writing: "The Zotero binding write is still in progress."
         case .committed: "The Zotero binding was updated."
         case .unchanged: "The Zotero binding already matched the requested relationship."
-        case .conflict: "The Zotero binding changed before the authorized write began."
+        case .conflict: "The Zotero binding changed before the tracked mutation began."
         case .recoveryRequired: "The Zotero binding outcome requires recovery."
         case .abandoned: "The Zotero binding was not changed."
         }
@@ -1275,21 +1111,21 @@ extension WorkspaceHandle {
         guard let sessions = researchBoundedWriteDependencies.researchAgentSessions else {
             throw ResearchAgentConnectionError.secureRandomUnavailable
         }
-        let writeSetRevision = try initialExecution.boundedWriteSet
-            .authorizationRevision()
-        let capability = try await sessions.issueWriteCapability(
+        let activityLedgerRevision = try initialExecution.boundedWriteSet
+            .ledgerRevision()
+        let lease = try await sessions.issueMutationLease(
             credential: credential,
             run: run,
-            writeSetRevision: writeSetRevision,
+            activityLedgerRevision: activityLedgerRevision,
             target: entry.handle,
             expectedRevision: nil,
             operationID: operationID
         )
-        try await sessions.consumeWriteCapability(
-            capability,
+        try await sessions.consumeMutationLease(
+            lease,
             credential: credential,
             run: run,
-            writeSetRevision: writeSetRevision,
+            activityLedgerRevision: activityLedgerRevision,
             target: entry.handle,
             expectedRevision: nil,
             operationID: operationID
@@ -1651,13 +1487,6 @@ extension WorkspaceHandle {
             }) else {
                 throw ResearchBoundedWriteSetError.staleAuthorization
             }
-            try await validateCurrentPolicy(
-                for: entry,
-                runID: authenticated.runID,
-                wasUsed: execution.documentWriteRecords.contains {
-                    $0.target == entry.handle && $0.state == .committed
-                }
-            )
             let current = try await exactCurrentDocument(for: entry)
             let refreshedMetadataRevision: DocumentFingerprint?
             let observedRevision: DocumentFingerprint?
@@ -1689,9 +1518,7 @@ extension WorkspaceHandle {
                     metadataWritePlans: entry.metadataWritePlans,
                     metadataRevision: refreshedMetadataRevision,
                     zoteroBindingsRevision: entry.zoteroBindingsRevision,
-                    authorizationBasis: entry.authorizationBasis,
-                    authorizationPolicy: entry.authorizationPolicy,
-                    policyRevision: entry.policyRevision,
+                    activityOrigin: entry.activityOrigin,
                     expiresAt: entry.expiresAt,
                     state: .ready
                 )
@@ -1785,7 +1612,7 @@ extension WorkspaceHandle {
         existing: ResearchBoundedWriteSet
     ) async throws -> [ResearchWriteSetCandidate] {
         let platform = try platformAction(action.actionID)
-        let allowed = Set(platform.extensionWriteOperations)
+        let allowed = Set(platform.activityWriteOperations)
         let settings = selectors.contains(where: { $0.operations == [.createNote] })
             ? try await researchBoundedWriteDependencies.controlStore.settings()
             : nil
@@ -1868,7 +1695,7 @@ extension WorkspaceHandle {
                     throw ResearchBoundedWriteSetError.staleAuthorization
                 }
                 guard !selector.operations.contains(.modifyMarkdown)
-                        || document.frontmatterState != .malformed else {
+                        || document.hasProvableBodyBoundary else {
                     throw ResearchBoundedWriteSetError.operationNotAuthorized
                 }
                 let priorOperations = Set(
@@ -1920,7 +1747,7 @@ extension WorkspaceHandle {
                 throw ResearchBoundedWriteSetError.targetUnavailable
             }
             guard !selector.operations.contains(.modifyMarkdown)
-                    || note.document.frontmatterState != .malformed else {
+                    || note.document.hasProvableBodyBoundary else {
                 throw ResearchBoundedWriteSetError.operationNotAuthorized
             }
             let metadataWritePlans = try Self.metadataWritePlans(
@@ -1989,7 +1816,7 @@ extension WorkspaceHandle {
     private func approveResearchWriteSetExtension(
         _ request: ResearchWriteSetExtensionRecord,
         allowedHandles: [ResearchWriteTargetHandle],
-        basis: ResearchWriteSetAuthorizationBasis,
+        origin: ResearchWriteSetActivityOrigin,
         decidedAt: Date
     ) async throws -> LocalResearchExecutionRecord {
         let allowed = Set(allowedHandles)
@@ -2015,13 +1842,7 @@ extension WorkspaceHandle {
                         role: candidate.role,
                         title: candidate.title,
                         analysisCreationPlans: candidate.analysisCreationPlans,
-                        authorizationBasis: basis,
-                        authorizationPolicy: basis == .collaborationPolicy
-                            ? request.policy
-                            : nil,
-                        policyRevision: basis == .collaborationPolicy
-                            ? request.policyRevision
-                            : nil,
+                        activityOrigin: origin,
                         expiresAt: decidedAt.addingTimeInterval(24 * 60 * 60)
                     ))
                 case .existing(let expectedRevision):
@@ -2062,13 +1883,7 @@ extension WorkspaceHandle {
                         metadataWritePlans: candidate.metadataWritePlans,
                         metadataRevision: candidate.metadataRevision,
                         zoteroBindingsRevision: candidate.zoteroBindingsRevision,
-                        authorizationBasis: basis,
-                        authorizationPolicy: basis == .collaborationPolicy
-                            ? request.policy
-                            : nil,
-                        policyRevision: basis == .collaborationPolicy
-                            ? request.policyRevision
-                            : nil,
+                        activityOrigin: origin,
                         expiresAt: decidedAt.addingTimeInterval(24 * 60 * 60)
                     ))
                 }
@@ -2077,7 +1892,7 @@ extension WorkspaceHandle {
                 .resolveWriteSetExtension(
                     runID: request.runID,
                     requestID: request.id,
-                    state: .allowedSubset,
+                    state: .recorded,
                     entries: entries,
                     decidedAt: decidedAt
                 )
@@ -2124,36 +1939,6 @@ extension WorkspaceHandle {
         }
         return try await repository(vaultID: entry.note.vaultID)
             .load(relativePath: entry.note.relativePath)
-    }
-
-    private func validateCurrentPolicy(
-        for entry: ResearchBoundedWriteSetEntry,
-        runID: UUID,
-        wasUsed: Bool
-    ) async throws {
-        guard entry.authorizationBasis == .collaborationPolicy else { return }
-        let current = try await currentCollaborationPolicy()
-        guard let original = entry.authorizationPolicy,
-              let revision = entry.policyRevision else {
-            throw ResearchBoundedWriteSetError.staleAuthorization
-        }
-        if current.revision == revision, current.document.policy == original { return }
-        if wasUsed { return }
-        let request = try ResearchCollaborationRequest(
-            kind: .writeSetExtension,
-            requestedWritableRoles: [entry.role]
-        )
-        guard ResearchCollaborationPolicyResolver.evaluate(
-            policy: current.document.policy,
-            request: request
-        ) == .mayProceed else {
-            _ = try await researchBoundedWriteDependencies.localResearchExecutionStore
-                .markWriteSetEntryStale(
-                    runID: runID,
-                    handle: entry.handle
-                )
-            throw ResearchBoundedWriteSetError.staleAuthorization
-        }
     }
 
     private func reconcileOrReturn(
@@ -2293,12 +2078,10 @@ extension WorkspaceHandle {
         execution: LocalResearchExecutionRecord
     ) -> ResearchWriteSetExtensionDelivery {
         let message = switch record.state {
-        case .pending: "The extension is waiting for one researcher decision."
-        case .allowedSubset: "The approved documents are now in this Run's bounded write set."
-        case .continueWithoutChanges: "The Run continues without adding documents."
-        case .stale: "The extension became stale before authorization."
-        case .expired: "The extension expired without granting authority."
-        case .cancelled: "The extension was cancelled without granting authority."
+        case .pending: "The activity is being recorded for this Run."
+        case .recorded: "The requested documents are now tracked for this Run."
+        case .unchanged: "Every requested document was already tracked for this Run."
+        case .stale: "The activity became stale before it could be recorded."
         }
         return ResearchWriteSetExtensionDelivery(
             record: record,
@@ -2320,8 +2103,8 @@ extension WorkspaceHandle {
         let message = switch record.state {
         case .writing: "The document write is still being checked."
         case .committed: "The exact document write committed and read back."
-        case .unchanged: "The submitted bytes already matched the authorized revision."
-        case .conflict: "The document changed; reread it and request fresh authority."
+        case .unchanged: "The submitted bytes already matched the tracked revision."
+        case .conflict: "The document changed; reread its latest revision and retry the intended edit."
         case .recoveryRequired: "The write result is unknown and requires recovery."
         case .abandoned: "The write was confirmed not to have changed the document."
         }
@@ -2341,7 +2124,7 @@ extension WorkspaceHandle {
     ) throws -> ResearchWriteConflictResolutionResult {
         let message = switch record.state {
         case .readyToRetry:
-            "Fresh authority is bound to this document. Reread its current Markdown or Metadata, then retry the intended exact edit."
+            "The latest revision is now tracked for this document. Reread its current Markdown or Metadata, then retry the intended exact edit."
         case .abandoned:
             "This conflicted write was explicitly abandoned; the document was not changed by that attempt."
         }

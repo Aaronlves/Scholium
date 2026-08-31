@@ -9,9 +9,6 @@ struct ResearchRecordFollowUpSection: View {
     let context: ResearchRecordBrowserContext
 
     @State private var isPresentingFollowUp = false
-    @State private var isStartingImprovement = false
-    @State private var improvementHandoff: ResearchAgentHandoff?
-    @State private var improvementError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.nestedContentInset) {
@@ -19,7 +16,7 @@ struct ResearchRecordFollowUpSection: View {
                 .scholiumApparatusHeadingStyle()
                 .accessibilityHeading(.h2)
 
-            Text("Start a new Action from this completed Result. Scholium will resolve the current Method, Profile, materials, permissions, and write boundary again.")
+            Text("Start a new Action from this completed Result. Scholium will resolve the current Skill assignment, Profile, materials, permissions, and write boundary again.")
                 .font(ScholiumTypography.interface(.compact))
                 .scholiumForeground(.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -36,12 +33,6 @@ struct ResearchRecordFollowUpSection: View {
                 }
             }
 
-            if let improvementError {
-                Text(improvementError)
-                    .font(ScholiumTypography.interface(.compact))
-                    .scholiumForeground(.destructive)
-                    .textSelection(.enabled)
-            }
         }
         .sheet(isPresented: $isPresentingFollowUp) {
             ResearchRecordFollowUpSheet(
@@ -49,16 +40,6 @@ struct ResearchRecordFollowUpSection: View {
                 client: context.followUpClient,
                 loadContext: context.followUpContext
             )
-        }
-        .sheet(
-            isPresented: Binding(
-                get: { improvementHandoff != nil },
-                set: { if !$0 { improvementHandoff = nil } }
-            )
-        ) {
-            if let improvementHandoff {
-                ResearchMethodImprovementHandoffSheet(handoff: improvementHandoff)
-            }
         }
         .onChange(of: model.pendingFollowUpRequestGeneration, initial: true) { _, _ in
             if model.consumeFollowUpRequest(recordID: record.id) {
@@ -72,37 +53,6 @@ struct ResearchRecordFollowUpSection: View {
         Button("Follow Up…") { isPresentingFollowUp = true }
             .buttonStyle(.borderedProminent)
             .accessibilityIdentifier("scholium.researchRecord.followUp")
-
-        if record.methodFeedbackComment != nil {
-            Button("Improve Current Method…") { startMethodImprovement() }
-                .disabled(isStartingImprovement)
-                .accessibilityHint(
-                    "Starts a separate Method improvement Run from Feedback on the previous Result"
-                )
-            if isStartingImprovement {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityLabel("Preparing Method improvement")
-            }
-        }
-    }
-
-    private func startMethodImprovement() {
-        guard record.methodFeedbackComment != nil, !isStartingImprovement else {
-            return
-        }
-        improvementError = nil
-        isStartingImprovement = true
-        Task { @MainActor in
-            defer { isStartingImprovement = false }
-            do {
-                improvementHandoff = try await context.startMethodImprovement(
-                    record.id
-                )
-            } catch {
-                improvementError = error.localizedDescription
-            }
-        }
     }
 }
 

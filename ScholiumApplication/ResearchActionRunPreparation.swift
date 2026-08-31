@@ -7,7 +7,7 @@ import ScholiumCore
 
 struct ResolvedActionRunPhase: Sendable {
     let actionID: ResearchActionID
-    let method: ResearchMethodSnapshot
+    let method: ResearchSkillBindingSnapshot
     let citationStyle: String?
 }
 
@@ -44,14 +44,12 @@ struct ResearchActionRunTaskDirective: Encodable {
 struct ResearchActionRunMethodAuthorityBinding: Encodable {
     let registrationKey: String
     let action: ResearchActionID
-    let primaryMarkdownRevision: DocumentFingerprint
-    let skillFolderPath: String?
+    let registrationRevision: DocumentFingerprint
 
-    init(_ method: ResearchMethodSnapshot) {
+    init(_ method: ResearchSkillBindingSnapshot) {
         registrationKey = method.registration.key.description
         action = method.registration.actionID
-        primaryMarkdownRevision = method.primaryMarkdownRevision
-        skillFolderPath = method.skillFolderPath
+        registrationRevision = method.registrationRevision
     }
 }
 
@@ -127,7 +125,7 @@ extension ResearchActionRunCoordinator {
                 try action.validate(targetRole: target.role)
                 do {
                     let method = try await dependencies.researchConfigurationStore
-                        .methodSnapshot(for: action.id)
+                        .skillBindingSnapshot(for: action.id)
                     if !method.registration.isEnabled {
                         reasons.append(ResearchActionRunRepairReason(
                             code: .missingWorkflow,
@@ -295,7 +293,7 @@ extension ResearchActionRunCoordinator {
             snapshot: record.snapshot,
             instructions: try await deliveryInstructions(for: record, host: host),
             state: record.completion?.state ?? .prepared,
-            reusedCompletion: record.completion
+            completion: record.completion
         )
     }
 
@@ -517,28 +515,6 @@ extension ResearchActionRunCoordinator {
             confirmationToken: confirmationToken,
             preparedAt: preparedAt
         )
-
-        if request.actionID == .checkFidelity {
-            let key = ResearchFidelityEvidenceKey(
-                snapshot: snapshot,
-                finalTargetFingerprint: request.target.fingerprint,
-                finalMaterialFingerprints: Dictionary(
-                    uniqueKeysWithValues: request.materials.map { ($0.noteID, $0.fingerprint) }
-                ),
-                checks: request.checks
-            )
-            if let reused = try await completedFidelityEvidence(
-                for: key,
-                excluding: nil
-            ) {
-                return ResearchActionRunPreparation(
-                    snapshot: snapshot,
-                    instructions: "Existing Fidelity evidence matches this exact revision, scope, evidence, checks, and method resources.",
-                    state: .complete,
-                    reusedCompletion: reused
-                )
-            }
-        }
 
         let actionRunInstructions = try renderActionRunInstructions(
             request: request,

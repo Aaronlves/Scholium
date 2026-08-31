@@ -1,14 +1,21 @@
 import Foundation
 
-public enum ResearchMethodLocatorError: LocalizedError, Hashable, Sendable {
+public enum ResearchSkillFolderLocatorError: LocalizedError, Hashable, Sendable {
     case invalid(String)
 
     public var errorDescription: String? {
         switch self {
         case .invalid(let reason):
-            "The machine-local Method access registry is invalid. \(reason)"
+            "The machine-local Skill-folder access registry is invalid. \(reason)"
         }
     }
+}
+
+/// Short-lived, read-only access to a registered Skill folder for presentation
+/// such as revealing it in Finder. Retaining this value keeps the underlying
+/// security scope active; it provides no file-content operation.
+public protocol ResearchSkillFolderAccess: AnyObject, Sendable {
+    var url: URL { get }
 }
 
 public struct ResearchSkillRegistrationKey: RawRepresentable, Codable, Hashable,
@@ -33,7 +40,7 @@ public struct ResearchSkillRegistrationKey: RawRepresentable, Codable, Hashable,
     }
 }
 
-public enum ResearchMethodFileLocationKind: String, Codable, CaseIterable,
+public enum ResearchSkillFolderLocationKind: String, Codable, CaseIterable,
     Hashable, Sendable
 {
     /// Path relative to the Triptych's `.scholium` control directory.
@@ -46,8 +53,8 @@ public enum ResearchMethodFileLocationKind: String, Codable, CaseIterable,
 /// A portable location marker. It either contains one safe `.scholium`-
 /// relative path or says that the registration's opaque key must be resolved
 /// in machine-local state. It never encodes an absolute path or bookmark.
-public struct ResearchMethodFileLocation: Codable, Hashable, Sendable {
-    public let kind: ResearchMethodFileLocationKind
+public struct ResearchSkillFolderLocation: Codable, Hashable, Sendable {
+    public let kind: ResearchSkillFolderLocationKind
     public let triptychRelativePath: String?
 
     public static func triptychControl(_ relativePath: String) throws -> Self {
@@ -64,7 +71,7 @@ public struct ResearchMethodFileLocation: Codable, Hashable, Sendable {
     }
 
     private init(
-        kind: ResearchMethodFileLocationKind,
+        kind: ResearchSkillFolderLocationKind,
         triptychRelativePath: String?
     ) throws {
         switch kind {
@@ -74,11 +81,11 @@ public struct ResearchMethodFileLocation: Codable, Hashable, Sendable {
                   ResearchSkillRegistrationValidation.isSafeRelativePath(
                     triptychRelativePath
                   ) else {
-                throw ResearchSkillRegistrationError.invalidMethodPath
+                throw ResearchSkillRegistrationError.invalidFolderPath
             }
         case .machineLocal:
             guard triptychRelativePath == nil else {
-                throw ResearchSkillRegistrationError.invalidMethodPath
+                throw ResearchSkillRegistrationError.invalidFolderPath
             }
         }
         self.kind = kind
@@ -97,7 +104,7 @@ public struct ResearchMethodFileLocation: Codable, Hashable, Sendable {
         )
         let container = try decoder.container(keyedBy: CodingKeys.self)
         try self.init(
-            kind: container.decode(ResearchMethodFileLocationKind.self, forKey: .kind),
+            kind: container.decode(ResearchSkillFolderLocationKind.self, forKey: .kind),
             triptychRelativePath: container.decodeIfPresent(
                 String.self,
                 forKey: .triptychRelativePath
@@ -106,49 +113,31 @@ public struct ResearchMethodFileLocation: Codable, Hashable, Sendable {
     }
 }
 
-/// The only current routing relation between one public Action and one primary
-/// Research Skill Markdown file.
+/// The only current routing relation between one public Action and one
+/// researcher-owned Skill folder. Scholium never reads or writes its contents.
 public struct ResearchSkillRegistration: Codable, Hashable, Identifiable, Sendable {
     public var id: ResearchSkillRegistrationKey { key }
 
     public let key: ResearchSkillRegistrationKey
     public let actionID: ResearchActionID
     public let displayName: String
-    public let primaryMarkdown: ResearchMethodFileLocation
-    public let skillFolder: ResearchMethodFileLocation?
+    public let skillFolder: ResearchSkillFolderLocation
     public let isEnabled: Bool
 
     public init(
         key: ResearchSkillRegistrationKey = ResearchSkillRegistrationKey(),
         actionID: ResearchActionID,
         displayName: String,
-        primaryMarkdown: ResearchMethodFileLocation,
-        skillFolder: ResearchMethodFileLocation? = nil,
+        skillFolder: ResearchSkillFolderLocation,
         isEnabled: Bool = true
     ) throws {
         let name = try ResearchSkillRegistrationValidation.text(
             displayName,
             maximumUTF8Count: 256
         )
-        if let skillFolder {
-            guard skillFolder.kind == primaryMarkdown.kind else {
-                throw ResearchSkillRegistrationError.entryOutsideFolder
-            }
-            if primaryMarkdown.kind == .triptychControl {
-                guard let primary = primaryMarkdown.triptychRelativePath,
-                      let folder = skillFolder.triptychRelativePath,
-                      ResearchSkillRegistrationValidation.containsRelative(
-                        path: primary,
-                        inFolder: folder
-                      ) else {
-                    throw ResearchSkillRegistrationError.entryOutsideFolder
-                }
-            }
-        }
         self.key = key
         self.actionID = actionID
         self.displayName = name
-        self.primaryMarkdown = primaryMarkdown
         self.skillFolder = skillFolder
         self.isEnabled = isEnabled
     }
@@ -157,7 +146,6 @@ public struct ResearchSkillRegistration: Codable, Hashable, Identifiable, Sendab
         case key
         case actionID
         case displayName
-        case primaryMarkdown
         case skillFolder
         case isEnabled
     }
@@ -172,12 +160,8 @@ public struct ResearchSkillRegistration: Codable, Hashable, Identifiable, Sendab
             key: container.decode(ResearchSkillRegistrationKey.self, forKey: .key),
             actionID: container.decode(ResearchActionID.self, forKey: .actionID),
             displayName: container.decode(String.self, forKey: .displayName),
-            primaryMarkdown: container.decode(
-                ResearchMethodFileLocation.self,
-                forKey: .primaryMarkdown
-            ),
-            skillFolder: container.decodeIfPresent(
-                ResearchMethodFileLocation.self,
+            skillFolder: container.decode(
+                ResearchSkillFolderLocation.self,
                 forKey: .skillFolder
             ),
             isEnabled: container.decode(Bool.self, forKey: .isEnabled)
@@ -186,7 +170,7 @@ public struct ResearchSkillRegistration: Codable, Hashable, Identifiable, Sendab
 }
 
 public struct ResearchSkillRegistrationDocument: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 3
     public static let maximumRegistrationCount = 64
 
     public let schemaVersion: Int
@@ -246,39 +230,33 @@ public struct ResearchSkillRegistrationSnapshot: Hashable, Sendable {
     }
 }
 
-public struct ResearchMethodSnapshot: Codable, Hashable, Sendable {
+public struct ResearchSkillBindingSnapshot: Codable, Hashable, Sendable {
     public let registration: ResearchSkillRegistration
-    public let primaryMarkdownSource: String
-    public let primaryMarkdownRevision: DocumentFingerprint
+    public let registrationRevision: DocumentFingerprint
     /// Resolved machine-local delivery value. Local Execution may freeze it;
     /// portable registration and Record contracts never contain it.
-    public let skillFolderPath: String?
-    public let skillFolderIsAvailable: Bool?
+    public let skillFolderPath: String
+    public let skillFolderIsAvailable: Bool
 
     public init(
         registration: ResearchSkillRegistration,
-        primaryMarkdownSource: String,
-        primaryMarkdownRevision: DocumentFingerprint? = nil,
-        skillFolderPath: String? = nil,
-        skillFolderIsAvailable: Bool? = nil
+        registrationRevision: DocumentFingerprint,
+        skillFolderPath: String,
+        skillFolderIsAvailable: Bool
     ) throws {
-        guard primaryMarkdownSource.utf8.count <= 1_048_576 else {
+        guard !skillFolderPath.isEmpty,
+              skillFolderPath.utf8.count <= 4_096 else {
             throw ResearchSkillRegistrationError.invalidSnapshot
         }
         self.registration = registration
-        self.primaryMarkdownSource = primaryMarkdownSource
-        self.primaryMarkdownRevision = primaryMarkdownRevision
-            ?? DocumentFingerprint(content: primaryMarkdownSource)
+        self.registrationRevision = registrationRevision
         self.skillFolderPath = skillFolderPath
-        self.skillFolderIsAvailable = registration.skillFolder == nil
-            ? nil
-            : skillFolderIsAvailable
+        self.skillFolderIsAvailable = skillFolderIsAvailable
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case registration
-        case primaryMarkdownSource
-        case primaryMarkdownRevision
+        case registrationRevision
         case skillFolderPath
         case skillFolderIsAvailable
     }
@@ -294,19 +272,15 @@ public struct ResearchMethodSnapshot: Codable, Hashable, Sendable {
                 ResearchSkillRegistration.self,
                 forKey: .registration
             ),
-            primaryMarkdownSource: container.decode(
-                String.self,
-                forKey: .primaryMarkdownSource
-            ),
-            primaryMarkdownRevision: container.decode(
+            registrationRevision: container.decode(
                 DocumentFingerprint.self,
-                forKey: .primaryMarkdownRevision
+                forKey: .registrationRevision
             ),
-            skillFolderPath: container.decodeIfPresent(
+            skillFolderPath: container.decode(
                 String.self,
                 forKey: .skillFolderPath
             ),
-            skillFolderIsAvailable: container.decodeIfPresent(
+            skillFolderIsAvailable: container.decode(
                 Bool.self,
                 forKey: .skillFolderIsAvailable
             )
@@ -317,9 +291,7 @@ public struct ResearchMethodSnapshot: Codable, Hashable, Sendable {
 public enum ResearchSkillRegistrationError: LocalizedError, Hashable, Sendable {
     case unsupportedSchemaVersion(Int)
     case unsupportedField(String)
-    case invalidMethodPath
     case invalidFolderPath
-    case entryOutsideFolder
     case invalidDocument
     case invalidSnapshot
     case invalidText
@@ -330,16 +302,12 @@ public enum ResearchSkillRegistrationError: LocalizedError, Hashable, Sendable {
             "Unsupported Research Skill registration schema version \(version)."
         case .unsupportedField(let field):
             "Unsupported Research Skill registration field: \(field)."
-        case .invalidMethodPath:
-            "The primary Research Skill Markdown path is invalid."
         case .invalidFolderPath:
-            "The optional Research Skill folder path is invalid."
-        case .entryOutsideFolder:
-            "The primary Markdown entry must remain inside its registered Skill folder."
+            "The Research Skill folder path is invalid."
         case .invalidDocument:
             "The Research Skill registration document is invalid."
         case .invalidSnapshot:
-            "The frozen Research Method snapshot is invalid."
+            "The frozen Research Skill binding is invalid."
         case .invalidText:
             "Research Skill registration text is invalid."
         }
@@ -367,13 +335,6 @@ private enum ResearchSkillRegistrationValidation {
         return components.allSatisfy {
             !$0.isEmpty && $0 != "." && $0 != ".."
         }
-    }
-
-    static func containsRelative(path: String, inFolder folder: String) -> Bool {
-        let pathComponents = path.split(separator: "/").map(String.init)
-        let folderComponents = folder.split(separator: "/").map(String.init)
-        return pathComponents.count > folderComponents.count
-            && Array(pathComponents.prefix(folderComponents.count)) == folderComponents
     }
 
     static func rejectUnknownFields<Key: CodingKey & CaseIterable>(

@@ -1,6 +1,6 @@
 # Scholium Implementation Status
 
-- **Audited:** 2026-08-29
+- **Audited:** 2026-08-31
 - **Target authority:** [SCHOLIUM_SPEC.md](SCHOLIUM_SPEC.md)
 - **Scope:** current reachability, open implementation and acceptance work,
   and dated verification evidence.

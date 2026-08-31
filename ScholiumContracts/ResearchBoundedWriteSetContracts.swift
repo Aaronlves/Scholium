@@ -1,7 +1,7 @@
 import Foundation
 
-/// The closed document mutations that the Platform can authorize for one
-/// exact Bounded Write Set member. Method/Profile prose cannot add cases.
+/// The closed document mutations that Scholium can perform and attribute to
+/// one Agent Run. Skill/Profile prose cannot add executable cases.
 public enum ResearchDocumentWriteOperation: String, Codable, CaseIterable,
     Hashable, Sendable
 {
@@ -38,10 +38,9 @@ public struct ResearchWriteTargetHandle: RawRepresentable, Codable, Hashable, Se
     }
 }
 
-public enum ResearchWriteSetAuthorizationBasis: String, Codable, Hashable, Sendable {
+public enum ResearchWriteSetActivityOrigin: String, Codable, Hashable, Sendable {
     case initialAction = "initial_action"
-    case explicitResearcherDecision = "explicit_researcher_decision"
-    case collaborationPolicy = "collaboration_policy"
+    case agentActivity = "agent_activity"
 }
 
 public enum ResearchWriteSetEntryState: String, Codable, Hashable, Sendable {
@@ -207,8 +206,9 @@ public struct ResearchMetadataWriteFieldPlan: Codable, Hashable, Sendable {
     }
 }
 
-/// One current document member. It contains no source bytes or academic
-/// relation and never authorizes access without the owning Run Session.
+/// One current document tracked for an Agent Run. It contains no source bytes
+/// or academic relation. The Run Session establishes attribution; this value
+/// records the exact target, operation, and revision used by Scholium's writer.
 public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sendable {
     public var id: ResearchWriteTargetHandle { handle }
 
@@ -222,9 +222,7 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
     public let metadataWritePlans: [ResearchMetadataWriteFieldPlan]
     public let analysisCreationPlans: [ResearchAnalysisCreationSourcePlan]
     public var expectation: ResearchWriteSetTargetExpectation
-    public let authorizationBasis: ResearchWriteSetAuthorizationBasis
-    public let authorizationPolicy: ResearchCollaborationPolicy?
-    public let policyRevision: DocumentFingerprint?
+    public let activityOrigin: ResearchWriteSetActivityOrigin
     public let expiresAt: Date
     public var state: ResearchWriteSetEntryState
     public var metadataRevision: DocumentFingerprint?
@@ -242,9 +240,7 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         metadataWritePlans: [ResearchMetadataWriteFieldPlan] = [],
         metadataRevision: DocumentFingerprint? = nil,
         zoteroBindingsRevision: DocumentFingerprint? = nil,
-        authorizationBasis: ResearchWriteSetAuthorizationBasis,
-        authorizationPolicy: ResearchCollaborationPolicy? = nil,
-        policyRevision: DocumentFingerprint? = nil,
+        activityOrigin: ResearchWriteSetActivityOrigin,
         expiresAt: Date,
         state: ResearchWriteSetEntryState = .ready
     ) throws {
@@ -273,9 +269,6 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
               !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               title.utf8.count <= 1_024,
               expiresAt.timeIntervalSinceReferenceDate.isFinite,
-              (authorizationBasis == .collaborationPolicy)
-                == (authorizationPolicy != nil && policyRevision != nil),
-              policyRevision.map(ResearchBoundedWriteValidation.validFingerprint) ?? true,
               state != .consumed else {
             throw ResearchBoundedWriteSetError.invalidEntry
         }
@@ -289,9 +282,7 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         self.metadataWritePlans = metadataPlans
         analysisCreationPlans = []
         expectation = .existing(expectedRevision: expectedRevision)
-        self.authorizationBasis = authorizationBasis
-        self.authorizationPolicy = authorizationPolicy
-        self.policyRevision = policyRevision
+        self.activityOrigin = activityOrigin
         self.expiresAt = expiresAt
         self.state = state
         self.metadataRevision = metadataRevision
@@ -305,9 +296,7 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         role: ResearchActionTargetRole,
         title: String,
         analysisCreationPlans: [ResearchAnalysisCreationSourcePlan] = [],
-        authorizationBasis: ResearchWriteSetAuthorizationBasis,
-        authorizationPolicy: ResearchCollaborationPolicy? = nil,
-        policyRevision: DocumentFingerprint? = nil,
+        activityOrigin: ResearchWriteSetActivityOrigin,
         expiresAt: Date,
         state: ResearchWriteSetEntryState = .ready
     ) throws {
@@ -316,9 +305,6 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
               !title.isEmpty,
               title.utf8.count <= 1_024,
               expiresAt.timeIntervalSinceReferenceDate.isFinite,
-              (authorizationBasis == .collaborationPolicy)
-                == (authorizationPolicy != nil && policyRevision != nil),
-              policyRevision.map(ResearchBoundedWriteValidation.validFingerprint) ?? true,
               state != .consumed,
               (role == .analysis)
                 == (Set(analysisCreationPlans.map(\.sourceType))
@@ -337,9 +323,7 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
             $0.sourceType.rawValue < $1.sourceType.rawValue
         }
         expectation = .absent
-        self.authorizationBasis = authorizationBasis
-        self.authorizationPolicy = authorizationPolicy
-        self.policyRevision = policyRevision
+        self.activityOrigin = activityOrigin
         self.expiresAt = expiresAt
         self.state = state
         metadataRevision = nil
@@ -373,9 +357,7 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
         case metadataWritePlans = "metadata_write_plans"
         case analysisCreationPlans = "analysis_creation_plans"
         case expectation
-        case authorizationBasis = "authorization_basis"
-        case authorizationPolicy = "authorization_policy"
-        case policyRevision = "policy_revision"
+        case activityOrigin = "activity_origin"
         case expiresAt = "expires_at"
         case state
         case metadataRevision = "metadata_revision"
@@ -417,17 +399,9 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
             ResearchWriteSetTargetExpectation.self,
             forKey: .expectation
         )
-        let basis = try container.decode(
-                ResearchWriteSetAuthorizationBasis.self,
-                forKey: .authorizationBasis
-            )
-        let policy = try container.decodeIfPresent(
-                ResearchCollaborationPolicy.self,
-                forKey: .authorizationPolicy
-            )
-        let policyRevision = try container.decodeIfPresent(
-                DocumentFingerprint.self,
-                forKey: .policyRevision
+        let origin = try container.decode(
+                ResearchWriteSetActivityOrigin.self,
+                forKey: .activityOrigin
             )
         let expiresAt = try container.decode(Date.self, forKey: .expiresAt)
         let state = try container.decode(ResearchWriteSetEntryState.self, forKey: .state)
@@ -456,9 +430,7 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
                 metadataWritePlans: metadataWritePlans,
                 metadataRevision: metadataRevision,
                 zoteroBindingsRevision: zoteroBindingsRevision,
-                authorizationBasis: basis,
-                authorizationPolicy: policy,
-                policyRevision: policyRevision,
+                activityOrigin: origin,
                 expiresAt: expiresAt,
                 state: state
             )
@@ -475,9 +447,7 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
                 role: role,
                 title: title,
                 analysisCreationPlans: analysisCreationPlans,
-                authorizationBasis: basis,
-                authorizationPolicy: policy,
-                policyRevision: policyRevision,
+                activityOrigin: origin,
                 expiresAt: expiresAt,
                 state: state
             )
@@ -495,9 +465,7 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
                 role: role,
                 title: title,
                 analysisCreationPlans: analysisCreationPlans,
-                authorizationBasis: basis,
-                authorizationPolicy: policy,
-                policyRevision: policyRevision,
+                activityOrigin: origin,
                 expiresAt: expiresAt,
                 state: .ready
             )
@@ -510,7 +478,7 @@ public struct ResearchBoundedWriteSetEntry: Codable, Hashable, Identifiable, Sen
 }
 
 public struct ResearchBoundedWriteSet: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 5
+    public static let currentSchemaVersion = 6
     public static let maximumEntriesPerRequest = 16
     public static let maximumEntriesPerRun = 64
     public static let maximumWritesPerRun = 256
@@ -544,7 +512,7 @@ public struct ResearchBoundedWriteSet: Codable, Hashable, Sendable {
         entries.first { $0.handle == handle }
     }
 
-    public func authorizationRevision() throws -> DocumentFingerprint {
+    public func ledgerRevision() throws -> DocumentFingerprint {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         return DocumentFingerprint(data: try encoder.encode(self))
@@ -917,11 +885,9 @@ public struct ResearchWriteSetCandidate: Codable, Hashable, Identifiable, Sendab
 
 public enum ResearchWriteSetExtensionState: String, Codable, Hashable, Sendable {
     case pending
-    case allowedSubset = "allowed_subset"
-    case continueWithoutChanges = "continue_without_changes"
+    case recorded
+    case unchanged
     case stale
-    case expired
-    case cancelled
 }
 
 public struct ResearchWriteSetExtensionRecord: Codable, Hashable, Identifiable, Sendable {
@@ -931,8 +897,6 @@ public struct ResearchWriteSetExtensionRecord: Codable, Hashable, Identifiable, 
     public let intent: ResearchWriteSetExtensionIntent
     public let intentDigest: DocumentFingerprint
     public let candidates: [ResearchWriteSetCandidate]
-    public let policy: ResearchCollaborationPolicy
-    public let policyRevision: DocumentFingerprint
     public var state: ResearchWriteSetExtensionState
     public var allowedHandles: [ResearchWriteTargetHandle]
     public let receivedAt: Date
@@ -948,8 +912,6 @@ public struct ResearchWriteSetExtensionRecord: Codable, Hashable, Identifiable, 
         intent: ResearchWriteSetExtensionIntent,
         intentDigest: DocumentFingerprint,
         candidates: [ResearchWriteSetCandidate],
-        policy: ResearchCollaborationPolicy,
-        policyRevision: DocumentFingerprint,
         state: ResearchWriteSetExtensionState,
         allowedHandles: [ResearchWriteTargetHandle] = [],
         receivedAt: Date,
@@ -965,10 +927,9 @@ public struct ResearchWriteSetExtensionRecord: Codable, Hashable, Identifiable, 
               Set(allowed).count == allowed.count,
               Set(allowed).isSubset(of: candidateHandles),
               ResearchBoundedWriteValidation.validFingerprint(intentDigest),
-              ResearchBoundedWriteValidation.validFingerprint(policyRevision),
               expiresAt > receivedAt,
               expiresAt.timeIntervalSince(receivedAt) <= 30 * 60,
-              (state == .allowedSubset) == !allowed.isEmpty,
+              (state == .recorded) == !allowed.isEmpty,
               (state == .pending) == (decidedAt == nil) else {
             throw ResearchBoundedWriteSetError.invalidExtensionRecord
         }
@@ -978,8 +939,6 @@ public struct ResearchWriteSetExtensionRecord: Codable, Hashable, Identifiable, 
         self.intent = intent
         self.intentDigest = intentDigest
         self.candidates = candidates
-        self.policy = policy
-        self.policyRevision = policyRevision
         self.state = state
         self.allowedHandles = allowed
         self.receivedAt = receivedAt
@@ -993,8 +952,7 @@ public struct ResearchWriteSetExtensionRecord: Codable, Hashable, Identifiable, 
         case triptychID = "triptych_id"
         case intent
         case intentDigest = "intent_digest"
-        case candidates, policy
-        case policyRevision = "policy_revision"
+        case candidates
         case state
         case allowedHandles = "allowed_handles"
         case receivedAt = "received_at"
@@ -1024,14 +982,6 @@ public struct ResearchWriteSetExtensionRecord: Codable, Hashable, Identifiable, 
             candidates: container.decode(
                 [ResearchWriteSetCandidate].self,
                 forKey: .candidates
-            ),
-            policy: container.decode(
-                ResearchCollaborationPolicy.self,
-                forKey: .policy
-            ),
-            policyRevision: container.decode(
-                DocumentFingerprint.self,
-                forKey: .policyRevision
             ),
             state: container.decode(
                 ResearchWriteSetExtensionState.self,
@@ -2106,19 +2056,19 @@ public enum ResearchBoundedWriteSetError: LocalizedError, Hashable, Sendable {
 
     public var errorDescription: String? {
         switch self {
-        case .invalidEntry: "A bounded write-set entry is invalid."
-        case .invalidWriteSet: "The Run's bounded write set is invalid."
-        case .invalidIntent: "The write-set extension request is invalid."
-        case .invalidExtensionRecord: "The write-set decision record is invalid."
+        case .invalidEntry: "A tracked Agent activity target is invalid."
+        case .invalidWriteSet: "The Run's Agent activity ledger is invalid."
+        case .invalidIntent: "The Agent activity request is invalid."
+        case .invalidExtensionRecord: "The Agent activity record is invalid."
         case .invalidWrite: "The document write request is invalid or too large."
         case .invalidWriteRecord: "The document write transaction record is invalid."
         case .invalidConflictResolution: "The write-conflict resolution is invalid."
-        case .limitExceeded: "The bounded write-set limit was reached; extend it in a smaller request."
+        case .limitExceeded: "The Agent activity ledger limit was reached; record the work in a smaller request."
         case .targetUnavailable: "The requested document is unavailable or does not match its stable identity."
-        case .targetNotAuthorized: "The document is not a current member of this Run's bounded write set."
-        case .operationNotAuthorized: "The requested operation is outside this document's bounded authority."
-        case .requestPending: "This write-set extension is waiting for the researcher's decision."
-        case .staleAuthorization: "The document revision or collaboration authorization changed."
+        case .targetNotAuthorized: "The document is not yet tracked for this Run. Record the target before writing."
+        case .operationNotAuthorized: "The requested operation is not tracked or supported for this document."
+        case .requestPending: "Another Agent activity update is still being recorded."
+        case .staleAuthorization: "The tracked document revision changed."
         case .recoveryRequired: "The write result is not yet known; resolve its recovery state before continuing."
         }
     }

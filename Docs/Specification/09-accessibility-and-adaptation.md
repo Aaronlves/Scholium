@@ -279,9 +279,10 @@
   explanation, Copy Handoff, status, and recovery. One-use codes remain inside
   the complete copied handoff; credentials and opaque identifiers are never
   separate fields the researcher must read or enter.
-- Bounded Write Set permission lists each document, role, operation, and stale
-  or unavailable state, supports exact subset selection, and never makes one
-  member appear authorized because another was selected.
+- Agent activity updates do not present permission sheets, activate the app, or
+  move focus. Conflicts, unavailable targets, and recovery duties surface only
+  through their owning Run/notification routes with complete text labels and
+  keyboard-reachable recovery actions.
 - Copy Handoff success closes preparation and returns focus to the originating
   Action rail button. Result arrival announces no focus change; the persistent
   Action-level notification and its summarized Document stack remain explicit

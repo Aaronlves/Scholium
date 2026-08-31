@@ -1430,24 +1430,6 @@ extension ScholiumUITests {
         XCTAssertFalse(app.menuButtons["Add Skill"].exists)
 
         app.descendants(matching: .any)[
-            "scholium.settings.destination.agentAccess"
-        ].firstMatch.click()
-        let askEveryTime = app.radioButtons["Ask Me Every Time"]
-        let askOnlyForWorks = app.radioButtons["Ask Me Only for Works"]
-        let fullTriptychAccess = app.radioButtons["Full Triptych Access"]
-        XCTAssertTrue(askEveryTime.waitForExistence(timeout: 8))
-        XCTAssertTrue(askOnlyForWorks.exists)
-        XCTAssertTrue(fullTriptychAccess.exists)
-        askOnlyForWorks.click()
-        XCTAssertTrue(waitUntil(timeout: 8) {
-            (askOnlyForWorks.value as? Int) == 1
-                || (askOnlyForWorks.value as? String) == "1"
-        })
-        XCTAssertFalse(app.popUpButtons.matching(
-            NSPredicate(format: "identifier CONTAINS %@", ".skill.")
-        ).firstMatch.exists)
-
-        app.descendants(matching: .any)[
             "scholium.settings.destination.externalToolsCitations"
         ].firstMatch.click()
         XCTAssertTrue(app.staticTexts[
@@ -1470,7 +1452,7 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func testResearchGuidanceMarkdownCreationKeyboardAndDirtyClose() throws {
+    func testResearchGuidanceKeepsSkillFilesExternal() throws {
         openResearchGuidance()
 
         let settingsWindow = settingsWindow()
@@ -1478,52 +1460,14 @@ extension ScholiumUITests {
         let manage = settingsWindow.menuButtons["Manage"].firstMatch
         XCTAssertTrue(manage.waitForExistence(timeout: 5))
         manage.click()
-        let newSkill = app.menuItems["Create New Skill…"].firstMatch
-        XCTAssertTrue(newSkill.waitForExistence(timeout: 5))
-        newSkill.click()
-
-        let creationSheet = settingsWindow.descendants(matching: .any)[
-            "scholium.researchGuidance.markdownCreationSheet"
-        ]
-        XCTAssertTrue(creationSheet.waitForExistence(timeout: 5))
-        let skillTitle = creationSheet.textFields["Display name"]
-        let keyboardFocus = NSPredicate(format: "hasKeyboardFocus == true")
-        XCTAssertTrue(skillTitle.waitForExistence(timeout: 5))
-        XCTAssertTrue(
-            waitUntil(timeout: 3) { keyboardFocus.evaluate(with: skillTitle) },
-            "A new Skill must begin at its display-name field."
-        )
-
-        try paste("QA Closure Skill", into: skillTitle)
-        let skillSource = creationSheet.textViews[
-            "Primary Research Skill Markdown"
-        ]
-        XCTAssertTrue(skillSource.waitForExistence(timeout: 5))
-        try paste(
-            "# QA Closure Skill\n\nRoute philosophical lens references here.\n",
-            into: skillSource
-        )
-        skillTitle.click()
+        XCTAssertTrue(app.menuItems[
+            "Show Skill Folder in Finder…"
+        ].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.menuItems["Assign Skill Folder…"].exists)
+        XCTAssertFalse(app.menuItems["Create New Skill…"].exists)
+        XCTAssertFalse(app.menuItems["Edit Primary Markdown"].exists)
+        XCTAssertFalse(app.menuItems["Restore Scholium Default…"].exists)
         app.typeKey(.escape, modifierFlags: [])
-        let keepEditing = settingsWindow.buttons["Keep Editing"]
-        XCTAssertTrue(keepEditing.waitForExistence(timeout: 5))
-        XCTAssertTrue(settingsWindow.buttons["Discard Draft and Close"].exists)
-        keepEditing.click()
-        XCTAssertTrue(creationSheet.exists)
-        XCTAssertEqual(skillTitle.value as? String, "QA Closure Skill")
-        XCTAssertTrue(
-            waitUntil(timeout: 3) { keyboardFocus.evaluate(with: skillTitle) },
-            "Keeping a dirty Skill draft must restore focus to the display-name field."
-        )
-
-        skillTitle.typeKey(.return, modifierFlags: [])
-        XCTAssertTrue(
-            waitUntil(timeout: 10) { !creationSheet.exists },
-            "Return in the title field must invoke the enabled default Create action."
-        )
-        XCTAssertTrue(settingsWindow.staticTexts[
-            "QA Closure Skill"
-        ].waitForExistence(timeout: 8))
     }
 
 
@@ -2987,50 +2931,6 @@ extension ScholiumUITests {
         )
         XCTAssertTrue(proofWindow.staticTexts["BOUNDARY"].exists)
 
-        let boundedWriteSet = proofWindow.descendants(matching: .any)[
-            "scholium.proofs.navigation.writeSetExtension"
-        ]
-        XCTAssertTrue(boundedWriteSet.waitForExistence(timeout: 3))
-        boundedWriteSet.click()
-        XCTAssertTrue(
-            proofWindow.buttons["Allow Selected Notes"].waitForExistence(timeout: 3)
-        )
-        XCTAssertTrue(proofWindow.buttons[
-            "Continue Without Additional Notes"
-        ].exists)
-        XCTAssertFalse(proofWindow.buttons["Cancel Request"].exists)
-    }
-
-    @MainActor
-    func testResearchWriteSetExtensionSheetUsesNativeBoundedDecisionUI() {
-        let window = app.windows.matching(
-            NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
-        ).firstMatch
-        XCTAssertTrue(window.waitForExistence(timeout: 10))
-        guard let windowID = UUID(uuidString: String(window.identifier.suffix(36))) else {
-            XCTFail("The workspace window must expose its exact route identity.")
-            return
-        }
-
-        XCTAssertEqual(
-            notify_post(
-                "com.scholium.qa.present-write-set-extension.\(windowID.uuidString)"
-            ),
-            UInt32(NOTIFY_STATUS_OK)
-        )
-
-        let sheet = app.descendants(matching: .any)[
-            "scholium.researchWriteSetExtension.sheet"
-        ]
-        XCTAssertTrue(sheet.waitForExistence(timeout: 8))
-        XCTAssertTrue(app.buttons["Allow Selected Notes"].exists)
-        XCTAssertTrue(app.buttons["Continue Without Additional Notes"].exists)
-        XCTAssertFalse(app.buttons["Cancel Request"].exists)
-        XCTAssertTrue(app.staticTexts["ACADEMIC REASON"].exists)
-        XCTAssertTrue(app.staticTexts["REQUESTED NOTES"].exists)
-        XCTAssertTrue(app.buttons["Continue Without Additional Notes"].isEnabled)
-        XCTAssertTrue(app.buttons["Allow Selected Notes"].isEnabled)
-        XCTAssertTrue(window.exists)
     }
 
 }

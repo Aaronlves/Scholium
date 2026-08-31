@@ -99,12 +99,7 @@ extension ScholiumCLI {
                 run: run,
                 credential: credential
             )
-            switch context {
-            case .action(let value):
-                try writeAgentJSON(value)
-            case .methodImprovement(let value):
-                try writeAgentJSON(value)
-            }
+            try writeAgentJSON(context)
             return
         }
         if arguments.first == "query" {
@@ -186,11 +181,11 @@ extension ScholiumCLI {
             try writeAgentJSON(receipt)
             return
         }
-        if arguments.first == "extend-write-set" {
+        if arguments.first == "track-activity" {
             guard let rawRun = option("--run", in: arguments),
                   let run = ResearchRunLocator(rawValue: rawRun),
                   let input = option("--from", in: arguments) else {
-                throw commandUsageError("agent extend-write-set")
+                throw commandUsageError("agent track-activity")
             }
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
@@ -199,7 +194,7 @@ extension ScholiumCLI {
                 from: agentInput(input)
             )
             let credential = try credentialStore.load(for: run)
-            let result = try await operations.extendWriteSet(
+            let result = try await operations.trackActivity(
                 run: run,
                 credential: credential,
                 intent: intent
@@ -336,63 +331,6 @@ extension ScholiumCLI {
             try writeAgentJSON(result)
             return
         }
-        if arguments.first == "method-context" {
-            guard let rawRun = option("--run", in: arguments),
-                  let run = ResearchRunLocator(rawValue: rawRun) else {
-                throw commandUsageError("agent method-context")
-            }
-            let credential = try credentialStore.load(for: run)
-            let context = try await operations.methodImprovementContext(
-                run: run,
-                credential: credential
-            )
-            try writeAgentJSON(context)
-            return
-        }
-        if arguments.first == "improve-method" {
-            guard let rawRun = option("--run", in: arguments),
-                  let run = ResearchRunLocator(rawValue: rawRun),
-                  let input = option("--from", in: arguments) else {
-                throw commandUsageError("agent improve-method")
-            }
-            let draft = try JSONDecoder().decode(
-                ResearchMethodImprovementDraft.self,
-                from: agentInput(input)
-            )
-            let credential = try credentialStore.load(for: run)
-            let context = try await operations.methodImprovementContext(
-                run: run,
-                credential: credential
-            )
-            guard let target = context.targets.first(where: {
-                $0.id == draft.targetID
-            }) else {
-                throw CLIError.usage(
-                    "The selected Method improvement target is not in the current authenticated Run context."
-                )
-            }
-            let submission = try ResearchMethodImprovementSubmission(
-                requestID: stableMethodImprovementRequestID(
-                    run: run,
-                    draft: draft
-                ),
-                feedbackRevision: context.feedbackRevision,
-                expectedResultFingerprint:
-                    context.expectedResultFingerprint,
-                targetID: target.id,
-                expectedTargetRevision: target.revision,
-                disposition: draft.disposition,
-                replacementSource: draft.replacementSource,
-                diagnosis: draft.diagnosis
-            )
-            let receipt = try await operations.submitMethodImprovement(
-                run: run,
-                credential: credential,
-                submission: submission
-            )
-            try writeAgentJSON(receipt)
-            return
-        }
         if arguments.first == "end" {
             guard let rawRun = option("--run", in: arguments),
                   let run = ResearchRunLocator(rawValue: rawRun) else {
@@ -514,28 +452,6 @@ extension ScholiumCLI {
         ].joined(separator: "-"))!
     }
 
-    private static func stableMethodImprovementRequestID(
-        run: ResearchRunLocator,
-        draft: ResearchMethodImprovementDraft
-    ) -> UUID {
-        let fingerprint = DocumentFingerprint(
-            content: [
-                run.rawValue,
-                draft.targetID,
-                draft.disposition.rawValue,
-                draft.replacementSource ?? "",
-                draft.diagnosis,
-            ].joined(separator: "\u{001F}")
-        ).sha256
-        return UUID(uuidString: [
-            String(fingerprint.prefix(8)),
-            String(fingerprint.dropFirst(8).prefix(4)),
-            String(fingerprint.dropFirst(12).prefix(4)),
-            String(fingerprint.dropFirst(16).prefix(4)),
-            String(fingerprint.dropFirst(20).prefix(12)),
-        ].joined(separator: "-"))!
-    }
-
     private static func persistNewCredential(
         _ credential: ResearchConnectionCredential,
         for run: ResearchRunLocator,
@@ -579,7 +495,7 @@ extension ScholiumCLI {
         for run: ResearchRunLocator,
         credential: ResearchConnectionCredential,
         operations: any AgentBridgeUseCases
-    ) async throws -> ResearchAgentInitialContext {
+    ) async throws -> ResearchAuthenticatedRunContext {
         do {
             return try await operations.initialContext(
                 run: run,
@@ -652,7 +568,7 @@ private struct AgentPairingReport: Encodable {
     let schemaVersion = 2
     let paired = true
     let run: ResearchRunLocator
-    let context: ResearchAgentInitialContext
+    let context: ResearchAuthenticatedRunContext
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion = "schema_version"
@@ -666,14 +582,8 @@ private struct AgentPairingReport: Encodable {
         try container.encode(schemaVersion, forKey: .schemaVersion)
         try container.encode(paired, forKey: .paired)
         try container.encode(run, forKey: .run)
-        switch context {
-        case .action(let value):
-            try container.encode("action", forKey: .contextKind)
-            try container.encode(value, forKey: .context)
-        case .methodImprovement(let value):
-            try container.encode("method_improvement", forKey: .contextKind)
-            try container.encode(value, forKey: .context)
-        }
+        try container.encode("action", forKey: .contextKind)
+        try container.encode(context, forKey: .context)
     }
 }
 

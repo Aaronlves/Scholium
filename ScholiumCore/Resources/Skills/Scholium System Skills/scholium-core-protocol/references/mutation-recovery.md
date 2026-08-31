@@ -1,17 +1,17 @@
 # Scholium Mutation and Recovery
 
 Use this reference only when the current Run exposes a mutation route, the
-Method needs an additional authorized target, or a submitted mutation requires
+task needs an additional target, or a submitted mutation requires
 conflict or unknown-outcome recovery.
 
 Every write remains bound to one exact document or portable binding identity,
-allowed operation, expected revision or proven absence, one-use capability,
+declared operation, expected revision or proven absence, one-use transaction lease,
 and operation identity supplied by Scholium. One member's outcome neither
 widens a sibling nor creates a batch rollback.
 
-Use `agent extend-write-set` only when the Method requires another target. The
-Application and researcher decide whether that exact member becomes writable;
-the request itself grants nothing. For one returned current member, use
+Use `agent track-activity` before the first mutation of another target so
+Scholium can attribute the intended operation and exact starting revision.
+The command records the target without a separate researcher approval. For one returned current member, use
 `agent write` only for `create_note`, `modify_markdown`, `modify_source`, or
 `modify_metadata`.
 

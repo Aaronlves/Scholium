@@ -5,8 +5,8 @@ import Testing
 
 @Suite("Continue Research Application boundary", .serialized)
 struct ResearchContinuationOperationsTests {
-    @Test("Policy, explicit decision, fresh authority, and child lineage are re-resolved per next Action")
-    func policyAndFreshChildRun() async throws {
+    @Test("Agent continuation creates a fresh attributed child Run without another permission decision")
+    func automaticFreshChildRun() async throws {
         let fixture = try await ResearchFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
@@ -62,45 +62,37 @@ struct ResearchContinuationOperationsTests {
         )
         #expect(currentReferenceWithNewResponseID.id != returnedReference.id)
 
-        var policy = try await handle.research.collaborationPolicy()
-        policy = try await handle.research.saveCollaborationPolicy(
-            ResearchCollaborationPolicyDocument(
-                triptychID: fixture.assignment.id,
-                policy: .fullAccess
-            ),
-            expectedRevision: policy.revision
-        )
-        let fullAccessRequest = try continuationRequest(
+        let automaticRequest = try continuationRequest(
             actionID: .synthesize,
             role: .topic,
             path: "Agency.md",
             purpose: "Reassess the Topic synthesis using one explicit handoff.",
             sourceReferences: [currentReferenceWithNewResponseID]
         )
-        let fullAccess = try await handle.research.continueAgentResearch(
+        let automaticContinuation = try await handle.research.continueAgentResearch(
             credential: parent.credential,
             run: parent.handoff.run,
-            request: fullAccessRequest
+            request: automaticRequest
         )
-        #expect(fullAccess.state == .created)
-        #expect(fullAccess.nextRun != nil)
-        #expect(fullAccess.handoffContext?.initiator == .agent)
-        #expect(fullAccess.context?.brief.run == fullAccess.nextRun)
-        #expect(fullAccess.context?.requiredSkills.contains(.coreProtocol) == true)
-        #expect(fullAccess.context?.requiredSkills.contains {
+        #expect(automaticContinuation.state == .created)
+        #expect(automaticContinuation.nextRun != nil)
+        #expect(automaticContinuation.handoffContext?.initiator == .agent)
+        #expect(automaticContinuation.context?.brief.run == automaticContinuation.nextRun)
+        #expect(automaticContinuation.context?.requiredSkills.contains(.coreProtocol) == true)
+        #expect(automaticContinuation.context?.requiredSkills.contains {
             $0.name == ResearchActionID.synthesize.projectSkillName
         } == true)
 
         let parentAfterFullAccess = try await handle.services
             .localResearchExecutionStore.record(id: parent.preparation.runID)
-        let fullAccessDecision = try #require(
+        let automaticRecord = try #require(
             parentAfterFullAccess.continuationRequests.first {
-                $0.request == fullAccessRequest
+                $0.request == automaticRequest
             }
         )
-        #expect(fullAccessDecision.state == .created)
-        #expect(fullAccessDecision.authorizationBasis == .collaborationPolicy)
-        let childID = try #require(fullAccessDecision.childRunID)
+        #expect(automaticRecord.state == .created)
+        #expect(automaticRecord.origin == .agentInitiated)
+        let childID = try #require(automaticRecord.childRunID)
         let child = try await handle.services.localResearchExecutionStore.record(
             id: childID
         )
@@ -132,81 +124,33 @@ struct ResearchContinuationOperationsTests {
         #expect(child.snapshot.actionSnapshot.resolvedProfile.profileRevision
             == currentAction.profile.profileRevision)
 
-        policy = try await handle.research.saveCollaborationPolicy(
-            ResearchCollaborationPolicyDocument(
-                triptychID: fixture.assignment.id,
-                policy: .askEveryTime
-            ),
-            expectedRevision: policy.revision
-        )
         let askRequest = try continuationRequest(
             actionID: .checkFidelity,
             role: .topic,
             path: "Agency.md",
             purpose: "Check the exact current Topic revision before further use."
         )
-        let pending = try await handle.research.continueAgentResearch(
+        let createdWithoutDecision = try await handle.research.continueAgentResearch(
             credential: parent.credential,
             run: parent.handoff.run,
             request: askRequest
         )
-        #expect(pending.state == .pendingResearcherDecision)
-        #expect(pending.nextRun == nil)
-        let pendingRecord = try #require(
-            try await handle.research.pendingContinuationRequests().first {
-                $0.request == askRequest
-            }
-        )
-        let allowed = try await handle.research.resolveContinuationRequest(
-            parentRunID: parent.preparation.runID,
-            requestID: pendingRecord.id,
-            allow: true
-        )
-        #expect(allowed.state == .allowed)
-        #expect(allowed.authorizationBasis == .explicitResearcherDecision)
-        let createdAfterDecision = try await handle.research.continueAgentResearch(
-            credential: parent.credential,
-            run: parent.handoff.run,
-            request: askRequest
-        )
-        #expect(createdAfterDecision.state == .created)
+        #expect(createdWithoutDecision.state == .created)
+        #expect(createdWithoutDecision.nextRun != nil)
 
-        policy = try await handle.research.saveCollaborationPolicy(
-            ResearchCollaborationPolicyDocument(
-                triptychID: fixture.assignment.id,
-                policy: .askOnlyForWorks
-            ),
-            expectedRevision: policy.revision
-        )
         let workRequest = try continuationRequest(
             actionID: .write,
             role: .work,
             path: "Draft Argument.md",
-            purpose: "Revise the bounded Work only if the researcher allows it."
+            purpose: "Revise the related Work and record the Agent-initiated lineage."
         )
-        let workPending = try await handle.research.continueAgentResearch(
+        let workContinuation = try await handle.research.continueAgentResearch(
             credential: parent.credential,
             run: parent.handoff.run,
             request: workRequest
         )
-        #expect(workPending.state == .pendingResearcherDecision)
-        let workDecision = try #require(
-            try await handle.research.pendingContinuationRequests().first {
-                $0.request == workRequest
-            }
-        )
-        _ = try await handle.research.resolveContinuationRequest(
-            parentRunID: parent.preparation.runID,
-            requestID: workDecision.id,
-            allow: false
-        )
-        let declined = try await handle.research.continueAgentResearch(
-            credential: parent.credential,
-            run: parent.handoff.run,
-            request: workRequest
-        )
-        #expect(declined.state == .declined)
-        #expect(declined.nextRun == nil)
+        #expect(workContinuation.state == .created)
+        #expect(workContinuation.nextRun != nil)
 
         let nonWorkRequest = try continuationRequest(
             actionID: .checkFidelity,
@@ -265,15 +209,6 @@ struct ResearchContinuationOperationsTests {
                 parent.researcherStateReference.materialLimitations
         )
         #expect(staleParentState.currentness == .stale)
-        var policy = try await handle.research.collaborationPolicy()
-        policy = try await handle.research.saveCollaborationPolicy(
-            ResearchCollaborationPolicyDocument(
-                triptychID: fixture.assignment.id,
-                policy: .fullAccess
-            ),
-            expectedRevision: policy.revision
-        )
-
         let request = try continuationRequest(
             actionID: .synthesize,
             role: .topic,
@@ -642,15 +577,6 @@ struct ResearchContinuationOperationsTests {
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let parent = try await finalizedMaterialParent(handle: handle, fixture: fixture)
-        var policy = try await handle.research.collaborationPolicy()
-        policy = try await handle.research.saveCollaborationPolicy(
-            ResearchCollaborationPolicyDocument(
-                triptychID: fixture.assignment.id,
-                policy: .fullAccess
-            ),
-            expectedRevision: policy.revision
-        )
-
         func result(for purpose: String) async throws -> ResearchContinuationResult {
             let result = try await handle.research.continueAgentResearch(
                 credential: parent.credential,

@@ -156,37 +156,18 @@ struct WorkspaceSettingsResearchGuidanceCapabilities {
     let saveAcademicActionProfiles: (
         UUID, ResearchAcademicProfileDocument, DocumentFingerprint
     ) async throws -> ResearchAcademicProfileSnapshot
-    let collaborationPolicy: (
-        UUID
-    ) async throws -> ResearchCollaborationPolicySnapshot
-    let saveCollaborationPolicy: (
-        UUID, ResearchCollaborationPolicyDocument, DocumentFingerprint
-    ) async throws -> ResearchCollaborationPolicySnapshot
-    let researchMethod: (
+    let researchSkillBinding: (
         UUID, ResearchActionID
-    ) async throws -> ResearchMethodSnapshot
-    let saveResearchMethod: (
-        UUID, ResearchSkillRegistrationKey, String, DocumentFingerprint
-    ) async throws -> ResearchMethodSnapshot
-    let registerExternalResearchMethod: (
-        UUID,
-        ResearchActionID,
-        String,
-        String,
-        String?,
-        DocumentFingerprint
-    ) async throws -> ResearchMethodSnapshot
-    let createResearchMethod: (
+    ) async throws -> ResearchSkillBindingSnapshot
+    let registerExternalResearchSkillFolder: (
         UUID,
         ResearchActionID,
         String,
         String,
         DocumentFingerprint
-    ) async throws -> ResearchMethodSnapshot
-    let restoreDefaultResearchMethod: (
-        UUID, ResearchActionID, DocumentFingerprint
-    ) async throws -> ResearchMethodSnapshot
-    let recoverMachineLocalMethodLocators: (UUID) async throws -> URL?
+    ) async throws -> ResearchSkillBindingSnapshot
+    let showResearchSkillFolder: (UUID, ResearchActionID) async throws -> Void
+    let recoverMachineLocalSkillFolderLocators: (UUID) async throws -> URL?
     let citationMethodStatus: (UUID) async throws -> ResearchCitationMethodStatus
     let activateCitationMethod: (
         UUID, ResearchCitationMethodSelection, DocumentFingerprint?
@@ -562,101 +543,40 @@ final class WorkspaceSettingsModel: ObservableObject {
         )
     }
 
-    func collaborationPolicy() async throws -> ResearchCollaborationPolicySnapshot {
-        guard let id = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await capabilities.researchGuidance.collaborationPolicy(id)
-    }
-
-    func saveCollaborationPolicy(
-        _ document: ResearchCollaborationPolicyDocument,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchCollaborationPolicySnapshot {
-        guard let id = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await capabilities.researchGuidance.saveCollaborationPolicy(
-            id,
-            document,
-            expectedRevision
-        )
-    }
-
-    func researchMethod(for actionID: ResearchActionID) async throws
-        -> ResearchMethodSnapshot
+    func researchSkillBinding(for actionID: ResearchActionID) async throws
+        -> ResearchSkillBindingSnapshot
     {
         guard let id = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        return try await capabilities.researchGuidance.researchMethod(id, actionID)
+        return try await capabilities.researchGuidance.researchSkillBinding(id, actionID)
     }
 
-    func saveResearchMethod(
-        registrationKey: ResearchSkillRegistrationKey,
-        source: String,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchMethodSnapshot {
-        guard let id = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await capabilities.researchGuidance.saveResearchMethod(
-            id,
-            registrationKey,
-            source,
-            expectedRevision
-        )
-    }
-
-    func registerExternalResearchMethod(
+    func registerExternalResearchSkillFolder(
         actionID: ResearchActionID,
         displayName: String,
-        primaryMarkdownPath: String,
-        skillFolderPath: String?,
+        skillFolderPath: String,
         expectedRegistrationRevision: DocumentFingerprint
-    ) async throws -> ResearchMethodSnapshot {
+    ) async throws -> ResearchSkillBindingSnapshot {
         guard let id = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        return try await capabilities.researchGuidance.registerExternalResearchMethod(
+        return try await capabilities.researchGuidance.registerExternalResearchSkillFolder(
             id,
             actionID,
             displayName,
-            primaryMarkdownPath,
             skillFolderPath,
             expectedRegistrationRevision
         )
     }
 
-    func createResearchMethod(
-        actionID: ResearchActionID,
-        displayName: String,
-        source: String,
-        expectedRegistrationRevision: DocumentFingerprint
-    ) async throws -> ResearchMethodSnapshot {
+    func showResearchSkillFolder(for actionID: ResearchActionID) async throws {
         guard let id = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
-        return try await capabilities.researchGuidance.createResearchMethod(
+        try await capabilities.researchGuidance.showResearchSkillFolder(
             id,
-            actionID,
-            displayName,
-            source,
-            expectedRegistrationRevision
-        )
-    }
-
-    func restoreDefaultResearchMethod(
-        actionID: ResearchActionID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchMethodSnapshot {
-        guard let id = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await capabilities.researchGuidance.restoreDefaultResearchMethod(
-            id,
-            actionID,
-            expectedRevision
+            actionID
         )
     }
 
@@ -696,12 +616,12 @@ final class WorkspaceSettingsModel: ObservableObject {
     }
 
     @discardableResult
-    func recoverMachineLocalMethodLocators() async throws -> URL? {
+    func recoverMachineLocalSkillFolderLocators() async throws -> URL? {
         guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
             throw WorkspaceRegistryError.incompleteWorkspace
         }
         return try await capabilities.researchGuidance
-            .recoverMachineLocalMethodLocators(workspaceID)
+            .recoverMachineLocalSkillFolderLocators(workspaceID)
     }
 
     func openExternal(_ url: URL) {

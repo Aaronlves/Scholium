@@ -237,18 +237,6 @@ struct WorkspaceRuntimeReplacementTests {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
 
-        let collaborationURL = controlURL.appendingPathComponent(
-            "collaboration-policy-v1.json"
-        )
-        let collaboration = try decoder.decode(
-            ResearchCollaborationPolicyDocument.self,
-            from: Data(contentsOf: collaborationURL)
-        )
-        try encoder.encode(ResearchCollaborationPolicyDocument(
-            triptychID: stableID,
-            policy: collaboration.policy
-        )).write(to: collaborationURL, options: .atomic)
-
         let citationURL = controlURL.appendingPathComponent(
             "citation-method-v1.json"
         )

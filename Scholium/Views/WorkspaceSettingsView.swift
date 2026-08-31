@@ -12,7 +12,6 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
     case attention
     case skills
     case actionProfiles
-    case agentAccess
     case externalToolsCitations
 
     var id: String { rawValue }
@@ -31,7 +30,6 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
     static let researchGuidance: [Self] = [
         .skills,
         .actionProfiles,
-        .agentAccess,
         .externalToolsCitations,
     ]
 
@@ -46,7 +44,6 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
             ResearchGuidanceCategory.skills.localizedTitle
         case .actionProfiles:
             ResearchGuidanceCategory.actionProfiles.localizedTitle
-        case .agentAccess: ResearchGuidanceCategory.agentAccess.localizedTitle
         case .externalToolsCitations:
             ResearchGuidanceCategory.externalToolsCitations.localizedTitle
         }
@@ -61,7 +58,6 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
         case .attention: "bell"
         case .skills: ResearchGuidanceCategory.skills.symbol
         case .actionProfiles: ResearchGuidanceCategory.actionProfiles.symbol
-        case .agentAccess: ResearchGuidanceCategory.agentAccess.symbol
         case .externalToolsCitations:
             ResearchGuidanceCategory.externalToolsCitations.symbol
         }
@@ -74,7 +70,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
         case .appearance: .appearance
         case .hotkeys: .hotkeys
         case .attention: .attention
-        case .skills, .actionProfiles, .agentAccess,
+        case .skills, .actionProfiles,
              .externalToolsCitations:
             .researchGuidance
         }
@@ -84,7 +80,6 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
         switch self {
         case .skills: .skills
         case .actionProfiles: .actionProfiles
-        case .agentAccess: .agentAccess
         case .externalToolsCitations: .externalToolsCitations
         case .triptychs, .metadata, .appearance, .hotkeys,
              .attention: nil
@@ -110,8 +105,6 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
             ["Skills", "Research Skills", "SKILL.md", "references", "philosophical lenses", "recovery"]
         case .actionProfiles:
             ["Action Profiles", "academic inputs", "academic results", "roles", "fields"]
-        case .agentAccess:
-            ["Agent Access", "write set", "permission", "Run", "Full Triptych Access"]
         case .externalToolsCitations:
             ["External Tools & Citations", "CLI", "Zotero", "citation style", "integrations"]
         }
@@ -137,7 +130,6 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
             switch researchCategory {
             case .skills: .skills
             case .actionProfiles: .actionProfiles
-            case .agentAccess: .agentAccess
             case .externalToolsCitations: .externalToolsCitations
             }
         }
@@ -375,8 +367,6 @@ struct ScholiumSettingsView: View {
             ResearchGuidanceSettingsView(category: .skills)
         case .actionProfiles:
             ResearchGuidanceSettingsView(category: .actionProfiles)
-        case .agentAccess:
-            ResearchGuidanceSettingsView(category: .agentAccess)
         case .externalToolsCitations:
             ResearchGuidanceSettingsView(category: .externalToolsCitations)
         }

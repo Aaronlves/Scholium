@@ -82,20 +82,21 @@ struct ScholiumPathsTests {
             .standardizedFileURL)
     }
 
-    @Test("The production Agent bridge namespace selects one loopback port")
+    @Test("The production Agent bridge namespace selects one local authentication file")
     func productionAgentBridgeRoot() throws {
         let home = URL(fileURLWithPath: "/Users/researcher", isDirectory: true)
         let root = try ScholiumPaths.agentBridgeContainerURL(
             environment: [:],
             homeURL: home
         )
-        let port = LocalAgentBridgeLocation.port(
+        let authentication = LocalAgentBridgeLocation.authenticationURL(
             applicationSupportURL: root
         )
+        let port = LocalAgentBridgeLocation.port(applicationSupportURL: root)
 
         #expect(root.path == "/Users/researcher/Library/Application Support/Scholium/State-v1/AgentBridge")
+        #expect(authentication.path == root.appendingPathComponent("bridge-auth-v1").path)
         #expect(LocalAgentBridgeLocation.host == "127.0.0.1")
-        #expect(port == LocalAgentBridgeLocation.port(applicationSupportURL: root))
         #expect(port >= 49_152)
     }
 

@@ -26,7 +26,7 @@ ResearchActionRunCoordinator (Application; one WorkspaceHandle isolation domain)
 
 `ScholiumContracts` owns public Action identity, initial object/material/source
 references, flat academic Profile/Result Contract types, Run/Session-safe
-request and response values, Bounded Write Set entries, Source Reference
+request and response values, Run Activity Ledger entries, Source Reference
 Envelope, result/evaluation schemas, structured errors, and
 fingerprints. Contracts contain no SwiftUI layout, absolute path, bookmark,
 socket location, provider implementation, repository, or hidden secret.
@@ -41,36 +41,35 @@ delivery, extension, submission, finalization, cancellation, manual-end,
 continuation, and recovery coordinator. It is one Application component under
 the owning `WorkspaceHandle`, not another runtime or mutable Workspace
 snapshot. Its purpose-specific dependencies contain only the registration,
-Profile, collaboration, source, Search/read/Graph/Metadata/Record,
+Profile, source, Search/read/Graph/Metadata/Record,
 repository, recovery, and local connection authorities required by those
 transactions.
 
 Per-window `ResearchActionController` owns only selected Action/Profile,
 researcher Action-input drafts, presentation identity, progress/cancellation,
 errors, and the current Run projection. It owns no source, method, Session,
-result, Record, researcher Response, Note Review, provider, or permission
+result, Record, researcher Response, Note Review, provider, or mutation
 authority.
 
 ## Availability and preparation
 
 The closed `PlatformActionCatalog` first filters role-valid public Actions and
 provides their hard source/selectors/operations. Application then resolves
-exactly one enabled Skill registration for the Action, loads one coherent
-current `SKILL.md` entry and optional folder locator, loads the academic-only
-Profile, and evaluates source/integration availability.
+exactly one enabled Action Skill-folder registration and its availability,
+loads the academic-only Profile, and evaluates source/integration availability.
 Missing, changed, ambiguous, or invalid owners fail closed with one repair
 route; no bundled fallback or package resolver participates.
 
 Opening the Action sheet flushes only its current initial object. Preparation
 rechecks the presented Action, object identity/revision, focal Materials,
-source access, registration, Skill entry, Profile, current
-Triptych collaboration policy, and repository/recovery readiness. It creates
-one Run and inserts the displayed initial object into its Bounded Write Set.
+source access, registration relation, folder availability, Profile, and
+repository/recovery readiness. It creates one Run and inserts the displayed
+initial object into its Run Activity Ledger.
 For every existing writable Note, `AgentChangeEvidenceStore` captures one exact
 Run- and Note-bound starting revision before Agent access. Confirmed writes
 advance its ending revision. Body-only and complete-source intents map to the
 corresponding `NoteChangeSet` and repository transaction. Targeted Metadata is
-a distinct typed operation with its own portable-record revision, capability,
+a distinct typed operation with its own portable-record revision, transaction lease,
 compare-and-swap transaction, and readback; it never creates source change
 evidence. This
 machine-local evidence serves only Record diff and direct Undo; ordinary
@@ -89,11 +88,11 @@ The Run snapshot freezes:
 
 - public Action, initial object, research request, focal Materials/source, and
   starting revisions;
-- registration relation/display identity, exact Skill-entry text, and optional
-  local folder path string;
+- registration relation/display identity, registration-document revision, and
+  resolved local folder path string;
 - academic Result Contract plus Application-owned machine fields;
-- capability availability and exact authorized read scope;
-- initial Bounded Write Set entry and its authorization provenance; and
+- operation availability and exact Run read scope;
+- initial Run Activity Ledger entry and its origin; and
 - continuation origin when present.
 
 It does not freeze folder contents, Search/Record query responses, rank,
@@ -183,11 +182,22 @@ its same-ID preflight, idempotent reads/writes retry exactly, pairing obtains a
 new handoff, and non-idempotent existing-target start stops and reports. End is
 also non-retryable: it may already have revoked the Session, so response loss
 requires stop-and-report rather than another credential use.
-Both routes use the loopback-only framed bridge and the same authenticated
+Both routes use the mutually authenticated loopback framed bridge and the same authenticated
 Context, Discuss-turn, Discussion-Finish, write, Result, End, conflict, and
-recovery owners. A Discuss-turn request uses the same authenticated Session and
+recovery owners. This is a deployment tradeoff rather than the default native
+IPC choice. An embedded XPC service is private to its containing app; exposing
+a Mach service to the independently installed CLI would require a separately
+installed helper or LaunchAgent. The current no-helper topology instead uses
+the established local-tool pattern: loopback-only binding, an App-created
+current-user secret, mutual authentication, bounded frames, and authentication
+before request decoding. The signed sandbox probe proves the listener needs
+`com.apple.security.network.server`; packaging rejects entitlements outside the
+declared privilege set while accepting only Apple-injected signing identity
+metadata.
+
+A Discuss-turn request uses the same authenticated Session and
 appends only to the active `PortableResearchDiscussion`; it does not use the
-Bounded Write Set. After durable Agent response evidence exists, authenticated
+Run Activity Ledger. After durable Agent response evidence exists, authenticated
 Discussion-Finish calls the same Application finish owner as the researcher,
 forms the portable Record, and revokes the Session. Its unknown outcome is
 non-retryable for the same reason as End. The UI's End Action route calls the
@@ -203,46 +213,43 @@ This chapter owns pairing, Session, and Run lifecycle. [Research Guidance](04-re
 owns the Skill, Profile, collaboration-policy, and citation
 configuration consumed during preparation.
 
-An external Agent workspace registers every exact System and current Method
+An external Agent workspace registers every exact Protocol and current Action Skill
 source returned by `WorkspaceSkillDiscovery` through its host's project-level
 Skill mechanism before connecting a Run. `ScholiumCore` owns the release-managed
-System Skill folders; `ResearchConfigurationStore` owns current Method
-resolution. Core Protocol always routes one protected runtime kernel. Its entry
+Protocol folders; `ResearchConfigurationStore` owns current Action-folder
+resolution without content access. Core Protocol always routes one protected runtime kernel. Its entry
 uses the current request or official handoff for project entry and an explicit
 researcher request for workspace bootstrap. After authentication, only
 Application-owned state, typed `next_actions`, and operation responses route
 active-Run, mutation/recovery, and completion references; no Core mode or
 second state field exists. Completion
 routes exactly one per-Action Result reference. Core and those references own
-Result-field composition; Method Skills own intellectual procedure and never
+Result-field composition; Action Skills own intellectual procedure and never
 restate the submission form. Discussion Protocol separately owns
 attributed-turn response composition because Discuss has no generic Result
-body. Application-selected `required_skills` and Core Protocol route the exact
-Action Method; Method prose cannot select System Skills, commands, operations,
+body. Application-selected `required_skills` and Core Protocol route the
+registered Action Skill; user Skill prose cannot select Protocols, commands, operations,
 authority, lifecycle, or recovery. Each allowed Run receives one Run Brief, minimum
-`ResearchRequiredSkill` set, frozen Action Method revision, and Result Contract,
+`ResearchRequiredSkill` set, frozen registration revision, and Result Contract,
 with no Skill prose or source path. Run Brief contains current task/object/state,
-safe capability availability and next action, not a dump or summary of research
-materials. Core requires the host-loaded Method entry to match the frozen
-SHA-256 and byte count before the Agent applies it. Result Contract
+safe operation availability and next action, not a dump or summary of research
+materials. Scholium does not fingerprint or attest the host-loaded Skill bytes. Result Contract
 marks Agent academic fields versus Application machine fields. `reload`
 reconstructs this packet from the frozen Run, revalidates exact Target,
 Materials, and formal source owners, and returns typed `stale_run` rather than
-a usable packet after true drift. It never reads later method/Profile values or
-old Research Context responses.
+a usable packet after true drift. It never reads Skill contents, later Profile
+values, or old Research Context responses.
 
 `agent start` stores its issued credential and then returns the start receipt
 with the initial authenticated Action context. `agent pair` stores the exchanged
-credential and asks the Application-owned Run owner for one initial context:
-ordinary Actions return `ResearchAuthenticatedRunContext`, while Method
-improvement returns `ResearchMethodImprovementContext`. This owner-routed union
-prevents the CLI from probing both lifecycles. A failed initial delivery retains
+credential and asks the Application-owned Run owner for one
+`ResearchAuthenticatedRunContext`. A failed initial delivery retains
 the protected credential and directs the Agent to `reload` for the same Run;
 start or pair is not repeated. The retired public `agent context` command has no
 compatibility route.
 
 Application derives ordered authenticated `next_actions` from the frozen
-Action, Result Contract, and current bounded-write-set state. Discuss receives
+Action, Result Contract, and current Run Activity Ledger. Discuss receives
 an exact-Target read plus bounded Search, one fillable reply, and Finish. Every
 other Action receives exact-Target read, optional selected-evidence and Search
 queries, each ready writable member, and a strict Result template. Each action
@@ -273,11 +280,11 @@ coordinator per seed; Application combines those owner-ranked results without
 persisting a score. `agent related` is its declarative CLI adapter.
 
 Agent-facing material is serialized under an explicit evidence channel.
-`taskDirective` contains public Action, researcher request, safe capability
+`taskDirective` contains public Action, researcher request, safe operation
 facts, current Result Contract, and the minimum required Skill identities plus
-the frozen Method revision; `researchEvidence` contains Markdown, YAML declarations, citations,
+the frozen registration revision; `researchEvidence` contains Markdown, YAML declarations, citations,
 Zotero metadata, Records, and provider responses as typed data. Evidence text
-cannot alter the other two layers, Session, write set, tools, or next Action.
+cannot alter the other two layers, Session, activity ledger, tools, or next Action.
 
 Result and Method Feedback prose remains an opaque exact string throughout
 Agent submission, strict schema-17 decoding, Record validation, hashing,
@@ -364,7 +371,7 @@ typed Fidelity contract. The Skill set always identifies Core Protocol and the
 Action Method with its frozen primary revision; it conditionally identifies
 Discussion or Zotero System Skills and contains no prose or path. The Fidelity
 contract contains vault-qualified exact-read selectors
-and expected revisions but no write capability; the Research Context provider
+and expected revisions but no mutation operation; the Research Context provider
 loads those exact owners directly rather than resolving an ambiguous Search
 path. Application requires the Zotero System Skill only for an Analysis target
 with frozen Zotero context and a Zotero-capable Platform Action; the requirement
@@ -408,20 +415,21 @@ contract. Focused tests compare its provenance and currentness to production
 summary discovery, reject guessed writer attribution, keep query delivery out
 of the Record, and re-resolve an explicit handoff through Continue Research. This fixture is test-only:
 it owns no runtime fallback, parser, ranker, index, or persistent state.
-Production and test providers cannot change Run, permission, Record,
+Production and test providers cannot change Run, Activity Ledger, Record,
 Application-derived evidence eligibility, or continuation contracts.
 
-## Bounded multi-document mutation
+## Tracked multi-document mutation
 
-One Run embeds one `ResearchBoundedWriteSet` whose limits are enforced before
-decoding or resolution can allocate unbounded work. Extension requests contain
-only exact stable identities/reserved create identities, requested operations,
-expected revisions/proven absence, and an Agent-authored reason. Application
-resolves current roles/lifecycle/containment and the Triptych policy before
-presenting one optional subset sheet or binding a Full Access set. Researcher
-approval remains an exact Run-local fact until expiry/revocation/end.
+One Run embeds one `ResearchBoundedWriteSet` as the current implementation type
+for its Run Activity Ledger. Its limits are enforced before decoding or
+resolution can allocate unbounded work. Activity requests contain exact target
+selectors, requested operations, and an Agent-authored reason. Application
+resolves stable or reserved identities, expected revisions/proven absence,
+current roles, lifecycle, and containment, then automatically appends every
+valid target. No App permission coordinator, subset sheet, collaboration
+policy, or per-document researcher decision participates.
 
-Schema 5 members may independently authorize `modify_metadata` for an existing
+Schema 6 members may independently track `modify_metadata` for an existing
 Note and freeze its portable Metadata revision, including proven absence for a
 first record. `set_zotero_binding` and `clear_zotero_binding` apply only to an
 existing Analysis and freeze the global portable binding revision in addition
@@ -430,23 +438,21 @@ The separate `ResearchZoteroBindingWriteIntent`, Local Execution binding-write
 ledger, bridge payload, and `agent write-zotero-binding` command contain no
 Markdown or Metadata payload and never call a Zotero write. Core set/clear is
 the sole portable mutation owner; stable Analysis identity, operation, one-use
-capability, and current binding revision are rechecked before commit.
+transaction lease, and current binding revision are rechecked before commit.
 
-Tightening the Triptych policy revokes an unused member added only by Full
-Access and affects later extension/continuation. An explicit researcher-approved
-member remains until its recorded expiry/revocation. Loosening policy affects
-only later decisions. No policy change interrupts a repository transaction
-already submitted.
-
-Every mutation names one set member and one idempotent operation ID. The live
-Session obtains one non-Codable short-lived write capability bound to that
-operation and the complete allowed-set digest. Application repeats containment,
+Every mutation names one ledger member and one idempotent operation ID. The live
+Session obtains one non-Codable short-lived transaction lease bound to that
+operation and the complete activity-ledger digest. This lease prevents replay
+and cross-operation confusion; it is not a consent or trust decision. Application repeats containment,
 regular-file/absence, stable identity, role, operation, revision, and
-capability checks inside the final source-operation lease. Completion likewise
+lease checks inside the final source operation. Completion likewise
 uses a coordinated identity/source observation with identity readback after
 the source read. The sole repository then retains
-displaced bytes, validates complete candidate Markdown/YAML, atomically
-replaces, and reads back. A `modify_metadata` call instead validates the exact
+displaced bytes, validates complete-source candidates, and for body-only writes
+requires a provable body boundary while preserving any closed frontmatter bytes
+unchanged. Closed YAML diagnostics do not erase a known body boundary; an
+unclosed delimiter fails before mutation. The repository then atomically
+replaces and reads back. A `modify_metadata` call instead validates the exact
 granted keys and role catalog, replaces the canonical identity-keyed JSON at
 its expected Metadata revision, and reads it back without entering the source
 repository. Result truth is written into the same Run operation entry before
@@ -456,7 +462,7 @@ subsequent calls query the same operation ID.
 Member transactions are independent. Confirmed source or binding changes stay committed when a
 sibling conflicts or fails. Only Scholium-confirmed success advances that
 member's applicable revision. External changes invalidate one member. The Run
-cannot finalize or safely clear the write set until every started operation is
+cannot finalize or safely compact the ledger until every started operation is
 written, not written, explicitly abandoned before mutation, or reconciled to a
 recovery duty. Manual End cancels a no-write Run; confirmed changes require
 Result finalization, while unknown writes and recovery duties block End.
@@ -474,7 +480,7 @@ that every explicit source reference carried by an Action-specific payload is
 current, in Run-readable scope, and has one authoritative owner, revision, and
 locator. Query and delivery history is neither submitted nor interpreted as
 reliance. An invalid field returns field-level repair without mutating the
-Record or write set.
+Record or Activity Ledger.
 
 The Run stores one `ResearchResultPayload` partitioned into Record Title, Agent
 academic fields, and machine fields. For write Actions, submission may precede final transaction
@@ -605,7 +611,7 @@ and finalize Session authority. A retry between those transitions returns the
 same Record and repairs missing Run completion; changed content fails closed.
 The route writes no Note or Metadata and accepts no Result body or separate
 Finish. Closing the sheet performs no storage action. Discussion does not use
-Bounded Write Set unless it explicitly continues into a separate write Action.
+the Activity Ledger unless it explicitly continues into a separate write Action.
 
 Research Records presentation remains Triptych-keyed:
 
@@ -623,20 +629,20 @@ Document / Research menu / Search Record result
         -> ResearchRecordBrowserView (App-owned native presentation)
 ```
 
-The coordinator owns no Record data, current Workspace focus, or authorization.
+The coordinator owns no Record data, current Workspace focus, or mutation.
 The package-internal feature imports Contracts only and owns no SwiftUI,
 Workspace, window, Agent Bridge, or Application capability. Window-local
 Scope/View/search/route state disappears on close. Portable Records remain the
 only durable owner.
 
-## Agent Continue Research, researcher Follow-up, and method improvement
+## Agent Continue Research, researcher Follow-up, and Method Feedback
 
 Continue Research validates a determined current result, next Action/initial
-object/purpose, bounded epistemically labelled handoff, current Triptych policy,
-and platform support. It reserves one new Run and `continuedFrom` identity
+object/purpose, bounded epistemically labelled handoff, and platform support.
+It reserves one new Run and `continuedFrom` identity
 idempotently. The new Run performs ordinary fresh preparation and Research
 Context query. It inherits no prior method, Profile, Session-only write
-authority, Bounded Write Set, response, rank, cache, or provider availability.
+state, Activity Ledger, response, rank, cache, or provider availability.
 Note and Record handoff references re-read their current owners. A selected
 source-Material reference rechecks the parent Run's frozen source identity and
 fingerprint through `ResearchSourceAccessStore` and reports current, changed,
@@ -659,43 +665,30 @@ is explicit rather than inferred as researcher adoption.
 `followUpContext` resolves the live parent fingerprint and target. Record and
 Result Ready routes share one `ResearchActionController` sheet for current
 Action, finding/question/hypothesis, and Research Request. On confirmation,
-`prepareFollowUp` re-resolves Method, Profile, capabilities, materials, policy,
-and write boundary, reserves a fresh Run, and persists `.followUp` with
-researcher initiator. Parent Session, capability, write set, Context, and Agent
+`prepareFollowUp` re-resolves Skill, Profile, operation availability, materials,
+and the initial activity target, reserves a fresh Run, and persists `.followUp`
+with researcher initiator. Parent Session, Activity Ledger, Context, and Agent
 judgment never cross. Optional feedback CAS-replaces only the parent comment.
 
-Method improvement is a separate explicitly researcher-started Run attached as
-the one current `methodImprovementRun` in its parent Local Execution payload.
-Starting **Improve Current Method...** from a Record with one current
-feedback comment freezes that exact comment revision/text, finalized Result
-fingerprint, registration, current Skill entry, and its editable target
-revision. It issues a fresh short Pairing Code/Session through
-the same bridge; ordinary Action context, Bounded Write Set, and Result
-submission are not inherited.
-
-The authenticated `method-context` response exposes only those frozen exact
-target. `improve-method` accepts the frozen Skill entry plus a
-replacement, `diagnosed_no_change`, or `unavailable` diagnosis; CLI fills the
-comment, Result, and target revisions from the current authenticated context.
-A replacement obtains one non-Codable, nonreusable, short-lived capability
-bound to Run, Session, request, target, and expected revision immediately
-before the ordinary method-file transaction. That transaction replaces only
-the expected current revision and reads back the exact source. The writing
-state preserves enough evidence to reconcile interruption after the file
-commit without writing twice.
+Method Feedback remains a fingerprint-bound researcher comment in its parent
+portable Record. It starts no separate Run, Session, capability, bridge
+operation, or file transaction. Settings can reveal or replace the Action's
+folder relation, and Finder can open an available folder, but any content edit
+is performed independently by the researcher or external Agent. Scholium
+therefore neither clears feedback after an edit nor claims a verified link
+between the comment and a changed Skill file.
 
 Completion compacts the active Local Execution payload to one machine-local
 terminal receipt and recomputes its stable terminal envelope, deleting prepared
-instructions, the Bounded Write Set, write ledgers,
+instructions, the Run Activity Ledger, write ledgers,
 extensions, and conflict rows after the portable Record exists. The receipt
-retains only state still needed for idempotency, continuation, or one Method
-improvement rather than a feedback queue or method history. It clears only a comment whose revision/text and
-Result fingerprint remain exact; a concurrently modified comment remains.
+retains only state still needed for idempotency or continuation rather than a
+feedback queue or method history. Method Feedback remains owned by the portable
+Record and is not cleared by execution compaction.
 Identical submission retry is idempotent, different terminal input fails
-closed, and Session finalization removes remaining capability authority.
-Ordinary reference files outside the Skill-entry owner are reported for the
-Agent/researcher to edit with their selected filesystem tools; Scholium does
-not proxy them.
+closed, and Session finalization removes remaining transaction leases.
+All Action Skill files remain available for the Agent/researcher to edit with
+their selected filesystem tools; Scholium does not proxy or inspect them.
 
 ## Source, Zotero, Fidelity, and lifecycle integration
 
@@ -747,14 +740,14 @@ interpret them as configuration, execution, or Record authority.
 CLI decodes Contracts, invokes the same Application capabilities, and encodes
 canonical Run/Context/write/result families. Secrets arrive only through
 hidden local input and never shell arguments. CLI owns no eligibility, method
-routing, parser/ranker, write set, repository transaction, Record schema, or
+routing, parser/ranker, Activity Ledger, repository transaction, Record schema, or
 shell command string. One command specification registry owns both accepted
 paths/options and rendered help; unknown help topics fail nonzero. Text-mode
 `read` emits exact authoritative source without adding a newline. Agent-start
 target JSON has one versioned snake-case wire
 shape. A healthy CLI registry projection resolves UUID or unique-name selectors,
 including UUID-shaped names; when that projection is absent or lacks a UUID,
-the UUID passes directly to Application for authorization. The protected
+the UUID passes directly to Application for selection. The protected
 credential store creates and validates its current-user-only parent and session
 directories before Session creation or Pairing consumption. In production,
 `AgentSessionCredentialStore` persists beneath

@@ -308,14 +308,6 @@ struct ResearchAgentResultOperationsTests {
         #expect(!recordText.contains("summary:providerneutralfixture"))
         #expect(!recordText.contains("context_use_report"))
 
-        var policy = try await handle.research.collaborationPolicy()
-        policy = try await handle.research.saveCollaborationPolicy(
-            ResearchCollaborationPolicyDocument(
-                triptychID: fixture.assignment.id,
-                policy: .fullAccess
-            ),
-            expectedRevision: policy.revision
-        )
         let continued = try await handle.research.continueAgentResearch(
             credential: prepared.credential,
             run: prepared.handoff.run,

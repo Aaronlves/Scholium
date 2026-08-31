@@ -225,10 +225,6 @@ public protocol ResearchRecordUseCases: Sendable {
         selectedNoteIDs: Set<UUID>,
         expectedResultFingerprint: DocumentFingerprint
     ) async throws -> ResearchRecordChangesUndoResult
-    func issueMethodImprovementHandoff(
-        recordID: UUID,
-        validity: TimeInterval
-    ) async throws -> ResearchAgentHandoff
     func setResearchRecordRecommendationDisposition(
         recordID: UUID,
         recommendationID: UUID,
@@ -290,21 +286,9 @@ public protocol ResearchConfigurationUseCases: Sendable {
         _ document: ResearchAcademicProfileDocument,
         expectedRevision: DocumentFingerprint
     ) async throws -> ResearchAcademicProfileSnapshot
-    func collaborationPolicy() async throws -> ResearchCollaborationPolicySnapshot
-    func saveCollaborationPolicy(
-        _ document: ResearchCollaborationPolicyDocument,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchCollaborationPolicySnapshot
-    func researchMethod(for actionID: ResearchActionID) async throws -> ResearchMethodSnapshot
-    func saveResearchMethod(
-        registrationKey: ResearchSkillRegistrationKey,
-        source: String,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchMethodSnapshot
-    func restoreDefaultResearchMethod(
-        actionID: ResearchActionID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchMethodSnapshot
+    func researchSkillBinding(
+        for actionID: ResearchActionID
+    ) async throws -> ResearchSkillBindingSnapshot
 }
 
 public protocol ResearchActionUseCases: Sendable {
@@ -456,7 +440,7 @@ public protocol AgentBridgeUseCases: Sendable {
     func initialContext(
         run: ResearchRunLocator,
         credential: ResearchConnectionCredential
-    ) async throws -> ResearchAgentInitialContext
+    ) async throws -> ResearchAuthenticatedRunContext
     func revokeSession(
         _ credential: ResearchConnectionCredential
     ) async throws -> ResearchAgentSessionRevocationReceipt
@@ -474,7 +458,7 @@ public protocol AgentBridgeUseCases: Sendable {
         credential: ResearchConnectionCredential,
         request: ResearchAgentDiscussionReplyRequest
     ) async throws -> ResearchAgentDiscussionReplyReceipt
-    func extendWriteSet(
+    func trackActivity(
         run: ResearchRunLocator,
         credential: ResearchConnectionCredential,
         intent: ResearchWriteSetExtensionIntent
@@ -504,39 +488,10 @@ public protocol AgentBridgeUseCases: Sendable {
         credential: ResearchConnectionCredential,
         request: ResearchContinuationRequest
     ) async throws -> ResearchContinuationResult
-    func methodImprovementContext(
-        run: ResearchRunLocator,
-        credential: ResearchConnectionCredential
-    ) async throws -> ResearchMethodImprovementContext
-    func submitMethodImprovement(
-        run: ResearchRunLocator,
-        credential: ResearchConnectionCredential,
-        submission: ResearchMethodImprovementSubmission
-    ) async throws -> ResearchMethodImprovementReceipt
     func end(
         run: ResearchRunLocator,
         credential: ResearchConnectionCredential
     ) async throws -> ResearchRunEndReceipt
-}
-
-/// The context owned by the exact Run paired through the shared Session
-/// boundary. A Research Action and a Method-improvement Run have distinct
-/// contracts; pairing does not make the Agent probe both public workflows.
-public enum ResearchAgentInitialContext: Hashable, Sendable {
-    case action(ResearchAuthenticatedRunContext)
-    case methodImprovement(ResearchMethodImprovementContext)
-
-    public func fold<Result>(
-        action: (ResearchAuthenticatedRunContext) throws -> Result,
-        methodImprovement: (ResearchMethodImprovementContext) throws -> Result
-    ) rethrows -> Result {
-        switch self {
-        case .action(let context):
-            return try action(context)
-        case .methodImprovement(let context):
-            return try methodImprovement(context)
-        }
-    }
 }
 
 public struct StyleSnapshot: Codable, Hashable, Sendable {

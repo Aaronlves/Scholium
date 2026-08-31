@@ -151,6 +151,35 @@ struct VaultRepositoryTests {
         #expect(try String(contentsOf: f.note, encoding: .utf8) == "External edit")
     }
 
+    @Test("Body save preserves a closed invalid YAML envelope byte-for-byte")
+    func closedInvalidFrontmatterBodySave() async throws {
+        let f = try fixture()
+        defer { try? FileManager.default.removeItem(at: f.root.deletingLastPathComponent()) }
+        let original = "---\ntags: [\n---\nOriginal body\n"
+        try Data(original.utf8).write(to: f.note, options: .atomic)
+        let repository = try VaultRepository(
+            vaultURL: f.root,
+            identity: VaultIdentity(
+                id: UUID(),
+                canonicalPath: f.root.path,
+                bookmarkData: nil
+            ),
+            applicationSupportURL: f.support
+        )
+        let loaded = try await repository.load(relativePath: "topics/note.md")
+
+        let saved = try await repository.save(
+            relativePath: "topics/note.md",
+            changeSet: .body("Replacement body\n"),
+            expectedRevision: loaded.fingerprint
+        )
+
+        #expect(saved.document.rawContent
+            == "---\ntags: [\n---\nReplacement body\n")
+        #expect(saved.document.rawFrontmatter == loaded.rawFrontmatter)
+        #expect(saved.document.frontmatterState == .malformed)
+    }
+
     @Test("Exact canonical candidate proves a save despite a post-replacement error")
     func postReplacementErrorStillCommits() async throws {
         let f = try fixture()

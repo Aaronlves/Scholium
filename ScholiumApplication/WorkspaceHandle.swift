@@ -417,8 +417,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         WorkspaceResearchBoundedWriteDependencies
     let researchAgentDiscussionDependencies:
         WorkspaceResearchAgentDiscussionDependencies
-    let researchMethodImprovementDependencies:
-        WorkspaceResearchMethodImprovementDependencies
     let researchAgentConnectionDependencies:
         WorkspaceResearchAgentConnectionDependencies
     let researchAgentResultDependencies:
@@ -546,7 +544,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         self.researchWorkspaceDependencies = services.researchWorkspaceDependencies
         self.researchBoundedWriteDependencies = services.researchBoundedWriteDependencies
         self.researchAgentDiscussionDependencies = services.researchAgentDiscussionDependencies
-        self.researchMethodImprovementDependencies = services.researchMethodImprovementDependencies
         self.researchAgentConnectionDependencies = services.researchAgentConnectionDependencies
         self.researchAgentResultDependencies = services.researchAgentResultDependencies
         self.researchActionResolverDependencies = services.researchActionResolverDependencies

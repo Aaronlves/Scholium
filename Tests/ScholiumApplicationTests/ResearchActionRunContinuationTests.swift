@@ -4,38 +4,6 @@ import ScholiumContracts
 import Testing
 
 extension ResearchActionRunOperationsTests {
-    @Test("Collaboration policy is one Triptych-wide CAS document")
-    func collaborationPolicyUsesCurrentOwner() async throws {
-        let fixture = try await ResearchFixture.make()
-        defer { fixture.remove() }
-        let runtime = fixture.runtime()
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-
-        let initial = try await handle.research.collaborationPolicy()
-        #expect(initial.document.triptychID == fixture.assignment.id)
-        #expect(initial.document.policy == .askEveryTime)
-
-        let saved = try await handle.research.saveCollaborationPolicy(
-            ResearchCollaborationPolicyDocument(
-                triptychID: fixture.assignment.id,
-                policy: .askOnlyForWorks
-            ),
-            expectedRevision: initial.revision
-        )
-        #expect(saved.document.policy == .askOnlyForWorks)
-
-        await #expect(throws: (any Error).self) {
-            _ = try await handle.research.saveCollaborationPolicy(
-                ResearchCollaborationPolicyDocument(
-                    triptychID: fixture.assignment.id,
-                    policy: .fullAccess
-                ),
-                expectedRevision: initial.revision
-            )
-        }
-        await runtime.shutdown()
-    }
-
     func actionNote(
         _ target: ResearchActionNoteSnapshot
     ) -> ResearchActionNoteSnapshot {

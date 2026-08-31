@@ -28,42 +28,23 @@ struct ResearchAuthenticatedRun: Hashable, Sendable {
     let canWrite: Bool
 }
 
-/// Internal, non-Codable one-operation capability. It never crosses the
-/// bridge or enters a prompt; the session authority consumes it exactly once
+/// Internal, non-Codable one-operation transaction lease. It never crosses
+/// the bridge or enters a prompt; the session owner consumes it exactly once
 /// before the Application starts the bound file transaction.
-struct ResearchWriteCapability: Hashable, Sendable, CustomStringConvertible,
+struct ResearchMutationLease: Hashable, Sendable, CustomStringConvertible,
     CustomDebugStringConvertible
 {
     let id: UUID
     let secret: String
     let run: ResearchRunLocator
     let sessionID: UUID
-    let writeSetRevision: DocumentFingerprint
+    let activityLedgerRevision: DocumentFingerprint
     let target: ResearchWriteTargetHandle
     let expectedRevision: DocumentFingerprint?
     let operationID: UUID
     let expiresAt: Date
 
-    var description: String { "<redacted write capability>" }
-    var debugDescription: String { description }
-}
-
-/// Internal one-operation capability for the separately researcher-started
-/// Method improvement Run. It is never Codable and is consumed before the
-/// exact-revision configuration transaction begins.
-struct ResearchMethodWriteCapability: Hashable, Sendable,
-    CustomStringConvertible, CustomDebugStringConvertible
-{
-    let id: UUID
-    let secret: String
-    let run: ResearchRunLocator
-    let sessionID: UUID
-    let targetID: String
-    let expectedRevision: DocumentFingerprint
-    let requestID: UUID
-    let expiresAt: Date
-
-    var description: String { "<redacted method write capability>" }
+    var description: String { "<redacted mutation lease>" }
     var debugDescription: String { description }
 }
 
@@ -97,31 +78,20 @@ actor ResearchAgentSessionAuthority {
         /// Nil means the Run owns independent Session authority. A derived
         /// Fidelity locator must disappear when that root is re-paired or
         /// revoked; persisted Run lineage alone never keeps bearer access.
-        let authorizationRootRunID: UUID?
+        let sessionRootRunID: UUID?
         var activeSessionID: UUID?
         var isFinalized: Bool
     }
 
-    private struct StoredWriteCapability: Sendable {
+    private struct StoredMutationLease: Sendable {
         let id: UUID
         let secretDigest: Data
         let run: ResearchRunLocator
         let sessionID: UUID
-        let writeSetRevision: DocumentFingerprint
+        let activityLedgerRevision: DocumentFingerprint
         let target: ResearchWriteTargetHandle
         let expectedRevision: DocumentFingerprint?
         let operationID: UUID
-        let expiresAt: Date
-    }
-
-    private struct StoredMethodWriteCapability: Sendable {
-        let id: UUID
-        let secretDigest: Data
-        let run: ResearchRunLocator
-        let sessionID: UUID
-        let targetID: String
-        let expectedRevision: DocumentFingerprint
-        let requestID: UUID
         let expiresAt: Date
     }
 
@@ -130,8 +100,7 @@ actor ResearchAgentSessionAuthority {
     private var pairings: [ResearchRunLocator: Pairing] = [:]
     private var sessions: [UUID: Session] = [:]
     private var runs: [ResearchRunLocator: RunBinding] = [:]
-    private var writeCapabilities: [UUID: StoredWriteCapability] = [:]
-    private var methodWriteCapabilities: [UUID: StoredMethodWriteCapability] = [:]
+    private var mutationLeases: [UUID: StoredMutationLease] = [:]
 
     init(random: any ResearchSecureRandomSource = AppleResearchSecureRandomSource()) throws {
         self.random = random
@@ -167,7 +136,7 @@ actor ResearchAgentSessionAuthority {
             triptychID: triptychID,
             locator: locator,
             canWrite: canWrite,
-            authorizationRootRunID: nil,
+            sessionRootRunID: nil,
             activeSessionID: nil,
             isFinalized: false
         )
@@ -216,7 +185,7 @@ actor ResearchAgentSessionAuthority {
             triptychID: triptychID,
             locator: locator,
             canWrite: canWrite,
-            authorizationRootRunID: nil,
+            sessionRootRunID: nil,
             activeSessionID: credential.sessionID,
             isFinalized: false
         )
@@ -318,7 +287,7 @@ actor ResearchAgentSessionAuthority {
         triptychID: UUID,
         canWrite: Bool,
         to credential: ResearchConnectionCredential,
-        authorizationRootRunID: UUID? = nil,
+        sessionRootRunID: UUID? = nil,
         now: Date = Date(),
         userID: uid_t = geteuid()
     ) throws -> ResearchRunLocator {
@@ -338,7 +307,7 @@ actor ResearchAgentSessionAuthority {
             triptychID: triptychID,
             locator: locator,
             canWrite: canWrite,
-            authorizationRootRunID: authorizationRootRunID,
+            sessionRootRunID: sessionRootRunID,
             activeSessionID: credential.sessionID,
             isFinalized: false
         )
@@ -374,14 +343,14 @@ actor ResearchAgentSessionAuthority {
               authenticatedParent.runID != runID else {
             throw ResearchAgentSessionError.sessionRejected
         }
-        let authorizationRootRunID = runs[parent]?.authorizationRootRunID
+        let sessionRootRunID = runs[parent]?.sessionRootRunID
             ?? authenticatedParent.runID
         if let existing = sessions[credential.sessionID]?.runLocators
             .compactMap({ locator -> ResearchRunLocator? in
                 guard let binding = runs[locator],
                       binding.runID == runID,
                       binding.triptychID == triptychID,
-                      binding.authorizationRootRunID == authorizationRootRunID,
+                      binding.sessionRootRunID == sessionRootRunID,
                       binding.activeSessionID == credential.sessionID,
                       !binding.isFinalized else {
                     return nil
@@ -397,7 +366,7 @@ actor ResearchAgentSessionAuthority {
             triptychID: triptychID,
             canWrite: canWrite,
             to: credential,
-            authorizationRootRunID: authorizationRootRunID,
+            sessionRootRunID: sessionRootRunID,
             now: now,
             userID: userID
         )
@@ -430,17 +399,17 @@ actor ResearchAgentSessionAuthority {
         }.sorted { $0.rawValue < $1.rawValue }.first
     }
 
-    func issueWriteCapability(
+    func issueMutationLease(
         credential: ResearchConnectionCredential,
         run: ResearchRunLocator,
-        writeSetRevision: DocumentFingerprint,
+        activityLedgerRevision: DocumentFingerprint,
         target: ResearchWriteTargetHandle,
         expectedRevision: DocumentFingerprint?,
         operationID: UUID,
         now: Date = Date(),
         validity: TimeInterval = 60,
         userID: uid_t = geteuid()
-    ) throws -> ResearchWriteCapability {
+    ) throws -> ResearchMutationLease {
         let authenticated = try authenticate(
             credential,
             run: run,
@@ -449,36 +418,36 @@ actor ResearchAgentSessionAuthority {
             userID: userID
         )
         let secret = Self.base64URL(try random.bytes(count: 32))
-        let capability = ResearchWriteCapability(
+        let lease = ResearchMutationLease(
             id: UUID(),
             secret: secret,
             run: run,
             sessionID: authenticated.sessionID,
-            writeSetRevision: writeSetRevision,
+            activityLedgerRevision: activityLedgerRevision,
             target: target,
             expectedRevision: expectedRevision,
             operationID: operationID,
             expiresAt: now.addingTimeInterval(min(max(validity, 5), 5 * 60))
         )
-        writeCapabilities[capability.id] = StoredWriteCapability(
-            id: capability.id,
+        mutationLeases[lease.id] = StoredMutationLease(
+            id: lease.id,
             secretDigest: Self.digest(Data(secret.utf8)),
             run: run,
             sessionID: authenticated.sessionID,
-            writeSetRevision: writeSetRevision,
+            activityLedgerRevision: activityLedgerRevision,
             target: target,
             expectedRevision: expectedRevision,
             operationID: operationID,
-            expiresAt: capability.expiresAt
+            expiresAt: lease.expiresAt
         )
-        return capability
+        return lease
     }
 
-    func consumeWriteCapability(
-        _ capability: ResearchWriteCapability,
+    func consumeMutationLease(
+        _ lease: ResearchMutationLease,
         credential: ResearchConnectionCredential,
         run: ResearchRunLocator,
-        writeSetRevision: DocumentFingerprint,
+        activityLedgerRevision: DocumentFingerprint,
         target: ResearchWriteTargetHandle,
         expectedRevision: DocumentFingerprint?,
         operationID: UUID,
@@ -492,100 +461,26 @@ actor ResearchAgentSessionAuthority {
             now: now,
             userID: userID
         )
-        guard let stored = writeCapabilities.removeValue(forKey: capability.id),
+        guard let stored = mutationLeases.removeValue(forKey: lease.id),
               stored.expiresAt > now,
-              capability.expiresAt == stored.expiresAt,
-              capability.run == run,
-              capability.sessionID == stored.sessionID,
+              lease.expiresAt == stored.expiresAt,
+              lease.run == run,
+              lease.sessionID == stored.sessionID,
               stored.run == run,
-              stored.writeSetRevision == writeSetRevision,
+              stored.activityLedgerRevision == activityLedgerRevision,
               stored.target == target,
               stored.expectedRevision == expectedRevision,
               stored.operationID == operationID,
-              capability.writeSetRevision == writeSetRevision,
-              capability.target == target,
-              capability.expectedRevision == expectedRevision,
-              capability.operationID == operationID,
+              lease.activityLedgerRevision == activityLedgerRevision,
+              lease.target == target,
+              lease.expectedRevision == expectedRevision,
+              lease.operationID == operationID,
               Self.constantTimeEqual(
                   stored.secretDigest,
-                  Self.digest(Data(capability.secret.utf8))
+                  Self.digest(Data(lease.secret.utf8))
               ) else {
             throw ResearchAgentSessionError.sessionRejected
         }
-    }
-
-    func issueMethodWriteCapability(
-        credential: ResearchConnectionCredential,
-        run: ResearchRunLocator,
-        targetID: String,
-        expectedRevision: DocumentFingerprint,
-        requestID: UUID,
-        now: Date = Date(),
-        validity: TimeInterval = 60,
-        userID: uid_t = geteuid()
-    ) throws -> ResearchMethodWriteCapability {
-        let authenticated = try authenticate(
-            credential,
-            run: run,
-            requiresWrite: true,
-            now: now,
-            userID: userID
-        )
-        let secret = Self.base64URL(try random.bytes(count: 32))
-        let capability = ResearchMethodWriteCapability(
-            id: UUID(),
-            secret: secret,
-            run: run,
-            sessionID: authenticated.sessionID,
-            targetID: targetID,
-            expectedRevision: expectedRevision,
-            requestID: requestID,
-            expiresAt: now.addingTimeInterval(min(max(validity, 5), 5 * 60))
-        )
-        methodWriteCapabilities[capability.id] = StoredMethodWriteCapability(
-            id: capability.id,
-            secretDigest: Self.digest(Data(secret.utf8)),
-            run: run,
-            sessionID: authenticated.sessionID,
-            targetID: targetID,
-            expectedRevision: expectedRevision,
-            requestID: requestID,
-            expiresAt: capability.expiresAt
-        )
-        return capability
-    }
-
-    func consumeMethodWriteCapability(
-        _ capability: ResearchMethodWriteCapability,
-        credential: ResearchConnectionCredential,
-        run: ResearchRunLocator,
-        targetID: String,
-        expectedRevision: DocumentFingerprint,
-        requestID: UUID,
-        now: Date = Date(),
-        userID: uid_t = geteuid()
-    ) throws {
-        _ = try authenticate(
-            credential,
-            run: run,
-            requiresWrite: true,
-            now: now,
-            userID: userID
-        )
-        guard let stored = methodWriteCapabilities.removeValue(
-            forKey: capability.id
-        ), stored.expiresAt > now,
-        capability.expiresAt == stored.expiresAt,
-        stored.run == run, capability.run == run,
-        stored.sessionID == capability.sessionID,
-        stored.targetID == targetID, capability.targetID == targetID,
-        stored.expectedRevision == expectedRevision,
-        capability.expectedRevision == expectedRevision,
-        stored.requestID == requestID, capability.requestID == requestID,
-        Self.constantTimeEqual(
-            stored.secretDigest,
-            Self.digest(Data(capability.secret.utf8))
-        ) else { throw ResearchAgentSessionError.sessionRejected }
     }
 
     func revokeRun(_ runID: UUID) {
@@ -595,13 +490,10 @@ actor ResearchAgentSessionAuthority {
     private func revokeAuthorizationLineage(rootRunID: UUID) {
         let locators = runs.values.filter {
             $0.runID == rootRunID
-                || $0.authorizationRootRunID == rootRunID
+                || $0.sessionRootRunID == rootRunID
         }.map(\.locator)
         for locator in locators {
-            writeCapabilities = writeCapabilities.filter {
-                $0.value.run != locator
-            }
-            methodWriteCapabilities = methodWriteCapabilities.filter {
+            mutationLeases = mutationLeases.filter {
                 $0.value.run != locator
             }
             if let sessionID = runs[locator]?.activeSessionID {
@@ -620,10 +512,7 @@ actor ResearchAgentSessionAuthority {
     func finalizeRun(_ runID: UUID) {
         let locators = runs.values.filter { $0.runID == runID }.map(\.locator)
         for locator in locators {
-            writeCapabilities = writeCapabilities.filter {
-                $0.value.run != locator
-            }
-            methodWriteCapabilities = methodWriteCapabilities.filter {
+            mutationLeases = mutationLeases.filter {
                 $0.value.run != locator
             }
             pairings[locator] = nil
@@ -634,10 +523,7 @@ actor ResearchAgentSessionAuthority {
     }
 
     func revokeSession(_ sessionID: UUID) {
-        writeCapabilities = writeCapabilities.filter {
-            $0.value.sessionID != sessionID
-        }
-        methodWriteCapabilities = methodWriteCapabilities.filter {
+        mutationLeases = mutationLeases.filter {
             $0.value.sessionID != sessionID
         }
         guard let session = sessions.removeValue(forKey: sessionID) else { return }

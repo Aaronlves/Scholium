@@ -2,9 +2,9 @@
 
 [IMPLEMENTATION_ARCHITECTURE.md](../IMPLEMENTATION_ARCHITECTURE.md) · Skill
 registration and ordinary references, academic Profiles,
-collaboration and citation configuration, Settings composition, and
+Run-collaboration and citation configuration, Settings composition, and
 configuration recovery. [Research Actions and Execution](02-research-actions-and-execution.md)
-alone owns preparation, pairing, Sessions, Run context, Bounded Write Sets,
+alone owns preparation, pairing, Sessions, Run context, Activity Ledgers,
 results, evaluation, and completion.
 
 ## Configuration owners
@@ -18,18 +18,14 @@ ResearchConfigurationStore
         |
         +-> ResearchSkillRegistrationDocument
               one Action -> one enabled registration
-              hidden stable key, display name, primary Markdown locator,
-              optional machine-local folder locator, enabled state
+              hidden stable key, display name, folder locator, enabled state
         |
-        +-> SecureResearchMethodIO
-              exact SKILL.md reads and targeted writes
-              optional folder availability without reference enumeration
+        +-> ResearchSkillFolderLocatorStore
+              private absolute path and read-only folder bookmark
+              folder availability without content access or enumeration
         |
         +-> ResearchAcademicProfileDocument
               flat academic input/result fields only
-        |
-        +-> ResearchCollaborationPolicyDocument
-              one missing-is-Ask-Every-Time policy per Triptych
         |
         +-> ResearchCitationMethodDocument
               one optional code-catalog citation style per Triptych
@@ -39,38 +35,37 @@ PlatformActionCatalog
     machine fields, and executable operations
 ```
 
-The portable registration document contains no absolute path, bookmark,
-Method bytes, folder inventory, version, digest, dependency, or capability
-declaration. A primary entry under the portable control root uses a
-descriptor-relative locator. An entry or optional folder outside that root
-uses a stable machine-local locator and read/write bookmark in private
-Application Support. The researcher filesystem owns every unregistered sibling
-file in an ordinary Skill folder.
+The portable registration document contains no absolute path, bookmark, Skill
+bytes, folder inventory, version, digest, dependency, or capability
+declaration. A folder under the portable control root uses a descriptor-
+relative locator. A folder outside that root uses a stable machine-local
+locator in private Application Support with one read-only bookmark. The
+researcher filesystem owns every file inside an Action Skill folder.
 
-`ResearchConfigurationStore` and `SecureResearchMethodIO` support exact read,
-revision-checked complete Markdown replacement, and explicit app-default
-restoration. They do not retain displaced source, snapshot a
-directory, diff versions, list history, validate dependencies, enumerate
-supplements, or execute scripts. External changes use the ordinary current-
-revision and conflict boundary.
+`ResearchConfigurationStore` resolves the folder relation and availability
+only. It has no file-content I/O API, content revision, Markdown replacement,
+default restoration, directory enumeration, dependency validation, or script
+execution. Initial Triptych setup copies bundled templates once before it
+publishes the registrations; later bootstrap sees the registration document
+and never fills, repairs, or overwrites a user folder.
 
 ## Skills and ordinary references
 
-A Skill registration points to one exact `SKILL.md` entry and may also
-identify its containing ordinary folder for authenticated Agent access. New
-simple Skills may consist of that file alone. Registering or removing a Skill
-never gives Scholium ownership of the surrounding directory.
+A Skill registration points to one ordinary researcher-owned folder for
+external Agent project discovery. It does not identify or require a primary
+entry. Registering or removing a Skill never gives Scholium ownership of the
+folder or any content beneath it.
 
 Reference files, including philosophical lenses, remain ordinary files inside
-the Skill folder. The Skill entry explicitly routes the task-relevant files;
-Application neither catalogs nor parses those references, and no Wikilink,
+the Skill folder. The external Agent's Skill may route task-relevant files;
+Application neither catalogs nor parses any content, and no Wikilink,
 title, filename, alias, or transclusion creates a second product relation.
 Bundled defaults keep a bounded lens subset directly in each applicable
 Skill's `references/` directory. Those references are release-managed parts of
 their owning Skills, not an independently installed catalog or shared library.
 The exact Action Method may change scholarly procedure, emphasis, organization,
 and content only. It does not route System Skills or define commands, tools,
-permissions, executable operations, Run lifecycle, Result serialization, or
+executable operations, Run lifecycle, Result serialization, or
 recovery; Application contracts and Core Protocol retain those owners. Before
 authentication, the request or official handoff routes project entry and an
 explicit researcher request routes workspace bootstrap. After authentication,
@@ -78,9 +73,9 @@ current Run state, typed `next_actions`, and operation responses alone select
 Core's Run references. This is progressive System-protocol disclosure, not a
 philosophical Mode or another state owner.
 
-Scholium's method-improvement Run edits only the exact registered `SKILL.md`.
-References remain editable through ordinary filesystem tools. Exact-revision
-replacement never treats the bundled default as a runtime fallback.
+Scholium exposes no Method-improvement Run and never edits the folder.
+Researchers and external Agents use ordinary filesystem tools; the bundled
+template is never a runtime fallback.
 
 ## Profiles and Platform authority
 
@@ -94,17 +89,15 @@ necessity, visible name, role-valid placement, and enabled state. A Run's
 `ResultContract` freezes those academic result fields together with
 Application-provided machine fields. Neither type can represent readable or
 writable roles, operations, Metadata boundaries, source capability, recovery
-behavior, or permission.
+behavior.
 
-## Collaboration and citation configuration
+## Run collaboration and citation configuration
 
-`ResearchConfigurationStore` persists one strict collaboration policy per
-Triptych. Missing state means Ask Me Every Time. The document has no per-Method
-override, digest approval, fallback subject, bearer key, or write capability.
-The current Action owner recomputes authorization from Platform support, the
-policy, the concrete Run request, current identities and revisions, and the
-authenticated Run boundary.
-It also owns no global Agent prompt, selected-Agent preference, remembered Agent
+Research Guidance persists no collaboration or per-document permission policy.
+The Run owner automatically records declared targets and actual operations;
+Session attribution, current identities and revisions, containment, and
+recovery belong to Research Actions and Execution. Research Guidance owns no
+global Agent prompt, selected-Agent preference, remembered Agent
 application, launch path, or Agent credential. The transient handoff for the
 current Run belongs to Research Actions and Execution.
 
@@ -119,9 +112,10 @@ selected scope.
 ## Settings and configuration transactions
 
 Settings presents one Research Guidance list/detail surface for Skills, Action
-Profiles, Agent Access, and External Tools & Citations. Skills edits the
-registration and exact `SKILL.md`; it explains that lenses and other
-references are ordinary folder files. Action Profiles edits only the academic profile document.
+Profiles, and External Tools & Citations. Skills assigns, opens,
+enables, or disables an Action's folder relation; it has no content editor,
+file picker, create-file command, or default-restoration command. Action
+Profiles edits only the academic profile document.
 Each editor mutates one owner at a time through an expected-revision
 transaction.
 
@@ -162,9 +156,9 @@ Application operations, use natural JSON at their boundary, and expose the
 Metadata revision independently from the source fingerprint. No delivery
 adapter imports Core or addresses the portable JSON directory.
 Portable Triptych Settings does not store prompt bodies or active prompt
-selection. Exact Skill entries and their ordinary reference files remain the
-persisted intellectual configuration; runtime action
-contracts consume those owners without a second template representation.
+selection. User-owned Skill files remain external intellectual configuration;
+runtime action contracts consume only their registered folder relation without
+a second template representation.
 
 `PropertyContractCatalog` owns the authored YAML allowlist;
 `BuiltInNoteMetadataCatalog` owns product-managed shapes;
@@ -178,19 +172,17 @@ managed-creation projection may compile those values
 in memory, but no second persisted template or requirements revision exists.
 
 The Action Profile editor can change only visible name, order, enabled state,
-role-valid placement, and bounded ordered academic fields. The Skills editor
-operates on exact `SKILL.md`; ordinary reference editing remains outside this
-surface. External Tools & Citations presents citation selection before machine-
-local Zotero and CLI controls. Skill-locator recovery stays beside the affected editor.
+role-valid placement, and bounded ordered academic fields. The Skills settings pane
+operates only on the Action-folder relation; all file editing remains outside
+this surface. External Tools & Citations presents citation selection before machine-
+local Zotero and CLI controls. Skill-locator recovery stays beside the affected settings pane.
 Invalid machine-local Skill locators have one owner-specific,
 confirmation-gated recovery operation. It uses the shared same-directory
 exact-state preserver, archives only a typed invalid file, and resets only its
 machine-local owner; unsafe storage remains fail-closed.
 
 Removing a registration rechecks Action availability and active Runs. It does
-not recursively delete the selected folder. Removing a Scholium-managed simple
-primary file uses a recoverable isolation transaction and states the exact file
-consequence. Successful configuration mutation publishes one typed
+not delete or modify the selected folder. Successful configuration mutation publishes one typed
 invalidation so active windows re-resolve affected Action availability without
 replacing their workspace snapshot.
 
@@ -201,15 +193,14 @@ Skill directories. Research Guidance distinguishes those release-managed bytes
 from researcher-owned Skills and references, which contain the Action's
 intellectual procedure. External Agent project discovery, rather than an
 authenticated Context payload, loads both kinds. Run Brief, minimum required
-Skill identities, frozen Method revision, Result Contract, capability
+Skill identities, frozen registration revision, Result Contract, capability
 availability, command inputs, and Research Context remain typed current data.
 Installed CLI help and tool schemas own current invocation syntax.
 
 `ResearchConfigurationStore` also assembles one read-only project
 Skill-source manifest from every release-managed System Skill and every enabled
-current Method registration. It verifies each discoverable primary
-`SKILL.md` against the stable Action Skill name and a bounded nonempty
-description and requires one available folder. An explicitly registered
+current Action Skill registration. It requires one available folder but never
+opens or validates a file within it. An explicitly registered
 machine-local folder remains eligible because this command is the authorized
 external-workspace setup surface. A source-only
 `WorkspaceRuntime` route validates the selected portable manifest and binds the
@@ -223,5 +214,4 @@ The bundle is not a package manager or second prompt store. Research Guidance
 has no staged installer, resource preview, package validation, version
 comparison, Skill snapshot history, marketplace, per-Skill permission editor,
 or executable extension surface. Project discovery registration does not
-change the current Method owner, default-restoration contract, or authenticated
-Run authority.
+change the current Action-folder relation or authenticated Run authority.

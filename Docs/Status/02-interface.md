@@ -125,10 +125,10 @@
   presents fields to fill or update with current and Zotero values, retains
   Cancel while reading, and presents **Done** when every mapped value is current.
 - Action sheets keep Profile Research Request visible, place only other
-  optional inputs under Additional Instructions, and explain target mutation,
-  read-only Additional Context, and later extra-Note approval. The bounded
-  extra-write sheet has one denial, **Continue Without Additional Notes**;
-  **End Action** remains separate. Sheets expose preparation and handoff without
+  optional inputs under Additional Instructions, and explain target mutation
+  and read-only Additional Context. Later Agent operations add relevant Notes
+  to the Run Activity Ledger without interrupting the researcher; **End Action**
+  remains separate. Sheets expose preparation and handoff without
   exposing credentials, registration keys, protocol internals, or
   implementation hashes. Finalized Result and Method Feedback appear only in
   the exact Research Record.
@@ -170,8 +170,8 @@
   Query. Opening a result routes to the exact current Note, source range,
   Record, or attributed statement.
 - The Saved Searches menu exposes archive-and-reset only while its local file
-  is unreadable. Methods likewise exposes bounded, confirmed repair actions
-  only for its typed invalid local owner.
+  is unreadable. Skills likewise exposes bounded, confirmed repair actions
+  only for its typed invalid machine-local folder owner.
 - Notifications is one transient anchored popover per workspace backed by a
   persistent process-level Action activity model. It keeps the existing
   structural source/conflict/recovery Attention rows and their Inspect,
@@ -225,7 +225,9 @@
   and Attention; Research Guidance contains Skills, Action
   Profiles, Agent Access, and External Tools & Citations. Triptych selection
   remains inside the Triptychs detail, and search uses only static Settings
-  metadata.
+  metadata. Skills assigns one researcher-owned folder to an Action and can
+  reveal an available folder in Finder; it contains no Skill-file editor,
+  creator, validator, or default-restoration control.
 - Hotkeys persists a machine-local closed command catalog, records Command-
   based shortcuts, rejects standard reservations and active duplicates, and
   updates the same SwiftUI menu commands that execute the actions. Per-command

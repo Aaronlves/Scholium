@@ -64,19 +64,16 @@ public actor AgentBridgeOperations: AgentBridgeUseCases {
     public func initialContext(
         run: ResearchRunLocator,
         credential: ResearchConnectionCredential
-    ) throws -> ResearchAgentInitialContext {
+    ) throws -> ResearchAuthenticatedRunContext {
         let response = try client.send(try LocalAgentBridgeRequest(
             operation: .context,
             run: run,
             credential: credential
         ))
-        if let context = response.context {
-            return .action(context)
+        guard let context = response.context else {
+            throw LocalAgentBridgeError.invalidResponse
         }
-        if let context = response.methodImprovementContext {
-            return .methodImprovement(context)
-        }
-        throw LocalAgentBridgeError.invalidResponse
+        return context
     }
 
     public func revokeSession(
@@ -142,13 +139,13 @@ public actor AgentBridgeOperations: AgentBridgeUseCases {
         return receipt
     }
 
-    public func extendWriteSet(
+    public func trackActivity(
         run: ResearchRunLocator,
         credential: ResearchConnectionCredential,
         intent: ResearchWriteSetExtensionIntent
     ) throws -> ResearchWriteSetExtensionResult {
         let response = try client.send(try LocalAgentBridgeRequest(
-            operation: .extendWriteSet,
+            operation: .trackActivity,
             run: run,
             credential: credential,
             writeSetIntent: intent
@@ -242,38 +239,6 @@ public actor AgentBridgeOperations: AgentBridgeUseCases {
             throw LocalAgentBridgeError.invalidResponse
         }
         return result
-    }
-
-    public func methodImprovementContext(
-        run: ResearchRunLocator,
-        credential: ResearchConnectionCredential
-    ) throws -> ResearchMethodImprovementContext {
-        let response = try client.send(try LocalAgentBridgeRequest(
-            operation: .methodImprovementContext,
-            run: run,
-            credential: credential
-        ))
-        guard let context = response.methodImprovementContext else {
-            throw LocalAgentBridgeError.invalidResponse
-        }
-        return context
-    }
-
-    public func submitMethodImprovement(
-        run: ResearchRunLocator,
-        credential: ResearchConnectionCredential,
-        submission: ResearchMethodImprovementSubmission
-    ) throws -> ResearchMethodImprovementReceipt {
-        let response = try client.send(try LocalAgentBridgeRequest(
-            operation: .submitMethodImprovement,
-            run: run,
-            credential: credential,
-            methodImprovementSubmission: submission
-        ))
-        guard let receipt = response.methodImprovementReceipt else {
-            throw LocalAgentBridgeError.invalidResponse
-        }
-        return receipt
     }
 
     public func end(

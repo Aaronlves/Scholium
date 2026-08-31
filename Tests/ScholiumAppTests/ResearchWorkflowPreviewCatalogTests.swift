@@ -10,7 +10,6 @@ struct ResearchWorkflowPreviewCatalogTests {
         for proof in [
             "case actionSheet",
             "case researchGuidance",
-            "case writeSetExtension",
         ] {
             #expect(source.contains(proof), "Missing interface proof: \(proof)")
         }
@@ -31,7 +30,7 @@ struct ResearchWorkflowPreviewCatalogTests {
             source.range(of: "// MARK: - Research Guidance")
         )
         let guidanceEnd = try #require(
-            source.range(of: "// MARK: - Bounded write-set extension")
+            source.range(of: "private struct ResearchProofSection")
         )
         let guidanceSource = source[
             guidanceStart.lowerBound..<guidanceEnd.lowerBound
@@ -40,19 +39,15 @@ struct ResearchWorkflowPreviewCatalogTests {
         for category in [
             "Skills",
             "Action Profiles",
-            "Agent Access",
             "External Tools & Citations",
         ] {
             #expect(guidanceSource.contains(category))
         }
 
         for customization in [
-            "one current Skill",
-            "philosophical lenses",
+            "one researcher-owned Skill folder",
+            "never reads or edits its contents",
             "Flat researcher-facing fields",
-            "Ask Me Every Time",
-            "Ask Me Only for Works",
-            "Full Triptych Access",
             "APA 7",
             "Zotero Desktop local read-only API",
             "An Action Profile shapes academic inputs and results",
@@ -84,14 +79,14 @@ struct ResearchWorkflowPreviewCatalogTests {
         }
     }
 
-    @Test("The modular sheet cannot hide the app-owned authority boundary")
-    func retainsAppOwnedBoundary() throws {
+    @Test("The modular sheet exposes tracked activity and recovery facts")
+    func exposesTrackedActivityAndRecovery() throws {
         let source = try previewSource()
 
         for field in [
             "Target",
             "Starting revision",
-            "Agent access policy",
+            "Agent activity",
             "Candidate write scope",
             "Conflicts",
             "Recovery",
@@ -99,12 +94,11 @@ struct ResearchWorkflowPreviewCatalogTests {
         ] {
             #expect(source.contains(field), "Missing app-owned field: \(field)")
         }
-        #expect(source.contains("Ask Me Every Time"))
+        #expect(source.contains("Tracked in the Run Record"))
         #expect(source.contains("Exact written Notes"))
         #expect(source.contains("Retained candidate source"))
-        #expect(source.contains("Allow Selected Notes"))
-        #expect(source.contains("Continue Without Additional Notes"))
-        #expect(!source.contains("Cancel Request"))
+        #expect(!source.contains("Allow Selected Notes"))
+        #expect(!source.contains("Continue Without Additional Notes"))
 
     }
 

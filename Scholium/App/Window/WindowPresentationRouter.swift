@@ -5,7 +5,6 @@ import SwiftUI
 enum WindowSheetRoute: Identifiable {
     case metadata(MetadataPanelRoute)
     case researchAction(ResearchActionPanelRoute)
-    case researchAgentPermission(UUID)
     case noteFileOperation(NoteFileRequest)
     case folderFileOperation(FolderFileRequest)
     case systemTrash(SystemTrashDeletionPreview)
@@ -18,8 +17,6 @@ enum WindowSheetRoute: Identifiable {
         case .metadata(let route): route.id
         case .researchAction(let route):
             "research-action:\(route.presentationID.uuidString.lowercased())"
-        case .researchAgentPermission(let requestID):
-            "research-agent-permission:\(requestID.uuidString.lowercased())"
         case .noteFileOperation(let request): "note-file-operation:\(request.id)"
         case .folderFileOperation(let request): "folder-file-operation:\(request.id)"
         case .systemTrash(let preview):

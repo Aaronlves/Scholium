@@ -98,10 +98,9 @@ struct ResearchAgentSessionAuthorityTests {
         let exactMethod = "# Deliberative Discussion\n\nPreserve attributed alternatives.\n"
         try Data(exactMethod.utf8).write(to: methodURL, options: .atomic)
         let registrations = try await handle.research.researchSkillRegistrations()
-        _ = try await handle.research.registerExternalResearchMethod(
+        _ = try await handle.research.registerExternalResearchSkillFolder(
             actionID: .discuss,
             displayName: "Deliberative Discussion",
-            primaryMarkdownPath: methodURL.path,
             skillFolderPath: methodFolder.path,
             expectedRegistrationRevision: registrations.revision
         )
@@ -146,7 +145,7 @@ struct ResearchAgentSessionAuthorityTests {
         #expect(!handoff.agentInstructions.contains(methodFolder.path))
         #expect(!handoff.agentInstructions.contains(exactMethod))
         #expect(!handoff.agentInstructions.contains(
-            preparation.snapshot.method.primaryMarkdownRevision.sha256
+            preparation.snapshot.method.registrationRevision.sha256
         ))
         #expect(handoff.agentInstructions.contains(handoff.run.rawValue))
         #expect(handoff.agentInstructions.contains("use the installed `scholium` CLI yourself"))
@@ -177,8 +176,8 @@ struct ResearchAgentSessionAuthorityTests {
         let methodRequirement = try #require(first.requiredSkills.first {
             $0.kind == .actionMethod
         })
-        #expect(methodRequirement.primaryMarkdownRevision
-            == preparation.snapshot.method.primaryMarkdownRevision)
+        #expect(methodRequirement.registrationRevision
+            == preparation.snapshot.method.registrationRevision)
         let contextJSON = String(
             decoding: try JSONEncoder().encode(first),
             as: UTF8.self

@@ -24,12 +24,14 @@
   first successful Agent response forms one Research Record and ends its active
   presentation. Explicit End preserves an unanswered exchange. Neither route
   claims acceptance, truth, or settlement.
-- A **Research Skill Registration** binds one Action to one current `SKILL.md`
-  entry, an optional ordinary local Skill-folder path, and one
-  hidden stable relation key. It has no product version, package, dependency,
-  or execution semantics. **Philosophical lenses** are methodologically
-  substantive ordinary references routed by that Skill; they have no separate
-  registration, catalog, resolver, snapshot, or execution authority.
+- A **Research Skill Registration** binds one Action to one researcher-owned
+  Skill folder and one hidden stable relation key. Scholium manages the
+  relation, enabled state, and folder availability, not any file inside the
+  folder. It has no product version, package, dependency, content-revision, or
+  execution semantics. **Philosophical lenses** are methodologically
+  substantive ordinary files used by the external Agent when the Skill routes
+  them; they have no separate Scholium registration, catalog, resolver,
+  snapshot, or execution authority.
   An **Action Profile** configures bounded academic inputs and result fields;
   it never declares platform capability or permission.
 - **Settle** is the researcher's fingerprint-bound, replaceable current
@@ -49,11 +51,11 @@
   with authored YAML `summary` and `keywords` without creating another status
   model or rewriting Markdown.
 - A **Run** is one Action's working object. A hidden **Connection Session**
-  authenticates a locally paired Agent to allowed Runs only for the current
-  Scholium process. A **Bounded Write Set** is one Run's hidden, short-lived,
-  expandable set of exact document identities, operations, expected revisions
-  or proven absence, and expiry. Every actual mutation still uses a
-  nonreusable short-lived capability and one-document transaction.
+  attributes a locally paired Agent's operations to its Runs for the current
+  Scholium process. A **Run Activity Ledger** is the hidden, short-lived,
+  automatically expandable record of exact document identities, declared
+  operations, starting revisions or proven absence, and actual outcomes. Every
+  mutation remains one revision-checked document transaction.
 - **Research Record** is the portable intellectual record of one finished
   Discussion or validated Action run. A separate nonmodal two-panel utility
   window browses these records; active Discussion remains in Actions, and
@@ -86,12 +88,12 @@ without Obsidian, Zotero, or agents.
 ### 2.2 Researcher responsibility and optional agent access
 
 The researcher governs the Triptych and may instruct an external Agent to
-mutate files through filesystem or CLI tools.
-One Triptych collaboration policy decides when an exact Bounded Write Set or a
-next Run needs another question. Every actual write remains bound to the
-current authenticated Session, Run, allowed document set, expected revisions,
-and one nonreusable short-lived capability. Discussion and Critique remain
-optional.
+create or mutate research documents through filesystem or CLI tools. Beginning
+an Agent Run expresses that task-level collaboration; Scholium does not ask for
+another permission each time the Agent adds a relevant document or continues
+with a related Action. CLI-mediated operations are attributed to the current
+Session and Run, checked against exact identities and revisions, and converted
+into one Research Record. Discussion and Critique remain optional.
 
 Scholium supplies safety, not transferred responsibility:
 
@@ -100,13 +102,15 @@ Scholium supplies safety, not transferred responsibility:
 - exact Run-bound Agent change evidence for diff and direct Undo, plus invisible
   interrupted-save recovery for repository writes.
 
-Raw external edits do not acquire Scholium's Agent diff or direct-Undo evidence.
+Raw external edits do not acquire Scholium's verified Agent attribution, diff,
+or direct-Undo evidence unless the Agent reports them through a future verified
+activity-reconciliation contract.
 Fingerprints detect revisions; they are not permission tokens and do not need
 to be copied into the agent prompt.
 
 The Application API validates each Research Action's initial object, focal
 context, source access, revision, registered Skill, Result Contract,
-permission, write set, and completion. Frontends select semantic Actions,
+tracked operations, and completion. Frontends select semantic Actions,
 never protected mechanism identifiers or assembled technical instructions.
 Protected Scholium protocol owns capability and safety; one registered Skill
 supplies the intellectual procedure and routes task-relevant ordinary
@@ -219,15 +223,15 @@ uploads it automatically.
 
 Application Support owns:
 
-- security-scoped bookmarks and absolute paths, including registered external
-  primary Methods and optional Skill folders plus a separate bookmark
+- read-only security-scoped bookmarks and absolute paths for registered
+  external Action Skill folders, plus a separate bookmark
   for the folder containing Works that authorizes sibling `.scholium/` without
   creating a fourth vault;
 - window sessions, the selected workspace, and vault-role-partitioned,
   vault-qualified Document tabs;
 - derived indexes, temporary files, and caches;
-- Pairing Code digests, process-bound Connection Sessions, Bounded Write Sets,
-  pending permission decisions, source bookmarks, transport state, derived
+- Pairing Code digests, process-bound Connection Sessions, Run Activity Ledgers,
+  operation receipts, source bookmarks, transport state, derived
   record indexes, exact Agent change evidence, interrupted-save recovery, and
   other machine-local execution data.
 

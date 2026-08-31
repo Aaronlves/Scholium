@@ -12,9 +12,9 @@ RUN_ID="$(uuidgen | tr '[:upper:]' '[:lower:]' | tr -d '-' | cut -c1-8)"
 BUNDLE_ID="com.scholium.abp"
 TEST_CONTAINER="${HOME}/Library/Containers/${BUNDLE_ID}"
 TEST_APPLICATION_SCRIPTS="${HOME}/Library/Application Scripts/${BUNDLE_ID}"
-PROBE_ROOT="${HOME}/Library/Application Support/Scholium/Bridge-Probes/${RUN_ID}"
+PROBE_ROOT="${HOME}/Library/Application Support/Scholium/BP-${RUN_ID}"
 PROBE_HOME="${PROBE_ROOT}/home"
-SUPPORT="${SCRATCH}/bridge-namespace"
+SUPPORT="${PROBE_ROOT}/b"
 CLI="${SCRATCH}/scholium"
 APP_PID=""
 
@@ -43,7 +43,7 @@ trap cleanup EXIT
 
 rm -rf "${SCRATCH}"
 mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources" \
-  "${PROBE_HOME}" "${SUPPORT}"
+  "${PROBE_HOME}"
 
 if [[ ! -x "${BUILD}/debug/ScholiumApp" || ! -x "${BUILD}/debug/scholium" ]]; then
   DEVELOPER_DIR="${XCODE}" swift build \
@@ -81,19 +81,10 @@ APP_ENTITLEMENTS="${SCRATCH}/app-entitlements.plist"
 CLI_ENTITLEMENTS="${SCRATCH}/cli-entitlements.plist"
 codesign -d --entitlements :- "${APP}" > "${APP_ENTITLEMENTS}" 2>/dev/null
 codesign -d --entitlements :- "${CLI}" > "${CLI_ENTITLEMENTS}" 2>/dev/null || true
-if ! rg -q 'com\.apple\.security\.app-sandbox' "${APP_ENTITLEMENTS}"; then
-  print -u2 "The local bridge probe App is not sandboxed."
-  exit 65
-fi
-if rg -q 'com\.apple\.security\.app-sandbox' "${CLI_ENTITLEMENTS}"; then
-  print -u2 "The standalone CLI unexpectedly contains App Sandbox entitlements."
-  exit 65
-fi
-if rg -q 'com\.apple\.security\.application-groups' \
-  "${APP_ENTITLEMENTS}" "${CLI_ENTITLEMENTS}"; then
-  print -u2 "The source-first bridge probe unexpectedly depends on an App Group."
-  exit 65
-fi
+python3 "${ROOT}/Tools/Scripts/validate-entitlements.py" app \
+  "${APP_ENTITLEMENTS}"
+python3 "${ROOT}/Tools/Scripts/validate-entitlements.py" cli \
+  "${CLI_ENTITLEMENTS}"
 
 RUN_LOCATOR="local-agent-bridge-probe"
 PAIRING_CODE="ABCD-EFGH-JKLM-NPQR-STUV-WXYZ"
@@ -127,7 +118,7 @@ for _ in {1..100}; do
   sleep 0.1
 done
 [[ -n "${AFTER}" ]] && ! print -r -- "${AFTER}" | rg -qi 'unavailable' || {
-  print -u2 "The local probe App did not open its loopback bridge."
+  print -u2 "The local probe App did not open its authenticated loopback bridge."
   sed -n '1,120p' "${SCRATCH}/app.stderr" >&2
   exit 1
 }
@@ -141,12 +132,17 @@ if rg -Fq "${PAIRING_CODE}" \
   print -u2 "The local App logged the raw Pairing Code."
   exit 1
 fi
+BRIDGE_AUTH="${SUPPORT}/bridge-auth-v1"
+[[ -f "${BRIDGE_AUTH}" ]]
+[[ "$(stat -f '%Lp' "${SUPPORT}")" == "700" ]]
+[[ "$(stat -f '%Lp' "${BRIDGE_AUTH}")" == "600" ]]
+[[ "$(stat -f '%z' "${BRIDGE_AUTH}")" == "32" ]]
 
 kill "${APP_PID}"
 wait "${APP_PID}" || true
 APP_PID=""
 
-print "Sandboxed App to standalone CLI loopback bridge probe passed."
+print "Sandboxed App to standalone CLI authenticated-loopback bridge probe passed."
 print "App sandbox: enabled; standalone CLI sandbox: disabled."
-print "Endpoint: 127.0.0.1 only; closed-App path: typed unavailable."
+print "Endpoint: 127.0.0.1 with mutual process-generation authentication; closed-App path: typed unavailable."
 print "An invalid but well-formed Pairing Code reached the App, received the generic authorization denial, and was not logged."

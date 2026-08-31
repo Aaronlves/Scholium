@@ -152,7 +152,7 @@ extension WorkspaceRuntime {
     public func researchAgentInitialContext(
         credential: ResearchConnectionCredential,
         run: ResearchRunLocator
-    ) async throws -> ResearchAgentInitialContext {
+    ) async throws -> ResearchAuthenticatedRunContext {
         guard let sessions = researchAgentSessions else {
             throw ResearchAgentConnectionError.secureRandomUnavailable
         }
@@ -271,24 +271,15 @@ extension WorkspaceHandle {
         authenticated: ResearchAuthenticatedRun,
         credential: ResearchConnectionCredential,
         run: ResearchRunLocator
-    ) async throws -> ResearchAgentInitialContext {
+    ) async throws -> ResearchAuthenticatedRunContext {
         try requireActive()
         guard authenticated.triptychID == id,
               authenticated.locator == run else {
             throw ResearchAgentSessionError.sessionRejected
         }
-        if try await researchAgentConnectionDependencies.localResearchExecutionStore
-            .recordIfPresent(id: authenticated.runID) != nil {
-            return .action(try await authenticatedResearchAgentContext(
-                credential: credential,
-                run: run
-            ))
-        }
-        return .methodImprovement(
-            try await authenticatedMethodImprovementContext(
-                credential: credential,
-                run: run
-            )
+        return try await authenticatedResearchAgentContext(
+            credential: credential,
+            run: run
         )
     }
 
@@ -1471,16 +1462,9 @@ extension WorkspaceHandle {
 
     func validateActiveResearchAgentRun(_ runID: UUID) async throws {
         try requireActive()
-        if let record = try await researchAgentConnectionDependencies.localResearchExecutionStore
-            .recordIfPresent(id: runID) {
-            _ = try activeAction(in: record)
-            return
-        }
-        let improvement = try await researchAgentConnectionDependencies.localResearchExecutionStore
-            .methodImprovement(id: runID)
-        guard improvement.state == .prepared || improvement.state == .writing else {
-            throw ResearchAgentConnectionError.runUnavailable
-        }
+        let record = try await researchAgentConnectionDependencies
+            .localResearchExecutionStore.record(id: runID)
+        _ = try activeAction(in: record)
     }
 
     func issueResearchAgentHandoff(
@@ -2293,18 +2277,6 @@ extension WorkspaceHandle {
         guard authenticated.triptychID == self.id else {
             throw ResearchAgentSessionError.sessionRejected
         }
-        if let improvement = try? await researchAgentConnectionDependencies.localResearchExecutionStore
-            .methodImprovement(id: authenticated.runID) {
-            let recoveryRetained = improvement.state == .writing
-            await sessions.revokeRun(authenticated.runID)
-            return try ResearchRunEndReceipt(
-                run: run,
-                recoveryRetained: recoveryRetained,
-                message: recoveryRetained
-                    ? "The Method improvement Run ended. Its in-progress exact-revision outcome remains recorded for recovery; no new Agent operation is authorized."
-                    : "The Method improvement Run ended and no new Agent operation is authorized."
-            )
-        }
         let record = try await researchAgentConnectionDependencies.localResearchExecutionStore.record(
             id: authenticated.runID
         )
@@ -2386,7 +2358,7 @@ extension WorkspaceHandle {
             researchState: operations.contains(.queryRecords),
             zotero: operations.contains(.useZotero),
             writeInitialObject: operations.contains(.modifyInitialNote),
-            extendWriteSet: operations.contains(.extendWriteSet),
+            trackActivity: operations.contains(.trackActivity),
             continueResearch: operations.contains(.continueResearch),
             discussionReply: operations.contains(.discuss)
         )

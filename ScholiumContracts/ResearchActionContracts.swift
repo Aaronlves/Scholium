@@ -170,17 +170,17 @@ public struct ResearchActionDefinition: Codable, Hashable, Identifiable, Sendabl
 
 /// Versioned public identity and authority recorded for one Action run.
 ///
-/// Schema v5 is created only after the resolver has frozen the exact Target,
+/// Schema v6 is created only after the resolver has frozen the exact Target,
 /// Skill, academic Profile, protected Platform inputs, academic inputs,
 /// Result Contract, and concrete authority envelope. It
 /// contains no second internal operation identity.
 public struct ResearchActionSnapshot: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 5
+    public static let currentSchemaVersion = 6
 
     public let schemaVersion: Int
     public let definition: ResearchActionDefinition
     public let target: ResearchActionNoteSnapshot
-    public let method: ResearchMethodSnapshot
+    public let method: ResearchSkillBindingSnapshot
     public let resolvedProfile: ResearchActionResolvedProfileSnapshot
     public let platformInputs: ResearchActionPlatformInputs
     public let academicInputs: ResearchAcademicFieldValues
@@ -193,7 +193,7 @@ public struct ResearchActionSnapshot: Codable, Hashable, Sendable {
     public init(
         definition: ResearchActionDefinition,
         target: ResearchActionNoteSnapshot,
-        method: ResearchMethodSnapshot,
+        method: ResearchSkillBindingSnapshot,
         resolvedProfile: ResearchActionResolvedProfileSnapshot,
         platformInputs: ResearchActionPlatformInputs,
         academicInputs: ResearchAcademicFieldValues,
@@ -224,8 +224,7 @@ public struct ResearchActionSnapshot: Codable, Hashable, Sendable {
               resolvedProfile.profile.applicableRoles.contains(target.role),
               method.registration.actionID == definition.id,
               method.registration.isEnabled,
-              method.primaryMarkdownRevision
-                == DocumentFingerprint(content: method.primaryMarkdownSource),
+              method.skillFolderIsAvailable,
               validatedAuthority.readableNotes.contains(target),
               validatedPlatformInputs.focalNotes.allSatisfy(
                 validatedAuthority.readableNotes.contains
@@ -277,7 +276,7 @@ public struct ResearchActionSnapshot: Codable, Hashable, Sendable {
         try self.init(
             definition: definition,
             target: container.decode(ResearchActionNoteSnapshot.self, forKey: .target),
-            method: container.decode(ResearchMethodSnapshot.self, forKey: .method),
+            method: container.decode(ResearchSkillBindingSnapshot.self, forKey: .method),
             resolvedProfile: container.decode(
                 ResearchActionResolvedProfileSnapshot.self,
                 forKey: .resolvedProfile

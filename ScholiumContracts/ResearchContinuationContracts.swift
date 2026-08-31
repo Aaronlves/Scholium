@@ -310,22 +310,19 @@ public enum ResearchContinuationRequestState: String, Codable, Hashable, Sendabl
     case pending
     case allowed
     case created
-    case declined
     case stale
-    case expired
 }
 
-public enum ResearchContinuationAuthorizationBasis: String, Codable, Hashable,
+public enum ResearchContinuationOrigin: String, Codable, Hashable,
     Sendable
 {
-    case collaborationPolicy = "collaboration_policy"
-    case explicitResearcherDecision = "explicit_researcher_decision"
+    case agentInitiated = "agent_initiated"
 }
 
 public struct ResearchContinuationRequestRecord: Codable, Hashable, Identifiable,
     Sendable
 {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let id: UUID
@@ -333,10 +330,8 @@ public struct ResearchContinuationRequestRecord: Codable, Hashable, Identifiable
     public let triptychID: UUID
     public let request: ResearchContinuationRequest
     public let requestFingerprint: DocumentFingerprint
-    public let policy: ResearchCollaborationPolicy
-    public let policyRevision: DocumentFingerprint
     public var state: ResearchContinuationRequestState
-    public var authorizationBasis: ResearchContinuationAuthorizationBasis?
+    public var origin: ResearchContinuationOrigin?
     public let receivedAt: Date
     public let expiresAt: Date
     public var decidedAt: Date?
@@ -348,32 +343,25 @@ public struct ResearchContinuationRequestRecord: Codable, Hashable, Identifiable
         triptychID: UUID,
         request: ResearchContinuationRequest,
         requestFingerprint: DocumentFingerprint,
-        policy: ResearchCollaborationPolicy,
-        policyRevision: DocumentFingerprint,
         state: ResearchContinuationRequestState,
-        authorizationBasis: ResearchContinuationAuthorizationBasis? = nil,
+        origin: ResearchContinuationOrigin? = nil,
         receivedAt: Date,
         expiresAt: Date,
         decidedAt: Date? = nil,
         childRunID: UUID? = nil
     ) throws {
-        let terminalWithoutChild = [
-            ResearchContinuationRequestState.declined,
-            .stale,
-            .expired,
-        ]
+        let terminalWithoutChild = [ResearchContinuationRequestState.stale]
         let shapeIsValid = switch state {
         case .pending:
-            decidedAt == nil && childRunID == nil && authorizationBasis == nil
+            decidedAt == nil && childRunID == nil && origin == nil
         case .allowed:
-            decidedAt != nil && childRunID == nil && authorizationBasis != nil
+            decidedAt != nil && childRunID == nil && origin != nil
         case .created:
-            decidedAt != nil && childRunID != nil && authorizationBasis != nil
-        case .declined, .stale, .expired:
-            decidedAt != nil && childRunID == nil && authorizationBasis == nil
+            decidedAt != nil && childRunID != nil && origin != nil
+        case .stale:
+            decidedAt != nil && childRunID == nil && origin == nil
         }
         guard requestFingerprint == (try request.contentFingerprint()),
-              policyRevision.sha256.count == 64,
               receivedAt.timeIntervalSinceReferenceDate.isFinite,
               expiresAt > receivedAt,
               decidedAt.map({ $0.timeIntervalSinceReferenceDate.isFinite }) ?? true,
@@ -387,10 +375,8 @@ public struct ResearchContinuationRequestRecord: Codable, Hashable, Identifiable
         self.triptychID = triptychID
         self.request = request
         self.requestFingerprint = requestFingerprint
-        self.policy = policy
-        self.policyRevision = policyRevision
         self.state = state
-        self.authorizationBasis = authorizationBasis
+        self.origin = origin
         self.receivedAt = receivedAt
         self.expiresAt = expiresAt
         self.decidedAt = decidedAt
@@ -404,10 +390,8 @@ public struct ResearchContinuationRequestRecord: Codable, Hashable, Identifiable
         case triptychID = "triptych_id"
         case request
         case requestFingerprint = "request_fingerprint"
-        case policy
-        case policyRevision = "policy_revision"
         case state
-        case authorizationBasis = "authorization_basis"
+        case origin
         case receivedAt = "received_at"
         case expiresAt = "expires_at"
         case decidedAt = "decided_at"
@@ -437,21 +421,13 @@ public struct ResearchContinuationRequestRecord: Codable, Hashable, Identifiable
                 DocumentFingerprint.self,
                 forKey: .requestFingerprint
             ),
-            policy: container.decode(
-                ResearchCollaborationPolicy.self,
-                forKey: .policy
-            ),
-            policyRevision: container.decode(
-                DocumentFingerprint.self,
-                forKey: .policyRevision
-            ),
             state: container.decode(
                 ResearchContinuationRequestState.self,
                 forKey: .state
             ),
-            authorizationBasis: container.decodeIfPresent(
-                ResearchContinuationAuthorizationBasis.self,
-                forKey: .authorizationBasis
+            origin: container.decodeIfPresent(
+                ResearchContinuationOrigin.self,
+                forKey: .origin
             ),
             receivedAt: container.decode(Date.self, forKey: .receivedAt),
             expiresAt: container.decode(Date.self, forKey: .expiresAt),
@@ -462,11 +438,8 @@ public struct ResearchContinuationRequestRecord: Codable, Hashable, Identifiable
 }
 
 public enum ResearchContinuationResultState: String, Codable, Hashable, Sendable {
-    case pendingResearcherDecision = "pending_researcher_decision"
     case created
-    case declined
     case stale
-    case expired
 }
 
 public struct ResearchContinuationResult: Codable, Hashable, Sendable {
@@ -553,7 +526,6 @@ public enum ResearchContinuationContractError: LocalizedError, Hashable, Sendabl
     case invalidRecord
     case invalidResult
     case parentNotFinalized
-    case decisionRequired
 
     public var errorDescription: String? {
         switch self {
@@ -564,8 +536,6 @@ public enum ResearchContinuationContractError: LocalizedError, Hashable, Sendabl
         case .invalidResult: "The Continue Research result is invalid."
         case .parentNotFinalized:
             "Continue Research requires one safely finalized parent Research Record."
-        case .decisionRequired:
-            "This Continue Research request is waiting for one researcher decision."
         }
     }
 }

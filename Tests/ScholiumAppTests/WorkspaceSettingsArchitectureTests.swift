@@ -99,7 +99,6 @@ struct WorkspaceSettingsArchitectureTests {
             "case attention",
             "case skills",
             "case actionProfiles",
-            "case agentAccess",
             "case externalToolsCitations",
         ]
         let indices = try orderedDestinations.map { destination in
@@ -820,7 +819,6 @@ struct WorkspaceSettingsArchitectureTests {
             "ResearchGuidanceSettingsView.swift",
             "ResearchMethodsSettingsView.swift",
             "ActionProfilesSettingsView.swift",
-            "ResearchPermissionSettingsView.swift",
             "ResearchSourcesSettingsView.swift",
         ]
         let source = try guidanceFiles.map { fileName in
@@ -849,7 +847,6 @@ struct WorkspaceSettingsArchitectureTests {
         for category in [
             "Skills",
             "Action Profiles",
-            "Agent Access",
             "External Tools & Citations",
         ] {
             #expect(source.contains(category))
@@ -1026,65 +1023,34 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!settingsRootSource.contains(".frame(width: 700, height: 560"))
     }
 
-    @Test("Research Guidance Markdown sheets share one loss-protecting lifecycle")
-    func researchGuidanceMarkdownSheetOwnership() throws {
+    @Test("Skills has no in-App Markdown editing surface")
+    func researchGuidanceHasNoMarkdownEditor() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let componentSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/ResearchGuidanceMarkdownSheet.swift"
-            ),
-            encoding: .utf8
-        )
         let methodsSource = try String(
             contentsOf: repositoryRoot.appendingPathComponent(
                 "Scholium/Views/ResearchMethodsSettingsView.swift"
             ),
             encoding: .utf8
         )
-        #expect(componentSource.contains("struct ResearchGuidanceMarkdownEditSheet"))
-        #expect(componentSource.contains("struct ResearchGuidanceMarkdownCreationSheet"))
-        #expect(componentSource.contains(".interactiveDismissDisabled(isDirty || isWorking)"))
-        #expect(componentSource.contains(".interactiveDismissDisabled(isDirty || isCreating)"))
-        #expect(componentSource.contains(".keyboardShortcut(.cancelAction)"))
-        #expect(componentSource.contains(".keyboardShortcut(.defaultAction)"))
-        #expect(componentSource.contains("@FocusState"))
-        #expect(componentSource.contains(".accessibilityAddTraits(.isModal)"))
-
-        #expect(methodsSource.contains("ResearchGuidanceMarkdownEditSheet("))
-        #expect(methodsSource.contains("ResearchGuidanceMarkdownCreationSheet("))
-        for supersededOwner in [
-            "ResearchMethodSourceEditor",
-            "NewResearchMethodEditor",
-            "ResearchPracticeSourceEditor",
-            "NewResearchPracticeEditor",
+        #expect(!FileManager.default.fileExists(atPath: repositoryRoot
+            .appendingPathComponent("Scholium/Views/ResearchGuidanceMarkdownSheet.swift")
+            .path))
+        for forbiddenEditor in [
+            "ResearchGuidanceMarkdownEditSheet",
+            "ResearchGuidanceMarkdownCreationSheet",
+            "ResearchGuidanceMarkdownEditDraft",
+            "ResearchGuidanceMarkdownCreationDraft",
+            "Edit Primary Markdown",
+            "Restore Scholium Default",
         ] {
-            #expect(!methodsSource.contains(supersededOwner))
+            #expect(!methodsSource.contains(forbiddenEditor))
         }
-    }
-
-    @Test("Research Guidance Markdown drafts expose truthful local state")
-    func researchGuidanceMarkdownDraftState() {
-        var editDraft = ResearchGuidanceMarkdownEditDraft(source: "# Method\n")
-        #expect(!editDraft.isDirty)
-        editDraft.source.append("Changed\n")
-        #expect(editDraft.isDirty)
-        editDraft.source = editDraft.initialSource
-        #expect(!editDraft.isDirty)
-
-        var creationDraft = ResearchGuidanceMarkdownCreationDraft(
-            name: "",
-            source: "# Skill\n"
-        )
-        #expect(!creationDraft.isDirty)
-        #expect(!creationDraft.canCreate)
-        creationDraft.name = "Attention"
-        #expect(creationDraft.isDirty)
-        #expect(creationDraft.canCreate)
-        creationDraft.source = " \n"
-        #expect(!creationDraft.canCreate)
+        #expect(methodsSource.contains("Assign Skill Folder…"))
+        #expect(methodsSource.contains("Show Skill Folder in Finder…"))
+        #expect(methodsSource.contains("Scholium does not inspect or edit Skill contents"))
     }
 
     @Test("Research Guidance exposes the current owner surfaces without package semantics")
@@ -1097,7 +1063,6 @@ struct WorkspaceSettingsArchitectureTests {
             "ResearchGuidanceSettingsView.swift",
             "ResearchMethodsSettingsView.swift",
             "ActionProfilesSettingsView.swift",
-            "ResearchPermissionSettingsView.swift",
             "ResearchSourcesSettingsView.swift",
         ].map { fileName in
             try String(
@@ -1113,12 +1078,14 @@ struct WorkspaceSettingsArchitectureTests {
             ),
             encoding: .utf8
         )
-        #expect(source.contains("Edit Primary Markdown"))
+        #expect(!source.contains("Edit Primary Markdown"))
         #expect(!source.contains("Restore Previous Edit"))
-        #expect(source.contains("Restore Scholium Default"))
+        #expect(!source.contains("Restore Scholium Default"))
+        #expect(source.contains("Assign Skill Folder…"))
+        #expect(source.contains("Show Skill Folder in Finder…"))
         #expect(source.contains("Skills"))
         #expect(source.contains("Action Profiles"))
-        #expect(source.contains("philosophical lenses"))
+        #expect(source.contains("does not inspect or edit Skill contents"))
         #expect(source.contains("Academic Inputs"))
         #expect(source.contains("Academic Results"))
         #expect(source.contains("Edit Academic Profile"))
@@ -1127,7 +1094,8 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(source.contains("Multiple Choice"))
         #expect(source.contains("Not Included"))
         #expect(source.contains("saveAcademicActionProfiles"))
-        #expect(source.contains("Assign one Skill to each Action"))
+        #expect(source.contains("Assign one researcher-owned Skill folder to each Action"))
+        #expect(!source.contains("ResearchGuidanceMarkdown"))
         #expect(!source.contains("ResearchGuidanceDraftStore"))
         #expect(!source.contains("ResearcherSkillDraftKey"))
         #expect(!source.contains("ResearchActionProfileDraftKey"))
@@ -1137,15 +1105,14 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(settingsRootSource.contains("ResearchGuidanceSettingsView(category: .externalToolsCitations)"))
         #expect(source.contains("AgentCLISettingsView()"))
         #expect(source.contains("ResearchCitationMethodSettingsView"))
-        #expect(source.contains("ResearchPermissionSettingsView()"))
-        #expect(source.contains("saveCollaborationPolicy"))
+        #expect(!source.contains("ResearchPermissionSettingsView()"))
+        #expect(!source.contains("saveCollaborationPolicy"))
         #expect(!source.contains("CONFIGURE MY AGENT"))
         #expect(!source.contains("agentConfigurationPrompt"))
         #expect(!source.contains("Copy Agent Configuration Prompt"))
         #expect(!source.contains("saveSkillPermissionOverride"))
         #expect(!source.contains("removeSkillPermissionOverride"))
-        #expect(source.contains("Choose when an Agent may extend a Run’s bounded write set"))
-        #expect(source.contains("nonreusable capability"))
+        #expect(!source.contains("Choose when an Agent may extend a Run’s bounded write set"))
         for forbidden in [
             ".regularMaterial",
             ".ultraThinMaterial",
@@ -1170,9 +1137,9 @@ struct WorkspaceSettingsArchitectureTests {
             encoding: .utf8
         )
         #expect(source.contains(
-            "Agent write-set extensions ask you every time by default. You can change the Triptych collaboration policy later in Research Guidance Settings."
+            "Agent activity is attributed to its Run and recorded with exact document changes; relevant Notes do not require separate approval."
         ))
-        #expect(source.contains("scholium.bootstrap.permissionDefault"))
+        #expect(source.contains("scholium.bootstrap.activityTracking"))
         #expect(!source.contains("Choose a permission policy"))
     }
 

@@ -12,7 +12,7 @@
 Scholium is a native macOS research environment for sustained work in
 philosophy and the humanities. Its content core is a researcher-governed,
 document-authoritative scholarly knowledge base that one researcher and
-authorized external Agents may maintain together. The research document—not a
+invited external Agents may maintain together. The research document—not a
 dashboard, task board, Agent conversation, or memory store—remains the primary
 interface object. A field of inquiry takes shape as a **Triptych**:
 **Analyses** of sources, **Topics** that gather concepts and debates, and
@@ -20,9 +20,10 @@ interface object. A field of inquiry takes shape as a **Triptych**:
 
 Markdown remains ordinary, inspectable text in folders selected by the
 researcher. Reading, writing, Search, Connections, review, and recovery do not
-depend on an agent. When an external agent is invited, Scholium freezes exact
-Targets, Materials, revisions, methods, and permissions so assistance remains
-bounded, attributable, reviewable, and recoverable.
+depend on an agent. When an external agent is invited, Scholium records the
+Run, exact targets, revisions, operations, outcomes, and scholarly result so
+assistance remains attributable, reviewable, and recoverable without repeated
+permission prompts.
 
 ## Product position
 
@@ -90,19 +91,19 @@ delivery target imports Core.
 The current product supports independent Triptychs and windows, exact-source
 Markdown editing, Search and Connections, note/folder file operations, external-edit
 conflicts, transaction-only interrupted-save recovery, Settle, unified Discussion,
-Critique, and Research Actions with editable current Skills, package-local
-references and philosophical lenses, and academic Profiles. Search v9 gives the app, CLI, Research
+Critique, and Research Actions with researcher-owned, externally editable
+Action Skill folders and academic Profiles. Search v9 gives the app, CLI, Research
 Records, and authenticated Research Context one typed retrieval owner for
 lexical, canonical structured Metadata, explicit direct-relation, authored-summary, and Record
 queries without turning the index into research authority.
 
 An invited external Agent can pair locally with one researcher-created Run,
-receive bounded research context, request a multi-document write set, perform
-revision-checked direct edits, submit one result, leave a portable Research
-Record, and continue through a separate Run. One Triptych collaboration policy,
-process-bound Sessions, nonreusable write capabilities, exact conflicts and
-recovery, and one Record-owned Researcher Evaluation preserve researcher
-control. For a new Analysis, the standalone CLI first asks Scholium for the
+receive bounded research context, register additional relevant targets in the
+Run Activity Ledger without another approval, perform revision-checked direct
+edits, submit one result, leave a portable Research Record, and continue through
+a separate Run. Process-bound Sessions provide attribution; exact transaction
+leases, conflicts, recovery, and one Record-owned Researcher Evaluation preserve
+researcher control. For a new Analysis, the standalone CLI first asks Scholium for the
 current Analyses vault, applicable managed fields, optional Settings
 preferences, the fixed `summary`/`keywords` scaffold, root-managed destination,
 and path/identity/source recovery state; only
@@ -350,11 +351,16 @@ leaves the existing executable/bundle unchanged when verification fails.
 
 The installed `scholium agent` commands let an external Agent start a Run for a
 selected Triptych or pair with one researcher-created Run, obtain its typed
-context, request bounded writes, submit one result, continue research, and end
-the Run through a loopback-only bridge. `agent start` stores the protected
+context, record document activity, perform revision-checked mutations, submit
+one result, continue research, and end
+the Run through a mutually authenticated loopback bridge. `agent start` stores the protected
 Session credential locally and needs no Pairing Code. Pairing the GUI-created
 route still reads the one-time code through standard input;
-Scholium does not launch or supervise the Agent. The project-discovered
+the App alone creates the bridge's process-generation secret and the Agent uses
+it through the installed CLI rather than minting a key. Scholium does not
+launch or supervise the Agent. Action Skill folders are researcher-owned:
+Settings assigns or reveals them, while Scholium never reads or edits their
+contents. The project-discovered
 [Core Protocol](ScholiumCore/Resources/Skills/Scholium%20System%20Skills/scholium-core-protocol/SKILL.md)
 governs entry and is identified again by authenticated context for the Agent
 Run workflow; installed command help owns current CLI syntax.

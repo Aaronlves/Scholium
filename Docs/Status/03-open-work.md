@@ -51,7 +51,7 @@
   and production bridge: pairing, restart
   invalidation, re-pairing, Research Context, authenticated Discuss turns,
   bounded
-  writes, conflict/recovery, Result, Continue Research, Method improvement, End,
+  writes, conflict/recovery, Result, Continue Research, End,
   and automatic expiry-bounded credential cleanup without a post-Result End.
 - In that clean external-Agent pass, exercise `preflight-analysis` with omitted
   and populated authored YAML, optional Settings-preferred fields, managed-root and explicit researcher-selected
@@ -67,7 +67,7 @@
   illustrations explicit and make recommendation locators cover every source
   role claimed in their rationale without hard-coding one paper's content.
 - Complete human accessibility and enlarged mixed-script acceptance for
-  handoff, permission, results, evaluation, continuation, and recovery.
+  handoff, activity tracking, results, evaluation, continuation, and recovery.
 
 ## Editor input and semantics
 
@@ -120,8 +120,9 @@
   and recovery with assistive technology. Finder
   metadata, ACL/xattr identity, parent-directory synchronization, and cleanup
   completion are not save-success acceptance criteria.
-- Verify packaged reopen after an external Skill entry, reference, folder, or
-  Analyze source moves, disappears, is evicted, or is restored.
+- Verify packaged reopen after an external Skill folder or Analyze source
+  moves, disappears, is evicted, or is restored. Skill-file content changes are
+  intentionally outside Scholium observation.
 - Complete direct acceptance of Zotero attachment selection and the built-in
   reader versus MCP boundary.
 

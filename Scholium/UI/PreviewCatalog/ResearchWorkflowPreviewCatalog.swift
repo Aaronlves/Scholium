@@ -32,7 +32,6 @@ enum ResearchWorkflowProof: String, CaseIterable, Identifiable {
     case actionSheet
     case resultReview
     case researchGuidance
-    case writeSetExtension
 
     var id: String { rawValue }
 
@@ -41,7 +40,6 @@ enum ResearchWorkflowProof: String, CaseIterable, Identifiable {
         case .actionSheet: "Skill-run Sheet"
         case .resultReview: "Agent Result Review"
         case .researchGuidance: "Research Guidance"
-        case .writeSetExtension: "Bounded Write Set"
         }
     }
 
@@ -50,7 +48,6 @@ enum ResearchWorkflowProof: String, CaseIterable, Identifiable {
         case .actionSheet: "list.bullet.rectangle"
         case .resultReview: "checkmark.message"
         case .researchGuidance: "slider.horizontal.3"
-        case .writeSetExtension: "doc.badge.ellipsis"
         }
     }
 }
@@ -76,8 +73,6 @@ private struct ResearchWorkflowProofDetail: View {
             ResearchResultReviewProof()
         case .researchGuidance:
             ResearchGuidanceSettingsProof()
-        case .writeSetExtension:
-            ResearchWriteSetExtensionProof()
         }
     }
 }
@@ -166,7 +161,6 @@ private struct ResearchResultReviewProof: View {
                         }
                     )
                 },
-                startMethodImprovement: { _ in throw CancellationError() },
                 deletePermanently: { _ in },
                 openNote: { _, _, _ in }
             )
@@ -508,7 +502,7 @@ private struct ResearchAuthorityFacts: View {
     var body: some View {
         ResearchProofSection(title: "APP-OWNED BOUNDARY") {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                LabeledContent("Agent access policy", value: "Ask Me Every Time")
+                LabeledContent("Agent activity", value: "Tracked in the Run Record")
                 LabeledContent("Candidate write scope", value: action.candidateWriteScope)
                 LabeledContent(
                     "Recovery",
@@ -518,7 +512,7 @@ private struct ResearchAuthorityFacts: View {
                 )
                 LabeledContent("Conflicts", value: "Revalidated before write")
                 LabeledContent("Conflict recovery", value: "Retained candidate source")
-                Text("The Method may guide scholarly work, but it cannot hide or expand these app-owned facts.")
+                Text("The Method may guide scholarly work, while Scholium records the Agent's activity and preserves these app-owned recovery facts.")
                     .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -560,7 +554,6 @@ private struct ResearchSheetButtons: View {
 private enum ResearchGuidanceProofCategory: String, CaseIterable, Identifiable {
     case skills = "Skills"
     case actionProfiles = "Action Profiles"
-    case agentAccess = "Agent Access"
     case externalToolsCitations = "External Tools & Citations"
 
     var id: String { rawValue }
@@ -594,7 +587,6 @@ private struct ResearchGuidanceSettingsProof: View {
 
 private struct ResearchGuidanceSettingsDetail: View {
     let category: ResearchGuidanceProofCategory
-    @State private var collaborationPolicy = "Ask Me Every Time"
 
     var body: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
@@ -610,7 +602,7 @@ private struct ResearchGuidanceSettingsDetail: View {
         switch category {
         case .skills:
             ResearchProofSection(title: "RESEARCH SKILLS") {
-                        Text("Each Platform Action routes to one current Skill. SKILL.md selects task-relevant ordinary references, including philosophical lenses, from its local folder.")
+                        Text("Each Platform Action routes to one researcher-owned Skill folder. Scholium assigns or reveals the folder but never reads or edits its contents.")
                     .font(ScholiumTypography.scholarly(.body))
                     .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -629,7 +621,7 @@ private struct ResearchGuidanceSettingsDetail: View {
                 }
             }
             ResearchProofSection(title: "BOUNDARY") {
-                Text("Skill prose and its references can guide scholarly work. They cannot change Platform Actions, Sessions, collaboration policy, bounded writes, exact revisions, conflicts, or recovery.")
+                Text("Skill prose and its references can guide scholarly work. They cannot change Platform Actions, Session attribution, exact revisions, conflicts, or recovery.")
                     .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -643,18 +635,6 @@ private struct ResearchGuidanceSettingsDetail: View {
                 .font(ScholiumTypography.interface(.body))
                 .scholiumForeground(.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
-        case .agentAccess:
-            ResearchProofSection(title: "AGENT WRITE ACCESS FOR THIS TRIPTYCH") {
-                Picker("Agent access policy", selection: $collaborationPolicy) {
-                    Text("Ask Me Every Time").tag("Ask Me Every Time")
-                    Text("Ask Me Only for Works").tag("Ask Me Only for Works")
-                    Text("Full Triptych Access").tag("Full Triptych Access")
-                }
-                Text("The policy only controls when Scholium asks to extend one Run's bounded write set. It is not attached to a Skill or Agent and never grants blanket writes.")
-                    .font(ScholiumTypography.scholarly(.body))
-                    .scholiumForeground(.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
         case .externalToolsCitations:
             ResearchSkillGroup(title: "CITATION STYLE", detail: "Triptych-owned configuration", rows: [
                 "APA 7",
@@ -682,11 +662,10 @@ private struct ResearchWorkingMethodProofRow: View {
             }
             Spacer()
             Menu("Manage") {
-                Button("Edit Primary Markdown") {}
-                Button("Register Markdown…") {}
-                Button("Register Skill Folder…") {}
+                Button("Show Skill Folder in Finder…") {}
+                Button("Assign Skill Folder…") {}
                 Divider()
-                Button("Restore Scholium Default…") {}
+                Button("Disable") {}
             }
             .menuStyle(.borderlessButton)
         }
@@ -725,75 +704,6 @@ private struct ResearchSkillGroup: View {
     }
 }
 
-// MARK: - Bounded write-set extension
-
-private struct ResearchWriteSetExtensionNote: Identifiable {
-    let id: String
-    let title: String
-    var isSelected: Bool
-}
-
-private struct ResearchWriteSetExtensionProof: View {
-    @State private var notes = [
-        ResearchWriteSetExtensionNote(id: "topic-attention", title: "Topic: Attention", isSelected: true),
-        ResearchWriteSetExtensionNote(id: "topic-normative-reasons", title: "Topic: Normative Reasons", isSelected: false),
-        ResearchWriteSetExtensionNote(id: "work-chapter-three", title: "Work: Chapter Three", isSelected: true),
-    ]
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
-                Text("Allow Additional Notes for This Research Run?")
-                    .font(ScholiumTypography.scholarly(.title))
-                    .accessibilityAddTraits(.isHeader)
-                Text("Select the requested Note targets this Run may create or modify.")
-                    .font(ScholiumTypography.scholarly(.body))
-                    .scholiumForeground(.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                ResearchProofSection(title: "REQUEST") {
-                    LabeledContent("Current Run", value: "Analyze Attention and Salience")
-                    LabeledContent("Reason", value: "Two claims now bear directly on the current Topic and one Work section.")
-                }
-
-                ResearchProofSection(title: "REQUESTED NOTES") {
-                    VStack(spacing: 0) {
-                        ForEach($notes) { $note in
-                            Toggle(note.title, isOn: $note.isSelected)
-                            .frame(minHeight: ScholiumGrid.Dimension.researchActionTargetHeight)
-                            .accessibilityIdentifier("scholium.proofs.request.note.\(note.id)")
-                            ScholiumStructuralRule()
-                        }
-                    }
-                }
-
-                ViewThatFits(in: .horizontal) {
-                    HStack {
-                        Spacer()
-                        writeSetExtensionButtons
-                    }
-                    VStack(alignment: .trailing) {
-                        writeSetExtensionButtons
-                    }
-                }
-            }
-            .padding(ScholiumGrid.Spacing.regionContentInset)
-            .frame(maxWidth: 760, alignment: .leading)
-            .frame(maxWidth: .infinity)
-        }
-        .accessibilityIdentifier("scholium.proofs.writeSetExtension")
-    }
-
-    private var writeSetExtensionButtons: some View {
-        Group {
-            Button("Continue Without Additional Notes") {}
-            Button("Allow Selected Notes") {}
-                .keyboardShortcut(.defaultAction)
-                .disabled(!notes.contains(where: \.isSelected))
-        }
-    }
-}
-
 private struct ResearchProofSection<Content: View>: View {
     let title: String
     @ViewBuilder let content: () -> Content
@@ -818,11 +728,6 @@ private struct ResearchProofSection<Content: View>: View {
 #Preview("Research Guidance") {
     ResearchWorkflowProofDetail(proof: .researchGuidance)
         .frame(width: 900, height: 720)
-}
-
-#Preview("Bounded Write Set") {
-    ResearchWorkflowProofDetail(proof: .writeSetExtension)
-        .frame(width: 760, height: 720)
 }
 
 #Preview("Workflow Dark") {
@@ -855,7 +760,7 @@ private struct ResearchProofSection<Content: View>: View {
 }
 
 #Preview("Workflow 200% Legibility") {
-    ResearchWorkflowProofDetail(proof: .writeSetExtension)
+    ResearchWorkflowProofDetail(proof: .actionSheet)
         .dynamicTypeSize(.accessibility2)
         .frame(width: 900, height: 760)
 }

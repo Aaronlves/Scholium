@@ -1129,7 +1129,7 @@ struct ResearchActionControllerTests {
             ),
             actionID: action.id,
             displayName: action.buttonName,
-            primaryMarkdown: .machineLocal()
+            skillFolder: .machineLocal()
         )
         let authority = try ResearchAuthorityEnvelope(
             readableNotes: [target],
@@ -1140,9 +1140,13 @@ struct ResearchActionControllerTests {
         let snapshot = try ResearchActionSnapshot(
             definition: action.definition,
             target: target,
-            method: try ResearchMethodSnapshot(
+            method: try ResearchSkillBindingSnapshot(
                 registration: registration,
-                primaryMarkdownSource: "# Method\n\nExact controller fixture.\n"
+                registrationRevision: DocumentFingerprint(
+                    content: "registrations"
+                ),
+                skillFolderPath: "/Users/researcher/Skills/\(action.id.rawValue)",
+                skillFolderIsAvailable: true
             ),
             resolvedProfile: action.profile,
             platformInputs: try ResearchActionPlatformInputs(),

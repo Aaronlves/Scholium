@@ -29,9 +29,9 @@ paper retrieval not supplied by Scholium's frozen metadata snapshot.
 
 ## Portable Analysis binding
 
-An authenticated Run may separately authorize `set_zotero_binding` or
-`clear_zotero_binding` for one current Analysis member. This authority belongs
-to the Run's Bounded Write Set, not to MCP and not to Markdown or Properties.
+An authenticated Run may record and perform `set_zotero_binding` or
+`clear_zotero_binding` for one current Analysis target. This operation belongs
+to the Run's tracked activity, not to MCP and not to Markdown or Properties.
 Use the installed `scholium agent write-zotero-binding` help for the current
 strict payload. Set only an exact library identity and item key established by
 the researcher or by a permitted, unambiguous current-task Zotero operation;
@@ -52,7 +52,7 @@ only authority for current invocation syntax and fields. If the installed
 adapter is unavailable, report that limitation rather than searching developer
 directories or trying to build Scholium.
 
-The first-party service uses Zotero Desktop's loopback API for readiness, search, item inspection, and explicitly requested bounded attachment pointers. That API is read-only. BibTeX and RIS imports use Zotero's localhost Connector and require an exact-content dry run; the returned authorization token is short-lived, one-shot, and bound to the content hash and selected destination. The confirmed call rechecks the destination and then reads every returned item back through the local API. No Zotero Web API key is required or stored. Scholium's built-in UI remains read-only and never inherits this external-agent write capability.
+The first-party service uses Zotero Desktop's loopback API for readiness, search, item inspection, and explicitly requested bounded attachment pointers. That API is read-only. BibTeX and RIS imports use Zotero's localhost Connector and require an exact-content dry run; the returned mutation token is short-lived, one-shot, and bound to the content hash and selected destination. The confirmed call rechecks the destination and then reads every returned item back through the local API. No Zotero Web API key is required or stored. Scholium's built-in UI remains read-only and never inherits this external-service mutation path.
 
 The MCP initialize handshake proves only that the stdio service exists. It does not prove that Zotero is open or that its API and Connector are ready; call the Status capability before a Zotero operation. Route by the capability contract in `references/mcp-contract.md` rather than assuming that an instruction file is a connection.
 

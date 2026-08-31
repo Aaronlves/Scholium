@@ -754,11 +754,6 @@ struct AppCompositionRootTests {
             firstWindow!.workspaceProjectionController
                 !== secondWindow.workspaceProjectionController
         )
-        #expect(
-            firstWindow!.researchAgentPermissionWindowController
-                !== secondWindow.researchAgentPermissionWindowController
-        )
-
         #expect(await configuredHandle.events.subscriberCount == 1)
         #expect(await configuredHandle.ownedBackgroundTaskCount > 0)
         #expect(await store.applicationRuntime.pooledVaultSubscriberCount(

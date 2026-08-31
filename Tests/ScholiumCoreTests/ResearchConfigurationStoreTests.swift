@@ -6,7 +6,7 @@ import Testing
 
 @Suite("Current Research configuration store")
 struct ResearchConfigurationStoreTests {
-    @Test("Authorized absolute roots open without following any symbolic-link ancestor")
+    @Test("Authorized absolute roots open without following a symbolic-link ancestor")
     func absoluteRootOpenRejectsLinkedAncestor() throws {
         let fixtureRoot = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
             .appendingPathComponent(".build/research-configuration-root-open-fixtures")
@@ -19,9 +19,7 @@ struct ResearchConfigurationStoreTests {
             at: realControl,
             withIntermediateDirectories: true
         )
-
-        let descriptor = try SecureResearchConfigurationIO.openAbsoluteDirectory(realControl)
-        Darwin.close(descriptor)
+        Darwin.close(try SecureResearchConfigurationIO.openAbsoluteDirectory(realControl))
 
         let linkedParent = fixtureRoot.appendingPathComponent("linked", isDirectory: true)
         try FileManager.default.createSymbolicLink(
@@ -29,21 +27,19 @@ struct ResearchConfigurationStoreTests {
             withDestinationURL: realParent
         )
         #expect(throws: ResearchConfigurationStoreError.self) {
-            let escaped = try SecureResearchConfigurationIO.openAbsoluteDirectory(
+            Darwin.close(try SecureResearchConfigurationIO.openAbsoluteDirectory(
                 linkedParent.appendingPathComponent(".scholium", isDirectory: true)
-            )
-            Darwin.close(escaped)
+            ))
         }
     }
 
-    @Test("Current owners persist with exact revisions and no legacy configuration files")
+    @Test("Current owners persist with exact revisions and no retired files")
     func currentOwnersPersist() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = fixture.store()
-        let registration = try fixture.registration()
         let registrations = try ResearchSkillRegistrationDocument(
-            registrations: [registration]
+            registrations: [fixture.registration()]
         )
         let storedRegistrations = try await store.saveRegistrations(
             registrations,
@@ -51,40 +47,23 @@ struct ResearchConfigurationStoreTests {
         )
         #expect(try await store.registrationSnapshot() == storedRegistrations)
 
-        let profile = try fixture.profile()
-        let profiles = try ResearchAcademicProfileDocument(profiles: [profile])
-        let storedProfiles = try await store.saveProfiles(
-            profiles,
-            expectedRevision: nil
+        let profiles = try ResearchAcademicProfileDocument(
+            profiles: [fixture.profile()]
         )
+        let storedProfiles = try await store.saveProfiles(profiles, expectedRevision: nil)
         #expect(try await store.profileSnapshot() == storedProfiles)
 
-        let policy = ResearchCollaborationPolicyDocument(
-            triptychID: fixture.triptychID,
-            policy: .fullAccess
-        )
-        let storedPolicy = try await store.saveCollaborationPolicy(
-            policy,
-            expectedRevision: nil
-        )
-        #expect(try await store.collaborationSnapshot() == storedPolicy)
-
-        #expect(FileManager.default.fileExists(atPath: fixture.control
-            .appendingPathComponent(ResearchConfigurationStore.registrationFileName).path))
-        #expect(FileManager.default.fileExists(atPath: fixture.control
-            .appendingPathComponent(ResearchConfigurationStore.profileFileName).path))
-        #expect(FileManager.default.fileExists(atPath: fixture.control
-            .appendingPathComponent(ResearchConfigurationStore.collaborationFileName).path))
-        for legacy in [
+        for retired in [
+            "collaboration-policy-v1.json",
             "working-method-bindings-v2.json",
             "research-action-profiles-v1.json",
             "research-permissions-v1.json",
+            "skill-registrations-v2.json",
         ] {
             #expect(!FileManager.default.fileExists(atPath: fixture.control
-                .appendingPathComponent(legacy).path))
+                .appendingPathComponent(retired).path))
         }
-
-        await #expect(throws: ResearchConfigurationStoreError.self) {
+        await #expect(throws: ResearchConfigurationStoreError.staleDocument) {
             _ = try await store.saveRegistrations(
                 registrations,
                 expectedRevision: DocumentFingerprint(content: "stale")
@@ -92,343 +71,147 @@ struct ResearchConfigurationStoreTests {
         }
     }
 
-    @Test("Legacy Practice bytes remain untouched and nonauthorizing")
-    func legacyPracticeBytesAreIgnored() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        try fixture.writeMethod("""
-        # Analyze
-
-        Use [[Dialectical Partner]], then [[Conceptual Analyst]], then
-        [[Dialectical Partner]] again. Keep [[Missing Practice]] visible.
-        `[[Code Is Not A Link]]`
-        [ordinary Markdown](https://example.invalid) is not a Practice.
-        """)
-        try fixture.writePractice(
-            name: "dialectical.md",
-            source: "# Dialectical Partner\n\nPreserve objections and replies.\n"
-        )
-        try fixture.writePractice(
-            name: "conceptual.md",
-            source: "# Conceptual Analyst\n\nTrack meanings and distinctions.\n"
-        )
-        let store = fixture.store()
-        _ = try await store.saveRegistrations(
-            ResearchSkillRegistrationDocument(registrations: [fixture.registration()]),
-            expectedRevision: nil
-        )
-
-        let legacy = try Data(contentsOf: fixture.practices.appendingPathComponent(
-            "dialectical.md"
-        ))
-        let snapshot = try await store.methodSnapshot(for: .analyze)
-        #expect(snapshot.primaryMarkdownSource.contains("[[Dialectical Partner]]"))
-        #expect(snapshot.primaryMarkdownRevision == DocumentFingerprint(
-            content: snapshot.primaryMarkdownSource
-        ))
-        #expect(try Data(contentsOf: fixture.practices.appendingPathComponent(
-            "dialectical.md"
-        )) == legacy)
-    }
-
-    @Test("Registered Skill references remain ordinary unenumerated files")
-    func skillReferencesAreNotEnumerated() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let references = fixture.methods.appendingPathComponent(
-            "references", isDirectory: true
-        )
-        try FileManager.default.createDirectory(
-            at: references,
-            withIntermediateDirectories: true
-        )
-        try Data([0xFF, 0xFE]).write(to: references.appendingPathComponent("lens.md"))
-        let store = fixture.store()
-        let registration = try ResearchSkillRegistration(
-            actionID: .analyze,
-            displayName: "Analyze",
-            primaryMarkdown: .triptychControl("methods/analyze.md"),
-            skillFolder: .triptychControl("methods")
-        )
-        _ = try await store.saveRegistrations(
-            ResearchSkillRegistrationDocument(registrations: [registration]),
-            expectedRevision: nil
-        )
-
-        let snapshot = try await store.methodSnapshot(for: .analyze)
-        #expect(snapshot.skillFolderPath == fixture.methods.path)
-        #expect(snapshot.skillFolderIsAvailable == true)
-        #expect(try Data(contentsOf: references.appendingPathComponent("lens.md"))
-            == Data([0xFF, 0xFE]))
-    }
-
-    @Test("Unknown Profile fields and linked method paths fail closed")
-    func strictDocumentsAndLinkedMethod() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let profile = try fixture.profile()
-        var profileObject = try #require(
-            JSONSerialization.jsonObject(with: JSONEncoder().encode(profile))
-                as? [String: Any]
-        )
-        profileObject["capabilities"] = ["write": true]
-        #expect(throws: ResearchAcademicProfileError.self) {
-            _ = try JSONDecoder().decode(
-                ResearchAcademicActionProfile.self,
-                from: try JSONSerialization.data(withJSONObject: profileObject)
-            )
-        }
-
-        let outside = fixture.root.appendingPathComponent("outside.md")
-        try Data("# Outside\n".utf8).write(to: outside)
-        let method = fixture.methodURL
-        try FileManager.default.removeItem(at: method)
-        try FileManager.default.createSymbolicLink(
-            at: method,
-            withDestinationURL: outside
-        )
-        let store = fixture.store()
-        _ = try await store.saveRegistrations(
-            ResearchSkillRegistrationDocument(registrations: [fixture.registration()]),
-            expectedRevision: nil
-        )
-        await #expect(throws: ResearchConfigurationStoreError.self) {
-            _ = try await store.methodSnapshot(for: .analyze)
-        }
-    }
-
-    @Test("A primary Method edit replaces only the expected exact source")
-    func primaryMethodEditIsRevisionChecked() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let recoveryURL = fixture.root.appendingPathComponent("machine/recovery.json")
-        let store = ResearchConfigurationStore(
-            controlURL: fixture.control,
-            triptychID: fixture.triptychID
-        )
-        let registration = try fixture.registration()
-        _ = try await store.saveRegistrations(
-            ResearchSkillRegistrationDocument(registrations: [registration]),
-            expectedRevision: nil
-        )
-        let original = try await store.methodSnapshot(for: .analyze)
-        let edited = try await store.savePrimaryMethod(
-            registrationKey: registration.key,
-            source: "# Analyze\n\nSecond method.\n",
-            expectedRevision: original.primaryMarkdownRevision
-        )
-        #expect(edited.primaryMarkdownSource == "# Analyze\n\nSecond method.\n")
-        #expect(!FileManager.default.fileExists(atPath: recoveryURL.path))
-    }
-
-    @Test("A stale Method edit changes neither exact Markdown nor local state")
-    func staleMethodEditIsClosed() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let recoveryURL = fixture.root.appendingPathComponent("machine/recovery.json")
-        let store = ResearchConfigurationStore(
-            controlURL: fixture.control,
-            triptychID: fixture.triptychID
-        )
-        let registration = try fixture.registration()
-        _ = try await store.saveRegistrations(
-            ResearchSkillRegistrationDocument(registrations: [registration]),
-            expectedRevision: nil
-        )
-        let before = try Data(contentsOf: fixture.methodURL)
-
-        await #expect(throws: ResearchConfigurationStoreError.self) {
-            _ = try await store.savePrimaryMethod(
-                registrationKey: registration.key,
-                source: "# Unauthorized replacement\n",
-                expectedRevision: DocumentFingerprint(content: "stale")
-            )
-        }
-        #expect(try Data(contentsOf: fixture.methodURL) == before)
-        #expect(!FileManager.default.fileExists(atPath: recoveryURL.path))
-    }
-
-    @Test("New Triptych bootstrap installs only current defaults and never overwrites an edit")
-    func defaultBootstrapIsIdempotent() async throws {
+    @Test("Provisioned user Skill files become opaque researcher-owned contents")
+    func provisionedSkillsAreOpaqueAfterBootstrap() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = fixture.store()
         try await store.bootstrapDefaults()
 
+        let initial = try #require(await store.registrationSnapshot())
+        #expect(initial.document.registrations.count
+            == ResearchActionID.allCases.count)
+        let binding = try await store.skillBindingSnapshot(for: .analyze)
+        let skillEntry = URL(
+            fileURLWithPath: binding.skillFolderPath,
+            isDirectory: true
+        ).appendingPathComponent("SKILL.md")
+        #expect(FileManager.default.fileExists(atPath: skillEntry.path))
+
+        let researcherBytes = Data([0xFF, 0x00, 0x41, 0x0A])
+        try researcherBytes.write(to: skillEntry, options: .atomic)
+        try await store.bootstrapDefaults()
+
+        #expect(try Data(contentsOf: skillEntry) == researcherBytes)
+        let readback = try await store.skillBindingSnapshot(for: .analyze)
+        #expect(readback.registrationRevision == initial.revision)
+        #expect(readback.skillFolderPath == binding.skillFolderPath)
+        #expect(readback.skillFolderIsAvailable)
+    }
+
+    @Test("A Skill folder is assignable without any required entry or reference shape")
+    func externalFolderRelationIsContentOpaque() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = fixture.store()
+        try await store.bootstrapDefaults()
         let registrations = try #require(await store.registrationSnapshot())
-        let profiles = try #require(await store.profileSnapshot())
-        let policy = try #require(await store.collaborationSnapshot())
-        #expect(registrations.document.registrations.map(\.actionID) == [
-            .analyze, .checkFidelity, .critique, .discuss, .synthesize, .write,
-        ])
-        #expect(profiles.document.profiles.count == 6)
-        #expect(policy.document.policy == .askEveryTime)
 
-        let bundledAnalyze = try BundledResearchMethodDefaults.primarySource(for: .analyze)
-        let analyze = try await store.methodSnapshot(for: .analyze)
-        #expect(analyze.primaryMarkdownSource == bundledAnalyze)
-        #expect(analyze.skillFolderPath != nil)
-        let edited = try await store.savePrimaryMethod(
-            registrationKey: analyze.registration.key,
-            source: "# Researcher Method\n\nKeep this exact edit.\n",
-            expectedRevision: analyze.primaryMarkdownRevision
-        )
-
-        try await store.bootstrapDefaults()
-        #expect(try await store.methodSnapshot(for: .analyze).primaryMarkdownSource
-            == edited.primaryMarkdownSource)
-
-        let restored = try await store.restoreDefaultPrimaryMethod(
-            actionID: .analyze,
-            expectedRevision: edited.primaryMarkdownRevision
-        )
-        #expect(restored.primaryMarkdownSource == bundledAnalyze)
-    }
-
-    @Test("A selected Markdown or folder becomes one exact registration without enumeration")
-    func externalRegistrationIsExactAndCASBound() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let store = fixture.store()
-        try await store.bootstrapDefaults()
-        let before = try #require(await store.registrationSnapshot())
-        let oldKey = try #require(
-            before.document.registration(for: .analyze)
-        ).key
-        let folder = fixture.root.appendingPathComponent("ordinary-skill", isDirectory: true)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let primary = folder.appendingPathComponent("primary.md")
-        let source = "# Researcher Analyze\n\nUse [[Dialectical Partner]].\n"
-        try Data(source.utf8).write(to: primary)
-        try Data("opaque sibling".utf8).write(
-            to: folder.appendingPathComponent("not-managed.bin")
-        )
-
-        let registered = try await store.registerExternalMethod(
-            actionID: .analyze,
-            displayName: "Researcher Analyze",
-            primaryMarkdownPath: primary.path,
-            skillFolderPath: folder.path,
-            expectedRegistrationRevision: before.revision
-        )
-        #expect(registered.registration.key != oldKey)
-        #expect(registered.primaryMarkdownSource == source)
-        #expect(registered.skillFolderPath == folder.path)
-        let portableSnapshot = try #require(try await store.registrationSnapshot())
-        let portableRegistration = try JSONEncoder().encode(try #require(
-            portableSnapshot.document.registration(for: .analyze)
-        ))
-        #expect(!String(decoding: portableRegistration, as: UTF8.self)
-            .contains(folder.path))
-        let locatorData = try Data(contentsOf: fixture.machineStorage
-            .appendingPathComponent(ResearchMethodLocatorStore.fileName))
-        #expect(String(decoding: locatorData, as: UTF8.self).contains(folder.path))
-        #expect(FileManager.default.fileExists(
-            atPath: folder.appendingPathComponent("not-managed.bin").path
-        ))
-
-        await #expect(throws: ResearchConfigurationStoreError.staleDocument) {
-            _ = try await store.registerExternalMethod(
-                actionID: .analyze,
-                displayName: "Stale",
-                primaryMarkdownPath: primary.path,
-                skillFolderPath: folder.path,
-                expectedRegistrationRevision: before.revision
-            )
-        }
-        #expect(try await store.methodSnapshot(for: .analyze).registration
-            == registered.registration)
-    }
-
-    @Test("Creating a Skill commits exact bytes once and stale attempts create nothing")
-    func createdMethodIsAtomicAndCASBound() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let store = fixture.store()
-        try await store.bootstrapDefaults()
-        let before = try #require(await store.registrationSnapshot())
-        let source = "# My Synthesis\n\nPreserve this exact method.\n"
-
-        let created = try await store.createPrimaryMethod(
-            actionID: .synthesize,
-            displayName: "My Synthesis",
-            source: source,
-            expectedRegistrationRevision: before.revision
-        )
-        #expect(created.primaryMarkdownSource == source)
-        #expect(created.skillFolderPath != nil)
-        let folders = fixture.control.appendingPathComponent(
-            "skill-folders",
+        let folder = fixture.root.appendingPathComponent(
+            "researcher-owned-skill",
             isDirectory: true
         )
-        let namesBeforeStale = try FileManager.default.contentsOfDirectory(
-            atPath: folders.path
-        ).sorted()
+        try FileManager.default.createDirectory(
+            at: folder,
+            withIntermediateDirectories: true
+        )
+        let arbitrary = folder.appendingPathComponent("notes.bin")
+        let bytes = Data([0x00, 0xFE, 0x7F])
+        try bytes.write(to: arbitrary)
 
-        await #expect(throws: ResearchConfigurationStoreError.staleDocument) {
-            _ = try await store.createPrimaryMethod(
-                actionID: .synthesize,
-                displayName: "Stale",
-                source: "# Stale\n",
-                expectedRegistrationRevision: before.revision
-            )
-        }
-        #expect(try FileManager.default.contentsOfDirectory(atPath: folders.path).sorted()
-            == namesBeforeStale)
-        #expect(try await store.methodSnapshot(for: .synthesize).primaryMarkdownSource
-            == source)
+        let binding = try await store.registerExternalSkillFolder(
+            actionID: .analyze,
+            displayName: "Researcher Skill",
+            skillFolderPath: folder.path,
+            expectedRegistrationRevision: registrations.revision
+        )
+        #expect(binding.skillFolderPath == folder.path)
+        #expect(binding.skillFolderIsAvailable)
+        #expect(try Data(contentsOf: arbitrary) == bytes)
+
+        let portable = try Data(contentsOf: fixture.control.appendingPathComponent(
+            ResearchConfigurationStore.registrationFileName
+        ))
+        #expect(!String(decoding: portable, as: UTF8.self).contains(folder.path))
+        let local = try Data(contentsOf: fixture.machineStorage.appendingPathComponent(
+            ResearchSkillFolderLocatorStore.fileName
+        ))
+        #expect(String(decoding: local, as: UTF8.self).contains(folder.path))
     }
 
-    @Test("Machine-local Method locators reopen privately and reject Triptych replay")
-    func machineLocatorReopenAndIsolation() async throws {
+    @Test("A stale folder assignment changes neither portable nor machine-local state")
+    func staleExternalFolderAssignmentRollsBack() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = fixture.store()
         try await store.bootstrapDefaults()
-        let before = try #require(await store.registrationSnapshot())
-        let folder = fixture.root.appendingPathComponent("external-method")
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let method = folder.appendingPathComponent("SKILL.md")
-        let source = "# External Analyze\n\nKeep exact source.\n"
-        try Data(source.utf8).write(to: method)
-        _ = try await store.registerExternalMethod(
+        let snapshot = try #require(await store.registrationSnapshot())
+        let folder = try fixture.makeFolder("first")
+        let current = try await store.registerExternalSkillFolder(
             actionID: .analyze,
-            displayName: "External Analyze",
-            primaryMarkdownPath: method.path,
+            displayName: "First",
             skillFolderPath: folder.path,
-            expectedRegistrationRevision: before.revision
+            expectedRegistrationRevision: snapshot.revision
         )
-
-        let reopened = fixture.store()
-        #expect(try await reopened.methodSnapshot(for: .analyze).primaryMarkdownSource
-            == source)
-        let directoryMode = try #require(
-            FileManager.default.attributesOfItem(atPath: fixture.machineStorage.path)[
-                .posixPermissions
-            ] as? NSNumber
-        ).intValue
+        let registrationBytes = try Data(contentsOf: fixture.control.appendingPathComponent(
+            ResearchConfigurationStore.registrationFileName
+        ))
         let locatorURL = fixture.machineStorage.appendingPathComponent(
-            ResearchMethodLocatorStore.fileName
+            ResearchSkillFolderLocatorStore.fileName
         )
-        let fileMode = try #require(
-            FileManager.default.attributesOfItem(atPath: locatorURL.path)[
-                .posixPermissions
-            ] as? NSNumber
-        ).intValue
-        #expect(directoryMode == 0o700)
-        #expect(fileMode == 0o600)
+        let locatorBytes = try Data(contentsOf: locatorURL)
 
-        let replayed = ResearchConfigurationStore(
-            controlURL: fixture.control,
-            triptychID: UUID(),
-            machineStorageURL: fixture.machineStorage
-        )
-        await #expect(throws: ResearchMethodLocatorError.self) {
-            _ = try await replayed.methodSnapshot(for: .analyze)
+        await #expect(throws: ResearchConfigurationStoreError.staleDocument) {
+            _ = try await store.registerExternalSkillFolder(
+                actionID: .analyze,
+                displayName: "Stale",
+                skillFolderPath: try fixture.makeFolder("stale").path,
+                expectedRegistrationRevision: snapshot.revision
+            )
         }
+        #expect(try Data(contentsOf: fixture.control.appendingPathComponent(
+            ResearchConfigurationStore.registrationFileName
+        )) == registrationBytes)
+        #expect(try Data(contentsOf: locatorURL) == locatorBytes)
+        #expect(try await store.skillBindingSnapshot(for: .analyze) == current)
     }
 
-    @Test("Invalid machine-local Method locators are archived before local reset")
+    @Test("Machine-local Skill-folder bookmark is folder-scoped")
+    func machineLocatorBookmarkLeastPrivilege() throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let folder = try fixture.makeFolder("external-skill")
+        let recorder = BookmarkAccessRecorder()
+        let locator = ResearchSkillFolderLocatorStore(
+            storageURL: fixture.machineStorage,
+            triptychID: fixture.triptychID,
+            bookmarkAccess: recorder.access
+        )
+
+        let key = ResearchSkillRegistrationKey()
+        let binding = try locator.makeBinding(
+            registrationKey: key,
+            skillFolderURL: folder
+        )
+        _ = try locator.save(
+            ResearchSkillFolderLocatorStore.Document(
+                triptychID: fixture.triptychID,
+                bindings: [binding]
+            ),
+            expectedRevision: nil
+        )
+        #expect(recorder.createdPaths == [folder.standardizedFileURL.path])
+        #expect(recorder.activeAccessCount == 0)
+        var access: (any ResearchSkillFolderAccess)? = try locator.skillFolderAccess(
+            for: key
+        )
+        #expect(access?.url.standardizedFileURL.path == folder.path)
+        #expect(recorder.activeAccessCount == 1)
+        access = nil
+        #expect(recorder.activeAccessCount == 0)
+    }
+
+    @Test("Invalid machine-local Skill-folder locators are archived before reset")
     func machineLocatorRecovery() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
@@ -439,26 +222,27 @@ struct ResearchConfigurationStoreTests {
             withIntermediateDirectories: true
         )
         let locatorURL = fixture.machineStorage.appendingPathComponent(
-            ResearchMethodLocatorStore.fileName
+            ResearchSkillFolderLocatorStore.fileName
         )
         let invalid = Data("{\"schemaVersion\":0,\"opaque\":true}".utf8)
         try invalid.write(to: locatorURL)
-        let locator = ResearchMethodLocatorStore(
+
+        #expect(throws: ResearchSkillFolderLocatorError.self) {
+            _ = try ResearchSkillFolderLocatorStore(
+                storageURL: fixture.machineStorage,
+                triptychID: fixture.triptychID
+            ).snapshot()
+        }
+        let preserved = try #require(
+            await store.preserveInvalidMachineLocalSkillFolderLocatorsAndReset()
+        )
+        #expect(try Data(contentsOf: preserved) == invalid)
+        let resetSnapshot = try ResearchSkillFolderLocatorStore(
             storageURL: fixture.machineStorage,
             triptychID: fixture.triptychID
-        )
-        #expect(throws: ResearchMethodLocatorError.self) {
-            _ = try locator.snapshot()
-        }
-
-        let preserved = try #require(
-            try await store.preserveInvalidMachineLocalMethodLocatorsAndReset()
-        )
-
-        #expect(try Data(contentsOf: preserved) == invalid)
-        let resetData = try Data(contentsOf: locatorURL)
-        #expect(resetData != invalid)
-        #expect(try await store.preserveInvalidMachineLocalMethodLocatorsAndReset() == nil)
+        ).snapshot()
+        let reset = try #require(resetSnapshot)
+        #expect(reset.document.bindings.isEmpty)
     }
 
     @Test("Citation style is Triptych-bound, optional, and revision checked")
@@ -498,9 +282,6 @@ struct ResearchConfigurationStoreTests {
     private final class Fixture: @unchecked Sendable {
         let root: URL
         let control: URL
-        let methods: URL
-        let practices: URL
-        let methodURL: URL
         let machineStorage: URL
         let triptychID = UUID()
 
@@ -509,22 +290,14 @@ struct ResearchConfigurationStoreTests {
                 .appendingPathComponent(".build/research-configuration-fixtures")
                 .appendingPathComponent(UUID().uuidString)
             control = root.appendingPathComponent(".scholium", isDirectory: true)
-            methods = control.appendingPathComponent("methods", isDirectory: true)
-            practices = control.appendingPathComponent("practices", isDirectory: true)
-            methodURL = methods.appendingPathComponent("analyze.md")
             machineStorage = root.appendingPathComponent(
                 "machine/research-guidance",
                 isDirectory: true
             )
             try FileManager.default.createDirectory(
-                at: methods,
+                at: control,
                 withIntermediateDirectories: true
             )
-            try FileManager.default.createDirectory(
-                at: practices,
-                withIntermediateDirectories: true
-            )
-            try writeMethod("# Analyze\n\nDefault method.\n")
         }
 
         func store() -> ResearchConfigurationStore {
@@ -539,7 +312,7 @@ struct ResearchConfigurationStoreTests {
             try ResearchSkillRegistration(
                 actionID: .analyze,
                 displayName: "Analyze",
-                primaryMarkdown: .triptychControl("methods/analyze.md")
+                skillFolder: .triptychControl("skill-folders/analyze")
             )
         }
 
@@ -559,19 +332,56 @@ struct ResearchConfigurationStoreTests {
             )
         }
 
-        func writeMethod(_ source: String) throws {
-            try Data(source.utf8).write(to: methodURL, options: .atomic)
-        }
-
-        func writePractice(name: String, source: String) throws {
-            try Data(source.utf8).write(
-                to: practices.appendingPathComponent(name),
-                options: .atomic
+        func makeFolder(_ name: String) throws -> URL {
+            let folder = root.appendingPathComponent(name, isDirectory: true)
+            try FileManager.default.createDirectory(
+                at: folder,
+                withIntermediateDirectories: true
             )
+            return folder
         }
 
         func remove() {
             try? FileManager.default.removeItem(at: root)
         }
+    }
+}
+
+private final class BookmarkAccessRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var paths: [String] = []
+    private var activeCount = 0
+
+    var createdPaths: [String] {
+        lock.withLock { paths }
+    }
+
+    var activeAccessCount: Int {
+        lock.withLock { activeCount }
+    }
+
+    var access: ResearchSkillFolderLocatorStore.BookmarkAccess {
+        ResearchSkillFolderLocatorStore.BookmarkAccess(
+            create: { [self] url in
+                lock.withLock { paths.append(url.standardizedFileURL.path) }
+                return Data(url.standardizedFileURL.path.utf8)
+            },
+            resolve: { data in
+                guard let path = String(data: data, encoding: .utf8) else {
+                    throw CocoaError(.fileReadCorruptFile)
+                }
+                return ResearchSkillFolderLocatorStore.BookmarkResolution(
+                    url: URL(fileURLWithPath: path),
+                    isStale: false
+                )
+            },
+            start: { [self] _ in
+                lock.withLock { activeCount += 1 }
+                return true
+            },
+            stop: { [self] _ in
+                lock.withLock { activeCount -= 1 }
+            }
+        )
     }
 }

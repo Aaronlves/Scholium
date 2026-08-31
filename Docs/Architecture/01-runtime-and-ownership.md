@@ -57,7 +57,7 @@ ApplicationBootstrapController (one app-owned storage gate)
     └── WorkspaceStore (macOS adapter and sole event-stream subscriber)
         ├── WorkspaceRuntime (one live runtime for the app delivery)
         ├── ResearchConnectionCoordinator (one process generation)
-        ├── LocalAgentBridge (127.0.0.1 framed transport only)
+        ├── LocalAgentBridge (mutually authenticated loopback frames only)
         │   └── LocalAgentBridgeRequestRouter (wire-operation translation only)
         ├── SwiftUI WindowGroup (one Codable route per scene)
             ├── WindowModel (one per complete workspace window)
@@ -299,7 +299,7 @@ enters the persisted definition.
 Application composes a private `WorkspaceHandle`; the macOS adapter exposes
 `DocumentUseCases`, `DiscoveryUseCases`, and one app-owned
 `WindowResearchCapabilities` value composed from the narrow Record,
-Skill/Profile, collaboration, Action/Run, Research
+Skill/Profile, Action/Run, Research
 Context, evaluation, and source-access ports plus immutable
 identity/assignment values. Contracts declares no aggregate Research mega-port.
 Configuration preflights roots and reads the portable manifest before
@@ -329,13 +329,15 @@ mirrors. Each window receives one atomic capability generation. CSS/App
 Support, Obsidian reads, and Zotero HTTP stay behind Application actors; the
 store owns no Core authority.
 
-`WorkspaceStore` owns bridge startup, shutdown, and cross-window editor flush;
-`LocalAgentBridgeRequestRouter` alone translates the closed wire-operation set
-through the Application runtime, flush port, and permission-claim projection.
-The App listens only on `127.0.0.1`; Pairing Codes and Sessions authorize it
-without an App Group. `ResearchConnectionCoordinator` owns process-local
-credentials, while each Run stays with its `WorkspaceHandle`. Neither
-transport nor router owns Run context, source, recovery, or durable decisions.
+`WorkspaceStore` owns bridge lifetime and editor flush;
+`LocalAgentBridgeRequestRouter` maps wire operations. The App listens
+only on `127.0.0.1`. A `0700` Application Support directory holds its rotated
+`0600` transport secret. Peers authenticate nonce-bound HMACs before request
+decoding. The App creates the process-generation secret;
+the CLI reads it and an external Agent invokes the CLI. Pairing Codes/Sessions
+authenticate one attributed Run, not per-document decisions. No App Group exists.
+`ResearchConnectionCoordinator` owns process credentials;
+`WorkspaceHandle` owns Runs. Transport owns no durable decisions.
 
 ### Window state and feature controllers
 
@@ -347,7 +349,7 @@ Confirmation/Information; Warning/Error require identity dismissal.
 `WindowWorkspaceController` alone owns Triptych
 selection, registration, capability generation, identity, access recovery,
 and restoration. It calls `WorkspaceStore` for configuration, activation
-snapshots, registration, permissions, and Vault configuration, then a
+snapshots, registration, folder access, and Vault configuration, then a
 typed installer lets the root bind that accepted generation into feature
 owners without selecting or mutating the session.
 `WindowLibraryMutationController` owns Note/Folder preparation and mutation
@@ -365,9 +367,9 @@ SwiftUI disappearance only detaches presentation. `DocumentTransitionCoordinator
 owns and cancels serialized transition tasks. `WindowEditorFlushCoordinator`
 owns ordered current-editor and aggregate-window registrations. They survive
 preparation so cancelled application termination remains retryable, and end
-only after AppKit commits the close. `ResearchActionController` owns the exact
-window's transient write-set subset sheet and the read-only projection of
-direct Continue Research children beneath the current parent Action. It owns no
+only after AppKit commits the close. `ResearchActionController` owns the
+read-only projection of direct Continue Research children beneath the current
+parent Action. It owns no
 finalized-result or researcher-response presentation. The Records-only
 `ResearcherResponseEditorSheet` owns one local Evaluation-plus-Method-Feedback
 draft for the exact rendered Record, its dirty state, operation lifetime,
@@ -762,9 +764,9 @@ Packaging emits a sandboxed App archive and an independent CLI archive with
 matching provenance. The CLI has no App Sandbox or App Group entitlement. The
 CLI update module owns verified, recoverable self-update and has no App
 authority. It promotes a complete transaction before replacement; the packaged
-installer is first-install-only. The App retains sandboxing, user-selected read-write access,
-app-scoped bookmarks,
-Zotero client access, and loopback server access. One home-relative exception
+installer is first-install-only. The App retains sandboxing, user-selected
+read-write access, app-scoped bookmarks, Zotero client access, and App Sandbox's
+required network-server entitlement for that listener. One home-relative exception
 exposes only `Library/Application Support/Scholium`; the App has no `.local`
 access or embedded CLI. The copied Agent instruction limits installation to
 `~/.local/bin/scholium` and its adjacent resource bundle and never authorizes

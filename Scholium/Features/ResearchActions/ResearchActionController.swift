@@ -986,11 +986,11 @@ extension ResearchActionRepairReason {
         case .sourceAccessRequired:
             String(localized: "Choose the exact source again before Analyze.", table: "Localizable", bundle: .module)
         case .methodMissing:
-            String(localized: "Install or restore the working method in Research Guidance.", table: "Localizable", bundle: .module)
+            String(localized: "Assign the Action Skill folder in Research Guidance.", table: "Localizable", bundle: .module)
         case .methodDisabled:
-            String(localized: "Enable the working method in Research Guidance.", table: "Localizable", bundle: .module)
+            String(localized: "Enable the Action Skill in Research Guidance.", table: "Localizable", bundle: .module)
         case .methodInvalid:
-            String(localized: "The working method needs repair in Research Guidance.", table: "Localizable", bundle: .module)
+            String(localized: "The Action Skill folder needs repair in Research Guidance.", table: "Localizable", bundle: .module)
         case .profileInvalid:
             String(localized: "The Action Profile needs repair in Research Guidance.", table: "Localizable", bundle: .module)
         case .unsupportedCapability:

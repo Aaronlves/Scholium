@@ -179,7 +179,7 @@ struct PhaseOneOwnershipContractsTests {
         let analyze = try ResearchSkillRegistration(
             actionID: .analyze,
             displayName: "Analyze Philosophical Source",
-            primaryMarkdown: .triptychControl("methods/analyze.md")
+            skillFolder: .triptychControl("skill-folders/analyze")
         )
         let document = try ResearchSkillRegistrationDocument(registrations: [analyze])
         #expect(document.registration(for: .analyze) == analyze)
@@ -191,7 +191,7 @@ struct PhaseOneOwnershipContractsTests {
                 ResearchSkillRegistration(
                     actionID: .analyze,
                     displayName: "Competing Analyzer",
-                    primaryMarkdown: .triptychControl("methods/other-analyze.md")
+                    skillFolder: .triptychControl("skill-folders/other-analyze")
                 ),
             ])
         }
@@ -215,11 +215,9 @@ struct PhaseOneOwnershipContractsTests {
         let registration = try ResearchSkillRegistration(
             actionID: .write,
             displayName: "Write",
-            primaryMarkdown: .machineLocal(),
             skillFolder: .machineLocal()
         )
-        #expect(registration.primaryMarkdown.kind == .machineLocal)
-        #expect(registration.skillFolder?.kind == .machineLocal)
+        #expect(registration.skillFolder.kind == .machineLocal)
         let encoded = try JSONEncoder().encode(registration)
         #expect(!String(decoding: encoded, as: UTF8.self).contains("/tmp/"))
 
@@ -227,12 +225,11 @@ struct PhaseOneOwnershipContractsTests {
             _ = try ResearchSkillRegistration(
                 actionID: .write,
                 displayName: "Escaped",
-                primaryMarkdown: .triptychControl("skill-folders/write/SKILL.md"),
-                skillFolder: .machineLocal()
+                skillFolder: .triptychControl("../outside")
             )
         }
         #expect(throws: ResearchSkillRegistrationError.self) {
-            _ = try ResearchMethodFileLocation.triptychControl("../outside.md")
+            _ = try ResearchSkillFolderLocation.triptychControl("../outside")
         }
         #expect(throws: ResearchSkillRegistrationError.self) {
             _ = try JSONDecoder().decode(
@@ -322,43 +319,4 @@ struct PhaseOneOwnershipContractsTests {
         }
     }
 
-    @Test("Triptych collaboration is one policy without Skill overrides or digests")
-    func oneCollaborationPolicy() throws {
-        let triptychID = UUID()
-        let document = ResearchCollaborationPolicyDocument(
-            triptychID: triptychID,
-            policy: .askOnlyForWorks
-        )
-        let encoded = try JSONEncoder().encode(document)
-        let json = try #require(
-            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
-        )
-        #expect(Set(json.keys) == ["schemaVersion", "triptychID", "policy"])
-
-        let initial = try ResearchCollaborationRequest(
-            kind: .initialAction,
-            requestedWritableRoles: [.analysis]
-        )
-        #expect(ResearchCollaborationPolicyResolver.evaluate(
-            policy: .askEveryTime,
-            request: initial
-        ) == .initialObjectAuthorized)
-
-        let topicExtension = try ResearchCollaborationRequest(
-            kind: .writeSetExtension,
-            requestedWritableRoles: [.topic]
-        )
-        let workExtension = try ResearchCollaborationRequest(
-            kind: .writeSetExtension,
-            requestedWritableRoles: [.work]
-        )
-        #expect(ResearchCollaborationPolicyResolver.evaluate(
-            policy: .askOnlyForWorks,
-            request: topicExtension
-        ) == .mayProceed)
-        #expect(ResearchCollaborationPolicyResolver.evaluate(
-            policy: .askOnlyForWorks,
-            request: workExtension
-        ) == .requiresResearcherDecision)
-    }
 }

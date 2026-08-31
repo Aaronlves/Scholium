@@ -326,9 +326,9 @@ Record detail and Result Ready expose the same primary **Follow Up…**. It
 prepares a fresh researcher Action/Run with distinct `continued from` without
 editing the parent. The sheet requires a next Action, Research Request, and
 short finding/question/hypothesis. Optional default-collapsed **Feedback on
-Previous Result** belongs to the parent and may expose **Improve Current
-Method...**. Add Response, Researcher Response, Evaluation, and Record unread
-state do not exist.
+Previous Result** belongs to the parent and authorizes no Skill mutation. Add
+Response, Researcher Response, Evaluation, and Record unread state do not
+exist.
 
 The fixed Evidence rail presents **Changes**, **Effects**, **Participants**,
 and **Technical Details**. It owns no Review or Response.
@@ -368,8 +368,8 @@ The single confirmed permanent-delete route is a named `trash` icon in the
 single-Record header, never on collection rows or inside
 Technical Details. Changes offers read-only **View Changes...** or **Compare
 Changes...** for confirmed Agent changes and only the recovery operations whose
-exact prerequisites remain valid. Method improvement begins only from the
-saved Method Feedback in this Record and remains a separate authenticated Run.
+exact prerequisites remain valid. Saved Method Feedback is Record content; it
+does not expose a Skill mutation or separate authenticated Run.
 
 Compare Changes is one shared attached single-column diff, never a left/right
 pair. Each document shows path, state, and revisions and can fold; the sole or
@@ -536,16 +536,13 @@ rail group or another visual branch. Availability fails closed while checking;
 Overview/Library.
 
 Each Action is one compact icon-only native button with a direct symbol.
-Action launchers have no assigned shortcuts; the menu and Document rail remain
-keyboard-accessible. Its modular sheet shows the necessary scholarly inputs and
-app-owned authority or recovery facts without exposing assembled prompts,
-registration keys, Session secrets, or technical mode names. The active Action
-and its sheet retain keyboard, menu, pointer, focus, cancellation, and VoiceOver
-parity. All Action launchers use one shared rail-button recipe with the Action
-target metric owned by §19.3 and no default row or group separator. Availability
-checking, ready, unavailable, error, cancellation recovery, Settle, and Settled
-remain distinct states without changing Action routing or ownership. Error and
-recovery information remains complete.
+Launchers have no assigned shortcuts; menu and rail remain keyboard-accessible.
+Their sheets show scholarly inputs and app-owned authority/recovery, never
+assembled prompts, registration keys, Session secrets, or technical modes.
+Actions and sheets retain keyboard, menu, pointer, focus, cancellation, and
+VoiceOver parity. Launchers share §19.3's target metric without default
+separators. Checking, ready, unavailable, error, cancellation recovery, Settle,
+and Settled remain distinct; error and recovery information stays complete.
 
 After preparation, the rail remains a launcher rather than a lifecycle list.
 Waiting, Running, Needs Attention, Result Ready, and Recovery Required belong to
@@ -555,23 +552,26 @@ rather than clip them.
 
 An Action sheet keeps Profile **Research Request** visible and collapses only
 other optional inputs. It presents target effect, read-only Additional Context,
-extra-Note approval, and repair before **Copy Handoff**. The copied instructions contain only
+and repair before **Copy Handoff**. The copied instructions contain only
 Run locator, one-time Pairing Code, local route, and CLI steps; the code is
-never a separate field. Copy freezes when needed but never selects or opens an
-Agent app. Success closes and restores focus to the Action button; failure keeps
-the sheet and inputs. A prepared Run's compact status sheet offers Run status,
+never a separate field. Copy freezes when needed but opens no Agent app.
+Success restores Action-button focus; failure retains the sheet and inputs.
+A prepared Run's compact status sheet offers Run status,
 **Copy New Handoff**, **End Action**, and recovery only. Recopy invalidates the
 prior pairing without replacing the Run.
-Closing leaves an unfinished Action active; **End Action** revokes access and
-closes a cancellable no-write Run. Confirmed or uncertain work retains its
-Result or recovery path. Discussion shows Comments, current/earlier locators,
+Closing leaves unfinished Actions active; **End Action** revokes a cancellable
+no-write Run, while confirmed or uncertain work retains Result/recovery.
+Discussion shows Comments, current/earlier locators,
 **Copy Handoff**, **Close**, and **End Discussion…**, but no manual Agent reply,
 Follow Up, or Finish. The first Agent reply forms its Record and dismisses it;
-End preserves the unanswered exchange. Pairing,
-re-pairing, Session expiry or revocation, missing local Skill-folder path,
-conflict, write result unknown, and recovery each use complete text and an
-executable next route without displaying the real Session secret or internal
-fingerprints as tasks for the researcher.
+End preserves unanswered exchange. Pairing/re-pairing, Session
+expiry/revocation, missing Skill-folder access, conflict, unknown write, and
+recovery retain complete text and an executable route without exposing Session
+secrets or internal fingerprints.
+
+Agent activity updates do not activate or focus the app and do not present a
+decision sheet. Relevant extra Notes are added to the current Run Activity
+Ledger and appear in the resulting Record.
 
 The Inspector and Document Action rail show no post-preparation lifecycle.
 **Notifications** owns one

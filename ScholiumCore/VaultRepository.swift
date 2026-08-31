@@ -409,7 +409,17 @@ public actor VaultRepository {
         let current = NoteDocument(relativePath: relativePath, rawContent: currentContent)
         let updatedContent = try current.applying(changeSet, timestampKey: nil)
         let updated = NoteDocument(relativePath: relativePath, rawContent: updatedContent)
-        if !updated.validationWarnings.isEmpty, updated.rawFrontmatter != nil {
+        let preservesClosedInvalidFrontmatter: Bool = switch changeSet {
+        case .body:
+            current.rawFrontmatter != nil
+                && current.rawFrontmatter == updated.rawFrontmatter
+                && current.hasProvableBodyBoundary
+        default:
+            false
+        }
+        if !updated.validationWarnings.isEmpty,
+           updated.rawFrontmatter != nil,
+           !preservesClosedInvalidFrontmatter {
             return .notWritten(.invalidFrontmatter(
                 updated.validationWarnings.joined(separator: "\n")
             ))

@@ -143,7 +143,7 @@ struct ResearchActionHandoffPresentationTests {
             "Scholium/Views/ResearchActions/ResearchActionPanelView.swift",
             repositoryRoot: repositoryRoot
         )
-        let methodFeedback = try source(
+        let recordProcessing = try source(
             "Scholium/Views/ResearchRecord/ResearchRecordProcessingViews.swift",
             repositoryRoot: repositoryRoot
         )
@@ -176,10 +176,10 @@ struct ResearchActionHandoffPresentationTests {
             .appendingPathComponent("Tests/ScholiumAppTests/AgentApplicationHandoffControllerTests.swift")
             .path))
 
-        #expect(!methodFeedback.contains("scholium.methodFeedback.pairingCode"))
-        #expect(!methodFeedback.contains("Text(\"Pairing Code\")"))
-        #expect(methodFeedback.contains("Pairing Code: \\(handoff.pairingCode.rawValue)"))
-        #expect(methodFeedback.contains("Button(\"Copy Handoff\")"))
+        #expect(!recordProcessing.contains("scholium.methodFeedback.pairingCode"))
+        #expect(!recordProcessing.contains("Text(\"Pairing Code\")"))
+        #expect(!recordProcessing.contains("Pairing Code: \\(handoff.pairingCode.rawValue)"))
+        #expect(!recordProcessing.contains("Button(\"Copy Handoff\")"))
     }
 
     private func source(_ relativePath: String, repositoryRoot: URL) throws -> String {

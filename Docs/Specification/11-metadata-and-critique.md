@@ -170,7 +170,7 @@ researcher competence. Any Traced, Untraced, Disputed, or Beyond Sources label
 remains an attributed agent judgment, never a Scholium status.
 
 Critique never modifies the target Work. A recommended source change requires
-current Write authority. The Critique registration's editable primary Markdown
-owns the active method; the app-bundled default is read only and used only for
-explicit restoration. This specification states requirements without
-duplicating the Skill's complete prose.
+current Write authority. The Critique registration identifies one
+researcher-owned Action Skill folder; Scholium does not read, edit, validate,
+or restore its contents. This specification states requirements without
+duplicating the user-managed Skill's complete prose.

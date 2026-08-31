@@ -1,5 +1,7 @@
 import Darwin
+import CryptoKit
 import Foundation
+import Security
 import ScholiumContracts
 import ScholiumCore
 
@@ -11,14 +13,12 @@ public enum LocalAgentBridgeOperation: String, Codable, Sendable {
     case context
     case query
     case discussionReply = "discussion_reply"
-    case extendWriteSet = "extend_write_set"
+    case trackActivity = "track_activity"
     case writeDocument = "write_document"
     case writeZoteroBinding = "write_zotero_binding"
     case resolveWriteConflict = "resolve_write_conflict"
     case submitResult = "submit_result"
     case continueResearch = "continue_research"
-    case methodImprovementContext = "method_improvement_context"
-    case submitMethodImprovement = "submit_method_improvement"
     case end
 }
 
@@ -73,7 +73,7 @@ private struct LocalAgentBridgeWireCredential: Codable {
 public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertible,
     CustomDebugStringConvertible
 {
-    public static let currentSchemaVersion = 21
+    public static let currentSchemaVersion = 22
 
     public let schemaVersion: Int
     public let correlationID: UUID
@@ -93,7 +93,6 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
     public let conflictResolutionIntent: ResearchWriteConflictResolutionIntent?
     public let resultSubmission: ResearchAgentResultSubmission?
     public let continuationRequest: ResearchContinuationRequest?
-    public let methodImprovementSubmission: ResearchMethodImprovementSubmission?
 
     public init(
         correlationID: UUID = UUID(),
@@ -112,8 +111,7 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
         zoteroBindingWriteIntent: ResearchZoteroBindingWriteIntent? = nil,
         conflictResolutionIntent: ResearchWriteConflictResolutionIntent? = nil,
         resultSubmission: ResearchAgentResultSubmission? = nil,
-        continuationRequest: ResearchContinuationRequest? = nil,
-        methodImprovementSubmission: ResearchMethodImprovementSubmission? = nil
+        continuationRequest: ResearchContinuationRequest? = nil
     ) throws {
         let shapeIsValid = switch operation {
         case .preflightAnalysisCreation:
@@ -123,14 +121,14 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 && discussionReplyRequest == nil && writeSetIntent == nil
                 && documentWriteIntent == nil && zoteroBindingWriteIntent == nil
                 && conflictResolutionIntent == nil && resultSubmission == nil
-                && continuationRequest == nil && methodImprovementSubmission == nil
+                && continuationRequest == nil
         case .start:
             triptychID != nil && startRequest != nil && run == nil
                 && pairingCode == nil && credential == nil
                 && contextRequest == nil && writeSetIntent == nil
                 && documentWriteIntent == nil && zoteroBindingWriteIntent == nil
                 && conflictResolutionIntent == nil && resultSubmission == nil
-                && continuationRequest == nil && methodImprovementSubmission == nil
+                && continuationRequest == nil
         case .pair:
             triptychID == nil && startRequest == nil
                 && run != nil && pairingCode != nil && credential == nil
@@ -139,7 +137,6 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 && zoteroBindingWriteIntent == nil
                 && conflictResolutionIntent == nil
                 && resultSubmission == nil && continuationRequest == nil
-                && methodImprovementSubmission == nil
         case .revokeSession:
             triptychID == nil && startRequest == nil
                 && run == nil && pairingCode == nil && credential != nil
@@ -148,7 +145,6 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 && zoteroBindingWriteIntent == nil
                 && conflictResolutionIntent == nil
                 && resultSubmission == nil && continuationRequest == nil
-                && methodImprovementSubmission == nil
         case .context:
             triptychID == nil && startRequest == nil
                 && run != nil && pairingCode == nil && credential != nil
@@ -157,7 +153,6 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 && zoteroBindingWriteIntent == nil
                 && conflictResolutionIntent == nil
                 && resultSubmission == nil && continuationRequest == nil
-                && methodImprovementSubmission == nil
         case .query:
             triptychID == nil && startRequest == nil
                 && run != nil && pairingCode == nil && credential != nil
@@ -166,7 +161,6 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 && zoteroBindingWriteIntent == nil
                 && conflictResolutionIntent == nil
                 && resultSubmission == nil && continuationRequest == nil
-                && methodImprovementSubmission == nil
         case .discussionReply:
             triptychID == nil && startRequest == nil
                 && run != nil && pairingCode == nil && credential != nil
@@ -176,8 +170,7 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 && zoteroBindingWriteIntent == nil
                 && conflictResolutionIntent == nil
                 && resultSubmission == nil && continuationRequest == nil
-                && methodImprovementSubmission == nil
-        case .extendWriteSet:
+        case .trackActivity:
             triptychID == nil && startRequest == nil
                 && run != nil && pairingCode == nil && credential != nil
                 && contextRequest == nil && writeSetIntent != nil
@@ -185,7 +178,6 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 && zoteroBindingWriteIntent == nil
                 && conflictResolutionIntent == nil
                 && continuationRequest == nil
-                && methodImprovementSubmission == nil
         case .writeDocument:
             triptychID == nil && startRequest == nil
                 && run != nil && pairingCode == nil && credential != nil
@@ -194,7 +186,6 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 && zoteroBindingWriteIntent == nil
                 && conflictResolutionIntent == nil
                 && continuationRequest == nil
-                && methodImprovementSubmission == nil
         case .writeZoteroBinding:
             triptychID == nil && startRequest == nil
                 && run != nil && pairingCode == nil && credential != nil
@@ -203,7 +194,6 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 && zoteroBindingWriteIntent != nil
                 && resultSubmission == nil && conflictResolutionIntent == nil
                 && continuationRequest == nil
-                && methodImprovementSubmission == nil
         case .resolveWriteConflict:
             triptychID == nil && startRequest == nil
                 && run != nil && pairingCode == nil && credential != nil
@@ -212,7 +202,6 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 && zoteroBindingWriteIntent == nil
                 && conflictResolutionIntent != nil
                 && continuationRequest == nil
-                && methodImprovementSubmission == nil
         case .submitResult:
             triptychID == nil && startRequest == nil
                 && run != nil && pairingCode == nil && credential != nil
@@ -221,7 +210,6 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 && zoteroBindingWriteIntent == nil
                 && conflictResolutionIntent == nil
                 && continuationRequest == nil
-                && methodImprovementSubmission == nil
         case .continueResearch:
             triptychID == nil && startRequest == nil
                 && run != nil && pairingCode == nil && credential != nil
@@ -230,25 +218,6 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 && zoteroBindingWriteIntent == nil
                 && conflictResolutionIntent == nil
                 && continuationRequest != nil
-                && methodImprovementSubmission == nil
-        case .methodImprovementContext:
-            triptychID == nil && startRequest == nil
-                && run != nil && pairingCode == nil && credential != nil
-                && contextRequest == nil && writeSetIntent == nil
-                && documentWriteIntent == nil && resultSubmission == nil
-                && zoteroBindingWriteIntent == nil
-                && conflictResolutionIntent == nil
-                && continuationRequest == nil
-                && methodImprovementSubmission == nil
-        case .submitMethodImprovement:
-            triptychID == nil && startRequest == nil
-                && run != nil && pairingCode == nil && credential != nil
-                && contextRequest == nil && writeSetIntent == nil
-                && documentWriteIntent == nil && resultSubmission == nil
-                && zoteroBindingWriteIntent == nil
-                && conflictResolutionIntent == nil
-                && continuationRequest == nil
-                && methodImprovementSubmission != nil
         case .end:
             triptychID == nil && startRequest == nil
                 && run != nil && pairingCode == nil && credential != nil
@@ -257,7 +226,6 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 && zoteroBindingWriteIntent == nil
                 && conflictResolutionIntent == nil
                 && continuationRequest == nil
-                && methodImprovementSubmission == nil
         }
         guard shapeIsValid,
               (operation == .preflightAnalysisCreation
@@ -285,7 +253,6 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
         self.conflictResolutionIntent = conflictResolutionIntent
         self.resultSubmission = resultSubmission
         self.continuationRequest = continuationRequest
-        self.methodImprovementSubmission = methodImprovementSubmission
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
@@ -306,7 +273,6 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
         case conflictResolutionIntent = "conflict_resolution_intent"
         case resultSubmission = "result_submission"
         case continuationRequest = "continuation_request"
-        case methodImprovementSubmission = "method_improvement_submission"
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -343,10 +309,6 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
         )
         try container.encodeIfPresent(resultSubmission, forKey: .resultSubmission)
         try container.encodeIfPresent(continuationRequest, forKey: .continuationRequest)
-        try container.encodeIfPresent(
-            methodImprovementSubmission,
-            forKey: .methodImprovementSubmission
-        )
     }
 
     public init(from decoder: Decoder) throws {
@@ -426,10 +388,6 @@ public struct LocalAgentBridgeRequest: Codable, Sendable, CustomStringConvertibl
                 ResearchContinuationRequest.self,
                 forKey: .continuationRequest
             ),
-            methodImprovementSubmission: container.decodeIfPresent(
-                ResearchMethodImprovementSubmission.self,
-                forKey: .methodImprovementSubmission
-            )
         )
     }
 
@@ -510,15 +468,15 @@ public struct LocalAgentBridgeErrorPayload: Codable, Hashable, Sendable {
                 mustReuseRequestIdentity: true,
                 nextStep: .rerunCreationPreflight
             )
-        case .context, .query, .methodImprovementContext:
+        case .context, .query:
             AgentOperationRecovery(
                 safeToRetry: true,
                 mustReuseRequestIdentity: true,
                 nextStep: .retryExactRequest
             )
-        case .discussionReply, .extendWriteSet, .writeDocument,
+        case .discussionReply, .trackActivity, .writeDocument,
              .writeZoteroBinding, .resolveWriteConflict, .submitResult,
-             .continueResearch, .submitMethodImprovement:
+             .continueResearch:
             AgentOperationRecovery(
                 safeToRetry: true,
                 mustReuseRequestIdentity: true,
@@ -640,7 +598,7 @@ public struct LocalAgentBridgeErrorPayload: Codable, Hashable, Sendable {
 public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertible,
     CustomDebugStringConvertible
 {
-    public static let currentSchemaVersion = 25
+    public static let currentSchemaVersion = 26
 
     public let schemaVersion: Int
     public let correlationID: UUID
@@ -657,8 +615,6 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
     public let conflictResolutionResult: ResearchWriteConflictResolutionResult?
     public let resultReceipt: ResearchAgentResultReceipt?
     public let continuationResult: ResearchContinuationResult?
-    public let methodImprovementContext: ResearchMethodImprovementContext?
-    public let methodImprovementReceipt: ResearchMethodImprovementReceipt?
     public let endReceipt: ResearchRunEndReceipt?
     public let error: LocalAgentBridgeErrorPayload?
 
@@ -677,8 +633,6 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
         conflictResolutionResult: ResearchWriteConflictResolutionResult? = nil,
         resultReceipt: ResearchAgentResultReceipt? = nil,
         continuationResult: ResearchContinuationResult? = nil,
-        methodImprovementContext: ResearchMethodImprovementContext? = nil,
-        methodImprovementReceipt: ResearchMethodImprovementReceipt? = nil,
         endReceipt: ResearchRunEndReceipt? = nil,
         error: LocalAgentBridgeErrorPayload? = nil
     ) throws {
@@ -696,8 +650,6 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
             conflictResolutionResult != nil,
             resultReceipt != nil,
             continuationResult != nil,
-            methodImprovementContext != nil,
-            methodImprovementReceipt != nil,
             endReceipt != nil,
             error != nil,
         ]
@@ -723,8 +675,6 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
         self.conflictResolutionResult = conflictResolutionResult
         self.resultReceipt = resultReceipt
         self.continuationResult = continuationResult
-        self.methodImprovementContext = methodImprovementContext
-        self.methodImprovementReceipt = methodImprovementReceipt
         self.endReceipt = endReceipt
         self.error = error
         if researchContext != nil,
@@ -748,8 +698,6 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
         case conflictResolutionResult = "conflict_resolution_result"
         case resultReceipt = "result_receipt"
         case continuationResult = "continuation_result"
-        case methodImprovementContext = "method_improvement_context"
-        case methodImprovementReceipt = "method_improvement_receipt"
         case endReceipt = "end_receipt"
         case error
     }
@@ -789,14 +737,6 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
         )
         try container.encodeIfPresent(resultReceipt, forKey: .resultReceipt)
         try container.encodeIfPresent(continuationResult, forKey: .continuationResult)
-        try container.encodeIfPresent(
-            methodImprovementContext,
-            forKey: .methodImprovementContext
-        )
-        try container.encodeIfPresent(
-            methodImprovementReceipt,
-            forKey: .methodImprovementReceipt
-        )
         try container.encodeIfPresent(endReceipt, forKey: .endReceipt)
         try container.encodeIfPresent(error, forKey: .error)
     }
@@ -864,14 +804,6 @@ public struct LocalAgentBridgeResponse: Codable, Sendable, CustomStringConvertib
             continuationResult: container.decodeIfPresent(
                 ResearchContinuationResult.self,
                 forKey: .continuationResult
-            ),
-            methodImprovementContext: container.decodeIfPresent(
-                ResearchMethodImprovementContext.self,
-                forKey: .methodImprovementContext
-            ),
-            methodImprovementReceipt: container.decodeIfPresent(
-                ResearchMethodImprovementReceipt.self,
-                forKey: .methodImprovementReceipt
             ),
             endReceipt: container.decodeIfPresent(
                 ResearchRunEndReceipt.self,
@@ -958,12 +890,13 @@ public enum LocalAgentBridgeLocation {
     public static let clientTimeout: TimeInterval = 6
     public static let cancellationGrace: TimeInterval = 1
     public static let host = "127.0.0.1"
+    public static let authenticationFileName = "bridge-auth-v1"
     private static let firstPrivatePort: UInt16 = 49_152
     private static let privatePortCount: UInt64 = 16_384
 
-    /// Derives one stable private-range loopback port from the existing bridge
-    /// namespace. Production App and CLI resolve the same namespace; isolated
-    /// tests can select independent ports without a machine-global registry.
+    /// Production App and CLI resolve the same private bridge namespace.
+    /// The derived loopback port carries no authority; a process-generation
+    /// secret inside this current-user-only directory authenticates both peers.
     public static func port(applicationSupportURL: URL) -> UInt16 {
         let bytes = applicationSupportURL.standardizedFileURL.path.utf8
         var hash: UInt64 = 14_695_981_039_346_656_037
@@ -973,9 +906,17 @@ public enum LocalAgentBridgeLocation {
         }
         return firstPrivatePort + UInt16(hash % privatePortCount)
     }
+
+    public static func authenticationURL(applicationSupportURL: URL) -> URL {
+        applicationSupportURL.standardizedFileURL.appendingPathComponent(
+            authenticationFileName,
+            isDirectory: false
+        )
+    }
 }
 
 public final class LocalAgentBridgeClient: @unchecked Sendable {
+    private let containerURL: URL
     private let port: UInt16
     private let timeout: TimeInterval
 
@@ -983,13 +924,21 @@ public final class LocalAgentBridgeClient: @unchecked Sendable {
         applicationSupportURL: URL,
         timeout: TimeInterval = LocalAgentBridgeLocation.clientTimeout
     ) throws {
-        port = LocalAgentBridgeLocation.port(
-            applicationSupportURL: applicationSupportURL
-        )
+        containerURL = applicationSupportURL.standardizedFileURL
+        port = LocalAgentBridgeLocation.port(applicationSupportURL: containerURL)
         self.timeout = min(max(timeout, 0.1), 30)
     }
 
     public func send(_ request: LocalAgentBridgeRequest) throws -> LocalAgentBridgeResponse {
+        try LocalAgentBridgeIO.validatePrivateDirectory(
+            at: containerURL,
+            createIfMissing: false
+        )
+        let secret = try LocalAgentBridgeIO.readAuthenticationSecret(
+            at: LocalAgentBridgeLocation.authenticationURL(
+                applicationSupportURL: containerURL
+            )
+        )
         let descriptor = Darwin.socket(AF_INET, SOCK_STREAM, 0)
         guard descriptor >= 0 else {
             throw LocalAgentBridgeError.systemCall("create its socket", errno)
@@ -1001,17 +950,44 @@ public final class LocalAgentBridgeClient: @unchecked Sendable {
             Darwin.connect(descriptor, pointer, length)
         }
         guard result == 0 else {
-            if [ECONNREFUSED, ETIMEDOUT].contains(errno) {
+            if [ENOENT, ECONNREFUSED, ETIMEDOUT].contains(errno) {
                 throw LocalAgentBridgeError.unavailable
             }
             throw LocalAgentBridgeError.systemCall("connect", errno)
         }
         let responseData: Data
+        var requestWasSent = false
         do {
+            let clientNonce = try LocalAgentBridgeAuthentication.randomBytes()
+            try LocalAgentBridgeIO.writeFrame(clientNonce, to: descriptor)
+            let challenge = try LocalAgentBridgeIO.readFrame(from: descriptor)
+            guard challenge.count == LocalAgentBridgeAuthentication.challengeByteCount
+            else { throw LocalAgentBridgeError.permissionDenied }
+            let serverNonce = Data(challenge.prefix(
+                LocalAgentBridgeAuthentication.nonceByteCount
+            ))
+            let serverTag = Data(challenge.suffix(
+                LocalAgentBridgeAuthentication.authenticationTagByteCount
+            ))
+            guard LocalAgentBridgeAuthentication.verify(
+                tag: serverTag,
+                role: .server,
+                secret: secret,
+                clientNonce: clientNonce,
+                serverNonce: serverNonce
+            ) else { throw LocalAgentBridgeError.permissionDenied }
             let requestData = try LocalAgentBridgeWireCoding.encode(request)
-            try LocalAgentBridgeIO.writeFrame(requestData, to: descriptor)
+            let clientTag = LocalAgentBridgeAuthentication.tag(
+                role: .client,
+                secret: secret,
+                clientNonce: clientNonce,
+                serverNonce: serverNonce
+            )
+            try LocalAgentBridgeIO.writeFrame(clientTag + requestData, to: descriptor)
+            requestWasSent = true
             responseData = try LocalAgentBridgeIO.readFrame(from: descriptor)
         } catch LocalAgentBridgeError.timeout {
+            guard requestWasSent else { throw LocalAgentBridgeError.timeout }
             // Once connected, a send/read deadline cannot establish whether
             // the server durably handled the request. Preserve idempotent
             // convergence semantics instead of inviting a new request ID.
@@ -1050,8 +1026,6 @@ public enum LocalAgentBridgeHandlerResult: Sendable {
     case conflictResolution(ResearchWriteConflictResolutionResult)
     case resultReceipt(ResearchAgentResultReceipt)
     case continuation(ResearchContinuationResult)
-    case methodImprovementContext(ResearchMethodImprovementContext)
-    case methodImprovementReceipt(ResearchMethodImprovementReceipt)
     case endReceipt(ResearchRunEndReceipt)
 }
 
@@ -1060,6 +1034,8 @@ public final class LocalAgentBridgeServer: @unchecked Sendable {
         -> LocalAgentBridgeHandlerResult
 
     private let queue = DispatchQueue(label: "com.scholium.agent-bridge")
+    private let containerURL: URL
+    private let authenticationURL: URL
     private let port: UInt16
     private let handler: Handler
     private let timeout: TimeInterval
@@ -1070,6 +1046,8 @@ public final class LocalAgentBridgeServer: @unchecked Sendable {
     private var currentHandlerID: UUID?
     private var currentHandlerTask: Task<Void, Never>?
     private var stopTask: Task<Void, Never>?
+    private var authenticationSecret = Data()
+    private var authenticationIdentity: LocalAgentBridgeFileIdentity?
 
     public init(
         applicationSupportURL: URL,
@@ -1077,9 +1055,11 @@ public final class LocalAgentBridgeServer: @unchecked Sendable {
         cancellationGrace: TimeInterval = LocalAgentBridgeLocation.cancellationGrace,
         handler: @escaping Handler
     ) throws {
-        port = LocalAgentBridgeLocation.port(
-            applicationSupportURL: applicationSupportURL
+        containerURL = applicationSupportURL.standardizedFileURL
+        authenticationURL = LocalAgentBridgeLocation.authenticationURL(
+            applicationSupportURL: containerURL
         )
+        port = LocalAgentBridgeLocation.port(applicationSupportURL: containerURL)
         self.timeout = min(max(timeout, 0.1), 30)
         self.cancellationGrace = min(max(cancellationGrace, 0.1), 5)
         self.handler = handler
@@ -1128,6 +1108,10 @@ public final class LocalAgentBridgeServer: @unchecked Sendable {
         stopping = true
         let listener = self.listener
         self.listener = -1
+        let authenticationURL = self.authenticationURL
+        let authenticationIdentity = self.authenticationIdentity
+        self.authenticationIdentity = nil
+        self.authenticationSecret = Data()
         if listener >= 0 {
             Darwin.shutdown(listener, SHUT_RDWR)
         }
@@ -1142,6 +1126,12 @@ public final class LocalAgentBridgeServer: @unchecked Sendable {
             if listener >= 0 {
                 Darwin.close(listener)
             }
+            if let authenticationIdentity {
+                try? LocalAgentBridgeIO.removeAuthenticationSecret(
+                    at: authenticationURL,
+                    matching: authenticationIdentity
+                )
+            }
         }
         self.stopTask = stopTask
         lock.unlock()
@@ -1149,6 +1139,10 @@ public final class LocalAgentBridgeServer: @unchecked Sendable {
     }
 
     private func start() throws {
+        try LocalAgentBridgeIO.validatePrivateDirectory(
+            at: containerURL,
+            createIfMissing: true
+        )
         listener = Darwin.socket(AF_INET, SOCK_STREAM, 0)
         guard listener >= 0 else {
             throw LocalAgentBridgeError.systemCall("create its listener", errno)
@@ -1170,6 +1164,10 @@ public final class LocalAgentBridgeServer: @unchecked Sendable {
         guard Darwin.listen(listener, 8) == 0 else {
             throw LocalAgentBridgeError.systemCall("listen", errno)
         }
+        let installedAuthentication = try LocalAgentBridgeIO
+            .installAuthenticationSecret(at: authenticationURL)
+        authenticationSecret = installedAuthentication.secret
+        authenticationIdentity = installedAuthentication.identity
         queue.async { [weak self] in self?.acceptLoop() }
     }
 
@@ -1198,7 +1196,35 @@ public final class LocalAgentBridgeServer: @unchecked Sendable {
                 peer,
                 timeout: timeout
             )
-            let data = try LocalAgentBridgeIO.readFrame(from: peer)
+            let clientNonce = try LocalAgentBridgeIO.readFrame(from: peer)
+            guard clientNonce.count == LocalAgentBridgeAuthentication.nonceByteCount
+            else { throw LocalAgentBridgeError.permissionDenied }
+            let serverNonce = try LocalAgentBridgeAuthentication.randomBytes()
+            let serverTag = LocalAgentBridgeAuthentication.tag(
+                role: .server,
+                secret: authenticationSecret,
+                clientNonce: clientNonce,
+                serverNonce: serverNonce
+            )
+            try LocalAgentBridgeIO.writeFrame(serverNonce + serverTag, to: peer)
+            let authenticatedFrame = try LocalAgentBridgeIO.readFrame(from: peer)
+            guard authenticatedFrame.count
+                    > LocalAgentBridgeAuthentication.authenticationTagByteCount else {
+                throw LocalAgentBridgeError.permissionDenied
+            }
+            let clientTag = Data(authenticatedFrame.prefix(
+                LocalAgentBridgeAuthentication.authenticationTagByteCount
+            ))
+            guard LocalAgentBridgeAuthentication.verify(
+                tag: clientTag,
+                role: .client,
+                secret: authenticationSecret,
+                clientNonce: clientNonce,
+                serverNonce: serverNonce
+            ) else { throw LocalAgentBridgeError.permissionDenied }
+            let data = Data(authenticatedFrame.dropFirst(
+                LocalAgentBridgeAuthentication.authenticationTagByteCount
+            ))
             let request = try LocalAgentBridgeWireCoding.decode(
                 LocalAgentBridgeRequest.self,
                 from: data
@@ -1319,16 +1345,6 @@ public final class LocalAgentBridgeServer: @unchecked Sendable {
                 try LocalAgentBridgeResponse(
                     correlationID: request.correlationID,
                     continuationResult: result
-                )
-            case .methodImprovementContext(let context):
-                try LocalAgentBridgeResponse(
-                    correlationID: request.correlationID,
-                    methodImprovementContext: context
-                )
-            case .methodImprovementReceipt(let receipt):
-                try LocalAgentBridgeResponse(
-                    correlationID: request.correlationID,
-                    methodImprovementReceipt: receipt
                 )
             case .endReceipt(let receipt):
                 try LocalAgentBridgeResponse(
@@ -1542,6 +1558,63 @@ enum LocalAgentBridgeWireCoding {
     }
 }
 
+private struct LocalAgentBridgeFileIdentity: Equatable, Sendable {
+    let device: dev_t
+    let inode: ino_t
+}
+
+enum LocalAgentBridgeAuthentication {
+    enum Role: UInt8 {
+        case client = 1
+        case server = 2
+    }
+
+    static let nonceByteCount = 32
+    static let authenticationTagByteCount = 32
+    static let challengeByteCount = nonceByteCount + authenticationTagByteCount
+
+    static func randomBytes(count: Int = nonceByteCount) throws -> Data {
+        var bytes = [UInt8](repeating: 0, count: count)
+        guard SecRandomCopyBytes(kSecRandomDefault, count, &bytes) == errSecSuccess
+        else { throw LocalAgentBridgeError.unavailable }
+        return Data(bytes)
+    }
+
+    static func tag(
+        role: Role,
+        secret: Data,
+        clientNonce: Data,
+        serverNonce: Data
+    ) -> Data {
+        var message = Data([role.rawValue])
+        message.append(clientNonce)
+        message.append(serverNonce)
+        return Data(HMAC<SHA256>.authenticationCode(
+            for: message,
+            using: SymmetricKey(data: secret)
+        ))
+    }
+
+    static func verify(
+        tag candidate: Data,
+        role: Role,
+        secret: Data,
+        clientNonce: Data,
+        serverNonce: Data
+    ) -> Bool {
+        let expected = tag(
+            role: role,
+            secret: secret,
+            clientNonce: clientNonce,
+            serverNonce: serverNonce
+        )
+        guard candidate.count == expected.count else { return false }
+        return zip(candidate, expected).reduce(UInt8(0)) {
+            $0 | ($1.0 ^ $1.1)
+        } == 0
+    }
+}
+
 private enum LocalAgentBridgeIO {
     static func configure(_ descriptor: Int32, timeout: TimeInterval) throws {
         var enabled: Int32 = 1
@@ -1600,6 +1673,170 @@ private enum LocalAgentBridgeIO {
             try pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                 try body($0, length)
             }
+        }
+    }
+
+    static func validatePrivateDirectory(
+        at url: URL,
+        createIfMissing: Bool
+    ) throws {
+        if createIfMissing {
+            try ScholiumPaths.ensurePrivateDirectory(at: url)
+        }
+        var status = stat()
+        let result: Int32 = url.withUnsafeFileSystemRepresentation { path in
+            guard let path else { return -1 }
+            return lstat(path, &status)
+        }
+        guard result == 0 else {
+            if errno == ENOENT { throw LocalAgentBridgeError.unavailable }
+            throw LocalAgentBridgeError.systemCall("inspect its directory", errno)
+        }
+        guard status.st_uid == geteuid(),
+              status.st_mode & S_IFMT == S_IFDIR,
+              status.st_mode & 0o077 == 0 else {
+            throw LocalAgentBridgeError.permissionDenied
+        }
+    }
+
+    static func fileIdentity(at url: URL) throws -> LocalAgentBridgeFileIdentity {
+        var status = stat()
+        let result: Int32 = url.withUnsafeFileSystemRepresentation { path in
+            guard let path else { return -1 }
+            return lstat(path, &status)
+        }
+        guard result == 0 else {
+            if errno == ENOENT { throw LocalAgentBridgeError.unavailable }
+            throw LocalAgentBridgeError.systemCall("inspect its authentication file", errno)
+        }
+        guard status.st_uid == geteuid(),
+              status.st_mode & S_IFMT == S_IFREG,
+              status.st_mode & 0o777 == 0o600,
+              status.st_size == LocalAgentBridgeAuthentication.nonceByteCount else {
+            throw LocalAgentBridgeError.permissionDenied
+        }
+        return LocalAgentBridgeFileIdentity(
+            device: status.st_dev,
+            inode: status.st_ino
+        )
+    }
+
+    static func installAuthenticationSecret(
+        at url: URL
+    ) throws -> (secret: Data, identity: LocalAgentBridgeFileIdentity) {
+        let secret = try LocalAgentBridgeAuthentication.randomBytes()
+        let temporaryURL = url.deletingLastPathComponent().appendingPathComponent(
+            ".\(url.lastPathComponent).\(UUID().uuidString.lowercased()).tmp"
+        )
+        let descriptor = temporaryURL.withUnsafeFileSystemRepresentation { path in
+            guard let path else { return Int32(-1) }
+            return Darwin.open(
+                path,
+                O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC,
+                0o600
+            )
+        }
+        guard descriptor >= 0 else {
+            throw LocalAgentBridgeError.systemCall(
+                "create its authentication file",
+                errno
+            )
+        }
+        var shouldRemoveTemporary = true
+        defer {
+            Darwin.close(descriptor)
+            if shouldRemoveTemporary {
+                try? FileManager.default.removeItem(at: temporaryURL)
+            }
+        }
+        try writeAll(secret, to: descriptor)
+        guard fchmod(descriptor, 0o600) == 0,
+              fsync(descriptor) == 0 else {
+            throw LocalAgentBridgeError.systemCall(
+                "protect its authentication file",
+                errno
+            )
+        }
+        let renameResult: Int32 = temporaryURL.withUnsafeFileSystemRepresentation {
+            sourcePath in
+            guard let sourcePath else { return -1 }
+            return url.withUnsafeFileSystemRepresentation { destinationPath in
+                guard let destinationPath else { return -1 }
+                return rename(sourcePath, destinationPath)
+            }
+        }
+        guard renameResult == 0 else {
+            throw LocalAgentBridgeError.systemCall(
+                "publish its authentication file",
+                errno
+            )
+        }
+        shouldRemoveTemporary = false
+        let identity = try fileIdentity(at: url)
+        guard try readAuthenticationSecret(at: url) == secret else {
+            throw LocalAgentBridgeError.permissionDenied
+        }
+        return (secret, identity)
+    }
+
+    static func readAuthenticationSecret(at url: URL) throws -> Data {
+        let expectedIdentity = try fileIdentity(at: url)
+        let descriptor = url.withUnsafeFileSystemRepresentation { path in
+            guard let path else { return Int32(-1) }
+            return Darwin.open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+        }
+        guard descriptor >= 0 else {
+            if errno == ENOENT { throw LocalAgentBridgeError.unavailable }
+            throw LocalAgentBridgeError.systemCall(
+                "open its authentication file",
+                errno
+            )
+        }
+        defer { Darwin.close(descriptor) }
+        var status = stat()
+        guard fstat(descriptor, &status) == 0,
+              LocalAgentBridgeFileIdentity(
+                device: status.st_dev,
+                inode: status.st_ino
+              ) == expectedIdentity,
+              status.st_uid == geteuid(),
+              status.st_mode & S_IFMT == S_IFREG,
+              status.st_mode & 0o777 == 0o600,
+              status.st_size == LocalAgentBridgeAuthentication.nonceByteCount
+        else { throw LocalAgentBridgeError.permissionDenied }
+        var bytes = Data(count: LocalAgentBridgeAuthentication.nonceByteCount + 1)
+        let amount = bytes.withUnsafeMutableBytes { buffer in
+            Darwin.read(descriptor, buffer.baseAddress, buffer.count)
+        }
+        guard amount == LocalAgentBridgeAuthentication.nonceByteCount else {
+            throw LocalAgentBridgeError.permissionDenied
+        }
+        bytes.removeLast()
+        return bytes
+    }
+
+    static func removeAuthenticationSecret(
+        at url: URL,
+        matching identity: LocalAgentBridgeFileIdentity
+    ) throws {
+        let current: LocalAgentBridgeFileIdentity
+        do {
+            current = try fileIdentity(at: url)
+        } catch LocalAgentBridgeError.unavailable {
+            return
+        }
+        guard current == identity else {
+            throw LocalAgentBridgeError.permissionDenied
+        }
+        let result: Int32 = url.withUnsafeFileSystemRepresentation { path in
+            guard let path else { return -1 }
+            return unlink(path)
+        }
+        guard result == 0 || errno == ENOENT else {
+            throw LocalAgentBridgeError.systemCall(
+                "remove its authentication file",
+                errno
+            )
         }
     }
 

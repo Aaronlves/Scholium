@@ -422,52 +422,6 @@ struct WindowLifecycleTests {
         #expect(model.shellState.researchNotificationPermissionNotice == nil)
     }
 
-    @Test("Native window close releases its Agent permission claim before teardown")
-    func nativeCloseReleasesResearchAgentPermissionClaim() throws {
-        let windowID = UUID()
-        let triptychID = UUID()
-        let store = makeTestWorkspaceStore()
-        let model = WindowModel(
-            workspaceStore: store,
-            nativeWindowID: windowID
-        )
-        let request = try makeTestWriteSetExtensionRecord(
-            triptychID: triptychID
-        )
-        model.researchAgentPermissionWindowController.registerWindowEndpoint(
-            activeTriptychID: { triptychID },
-            isKeyWindow: { true },
-            canPresent: { model.presentationRouter.sheet == nil },
-            willPresent: {},
-            focus: {}
-        )
-        store.researchAgentPermissionClaims.receive(
-            .writeSetExtension(request),
-            intent: .submit
-        )
-        #expect(model.researchAgentPermissionWindowController.claim?.id == request.id)
-
-        let registry = ScholiumWindowLifecycleRegistry()
-        let coordinator = WorkspaceWindowCoordinator(
-            windowID: windowID,
-            appState: model,
-            lifecycleRegistry: registry
-        )
-        let window = testWindow()
-        let priorDelegate = TestWindowDelegate()
-        window.delegate = priorDelegate
-        coordinator.attach(to: window)
-
-        coordinator.windowWillClose(Notification(
-            name: NSWindow.willCloseNotification,
-            object: window
-        ))
-
-        #expect(model.researchAgentPermissionWindowController.claim == nil)
-        #expect(model.presentationRouter.sheet == nil)
-        #expect(priorDelegate.didReceiveWindowWillClose)
-    }
-
     @Test("Workspace readiness requires the exact attached window and split")
     func coordinatorMarksExactNativeBoundaryReady() async {
         let id = UUID()
@@ -813,46 +767,6 @@ struct WindowLifecycleTests {
         window.isReleasedWhenClosed = false
         return window
     }
-}
-
-private func makeTestWriteSetExtensionRecord(
-    triptychID: UUID
-) throws -> ResearchWriteSetExtensionRecord {
-    let runID = UUID()
-    let noteID = UUID()
-    let handle = ResearchWriteTargetHandle(runID: runID, noteID: noteID)
-    let selector = try ResearchWriteSetTargetSelector(
-        role: .work,
-        relativePath: "Draft.md",
-        operations: [.modifyMarkdown]
-    )
-    let intent = try ResearchWriteSetExtensionIntent(
-        targets: [selector],
-        academicReason: "Develop the explicitly selected draft."
-    )
-    let candidate = try ResearchWriteSetCandidate(
-        handle: handle,
-        noteID: noteID,
-        note: VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Draft.md"),
-        role: .work,
-        title: "Draft",
-        operations: [.modifyMarkdown],
-        expectedRevision: DocumentFingerprint(content: "# Draft\n")
-    )
-    let receivedAt = Date()
-    return try ResearchWriteSetExtensionRecord(
-        id: UUID(),
-        runID: runID,
-        triptychID: triptychID,
-        intent: intent,
-        intentDigest: DocumentFingerprint(content: "extension-intent"),
-        candidates: [candidate],
-        policy: .askEveryTime,
-        policyRevision: DocumentFingerprint(content: "policy"),
-        state: .pending,
-        receivedAt: receivedAt,
-        expiresAt: receivedAt.addingTimeInterval(60)
-    )
 }
 
 private enum DeadlineTestOutcome: Equatable, Sendable {

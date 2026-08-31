@@ -84,7 +84,6 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
     let applicationRuntime: WorkspaceRuntime
     let cssSnippetStore: CSSSnippetStore
     let zoteroBridge: ZoteroBridge
-    let researchAgentPermissionClaims: ResearchAgentPermissionClaimCoordinator
     private(set) var localAgentBridge: LocalAgentBridgeServer?
     private(set) var localAgentBridgeStartupFailure: LocalAgentBridgeError?
 
@@ -123,16 +122,12 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         applicationRuntime = runtime
         cssSnippetStore = CSSSnippetStore(operations: applicationRuntime.styles)
         zoteroBridge = ZoteroBridge(operations: applicationRuntime.zotero)
-        let researchAgentPermissionClaims =
-            ResearchAgentPermissionClaimCoordinator()
-        self.researchAgentPermissionClaims = researchAgentPermissionClaims
         do {
             let bridgeContainerURL = try ScholiumPaths.agentBridgeContainerURL(
                 debugFallbackURL: applicationSupportURL
             )
             let router = LocalAgentBridgeRequestRouter(
                 runtime: runtime,
-                researchAgentPermissionClaims: researchAgentPermissionClaims,
                 flushEditors: { [weak self] triptychID in
                     guard let self else { throw LocalAgentBridgeError.unavailable }
                     try await self.flushEditors(in: triptychID)
@@ -655,52 +650,29 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                     expectedRevision: revision
                 )
             },
-            collaborationPolicy: { [self] id in
-                try await workspaceHandle(id: id).research.collaborationPolicy()
-            },
-            saveCollaborationPolicy: { [self] id, document, revision in
-                try await workspaceHandle(id: id).research.saveCollaborationPolicy(
-                    document,
-                    expectedRevision: revision
+            researchSkillBinding: { [self] id, actionID in
+                try await workspaceHandle(id: id).research.researchSkillBinding(
+                    for: actionID
                 )
             },
-            researchMethod: { [self] id, actionID in
-                try await workspaceHandle(id: id).research.researchMethod(for: actionID)
-            },
-            saveResearchMethod: { [self] id, key, source, revision in
-                try await workspaceHandle(id: id).research.saveResearchMethod(
-                    registrationKey: key,
-                    source: source,
-                    expectedRevision: revision
-                )
-            },
-            registerExternalResearchMethod: {
-                [self] id, actionID, name, primaryPath, folderPath, revision in
-                try await workspaceHandle(id: id).research.registerExternalResearchMethod(
+            registerExternalResearchSkillFolder: {
+                [self] id, actionID, name, folderPath, revision in
+                try await workspaceHandle(id: id).research
+                    .registerExternalResearchSkillFolder(
                     actionID: actionID,
                     displayName: name,
-                    primaryMarkdownPath: primaryPath,
                     skillFolderPath: folderPath,
                     expectedRegistrationRevision: revision
                 )
             },
-            createResearchMethod: { [self] id, actionID, name, source, revision in
-                try await workspaceHandle(id: id).research.createResearchMethod(
-                    actionID: actionID,
-                    displayName: name,
-                    source: source,
-                    expectedRegistrationRevision: revision
-                )
+            showResearchSkillFolder: { [self] id, actionID in
+                let access = try await workspaceHandle(id: id).research
+                    .researchSkillFolderAccess(for: actionID)
+                NSWorkspace.shared.activateFileViewerSelecting([access.url])
             },
-            restoreDefaultResearchMethod: { [self] id, actionID, revision in
-                try await workspaceHandle(id: id).research.restoreDefaultResearchMethod(
-                    actionID: actionID,
-                    expectedRevision: revision
-                )
-            },
-            recoverMachineLocalMethodLocators: { [self] id in
+            recoverMachineLocalSkillFolderLocators: { [self] id in
                 try await workspaceHandle(id: id).research
-                    .preserveInvalidMachineLocalMethodLocatorsAndReset()
+                    .preserveInvalidMachineLocalSkillFolderLocatorsAndReset()
             },
             citationMethodStatus: { [self] workspaceID in
                 try await workspaceHandle(id: workspaceID).research.citationMethodStatus()
@@ -766,95 +738,6 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 try await registration.flush()
             }
         }
-    }
-
-    func refreshPendingResearchAgentPermissions(in triptychID: UUID) async {
-        guard let handle = handles[triptychID] else { return }
-        if let records = try? await handle.research
-            .pendingAgentWriteSetExtensions() {
-            for record in records {
-                researchAgentPermissionClaims.receive(
-                    .writeSetExtension(record),
-                    intent: .refresh
-                )
-            }
-        }
-        if let records = try? await handle.research
-            .pendingContinuationRequests() {
-            for record in records {
-                researchAgentPermissionClaims.receive(
-                    .continuation(record),
-                    intent: .refresh
-                )
-            }
-        }
-    }
-
-    func refreshResearchWriteSetExtension(
-        id: UUID,
-        in triptychID: UUID
-    ) async throws {
-        let record = try await workspaceHandle(id: triptychID).research
-            .agentWriteSetExtension(requestID: id)
-        researchAgentPermissionClaims.receive(
-            .writeSetExtension(record),
-            intent: .refresh
-        )
-    }
-
-    func resolveResearchWriteSetExtension(
-        triptychID: UUID,
-        requestID: UUID,
-        state: ResearchWriteSetExtensionState,
-        allowedHandles: [ResearchWriteTargetHandle]
-    ) async throws -> ResearchWriteSetExtensionRecord {
-        try await flushEditors(in: triptychID)
-        let record = try await workspaceHandle(id: triptychID).research
-            .resolveAgentWriteSetExtension(
-                requestID: requestID,
-                state: state,
-                allowedHandles: allowedHandles
-            )
-        researchAgentPermissionClaims.receive(
-            .writeSetExtension(record),
-            intent: .decision
-        )
-        return record
-    }
-
-    func refreshResearchContinuation(
-        triptychID: UUID,
-        parentRunID: UUID,
-        requestID: UUID
-    ) async throws {
-        let record = try await workspaceHandle(id: triptychID).research
-            .continuationRequest(
-                parentRunID: parentRunID,
-                requestID: requestID
-            )
-        researchAgentPermissionClaims.receive(
-            .continuation(record),
-            intent: .refresh
-        )
-    }
-
-    func resolveResearchContinuation(
-        triptychID: UUID,
-        parentRunID: UUID,
-        requestID: UUID,
-        allow: Bool
-    ) async throws -> ResearchContinuationRequestRecord {
-        let record = try await workspaceHandle(id: triptychID).research
-            .resolveContinuationRequest(
-                parentRunID: parentRunID,
-                requestID: requestID,
-                allow: allow
-            )
-        researchAgentPermissionClaims.receive(
-            .continuation(record),
-            intent: .decision
-        )
-        return record
     }
 
     private func install(

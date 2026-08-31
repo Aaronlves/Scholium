@@ -1,33 +1,32 @@
-# Scholium Research Skill resources
+# Scholium research guidance resources
 
 This tree is release-managed source material. It has no catalog, package,
-plugin, version, dependency, or execution semantics.
+plug-in, version, dependency, or execution semantics.
 
-## Current product ownership
+## Product ownership
 
-- Protected System Skills define Scholium mechanism and cannot be replaced by
-  research prose.
+- Protected System Protocol resources define Scholium mechanism. They remain
+  release-managed and cannot be replaced by researcher prose. They are not
+  Action Skills.
 - Each available Action in a Triptych has exactly one current opaque Skill
-  registration: visible name, Action, primary Markdown entry, optional ordinary
-  local folder path, and enabled state.
-- `SKILL.md` is the Skill entry. It explicitly routes task-relevant ordinary
-  intellectual references, including philosophical lenses, from the registered
-  folder. It does not route Scholium operations or System Skills.
-- A Skill folder is ordinary Agent-readable storage. Scholium stores
-  only a portable machine-local marker plus a private path/bookmark locator and
-  neither catalogs, copies, freezes, hashes, validates, proxies, nor executes
-  the folder's other contents.
+  registration: relation key, visible name, Action, folder location, and
+  enabled state. No primary entry, file inventory, or content revision is a
+  product field.
+- A registered Action Skill folder and every file below it are ordinary
+  researcher-owned filesystem content. The researcher and external Agents may
+  read or edit those files with ordinary filesystem tools.
+- Scholium stores only the folder relation and availability. It does not open,
+  enumerate, parse, validate, hash, snapshot, edit, restore, or execute the
+  user-owned folder's contents. Settings can assign a folder or reveal it in
+  Finder; it is not a Skill editor.
 - Action Profiles own flat academic input/result fields only. Protected
   Platform Action definitions own roles, capabilities, machine facts, and
-  supported operations. One Triptych collaboration policy owns interruption
-  behavior.
-- Scholium-mediated Skill improvement replaces only the exact expected
-  `SKILL.md`; ordinary references are edited as ordinary files outside that
-  bounded Run. This tree provides no edit history.
+  supported operations. The Run owner records Agent activity without a
+  per-document permission policy.
 
-The files below serve these defaults:
+The files below are bundled templates for initial Action Skill copies:
 
-| Action | Default Skill entry |
+| Action | Bundled template entry |
 | --- | --- |
 | Discuss | `Scholium Method Skills/scholium-discuss/SKILL.md` |
 | Analyze | `Scholium Method Skills/scholium-analyze/SKILL.md` |
@@ -36,40 +35,33 @@ The files below serve these defaults:
 | Critique | `Scholium Method Skills/scholium-critique/SKILL.md` |
 | Check Fidelity | `Scholium Method Skills/scholium-content-fidelity/SKILL.md` |
 
-`BundledResearchMethodDefaults` installs the current default primary Markdown
-through the registration owner for a new Triptych. Later restoration explicitly
-replaces the expected current primary bytes; no recovery copy or runtime
-fallback consults this tree.
+`BundledResearchSkillDefaults` provisions a new Triptych's initial user-owned
+copies once, before publishing their registrations. Existing registrations are
+never filled, repaired, overwritten, or restored from this tree. After that
+one-time handoff Scholium does not read or write the copied files, including
+`SKILL.md` and `references/`.
 
-## Protected reference resources
+## Protected Protocol resources
 
-`Scholium System Skills` owns the protected Core workflow plus the distinct
-Discussion and Zotero adapters. An external Agent workspace registers those
-release-managed folders and the current Action Method folders through its
-host's project-level Skill mechanism. Typed Application/CLI contracts own
-current identity, required Skill names and frozen Method revision, provenance,
-Session, bounded-write, and Result fields; they transmit no Skill prose or
-source path. Core always loads its protected `runtime-kernel.md`; the current
-request or official handoff routes project entry, and an explicit researcher
-request routes workspace bootstrap. After authentication, Application-owned
-Run state, typed `next_actions`, and operation responses route active-run,
-mutation/recovery, and completion references. Those references are not
-Agent-selected modes and add no command field or parallel state. The completion reference routes exactly one
-per-Action Result reference, which owns the mapping from scholarly judgments
-into the frozen Action Profile fields without defining the intellectual method
-or overriding the Profile's field names, choices, types, or requirements. The
-Discussion System Protocol separately owns Discussion-turn response composition
-because Discuss does not use the generic Result submission path. Platform
-contracts and current Application state remain the runtime authority, so Skill
-registration or text cannot grant scope, capability, or write permission.
+`Scholium System Skills` is the resource-directory name for the protected Core
+Protocol and the distinct Discussion and Zotero Protocol adapters. An external
+Agent workspace registers those release-managed folders and the current
+researcher-owned Action Skill folders through its host's project-level Skill
+mechanism. Typed Application and CLI contracts own identity, required guidance,
+registration revision, provenance, Session, bounded writes, and Result fields;
+they transmit no Skill prose, content revision, or folder path.
 
-Each default Skill's `references/` directory directly contains its
-methodologically substantive philosophical lenses, and that Skill's
-`SKILL.md` decides when each lens applies. Lenses have no independent shared
-library, catalog, registration, resolver, snapshot, or execution authority.
-Method Skills do not own Result-field or Discussion-response templates.
-Researcher edits may change scholarly procedure, emphasis, organization, and
-content within the protected Action, but they cannot change the Application's
-Action, commands, tools, permissions, Bounded Write Set, lifecycle, or recovery.
-Citation style is a protected Platform integration setting; it is not
-represented by a bundled Skill.
+The Core Protocol owns authenticated Run routing, current typed `next_actions`,
+mutation and recovery operations, and completion references. The Discussion
+Protocol separately owns Discussion-turn response composition because Discuss
+does not use the generic Result-submission path. Platform contracts and current
+Application state remain runtime authority, so Action Skill text cannot define
+commands or executable operations.
+
+Bundled Action templates may include a `references/` directory and route any
+task-relevant philosophical lenses from their `SKILL.md`. Once copied, every
+such file is researcher-owned and externally editable; Scholium does not
+catalog or interpret it. Filename, Wikilink, and transclusion conventions create
+no product relation or authority. Action Skill edits may change scholarly
+procedure and content, but cannot change Scholium commands, typed operations,
+lifecycle, Result serialization, or recovery.

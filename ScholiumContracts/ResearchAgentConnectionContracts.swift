@@ -786,7 +786,7 @@ public struct ResearchRunCapabilityAvailability: Codable, Hashable, Sendable {
     public let researchState: Bool
     public let zotero: Bool
     public let writeInitialObject: Bool
-    public let extendWriteSet: Bool
+    public let trackActivity: Bool
     public let continueResearch: Bool
     public let discussionReply: Bool
 
@@ -799,7 +799,7 @@ public struct ResearchRunCapabilityAvailability: Codable, Hashable, Sendable {
         researchState: Bool,
         zotero: Bool,
         writeInitialObject: Bool,
-        extendWriteSet: Bool,
+        trackActivity: Bool,
         continueResearch: Bool = false,
         discussionReply: Bool = false
     ) {
@@ -811,7 +811,7 @@ public struct ResearchRunCapabilityAvailability: Codable, Hashable, Sendable {
         self.researchState = researchState
         self.zotero = zotero
         self.writeInitialObject = writeInitialObject
-        self.extendWriteSet = extendWriteSet
+        self.trackActivity = trackActivity
         self.continueResearch = continueResearch
         self.discussionReply = discussionReply
     }
@@ -868,7 +868,7 @@ public struct ResearchRequiredSkill: Codable, Hashable, Sendable {
     public let kind: ResearchRequiredSkillKind
     public let actionID: ResearchActionID?
     public let displayName: String?
-    public let primaryMarkdownRevision: DocumentFingerprint?
+    public let registrationRevision: DocumentFingerprint?
 
     public static let coreProtocol = try! Self(
         name: ResearchSystemSkillID.coreProtocol.rawValue,
@@ -879,13 +879,13 @@ public struct ResearchRequiredSkill: Codable, Hashable, Sendable {
         try Self(name: id.rawValue, kind: .systemAdapter)
     }
 
-    public static func actionMethod(_ snapshot: ResearchMethodSnapshot) throws -> Self {
+    public static func actionMethod(_ snapshot: ResearchSkillBindingSnapshot) throws -> Self {
         try Self(
             name: snapshot.registration.actionID.projectSkillName,
             kind: .actionMethod,
             actionID: snapshot.registration.actionID,
             displayName: snapshot.registration.displayName,
-            primaryMarkdownRevision: snapshot.primaryMarkdownRevision
+            registrationRevision: snapshot.registrationRevision
         )
     }
 
@@ -894,7 +894,7 @@ public struct ResearchRequiredSkill: Codable, Hashable, Sendable {
         kind: ResearchRequiredSkillKind,
         actionID: ResearchActionID? = nil,
         displayName: String? = nil,
-        primaryMarkdownRevision: DocumentFingerprint? = nil
+        registrationRevision: DocumentFingerprint? = nil
     ) throws {
         guard !name.isEmpty, name.utf8.count <= 128,
               name.first != "-", name.last != "-",
@@ -909,14 +909,14 @@ public struct ResearchRequiredSkill: Codable, Hashable, Sendable {
         case .coreProtocol:
             guard name == ResearchSystemSkillID.coreProtocol.rawValue,
                   actionID == nil, displayName == nil,
-                  primaryMarkdownRevision == nil else {
+                  registrationRevision == nil else {
                 throw ResearchAgentConnectionContractError.invalidHandoff
             }
         case .systemAdapter:
             guard let system = ResearchSystemSkillID(rawValue: name),
                   system != .coreProtocol,
                   actionID == nil, displayName == nil,
-                  primaryMarkdownRevision == nil else {
+                  registrationRevision == nil else {
                 throw ResearchAgentConnectionContractError.invalidHandoff
             }
         case .actionMethod:
@@ -924,7 +924,7 @@ public struct ResearchRequiredSkill: Codable, Hashable, Sendable {
                   let displayName,
                   !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                   displayName.utf8.count <= 256,
-                  primaryMarkdownRevision != nil else {
+                  registrationRevision != nil else {
                 throw ResearchAgentConnectionContractError.invalidHandoff
             }
         }
@@ -932,14 +932,14 @@ public struct ResearchRequiredSkill: Codable, Hashable, Sendable {
         self.kind = kind
         self.actionID = actionID
         self.displayName = displayName
-        self.primaryMarkdownRevision = primaryMarkdownRevision
+        self.registrationRevision = registrationRevision
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case name, kind
         case actionID = "action_id"
         case displayName = "display_name"
-        case primaryMarkdownRevision = "primary_markdown_revision"
+        case registrationRevision = "registration_revision"
     }
 
     public init(from decoder: Decoder) throws {
@@ -953,9 +953,9 @@ public struct ResearchRequiredSkill: Codable, Hashable, Sendable {
             kind: container.decode(ResearchRequiredSkillKind.self, forKey: .kind),
             actionID: container.decodeIfPresent(ResearchActionID.self, forKey: .actionID),
             displayName: container.decodeIfPresent(String.self, forKey: .displayName),
-            primaryMarkdownRevision: container.decodeIfPresent(
+            registrationRevision: container.decodeIfPresent(
                 DocumentFingerprint.self,
-                forKey: .primaryMarkdownRevision
+                forKey: .registrationRevision
             )
         )
     }
@@ -1336,10 +1336,10 @@ public struct ResearchAuthenticatedRunContext: Codable, Hashable, Sendable {
     /// shape; the authenticated Session, not this value, authorizes the
     /// idempotent Agent turn.
     public let discussionResponseContract: DialogueResponseContract?
-    /// Current, capability-free view of the Run-local bounded write set. The
-    /// Application retains Note identity, expected revisions, change evidence,
-    /// and one-use capabilities; the Agent receives only the exact selectors
-    /// and states needed to address the protected write route.
+    /// Current view of the Run-local Agent activity ledger. The Application
+    /// retains Note identity, expected revisions, and change evidence; the
+    /// Agent receives the exact selectors and states needed for attributed,
+    /// revision-safe mutation.
     public let boundedWriteSet: [ResearchBoundedWriteSetViewEntry]
     public let continuationHandoff: ResearchContinuationHandoffContext?
     public let recommendedReading: ResearchRecommendedReadingDirectory?

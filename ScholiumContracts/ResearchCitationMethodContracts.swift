@@ -23,8 +23,8 @@ public struct ResearchCitationStyleOption: Codable, Hashable, Identifiable, Send
     }
 }
 
-/// Closed Platform support for citation-style identifiers. Method prose for a
-/// citation-aware Action remains in that Action's registered primary Markdown.
+/// Closed Platform support for citation-style identifiers. Intellectual prose
+/// for a citation-aware Action remains in its researcher-owned Skill folder.
 public enum ResearchCitationStyleCatalog {
     public static let options = [
         ResearchCitationStyleOption(

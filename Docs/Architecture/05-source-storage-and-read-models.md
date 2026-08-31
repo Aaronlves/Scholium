@@ -82,7 +82,7 @@ interpreted.
 `AgentChangeEvidenceStore` is a separate Core actor under Triptych-keyed
 Application Support. Each JSON record is keyed by `(Run ID, Note ID)` and binds
 that pair to the Triptych, exact starting bytes/fingerprint, and optional final Agent
-bytes/fingerprint. It enforces the Bounded Write Set source-size limit,
+bytes/fingerprint. It enforces the Run Activity Ledger source-size limit,
 descriptor-safe storage, atomic replacement, and cross-process locking. It is
 not queried as history, cannot reconstruct source authority, and is consumed
 only by exact Record comparison, direct Undo, and post-Record system-Trash

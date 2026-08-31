@@ -124,10 +124,10 @@ public enum ScholiumPaths {
         )
     }
 
-    /// Stable logical namespace used by the local App and CLI to derive the
-    /// same loopback port. The path is never created or used as IPC storage;
-    /// research content, Runs, Records, recovery state, and Session semantics
-    /// remain in their existing owners.
+    /// Stable private namespace used by the local App and CLI to derive the
+    /// same loopback port and hold its process-generation authentication file.
+    /// It contains transport state only; research content, Runs, Records,
+    /// recovery state, and Session semantics remain in their existing owners.
     public static func agentBridgeContainerURL(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         fileManager: FileManager = .default,

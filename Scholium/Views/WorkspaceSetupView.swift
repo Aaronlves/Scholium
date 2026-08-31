@@ -1118,11 +1118,11 @@ private struct BootstrapReviewTriptychStep: View {
                     Image(systemName: "person.badge.key")
                         .scholiumForeground(.accent)
                 }
-                Text("Agent write-set extensions ask you every time by default. You can change the Triptych collaboration policy later in Research Guidance Settings.")
+                Text("Agent activity is attributed to its Run and recorded with exact document changes; relevant Notes do not require separate approval.")
                     .font(ScholiumTypography.interface(.small))
                     .scholiumForeground(.mutedText)
                     .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("scholium.bootstrap.permissionDefault")
+                    .accessibilityIdentifier("scholium.bootstrap.activityTracking")
             }
             .frame(maxHeight: .infinity, alignment: .center)
         }

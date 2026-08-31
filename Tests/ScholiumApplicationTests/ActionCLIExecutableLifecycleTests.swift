@@ -18,10 +18,9 @@ struct ActionCLIExecutableLifecycleTests {
         let cli = ActionCLIProcess(binaryPath: binaryPath, home: root)
         let commands = [
             "preflight-analysis", "start", "pair", "reload", "query", "discuss-reply",
-            "extend-write-set",
+            "track-activity",
             "write", "write-zotero-binding", "resolve-write-conflict",
-            "submit-result", "continue",
-            "method-context", "improve-method", "end",
+            "submit-result", "continue", "end",
         ]
 
         let rootHelp = String(
@@ -195,9 +194,9 @@ struct ActionCLIExecutableLifecycleTests {
                     submission: submission
                 ))
             case .preflightAnalysisCreation, .pair, .revokeSession,
-                    .extendWriteSet, .writeZoteroBinding,
+                    .trackActivity, .writeZoteroBinding,
                     .resolveWriteConflict, .continueResearch,
-                    .methodImprovementContext, .submitMethodImprovement, .end:
+                    .end:
                 throw LocalAgentBridgeError.invalidRequest
             }
         }
@@ -528,11 +527,13 @@ struct ActionCLIExecutableLifecycleTests {
         let registration = try ResearchSkillRegistration(
             actionID: .analyze,
             displayName: "Analysis Method",
-            primaryMarkdown: .machineLocal()
+            skillFolder: .machineLocal()
         )
-        let method = try ResearchMethodSnapshot(
+        let method = try ResearchSkillBindingSnapshot(
             registration: registration,
-            primaryMarkdownSource: "# Analysis Method\n\nKeep source limits visible.\n"
+            registrationRevision: DocumentFingerprint(content: "registrations"),
+            skillFolderPath: "/Users/researcher/Skills/analyze",
+            skillFolderIsAvailable: true
         )
         let context = try ResearchAuthenticatedRunContext(
             brief: ResearchRunBrief(
@@ -551,7 +552,7 @@ struct ActionCLIExecutableLifecycleTests {
                     researchState: true,
                     zotero: true,
                     writeInitialObject: true,
-                    extendWriteSet: false
+                    trackActivity: false
                 )
             ),
             requiredSkills: try Self.requiredSkills(for: method),
@@ -617,7 +618,7 @@ struct ActionCLIExecutableLifecycleTests {
             title: fixture.analysisTarget.title,
             allowedOperations: [.modifyMarkdown],
             expectedRevision: fixture.analysisTarget.fingerprint,
-            authorizationBasis: .initialAction,
+            activityOrigin: .initialAction,
             expiresAt: Date().addingTimeInterval(600)
         )
         let writeView = ResearchBoundedWriteSetViewEntry(writeEntry)
@@ -678,9 +679,8 @@ struct ActionCLIExecutableLifecycleTests {
                 }
                 return .endReceipt(endReceipt)
             case .pair, .revokeSession, .query, .discussionReply,
-                    .extendWriteSet, .writeZoteroBinding,
-                    .resolveWriteConflict, .submitResult, .continueResearch,
-                    .methodImprovementContext, .submitMethodImprovement:
+                    .trackActivity, .writeZoteroBinding,
+                    .resolveWriteConflict, .submitResult, .continueResearch:
                 throw LocalAgentBridgeError.invalidRequest
             }
         }
@@ -851,11 +851,13 @@ struct ActionCLIExecutableLifecycleTests {
         let registration = try ResearchSkillRegistration(
             actionID: .analyze,
             displayName: "Analysis Method",
-            primaryMarkdown: .machineLocal()
+            skillFolder: .machineLocal()
         )
-        let method = try ResearchMethodSnapshot(
+        let method = try ResearchSkillBindingSnapshot(
             registration: registration,
-            primaryMarkdownSource: "# Analysis Method\n"
+            registrationRevision: DocumentFingerprint(content: "registrations"),
+            skillFolderPath: "/Users/researcher/Skills/analyze",
+            skillFolderIsAvailable: true
         )
         let context = try ResearchAuthenticatedRunContext(
             brief: ResearchRunBrief(
@@ -874,7 +876,7 @@ struct ActionCLIExecutableLifecycleTests {
                     researchState: true,
                     zotero: true,
                     writeInitialObject: true,
-                    extendWriteSet: false
+                    trackActivity: false
                 )
             ),
             requiredSkills: try Self.requiredSkills(for: method),
@@ -966,11 +968,13 @@ struct ActionCLIExecutableLifecycleTests {
         let registration = try ResearchSkillRegistration(
             actionID: .discuss,
             displayName: "Discussion Method",
-            primaryMarkdown: .machineLocal()
+            skillFolder: .machineLocal()
         )
-        let method = try ResearchMethodSnapshot(
+        let method = try ResearchSkillBindingSnapshot(
             registration: registration,
-            primaryMarkdownSource: "# Discussion Method\n\nPreserve alternatives.\n"
+            registrationRevision: DocumentFingerprint(content: "registrations"),
+            skillFolderPath: "/Users/researcher/Skills/discuss",
+            skillFolderIsAvailable: true
         )
         let profileRevision = try profile.contentRevision()
         let context = try ResearchAuthenticatedRunContext(
@@ -990,7 +994,7 @@ struct ActionCLIExecutableLifecycleTests {
                     researchState: true,
                     zotero: true,
                     writeInitialObject: false,
-                    extendWriteSet: false,
+                    trackActivity: false,
                     discussionReply: true
                 )
             ),
@@ -1044,9 +1048,9 @@ struct ActionCLIExecutableLifecycleTests {
                 }
                 return .discussionReply(replyReceipt)
             case .revokeSession, .query,
-                    .extendWriteSet, .writeDocument, .writeZoteroBinding,
+                    .trackActivity, .writeDocument, .writeZoteroBinding,
                     .resolveWriteConflict, .submitResult, .continueResearch,
-                    .methodImprovementContext, .submitMethodImprovement, .end:
+                    .end:
                 throw LocalAgentBridgeError.invalidRequest
             }
         }
@@ -1199,7 +1203,7 @@ struct ActionCLIExecutableLifecycleTests {
             title: "Agency",
             allowedOperations: [.modifyMarkdown],
             expectedRevision: DocumentFingerprint(content: "before"),
-            authorizationBasis: .initialAction,
+            activityOrigin: .initialAction,
             expiresAt: Date().addingTimeInterval(600)
         )
         let observedIDs = LockedAgentWriteRequestIDs()
@@ -1217,9 +1221,7 @@ struct ActionCLIExecutableLifecycleTests {
             allowedOperations: [.setZoteroBinding, .clearZoteroBinding],
             expectedRevision: DocumentFingerprint(content: "analysis"),
             zoteroBindingsRevision: DocumentFingerprint(content: "[]"),
-            authorizationBasis: .collaborationPolicy,
-            authorizationPolicy: .fullAccess,
-            policyRevision: DocumentFingerprint(content: "full-access"),
+            activityOrigin: .agentActivity,
             expiresAt: Date().addingTimeInterval(600)
         )
         let entryRevision = try #require(entry.expectedRevision)
@@ -1295,7 +1297,7 @@ struct ActionCLIExecutableLifecycleTests {
                         relatedNotes: related
                     )]
                 ))
-            case .extendWriteSet:
+            case .trackActivity:
                 guard request.credential == credential,
                       request.writeSetIntent?.targets.first?.relativePath
                         == "Agency.md" else {
@@ -1303,7 +1305,7 @@ struct ActionCLIExecutableLifecycleTests {
                 }
                 return .writeSet(ResearchWriteSetExtensionResult(
                     requestID: hiddenRequestID,
-                    state: .allowedSubset,
+                    state: .recorded,
                     entries: [ResearchBoundedWriteSetViewEntry(entry)],
                     message: "The approved document is ready."
                 ))
@@ -1345,8 +1347,7 @@ struct ActionCLIExecutableLifecycleTests {
                 ))
             case .revokeSession, .discussionReply,
                     .resolveWriteConflict, .submitResult,
-                    .continueResearch, .methodImprovementContext,
-                    .submitMethodImprovement, .end:
+                    .continueResearch, .end:
                 throw LocalAgentBridgeError.invalidRequest
             }
         }
@@ -1381,7 +1382,7 @@ struct ActionCLIExecutableLifecycleTests {
             "academic_reason": "Update the relevant topic note.",
         ])
         let extended = try cli.run(
-            ["agent", "extend-write-set", "--run", run.rawValue, "--from", "-"],
+            ["agent", "track-activity", "--run", run.rawValue, "--from", "-"],
             stdin: extensionJSON,
             environment: environment
         )
@@ -1934,8 +1935,8 @@ struct ActionCLIExecutableLifecycleTests {
             message: "The canonical Result formed one Research Record."
         )
         let expectedContinuation = try ResearchContinuationResult(
-            state: .pendingResearcherDecision,
-            message: "The bounded Continue request awaits researcher approval."
+            state: .stale,
+            message: "The fixture returns a stale continuation response."
         )
         let observed = LockedAgentLifecycleRequests()
         let server = try LocalAgentBridgeServer(
@@ -1975,10 +1976,9 @@ struct ActionCLIExecutableLifecycleTests {
                 observed.capture(continuation: continuation)
                 return .continuation(expectedContinuation)
             case .revokeSession, .query, .discussionReply,
-                    .extendWriteSet, .writeDocument,
+                    .trackActivity, .writeDocument,
                     .writeZoteroBinding,
-                    .resolveWriteConflict, .methodImprovementContext,
-                    .submitMethodImprovement, .end:
+                    .resolveWriteConflict, .end:
                 throw LocalAgentBridgeError.invalidRequest
             }
         }
@@ -2617,186 +2617,6 @@ struct ActionCLIExecutableLifecycleTests {
         #expect(updateReport["help"] as? String == "scholium help update")
     }
 
-    @Test("The real CLI fills Method-improvement revisions from authenticated context and submits one bounded target")
-    func agentMethodImprovementCLI() async throws {
-        guard let binaryPath = ProcessInfo.processInfo.environment[
-            "SCHOLIUM_ACTION_CLI_BINARY"
-        ], !binaryPath.isEmpty else { return }
-        let fixture = try await ActionCLIFixture.make()
-        defer { fixture.remove() }
-        let bridgeContainer = URL(
-            fileURLWithPath: FileManager.default.currentDirectoryPath,
-            isDirectory: true
-        ).appendingPathComponent(
-            ".build/m/\(String(UUID().uuidString.prefix(8)))",
-            isDirectory: true
-        )
-        try FileManager.default.createDirectory(
-            at: bridgeContainer,
-            withIntermediateDirectories: true
-        )
-        defer { try? FileManager.default.removeItem(at: bridgeContainer) }
-
-        let locator = try #require(ResearchRunLocator(
-            rawValue: "methodimprovementrunabcd"
-        ))
-        let code = try #require(ResearchPairingCode(
-            rawValue: "ABCDEFGHJKLMNPQR23456789"
-        ))
-        let credential = try ResearchConnectionCredential(
-            sessionID: UUID(),
-            secret: String(repeating: "m", count: 48),
-            expiresAt: Date().addingTimeInterval(3_600)
-        )
-        let registration = try ResearchSkillRegistration(
-            actionID: .synthesize,
-            displayName: "Synthesis Method",
-            primaryMarkdown: .machineLocal()
-        )
-        let method = try ResearchMethodSnapshot(
-            registration: registration,
-            primaryMarkdownSource: "# Synthesis Method\n"
-        )
-        let improvement = try ResearchMethodImprovementRun(
-            id: UUID(),
-            parentRecordID: UUID(),
-            triptychID: UUID(),
-            registrationKey: registration.key,
-            actionID: .synthesize,
-            method: method,
-            feedbackRevision: UUID(),
-            feedbackText: "Clarify how rival formulations remain visible.",
-            expectedResultFingerprint: DocumentFingerprint(content: "result")
-        )
-        let context = try ResearchMethodImprovementContext(
-            run: locator,
-            improvement: improvement
-        )
-        let replacement = "# Revised Synthesis Method\n"
-        let expectedReceipt = try ResearchMethodImprovementReceipt(
-            runID: improvement.id,
-            requestID: UUID(),
-            disposition: .replace,
-            targetID: "primary-method",
-            startingRevision: method.primaryMarkdownRevision,
-            endingRevision: DocumentFingerprint(content: replacement),
-            feedbackCleared: true,
-            diagnosis: "The primary Method needs one bounded clarification."
-        )
-        let observed = LockedMethodImprovementSubmission()
-        let endReceipt = try ResearchRunEndReceipt(
-            run: locator,
-            recoveryRetained: false,
-            message: "The Method improvement Run ended."
-        )
-        let server = try LocalAgentBridgeServer(
-            applicationSupportURL: bridgeContainer
-        ) { request in
-            guard request.run == locator else {
-                throw LocalAgentBridgeError.permissionDenied
-            }
-            switch request.operation {
-            case .preflightAnalysisCreation, .start:
-                throw LocalAgentBridgeError.invalidRequest
-            case .pair:
-                guard request.pairingCode == code else {
-                    throw LocalAgentBridgeError.permissionDenied
-                }
-                return .credential(credential)
-            case .context, .methodImprovementContext:
-                guard request.credential == credential else {
-                    throw LocalAgentBridgeError.permissionDenied
-                }
-                return .methodImprovementContext(context)
-            case .submitMethodImprovement:
-                guard request.credential == credential,
-                      let submission = request.methodImprovementSubmission else {
-                    throw LocalAgentBridgeError.permissionDenied
-                }
-                observed.capture(submission)
-                return .methodImprovementReceipt(try ResearchMethodImprovementReceipt(
-                    runID: expectedReceipt.runID,
-                    requestID: submission.requestID,
-                    disposition: expectedReceipt.disposition,
-                    targetID: expectedReceipt.targetID,
-                    startingRevision: expectedReceipt.startingRevision,
-                    endingRevision: expectedReceipt.endingRevision,
-                    feedbackCleared: expectedReceipt.feedbackCleared,
-                    diagnosis: expectedReceipt.diagnosis,
-                    completedAt: expectedReceipt.completedAt
-                ))
-            case .end:
-                guard request.credential == credential else {
-                    throw LocalAgentBridgeError.permissionDenied
-                }
-                return .endReceipt(endReceipt)
-            case .revokeSession, .query, .discussionReply,
-                    .extendWriteSet, .writeDocument,
-                    .writeZoteroBinding,
-                    .resolveWriteConflict, .submitResult, .continueResearch:
-                throw LocalAgentBridgeError.invalidRequest
-            }
-        }
-        defer { server.stop() }
-
-        let cli = ActionCLIProcess(binaryPath: binaryPath, home: fixture.homeURL)
-        let environment = [
-            "SCHOLIUM_AGENT_BRIDGE_CONTAINER": bridgeContainer.path,
-        ]
-        let paired = try cli.run(
-            ["agent", "pair", "--run", locator.rawValue],
-            stdin: Data((code.rawValue + "\n").utf8),
-            environment: environment
-        )
-        let pairObject = try #require(
-            JSONSerialization.jsonObject(with: paired.stdout) as? [String: Any]
-        )
-        #expect(pairObject["context_kind"] as? String == "method_improvement")
-        let pairedContext = try #require(pairObject["context"])
-        #expect(try Self.decoder().decode(
-            ResearchMethodImprovementContext.self,
-            from: JSONSerialization.data(withJSONObject: pairedContext)
-        ) == context)
-        let loaded = try cli.run(
-            ["agent", "method-context", "--run", locator.rawValue],
-            environment: environment
-        )
-        #expect(try Self.decoder().decode(
-            ResearchMethodImprovementContext.self,
-            from: loaded.stdout
-        ) == context)
-        let draft = try ResearchMethodImprovementDraft(
-            targetID: "primary-method",
-            disposition: .replace,
-            replacementSource: replacement,
-            diagnosis: expectedReceipt.diagnosis
-        )
-        let submitted = try cli.run(
-            ["agent", "improve-method", "--run", locator.rawValue, "--from", "-"],
-            stdin: try Self.encoder().encode(draft),
-            environment: environment
-        )
-        let receipt = try Self.decoder().decode(
-            ResearchMethodImprovementReceipt.self,
-            from: submitted.stdout
-        )
-        #expect(receipt.feedbackCleared)
-        let captured = try #require(observed.value)
-        #expect(captured.feedbackRevision == context.feedbackRevision)
-        #expect(captured.expectedResultFingerprint
-            == context.expectedResultFingerprint)
-        #expect(captured.expectedTargetRevision
-            == method.primaryMarkdownRevision)
-        #expect(captured.replacementSource == replacement)
-        #expect(!String(decoding: submitted.stdout, as: UTF8.self).contains(
-            credential.secret
-        ))
-        _ = try cli.run(
-            ["agent", "end", "--run", locator.rawValue],
-            environment: environment
-        )
-    }
-
     private static func startActionThroughCLI(
         _ actionID: ResearchActionID,
         target: ResearchActionNoteSnapshot,
@@ -3008,8 +2828,7 @@ struct ActionCLIExecutableLifecycleTests {
             $0.kind == .actionMethod
         })
         #expect(methodRequirement.name == skillName)
-        #expect(methodRequirement.primaryMarkdownRevision
-            == DocumentFingerprint(content: receivedMethod))
+        #expect(methodRequirement.registrationRevision != nil)
         #expect(context.requiredSkills.contains(.coreProtocol))
         #expect(context.requiredSkills.contains {
             $0.name == skillName
@@ -3150,11 +2969,13 @@ struct ActionCLIExecutableLifecycleTests {
         let registration = try ResearchSkillRegistration(
             actionID: actionID,
             displayName: "Fixture Method",
-            primaryMarkdown: .machineLocal()
+            skillFolder: .machineLocal()
         )
-        let method = try ResearchMethodSnapshot(
+        let method = try ResearchSkillBindingSnapshot(
             registration: registration,
-            primaryMarkdownSource: "# Fixture Method\n"
+            registrationRevision: DocumentFingerprint(content: "registrations"),
+            skillFolderPath: "/Users/researcher/Skills/\(actionID.rawValue)",
+            skillFolderIsAvailable: true
         )
         let recommendedReading: ResearchRecommendedReadingDirectory?
         if actionID == .synthesize || actionID == .write
@@ -3189,7 +3010,7 @@ struct ActionCLIExecutableLifecycleTests {
                     researchState: true,
                     zotero: true,
                     writeInitialObject: false,
-                    extendWriteSet: false
+                    trackActivity: false
                 )
             ),
             requiredSkills: try requiredSkills(for: method),
@@ -3204,7 +3025,7 @@ struct ActionCLIExecutableLifecycleTests {
     }
 
     private static func requiredSkills(
-        for method: ResearchMethodSnapshot
+        for method: ResearchSkillBindingSnapshot
     ) throws -> [ResearchRequiredSkill] {
         var skills: [ResearchRequiredSkill] = [.coreProtocol]
         if method.registration.actionID == .discuss {
@@ -3301,19 +3122,6 @@ private final class LockedAgentLifecycleRequests: @unchecked Sendable {
 
     func capture(continuation: ResearchContinuationRequest) {
         lock.withLock { storedContinuation = continuation }
-    }
-}
-
-private final class LockedMethodImprovementSubmission: @unchecked Sendable {
-    private let lock = NSLock()
-    private var stored: ResearchMethodImprovementSubmission?
-
-    var value: ResearchMethodImprovementSubmission? {
-        lock.withLock { stored }
-    }
-
-    func capture(_ submission: ResearchMethodImprovementSubmission) {
-        lock.withLock { stored = submission }
     }
 }
 

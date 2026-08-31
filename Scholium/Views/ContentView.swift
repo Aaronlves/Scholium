@@ -28,8 +28,6 @@ struct ContentView: View {
     @ObservedObject private var documentController: DocumentController
     @ObservedObject private var documentTabController: DocumentTabController
     @ObservedObject private var workspaceProjectionController: WindowWorkspaceProjectionController
-    @ObservedObject private var researchAgentPermissionWindowController:
-        ResearchAgentPermissionWindowController
     @ObservedObject private var cssSnippetStore: CSSSnippetStore
     @ObservedObject private var windowWorkspaceController: WindowWorkspaceController
     @ObservedObject private var libraryMutationController: WindowLibraryMutationController
@@ -63,9 +61,6 @@ struct ContentView: View {
         _documentTabController = ObservedObject(wrappedValue: appState.documentTabController)
         _workspaceProjectionController = ObservedObject(
             wrappedValue: appState.workspaceProjectionController
-        )
-        _researchAgentPermissionWindowController = ObservedObject(
-            wrappedValue: appState.researchAgentPermissionWindowController
         )
         _cssSnippetStore = ObservedObject(wrappedValue: appState.cssSnippetStore)
         _windowWorkspaceController = ObservedObject(
@@ -236,12 +231,7 @@ struct ContentView: View {
             ).post()
         }
         .sheet(item: presentedSheet, onDismiss: {
-            let permissionController = appState
-                .researchAgentPermissionWindowController
-            if permissionController.claim != nil {
-                windowCoordinator.restoreResearchAgentPermissionFocus()
-                permissionController.finishDismissal()
-            } else if researchActionController.isPresented {
+            if researchActionController.isPresented {
                 let actionID = researchActionController.activeActionID
                 let focusDisposition = researchActionDismissalFocusDisposition
                 appState.presentationRouter.dismissSheet()
@@ -251,9 +241,6 @@ struct ContentView: View {
                     disposition: focusDisposition
                 )
                 researchActionDismissalFocusDisposition = .preserveInputModality
-                permissionController.presentationBecameAvailable()
-            } else {
-                permissionController.presentationBecameAvailable()
             }
         }) { route in
             sheetContent(for: route)
@@ -969,28 +956,6 @@ struct ContentView: View {
                         )
                     }
                 }
-            }
-        case .researchAgentPermission(let requestID):
-            let controller = appState.researchAgentPermissionWindowController
-            if let claim = controller.claim,
-               claim.id == requestID {
-                ResearchAgentPermissionView(
-                    claim: claim,
-                    hasLocallyExpired: controller.hasLocallyExpired,
-                    isResolving: controller.isResolving,
-                    resolveWriteSet: { state, allowedHandles in
-                        controller.resolveWriteSet(
-                            state: state,
-                            allowedHandles: allowedHandles
-                        )
-                    },
-                    resolveContinuation: { allow in
-                        controller.resolveContinuation(allow: allow)
-                    },
-                    dismiss: {
-                        controller.requestDismissal(id: requestID)
-                    }
-                )
             }
         case .noteFileOperation(let request):
             NoteFileOperationView(

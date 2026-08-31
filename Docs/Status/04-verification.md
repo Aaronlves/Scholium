@@ -28,6 +28,14 @@ The ad-hoc App requires the documented Gatekeeper override.
 
 ## Focused interface evidence
 
+- On 2026-08-31, direct Agent collaboration passed verification: 207 Web,
+  464 Core plus 3 performance, 158 Contracts, 284 Application,
+  16 bridge, 1 architecture, 676 App, and 15 executable CLI tests; the signed
+  sandbox bridge probe and Release build passed. Targets enter the Run Activity
+  Ledger automatically, Continue creates an
+  attributed child Run, and no collaboration policy, Agent Access setting, or
+  permission sheet remains. XCUITest and human acceptance were not run.
+
 - On 2026-08-30, the Notifications and inline-feedback cutover passed 13 Core
   and 112 App tests, both validators, retired-path guards, and two UI journeys
   covering ordered feedback, expiry versus persistence, Dismiss, and an
@@ -47,16 +55,9 @@ The ad-hoc App requires the documented Gatekeeper override.
   Application, 15 bridge, 1 architecture, 665 App, and 16 CLI lifecycles;
   sandbox/residue guards and Release build passed. Focused and UI evidence
   preserves Continue Research, creates a fresh `.followUp` Run, retains one
-  Action activity until Dismiss, keeps Review above Actions without losing
-  reading position, and delays permission. VoiceOver remains open.
-
-- On 2026-08-27, the external-Agent Skill deployment cutover passed the complete
-  gate across 206 Web, 465 Core plus 3 performance, 150 Contracts, 284
-  Application, 16 bridge, 1 architecture, 668 App, and 16 CLI lifecycles.
-  Disposable external-Agent evidence registered 3 System plus 6 Action Skills,
-  preserved unrelated Skills, ran six bounded Actions, confined writes to
-  `scholium agent write`, preserved Continue context, and rejected substituted
-  Skills. Live-provider, packaged-account, and human acceptance remain open.
+  Action activity until Dismiss and keeps Review above Actions without losing
+  reading position. Retired permission-sheet coverage is not current Activity
+  Ledger acceptance. VoiceOver remains open.
 
 - On 2026-08-25, the window-workspace and Local Agent bridge ownership cutover
   passed its complete gate: 206 Web, 464 Core, 3 performance, 150 Contracts,
@@ -616,10 +617,10 @@ schema-8 Records, all associated with QA Topic: 60 have confirmed Topic
 changes, 40 have no source change, 20 also change QA Work, 25 contain an
 Evaluation, and 12 also contain Method Feedback. The live **This Note** Records
 AX tree reported `100 results`; opening a saved-Response Record exposed its
-Evaluation, Method Feedback, and Improve Current Method route. After the real
+Evaluation and Method Feedback. After the real
 workspace watcher rebuilt the research snapshot, QA Topic Overview reported
 `Needs Review · 3 Agent activities`. This is disposable Debug QA evidence, not
-a packaged release or researcher visual acceptance.
+packaged or researcher acceptance.
 
 This remains bounded development evidence, not an installed App/CLI journey or
 human acceptance. Genuine VoiceOver, physical

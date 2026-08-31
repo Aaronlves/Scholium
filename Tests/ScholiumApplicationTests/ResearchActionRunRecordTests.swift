@@ -53,14 +53,10 @@ extension ResearchActionRunOperationsTests {
                 run: handoff.run,
                 pairingCode: handoff.pairingCode
             )
-            let initialContext = try await runtime.researchAgentInitialContext(
+            let context = try await runtime.researchAgentInitialContext(
                 credential: credential,
                 run: handoff.run
             )
-            let context = try #require({
-                if case .action(let context) = initialContext { return context }
-                return nil
-            }())
             #expect(context.nextActions.allSatisfy {
                 Array($0.command.prefix(2)) == ["scholium", "agent"]
             })
@@ -518,7 +514,6 @@ extension ResearchActionRunOperationsTests {
             key: active.key,
             actionID: active.actionID,
             displayName: active.displayName,
-            primaryMarkdown: active.primaryMarkdown,
             skillFolder: active.skillFolder,
             isEnabled: false
         )
@@ -889,14 +884,6 @@ extension ResearchActionRunOperationsTests {
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let currentPolicy = try await handle.research.collaborationPolicy()
-        _ = try await handle.research.saveCollaborationPolicy(
-            ResearchCollaborationPolicyDocument(
-                triptychID: fixture.assignment.id,
-                policy: .fullAccess
-            ),
-            expectedRevision: currentPolicy.revision
-        )
         let topic = try await researchActionTarget(
             fixture.topicID,
             role: .topic,
@@ -928,7 +915,7 @@ extension ResearchActionRunOperationsTests {
                 academicReason: "Correct an Analysis without selecting it as Synthesis material."
             )
         )
-        #expect(extensionResult.state == .allowedSubset)
+        #expect(extensionResult.state == .recorded)
         let write = try await handle.research.writeAgentDocument(
             credential: client.credential,
             run: client.run,

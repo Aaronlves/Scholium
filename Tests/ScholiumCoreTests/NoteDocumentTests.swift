@@ -324,10 +324,16 @@ struct NoteDocumentTests {
             relativePath: "unclosed.md",
             rawContent: "---\ntags: [one]\n"
         ).frontmatterState == .malformed)
-        #expect(NoteDocument(
+        let closedInvalid = NoteDocument(
             relativePath: "closed-invalid.md",
             rawContent: "---\ntags: [\n---\n"
-        ).frontmatterState == .malformed)
+        )
+        #expect(closedInvalid.frontmatterState == .malformed)
+        #expect(closedInvalid.hasProvableBodyBoundary)
+        #expect(!NoteDocument(
+            relativePath: "unclosed.md",
+            rawContent: "---\ntags: [one]\n"
+        ).hasProvableBodyBoundary)
     }
 
     @Test("Creator sequences serialize as mappings without changing neighboring bytes")

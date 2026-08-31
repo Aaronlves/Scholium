@@ -76,9 +76,11 @@ extension ResearchActionRunOperationsTests {
             )
         )
         let protectedRun = try await handle.research.actionRunDetails(id: preparation.runID)
-        #expect(preparation.instructions.contains("Target and Materials are read-only"))
         #expect(preparation.instructions.contains(
-            "begin a separately authorized Analyze Action"
+            "Target and Materials remain unchanged because Discuss records an attributed exchange"
+        ))
+        #expect(preparation.instructions.contains(
+            "continue with the Analyze Action"
         ))
         let storedInstructions = try #require(try await handle.services.localResearchExecutionStore.listing().records.first {
             $0.id == preparation.runID
@@ -925,8 +927,11 @@ extension ResearchActionRunOperationsTests {
         #expect(packet.contains("\"action\" : \"synthesize\""))
         #expect(packet.contains("\"method\""))
         #expect(packet.contains("\"registrationKey\""))
-        #expect(packet.contains("\"primaryMarkdownRevision\""))
-        #expect(packet.contains("\"skillFolderPath\""))
+        #expect(packet.contains("\"registrationRevision\""))
+        #expect(!packet.contains("\"skillFolderPath\""))
+        #expect(!packet.contains(
+            preparation.snapshot.actionSnapshot.method.skillFolderPath
+        ))
         #expect(!packet.contains("\"practices\""))
         #expect(!packet.contains("packageRevision"))
         #expect(!packet.contains("loadedResources"))

@@ -2073,7 +2073,7 @@ extension ScholiumUITests {
     }
 
     /// Preserves the fixture's valid Triptych identity, Note identities, and
-    /// editable Working Methods while removing only mutable Research Records
+    /// current Action Skill assignments while removing only mutable Research Records
     /// owned by these action journeys. Deleting the manifest while retaining
     /// identity-bound control files would manufacture an unsupported partial
     /// Triptych and correctly route the app back to recovery Bootstrap.

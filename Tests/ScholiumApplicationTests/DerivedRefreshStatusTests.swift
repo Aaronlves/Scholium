@@ -424,8 +424,8 @@ struct DerivedRefreshStatusTests {
         await runtime.shutdown()
     }
 
-    @Test("Committed Fidelity remains reusable while derived refresh keeps failing")
-    func committedFidelityRemainsReusableAcrossRefreshFailures() async throws {
+    @Test("Committed Fidelity remains durable but is not reused across Runs")
+    func committedFidelityIsRunLocalAcrossRefreshFailures() async throws {
         let fixture = try await ApplicationFixture.make()
         defer { fixture.remove() }
         let runtime = WorkspaceRuntime(configuration: .snapshot(.init(
@@ -464,20 +464,22 @@ struct DerivedRefreshStatusTests {
         #expect(completion.state == .complete)
         #expect(completion.derivedRefreshWarning?.isEmpty == false)
 
-        // Action execution is intentionally absent from the disposable
-        // workspace projection. Reuse must come from the durable store.
+        // The completion remains durable, but a new Run must do its own audit:
+        // Scholium cannot attest externally editable Skill-file bytes.
         #expect(try await handle.services.localResearchExecutionStore.record(
             id: preparation.runID
         ).completion?.state == .complete)
-        let reused = try await handle.research.prepareActionRun(
+        let nextRun = try await handle.research.prepareActionRun(
             ResearchActionRunRequest(
                 actionID: .checkFidelity,
                 target: target,
                 checks: [.content]
             )
         )
-        #expect(reused.state == .complete)
-        #expect(reused.reusedCompletion?.runID == completion.runID)
+        #expect(nextRun.state == .prepared)
+        #expect(nextRun.completion == nil)
+        #expect(nextRun.runID != completion.runID)
+        #expect(nextRun.derivedRefreshWarning?.isEmpty == false)
 
         try FileManager.default.removeItem(at: invalidURL)
         _ = try await handle.discovery.refresh()
@@ -486,8 +488,14 @@ struct DerivedRefreshStatusTests {
             $0.snapshot.request.actionID == .checkFidelity
                 && $0.snapshot.request.target.noteID == target.noteID
         }
-        #expect(persistedMatches.count == 1)
-        #expect(persistedMatches.first?.completion?.state == .complete)
+        #expect(persistedMatches.count == 2)
+        #expect(persistedMatches.first {
+            $0.id == completion.runID
+        }?.completion?.state == .complete)
+        #expect(persistedMatches.first {
+            $0.id == nextRun.runID
+        }?.completion == nil)
+        try await handle.research.cancelActionRun(runID: nextRun.runID)
         await runtime.shutdown()
     }
 

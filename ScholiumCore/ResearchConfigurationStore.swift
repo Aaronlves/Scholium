@@ -7,11 +7,10 @@ public enum ResearchConfigurationStoreError: LocalizedError, Hashable, Sendable 
     case staleDocument
     case missingRegistrations
     case missingProfiles
-    case missingCollaborationPolicy
     case missingRegistration(ResearchActionID)
     case disabledRegistration(ResearchActionID)
-    case missingMethod(String)
-    case invalidMethod(String)
+    case missingSkillFolder(String)
+    case invalidSkillFolder(String)
     case invalidDocument(String)
 
     public var errorDescription: String? {
@@ -24,16 +23,14 @@ public enum ResearchConfigurationStoreError: LocalizedError, Hashable, Sendable 
             "The current Research Skill registration document is missing."
         case .missingProfiles:
             "The current academic Action Profile document is missing."
-        case .missingCollaborationPolicy:
-            "The current Triptych collaboration policy is missing."
         case .missingRegistration(let actionID):
             "Action \(actionID.rawValue) has no current Research Skill registration."
         case .disabledRegistration(let actionID):
             "The Research Skill registered for \(actionID.rawValue) is disabled."
-        case .missingMethod(let path):
-            "The registered primary Research Skill Markdown is missing: \(path)"
-        case .invalidMethod(let path):
-            "The registered primary Research Skill Markdown is invalid: \(path)"
+        case .missingSkillFolder(let path):
+            "The registered Research Skill folder is missing: \(path)"
+        case .invalidSkillFolder(let path):
+            "The registered Research Skill folder is invalid: \(path)"
         case .invalidDocument(let reason):
             "The current research configuration is invalid. \(reason)"
         }
@@ -41,9 +38,8 @@ public enum ResearchConfigurationStoreError: LocalizedError, Hashable, Sendable 
 }
 
 public actor ResearchConfigurationStore {
-    public static let registrationFileName = "skill-registrations-v2.json"
+    public static let registrationFileName = "skill-registrations-v3.json"
     public static let profileFileName = "academic-action-profiles-v1.json"
-    public static let collaborationFileName = "collaboration-policy-v1.json"
     public static let citationMethodFileName = "citation-method-v1.json"
 
     private let controlURL: URL
@@ -51,9 +47,8 @@ public actor ResearchConfigurationStore {
     private let fileManager: FileManager
     private let registrations: StrictResearchJSONStore<ResearchSkillRegistrationDocument>
     private let profiles: StrictResearchJSONStore<ResearchAcademicProfileDocument>
-    private let collaboration: StrictResearchJSONStore<ResearchCollaborationPolicyDocument>
     private let citationMethod: StrictResearchJSONStore<ResearchCitationMethodDocument>
-    private let methodLocators: ResearchMethodLocatorStore?
+    private let skillFolderLocators: ResearchSkillFolderLocatorStore?
 
     public init(
         controlURL: URL,
@@ -77,20 +72,14 @@ public actor ResearchConfigurationStore {
             maximumByteCount: 4_194_304,
             fileManager: fileManager
         )
-        collaboration = StrictResearchJSONStore(
-            controlURL: root,
-            fileName: Self.collaborationFileName,
-            maximumByteCount: 65_536,
-            fileManager: fileManager
-        )
         citationMethod = StrictResearchJSONStore(
             controlURL: root,
             fileName: Self.citationMethodFileName,
             maximumByteCount: 65_536,
             fileManager: fileManager
         )
-        methodLocators = machineStorageURL.map {
-            ResearchMethodLocatorStore(
+        skillFolderLocators = machineStorageURL.map {
+            ResearchSkillFolderLocatorStore(
                 storageURL: $0,
                 triptychID: triptychID,
                 fileManager: fileManager
@@ -116,7 +105,7 @@ public actor ResearchConfigurationStore {
     public func bootstrapDefaults() throws {
         try ensureControlDirectory()
         if try registrationSnapshot() == nil {
-            let installed = try BundledResearchMethodDefaults.install(into: controlURL)
+            let installed = try BundledResearchSkillDefaults.install(into: controlURL)
             _ = try saveRegistrations(
                 ResearchSkillRegistrationDocument(registrations: installed),
                 expectedRevision: nil
@@ -125,12 +114,6 @@ public actor ResearchConfigurationStore {
         if try profileSnapshot() == nil {
             _ = try saveProfiles(
                 ResearchAcademicProfileCatalog.defaultDocument,
-                expectedRevision: nil
-            )
-        }
-        if try collaborationSnapshot() == nil {
-            _ = try saveCollaborationPolicy(
-                ResearchCollaborationPolicyDocument(triptychID: triptychID),
                 expectedRevision: nil
             )
         }
@@ -143,13 +126,15 @@ public actor ResearchConfigurationStore {
     }
 
     @discardableResult
-    public func preserveInvalidMachineLocalMethodLocatorsAndReset() throws -> URL? {
-        guard let methodLocators else {
+    public func preserveInvalidMachineLocalSkillFolderLocatorsAndReset() throws
+        -> URL?
+    {
+        guard let skillFolderLocators else {
             throw ResearchConfigurationStoreError.invalidDocument(
-                "Machine-local Method locator storage is unavailable."
+                "Machine-local Skill-folder locator storage is unavailable."
             )
         }
-        return try methodLocators.preserveInvalidAndReset()
+        return try skillFolderLocators.preserveInvalidAndReset()
     }
 
     public func saveRegistrations(
@@ -164,79 +149,45 @@ public actor ResearchConfigurationStore {
     }
 
     /// Replaces one Action's current Skill relation with a researcher-selected
-    /// primary Markdown file. Portable state records only machine-local
-    /// markers; the private locator stores exact paths/bookmarks without
-    /// enumerating or reading optional folder contents.
-    public func registerExternalMethod(
+    /// folder. Portable state records only a machine-local marker; the private
+    /// locator stores its path and read-only reveal bookmark. Neither this
+    /// transaction nor its readback opens or interprets folder contents.
+    public func registerExternalSkillFolder(
         actionID: ResearchActionID,
         displayName: String,
-        primaryMarkdownPath: String,
-        skillFolderPath: String?,
+        skillFolderPath: String,
         expectedRegistrationRevision: DocumentFingerprint
-    ) throws -> ResearchMethodSnapshot {
+    ) throws -> ResearchSkillBindingSnapshot {
         guard let current = try registrationSnapshot(),
               current.revision == expectedRegistrationRevision else {
             throw ResearchConfigurationStoreError.staleDocument
         }
-        let primaryURL = URL(fileURLWithPath: primaryMarkdownPath)
+        let folder = URL(fileURLWithPath: skillFolderPath, isDirectory: true)
             .standardizedFileURL
-        guard primaryURL.pathExtension.lowercased() == "md" else {
-            throw ResearchConfigurationStoreError.invalidMethod(primaryURL.path)
-        }
-        let folder = skillFolderPath.map {
-            URL(fileURLWithPath: $0).standardizedFileURL.path
-        }
-        if let folder,
-           !SecureResearchMethodIO.directoryIsAvailable(atPath: folder) {
-            throw ResearchConfigurationStoreError.invalidMethod(folder)
-        }
-        guard let methodLocators else {
+        guard let skillFolderLocators else {
             throw ResearchConfigurationStoreError.invalidDocument(
-                "Machine-local Method locator storage is unavailable."
+                "Machine-local Skill-folder locator storage is unavailable."
             )
         }
         let key = ResearchSkillRegistrationKey()
-        let originalLocators = try methodLocators.snapshot()
-        let binding = try methodLocators.makeBinding(
+        let originalLocators = try skillFolderLocators.snapshot()
+        let binding = try skillFolderLocators.makeBinding(
             registrationKey: key,
-            primaryURL: primaryURL,
-            skillFolderURL: folder.map { URL(fileURLWithPath: $0) }
+            skillFolderURL: folder
         )
         let locatorDocument = try (
             originalLocators?.document
-                ?? ResearchMethodLocatorStore.Document(triptychID: triptychID)
+                ?? ResearchSkillFolderLocatorStore.Document(triptychID: triptychID)
         ).replacing(binding)
-        let savedLocators = try methodLocators.save(
+        let savedLocators = try skillFolderLocators.save(
             locatorDocument,
             expectedRevision: originalLocators?.revision
         )
-        let source: String
-        do {
-            source = try methodLocators.withPrimaryURL(for: key) {
-                try SecureResearchMethodIO.read(at: $0)
-            }
-        } catch {
-            _ = try? methodLocators.save(
-                originalLocators?.document
-                    ?? ResearchMethodLocatorStore.Document(triptychID: triptychID),
-                expectedRevision: savedLocators.revision
-            )
-            throw error
-        }
-        guard !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            _ = try? methodLocators.save(
-                originalLocators?.document
-                    ?? ResearchMethodLocatorStore.Document(triptychID: triptychID),
-                expectedRevision: savedLocators.revision
-            )
-            throw ResearchConfigurationStoreError.invalidMethod(primaryURL.path)
-        }
         let registration = try ResearchSkillRegistration(
             key: key,
             actionID: actionID,
             displayName: displayName,
-            primaryMarkdown: .machineLocal(),
-            skillFolder: folder == nil ? nil : .machineLocal(),
+            skillFolder: .machineLocal(),
             isEnabled: true
         )
         var savedRegistration: ResearchSkillRegistrationSnapshot?
@@ -245,15 +196,15 @@ public actor ResearchConfigurationStore {
                 current.document.replacing(registration),
                 expectedRevision: current.revision
             )
-            let readback = try methodSnapshot(for: actionID)
+            let readback = try skillBindingSnapshot(for: actionID)
             guard readback.registration == registration,
-                  readback.primaryMarkdownSource == source else {
+                  readback.skillFolderPath == folder.path else {
                 throw ResearchConfigurationStoreError.invalidDocument(
-                    "The registered Skill could not be read back exactly."
+                    "The registered Skill-folder relation could not be read back exactly."
                 )
             }
             if let previous = current.document.registration(for: actionID),
-               previous.primaryMarkdown.kind == .machineLocal {
+               previous.skillFolder.kind == .machineLocal {
                 try? removeUnusedMachineLocator(
                     previous.key,
                     retaining: registration.key
@@ -284,102 +235,11 @@ public actor ResearchConfigurationStore {
                 registrationRolledBack = false
             }
             if registrationRolledBack {
-                _ = try? methodLocators.save(
+                _ = try? skillFolderLocators.save(
                     originalLocators?.document
-                        ?? ResearchMethodLocatorStore.Document(triptychID: triptychID),
+                        ?? ResearchSkillFolderLocatorStore.Document(triptychID: triptychID),
                     expectedRevision: savedLocators.revision
                 )
-            }
-            throw error
-        }
-    }
-
-    /// Creates one ordinary local Skill folder owned by this Triptych and then
-    /// installs its primary Markdown as the sole Action registration. Failure
-    /// before the registration commit removes only the task-owned new folder.
-    public func createPrimaryMethod(
-        actionID: ResearchActionID,
-        displayName: String,
-        source: String,
-        expectedRegistrationRevision: DocumentFingerprint
-    ) throws -> ResearchMethodSnapshot {
-        guard source.utf8.count <= SecureResearchMethodIO.maximumMethodByteCount,
-              !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw ResearchConfigurationStoreError.invalidMethod(displayName)
-        }
-        guard let current = try registrationSnapshot(),
-              current.revision == expectedRegistrationRevision else {
-            throw ResearchConfigurationStoreError.staleDocument
-        }
-        let root = try SecureResearchConfigurationIO.openAbsoluteDirectory(controlURL)
-        defer { Darwin.close(root) }
-        let foldersURL = controlURL.appendingPathComponent("skill-folders", isDirectory: true)
-        let folders = try SecureResearchConfigurationIO.ensureDirectory(
-            parentDescriptor: root,
-            name: "skill-folders",
-            path: foldersURL.path
-        )
-        defer { Darwin.close(folders) }
-        let folderName = "researcher-\(UUID().uuidString.lowercased())"
-        let folderURL = foldersURL.appendingPathComponent(folderName, isDirectory: true)
-        let folder = try SecureResearchConfigurationIO.createDirectory(
-            parentDescriptor: folders,
-            name: folderName,
-            path: folderURL.path
-        )
-        defer { Darwin.close(folder) }
-        try SecureResearchConfigurationIO.createDataFile(
-            parentDescriptor: folder,
-            leaf: "SKILL.md",
-            data: Data(source.utf8),
-            path: folderURL.appendingPathComponent("SKILL.md").path
-        )
-        var committed = false
-        defer {
-            if !committed {
-                try? SecureResearchConfigurationIO.removeDataFile(
-                    parentDescriptor: folder,
-                    leaf: "SKILL.md",
-                    path: folderURL.appendingPathComponent("SKILL.md").path
-                )
-                try? SecureResearchConfigurationIO.removeDirectory(
-                    parentDescriptor: folders,
-                    name: folderName,
-                    path: folderURL.path
-                )
-            }
-        }
-        let registration = try ResearchSkillRegistration(
-            actionID: actionID,
-            displayName: displayName,
-            primaryMarkdown: .triptychControl(
-                "skill-folders/\(folderName)/SKILL.md"
-            ),
-            skillFolder: .triptychControl("skill-folders/\(folderName)"),
-            isEnabled: true
-        )
-        let saved = try saveRegistrations(
-            current.document.replacing(registration),
-            expectedRevision: current.revision
-        )
-        do {
-            let readback = try methodSnapshot(for: actionID)
-            guard readback.registration == registration,
-                  readback.primaryMarkdownSource == source else {
-                throw ResearchConfigurationStoreError.invalidDocument(
-                    "The created Skill could not be read back exactly."
-                )
-            }
-            committed = true
-            return readback
-        } catch {
-            if (try? saveRegistrations(
-                current.document,
-                expectedRevision: saved.revision
-            )) == nil {
-                // A concurrent or external change now owns the document. Do
-                // not remove bytes that its observed registration may refer to.
-                committed = true
             }
             throw error
         }
@@ -410,20 +270,6 @@ public actor ResearchConfigurationStore {
         )
     }
 
-    public func collaborationSnapshot() throws -> ResearchCollaborationPolicySnapshot? {
-        try collaboration.snapshot().map { stored in
-            guard stored.document.triptychID == triptychID else {
-                throw ResearchConfigurationStoreError.invalidDocument(
-                    "The collaboration policy belongs to another Triptych."
-                )
-            }
-            return ResearchCollaborationPolicySnapshot(
-                document: stored.document,
-                revision: stored.revision
-            )
-        }
-    }
-
     /// Reidentification is safe only after every portable Triptych-bound
     /// configuration owner already names the same stable manifest identity.
     /// This is a read-only preflight; it never repairs a partial identity
@@ -431,34 +277,12 @@ public actor ResearchConfigurationStore {
     public func validatePortableIdentityForReidentification(
         _ stableID: UUID
     ) throws {
-        guard let collaborationDocument = try collaboration.snapshot()?.document,
-              collaborationDocument.triptychID == stableID else {
-            throw ResearchConfigurationStoreError.invalidDocument(
-                "The collaboration policy does not name the proposed stable Triptych."
-            )
-        }
         guard let citationDocument = try citationMethod.snapshot()?.document,
               citationDocument.triptychID == stableID else {
             throw ResearchConfigurationStoreError.invalidDocument(
                 "The Citation Method does not name the proposed stable Triptych."
             )
         }
-    }
-
-    public func saveCollaborationPolicy(
-        _ document: ResearchCollaborationPolicyDocument,
-        expectedRevision: DocumentFingerprint?
-    ) throws -> ResearchCollaborationPolicySnapshot {
-        guard document.triptychID == triptychID else {
-            throw ResearchConfigurationStoreError.invalidDocument(
-                "The collaboration policy belongs to another Triptych."
-            )
-        }
-        let saved = try collaboration.save(document, expectedRevision: expectedRevision)
-        return ResearchCollaborationPolicySnapshot(
-            document: saved.document,
-            revision: saved.revision
-        )
     }
 
     public func citationMethodSnapshot() throws -> ResearchCitationMethodSnapshot? {
@@ -490,127 +314,81 @@ public actor ResearchConfigurationStore {
         )
     }
 
-    /// Resolves the registered Skill entry and the optional folder locator. It
-    /// never enumerates, snapshots, or interprets ordinary reference files.
-    public func methodSnapshot(for actionID: ResearchActionID) throws -> ResearchMethodSnapshot {
-        guard let registration = try registrationSnapshot()?.document.registration(
-            for: actionID
-        ) else {
+    /// Resolves only the registered Skill-folder relation. It never opens,
+    /// enumerates, snapshots, or interprets any file inside the folder.
+    public func skillBindingSnapshot(
+        for actionID: ResearchActionID
+    ) throws -> ResearchSkillBindingSnapshot {
+        guard let registrations = try registrationSnapshot(),
+              let registration = registrations.document.registration(for: actionID) else {
             throw ResearchConfigurationStoreError.missingRegistration(actionID)
         }
-        guard registration.isEnabled else {
-            throw ResearchConfigurationStoreError.disabledRegistration(actionID)
-        }
-        let primarySource = try withPrimaryURL(for: registration) {
-            try SecureResearchMethodIO.read(at: $0)
-        }
         let folder = try resolvedSkillFolder(for: registration)
-        return try ResearchMethodSnapshot(
+        return try ResearchSkillBindingSnapshot(
             registration: registration,
-            primaryMarkdownSource: primarySource,
+            registrationRevision: registrations.revision,
             skillFolderPath: folder.path,
             skillFolderIsAvailable: folder.isAvailable
         )
     }
 
-    public func savePrimaryMethod(
-        registrationKey: ResearchSkillRegistrationKey,
-        source: String,
-        expectedRevision: DocumentFingerprint
-    ) throws -> ResearchMethodSnapshot {
-        guard source.utf8.count <= SecureResearchMethodIO.maximumMethodByteCount,
-              let registrations = try registrationSnapshot(),
-              let registration = registrations.document.registrations.first(where: {
-                  $0.key == registrationKey
-              }) else {
-            throw ResearchConfigurationStoreError.invalidMethod(
-                registrationKey.description
-            )
-        }
-        try withPrimaryURL(for: registration) { url in
-            let current = try SecureResearchMethodIO.data(at: url)
-            guard DocumentFingerprint(data: current) == expectedRevision else {
-                throw ResearchConfigurationStoreError.staleDocument
-            }
-            _ = try SecureResearchMethodIO.replace(
-                at: url,
-                data: Data(source.utf8),
-                expectedRevision: expectedRevision
-            )
-        }
-        return try methodSnapshot(for: registration.actionID)
-    }
-
-    public func restoreDefaultPrimaryMethod(
-        actionID: ResearchActionID,
-        expectedRevision: DocumentFingerprint
-    ) throws -> ResearchMethodSnapshot {
-        guard let registration = try registrationSnapshot()?.document.registration(
-            for: actionID
-        ) else {
+    /// Begins the shortest security-scoped access needed to reveal the
+    /// registered folder in Finder. The returned lease owns no file-content
+    /// operation and must remain alive through the reveal call.
+    public func skillFolderAccess(
+        for actionID: ResearchActionID
+    ) throws -> any ResearchSkillFolderAccess {
+        guard let registrations = try registrationSnapshot(),
+              let registration = registrations.document.registration(for: actionID)
+        else {
             throw ResearchConfigurationStoreError.missingRegistration(actionID)
         }
-        return try savePrimaryMethod(
-            registrationKey: registration.key,
-            source: BundledResearchMethodDefaults.primarySource(for: actionID),
-            expectedRevision: expectedRevision
-        )
-    }
-
-    private func withPrimaryURL<Result>(
-        for registration: ResearchSkillRegistration,
-        _ operation: (URL) throws -> Result
-    ) throws -> Result {
-        switch registration.primaryMarkdown.kind {
+        switch registration.skillFolder.kind {
         case .triptychControl:
-            return try operation(try triptychURL(for: registration.primaryMarkdown))
+            let url = try triptychURL(for: registration.skillFolder)
+            guard Self.directoryIsAvailable(at: url) else {
+                throw ResearchConfigurationStoreError.missingSkillFolder(url.path)
+            }
+            return ResearchSkillFolderAccessLease(url: url, stopAccess: {})
         case .machineLocal:
-            guard let methodLocators else {
+            guard let skillFolderLocators else {
                 throw ResearchConfigurationStoreError.invalidDocument(
-                    "Machine-local Method locator storage is unavailable."
+                    "Machine-local Skill-folder locator storage is unavailable."
                 )
             }
-            return try methodLocators.withPrimaryURL(
-                for: registration.key,
-                operation
+            return try skillFolderLocators.skillFolderAccess(
+                for: registration.key
             )
         }
     }
 
     private func resolvedSkillFolder(
         for registration: ResearchSkillRegistration
-    ) throws -> (path: String?, isAvailable: Bool?) {
-        guard let folder = registration.skillFolder else { return (nil, nil) }
-        switch folder.kind {
+    ) throws -> (path: String, isAvailable: Bool) {
+        switch registration.skillFolder.kind {
         case .triptychControl:
-            let url = try triptychURL(for: folder)
+            let url = try triptychURL(for: registration.skillFolder)
             return (
                 url.path,
-                SecureResearchMethodIO.directoryIsAvailable(atPath: url.path)
+                Self.directoryIsAvailable(at: url)
             )
         case .machineLocal:
-            guard let methodLocators else {
+            guard let skillFolderLocators else {
                 throw ResearchConfigurationStoreError.invalidDocument(
-                    "Machine-local Method locator storage is unavailable."
+                    "Machine-local Skill-folder locator storage is unavailable."
                 )
             }
-            let status = try methodLocators.skillFolderStatus(for: registration.key)
-            guard status.path != nil else {
-                throw ResearchConfigurationStoreError.invalidDocument(
-                    "The machine-local Skill-folder locator is missing."
-                )
-            }
-            return status
+            return try skillFolderLocators.skillFolderStatus(for: registration.key)
         }
     }
 
     private func triptychURL(
-        for location: ResearchMethodFileLocation
+        for location: ResearchSkillFolderLocation
     ) throws -> URL {
         guard location.kind == .triptychControl,
               let relativePath = location.triptychRelativePath else {
             throw ResearchConfigurationStoreError.invalidDocument(
-                "A machine-local Method cannot resolve through portable state."
+                "A machine-local Skill folder cannot resolve through portable state."
             )
         }
         return controlURL.appendingPathComponent(relativePath).standardizedFileURL
@@ -620,12 +398,20 @@ public actor ResearchConfigurationStore {
         _ key: ResearchSkillRegistrationKey,
         retaining retainedKey: ResearchSkillRegistrationKey
     ) throws {
-        guard key != retainedKey, let methodLocators,
-              let snapshot = try methodLocators.snapshot() else { return }
-        _ = try methodLocators.save(
+        guard key != retainedKey, let skillFolderLocators,
+              let snapshot = try skillFolderLocators.snapshot() else { return }
+        _ = try skillFolderLocators.save(
             try snapshot.document.removing(key),
             expectedRevision: snapshot.revision
         )
+    }
+
+    private static func directoryIsAvailable(at url: URL) -> Bool {
+        let values = try? url.resourceValues(forKeys: [
+            .isDirectoryKey,
+            .isSymbolicLinkKey,
+        ])
+        return values?.isDirectory == true && values?.isSymbolicLink != true
     }
 
     private func ensureControlDirectory() throws {
@@ -797,126 +583,4 @@ struct StrictResearchJSONStore<Document: Codable & Sendable> {
             throw ResearchConfigurationStoreError.unsafeStorage
         }
     }
-}
-
-private enum SecureResearchMethodIO {
-    static let maximumMethodByteCount = 1_048_576
-
-    static func data(at url: URL) throws -> Data {
-        let parent = try SecureResearchConfigurationIO.openAbsoluteDirectory(
-            url.deletingLastPathComponent()
-        )
-        defer { Darwin.close(parent) }
-        do {
-            return try SecureResearchConfigurationIO.readDataFile(
-                parentDescriptor: parent,
-                leaf: url.lastPathComponent,
-                path: url.path,
-                maximumByteCount: maximumMethodByteCount
-            )
-        } catch {
-            throw ResearchConfigurationStoreError.missingMethod(url.path)
-        }
-    }
-
-    static func read(at url: URL) throws -> String {
-        let data = try data(at: url)
-        guard let source = String(data: data, encoding: .utf8) else {
-            throw ResearchConfigurationStoreError.invalidMethod(url.path)
-        }
-        return source
-    }
-
-    static func replace(
-        at url: URL,
-        data: Data,
-        expectedRevision: DocumentFingerprint
-    ) throws -> DocumentFingerprint {
-        guard data.count <= maximumMethodByteCount,
-              String(data: data, encoding: .utf8) != nil else {
-            throw ResearchConfigurationStoreError.invalidMethod(url.path)
-        }
-        let parentURL = url.deletingLastPathComponent()
-        let parent = try SecureResearchConfigurationIO.openAbsoluteDirectory(parentURL)
-        defer { Darwin.close(parent) }
-        let identity = try SecureResearchConfigurationIO.identity(
-            of: parent,
-            path: parentURL.path
-        )
-        let current = try SecureResearchConfigurationIO.readDataFile(
-            parentDescriptor: parent,
-            leaf: url.lastPathComponent,
-            path: url.path,
-            maximumByteCount: maximumMethodByteCount
-        )
-        guard DocumentFingerprint(data: current) == expectedRevision else {
-            throw ResearchConfigurationStoreError.staleDocument
-        }
-        let stage = ".method-edit-\(UUID().uuidString.lowercased())"
-        var stageExists = false
-        var committed = false
-        do {
-            try SecureResearchConfigurationIO.createDataFile(
-                parentDescriptor: parent,
-                leaf: stage,
-                data: data,
-                path: stage
-            )
-            stageExists = true
-            try SecureResearchConfigurationIO.swapEntries(
-                parentDescriptor: parent,
-                first: url.lastPathComponent,
-                second: stage
-            )
-            committed = true
-            guard fsync(parent) == 0 else {
-                throw ResearchConfigurationStoreError.unsafeStorage
-            }
-            let readback = try SecureResearchConfigurationIO.readDataFile(
-                parentDescriptor: parent,
-                leaf: url.lastPathComponent,
-                path: url.path,
-                maximumByteCount: maximumMethodByteCount
-            )
-            guard readback == data,
-                  try SecureResearchConfigurationIO.pathStillRefersToDirectory(
-                    parentURL,
-                    identity: identity
-                  ) else {
-                throw ResearchConfigurationStoreError.unsafeStorage
-            }
-            try SecureResearchConfigurationIO.removeDataFile(
-                parentDescriptor: parent,
-                leaf: stage,
-                path: stage
-            )
-            stageExists = false
-            guard fsync(parent) == 0 else {
-                throw ResearchConfigurationStoreError.unsafeStorage
-            }
-            return DocumentFingerprint(data: readback)
-        } catch {
-            if stageExists && !committed {
-                try? SecureResearchConfigurationIO.removeDataFile(
-                    parentDescriptor: parent,
-                    leaf: stage,
-                    path: stage
-                )
-            }
-            throw error
-        }
-    }
-
-    static func directoryIsAvailable(atPath path: String) -> Bool {
-        do {
-            let descriptor = try SecureResearchConfigurationIO.openAbsoluteDirectory(
-                URL(fileURLWithPath: path)
-            )
-            Darwin.close(descriptor)
-            return true
-        } catch {
-            return false
-        }
-    }
-
 }

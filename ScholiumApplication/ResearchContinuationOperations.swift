@@ -44,29 +44,6 @@ extension WorkspaceRuntime {
         )
     }
 
-    /// Returns the exact decision record created by the authenticated request.
-    /// This is an App-delivery surface only; the local Agent bridge never
-    /// serializes the record or its repository identifiers.
-    public func researchContinuationRequest(
-        credential: ResearchConnectionCredential,
-        run: ResearchRunLocator,
-        request: ResearchContinuationRequest
-    ) async throws -> ResearchContinuationRequestRecord {
-        guard let sessions = researchAgentSessions else {
-            throw ResearchAgentConnectionError.secureRandomUnavailable
-        }
-        let authenticated = try await sessions.authenticate(
-            credential,
-            run: run,
-            requiresWrite: false,
-            allowFinalized: true
-        )
-        let handle = try await openWorkspace(id: authenticated.triptychID)
-        return try await handle.researchContinuationRequest(
-            authenticated: authenticated,
-            request: request
-        )
-    }
 }
 
 extension ResearchOperations {
@@ -83,61 +60,9 @@ extension ResearchOperations {
         )
     }
 
-    public func pendingContinuationRequests(
-        at now: Date = Date()
-    ) async throws -> [ResearchContinuationRequestRecord] {
-        let handle = try await reference.requireHandle()
-        return try await handle.pendingContinuationRequests(at: now)
-    }
-
-    public func resolveContinuationRequest(
-        parentRunID: UUID,
-        requestID: UUID,
-        allow: Bool,
-        at date: Date = Date()
-    ) async throws -> ResearchContinuationRequestRecord {
-        let handle = try await reference.requireHandle()
-        return try await handle.resolveContinuationRequest(
-            parentRunID: parentRunID,
-            requestID: requestID,
-            allow: allow,
-            at: date
-        )
-    }
-
-    public func continuationRequest(
-        parentRunID: UUID,
-        requestID: UUID
-    ) async throws -> ResearchContinuationRequestRecord {
-        let handle = try await reference.requireHandle()
-        return try await handle.continuationRequest(
-            parentRunID: parentRunID,
-            requestID: requestID
-        )
-    }
 }
 
 extension WorkspaceHandle {
-    func researchContinuationRequest(
-        authenticated: ResearchAuthenticatedRun,
-        request: ResearchContinuationRequest
-    ) async throws -> ResearchContinuationRequestRecord {
-        try requireActive()
-        guard authenticated.triptychID == id else {
-            throw ResearchAgentSessionError.sessionRejected
-        }
-        let requestFingerprint = try request.contentFingerprint()
-        let execution = try await researchContinuationDependencies.localResearchExecutionStore.record(
-            id: authenticated.runID
-        )
-        guard let record = execution.continuationRequests.first(where: {
-            $0.requestFingerprint == requestFingerprint && $0.request == request
-        }) else {
-            throw ResearchContinuationContractError.invalidRecord
-        }
-        return record
-    }
-
     func continuationRequest(
         parentRunID: UUID,
         requestID: UUID
@@ -234,16 +159,11 @@ extension WorkspaceHandle {
             }
             decision = existing
         } else {
-            let target = try continuationTarget(request)
-            let platform = try continuationPlatform(
+            _ = try continuationTarget(request)
+            _ = try continuationPlatform(
                 request.nextActionID,
                 targetRole: request.targetRole
             )
-            let writableRoles: Set<ResearchActionTargetRole> =
-                platform.operations.contains(.modifyInitialNote)
-                    ? [target.role]
-                    : []
-            let policy = try await currentCollaborationPolicy()
             let now = Date()
             let pending = try ResearchContinuationRequestRecord(
                 id: requestID,
@@ -251,31 +171,20 @@ extension WorkspaceHandle {
                 triptychID: authenticated.triptychID,
                 request: request,
                 requestFingerprint: requestFingerprint,
-                policy: policy.document.policy,
-                policyRevision: policy.revision,
                 state: .pending,
                 receivedAt: now,
                 expiresAt: now.addingTimeInterval(10 * 60)
             )
             _ = try await researchContinuationDependencies.localResearchExecutionStore
                 .installContinuationRequest(pending)
-            let collaborationRequest = try ResearchCollaborationRequest(
-                kind: .continueResearch,
-                requestedWritableRoles: writableRoles
-            )
-            if ResearchCollaborationPolicyResolver.evaluate(
-                policy: policy.document.policy,
-                request: collaborationRequest
-            ) == .mayProceed {
-                _ = try await researchContinuationDependencies.localResearchExecutionStore
-                    .transitionContinuationRequest(
-                        parentRunID: authenticated.runID,
-                        requestID: requestID,
-                        state: .allowed,
-                        authorizationBasis: .collaborationPolicy,
-                        decidedAt: now
-                    )
-            }
+            _ = try await researchContinuationDependencies.localResearchExecutionStore
+                .transitionContinuationRequest(
+                    parentRunID: authenticated.runID,
+                    requestID: requestID,
+                    state: .allowed,
+                    origin: .agentInitiated,
+                    decidedAt: now
+                )
             decision = try await researchContinuationDependencies.localResearchExecutionStore
                 .continuationRequest(
                     parentRunID: authenticated.runID,
@@ -283,13 +192,15 @@ extension WorkspaceHandle {
                 )
         }
 
-        if decision.state == .pending, decision.expiresAt <= Date() {
+        if decision.state == .pending {
+            let now = Date()
             _ = try await researchContinuationDependencies.localResearchExecutionStore
                 .transitionContinuationRequest(
                     parentRunID: authenticated.runID,
                     requestID: requestID,
-                    state: .expired,
-                    decidedAt: Date()
+                    state: .allowed,
+                    origin: .agentInitiated,
+                    decidedAt: now
                 )
             decision = try await researchContinuationDependencies.localResearchExecutionStore
                 .continuationRequest(
@@ -298,31 +209,16 @@ extension WorkspaceHandle {
                 )
         }
         switch decision.state {
-        case .pending:
-            return try ResearchContinuationResult(
-                state: .pendingResearcherDecision,
-                message: "The next Action is waiting for one researcher decision in Scholium. Retry this same request after the decision."
-            )
-        case .declined:
-            return try ResearchContinuationResult(
-                state: .declined,
-                message: "The researcher declined this next Action; the parent Record is unchanged."
-            )
         case .stale:
             return try ResearchContinuationResult(
                 state: .stale,
                 message: "The next Action request became stale and did not create a Run."
             )
-        case .expired:
-            return try ResearchContinuationResult(
-                state: .expired,
-                message: "The next Action request expired and did not create a Run."
-            )
-        case .allowed, .created:
+        case .pending, .allowed, .created:
             break
         }
 
-        try await revalidateContinuationAuthorization(decision)
+        try await revalidateContinuationRequest(decision)
         let childRunID = requestID
         let handoffContext: ResearchContinuationHandoffContext
         if let existing = try await researchContinuationDependencies.localResearchExecutionStore
@@ -455,99 +351,18 @@ extension WorkspaceHandle {
             context: context,
             message: handoffContext.requiresResearcherStateRequery
                 ? "A new independent Action Run was created without inherited Researcher State; query inspect_researcher_state in that Run to read current researcher-owned facts."
-                : "A new independent Action Run was created with current Method, Profile, permissions, and no inherited Context response or write state."
+                : "A new independent Action Run was created with the current Skill, Profile, and no inherited Context response or activity state."
         )
     }
 
-    func pendingContinuationRequests(
-        at now: Date
-    ) async throws -> [ResearchContinuationRequestRecord] {
-        try requireActive()
-        let listing = try await researchContinuationDependencies.localResearchExecutionStore.listing()
-        guard listing.issues.isEmpty else {
-            throw ResearchContinuationContractError.invalidRecord
-        }
-        var result: [ResearchContinuationRequestRecord] = []
-        for execution in listing.records {
-            for request in execution.continuationRequests where request.state == .pending {
-                if request.expiresAt <= now {
-                    _ = try await researchContinuationDependencies.localResearchExecutionStore
-                        .transitionContinuationRequest(
-                            parentRunID: request.parentRunID,
-                            requestID: request.id,
-                            state: .expired,
-                            decidedAt: now
-                        )
-                } else {
-                    result.append(request)
-                }
-            }
-        }
-        return result.sorted { $0.receivedAt < $1.receivedAt }
-    }
-
-    func resolveContinuationRequest(
-        parentRunID: UUID,
-        requestID: UUID,
-        allow: Bool,
-        at date: Date
-    ) async throws -> ResearchContinuationRequestRecord {
-        try requireActive()
-        let request = try await researchContinuationDependencies.localResearchExecutionStore
-            .continuationRequest(parentRunID: parentRunID, requestID: requestID)
-        guard request.state == .pending, request.expiresAt > date else {
-            throw ResearchContinuationContractError.invalidRecord
-        }
-        _ = try continuationTarget(request.request)
-        _ = try continuationPlatform(
-            request.request.nextActionID,
-            targetRole: request.request.targetRole
-        )
-        _ = try await researchContinuationDependencies.localResearchExecutionStore
-            .transitionContinuationRequest(
-                parentRunID: parentRunID,
-                requestID: requestID,
-                state: allow ? .allowed : .declined,
-                authorizationBasis: allow ? .explicitResearcherDecision : nil,
-                decidedAt: date
-            )
-        return try await researchContinuationDependencies.localResearchExecutionStore
-            .continuationRequest(parentRunID: parentRunID, requestID: requestID)
-    }
-
-    private func revalidateContinuationAuthorization(
+    private func revalidateContinuationRequest(
         _ record: ResearchContinuationRequestRecord
     ) async throws {
         _ = try continuationTarget(record.request)
-        let platform = try continuationPlatform(
+        _ = try continuationPlatform(
             record.request.nextActionID,
             targetRole: record.request.targetRole
         )
-        guard record.authorizationBasis == .collaborationPolicy else { return }
-        let current = try await currentCollaborationPolicy()
-        if current.revision == record.policyRevision,
-           current.document.policy == record.policy { return }
-        let writableRoles: Set<ResearchActionTargetRole> =
-            platform.operations.contains(.modifyInitialNote)
-                ? [record.request.targetRole]
-                : []
-        let request = try ResearchCollaborationRequest(
-            kind: .continueResearch,
-            requestedWritableRoles: writableRoles
-        )
-        guard ResearchCollaborationPolicyResolver.evaluate(
-            policy: current.document.policy,
-            request: request
-        ) == .mayProceed else {
-            _ = try await researchContinuationDependencies.localResearchExecutionStore
-                .transitionContinuationRequest(
-                    parentRunID: record.parentRunID,
-                    requestID: record.id,
-                    state: .stale,
-                    decidedAt: Date()
-                )
-            throw ResearchContinuationContractError.decisionRequired
-        }
     }
 
     private func continuationTarget(

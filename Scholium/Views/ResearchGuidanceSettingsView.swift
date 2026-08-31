@@ -4,7 +4,6 @@ import SwiftUI
 enum ResearchGuidanceCategory: String, CaseIterable, Identifiable {
     case skills = "Skills"
     case actionProfiles = "Action Profiles"
-    case agentAccess = "Agent Access"
     case externalToolsCitations = "External Tools & Citations"
 
     var id: String { rawValue }
@@ -15,8 +14,6 @@ enum ResearchGuidanceCategory: String, CaseIterable, Identifiable {
             LocalizedStringResource("Skills", table: "Localizable", bundle: .module)
         case .actionProfiles:
             LocalizedStringResource("Action Profiles", table: "Localizable", bundle: .module)
-        case .agentAccess:
-            LocalizedStringResource("Agent Access", table: "Localizable", bundle: .module)
         case .externalToolsCitations:
             LocalizedStringResource("External Tools & Citations", table: "Localizable", bundle: .module)
         }
@@ -26,7 +23,6 @@ enum ResearchGuidanceCategory: String, CaseIterable, Identifiable {
         switch self {
         case .skills: "text.book.closed"
         case .actionProfiles: "list.bullet.rectangle"
-        case .agentAccess: "lock.shield"
         case .externalToolsCitations: "link"
         }
     }
@@ -42,8 +38,6 @@ struct ResearchGuidanceSettingsView: View {
                 ResearchMethodsSettingsView()
             case .actionProfiles:
                 ActionProfilesSettingsView()
-            case .agentAccess:
-                ResearchPermissionSettingsView()
             case .externalToolsCitations:
                 ResearchSourcesSettingsView()
             }

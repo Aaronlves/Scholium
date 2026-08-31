@@ -72,8 +72,8 @@ extension ScholiumCLI {
         Omitting --triptych requires exactly one configured Triptych.
         Triptych roles: analyses, topics, works
         Authenticated Agent commands preserve Run, Method, selected references, Research
-        Context, Bounded Write Set, Result, and continuation boundaries. The
-        CLI never scans arbitrary Skill folders or grants edit permission.
+        Context, tracked mutation, Result, and continuation boundaries. The
+        CLI never scans arbitrary Skill folders or adds a separate approval layer.
         Workspace Skill sources reports every exact System and current Method
         source for host-native project discovery; it creates no link itself.
         Workspace bootstrap is candidate-only: it never writes or overwrites AGENTS.md.
@@ -194,7 +194,7 @@ extension ScholiumCLI {
                 nextSteps: [
                     "Before the first Scholium Run in this workspace, run scholium workspace skill-sources --triptych <selector> --format json and register every returned source as a project Skill",
                     "Run agent preflight-analysis first for every new Analysis",
-                    "Apply every returned required_skills entry, then continue with the current evidence actions, Bounded Write Set, and Result Contract; other non-Scholium Skills remain available within the Run boundary",
+                    "Apply every returned required_skills entry, then continue with the current evidence actions, tracked mutations, and Result Contract; other non-Scholium Skills remain available within the Run boundary",
                     "If initial context delivery fails after Session creation, run scholium agent reload --run <locator>; do not repeat start",
                 ]
             ),
@@ -203,10 +203,10 @@ extension ScholiumCLI {
                 usage: "scholium agent pair --run <locator>",
                 inputContract: "ResearchPairingCode on standard input",
                 input: "When prompted, enter the one-time Pairing Code from the current handoff. Do not put it in an argument, URL, file, or log.",
-                output: "AgentPairingReport with paired=true, the Run locator, context_kind, and the Run owner's initial ResearchAuthenticatedRunContext or ResearchMethodImprovementContext. Action context identifies the minimum required project-discovered Skills and any role-bounded Recommended Reading. It contains no Skill prose or local source path. The exchanged Session credential is stored in protected local state and is not printed.",
+                output: "AgentPairingReport with paired=true, the Run locator, context_kind=action, and the Run owner's initial ResearchAuthenticatedRunContext. The context identifies the minimum required project-discovered Skills and any role-bounded Recommended Reading. It contains no Skill prose or local source path. The exchanged Session credential is stored in protected local state and is not printed.",
                 nextSteps: [
                     "Follow the handoff's conditional first-workspace Skill registration instruction before pairing",
-                    "Apply every returned required_skills entry, then continue with the current evidence actions, Bounded Write Set, and Result Contract; other non-Scholium Skills remain available within the Run boundary",
+                    "Apply every returned required_skills entry, then continue with the current evidence actions, tracked mutations, and Result Contract; other non-Scholium Skills remain available within the Run boundary",
                     "If initial context delivery fails after pairing succeeds, run scholium agent reload --run <locator>; do not pair again",
                 ]
             ),
@@ -215,7 +215,7 @@ extension ScholiumCLI {
                 usage: "scholium agent reload --run <locator>",
                 inputContract: "Authenticated Run locator; no JSON body",
                 input: "Use the current Run locator. No earlier Research Context response is accepted as input or replayed.",
-                output: "The current ResearchAuthenticatedRunContext, or ResearchMethodImprovementContext for an improvement Run. Action context includes minimum required_skills plus typed evidence actions. Work Write/Critique recomputes Analysis/Topic Recommended Reading; Topic Synthesize recomputes Analysis-only reading. A changed target, Material, formal source, feedback, or Method returns a structured error instead of a usable context.",
+                output: "The current ResearchAuthenticatedRunContext with minimum required_skills plus typed evidence actions. Work Write/Critique recomputes Analysis/Topic Recommended Reading; Topic Synthesize recomputes Analysis-only reading. A changed target, Material, formal source, or Action binding returns a structured error instead of a usable context.",
                 nextSteps: [
                     "Follow the returned current state and run the applicable agent command",
                     "On stale_run, stop this Run; do not retry a write or Result against the changed boundary",
@@ -270,17 +270,16 @@ extension ScholiumCLI {
                     "Use scholium agent end --run <locator> only before replying when the unfinished Run must be cancelled",
                 ]
             ),
-            "agent extend-write-set": AgentCLICommandHelp(
+            "agent track-activity": AgentCLICommandHelp(
                 rule: .init(
                     pathLength: 2,
                     options: ["--run": .value, "--from": .value]
                 ),
-                usage: "scholium agent extend-write-set --run <locator> --from <json|->",
+                usage: "scholium agent track-activity --run <locator> --from <json|->",
                 inputContract: "ResearchWriteSetExtensionIntent schema \(ResearchWriteSetExtensionIntent.currentSchemaVersion)",
-                input: "Strict JSON fields: schema_version, targets (1...\(ResearchBoundedWriteSet.maximumEntriesPerRequest)); each target has role [\(roles)], relative_path, and operations [\(writeOperations)]. Only modify_metadata also requires nonempty metadata_keys with the exact requested managed keys. academic_reason explains why the current Method needs these targets.",
-                output: "AgentWriteSetReport with state, the current capability-free bounded-write-set entries, and a message.",
+                input: "Strict JSON fields: schema_version, targets (1...\(ResearchBoundedWriteSet.maximumEntriesPerRequest)); each target has role [\(roles)], relative_path, and operations [\(writeOperations)]. Only modify_metadata also requires nonempty metadata_keys with the exact requested managed keys. academic_reason records why the Agent touched these targets.",
+                output: "AgentWriteSetReport with the tracked targets and their exact current operation state.",
                 nextSteps: [
-                    "scholium agent reload --run <locator> after a pending researcher decision",
                     "scholium agent write --run <locator> --from <json|-> for one returned ready member",
                     "scholium agent write-zotero-binding --run <locator> --from <json|-> for one returned Analysis binding operation",
                 ]
@@ -349,34 +348,10 @@ extension ScholiumCLI {
                 usage: "scholium agent continue --run <locator> --from <json|->",
                 inputContract: "ResearchContinuationRequest schema \(ResearchContinuationRequest.currentSchemaVersion)",
                 input: "Strict JSON fields: schema_version, next_action_id, target_role [\(roles)], target_relative_path, academic_purpose, handoff items, and fidelity_checks [content, citations]. Each handoff item has content, epistemic_status [\(epistemicStatuses)], next_use, and source_references.",
-                output: "ResearchContinuationResult with pending_researcher_decision, created, declined, stale, or expired state; a created result also returns the fresh next Run, handoff context, and complete authenticated Run context with its minimum required_skills.",
+                output: "ResearchContinuationResult with created or stale state; a created result also returns the fresh next Run, handoff context, and complete authenticated Run context with its minimum required_skills.",
                 nextSteps: [
                     "When state is created, apply the returned context.required_skills and continue through that context's next_actions; the existing Session already owns the attached child Run",
                     "Otherwise follow the returned state and message; no authority carries forward",
-                ]
-            ),
-            "agent method-context": AgentCLICommandHelp(
-                rule: .init(pathLength: 2, options: ["--run": .value]),
-                usage: "scholium agent method-context --run <locator>",
-                inputContract: "Authenticated Method-improvement Run locator; no JSON body",
-                input: "Use the locator from an explicit Improve Current Method handoff. The CLI loads the hidden Session credential.",
-                output: "ResearchMethodImprovementContext with the unchanged researcher feedback, finalized Result fingerprint, and exact Skill entry target.",
-                nextSteps: [
-                    "scholium agent improve-method --run <locator> --from <json|-> for at most one returned target_id",
-                    "scholium agent end --run <locator> if the improvement Run cannot continue",
-                ]
-            ),
-            "agent improve-method": AgentCLICommandHelp(
-                rule: .init(
-                    pathLength: 2,
-                    options: ["--run": .value, "--from": .value]
-                ),
-                usage: "scholium agent improve-method --run <locator> --from <json|->",
-                inputContract: "ResearchMethodImprovementDraft",
-                input: "Strict JSON fields: target_id from method-context, disposition [replace, diagnosed_no_change, unavailable], optional replacement_source only for replace, and diagnosis.",
-                output: "ResearchMethodImprovementReceipt with the target, starting and ending revisions, disposition, diagnosis, and whether unchanged feedback was cleared.",
-                nextSteps: [
-                    "scholium agent end --run <locator>",
                 ]
             ),
             "agent end": AgentCLICommandHelp(

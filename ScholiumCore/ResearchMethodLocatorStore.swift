@@ -2,12 +2,28 @@ import Darwin
 import Foundation
 import ScholiumContracts
 
-/// Machine-local ownership of absolute primary-Method and optional Skill-folder
-/// paths. Portable registration carries only the opaque registration key and a
-/// `machine_local` marker; bookmark bytes and paths never enter `.scholium` or
-/// a portable Research Record.
-struct ResearchMethodLocatorStore {
-    static let fileName = "method-locators-v1.json"
+/// Keeps one resolved security-scoped Skill-folder bookmark active only while
+/// Presentation hands the folder URL to Finder. It grants no content mutation
+/// and stops access deterministically when the short-lived value is released.
+final class ResearchSkillFolderAccessLease: ResearchSkillFolderAccess, @unchecked Sendable {
+    public let url: URL
+    private let stopAccess: @Sendable () -> Void
+
+    init(url: URL, stopAccess: @escaping @Sendable () -> Void) {
+        self.url = url
+        self.stopAccess = stopAccess
+    }
+
+    deinit { stopAccess() }
+}
+
+/// Machine-local ownership of researcher-selected Skill-folder paths. Portable
+/// registration carries only the opaque registration key and a `machine_local`
+/// marker; bookmark bytes and paths never enter `.scholium` or a portable
+/// Research Record. The bookmark authorizes folder reveal only. Scholium never
+/// reads or writes the folder's contents.
+struct ResearchSkillFolderLocatorStore {
+    static let fileName = "skill-folder-locators-v1.json"
 
     struct BookmarkResolution: Sendable {
         let url: URL
@@ -22,8 +38,8 @@ struct ResearchMethodLocatorStore {
 
         static let foundation = Self(
             create: { url in
-                try url.bookmarkData(
-                    options: [.withSecurityScope],
+                return try url.bookmarkData(
+                    options: [.withSecurityScope, .securityScopeAllowOnlyReadAccess],
                     includingResourceValuesForKeys: [
                         .fileResourceIdentifierKey,
                         .isRegularFileKey,
@@ -49,55 +65,33 @@ struct ResearchMethodLocatorStore {
 
     struct Binding: Codable, Hashable, Sendable {
         let registrationKey: ResearchSkillRegistrationKey
-        let primaryCanonicalPath: String
-        let primaryBookmarkData: Data
-        let skillFolderCanonicalPath: String?
-        let skillFolderBookmarkData: Data?
+        let skillFolderCanonicalPath: String
+        let skillFolderBookmarkData: Data
 
         init(
             registrationKey: ResearchSkillRegistrationKey,
-            primaryCanonicalPath: String,
-            primaryBookmarkData: Data,
-            skillFolderCanonicalPath: String?,
-            skillFolderBookmarkData: Data?
+            skillFolderCanonicalPath: String,
+            skillFolderBookmarkData: Data
         ) throws {
-            guard Self.isCanonicalAbsolute(primaryCanonicalPath),
-                  !primaryBookmarkData.isEmpty,
-                  (skillFolderCanonicalPath == nil)
-                    == (skillFolderBookmarkData == nil),
-                  skillFolderBookmarkData.map({ !$0.isEmpty }) ?? true else {
+            guard Self.isCanonicalAbsolute(skillFolderCanonicalPath),
+                  !skillFolderBookmarkData.isEmpty else {
                 throw ResearchConfigurationStoreError.invalidDocument(
-                    "The machine-local Method locator is invalid."
+                    "The machine-local Skill-folder locator is invalid."
                 )
             }
-            if let skillFolderCanonicalPath {
-                guard Self.isCanonicalAbsolute(skillFolderCanonicalPath),
-                      Self.contains(
-                        path: primaryCanonicalPath,
-                        inFolder: skillFolderCanonicalPath
-                      ) else {
-                    throw ResearchConfigurationStoreError.invalidDocument(
-                        "The primary Method is outside its registered Skill folder."
-                    )
-                }
-            }
             self.registrationKey = registrationKey
-            self.primaryCanonicalPath = primaryCanonicalPath
-            self.primaryBookmarkData = primaryBookmarkData
             self.skillFolderCanonicalPath = skillFolderCanonicalPath
             self.skillFolderBookmarkData = skillFolderBookmarkData
         }
 
         private enum CodingKeys: String, CodingKey, CaseIterable {
             case registrationKey
-            case primaryCanonicalPath
-            case primaryBookmarkData
             case skillFolderCanonicalPath
             case skillFolderBookmarkData
         }
 
         init(from decoder: Decoder) throws {
-            try ResearchMethodLocatorStore.rejectUnknownFields(
+            try ResearchSkillFolderLocatorStore.rejectUnknownFields(
                 decoder,
                 allowed: CodingKeys.self
             )
@@ -107,19 +101,11 @@ struct ResearchMethodLocatorStore {
                     ResearchSkillRegistrationKey.self,
                     forKey: .registrationKey
                 ),
-                primaryCanonicalPath: values.decode(
-                    String.self,
-                    forKey: .primaryCanonicalPath
-                ),
-                primaryBookmarkData: values.decode(
-                    Data.self,
-                    forKey: .primaryBookmarkData
-                ),
-                skillFolderCanonicalPath: values.decodeIfPresent(
+                skillFolderCanonicalPath: values.decode(
                     String.self,
                     forKey: .skillFolderCanonicalPath
                 ),
-                skillFolderBookmarkData: values.decodeIfPresent(
+                skillFolderBookmarkData: values.decode(
                     Data.self,
                     forKey: .skillFolderBookmarkData
                 )
@@ -134,13 +120,6 @@ struct ResearchMethodLocatorStore {
                     where: CharacterSet.controlCharacters.contains
                 )
         }
-
-        private static func contains(path: String, inFolder folder: String) -> Bool {
-            let pathParts = URL(fileURLWithPath: path).pathComponents
-            let folderParts = URL(fileURLWithPath: folder).pathComponents
-            return pathParts.count > folderParts.count
-                && Array(pathParts.prefix(folderParts.count)) == folderParts
-        }
     }
 
     struct Document: Codable, Hashable, Sendable {
@@ -154,7 +133,7 @@ struct ResearchMethodLocatorStore {
                 .maximumRegistrationCount,
                 Set(bindings.map(\.registrationKey)).count == bindings.count else {
                 throw ResearchConfigurationStoreError.invalidDocument(
-                    "The machine-local Method locator document is invalid."
+                    "The machine-local Skill-folder locator document is invalid."
                 )
             }
             schemaVersion = Self.currentSchemaVersion
@@ -171,7 +150,7 @@ struct ResearchMethodLocatorStore {
         }
 
         init(from decoder: Decoder) throws {
-            try ResearchMethodLocatorStore.rejectUnknownFields(
+            try ResearchSkillFolderLocatorStore.rejectUnknownFields(
                 decoder,
                 allowed: CodingKeys.self
             )
@@ -179,7 +158,7 @@ struct ResearchMethodLocatorStore {
             let version = try values.decode(Int.self, forKey: .schemaVersion)
             guard version == Self.currentSchemaVersion else {
                 throw ResearchConfigurationStoreError.invalidDocument(
-                    "Unsupported machine-local Method locator schema \(version)."
+                    "Unsupported machine-local Skill-folder locator schema \(version)."
                 )
             }
             try self.init(
@@ -235,13 +214,13 @@ struct ResearchMethodLocatorStore {
         do {
             snapshot = try store.snapshot()
         } catch {
-            throw ResearchMethodLocatorError.invalid(
+            throw ResearchSkillFolderLocatorError.invalid(
                 error.localizedDescription
             )
         }
         guard snapshot?.document.triptychID == triptychID || snapshot == nil else {
-            throw ResearchMethodLocatorError.invalid(
-                "The machine-local Method locator belongs to another Triptych."
+            throw ResearchSkillFolderLocatorError.invalid(
+                "The machine-local Skill-folder locator belongs to another Triptych."
             )
         }
         return snapshot
@@ -252,7 +231,7 @@ struct ResearchMethodLocatorStore {
         do {
             _ = try snapshot()
             return nil
-        } catch ResearchMethodLocatorError.invalid {
+        } catch ResearchSkillFolderLocatorError.invalid {
             // Continue only for the typed invalid-document state established
             // by `snapshot`; unsafe directory or write errors never reach here.
         }
@@ -260,7 +239,7 @@ struct ResearchMethodLocatorStore {
         let preserved = try ExactStatePreserver.preserve(
             source,
             kind: .regularFile,
-            recoveryStem: "method-locators-v1.corrupt",
+            recoveryStem: "skill-folder-locators-v1.corrupt",
             recoveryExtension: "json",
             fileEligibility: { data in
                 guard let document = try? JSONDecoder().decode(Document.self, from: data)
@@ -275,18 +254,13 @@ struct ResearchMethodLocatorStore {
 
     func makeBinding(
         registrationKey: ResearchSkillRegistrationKey,
-        primaryURL: URL,
-        skillFolderURL: URL?
+        skillFolderURL: URL
     ) throws -> Binding {
-        let primary = primaryURL.standardizedFileURL
-        let folder = skillFolderURL?.standardizedFileURL
-        let primaryBookmark = try makeBookmark(for: primary)
-        let folderBookmark = try folder.map(makeBookmark(for:))
+        let folder = skillFolderURL.standardizedFileURL
+        let folderBookmark = try makeBookmark(for: folder)
         return try Binding(
             registrationKey: registrationKey,
-            primaryCanonicalPath: primary.path,
-            primaryBookmarkData: primaryBookmark,
-            skillFolderCanonicalPath: folder?.path,
+            skillFolderCanonicalPath: folder.path,
             skillFolderBookmarkData: folderBookmark
         )
     }
@@ -297,7 +271,7 @@ struct ResearchMethodLocatorStore {
     ) throws -> StoredResearchDocument<Document> {
         guard document.triptychID == triptychID else {
             throw ResearchConfigurationStoreError.invalidDocument(
-                "The machine-local Method locator belongs to another Triptych."
+                "The machine-local Skill-folder locator belongs to another Triptych."
             )
         }
         try ensurePrivateStorageDirectory()
@@ -309,48 +283,79 @@ struct ResearchMethodLocatorStore {
             $0.registrationKey == key
         }) else {
             throw ResearchConfigurationStoreError.invalidDocument(
-                "The machine-local Method locator is missing."
+                "The machine-local Skill-folder locator is missing."
             )
         }
         return binding
     }
 
-    func withPrimaryURL<Result>(
+    func withSkillFolderURL<Result>(
         for key: ResearchSkillRegistrationKey,
         _ operation: (URL) throws -> Result
     ) throws -> Result {
         let binding = try binding(for: key)
         return try withResolvedBookmark(
-            binding.primaryBookmarkData,
-            expectedPath: binding.primaryCanonicalPath,
+            binding.skillFolderBookmarkData,
+            expectedPath: binding.skillFolderCanonicalPath,
             operation
         )
     }
 
     func skillFolderStatus(
         for key: ResearchSkillRegistrationKey
-    ) throws -> (path: String?, isAvailable: Bool?) {
+    ) throws -> (path: String, isAvailable: Bool) {
         let binding = try binding(for: key)
-        guard let path = binding.skillFolderCanonicalPath,
-              let bookmark = binding.skillFolderBookmarkData else {
-            return (nil, nil)
-        }
         let available = (try? withResolvedBookmark(
-            bookmark,
-            expectedPath: path
+            binding.skillFolderBookmarkData,
+            expectedPath: binding.skillFolderCanonicalPath
         ) { url in
             let descriptor = try SecureResearchConfigurationIO
                 .openAbsoluteDirectory(url)
             Darwin.close(descriptor)
             return true
         }) ?? false
-        return (path, available)
+        return (binding.skillFolderCanonicalPath, available)
+    }
+
+    func skillFolderAccess(
+        for key: ResearchSkillRegistrationKey
+    ) throws -> any ResearchSkillFolderAccess {
+        let binding = try binding(for: key)
+        let resolution: BookmarkResolution
+        do {
+            resolution = try bookmarkAccess.resolve(
+                binding.skillFolderBookmarkData
+            )
+        } catch {
+            throw ResearchConfigurationStoreError.invalidDocument(
+                "The machine-local Skill-folder bookmark cannot be resolved."
+            )
+        }
+        guard !resolution.isStale,
+              bookmarkAccess.start(resolution.url) else {
+            throw ResearchConfigurationStoreError.invalidDocument(
+                "The machine-local Skill-folder bookmark is stale or unavailable."
+            )
+        }
+        let canonical = resolution.url.resolvingSymlinksInPath()
+            .standardizedFileURL
+        guard canonical.path == binding.skillFolderCanonicalPath else {
+            bookmarkAccess.stop(resolution.url)
+            throw ResearchConfigurationStoreError.invalidDocument(
+                "The machine-local Skill-folder bookmark changed identity."
+            )
+        }
+        let accessURL = resolution.url
+        let stop = bookmarkAccess.stop
+        return ResearchSkillFolderAccessLease(url: accessURL.standardizedFileURL) {
+            stop(accessURL)
+        }
     }
 
     private func makeBookmark(for url: URL) throws -> Data {
         guard bookmarkAccess.start(url) else {
             throw ResearchConfigurationStoreError.invalidDocument(
-                "The selected Method path did not grant local access."
+                "The selected Skill folder did not grant local access."
             )
         }
         defer { bookmarkAccess.stop(url) }
@@ -369,20 +374,20 @@ struct ResearchMethodLocatorStore {
             resolution = try bookmarkAccess.resolve(data)
         } catch {
             throw ResearchConfigurationStoreError.invalidDocument(
-                "The machine-local Method bookmark cannot be resolved."
+                "The machine-local Skill-folder bookmark cannot be resolved."
             )
         }
         guard !resolution.isStale,
               bookmarkAccess.start(resolution.url) else {
             throw ResearchConfigurationStoreError.invalidDocument(
-                "The machine-local Method bookmark is stale or unavailable."
+                "The machine-local Skill-folder bookmark is stale or unavailable."
             )
         }
         defer { bookmarkAccess.stop(resolution.url) }
         let canonical = resolution.url.resolvingSymlinksInPath().standardizedFileURL
         guard canonical.path == expectedPath else {
             throw ResearchConfigurationStoreError.invalidDocument(
-                "The machine-local Method bookmark changed identity."
+                "The machine-local Skill-folder bookmark changed identity."
             )
         }
         return try operation(resolution.url.standardizedFileURL)
@@ -419,7 +424,7 @@ struct ResearchMethodLocatorStore {
             !known.contains($0)
         }) {
             throw ResearchConfigurationStoreError.invalidDocument(
-                "Unsupported machine-local Method locator field \(unknown)."
+                "Unsupported machine-local Skill-folder locator field \(unknown)."
             )
         }
     }

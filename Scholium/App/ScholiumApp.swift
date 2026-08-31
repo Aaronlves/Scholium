@@ -578,13 +578,6 @@ private struct ScholiumResearchRecordsRoot: View {
                                 expectedResultFingerprint: resultFingerprint
                             )
                     },
-                    startMethodImprovement: { recordID in
-                        try await capabilities.research.records
-                            .issueMethodImprovementHandoff(
-                                recordID: recordID,
-                                validity: 10 * 60
-                            )
-                    },
                     deletePermanently: { id in
                         try await capabilities.research.records
                             .deleteResearchRecordPermanently(id: id)
@@ -2500,48 +2493,6 @@ final class WindowModel: ObservableObject {
     )
     var researchResultNotificationDismissal:
         (@MainActor (ResearchResultReviewDestination) -> Void)?
-    lazy var researchAgentPermissionWindowController =
-        ResearchAgentPermissionWindowController(
-            windowID: nativeWindowID,
-            presentationRouter: presentationRouter,
-            claimCoordinator: workspaceStore.researchAgentPermissionClaims,
-            dependencies: .init(
-            refreshWriteSet: { [workspaceStore] requestID, triptychID in
-                try await workspaceStore.refreshResearchWriteSetExtension(
-                    id: requestID,
-                    in: triptychID
-                )
-            },
-            resolveWriteSet: { [workspaceStore] triptychID, requestID, state, handles in
-                try await workspaceStore.resolveResearchWriteSetExtension(
-                    triptychID: triptychID,
-                    requestID: requestID,
-                    state: state,
-                    allowedHandles: handles
-                )
-            },
-            refreshContinuation: {
-                [workspaceStore] triptychID, parentRunID, requestID in
-                try await workspaceStore.refreshResearchContinuation(
-                    triptychID: triptychID,
-                    parentRunID: parentRunID,
-                    requestID: requestID
-                )
-            },
-            resolveContinuation: {
-                [workspaceStore] triptychID, parentRunID, requestID, allow in
-                try await workspaceStore.resolveResearchContinuation(
-                    triptychID: triptychID,
-                    parentRunID: parentRunID,
-                    requestID: requestID,
-                    allow: allow
-                )
-            }
-        ),
-        reportError: { [weak self] message in
-            self?.presentFeedback(message, kind: .error)
-        }
-    )
 
     var sidebarVisible: Bool {
         get { shellState.libraryVisible }
@@ -4963,9 +4914,6 @@ final class WindowModel: ObservableObject {
         if currentRegisteredVault != nil {
             PerformanceProbe.shared.markWarmLibraryProjectionReady()
         }
-        researchAgentPermissionWindowController.refreshForWorkspaceSnapshot(
-            triptychID: activation.snapshot.triptych.id
-        )
     }
 
     var currentWorkspaceSlot: WorkspaceVaultSlot? {
@@ -7182,9 +7130,6 @@ final class WindowModel: ObservableObject {
             openDocuments: documentTabController.allTabs.map(\.document)
         )
         researchController.receive(event.snapshot)
-        researchAgentPermissionWindowController.refreshForWorkspaceSnapshot(
-            triptychID: event.snapshot.triptych.id
-        )
         if let commit = workspaceProjectionController.receive(
             event,
             runtimeIdentity: capabilities.runtimeIdentity,

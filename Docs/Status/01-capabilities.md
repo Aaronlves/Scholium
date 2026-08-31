@@ -150,8 +150,8 @@
 - The closed Platform catalog exposes the role-valid Discuss, Analyze,
   Synthesize, Write, Critique, and Check Fidelity Actions. Preparation freezes
   the target, request, source and focal material,
-  Skill entry, reference-folder path, Profile, Result Contract, collaboration policy, read scope,
-  and initial Bounded Write Set member.
+  Action Skill registration revision and resolved folder path, Profile, Result
+  Contract, read scope, and initial Run Activity Ledger member.
 - Run requests, completions, and required snapshots use that same exact Action
   identity. No compressed Function enum, mapping adapter, optional snapshot
   fallback, or old-shape decoder remains reachable.
@@ -174,11 +174,11 @@
   returns a same-Run re-pair route, while unknown cleanup stops and reports.
   Both routes use the same protected Session for subsequent operations. `start`
   returns its receipt with initial authenticated Action context; `pair` returns
-  the initial Action or Method-improvement context selected by the Application-
-  owned Run owner. The public `agent context` command is removed; `reload`
+  that Action context selected by the Application-owned Run owner. The public
+  `agent context` command is removed; `reload`
   remains recovery and current-state revalidation. Authenticated Context
   supplies the minimum project-discovered `required_skills`, frozen Action
-  Method revision, and no Skill prose or path. That set is not an allowlist for
+  registration revision, and no Skill prose or path. That set is not an allowlist for
   other non-Scholium Skills. Context also supplies fillable typed
   `next_actions` for all six Actions: required exact-
   Target/Fidelity reads, bounded Search and supporting-evidence queries when
@@ -233,9 +233,20 @@
   inputs. Concurrent identical starts coalesce, while
   changed committed input, terminal state, changed Zotero relationship, or
   missing source cannot reuse it as a new write.
+- App and standalone CLI now communicate over `127.0.0.1` only after a mutual
+  nonce-bound HMAC handshake using a rotated secret in one `0700` per-user
+  bridge directory and `0600` regular file. Both sides validate current-user
+  ownership and mode, the secret never crosses the transport, and Application
+  decodes no request before authentication. The App creates and rotates this
+  process-generation secret; a CLI or Agent-created value is not trusted. The
+  packaging boundary requires the declared sandbox privileges, accepts only
+  Apple-injected signing identity metadata, and retains the network-server
+  entitlement proved necessary for that listener. XPC remains a possible future topology only with an
+  explicitly installed helper/Mach service rather than the current standalone
+  CLI packaging.
 - Bridge and preflight results distinguish path and identity occupation,
   identity with missing/system-Trash source, replay conflict, true `stale_run`, stale projection,
-  missing source evidence, expired Session, permission refusal, timeout, and
+  missing source evidence, expired Session, unsupported or stale activity, timeout, and
   outcome unknown. Each structured result carries retry safety, request-
   identity reuse, and one next step; missing/trashed source exposes only the
   researcher-controlled Restore or explicitly distinct-new-destination
@@ -263,7 +274,7 @@
 - Researcher **Follow Up…** is a separate continuation owner. It starts from a
   finalized Record or Result Ready notification, re-resolves a normal current
   Action request, creates a fresh Run/handoff, and persists `.followUp` lineage
-  without inheriting the parent Session, Method/Profile, permission, write set,
+  without inheriting the parent Session, Skill/Profile, or Activity Ledger,
   Research Context, or Agent judgment. Agent autonomous Continue Research and
   its authenticated Session path remain unchanged.
 - Action inspection revalidates an Agent-written target against the Run-owned
@@ -283,14 +294,18 @@
   An explicit `researcher_provided` Run freezes no Zotero context or adapter even
   when the Analysis retains a portable relationship; it does not alter that
   relationship.
-- A Run owns one bounded, expandable write set. Every mutation still requires a
-  nonreusable operation capability and the exact repository transaction. One
-  member's conflict does not widen authority or roll back confirmed siblings.
+- A Run owns one bounded, automatically expandable Activity Ledger. Registering
+  another valid target records it without a researcher permission sheet. Every
+  mutation still requires a nonreusable transaction lease and the exact
+  repository transaction. One member's conflict does not roll back confirmed siblings.
 - Authenticated `create_note` freezes proven absence, reserved identity, the
   fixed YAML scaffold, and an optional Analysis field/shape/preference plan.
   `modify_markdown` changes body only; `modify_source` accepts the complete
   authored Markdown source; `modify_metadata` changes only exact approved
   managed fields at the portable record revision and does not change source.
+  Body authority now accepts a closed, diagnostically invalid YAML envelope
+  because its body boundary is exact and preserves those frontmatter bytes;
+  an unclosed delimiter still fails closed.
   GUI, researcher CLI, and Agent creation use the same managed
   creator. Run-bound Agent `create_note` remains idempotent for one request and forms a
   preimage-free `created` Record mutation only after source and identity
@@ -385,10 +400,12 @@
   omits only unreadable Record files; an unresolved target in a partial corpus
   and completeness-sensitive operations still fail closed instead of scanning
   `.scholium` or guessing.
-- Research Guidance supports Skill registration and exact expected-revision
-  `SKILL.md` editing, bundled Skill-routed lens references, explicit default restoration, academic
-  Profiles, one Triptych collaboration policy, citation style, external
-  locators, and installed CLI controls.
+- Research Guidance supports one Action-to-user-Skill-folder registration,
+  folder reveal/assignment, bundled one-time user-copy provisioning, academic
+  Profiles, citation style, external
+  locators, and installed CLI controls. Scholium does not read, validate, edit,
+  restore, or revision-track user Skill files. Machine-local folders retain one
+  read-only bookmark for availability and external project discovery.
 - Invalid machine-local Skill locators expose an exact archive-and-reset
   operation; portable research configuration and vault files remain unchanged.
 - Built-in Zotero access reads local bibliographic metadata, searches exact
@@ -436,8 +453,8 @@
   partial first install only and refuses a complete pair.
 - The first-launch preparation prompt and every first-workspace handoff use a
   CLI read-only Skill-source manifest and deterministic workspace-bootstrap
-  candidate. The manifest exposes every installed System Skill and enabled
-  current Method folder, including an explicitly registered machine-local
+  candidate. The manifest exposes every installed Protocol and enabled current
+  Action Skill folder, including an explicitly registered machine-local
   folder. The Agent registers those exact sources through its host's
   project-level Skill mechanism; Scholium neither detects the host nor creates
   or verifies that registration.

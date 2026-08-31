@@ -137,7 +137,8 @@ struct ArchitectureBoundaryTests {
         #expect(!store.contains("switch request.operation"))
         #expect(router.contains("final class LocalAgentBridgeRequestRouter"))
         #expect(router.contains("switch request.operation"))
-        #expect(router.components(separatedBy: "case .").count - 1 == 16)
+        #expect(router.components(separatedBy: "case .").count - 1 == 14)
+        #expect(!router.localizedCaseInsensitiveContains("improveMethod"))
         #expect(!router.contains("LocalAgentBridgeServer("))
     }
 
@@ -758,43 +759,6 @@ struct ArchitectureBoundaryTests {
         ))
     }
 
-    @Test("Method improvement operations use a bounded dependency bundle")
-    func researchMethodImprovementDependencyBoundary() throws {
-        let repositoryRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let applicationRoot = repositoryRoot.appendingPathComponent(
-            "ScholiumApplication",
-            isDirectory: true
-        )
-        let improvement = try String(
-            contentsOf: applicationRoot.appendingPathComponent(
-                "ResearchMethodImprovementOperations.swift"
-            ),
-            encoding: .utf8
-        )
-        let handle = try String(
-            contentsOf: applicationRoot.appendingPathComponent(
-                "WorkspaceHandle.swift"
-            ),
-            encoding: .utf8
-        )
-
-        #expect(improvement.contains(
-            "struct WorkspaceResearchMethodImprovementDependencies"
-        ))
-        #expect(improvement.contains(
-            "researchMethodImprovementDependencies"
-        ))
-        #expect(!improvement.contains("services."))
-        #expect(handle.contains(
-            "let researchMethodImprovementDependencies:"
-        ))
-        #expect(handle.contains(
-            "services.researchMethodImprovementDependencies"
-        ))
-    }
 
     @Test("Research execution lifecycle has one Workspace coordinator")
     func researchActionCoordinatorBoundary() throws {
@@ -1152,7 +1116,6 @@ struct ArchitectureBoundaryTests {
         for fileName in [
             "ResearchMethodsSettingsView.swift",
             "ActionProfilesSettingsView.swift",
-            "ResearchPermissionSettingsView.swift",
             "ResearchSourcesSettingsView.swift",
         ] {
             #expect(FileManager.default.fileExists(
