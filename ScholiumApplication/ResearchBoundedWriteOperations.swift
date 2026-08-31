@@ -292,6 +292,9 @@ extension WorkspaceHandle {
                 throw ResearchBoundedWriteSetError.requestPending
             }
         }
+        guard execution.resultPayload == nil else {
+            throw ResearchAgentResultContractError.resultAlreadySubmitted
+        }
         let candidates = try await resolveWriteSetCandidates(
             intent.targets,
             runID: authenticated.runID,
@@ -428,6 +431,9 @@ extension WorkspaceHandle {
                     intent: intent
                 )
             }
+        }
+        guard execution.resultPayload == nil else {
+            throw ResearchAgentResultContractError.resultAlreadySubmitted
         }
         guard entry.state == .ready,
               entry.allowedOperations.contains(intent.operation) else {
@@ -719,6 +725,9 @@ extension WorkspaceHandle {
                 entry: entry,
                 intent: intent
             )
+        }
+        guard execution.resultPayload == nil else {
+            throw ResearchAgentResultContractError.resultAlreadySubmitted
         }
         guard entry.role == .analysis,
               entry.state == .ready,
@@ -1522,6 +1531,9 @@ extension WorkspaceHandle {
             $0.conflictOperationID == latestConflict.id
         }) {
             return try conflictResolutionResult(existing, execution: execution)
+        }
+        guard execution.resultPayload == nil else {
+            throw ResearchAgentResultContractError.resultAlreadySubmitted
         }
         let operationID = Self.stableOperationID(
             material: [

@@ -1907,22 +1907,24 @@ extension WorkspaceHandle {
             ))
             return actions
         }
-        let recommendedReadingActions = try Self.recommendedReadingActions(
-            recommendedReading,
-            runID: record.id,
-            run: run
-        )
-        if !recommendedReadingActions.isEmpty {
-            let genericSearchIndex = max(0, actions.count - 1)
-            actions.insert(
-                contentsOf: recommendedReadingActions,
-                at: genericSearchIndex
+        if record.resultPayload == nil {
+            let recommendedReadingActions = try Self.recommendedReadingActions(
+                recommendedReading,
+                runID: record.id,
+                run: run
             )
+            if !recommendedReadingActions.isEmpty {
+                let genericSearchIndex = max(0, actions.count - 1)
+                actions.insert(
+                    contentsOf: recommendedReadingActions,
+                    at: genericSearchIndex
+                )
+            }
+            actions.append(contentsOf: try Self.authenticatedWriteActions(
+                record.boundedWriteSet.entries,
+                run: run
+            ))
         }
-        actions.append(contentsOf: try Self.authenticatedWriteActions(
-            record.boundedWriteSet.entries,
-            run: run
-        ))
         actions.append(try await authenticatedResultAction(
             for: record,
             action: action,
@@ -2045,6 +2047,17 @@ extension WorkspaceHandle {
         action: ResearchActionSnapshot,
         run: ResearchRunLocator
     ) async throws -> AgentCommandAction {
+        if record.resultPayload != nil {
+            return AgentCommandAction(
+                kind: .submitResult,
+                requirement: .required,
+                label: "Retry the exact previously submitted Result after the current operation recovery converges; changed Result content is rejected",
+                command: [
+                    "scholium", "agent", "submit-result", "--run",
+                    run.rawValue, "--from", "-",
+                ]
+            )
+        }
         let defaultFidelityFields = ResearchAcademicProfileCatalog
             .defaultProfiles.first(where: { $0.actionID == .checkFidelity })?
             .academicResultFields ?? []

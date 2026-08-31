@@ -191,13 +191,23 @@ extension WorkspaceHandle {
             literatureRecommendations: submission.literatureRecommendations,
             submittedAt: submittedAt
         )
-        let completion = try await researchActionRunCoordinator
-            .completeActionRun(
-                completionSubmission,
-                acceptedSubmissionDigest: submissionFingerprint.sha256,
-                candidateResultPayload: payload,
-                host: self
-            )
+        let completion: ResearchActionRunCompletion
+        do {
+            completion = try await researchActionRunCoordinator
+                .completeActionRun(
+                    completionSubmission,
+                    acceptedSubmissionDigest: submissionFingerprint.sha256,
+                    candidateResultPayload: payload,
+                    host: self
+                )
+        } catch let error as ResearchActionRunContractError {
+            if case .unresolvedWriteRecovery(let runID) = error,
+               runID == authenticated.runID {
+                _ = try await researchAgentResultDependencies
+                    .localResearchExecutionStore.stageResultPayload(payload)
+            }
+            throw error
+        }
         return try resultReceipt(
             disposition: submission.disposition,
             completion: completion

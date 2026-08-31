@@ -1307,6 +1307,165 @@ extension ResearchActionRunOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("A valid Result stages during operation recovery and freezes new mutations")
+    func stagedResultWaitsForExactOperationRecovery() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let topic = try await researchActionTarget(
+            fixture.topicID,
+            role: .topic,
+            handle: handle
+        )
+        let initial = try await handle.documents.load(fixture.topicID)
+        let action = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .synthesize,
+                target: actionNote(topic)
+            )
+        )
+        let run = try await handle.research.actionRunDetails(id: action.runID)
+        let client = try await connectTestResearchAgent(to: run, handle: handle)
+        let execution = try await handle.services.localResearchExecutionStore.record(
+            id: action.runID
+        )
+        let entry = try #require(execution.boundedWriteSet.entries.first)
+        let requestID = UUID(uuidString: "00000000-0000-4000-8000-000000000704")!
+        let writeIntent = try ResearchDocumentWriteIntent(
+            requestID: requestID,
+            role: .topic,
+            relativePath: "Agency.md",
+            content: initial.body + "\nAgent candidate that was not delivered.\n"
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        let requestFingerprint = DocumentFingerprint(
+            data: try encoder.encode(writeIntent)
+        )
+        let operationDigest = DocumentFingerprint(content: [
+            action.runID.uuidString.lowercased(),
+            "write",
+            requestID.uuidString.lowercased(),
+        ].joined(separator: ":")).sha256
+        let operationID = try #require(UUID(uuidString: [
+            String(operationDigest.prefix(8)),
+            String(operationDigest.dropFirst(8).prefix(4)),
+            String(operationDigest.dropFirst(12).prefix(4)),
+            String(operationDigest.dropFirst(16).prefix(4)),
+            String(operationDigest.dropFirst(20).prefix(12)),
+        ].joined(separator: "-")))
+        _ = try await handle.services.localResearchExecutionStore.beginDocumentWrite(
+            try ResearchDocumentWriteRecord(
+                id: operationID,
+                runID: action.runID,
+                target: entry.handle,
+                actor: .agent,
+                operation: .modifyMarkdown,
+                requestFingerprint: requestFingerprint,
+                expectedRevision: initial.fingerprint,
+                intendedRevision: DocumentFingerprint(content: writeIntent.content),
+                state: .writing,
+                startedAt: Date()
+            )
+        )
+        let submission = try makeTestAgentResultSubmission(for: run)
+        let firstError = await #expect(throws: ResearchActionRunContractError.self) {
+            _ = try await submitTestAgentResult(
+                submission,
+                client: client,
+                handle: handle
+            )
+        }
+        guard case .unresolvedWriteRecovery(let blockedRunID) = firstError else {
+            Issue.record("Result submission returned the wrong recovery boundary.")
+            await runtime.shutdown()
+            return
+        }
+        #expect(blockedRunID == action.runID)
+        let staged = try await handle.services.localResearchExecutionStore.record(
+            id: action.runID
+        )
+        let submissionFingerprint = try submission.contentFingerprint()
+        #expect(staged.resultPayload?.submissionFingerprint
+            == submissionFingerprint)
+        #expect(staged.completion == nil)
+
+        let reloaded = try await handle.research.authenticatedAgentContext(
+            credential: client.credential,
+            run: client.run
+        )
+        #expect(reloaded.nextActions.allSatisfy { $0.kind != .write })
+        let retryResult = try #require(reloaded.nextActions.first {
+            $0.kind == .submitResult
+        })
+        #expect(retryResult.inputTemplate == nil)
+        #expect(retryResult.label.contains("exact previously submitted Result"))
+        let changedSubmission = try ResearchAgentResultSubmission(
+            recordTitle: ResearchRecordTitle("Changed late research result"),
+            disposition: submission.disposition,
+            academicResults: submission.academicResults,
+            fidelityOutcomes: submission.fidelityOutcomes,
+            literatureRecommendations: submission.literatureRecommendations
+        )
+        await #expect(throws: ResearchAgentResultContractError.resultAlreadySubmitted) {
+            _ = try await submitTestAgentResult(
+                changedSubmission,
+                client: client,
+                handle: handle
+            )
+        }
+        await #expect(throws: ResearchAgentResultContractError.resultAlreadySubmitted) {
+            _ = try await handle.research.extendAgentWriteSet(
+                credential: client.credential,
+                run: client.run,
+                intent: try ResearchWriteSetExtensionIntent(
+                    targets: [try ResearchWriteSetTargetSelector(
+                        role: .analysis,
+                        relativePath: "Analysis.md",
+                        operations: [.modifySource]
+                    )],
+                    academicReason: "This new activity must not start after Result submission."
+                )
+            )
+        }
+        await #expect(throws: ResearchAgentResultContractError.resultAlreadySubmitted) {
+            _ = try await handle.research.writeAgentDocument(
+                credential: client.credential,
+                run: client.run,
+                intent: try ResearchDocumentWriteIntent(
+                    requestID: UUID(),
+                    role: .topic,
+                    relativePath: "Agency.md",
+                    content: initial.body + "\nA distinct late mutation.\n"
+                )
+            )
+        }
+
+        let reconciled = try await handle.research.writeAgentDocument(
+            credential: client.credential,
+            run: client.run,
+            intent: writeIntent
+        )
+        #expect(reconciled.operationID == operationID)
+        #expect(reconciled.state == .abandoned)
+        let receipt = try await submitTestAgentResult(
+            submission,
+            client: client,
+            handle: handle
+        )
+        #expect(receipt.recordFormed)
+        let record = try await handle.services.portableResearchRecordStore.record(
+            id: action.runID
+        )
+        #expect(record.activityOutcomes.first { $0.id == operationID }?.state
+            == .abandoned)
+        #expect(try await handle.documents.load(fixture.topicID).fingerprint
+            == initial.fingerprint)
+        await runtime.shutdown()
+    }
+
     @Test("Unavailable current Action Fidelity remains explicit in its portable record")
     func unavailableActionFidelityIsRecordedAsUnverified() async throws {
         let fixture = try await ResearchFixture.make()

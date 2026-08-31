@@ -348,6 +348,13 @@ extension ResearchActionRunCoordinator {
             )
             : nil
         let evidenceKey = directFidelityEvidenceKey
+        let finalizationEvidenceTimes = [submission.submittedAt]
+            + stored.writeSetExtensionRecords.compactMap(\.decidedAt)
+            + stored.documentWriteRecords.compactMap(\.finishedAt)
+            + stored.zoteroBindingWriteRecords.compactMap(\.finishedAt)
+            + stored.writeConflictResolutionRecords.map(\.resolvedAt)
+        let determinedCompletionTime = finalizationEvidenceTimes.max()
+            ?? submission.submittedAt
         let completion = ResearchActionRunCompletion(
             runID: submission.runID,
             actionID: snapshot.request.actionID,
@@ -362,7 +369,7 @@ extension ResearchActionRunCoordinator {
             literatureRecommendations: submission.literatureRecommendations,
             fidelityEvidenceKey: evidenceKey,
             childRunIDs: submittedChildRunIDs,
-            completedAt: stored.completion?.completedAt ?? submission.submittedAt,
+            completedAt: stored.completion?.completedAt ?? determinedCompletionTime,
             derivedRefreshWarning: stored.completion?.derivedRefreshWarning
         )
         if snapshot.request.actionID == .analyze {
@@ -1100,6 +1107,18 @@ extension ResearchActionRunCoordinator {
             runID: snapshot.runID,
             writes: writes
         )
+        let hasUnresolvedOperation = stored.writeSetExtensionRecords.contains(
+            where: \.isUnresolved
+        ) || writeSet.entries.contains {
+            [.writing, .recoveryRequired].contains($0.state)
+        } || writes.contains {
+            [.writing, .recoveryRequired].contains($0.state)
+        } || bindingWrites.contains {
+            [.writing, .recoveryRequired].contains($0.state)
+        } || hasPendingWriteRecovery
+        guard !hasUnresolvedOperation else {
+            throw ResearchActionRunContractError.unresolvedWriteRecovery(snapshot.runID)
+        }
         var blockers: [String] = []
         if writeSet.runID != snapshot.runID || writeSet.triptychID != workspaceID {
             blockers.append("write-set identity")
@@ -1114,7 +1133,6 @@ extension ResearchActionRunCoordinator {
         if !bindingWrites.allSatisfy({
             ![.writing, .recoveryRequired].contains($0.state)
         }) { blockers.append("unfinished binding write") }
-        if hasPendingWriteRecovery { blockers.append("pending recovery") }
         guard blockers.isEmpty else {
             throw ResearchActionRunContractError.invalidCompletion(
                 "Every started bounded document or Zotero-binding write must have a known, recoverable outcome before Result finalization. Blocked by: \(blockers.joined(separator: ", "))."
