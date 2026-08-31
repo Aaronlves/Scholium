@@ -662,6 +662,9 @@ extension ResearchActionRunCoordinator {
         var participantIDs: Set<UUID> = [actionSnapshot.target.noteID]
         participantIDs.formUnion(snapshot.request.materials.map(\.noteID))
         participantIDs.formUnion(changes.map(\.noteID))
+        participantIDs.formUnion(stored.boundedWriteSet.entries.compactMap { entry in
+            entry.expectsAbsence ? nil : entry.noteID
+        })
         participantIDs.formUnion(activityOutcomes.compactMap { outcome in
             noteSnapshots[outcome.noteID] == nil ? nil : outcome.noteID
         })

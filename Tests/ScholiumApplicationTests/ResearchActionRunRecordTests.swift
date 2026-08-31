@@ -1176,6 +1176,67 @@ extension ResearchActionRunOperationsTests {
         await runtime.shutdown()
     }
 
+    @Test("A tracked existing Note remains a Record participant without a write attempt")
+    func trackedNoWriteActivityRemainsPortable() async throws {
+        let fixture = try await ResearchFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let topic = try await researchActionTarget(
+            fixture.topicID,
+            role: .topic,
+            handle: handle
+        )
+        let analysis = try await researchActionTarget(
+            fixture.analysisID,
+            role: .analysis,
+            handle: handle
+        )
+        let action = try await handle.research.prepareAction(
+            try await actionRequest(
+                handle: handle,
+                actionID: .synthesize,
+                target: actionNote(topic)
+            )
+        )
+        let run = try await handle.research.actionRunDetails(id: action.runID)
+        let client = try await connectTestResearchAgent(to: run, handle: handle)
+        let tracked = try await handle.research.extendAgentWriteSet(
+            credential: client.credential,
+            run: client.run,
+            intent: try ResearchWriteSetExtensionIntent(
+                targets: [try ResearchWriteSetTargetSelector(
+                    role: .analysis,
+                    relativePath: analysis.note.relativePath,
+                    operations: [.modifySource]
+                )],
+                academicReason: "Inspect a relevant Analysis before concluding no write is warranted."
+            )
+        )
+        #expect(tracked.state == .recorded)
+
+        _ = try await submitTestAgentResult(
+            makeTestAgentResultSubmission(for: run),
+            client: client,
+            handle: handle
+        )
+        let record = try await handle.services.portableResearchRecordStore.record(
+            id: action.runID
+        )
+        #expect(Set(record.participatingNotes.map(\.noteID)) == [
+            topic.noteID,
+            analysis.noteID,
+        ])
+        #expect(record.confirmedChanges.isEmpty)
+        #expect(record.activityOutcomes.isEmpty)
+        let compacted = try await handle.services.localResearchExecutionStore.record(
+            id: action.runID
+        )
+        #expect(compacted.isCompacted)
+        #expect(compacted.boundedWriteSet.entries.isEmpty)
+        await runtime.shutdown()
+    }
+
     @Test("Unavailable current Action Fidelity remains explicit in its portable record")
     func unavailableActionFidelityIsRecordedAsUnverified() async throws {
         let fixture = try await ResearchFixture.make()
