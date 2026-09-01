@@ -164,4 +164,6 @@
   integrity, and final researcher Core App acceptance. Agent field trials and
   collaboration acceptance remain separate and cannot block the Core App
   profile. The Beta-release waivers recorded through `v0.1.0-beta.10` did not
-  convert either profile's missing evidence into a pass.
+  convert either profile's missing evidence into a pass. These release and gate
+  decisions retain exact source, toolchain, artifact, fixture, procedure, and
+  result provenance; focused evidence keeps only the context its claim needs.

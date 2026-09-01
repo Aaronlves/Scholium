@@ -57,8 +57,12 @@ Context and multi-document writes; End; recovery; accessibility; and
 unavailable fallback. It does not require an embedded or provider-specific
 Agent runtime.
 
-All material evidence uses disposable fixtures and records command, source
-revision, toolchain, build/artifact, fixture identity, and result.
+Evidence that exercises research content uses disposable nonprivate fixtures.
+Focused development evidence records the procedure or command, inputs,
+environment, and result only to the extent needed to reproduce its bounded
+claim; inapplicable source-revision, artifact, or fixture fields are omitted.
+Evidence presented for a release or gate records the exact source revision,
+toolchain, build/artifact, fixture identity, procedure or command, and result.
 
 ### 21.3 Release gates
 

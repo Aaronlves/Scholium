@@ -23,3 +23,7 @@ completed sequence or per-change transcript.
 Each current claim, measurement, or open gate belongs to exactly one status
 chapter. A before/after explanation appears only when it is necessary to
 interpret a still-current measurement; otherwise Git owns it.
+
+Focused entries retain their evidence boundary and enough reproduction context
+for that claim. Exact source, toolchain, artifact, fixture, procedure, and result
+provenance is required when an entry supports release or gate acceptance.
