@@ -146,10 +146,16 @@
 
 ## Distribution and release
 
-- Complete the Core App profile by exercising the exact mounted DMG and copied
-  App in a clean external account through setup, read/edit/autosave/restart,
-  Search, conflict/recovery, Inspector, unavailable optional integrations, and
-  restoration.
+- Complete the per-Beta G9 smoke on the exact mounted DMG and copied App in one
+  clean external account: Bootstrap, connect a disposable Triptych, open one
+  Note, edit/save with exact readback, relaunch, and reopen. Confirm that absent
+  optional integrations do not block this Agent-independent Core path. The
+  current packaged-first-launch script reaches Bootstrap only and does not
+  close this smoke.
+- Run packaged Search, Inspector, conflict/recovery, Finder restoration, or
+  integration-specific journeys only when their owner or package boundary
+  changed; Core App 1.0 includes one representative of each. Deterministic QA
+  owns remaining variants, while §20 owns its bounded human checks.
 - Close the Agent Collaboration distribution profile with the clean-account
   artifact smoke above and §20's one representative human Agent journey;
   deterministic protocol variants and any changed-template review remain

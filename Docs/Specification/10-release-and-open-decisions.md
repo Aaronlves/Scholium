@@ -215,9 +215,18 @@ root certificate.
 
 Before Core App distribution, verify the exact clean tag, source/privacy audit,
 repository gates, package contents, metadata, entitlements, architectures,
-signatures, icons, checksums, licenses, read-only DMG, clean-account App
-installation, and representative first-launch, edit/save, Search,
-conflict/recovery, and unavailable-optional-integration journeys.
+signatures, icons, checksums, licenses, and read-only DMG. Every distributed
+Core App also completes one exact mounted-and-copied clean-account smoke:
+Bootstrap, connect one disposable Triptych, open one Note, edit/save with exact
+readback, relaunch and reopen. Unavailable optional integrations must not block
+that Agent-independent Core path.
+
+For a Beta, packaged Search, Inspector, conflict/recovery, Finder restoration,
+and integration-specific journeys are change-triggered by their functional
+owner or package boundary. Core App 1.0 includes one representative packaged
+journey for each of those distinct boundaries. Deterministic suites retain
+state variants, and §20 retains its bounded human checks; do not repeat either
+matrix in every clean-account artifact smoke.
 
 Agent Collaboration distribution additionally verifies independent CLI
 installation and version, production-bridge availability, and one representative
