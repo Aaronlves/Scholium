@@ -57,13 +57,12 @@ The ad-hoc App requires the documented Gatekeeper override.
   dismissed. This is not deterministic UI, VoiceOver, adaptation,
   packaged-artifact, or human acceptance.
 
-- On 2026-09-01, §20 replaced its per-feature human matrix with complete
-  deterministic Core coverage, four Core and one Agent representative human
-  checks; Voice Control and Dictation are change-triggered. The renamed opt-in
-  VoiceOver XCUITest labels service/speech automation as nonhuman evidence.
-  Documentation authority (3 manifests, 22 chapters, 104 links), its focused
-  test (1/1), and the Xcode 27.0 beta UI-target build passed. No VoiceOver-
-  service or human check ran.
+- On 2026-09-01, §20 kept four Core and one Agent human checks but requires
+  a full set only for the first baseline and 1.0; later Betas rerun affected
+  failure-mode checks. Deterministic conformance remains
+  per Beta, and the opt-in VoiceOver test still labels service automation as
+  nonhuman evidence. Documentation validation and its focused test passed. No
+  human check ran; the first Core baseline remains open.
 
 - On 2026-09-01 under Xcode 27.0 beta build 27A5218g and Swift 6.4, the
   system-Trash/Record cutover passed the complete gate: documentation,

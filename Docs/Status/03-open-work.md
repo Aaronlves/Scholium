@@ -10,14 +10,14 @@
   English/Simplified Chinese localization, non-color meaning, reflow, and exact
   source preservation. Existing automated journeys remain engineering evidence,
   not human acceptance; add no inapplicable route merely to fill the list.
-- Complete §20's four bounded Core App human checks: one representative genuine
-  VoiceOver journey; one physical Full Keyboard Access journey; one installed
-  Simplified Chinese IME exact-source journey; and one visual-adaptation set.
-  The visual set distributes ordinary/minimum width, Light/Dark, Increase
-  Contrast, Reduce Transparency, Reduce Motion, inactive-window treatment,
-  enlarged interface text, and 200% document text across representative
-  populated and consequential error/recovery states rather than crossing every
-  combination.
+- Establish §20's first retained Core human baseline on the next Core Beta
+  because none exists: one genuine VoiceOver journey, one physical Full
+  Keyboard Access journey, one installed Simplified Chinese IME exact-source
+  journey, and one visual-adaptation set. Later Betas rerun only checks whose
+  representative journey, failure-mode owner, framework boundary, or supported
+  macOS baseline changed, or when a new independent human failure mode appears;
+  Core App 1.0 repeats all four. Every Beta still requires complete deterministic
+  conformance and no unresolved critical or high-severity accessibility defect.
 - Run Voice Control or Dictation human compatibility only when a named release
   claims that route or a change touches command discoverability or text-service
   integration. Do not keep them as unconditional per-feature release rows.

@@ -223,13 +223,23 @@ discoverability or text-service integration. Agent Collaboration adds one
 representative human journey across handoff, activity, Result and recovery; it
 does not repeat the matrix for every Action or lifecycle state.
 
+A Beta with no retained accepted baseline for its named profile completes all
+applicable bounded human checks on the exact packaged artifact. A later Beta
+reruns only a check whose representative journey, named failure-mode owner,
+relevant framework boundary, or supported macOS baseline changed, or when a new
+independent human failure mode appears. Core App and Agent Collaboration 1.0
+repeat all applicable checks on their exact artifacts. A carried check retains
+its original artifact/environment evidence and the current release records why
+its coverage remains applicable; it is never relabelled as current-artifact
+human execution.
+
 ### Acceptance threshold
 
 Test long English and Simplified Chinese labels, mixed content, enlarged text,
 minimum supported widths, file/error/recovery states, and native/editor focus
-transitions at deterministic layers. Beta/1.0 require complete keyboard and
-VoiceOver semantic/action coverage for the declared core, the bounded human
-checks above, and no unresolved critical or high-severity accessibility defects.
-Automation never becomes human acceptance; human acceptance does not require
-every covered state or adaptation combination. Additional languages and
-complete RTL acceptance remain deferred.
+transitions at deterministic layers. Every Beta/1.0 requires complete keyboard
+and VoiceOver semantic/action coverage for the declared core and no unresolved
+critical or high-severity accessibility defects. Bounded human checks follow
+the baseline and change-impact cadence above. Automation never becomes human
+acceptance; human acceptance does not require every covered state or adaptation
+combination. Additional languages and complete RTL acceptance remain deferred.

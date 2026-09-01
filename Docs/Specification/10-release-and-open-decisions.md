@@ -78,6 +78,9 @@ environment, and result only to the extent needed to reproduce its bounded
 claim; inapplicable source-revision, artifact, or fixture fields are omitted.
 Evidence presented for a release or gate records the exact source revision,
 toolchain, build/artifact, fixture identity, procedure or command, and result.
+A carried §20 human baseline keeps its original exact artifact/environment and
+the current release's change-impact record; it is not reported as execution on
+the current artifact.
 
 ### 21.3 Release gates
 
@@ -95,7 +98,9 @@ toolchain, build/artifact, fixture identity, procedure or command, and result.
 | **G10 Agent collaboration** | Skills, Profiles/Results, Sessions, Ledger writes, Context, Records, and local bridges pass their journeys. |
 
 Usable Core/0.1 requires G1–G4, G6, and G8. **Core App Beta** requires G1–G6,
-G8, and G9 within the Core App profile and does not require G10. Beta
+G8, and G9 within the Core App profile and does not require G10. Human evidence
+follows §20's baseline and change-impact cadence; deterministic G6 conformance
+remains required on the current source. Beta
 performance evidence is change-triggered: when a release changes a measured
 runtime owner, visible or correctness boundary, fixture, prepared driver,
 threshold, or process attribution, run the affected packaged series. A focused
