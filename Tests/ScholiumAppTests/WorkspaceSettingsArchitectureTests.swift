@@ -522,7 +522,7 @@ struct WorkspaceSettingsArchitectureTests {
         try TriptychSettingsValidator.validateTransition(from: saved, to: candidate)
     }
 
-    @Test("Metadata Settings separates definitions, Agent preferences, and About order")
+    @Test("Metadata Settings separates definitions, Agent preferences, and About always-shown order")
     func propertiesSettingsSurface() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -541,7 +541,11 @@ struct WorkspaceSettingsArchitectureTests {
         ))
         let properties = String(source[start.lowerBound..<end.lowerBound])
 
-        for section in ["Managed Fields", "Agent-Created Analyses", "settingsSectionTitle(\"About\")"] {
+        for section in [
+            "Managed Fields",
+            "Agent-Created Analyses",
+            "settingsSectionTitle(\"Always Shown in About\")",
+        ] {
             #expect(properties.contains(section))
         }
         #expect(properties.contains("Every field is optional"))
@@ -555,7 +559,8 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(properties.contains("description: normalizedOptionalText"))
         #expect(properties.contains("allowedValues:"))
         #expect(properties.contains("preferredFieldsBySourceType"))
-        #expect(properties.contains("Restore About Defaults"))
+        #expect(properties.contains("Existing values always appear"))
+        #expect(properties.contains("Restore Always-Shown Defaults"))
         #expect(!properties.contains("Structured Editing"))
         #expect(!properties.contains("editableFields"))
         #expect(!properties.contains("YAML Added to New Notes"))

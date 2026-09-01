@@ -200,12 +200,17 @@ writable projection of Markdown or YAML.
 to exact source. `ResearchNoteTitleResolver` uses managed Analysis `title`,
 then first H1, then filename; Topic and Work use first H1, then filename. YAML
 `title` has no identity semantics. App's independent `AboutProfileCatalog`
-owns researcher-configured display choices and order; presentation adds label,
-help, group, and control style only. The shared Metadata sheet reads and edits
-only managed fields, offers only role-valid missing keys, and never creates or
-patches frontmatter. Authored `summary` and `keywords` are read from exact
-source for About and edited only in Source. Unknown YAML remains byte-preserved
-custom source and is never surfaced as a managed-field alias.
+owns researcher-configured always-shown choices and order, then appends every
+other present managed value in catalog order; presentation adds label, help,
+visible group, and control style only. About's field-local editor delegates
+managed values to the existing exact Metadata revision owner. The shared
+Metadata sheet remains the Add Field and multi-field managed editor, offers
+only role-valid missing keys, and never creates or patches frontmatter.
+Authored `summary` and `keywords` are read from exact source for About; their
+About editor delegates one bounded change to the exact-source writer after the
+active editor is flushed and the current source revision is revalidated.
+Unknown YAML remains byte-preserved custom source and is never surfaced as a
+managed-field alias.
 
 `FrontmatterPatchPlanner` remains a source-fidelity utility for bounded typed
 serialization and explicit source operations. It is not a Metadata writer.

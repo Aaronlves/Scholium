@@ -229,6 +229,129 @@ struct PropertyPresentationTests {
             fieldKey: "publication_status"
         ) == "In Press")
     }
+
+    @Test("About keeps core empty fields and appends every other present value")
+    func aboutCombinesAlwaysShownAndPresentFields() throws {
+        let groups = AboutProfileCatalog.groupedEntries(
+            for: .analysis,
+            visibleFields: ["type", "authors", "publication_date"],
+            presentManagedFields: ["doi", "publisher"],
+            catalog: .builtIn
+        )
+        let keys = groups.flatMap(\.keys)
+
+        #expect(keys.contains("type"))
+        #expect(keys.contains("authors"))
+        #expect(keys.contains("publication_date"))
+        #expect(keys.contains("publisher"))
+        #expect(keys.contains("doi"))
+        #expect(keys.suffix(2) == ["summary", "keywords"])
+        #expect(!keys.contains("title"))
+    }
+
+    @Test("About keeps a present archived custom value without making it selectable when empty")
+    func aboutKeepsPresentArchivedValue() throws {
+        let catalog = NoteMetadataCatalog(customFieldsByRole: [
+            .topicKnowledge: [
+                MetadataFieldDefinition(
+                    key: "research_stage",
+                    valueKind: .text,
+                    lifecycle: .archived
+                ),
+            ],
+        ])
+        let groups = AboutProfileCatalog.groupedEntries(
+            for: .topicMarkdown,
+            visibleFields: ["aliases"],
+            presentManagedFields: ["research_stage"],
+            catalog: catalog
+        )
+
+        #expect(groups.flatMap(\.keys).contains("research_stage"))
+        #expect(!AboutProfileCatalog.allowsOptionalField(
+            "research_stage",
+            profile: .topicMarkdown,
+            catalog: catalog
+        ))
+    }
+
+    @Test("Settlement presentation distinguishes current, changed, and never-settled revisions")
+    func settlementPresentationUsesExactRevision() throws {
+        let noteID = UUID()
+        let settledRevision = DocumentFingerprint(content: "settled")
+        let currentRevision = DocumentFingerprint(content: "current")
+        let settledAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let settlement = SettlementRecord(
+            noteID: noteID,
+            fingerprint: settledRevision,
+            settledAt: settledAt,
+            researcher: "Researcher",
+            rationale: "Stable enough"
+        )
+
+        let current = AboutSettlementPresentation.resolve(
+            noteID: noteID,
+            currentRevision: settledRevision,
+            requirement: nil,
+            settlements: [settlement]
+        )
+        let changed = AboutSettlementPresentation.resolve(
+            noteID: noteID,
+            currentRevision: currentRevision,
+            requirement: WorkspaceSettlementRequirement(
+                noteID: noteID,
+                note: VaultQualifiedNoteID(vaultID: UUID(), relativePath: "note.md"),
+                title: "Note",
+                currentRevision: currentRevision,
+                reason: .changedSinceSettlement,
+                previousSettlement: settlement
+            ),
+            settlements: [settlement]
+        )
+        let never = AboutSettlementPresentation.resolve(
+            noteID: noteID,
+            currentRevision: currentRevision,
+            requirement: nil,
+            settlements: []
+        )
+
+        #expect(current.state == .settled)
+        #expect(current.settledAt == settledAt)
+        #expect(changed.state == .changedSinceSettlement)
+        #expect(changed.settledAt == settledAt)
+        #expect(never.state == .notYetSettled)
+        #expect(never.settledAt == nil)
+    }
+
+    @Test("About authored edits preserve every unrelated source byte")
+    func aboutAuthoredEditUsesTargetedSourcePatch() throws {
+        let source = "\u{FEFF}---\r\n# exact comment\r\nsummary: Old value\r\nkeywords: [one, two]\r\nunknown: 'keep'\r\n---\r\n# Body 😀"
+        let document = NoteDocument(relativePath: "analysis.md", rawContent: source)
+        let proposedChange = try AboutAuthoredFieldMutation.changeSet(
+            document: document,
+            key: "summary",
+            value: .string("New: value")
+        )
+        let changeSet = try #require(proposedChange)
+        let result = try document.applying(changeSet, timestampKey: nil)
+
+        #expect(result == "\u{FEFF}---\r\n# exact comment\r\nsummary: \"New: value\"\r\nkeywords: [one, two]\r\nunknown: 'keep'\r\n---\r\n# Body 😀")
+    }
+
+    @Test("About inserts the first authored field only after explicit input")
+    func aboutAuthoredEditCanInsertFirstEnvelope() throws {
+        let source = "\u{FEFF}# Existing body\r\n\r\nExact tail"
+        let document = NoteDocument(relativePath: "topic.md", rawContent: source)
+        let proposedChange = try AboutAuthoredFieldMutation.changeSet(
+            document: document,
+            key: "keywords",
+            value: .array([.string("agency"), .string("reasons")])
+        )
+        let changeSet = try #require(proposedChange)
+        let result = try document.applying(changeSet, timestampKey: nil)
+
+        #expect(result == "\u{FEFF}---\r\nkeywords:\r\n  - agency\r\n  - reasons\r\n---\r\n# Existing body\r\n\r\nExact tail")
+    }
 }
 
 private func propertyWorkspaceLocation(

@@ -798,7 +798,7 @@ private struct MetadataSettingsView: View {
             settingsTitle(
                 ScholiumL10n.Settings.metadata,
                 detail: LocalizedStringResource(
-                    "Define optional managed fields for each role, then choose Agent guidance and About presentation independently. New Note YAML remains fixed.",
+                    "Define optional managed fields for each role, then choose Agent guidance and fields that remain visible when empty in About. Existing values always appear. New Note YAML remains fixed.",
                     table: "Localizable",
                     bundle: .module
                 )
@@ -1393,10 +1393,10 @@ private struct MetadataSettingsView: View {
 
     private var displayOrderColumn: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            settingsSectionTitle("About")
+            settingsSectionTitle("Always Shown in About")
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 if selectedConfiguration.visibleFields.isEmpty {
-                    Text("No fields are shown in About.")
+                    Text("No optional managed fields are always shown. Existing values still appear in About.")
                         .font(ScholiumTypography.interface(.body))
                         .scholiumForeground(.secondaryText)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1447,8 +1447,8 @@ private struct MetadataSettingsView: View {
                                             .scholiumForeground(.secondaryText)
                                     }
                                     .buttonStyle(.borderless)
-                                    .help("Hide \(displayName(for: key))")
-                                    .accessibilityLabel("Hide \(displayName(for: key))")
+                                    .help("Show \(displayName(for: key)) only when it has a value")
+                                    .accessibilityLabel("Show \(displayName(for: key)) only when it has a value")
                                 }
                             }
                         }
@@ -1456,9 +1456,9 @@ private struct MetadataSettingsView: View {
                 }
                 }
 
-                Menu("Add Visible Field") {
+                Menu("Always Show Field") {
                     if hiddenAboutConfigurationGroups.isEmpty {
-                        Text("All available fields are shown")
+                        Text("All available fields are always shown")
                     } else {
                         ForEach(hiddenAboutConfigurationGroups, id: \.group) { group in
                             Section(group.group.label) {
@@ -1481,7 +1481,7 @@ private struct MetadataSettingsView: View {
 
     private var restoreActions: some View {
         HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            Button("Restore About Defaults") {
+            Button("Restore Always-Shown Defaults") {
                 guard let defaults = TriptychSettings.defaultAbout[selectedSlot] else {
                     return
                 }

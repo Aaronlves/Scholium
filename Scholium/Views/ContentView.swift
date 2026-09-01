@@ -424,6 +424,7 @@ struct ContentView: View {
                 freshness: researchProjectionFreshness,
                 aboutConfiguration: appState.currentDocumentAboutConfiguration,
                 metadataCatalog: workspaceProjectionController.metadataCatalog,
+                settlement: currentAboutSettlementPresentation,
                 zoteroBinding: currentAnalysisZoteroBinding,
                 stableNoteID: currentAnalysisStableNoteID
             ),
@@ -449,6 +450,20 @@ struct ContentView: View {
             },
             retryRefresh: {
                 Task { await appState.retryDerivedRefresh() }
+            },
+            saveManagedAboutField: { note, key, value in
+                try await appState.saveManagedAboutField(
+                    for: note,
+                    key: key,
+                    value: value
+                )
+            },
+            saveAuthoredAboutField: { note, key, value in
+                try await appState.saveAuthoredAboutField(
+                    for: note,
+                    key: key,
+                    value: value
+                )
             },
             openZoteroItem: { binding in
                 await appState.zoteroCoordinator.bridge.openInZotero(binding: binding)
@@ -482,6 +497,15 @@ struct ContentView: View {
         return researchController.records?.settlementRequirements.first {
             $0.noteID == noteID
         }
+    }
+
+    private var currentAboutSettlementPresentation: AboutSettlementPresentation {
+        AboutSettlementPresentation.resolve(
+            noteID: currentNoteStableID,
+            currentRevision: appState.currentNote?.document.fingerprint,
+            requirement: currentSettlementRequirement,
+            settlements: researchController.records?.settlements ?? []
+        )
     }
 
     private func presentAgentChanges(

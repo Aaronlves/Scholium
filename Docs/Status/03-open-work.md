@@ -33,9 +33,10 @@
   folder dragging, Library shortcuts, Research Records at regular/minimum width,
   and Action/Discussion cancellation and recovery.
 - Close remaining deterministic Metadata coverage for custom definitions,
-  optional Agent preferences, About order, lifecycle/use counts, controlled
-  choices, Complete Metadata, CreatorList, first-record creation, removal/Undo,
-  conflict and authored `summary`/`keywords` Source routes. Add a separate human
+  optional Agent preferences, About always-shown order and inline editor error
+  states, lifecycle/use counts, controlled choices, Complete Metadata,
+  CreatorList, first-record creation, removal/Undo, conflict and authored
+  `summary`/`keywords` exact-source routes. Add a separate human
   journey only if a custom boundary is not exercised by §20's representative
   VoiceOver, keyboard or adaptation checks.
 - Close remaining deterministic Zotero Link/Fill coverage for unavailable,

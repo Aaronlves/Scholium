@@ -286,8 +286,10 @@ those planes.
 
 The This Triptych Metadata detail consumes one candidate
 `NoteMetadataCatalog` derived from its settings draft. Its field-definition,
-Agent-preference, and About sections mutate three separate subvalues and save
-only through the existing exact-revision Settings transaction. The inline Add
+Agent-preference, and About always-shown sections mutate three separate
+subvalues and save only through the existing exact-revision Settings
+transaction. Present values remain visible in About independently of that
+empty-field preference. The inline Add
 Field form owns only a key and supported simple value kind; it has no source,
 record, About, Agent, Zotero, or body mutation authority.
 

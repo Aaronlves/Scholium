@@ -28,7 +28,8 @@ public struct TriptychManifest: Codable, Hashable, Sendable {
 }
 
 public struct VaultAboutConfiguration: Codable, Hashable, Sendable {
-    /// Optional Scholium-managed fields shown by About, in display order.
+    /// Optional Scholium-managed fields always shown by About, in display
+    /// order. Other stored managed values remain visible automatically.
     /// Authored `summary` and `keywords` have a fixed presentation contract
     /// and are deliberately not configurable here.
     public var visibleFields: [String] {
@@ -56,8 +57,8 @@ public struct VaultAboutConfiguration: Codable, Hashable, Sendable {
         try container.encode(visibleFields, forKey: .visibleFields)
     }
 
-    /// Adds or removes a field without losing the explicit order of the
-    /// remaining visible fields.
+    /// Adds or removes an always-shown field without losing the explicit order
+    /// of the remaining core fields.
     public mutating func setVisible(_ isVisible: Bool, field: String) {
         guard let field = Self.normalized(field) else { return }
         if isVisible {
@@ -67,8 +68,8 @@ public struct VaultAboutConfiguration: Codable, Hashable, Sendable {
         }
     }
 
-    /// Moves one visible field to a bounded destination while preserving all
-    /// other relative ordering.
+    /// Moves one always-shown field to a bounded destination while preserving
+    /// all other relative ordering.
     public mutating func moveVisibleField(_ field: String, to destinationIndex: Int) {
         guard let sourceIndex = visibleFields.firstIndex(of: field) else { return }
         let value = visibleFields.remove(at: sourceIndex)

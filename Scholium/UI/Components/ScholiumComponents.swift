@@ -342,8 +342,8 @@ struct ScholiumTagCapsuleLabel: View {
     }
 }
 
-/// A shared Properties/About group boundary. Visual grouping uses whitespace;
-/// the semantic label remains available to assistive technologies.
+/// A shared Properties/About group boundary. The concise visible heading and
+/// spacing carry the same semantic group to sighted and assistive readers.
 struct ScholiumPropertyGroup<Content: View>: View {
     let label: String
     let separatesFromPrevious: Bool
@@ -360,7 +360,18 @@ struct ScholiumPropertyGroup<Content: View>: View {
     }
 
     var body: some View {
-        content
+        VStack(
+            alignment: .leading,
+            spacing: ScholiumMetrics.Properties.fieldBlockSeparation
+        ) {
+            Text(verbatim: label)
+                .font(ScholiumTypography.interface(.compact, emphasis: .strong))
+                .scholiumForeground(.secondaryText)
+                .accessibilityHeading(.h3)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            content
+        }
             .padding(
                 .top,
                 separatesFromPrevious
@@ -368,8 +379,6 @@ struct ScholiumPropertyGroup<Content: View>: View {
                     : 0
             )
             .accessibilityElement(children: .contain)
-            .accessibilityLabel(Text(verbatim: label))
-            .accessibilityHeading(.h3)
     }
 }
 

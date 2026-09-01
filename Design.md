@@ -195,7 +195,8 @@ Guidance form concise groups. It has no card grid, icon toolbar, bottom action
 strip, or catch-all General/Advanced page.
 
 Metadata settings present field definitions, Analysis Agent preferences, and
-About order without repeating the complete built-in schema. Document Appearance
+the order of fields always shown in About without repeating the complete
+built-in schema. Document Appearance
 presents the selected configuration and common controls first; detailed Body,
 Heading, Callout, and CSS controls remain progressively disclosed. Unsaved
 configuration changes require Save or explicit Revert.
@@ -276,7 +277,7 @@ a reusable component or catalog entry.
 | `Recovery Notice` | Present candidate, consequence, and safe repair from the workflow owner. | §§14, 18.6 |
 | `Document Find Bar` | Find/replace in the current unsaved buffer while preserving editor state. | §§13, 18.4 |
 | `Review Comment Anchor` | Locate current Discussion Comments without becoming authored annotation. | §§7.2, 18.4 |
-| `Property Group` | Group Metadata/About fields accessibly through spacing and stable action slots. | §§5.2, 18.4–18.5 |
+| `Property Group` | Group Metadata/About fields through a concise visible heading, spacing, and stable action slots. | §§5.2, 18.4–18.5 |
 | `Content State` | Present page/pane state, explanation, and first repair. | §§18.2–18.5, 19.9 |
 | `Bootstrap Illustration` | Support onboarding narrative without carrying task meaning. | §§16, 19.5 |
 

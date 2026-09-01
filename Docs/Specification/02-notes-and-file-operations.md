@@ -112,11 +112,17 @@ Analysis display identity resolves managed `title`, then first H1, then
 filename. Topic and Work resolve first H1, then filename. YAML `title` has no
 identity semantics. Rename never synchronizes Metadata or H1.
 
-The Metadata sheet edits only the current Note's managed record at its loaded
-revision. It preserves drafts on conflict and never creates or changes YAML.
-About shows only selected nonempty managed values plus authored `summary` and
-`keywords`. CLI metadata read/set/remove operations use the same owner and
-Metadata fingerprint, never the source fingerprint.
+About is the current Note's primary Metadata view and ordinary editing surface.
+It always shows the role's configured core managed fields even when empty,
+automatically adds every other present managed value, and keeps authored
+`summary` and `keywords` visible. A field edit remains bound to its real owner:
+managed values use the loaded Metadata revision, while authored values use an
+exact source revision and a targeted YAML patch after the current editor is
+safely flushed. File and Settlement facts are read-only. The Metadata sheet
+remains the Add Field and multi-field editing route; it preserves drafts on
+conflict and never creates or changes YAML. CLI metadata read/set/remove
+operations use the same managed owner and Metadata fingerprint, never the
+source fingerprint.
 
 Metadata imposes no Markdown body schema. A standalone Markdown copy contains
 only authored source; moving the complete Triptych carries its identity-keyed

@@ -76,10 +76,15 @@ trailing Inspector. Source remains available through the Document Mode menu;
 the toolbar button prioritizes Review/Edit and reports its current value.
 Document Text Size is per-window and source-neutral.
 
-The Metadata sheet edits the current Note's managed record at its exact
-revision. Definitions come from Settings; archived present fields remain
-editable/removable. Authored `summary`/`keywords` route to Source. About reuses
-the configured cross-authority order and never creates another owner.
+About directly edits one current-Note field at a time. Plain values activate an
+inline control; structured contributors retain their ordered structured editor.
+Save and Cancel remain explicit, field-local actions. Managed values commit at
+the exact Metadata revision. Authored `summary`/`keywords` commit through the
+exact-source writer after the current editor is flushed and never become
+managed values. The Metadata sheet remains available for Add Field and
+multi-field editing; definitions come from Settings and archived present fields
+remain editable/removable. About coordinates these existing owners without
+creating another one.
 
 ## 18.5 Contextual research and Actions
 
@@ -156,7 +161,10 @@ Hiding Inspector moves no content elsewhere. Without a Document it presents
 Overview contains, in order:
 
 1. **Needs Attention** count and route for the current Note;
-2. **About** with nonempty managed/authored values and Edit Metadata; and
+2. **About** with visible semantic groups, configured core fields even when
+   empty, every other present managed value, authored values, direct field
+   editing, read-only file dates and exact-revision Settlement state, plus Add
+   Field; and
 3. optional Analysis Zotero link/manage/open/refresh actions.
 
 It has no generic Research Status, Provenance, Derived State, or inline Zotero

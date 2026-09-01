@@ -2490,6 +2490,12 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
+        let aboutEditorSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Sidebar/AboutEditablePropertyRow.swift"
+            ),
+            encoding: .utf8
+        )
         let connectionsSource = try String(
             contentsOf: repository.appendingPathComponent(
                 "Scholium/Views/Backlinks/ConnectionsInspectorView.swift"
@@ -2627,7 +2633,10 @@ struct FrontendArchitectureTests {
         #expect(sharedComponentsSource.contains("semanticGroupSeparation"))
         #expect(sharedComponentsSource.contains("isVisuallyRevealed"))
         #expect(sharedComponentsSource.contains(".opacity(isVisuallyRevealed || isFocused ? 1 : 0)"))
-        #expect(researchSource.contains("ScholiumApparatusFactGrid(facts: group.facts)"))
+        #expect(researchSource.contains("AboutEditablePropertyRow("))
+        #expect(aboutEditorSource.contains("PropertyPresentationCatalog.choiceDisplayName("))
+        #expect(researchSource.contains("ScholiumApparatusFactGrid(facts: fileHistoryFacts)"))
+        #expect(researchSource.contains("ScholiumApparatusFactGrid(facts: settlementFacts)"))
         #expect(researchSource.contains("ResearchProjectionFreshnessView("))
         #expect(researchSource.contains("ScholiumApparatusStateView("))
         #expect(
@@ -2685,9 +2694,11 @@ struct FrontendArchitectureTests {
         #expect(!researchSource.contains("\"Show All\""))
         #expect(!researchSource.contains("ResearchUnit"))
         #expect(researchSource.contains("AboutProfileCatalog.groupedEntries"))
-        #expect(researchSource.contains("AboutTagsView"))
+        #expect(researchSource.contains("presentManagedFields: Set(note.managedMetadataFields.keys)"))
+        #expect(researchSource.contains("saveManagedAboutField"))
+        #expect(researchSource.contains("saveAuthoredAboutField"))
         #expect(researchSource.contains("ScholiumApparatusSectionHeaderButton("))
-        #expect(researchSource.contains("actionLabel: \"Edit Metadata\""))
+        #expect(researchSource.contains("actionLabel: \"Add Field\""))
         #expect(researchSource.contains("accessibilityIdentifier: \"scholium.about.edit\""))
         #expect(researchSource.contains(".accessibilityIdentifier(\"scholium.about\")"))
         #expect(researchSource.contains("title: Text(\"Open in Zotero\")"))

@@ -105,16 +105,20 @@
   absence.
 - Hotkeys expose command, menu location, binding, recording state, validation,
   Save, Clear, and Restore. Invalid drafts never change menus.
-- Metadata settings expose role, field definitions, applicability, About order,
-  Agent preferences, dirty/save/conflict state, and exact recovery consequence.
+- Metadata settings expose role, field definitions, applicability, About
+  always-shown order, Agent preferences, dirty/save/conflict state, and exact
+  recovery consequence.
   Invalid or conflicting drafts remain local and named.
 - Field definitions expose immutable key/kind; editable label/description,
   field/choice order, and choice addition; lifecycle, scope, and use count.
   Archive/Restore retain stored values and change no Note automatically.
-- Metadata/About retain accessible semantic groups, field labels, contributor
-  structure, source-authority distinction, and complete values at narrow width
-  and enlarged text. Hover-revealed actions remain in keyboard/accessibility
-  order without reflow.
+- Metadata/About use visible and accessible semantic group headings and retain
+  field labels, contributor structure, source-authority distinction, and
+  complete values at narrow width and enlarged text. Empty always-shown fields
+  expose their editable purpose rather than disappearing. Inline Save, Cancel,
+  validation, and conflict state remain programmatically associated with the
+  field; read-only file and Settlement facts expose their source and state.
+  Hover-revealed actions remain in keyboard/accessibility order without reflow.
 - Zotero link/refresh exposes exact item and library identity, current values,
   proposed fills/updates, retained conflicts, progress, partial commit,
   cancellation, and retry. Abstract/tags/YAML/Markdown/non-write boundaries are

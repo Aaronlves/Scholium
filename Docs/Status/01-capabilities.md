@@ -47,10 +47,11 @@
   field and controlled-choice order, new choices, and reversible active/archived
   lifecycle are manageable. Existing choices cannot be removed. Archived fields
   retain existing values and Search while leaving
-  new-value, About, and Agent selection. The current workspace-scoped resolved catalog combines those
+  new-value, About always-shown, and Agent selection; an archived field with a
+  stored value still appears in About. The current workspace-scoped resolved catalog combines those
   definitions with built-ins and governs Metadata validation, Search, Library
-  filters, About, Complete Metadata, and Agent field plans. About visibility
-  and per-source-type Analysis Agent preferences are separate selections;
+  filters, About, Complete Metadata, and Agent field plans. About always-shown
+  order and per-source-type Analysis Agent preferences are separate selections;
   definitions do not select either one and every field remains optional. One
   strict candidate validation and exact settings
   target identity plus revision guard the atomic save; uncertain or
@@ -64,6 +65,13 @@
   every Markdown byte unchanged. Record identity, role catalog, canonical
   readback, conflict, and uncertain commit are checked. Authored `summary` and
   `keywords` remain Source-owned; unknown YAML is preserved but nonsemantic.
+- About now shows its core managed fields even when empty, appends every other
+  present managed value, and presents visible semantic groups. Managed fields
+  save inline through the same Metadata compare-and-swap owner; authored
+  `summary` and `keywords` save inline through a bounded exact-source change
+  after editor flush. File-created, source-modified, and Settlement state/time
+  remain read-only projections. The Metadata sheet remains the Add Field and
+  multi-field route.
 - Researcher CLI Metadata read/set/remove uses those same public Application
   capabilities and its own exact record fingerprint. A Metadata-only commit
   carries one record delta through the existing refresh owner with zero source

@@ -307,11 +307,17 @@ Connect, and Actions modes share the one native trailing split
 item and one `ResearchInspectorMode` per Triptych workspace; switching workspace
 restores its value without reconstructing the native Inspector. Mode changes and
 note/tab changes never reconstruct the retained Document host. `ResearchOverviewPresentation`
-contains at most one typed user/group-library plus item-key binding for the current Analysis;
-the view neither derives nor displays protected machine data. Its explicit
-refresh closure opens the Zotero sheet in bound-item mode; the leaf owns only
-loading, preview, no-change, and action presentation while Application owns
-the exact read and revision-checked mutation.
+contains the resolved About configuration and field catalog, an immutable
+Settlement presentation for the current source revision, and at most one typed
+user/group-library plus item-key binding for the current Analysis. The view
+derives no protected machine data. Its field-local About editor receives two
+explicit save closures: one delegates to the portable-Metadata revision owner,
+and one delegates authored `summary` and `keywords` to the exact-source writer
+after editor flush and active-note revalidation. File timestamps remain
+read-only `WorkspaceNoteSnapshot` facts. The explicit Zotero refresh closure
+opens the Zotero sheet in bound-item mode; that leaf owns only loading, preview,
+no-change, and action presentation while Application owns the exact read and
+revision-checked mutation.
 When the split item remains visible without a selected Document, the composition
 root installs a read-only Apparatus content-state projection instead of an empty
 host or stale Inspector leaf; the split controller remains the sole visibility

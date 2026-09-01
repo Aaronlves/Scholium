@@ -28,6 +28,20 @@ The ad-hoc App requires the documented Gatekeeper override.
 
 ## Current and focused verification evidence
 
+- On 2026-09-01, the Zotero-style About cutover passed documentation and
+  interface-localization validation, 145 focused presentation, Settings, and
+  frontend-architecture tests, and the complete repository gate: 207 Web
+  tests; 467 Core plus 3 performance tests; 161 Contracts tests; 296
+  Application tests, 16 bridge tests and 1 architecture measurement; 686 App
+  tests; public symbols; 15 executable CLI lifecycles; the sandboxed bridge;
+  and the Release build in 196.43 seconds. Exploratory use of the isolated QA
+  app confirmed visible About groups, empty core fields, a human-readable
+  managed choice, file and Settlement facts, and inline managed/source saves;
+  the authored save changed only the `summary` line in the disposable fixture.
+  That visual pass followed dismissal of unrelated unsupported legacy Record
+  notices already present in the QA fixture. It is not deterministic UI,
+  VoiceOver, adaptation, packaged-artifact, or human acceptance.
+
 - On 2026-09-01, §20 replaced its per-feature human matrix with complete
   deterministic Core coverage, four Core and one Agent representative human
   checks; Voice Control and Dictation are change-triggered. The renamed opt-in
@@ -225,22 +239,6 @@ The ad-hoc App requires the documented Gatekeeper override.
   Zotero creators. Those fixtures were corrected without restoring YAML
   semantics, and all 39 tests in their owning suites passed. The complete gate
   was not rerun.
-
-- On 2026-08-23, the fixed-authored-YAML and optional-machine-field cutover
-  passed 207 focused tests: authored-YAML and managed-Metadata contracts,
-  Triptych settings and persistence, Workflow profiles, Agent-start wire,
-  bounded creation and recovery, document operations, Settings architecture,
-  Local Agent bridge, and executable CLI lifecycles. Documentation authority
-  and Interface, Localizable, and WebKitInterface localization validation also
-  passed. The task's single complete `verify.sh` run passed documentation and
-  shipped-Skill guards, all 199 Web-editor tests, reproducible bundles, and
-  RDF-1. It then completed the 450-test Core target with three issues from one
-  stale Workflow-schema assertion that still expected authored `summary` in
-  Settings `visibleFields`; later targets did not run. That owner test was
-  updated without restoring Settings YAML authority, and its complete five-test
-  suite passed. Per the one-full-gate rule, the complete gate was not rerun.
-  This is local automated implementation evidence, not packaged or human
-  acceptance.
 
 - On 2026-08-23, the YAML/portable-Metadata cutover passed its focused owners:
   22 bounded-write, 8 Search-property projection/index, 40 Search/Record index,

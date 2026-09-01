@@ -108,11 +108,18 @@
   nonauthorizing reminder.
 - Complete Metadata is one Analysis/Topic/Work Note sheet with typed controls,
   a searchable source-type-aware Add a Field chooser, and reversible pending
-  removal. Semantic groups use shared whitespace rather than repeated visible
-  headings; labels carry concise Help, and the reserved field-action slot
+  removal. Semantic groups use concise visible headings plus shared whitespace
+  and rules; labels carry concise Help, and the reserved field-action slot
   reveals on hover or focus without reflow. It edits only identity-keyed
   Scholium Metadata and never inserts or changes YAML. Authored `summary` and
-  `keywords` remain visible through About and editable in Source.
+  `keywords` remain exact-source-owned.
+- About is the primary compact metadata view and editor. It shows visible group
+  headings, keeps the configured core fields present even when empty, and
+  automatically includes every other stored managed value. Each editable row
+  has field-local Save, Cancel, validation, and conflict feedback; authored
+  `summary` and `keywords` use the exact-source route. File creation, source
+  modification, Settlement status, and Settlement time are read-only. The
+  section action opens Complete Metadata to add fields or edit several values.
 - Workspace access recovery distinguishes one fingerprinted invalid Metadata
   record from an unsupported complete portable-control owner. Its confirmation
   names the direct record and archives only that unchanged file before retrying
@@ -257,7 +264,8 @@
 - Settings → Metadata uses the shared segmented role selector and three
   deliberately independent sections: stable Managed Fields for the
   selected role, source-type-specific optional Agent preferences for Analyses,
-  and About visibility/order. Custom rows expose editable labels and
+  and About always-shown order. Existing values appear in About regardless of
+  that empty-field preference. Custom rows expose editable labels and
   descriptions, field and controlled-choice reordering, choice addition,
   lifecycle, use counts, and named Archive/Restore without permitting key/kind
   mutation, existing-choice removal, or value deletion.

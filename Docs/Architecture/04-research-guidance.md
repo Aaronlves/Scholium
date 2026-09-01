@@ -121,14 +121,16 @@ transaction.
 
 Portable `TriptychSettings` schema 8 is a separate strict owner for role
 Metadata. It contains stable field definitions by role, About order over
-optional managed fields, and per-source-type optional Agent preferences over
-managed Analysis fields. These are separate subvalues in one transaction;
+optional managed fields that remain visible when empty, and per-source-type
+optional Agent preferences over managed Analysis fields. These are separate
+subvalues in one transaction;
 adding a definition mutates neither of the other two.
 Definition keys and value kinds are stable identity, and definitions cannot be
 removed. Existing controlled choices remain valid. Labels, optional
 descriptions, field and choice order, active/archived state, and new choices are
-editable. Archived definitions remain in record validation and Search but are
-removed from new-value, About, and Agent selection by the one candidate compiler.
+editable. Archived definitions remain in record validation and Search. The one
+candidate compiler removes them from new-value, About always-shown, and Agent
+selection, but an archived field with a stored value remains visible in About.
 `TriptychControlStore.settings()` returns decoded settings plus a
 `SettingsRevision` computed from exact `settings.json` bytes. Save accepts the
 complete candidate and expected revision, rechecks current bytes inside the
@@ -167,7 +169,8 @@ their presentation/lifecycle guidance;
 `NoteMetadataCatalog` is the one immutable workspace-scoped resolution of both;
 `AnalysisSourceTypeProfileCatalog` owns applicable/recommended/serialization
 order for built-ins, while custom Analysis fields append to every source type.
-About and Agent settings own only optional selection and preference. A later
+About and Agent settings own only optional always-shown selection and Agent
+preference. A later
 managed-creation projection may compile those values
 in memory, but no second persisted template or requirements revision exists.
 

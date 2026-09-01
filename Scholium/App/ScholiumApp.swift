@@ -6793,7 +6793,8 @@ final class WindowModel: ObservableObject {
     func saveMetadata(
         for note: WindowDocumentLocation,
         proposedFields: [String: YAMLValue],
-        expectedRevision: DocumentFingerprint?
+        expectedRevision: DocumentFingerprint?,
+        reportsSuccess: Bool = true
     ) async throws -> WindowDocumentLocation {
         guard let context = activeDocumentContext(for: note.relativePath) else {
             throw VaultRepositoryError.fileDoesNotExist(note.relativePath)
@@ -6814,7 +6815,7 @@ final class WindowModel: ObservableObject {
             replaceCachedWorkspaceNote(savedSnapshot)
             let saved = WindowDocumentLocation.workspace(savedSnapshot)
             let didWarn = reportCommittedMutationWarnings(outcome)
-            if !didWarn {
+            if !didWarn && reportsSuccess {
                 presentFeedback(String(
                     localized: "Metadata saved",
                     table: "Localizable",
@@ -6827,6 +6828,82 @@ final class WindowModel: ObservableObject {
             lastSaveError = error.localizedDescription
             throw error
         }
+    }
+
+    /// Commits one inline About edit through the existing portable Metadata
+    /// owner. The view supplies no record snapshot or competing merge policy.
+    func saveManagedAboutField(
+        for note: WindowDocumentLocation,
+        key: String,
+        value: YAMLValue?
+    ) async throws {
+        guard let context = activeDocumentContext(for: note.relativePath),
+              note.workspaceSnapshot?.stableIdentity.resolvedID == context.noteID,
+              let currentSnapshot = workspaceProjectionController.cachedNote(
+                vaultID: context.vaultID,
+                stableNoteID: context.noteID,
+                relativePath: note.relativePath
+              ) else {
+            throw NoteIdentityRecoveryError.identityUnresolved(note.relativePath)
+        }
+        let current = WindowDocumentLocation.workspace(currentSnapshot)
+        guard workspaceProjectionController.metadataCatalog.contract(
+            for: key,
+            profile: current.schemaProfile
+        ) != nil else {
+            throw NoteMetadataError.invalidRecord(context.noteID)
+        }
+        var fields = current.managedMetadataFields
+        if let value {
+            fields[key] = value
+        } else {
+            fields.removeValue(forKey: key)
+        }
+        guard fields != current.managedMetadataFields else { return }
+        _ = try await saveMetadata(
+            for: current,
+            proposedFields: fields,
+            expectedRevision: currentSnapshot.metadata?.revision,
+            reportsSuccess: false
+        )
+    }
+
+    /// Commits one authored About field through the exact Markdown writer.
+    /// Any dirty active editor is proven saved first, then the current source
+    /// revision is reread before the targeted frontmatter patch is planned.
+    func saveAuthoredAboutField(
+        for note: WindowDocumentLocation,
+        key: String,
+        value: YAMLValue?
+    ) async throws {
+        guard key == "summary" || key == "keywords" else {
+            throw VaultRepositoryError.invalidFrontmatter(
+                "Only Summary and Keywords are authored About fields."
+            )
+        }
+        try await flushRegisteredEditorIfNeeded()
+        guard let context = activeDocumentContext(for: note.relativePath),
+              note.workspaceSnapshot?.stableIdentity.resolvedID == context.noteID,
+              let currentSnapshot = workspaceProjectionController.cachedNote(
+                vaultID: context.vaultID,
+                stableNoteID: context.noteID,
+                relativePath: note.relativePath
+              ) else {
+            throw NoteIdentityRecoveryError.identityUnresolved(note.relativePath)
+        }
+        let document = currentSnapshot.document
+        guard let changeSet = try AboutAuthoredFieldMutation.changeSet(
+            document: document,
+            key: key,
+            value: value
+        ) else { return }
+        let outcome = try await documentController.save(
+            currentSnapshot.id,
+            changeSet: changeSet,
+            expectedRevision: document.fingerprint
+        )
+        _ = await replaceSavedDocument(outcome.committedValue.document)
+        _ = reportCommittedMutationWarnings(outcome)
     }
 
     func diskDocument(for path: String) async throws -> NoteDocument {

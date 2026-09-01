@@ -46,9 +46,10 @@ Source-type profiles own applicable fields and recommended discovery order.
 and shape-known but remain optional. The required `source_type` creation input
 only routes creation and derives managed `type`.
 
-Default About shows managed `type`, `authors`, and `publication_date`, then
-authored `summary` and `keywords`. Managed `title` resolves Analysis identity
-but is not repeated in About.
+Default About always shows managed `type`, `authors`, and `publication_date`
+even when empty, then authored `summary` and `keywords`. Every other present
+managed value appears automatically in its catalog order. Managed `title`
+resolves Analysis identity but is not repeated in About.
 
 ### Topics
 
@@ -82,13 +83,17 @@ Group order is:
 - Topic: Topic Description, Custom Metadata, Authored YAML;
 - Work: Work Description, Custom Metadata, Authored YAML.
 
-Metadata and About preserve group semantics for accessibility but use whitespace
-instead of repeated visible headings. About shows selected nonempty values;
-keywords are neutral content capsules.
+Metadata and About use concise visible group headings plus whitespace and rules.
+About's configured managed fields are always shown; configuration controls their
+order rather than hiding other stored values. Every other present managed value,
+including an archived custom value, follows automatically. Empty unconfigured
+fields remain discoverable through Add Field rather than filling the Inspector.
+Authored `summary` and `keywords` are always shown. Keywords are neutral content
+capsules when not being edited.
 
-Defined, applicable, recommended, Agent-preferred, present, and About-visible
-are independent. Definitions and preferences never create or require a Note
-value.
+Defined, applicable, recommended, Agent-preferred, present, and About-always-
+shown remain independent. A definition or always-shown choice creates no Note
+value; presence alone makes an existing value visible.
 
 One revision-checked `settings.json` stores managed-field definitions, About
 profiles, and Analysis Agent preferences. A custom field uses a lowercase
@@ -98,9 +103,10 @@ Key and value kind are immutable. Label, description, field order, and
 controlled-choice order may change. Existing choices cannot be removed; new
 choices may be inserted at any position.
 
-Archive/Restore preserves stored values and Search/editing validation while
-removing the field from new-value, About-selection, and Agent-preference
-choices. Restore About defaults changes no definitions or Agent preferences.
+Archive/Restore preserves stored values, About presentation, and
+Search/editing validation while removing the field from new-value,
+About-always-shown, and Agent-preference choices. Restore About defaults changes
+no definitions or Agent preferences.
 The fixed authored-YAML scaffold is creation policy, not editable Settings.
 
 ## Appendix B. Bundled Critique Method requirements

@@ -80,11 +80,22 @@ enum AboutProfileCatalog {
     static func groupedEntries(
         for profile: SchemaProfileID,
         visibleFields: [String]?,
+        presentManagedFields: Set<String> = [],
         catalog: NoteMetadataCatalog
     ) -> [AboutProfileGroup] {
-        let managedFields = (visibleFields ?? defaultVisibleFields(for: profile)).filter {
+        let alwaysShownFields = (visibleFields ?? defaultVisibleFields(for: profile)).filter {
             allowsOptionalField($0, profile: profile, catalog: catalog)
         }
+        let configured = Set(alwaysShownFields)
+        let additionalPresentFields = PropertyPresentationCatalog.managedPresentations(
+            for: profile,
+            catalog: catalog
+        ).map(\.key).filter {
+            presentManagedFields.contains($0)
+                && !configured.contains($0)
+                && allowsPresentField($0, profile: profile, catalog: catalog)
+        }
+        let managedFields = alwaysShownFields + additionalPresentFields
         let fields = managedFields + fixedAuthoredFields(for: profile)
         let grouped = Dictionary(grouping: fields) { key in
             PropertyPresentationCatalog.presentation(
@@ -115,6 +126,24 @@ enum AboutProfileCatalog {
         return catalog.activeContracts(for: profile).contains {
             $0.canonicalKey == key
         }
+    }
+
+    /// Present archived values remain researcher-visible even though they can
+    /// no longer be selected as an empty always-shown field.
+    static func allowsPresentField(
+        _ key: String,
+        profile: SchemaProfileID,
+        catalog: NoteMetadataCatalog
+    ) -> Bool {
+        guard key != "title",
+              PropertyPresentationCatalog.presentation(
+                for: key,
+                in: profile,
+                catalog: catalog
+              ) != nil else {
+            return false
+        }
+        return catalog.contract(for: key, profile: profile) != nil
     }
 
     private static func fixedAuthoredFields(for profile: SchemaProfileID) -> [String] {

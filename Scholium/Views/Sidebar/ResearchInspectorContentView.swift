@@ -84,8 +84,57 @@ struct ResearchOverviewPresentation {
     let freshness: ResearchProjectionFreshness
     let aboutConfiguration: VaultAboutConfiguration?
     let metadataCatalog: NoteMetadataCatalog
+    let settlement: AboutSettlementPresentation
     let zoteroBinding: AnalysisZoteroBinding?
     let stableNoteID: UUID?
+}
+
+enum AboutSettlementState: Hashable, Sendable {
+    case settled
+    case changedSinceSettlement
+    case notYetSettled
+    case unavailable
+}
+
+struct AboutSettlementPresentation: Hashable, Sendable {
+    let state: AboutSettlementState
+    let settledAt: Date?
+    let researcher: String?
+    let rationale: String?
+
+    static let unavailable = AboutSettlementPresentation(
+        state: .unavailable,
+        settledAt: nil,
+        researcher: nil,
+        rationale: nil
+    )
+
+    static func resolve(
+        noteID: UUID?,
+        currentRevision: DocumentFingerprint?,
+        requirement: WorkspaceSettlementRequirement?,
+        settlements: [SettlementRecord]
+    ) -> AboutSettlementPresentation {
+        guard let noteID, let currentRevision else { return .unavailable }
+        let latest = requirement?.previousSettlement
+            ?? settlements.filter { $0.noteID == noteID }
+                .max { $0.settledAt < $1.settledAt }
+        guard let latest else {
+            return AboutSettlementPresentation(
+                state: .notYetSettled,
+                settledAt: nil,
+                researcher: nil,
+                rationale: nil
+            )
+        }
+        let isCurrent = requirement == nil && latest.fingerprint == currentRevision
+        return AboutSettlementPresentation(
+            state: isCurrent ? .settled : .changedSinceSettlement,
+            settledAt: latest.settledAt,
+            researcher: latest.researcher,
+            rationale: latest.rationale
+        )
+    }
 }
 
 struct ResearchInspectorContentContext {
@@ -94,6 +143,16 @@ struct ResearchInspectorContentContext {
     let openProperties: () -> Void
     let openAttention: () -> Void
     let retryRefresh: () -> Void
+    let saveManagedAboutField: @MainActor (
+        WindowDocumentLocation,
+        String,
+        YAMLValue?
+    ) async throws -> Void
+    let saveAuthoredAboutField: @MainActor (
+        WindowDocumentLocation,
+        String,
+        YAMLValue?
+    ) async throws -> Void
     let openZoteroItem: (AnalysisZoteroBinding) async -> Void
     let refreshZoteroMetadata: (UUID, AnalysisZoteroBinding) -> Void
     let manageZoteroBinding: (UUID, AnalysisZoteroBinding?) -> Void
@@ -108,6 +167,7 @@ struct ResearchInspectorContentContext {
         presentation.aboutConfiguration
     }
     var metadataCatalog: NoteMetadataCatalog { presentation.metadataCatalog }
+    var settlement: AboutSettlementPresentation { presentation.settlement }
     var zoteroBinding: AnalysisZoteroBinding? { presentation.zoteroBinding }
     var stableNoteID: UUID? { presentation.stableNoteID }
 }
@@ -118,6 +178,7 @@ struct ResearchInspectorContentContext {
 struct ResearchOverviewView: View {
     let note: WindowDocumentLocation
     let context: ResearchInspectorContentContext
+    @State private var activeAboutEditorKey: String?
 
     var body: some View {
         ScrollView(.vertical) {
@@ -204,8 +265,8 @@ struct ResearchOverviewView: View {
         VStack(alignment: .leading, spacing: 0) {
             ScholiumApparatusSectionHeaderButton(
                 aboutTitle,
-                actionLabel: "Edit Metadata",
-                systemImage: "slider.horizontal.3",
+                actionLabel: "Add Field",
+                systemImage: "plus",
                 accessibilityIdentifier: "scholium.about.edit",
                 action: context.openProperties
             )
@@ -224,18 +285,53 @@ struct ResearchOverviewView: View {
                             alignment: .leading,
                             spacing: ScholiumMetrics.Properties.fieldBlockSeparation
                         ) {
-                            if !group.facts.isEmpty {
-                                ScholiumApparatusFactGrid(facts: group.facts)
-                            }
-                            ForEach(Array(group.readingBlocks.enumerated()), id: \.offset) { _, block in
-                                ScholiumApparatusReadingBlock(
-                                    label: block.label,
-                                    text: block.text
+                            ForEach(group.fields) { field in
+                                AboutEditablePropertyRow(
+                                    descriptor: field,
+                                    activeEditorKey: $activeAboutEditorKey,
+                                    save: { value in
+                                        switch field.authority {
+                                        case .managedMetadata:
+                                            try await context.saveManagedAboutField(
+                                                note,
+                                                field.key,
+                                                value
+                                            )
+                                        case .authoredSource:
+                                            try await context.saveAuthoredAboutField(
+                                                note,
+                                                field.key,
+                                                value
+                                            )
+                                        }
+                                    }
                                 )
                             }
-                            if !group.tags.isEmpty {
-                                AboutTagsView(tags: group.tags)
-                            }
+                        }
+                    }
+                }
+
+                ScholiumPropertyGroup(
+                    label: String(localized: "File History"),
+                    separatesFromPrevious: !aboutGroups.isEmpty
+                ) {
+                    ScholiumApparatusFactGrid(facts: fileHistoryFacts)
+                }
+
+                ScholiumPropertyGroup(
+                    label: String(localized: "Settlement"),
+                    separatesFromPrevious: true
+                ) {
+                    VStack(
+                        alignment: .leading,
+                        spacing: ScholiumMetrics.Properties.fieldBlockSeparation
+                    ) {
+                        ScholiumApparatusFactGrid(facts: settlementFacts)
+                        if let rationale = context.settlement.rationale {
+                            ScholiumApparatusReadingBlock(
+                                label: String(localized: "Rationale"),
+                                text: rationale
+                            )
                         }
                     }
                 }
@@ -308,124 +404,117 @@ struct ResearchOverviewView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private struct ReadingBlock {
-        let label: String
-        let text: String
+        .onChange(of: note.workspaceSnapshot?.stableIdentity.resolvedID) { _, _ in
+            activeAboutEditorKey = nil
+        }
     }
 
     private struct AboutGroupContent: Identifiable {
         var id: PropertyPresentationGroup { group }
         let group: PropertyPresentationGroup
-        let facts: [ScholiumApparatusFact]
-        let readingBlocks: [ReadingBlock]
-        let tags: [String]
+        let fields: [AboutPropertyDescriptor]
     }
 
     private var aboutGroups: [AboutGroupContent] {
         AboutProfileCatalog.groupedEntries(
             for: note.schemaProfile,
             visibleFields: context.aboutConfiguration?.visibleFields,
+            presentManagedFields: Set(note.managedMetadataFields.keys),
             catalog: context.metadataCatalog
         ).compactMap { configured in
-            let facts = configured.keys.compactMap { key in
-                isLongResearchField(key) || key == "keywords" ? nil : propertyFact(for: key)
-            }
-            let blocks = configured.keys.flatMap(readingBlocks(for:))
-            let tags = configured.group == .authoredYAML
-                && configured.keys.contains("keywords") ? note.tags : []
-            guard !facts.isEmpty || !blocks.isEmpty || !tags.isEmpty else { return nil }
+            let fields = configured.keys.compactMap(propertyDescriptor(for:))
+            guard !fields.isEmpty else { return nil }
             return AboutGroupContent(
                 group: configured.group,
-                facts: facts,
-                readingBlocks: blocks,
-                tags: tags
+                fields: fields
             )
         }
     }
 
-    private func propertyFact(for key: String) -> ScholiumApparatusFact? {
-        let isManaged = context.metadataCatalog.contract(
-            for: key,
-            profile: note.schemaProfile
-        ) != nil
-        guard let raw = isManaged
-            ? note.managedMetadataValue(named: key)
-            : note.authoredYAMLValue(named: key) else { return nil }
-        let value: String
-        if !isManaged,
-           case .string = raw,
-           let token = note.authoredTopLevelScalarToken(named: key),
-           FrontmatterPatchPlanner.isTimestampScalarToken(token) {
-            value = token
-        } else {
-            guard let displayValue = propertyDisplayValue(raw, key: key) else { return nil }
-            value = displayValue
-        }
-        let label = PropertyPresentationCatalog.presentation(
+    private func propertyDescriptor(for key: String) -> AboutPropertyDescriptor? {
+        guard let presentation = PropertyPresentationCatalog.presentation(
             for: key,
             in: note.schemaProfile,
             catalog: context.metadataCatalog
-        )?.label ?? key.replacingOccurrences(of: "_", with: " ").capitalized
-        return ScholiumApparatusFact(id: key, label: label, value: value)
-    }
-
-    private func readingBlocks(for key: String) -> [ReadingBlock] {
-        let isManaged = context.metadataCatalog.contract(
+        ) else { return nil }
+        if let contract = context.metadataCatalog.contract(
             for: key,
             profile: note.schemaProfile
-        ) != nil
-        guard isLongResearchField(key),
-              let value = isManaged
-                ? note.managedMetadataValue(named: key)
-                : note.authoredYAMLValue(named: key) else { return [] }
-        let label = PropertyPresentationCatalog.presentation(
+        ) {
+            return AboutPropertyDescriptor(
+                presentation: presentation,
+                contract: contract,
+                authority: .managedMetadata,
+                value: note.managedMetadataValue(named: key)
+            )
+        }
+        guard let contract = PropertyContractCatalog.contract(
             for: key,
-            in: note.schemaProfile,
-            catalog: context.metadataCatalog
-        )?.label ?? key.replacingOccurrences(of: "_", with: " ").capitalized
-        switch value {
-        case .string(let text):
-            let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            return text.isEmpty ? [] : [ReadingBlock(label: label, text: text)]
-        case .array:
-            let values = value.canonicalStringList ?? []
-            return values.enumerated().map { index, text in
-                ReadingBlock(
-                    label: values.count == 1 ? label : "\(label) \(index + 1)",
-                    text: text
-                )
-            }
-        default:
-            return []
+            profile: note.schemaProfile
+        ) else { return nil }
+        return AboutPropertyDescriptor(
+            presentation: presentation,
+            contract: contract,
+            authority: .authoredSource,
+            value: note.authoredYAMLValue(named: key)
+        )
+    }
+
+    private var fileHistoryFacts: [ScholiumApparatusFact] {
+        [
+            ScholiumApparatusFact(
+                id: "file-created",
+                label: String(localized: "File Created"),
+                value: formattedDate(note.workspaceSnapshot?.fileMetadata.creationDate),
+                monospacedDigits: true
+            ),
+            ScholiumApparatusFact(
+                id: "source-modified",
+                label: String(localized: "Source Modified"),
+                value: formattedDate(note.workspaceSnapshot?.fileMetadata.modificationDate),
+                monospacedDigits: true
+            ),
+        ]
+    }
+
+    private var settlementFacts: [ScholiumApparatusFact] {
+        var facts = [
+            ScholiumApparatusFact(
+                id: "settlement-status",
+                label: String(localized: "Status"),
+                value: settlementStatus
+            ),
+            ScholiumApparatusFact(
+                id: "settled-at",
+                label: context.settlement.state == .changedSinceSettlement
+                    ? String(localized: "Last Settled")
+                    : String(localized: "Settled"),
+                value: context.settlement.settledAt.map(formattedDate) ?? String(localized: "Never"),
+                monospacedDigits: true
+            ),
+        ]
+        if let researcher = context.settlement.researcher, !researcher.isEmpty {
+            facts.append(ScholiumApparatusFact(
+                id: "settled-by",
+                label: String(localized: "Researcher"),
+                value: researcher
+            ))
+        }
+        return facts
+    }
+
+    private var settlementStatus: String {
+        switch context.settlement.state {
+        case .settled: String(localized: "Settled")
+        case .changedSinceSettlement: String(localized: "Changed since settlement")
+        case .notYetSettled: String(localized: "Not yet settled")
+        case .unavailable: String(localized: "Unavailable")
         }
     }
 
-    private func isLongResearchField(_ key: String) -> Bool {
-        if key == "summary" { return true }
-        return context.metadataCatalog.contract(
-            for: key,
-            profile: note.schemaProfile
-        )?.valueKind == .multilineText
-    }
-
-    private func propertyDisplayValue(_ value: YAMLValue, key: String) -> String? {
-        let display: String? = switch value {
-        case .string(let value): value
-        case .integer(let value): String(value)
-        case .double(let value): String(value)
-        case .boolean(let value): value ? "true" : "false"
-        case .array:
-            value.canonicalStringList?.joined(separator: ", ")
-                ?? PropertyContractCatalog.creatorNames(from: value)?
-                    .map(\.displayName).joined(separator: "; ")
-        case .object, .null:
-            nil
-        }
-        guard let display else { return nil }
-        let trimmed = display.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+    private func formattedDate(_ date: Date?) -> String {
+        guard let date else { return String(localized: "Unavailable") }
+        return date.formatted(date: .abbreviated, time: .shortened)
     }
 
     private func attentionTitle(for kind: AttentionQueueKind) -> LocalizedStringResource {
@@ -456,20 +545,6 @@ struct ResearchOverviewView: View {
     }
 }
 
-private struct AboutTagsView: View {
-    let tags: [String]
-
-    var body: some View {
-        FlowLayout(spacing: ScholiumMetrics.Properties.optionSpacing) {
-            ForEach(Array(tags.enumerated()), id: \.offset) { _, tag in
-                ScholiumTagCapsuleLabel(tag)
-                    .accessibilityLabel(tag)
-            }
-        }
-        .accessibilityElement(children: .contain)
-    }
-}
-
 #Preview {
     ResearchOverviewView(
         note: .syntheticPreview(
@@ -484,6 +559,7 @@ private struct AboutTagsView: View {
                 freshness: .unavailable("No workspace is open."),
                 aboutConfiguration: nil,
                 metadataCatalog: .builtIn,
+                settlement: .unavailable,
                 zoteroBinding: nil,
                 stableNoteID: nil
             ),
@@ -491,6 +567,8 @@ private struct AboutTagsView: View {
             openProperties: {},
             openAttention: {},
             retryRefresh: {},
+            saveManagedAboutField: { _, _, _ in },
+            saveAuthoredAboutField: { _, _, _ in },
             openZoteroItem: { _ in },
             refreshZoteroMetadata: { _, _ in },
             manageZoteroBinding: { _, _ in }

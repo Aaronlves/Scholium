@@ -696,10 +696,11 @@ width.
 
 ### Inspector ownership
 
-The Inspector has exactly three current-note modes: Overview, Connect, and
-Actions. Overview presents a current-Note Notifications summary whose one
-button routes to the exact Workspace's unified popover, followed by role-aware About fields;
-About keeps selectable values and routes editing through its heading button.
+The Inspector has Overview, Connect, and Actions.
+Overview presents Notifications routed to the Workspace popover, then grouped
+About. Empty core and all present values show. Saves delegate to Metadata or,
+after editor flush, exact source. File and Settlement facts are read-only; Add
+Field opens the Metadata sheet.
 For Analysis, `WorkspaceSnapshotBuilder` joins portable Zotero binding by Note
 UUID; the window supplies exact library/key and `ZoteroBridge`. About exposes
 link/manage and bound open/refresh actions without inline machine data.
