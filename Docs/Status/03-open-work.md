@@ -25,15 +25,14 @@
 - Recheck fullscreen, native Sidebar/Inspector collapse and restoration,
   scenes, Dock/New Window behavior, last-tab closure, auxiliary windows, and
   focus restoration after system-Trash and recovery operations.
-- Complete one representative packaged interruption and human Finder acceptance
-  for Note and Folder Trash naming/collisions, separately moved Critiques,
-  multi-window dirty peers, File Provider/sync races, original-path
-  reappearance, system Trash emptying, and Finder restoration while retained
-  Records remain queryable. Deterministic tests own the distinct plan-persisted,
-  native-outcome-unknown, post-receipt, and post-Discussion-cleanup recovery
-  boundaries; do not repeat human process interruption after every isomorphic
-  source receipt. Focused tests do not establish these Finder and multi-window
-  usability outcomes.
+- When Finder-facing naming/restoration or its package owner changes, run one
+  representative packaged Finder journey; Core App 1.0 also runs it. Limit
+  human judgment to Trash naming/collisions, restoration discoverability, and
+  continued access to retained Records. Deterministic or system-integration
+  evidence owns separately moved Critiques, dirty peers, File Provider/sync
+  races, original-path reappearance, Trash emptying, plan persistence, native
+  outcome uncertainty, receipts, and cleanup recovery. Do not repeat human
+  process interruption for those variants; no Finder acceptance is retained yet.
 - Complete direct acceptance for long Connect clusters, Attention queue sizes,
   folder dragging, Library shortcuts, Research Records at ordinary size and its
   actual minimum usable bound, and Action/Discussion cancellation and recovery.

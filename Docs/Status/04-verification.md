@@ -57,12 +57,10 @@ The ad-hoc App requires the documented Gatekeeper override.
   dismissed. This is not deterministic UI, VoiceOver, adaptation,
   packaged-artifact, or human acceptance.
 
-- On 2026-09-01, §20 made complete deterministic UI and bounded human sets
-  first-baseline/1.0 gates; intermediate Betas retain current repository guards
-  and rerun affected UI or human failure modes. The opt-in VoiceOver test still
-  labels service automation as nonhuman evidence. Documentation validation and
-  its focused test passed. No complete UI or human set ran; both first Core
-  baselines remain open.
+- On 2026-09-01, §20 made complete UI/human sets first-baseline/1.0 gates;
+  intermediate Betas retain repository guards and rerun affected failure modes.
+  The opt-in VoiceOver test still labels service automation nonhuman.
+  Documentation and its focused test passed. Neither first Core baseline ran.
 
 - On 2026-09-01 under Xcode 27.0 beta build 27A5218g and Swift 6.4, the
   system-Trash/Record cutover passed the complete gate: documentation,
@@ -73,8 +71,8 @@ The ad-hoc App requires the documented Gatekeeper override.
   proves plan-persisted, native-outcome-unknown, post-receipt, and
   post-Discussion-cleanup recovery without replaying proven moves; Records,
   Local Execution, and Agent evidence remain while affected active Discussions
-  are removed. This is not Finder, multi-window, VoiceOver, packaged-artifact,
-  or human acceptance.
+  are removed. This is local deterministic evidence, not Finder, multi-window,
+  packaged, or human acceptance; the representative Finder journey remains open.
 
 - On 2026-09-01, the compact Agent Changes and top-notification refinement
   passed the Debug product build, documentation and interface-localization

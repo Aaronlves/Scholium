@@ -245,6 +245,14 @@ journey for each of those distinct boundaries. Deterministic suites retain
 state variants, and §20 retains its bounded human checks; do not repeat either
 matrix in every clean-account artifact smoke.
 
+When the Finder-restoration journey needs human judgment, limit that judgment
+to Finder-owned Trash naming/collision presentation, restoration discoverability,
+and continued access to retained Records. Receipt stages, separately moved
+Critiques, dirty peers, File Provider/sync races, original-path reappearance,
+Trash emptying, and cleanup recovery remain deterministic or system-integration
+dimensions; they do not each create another human process interruption. Reuse
+an applicable §20 representative check instead of duplicating it.
+
 Agent Collaboration distribution additionally verifies independent CLI
 installation and version, production-bridge availability, and one representative
 Action route through Session, Context, an applicable write or recovery, and
