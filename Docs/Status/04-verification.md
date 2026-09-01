@@ -57,12 +57,12 @@ The ad-hoc App requires the documented Gatekeeper override.
   dismissed. This is not deterministic UI, VoiceOver, adaptation,
   packaged-artifact, or human acceptance.
 
-- On 2026-09-01, §20 kept four Core and one Agent human checks but requires
-  a full set only for the first baseline and 1.0; later Betas rerun affected
-  failure-mode checks. Deterministic conformance remains
-  per Beta, and the opt-in VoiceOver test still labels service automation as
-  nonhuman evidence. Documentation validation and its focused test passed. No
-  human check ran; the first Core baseline remains open.
+- On 2026-09-01, §20 made complete deterministic UI and bounded human sets
+  first-baseline/1.0 gates; intermediate Betas retain current repository guards
+  and rerun affected UI or human failure modes. The opt-in VoiceOver test still
+  labels service automation as nonhuman evidence. Documentation validation and
+  its focused test passed. No complete UI or human set ran; both first Core
+  baselines remain open.
 
 - On 2026-09-01 under Xcode 27.0 beta build 27A5218g and Swift 6.4, the
   system-Trash/Record cutover passed the complete gate: documentation,

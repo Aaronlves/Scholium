@@ -195,6 +195,15 @@ this list. Accessibility-tree inspection, unit/integration tests, and XCUITest
 remain automated evidence even when they drive a real system service or capture
 speech.
 
+A Beta with no retained passing deterministic UI baseline for its named profile
+runs the complete current UI matrix on an isolated QA build from the exact
+release source. Each later Beta reruns repository static/unit/integration guards
+and the UI journeys affected by a changed workflow or state, accessibility
+contract, framework owner, fixture, or build environment. A new supported macOS
+baseline and 1.0 each trigger the complete matrix. A failing current guard or
+affected journey invalidates carry-forward. Exact-artifact UI journeys remain
+governed by §21.5.
+
 Human acceptance is selected by independent failure mode, not by multiplying
 every workflow, state, width, appearance, adaptation and input method. Reuse one
 representative journey across several native, AppKit, SwiftUI and WebKit
@@ -237,9 +246,10 @@ human execution.
 
 Test long English and Simplified Chinese labels, mixed content, enlarged text,
 minimum supported widths, file/error/recovery states, and native/editor focus
-transitions at deterministic layers. Every Beta/1.0 requires complete keyboard
-and VoiceOver semantic/action coverage for the declared core and no unresolved
-critical or high-severity accessibility defects. Bounded human checks follow
-the baseline and change-impact cadence above. Automation never becomes human
-acceptance; human acceptance does not require every covered state or adaptation
-combination. Additional languages and complete RTL acceptance remain deferred.
+transitions at deterministic layers. Beta/1.0 G6 evidence follows the
+deterministic and human baseline/change-impact cadence above. Every release runs
+current static/unit/integration accessibility and localization guards, any
+affected deterministic UI journeys, and has no unresolved critical or
+high-severity accessibility defects. Automation never becomes human acceptance;
+human acceptance does not require every covered state or adaptation combination.
+Additional languages and complete RTL acceptance remain deferred.

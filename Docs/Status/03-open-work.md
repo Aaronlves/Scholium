@@ -4,20 +4,21 @@
 
 ## Interface and accessibility acceptance
 
-- Complete deterministic accessibility conformance across Core App workflows at
-  their applicable boundaries: semantic state, menu/keyboard reachability for
-  app commands, predictable focus, operation-owned cancellation/recovery,
-  English/Simplified Chinese localization, non-color meaning, reflow, and exact
-  source preservation. Existing automated journeys remain engineering evidence,
-  not human acceptance; add no inapplicable route merely to fill the list.
+- Establish the first retained complete deterministic Core UI baseline on the
+  next Core Beta because current evidence is focused journeys and target
+  compilation, not a complete UI gate. Run the current matrix on an isolated QA
+  build from the exact source. Later Betas retain repository guards and rerun
+  affected UI journeys; a new supported macOS baseline and Core App 1.0 repeat
+  the complete matrix. Artifact-specific journeys remain governed by §21.5.
 - Establish §20's first retained Core human baseline on the next Core Beta
   because none exists: one genuine VoiceOver journey, one physical Full
   Keyboard Access journey, one installed Simplified Chinese IME exact-source
   journey, and one visual-adaptation set. Later Betas rerun only checks whose
   representative journey, failure-mode owner, framework boundary, or supported
   macOS baseline changed, or when a new independent human failure mode appears;
-  Core App 1.0 repeats all four. Every Beta still requires complete deterministic
-  conformance and no unresolved critical or high-severity accessibility defect.
+  Core App 1.0 repeats all four. Every Beta still requires current deterministic
+  guards, affected UI journeys, and no unresolved critical or high-severity
+  accessibility defect.
 - Run Voice Control or Dictation human compatibility only when a named release
   claims that route or a change touches command discoverability or text-service
   integration. Do not keep them as unconditional per-feature release rows.

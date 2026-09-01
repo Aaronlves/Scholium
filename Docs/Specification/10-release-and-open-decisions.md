@@ -91,16 +91,16 @@ the current artifact.
 | **G3 Source integrity** | Exact-source tests cover malformed/unknown YAML, BOM/newlines, targeted edits, atomic failure, and readback. |
 | **G4 Recovery and deletion** | Conflict, Agent Undo, save recovery, system-Trash receipts/cleanup, external deletion/restore/rename, and derived failure pass. |
 | **G5 Scholarly transparency** | Source, researcher/Agent content, Discussion, Result, Settle, Critique, Fidelity, provenance, and uncertainty remain distinct. |
-| **G6 Accessibility/localization** | §20's complete deterministic conformance and bounded representative human threshold are met for the named profile. |
+| **G6 Accessibility/localization** | §20's current guards, required UI baseline/affected journeys, bounded human threshold, and severity threshold are met for the named profile. |
 | **G7 Performance** | The packaged-app protocol in §21.4 passes. |
 | **G8 Documentation consistency** | Specification, architecture, status, README, source, and tests do not silently conflict. |
 | **G9 Distribution integrity** | Distributed artifacts match an exact clean tag, source/licenses, signatures, architecture, checksum, and clean-account smoke test. |
 | **G10 Agent collaboration** | Skills, Profiles/Results, Sessions, Ledger writes, Context, Records, and local bridges pass their journeys. |
 
 Usable Core/0.1 requires G1–G4, G6, and G8. **Core App Beta** requires G1–G6,
-G8, and G9 within the Core App profile and does not require G10. Human evidence
-follows §20's baseline and change-impact cadence; deterministic G6 conformance
-remains required on the current source. Beta
+G8, and G9 within the Core App profile and does not require G10. Human and
+complete deterministic UI evidence follow §20's baseline/change-impact cadence;
+current repository guards and affected UI journeys remain required. Beta
 performance evidence is change-triggered: when a release changes a measured
 runtime owner, visible or correctness boundary, fixture, prepared driver,
 threshold, or process attribution, run the affected packaged series. A focused
