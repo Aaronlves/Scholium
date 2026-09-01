@@ -188,6 +188,12 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
+        let summarizer = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Tools/Scripts/summarize-performance-results.py"
+            ),
+            encoding: .utf8
+        )
 
         #expect(runner.contains(
             "A product gate requires --prepared-driver from prepare-performance-driver.sh."
@@ -204,6 +210,47 @@ struct FrontendArchitectureTests {
         #expect(runner.contains("APP_RESULT_ROOT=\"${APP_SCRATCH}/raw\""))
         #expect(runner.contains("cp \"${driver_results}\" \"${results}\""))
         #expect(runner.contains("cp \"${cjk_driver_results}\" \"${cjk_results}\""))
+        #expect(runner.contains("20...50 retained latency samples"))
+        #expect(runner.contains("30...60 memory transitions"))
+        #expect(runner.contains("FULL_GATE_RUN=0"))
+        #expect(!runner.contains("A product gate is fixed at 5 warm-ups"))
+        #expect(summarizer.contains("predeclared_before_measurement"))
+        #expect(summarizer.contains(
+            "return (\"passed\" if not missing else \"incomplete\"), missing"
+        ))
+    }
+
+    @Test("VoiceOver service automation never claims human acceptance")
+    func voiceOverServiceAutomationKeepsItsEvidenceBoundary() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let journey = try String(
+            contentsOf: repository.appendingPathComponent(
+                "UITests/ScholiumUITests+WorkspaceResearch.swift"
+            ),
+            encoding: .utf8
+        )
+        let support = try String(
+            contentsOf: repository.appendingPathComponent(
+                "UITests/ScholiumUITests+Support.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(journey.contains(
+            "func testResearchActionsVoiceOverServiceSpeechOrder()"
+        ))
+        #expect(journey.contains(
+            "VoiceOver-service automation is opt-in engineering evidence, not human acceptance"
+        ))
+        #expect(!journey.contains(
+            "Real VoiceOver traversal is an explicit acceptance journey"
+        ))
+        #expect(support.contains(
+            "testResearchActionsVoiceOverServiceSpeechOrder"
+        ))
     }
 
     @Test("Fixture launch opens the requested Vault once before its document")
@@ -2150,8 +2197,9 @@ struct FrontendArchitectureTests {
         )
 
         #expect(confirmation.contains("Finder owns file restoration"))
-        #expect(confirmation.contains("finished Research Record"))
-        #expect(confirmation.contains("unaffectedParticipants"))
+        #expect(confirmation.contains("Finished Research Records remain available"))
+        #expect(!confirmation.contains("preview.records"))
+        #expect(!confirmation.contains("unaffectedParticipants"))
         #expect(sidebar.contains("requestSystemTrash"))
         #expect(sidebar.contains("requestFolderSystemTrash"))
         #expect(app.contains(".keyboardShortcut(.delete, modifiers: [.command])"))
@@ -2706,7 +2754,7 @@ struct FrontendArchitectureTests {
         #expect(appSource.contains("refreshResearchActionAvailability()"))
     }
 
-    @Test("Every segmented local choice uses the shared Scholium presentation")
+    @Test("Current matching segmented choices use the shared Scholium presentation")
     func segmentedControlPresentationOwner() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -3976,31 +4024,8 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMetrics.ResearchRecords.readingMeasure == 680)
     }
 
-    @Test("Native and WebKit corner geometry has one semantic owner")
+    @Test("Shared Native and WebKit corner roles stay in parity")
     func semanticCornerGeometryContract() throws {
-        #expect(
-            Set(ScholiumCornerRole.allCases)
-                == Set([
-                    .inlineStatus,
-                    .editorialControl,
-                    .segmentedControl,
-                    .workspaceNavigation,
-                    .editorialPanel,
-                    .loadingSurface,
-                    .editorialTextEditor,
-                    .searchOverlay,
-                    .researchRecordCollectionRow,
-                    .boundedPanel,
-                    .documentCodeBlock,
-                    .documentCalloutSurface,
-                    .documentMarkHighlight,
-                    .documentInlineCode,
-                    .documentEmbeddedNote,
-                    .floatingSelectionControl,
-                    .documentControl,
-                    .selectionSplitControl,
-                    .calloutDisclosureFocus,
-                ]))
         #expect(ScholiumCornerRole.editorialTextEditor.radius == 6)
         #expect(ScholiumCornerRole.boundedPanel.radius == 8)
         #expect(ScholiumCornerRole.documentControl.radius == 5)
@@ -4018,34 +4043,6 @@ struct FrontendArchitectureTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let applicationRoot = repository.appendingPathComponent("Scholium", isDirectory: true)
-        let enumerator = try #require(
-            FileManager.default.enumerator(
-                at: applicationRoot,
-                includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles]
-            ))
-        let rawNativeCorner = try NSRegularExpression(
-            pattern:
-                #"(?:cornerRadius|topLeadingRadius|bottomLeadingRadius|topTrailingRadius|bottomTrailingRadius)\s*:\s*\d|\.cornerRadius\(\s*\d"#
-        )
-        let rawWebCorner = try NSRegularExpression(
-            pattern: #"border(?:-[a-z-]+)?-radius\s*:\s*\d"#
-        )
-        while let sourceURL = enumerator.nextObject() as? URL {
-            guard ["css", "swift"].contains(sourceURL.pathExtension) else { continue }
-            let source = try String(contentsOf: sourceURL, encoding: .utf8)
-            let sourceRange = NSRange(source.startIndex..<source.endIndex, in: source)
-            #expect(
-                rawNativeCorner.firstMatch(in: source, range: sourceRange) == nil,
-                "A leaf-owned native radius escaped ScholiumCornerRole: \(sourceURL.path)"
-            )
-            #expect(
-                rawWebCorner.firstMatch(in: source, range: sourceRange) == nil,
-                "A leaf-owned WebKit radius escaped ScholiumCornerRole: \(sourceURL.path)"
-            )
-        }
-
         let designSystem = try String(
             contentsOf: repository.appendingPathComponent(
                 "Scholium/UI/Foundation/ScholiumDesignSystem.swift"
@@ -4075,28 +4072,6 @@ struct FrontendArchitectureTests {
                 "Scholium/Views/Note/SafeMarkdownReadWebView.swift"
             ),
             encoding: .utf8
-        )
-        let shapeStart = try #require(designSystem.range(of: "enum ScholiumShape {"))
-        let shapeSuffix = designSystem[shapeStart.lowerBound...]
-        let shapeEnd = try #require(
-            shapeSuffix.range(of: "/// The shared shallow interaction surface")
-        )
-        var designSystemOutsideShape = designSystem
-        designSystemOutsideShape.removeSubrange(
-            shapeStart.lowerBound..<shapeEnd.lowerBound
-        )
-        let parallelCornerOwner = try NSRegularExpression(
-            pattern: #"static let [A-Za-z0-9_]*(?:cornerRadius|CornerRadius)"#
-        )
-        #expect(
-            parallelCornerOwner.firstMatch(
-                in: designSystemOutsideShape,
-                range: NSRange(
-                    designSystemOutsideShape.startIndex..<designSystemOutsideShape.endIndex,
-                    in: designSystemOutsideShape
-                )
-            ) == nil,
-            "Corner geometry regained a Metrics or Grid owner outside ScholiumShape"
         )
         #expect(designSystem.contains(".containerShape(shape)"))
         #expect(search.contains("in: ConcentricRectangle()"))
@@ -4149,7 +4124,7 @@ struct FrontendArchitectureTests {
         #expect(matchCount(literalPurposeDimension, in: frontmatter) == 0)
     }
 
-    @Test("Adaptive editorial grid exposes semantic roles and explicit document units")
+    @Test("Shared editorial grid exposes reusable roles and explicit document units")
     func adaptiveEditorialGridContract() throws {
         #expect(ScholiumGrid.foundationUnit == 4)
         #expect(ScholiumGrid.Spacing.opticalAlignmentAdjustment == 2)
@@ -4202,69 +4177,14 @@ struct FrontendArchitectureTests {
         #expect(!foundation.contains("383 CSS-typographic-point"))
         #expect(tabs.contains("ScholiumGrid.Dimension.documentTabStripHeight"))
         #expect(tabs.contains("ScholiumGrid.Spacing.regionContentInset"))
-
-        let applicationRoot = repository.appendingPathComponent("Scholium")
-        let enumerator = try #require(
-            FileManager.default.enumerator(
-                at: applicationRoot,
-                includingPropertiesForKeys: [.isRegularFileKey],
-                options: [.skipsHiddenFiles]
-            )
-        )
-        let rawSharedSpacing = try NSRegularExpression(
-            pattern:
-                #"(?:spacing:\s*(?:4|8|12|16|20)\b|\.padding\((?:\.[A-Za-z]+,\s*)?(?:4|8|12|16|20)\))"#
-        )
-        while let sourceURL = enumerator.nextObject() as? URL {
-            guard sourceURL.pathExtension == "swift" else { continue }
-            let source = try String(contentsOf: sourceURL, encoding: .utf8)
-            let sourceRange = NSRange(
-                source.startIndex..<source.endIndex,
-                in: source
-            )
-            #expect(
-                rawSharedSpacing.firstMatch(
-                    in: source,
-                    range: sourceRange
-                ) == nil,
-                "Shared Grid spacing escaped its semantic owner: \(sourceURL.path)"
-            )
-        }
     }
 
-    @Test("Component cadence, interface copy, and empty-state AX remain purpose-owned")
-    func componentCadenceCopyAndAccessibilityOwnership() throws {
+    @Test("Interface copy and empty-state AX remain purpose-owned")
+    func interfaceCopyAndAccessibilityOwnership() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        let applicationRoot = repository.appendingPathComponent("Scholium")
-        let enumerator = try #require(
-            FileManager.default.enumerator(
-                at: applicationRoot,
-                includingPropertiesForKeys: [.isRegularFileKey],
-                options: [.skipsHiddenFiles]
-            )
-        )
-        let rawComponentCadence = try NSRegularExpression(
-            pattern:
-                #"(?:spacing:\s*(?!0(?:\.0)?\b)\d+(?:\.\d+)?\b|\.padding\((?:\.[A-Za-z]+,\s*)?\d+(?:\.\d+)?\)|\.lineSpacing\(\d+(?:\.\d+)?\)|Spacer\(minLength:\s*(?!0(?:\.0)?\b)\d+(?:\.\d+)?\))"#
-        )
-        while let sourceURL = enumerator.nextObject() as? URL {
-            guard sourceURL.pathExtension == "swift",
-                  !sourceURL.path.contains("/UI/PreviewCatalog/"),
-                  sourceURL.lastPathComponent != "BootstrapStageArtworkView.swift",
-                  !sourceURL.lastPathComponent.hasSuffix("Testing.swift"),
-                  sourceURL.lastPathComponent != "ScholiumDesignSystem.swift" else {
-                continue
-            }
-            let source = try String(contentsOf: sourceURL, encoding: .utf8)
-            let sourceRange = NSRange(source.startIndex..<source.endIndex, in: source)
-            #expect(
-                rawComponentCadence.firstMatch(in: source, range: sourceRange) == nil,
-                "A component cadence escaped its purpose-named owner: \(sourceURL.path)"
-            )
-        }
 
         func source(_ path: String) throws -> String {
             try String(
@@ -5293,14 +5213,8 @@ struct FrontendArchitectureTests {
         #expect(recordSource.contains("ScholiumShape.researchRecordCollectionRowCornerRadius"))
     }
 
-    @Test("Semantic surfaces, depth, and boundaries adapt without numbered visual scales")
+    @Test("Shared semantic surfaces, depth, and boundaries retain adaptation contracts")
     func semanticSurfaceRecipeContract() {
-        #expect(
-            Set(ScholiumSurfaceRole.allCases)
-                == Set([
-                    .document, .navigation, .apparatus, .floatingControl,
-                    .boundedPanel, .searchOverlay, .denseEvidence,
-                ]))
         #expect(ScholiumSurfaceRole.navigation.colorRole == .navigationSurfaceBackground)
         #expect(ScholiumSurfaceRole.document.colorRole == .documentBackground)
         #expect(ScholiumSurfaceRole.apparatus.colorRole == .apparatusSurfaceBackground)
@@ -5327,17 +5241,6 @@ struct FrontendArchitectureTests {
         #expect(environment.scholiumReduceMotion)
         #expect(!environment.scholiumAppearsActive)
 
-        #expect(
-            Set(ScholiumElevationRole.allCases)
-                == Set([
-                    .floatingControl, .boundedPanel, .searchOverlay,
-                ]))
-        #expect(
-            Set(ScholiumStructuralDepthRole.allCases)
-                == Set([
-                    .documentNavigationBoundary,
-                    .readingEvidenceBoundary,
-                ]))
         #expect(
             ScholiumStructuralDepthRole.documentNavigationBoundary.style(
                 isDark: false,

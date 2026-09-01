@@ -44,8 +44,8 @@ struct SystemTrashDeletionTests {
         #expect(try Data(contentsOf: archivedURL) == legacyBytes)
     }
 
-    @Test("One affected participant deletes the whole finished Record")
-    func deletesWholeMultiNoteRecordAndDiscardsDiscussion() async throws {
+    @Test("System Trash retains finished Records and discards active Discussion")
+    func retainsFinishedRecordsAndDiscardsDiscussion() async throws {
         let fixture = try await Fixture()
         defer { fixture.remove() }
         var trashURLs: [URL] = []
@@ -58,9 +58,6 @@ struct SystemTrashDeletionTests {
             expectedRevision: fixture.firstFingerprint
         )
 
-        #expect(preview.records.map(\.id) == [fixture.sharedRecord.id])
-        #expect(preview.records.first?.unaffectedParticipants.map(\.noteID)
-            == [fixture.secondIdentity.id])
         #expect(preview.activeDiscussionIDs == [fixture.activeDiscussion.id])
 
         let commit = try await fixture.coordinator().moveToSystemTrash(preview)
@@ -68,12 +65,16 @@ struct SystemTrashDeletionTests {
 
         #expect(!FileManager.default.fileExists(atPath: fixture.firstURL.path))
         #expect(FileManager.default.fileExists(atPath: fixture.secondURL.path))
-        #expect(await fixture.portableRecordStore.isRecordPermanentlyDeleted(
+        #expect(try await fixture.portableRecordStore.record(
             id: fixture.sharedRecord.id
-        ))
+        ) == fixture.sharedRecord)
         #expect(try await fixture.portableRecordStore.record(
             id: fixture.unrelatedRecord.id
         ) == fixture.unrelatedRecord)
+        #expect(try await fixture.agentChangeEvidenceStore.evidence(
+            runID: fixture.sharedRecord.id,
+            noteID: fixture.firstIdentity.id
+        ).startingRevision == fixture.firstFingerprint)
         #expect(try await fixture.portableRecordStore.activeDiscussions().discussions.isEmpty)
         #expect(try await fixture.portableRecordStore.latestSettlement(
             noteID: fixture.firstIdentity.id
@@ -85,8 +86,8 @@ struct SystemTrashDeletionTests {
         #expect(try await fixture.recoveryStore.pending().isEmpty)
     }
 
-    @Test("A source receipt survives cleanup failure and resumes Record deletion")
-    func sourceMovedThenRecordCleanupResumesForward() async throws {
+    @Test("A source receipt survives cleanup failure without deleting Records")
+    func sourceMovedThenTemporaryCleanupResumesForward() async throws {
         let fixture = try await Fixture()
         defer { fixture.remove() }
         var trashURLs: [URL] = []
@@ -116,9 +117,10 @@ struct SystemTrashDeletionTests {
 
         try await fixture.coordinator().recoverInterruptedTransactions()
 
-        #expect(await fixture.portableRecordStore.isRecordPermanentlyDeleted(
+        #expect(try await fixture.portableRecordStore.record(
             id: fixture.sharedRecord.id
-        ))
+        ) == fixture.sharedRecord)
+        #expect(try await fixture.portableRecordStore.activeDiscussions().discussions.isEmpty)
         #expect(try await fixture.recoveryStore.pending().isEmpty)
     }
 
@@ -152,14 +154,14 @@ struct SystemTrashDeletionTests {
         let commits = try await fixture.coordinator().recoverInterruptedTransactions()
         trashURLs = commits.flatMap(\.resultingTrashPaths).map(URL.init(fileURLWithPath:))
         #expect(!FileManager.default.fileExists(atPath: fixture.firstURL.path))
-        #expect(await fixture.portableRecordStore.isRecordPermanentlyDeleted(
+        #expect(try await fixture.portableRecordStore.record(
             id: fixture.sharedRecord.id
-        ))
+        ) == fixture.sharedRecord)
         #expect(try await fixture.recoveryStore.pending().isEmpty)
     }
 
-    @Test("Unknown native Trash outcome never implies Record deletion")
-    func unknownOutcomeCanRetainRecordsExplicitly() async throws {
+    @Test("Unknown native Trash outcome resolves without touching Records")
+    func unknownOutcomeResolvesWithoutTouchingRecords() async throws {
         let fixture = try await Fixture()
         defer { fixture.remove() }
         var trashURLs: [URL] = []
@@ -188,7 +190,7 @@ struct SystemTrashDeletionTests {
             id: fixture.sharedRecord.id
         ) == fixture.sharedRecord)
 
-        try await fixture.coordinator().retainRecordsForUnknownOutcome(
+        try await fixture.coordinator().resolveUnknownOutcome(
             recoveryRecordID: pending.id
         )
 
@@ -233,7 +235,7 @@ struct SystemTrashDeletionTests {
             id: fixture.activeDiscussion.id
         ) == fixture.activeDiscussion)
 
-        try await coordinator.retainRecordsForUnknownOutcome(
+        try await coordinator.resolveUnknownOutcome(
             recoveryRecordID: pending.id
         )
         #expect(try await fixture.recoveryStore.pending().isEmpty)
@@ -265,8 +267,8 @@ struct SystemTrashDeletionTests {
         #expect(try await fixture.recoveryStore.pending().isEmpty)
     }
 
-    @Test("Duplicate Record identities in recovery fail closed without moving source")
-    func duplicateRecoveryRecordIdentityIsRejected() async throws {
+    @Test("Duplicate Discussion identities in recovery fail closed without moving source")
+    func duplicateRecoveryDiscussionIdentityIsRejected() async throws {
         let fixture = try await Fixture()
         defer { fixture.remove() }
         let preview = try await fixture.coordinator().prepareNote(
@@ -279,8 +281,7 @@ struct SystemTrashDeletionTests {
             id: preview.id,
             triptychID: preview.triptychID,
             sources: preview.sources,
-            records: preview.records + preview.records,
-            activeDiscussionIDs: preview.activeDiscussionIDs,
+            activeDiscussionIDs: preview.activeDiscussionIDs + preview.activeDiscussionIDs,
             preparedAt: preview.preparedAt
         )
         try await fixture.persistRecoveryPlan(
@@ -318,7 +319,6 @@ struct SystemTrashDeletionTests {
             id: preview.id,
             triptychID: preview.triptychID,
             sources: [malformedSource],
-            records: preview.records,
             activeDiscussionIDs: preview.activeDiscussionIDs,
             preparedAt: preview.preparedAt
         )
@@ -389,6 +389,7 @@ struct SystemTrashDeletionTests {
         let recoveryStore: TriptychMutationRecoveryStore
         let portableRecordStore: PortableResearchRecordStore
         let localExecutionStore: LocalResearchExecutionStore
+        let agentChangeEvidenceStore: AgentChangeEvidenceStore
         let sharedRecord: PortableResearchRecord
         let unrelatedRecord: PortableResearchRecord
         let activeDiscussion: PortableResearchDiscussion
@@ -481,6 +482,10 @@ struct SystemTrashDeletionTests {
                 applicationSupportURL: support,
                 triptychID: triptychID
             )
+            agentChangeEvidenceStore = try AgentChangeEvidenceStore(
+                applicationSupportURL: support,
+                triptychID: triptychID
+            )
             let firstParticipant = try Self.participant(
                 identity: firstIdentity,
                 vaultID: vaultID,
@@ -530,6 +535,19 @@ struct SystemTrashDeletionTests {
             )
             _ = try await portableRecordStore.createFinishedRecord(sharedRecord)
             _ = try await portableRecordStore.createFinishedRecord(unrelatedRecord)
+            let firstSourceData = Data("# First\n\nExact first source.\n".utf8)
+            _ = try await agentChangeEvidenceStore.captureStartingRevision(
+                runID: sharedRecord.id,
+                noteID: firstIdentity.id,
+                data: firstSourceData,
+                expectedRevision: firstFingerprint
+            )
+            _ = try await agentChangeEvidenceStore.recordEndingRevision(
+                runID: sharedRecord.id,
+                noteID: firstIdentity.id,
+                data: firstSourceData,
+                expectedRevision: firstFingerprint
+            )
             _ = try await portableRecordStore.settle(
                 noteID: firstIdentity.id,
                 fingerprint: firstFingerprint,

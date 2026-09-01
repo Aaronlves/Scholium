@@ -246,9 +246,9 @@ extension ScholiumCLI {
                 rule: .init(
                     pathLength: 2,
                     positionalCount: 1 ... 1,
-                    options: ["--expected": .value, "--delete-associated-records": .flag]
+                    options: ["--expected": .value]
                 ),
-                help: "Usage: scholium note move-to-trash <vault>:<path> --expected <sha256> --delete-associated-records\n\nMoves the exact Note to the macOS system Trash and deletes every finished Research Record in which it directly participates. Multi-Note Records are deleted as whole records. Finder owns file restoration; Scholium cannot restore deleted Records."
+                help: "Usage: scholium note move-to-trash <vault>:<path> --expected <sha256>\n\nMoves the exact Note to the macOS system Trash. Finished Research Records remain unchanged and retain their historical participants. Finder owns file restoration."
             ),
             "record list": .init(
                 rule: .init(

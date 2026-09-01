@@ -13,6 +13,8 @@ and adaptation authority. The app implements the design contract in
 `Scholium/UI/Foundation` through `ScholiumColorVariables`,
 `ScholiumColorResolver`, derived `ScholiumColorRole`s, `ScholiumGrid`,
 `ScholiumMetrics`, `ScholiumMotion`, and `ScholiumTypography`.
+These shared types are current reusable implementation inventories, not a
+permission list for every bounded feature-local layout value.
 
 Accent and Paper are the only configurable inputs. Section 19.2's Paper is the exact
 Light Document anchor; one resolver derives every other appearance role for
@@ -44,9 +46,9 @@ WebKit color declarations or literals.
 
 `ScholiumSurfaceRole` maps a Scholium-owned surface to its default semantic
 boundary and, where applicable, one purpose-named `ScholiumElevationRole`.
-`floatingControl`, `boundedPanel`, and `searchOverlay` are the complete custom
-transient elevation set; ordinary structural surfaces resolve to none. The
-native-only `ScholiumStructuralDepthRole` instead owns exactly the
+The current shared custom transient roles are `floatingControl`, `boundedPanel`,
+and `searchOverlay`; ordinary structural surfaces resolve to none. The current
+native-only `ScholiumStructuralDepthRole` covers the
 `documentNavigationBoundary` and `readingEvidenceBoundary` plane relationships
 and is not exported to WebKit. The Workspace Library host clips a Document-
 color caster just outside the logical edge, leaving only the shadow inside
@@ -127,10 +129,12 @@ the three vertical workspace rows, neutral Note totals, selection/hover
 surfaces, focus, and Up/Down traversal without owning the selected workspace. Its continuous
 surface consumes the purpose-named workspace-navigation corner recipe and has
 no Accent mark, underline, border, or shadow.
-`ScholiumSegmentedControl` owns every horizontal local single-choice group. It
-receives only a binding and finite option labels, then owns equal layout, the
-Paper-derived track, adaptive raised selection plate, continuous corners,
-pointer and press feedback, Left/Right traversal, and accessibility state.
+`ScholiumSegmentedControl` owns the current bounded text-only horizontal
+single-choice groups that match its contract. It receives only a binding and
+finite option labels, then owns equal layout, the Paper-derived track, adaptive
+raised selection plate, continuous corners, pointer and press feedback,
+Left/Right traversal, and accessibility state. A future group may remain native
+or feature-owned when its semantics or interaction genuinely differ.
 `ScholiumInspectorModeIndex` is now a semantic adapter into that component.
 `ScholiumEditorialIconControl` is the single presentation owner for Filter,
 disclosure, and Add in the Library header. It gives all three one exact 28pt target,
@@ -242,22 +246,18 @@ inset. It maps horizontal content to the peripheral
 edge and vertical entry to `sourceStateVerticalInset`; it does not wrap
 populated OutlineRows or alter their denser row-surface inset.
 
-`ScholiumGrid` is the single native authority for the 4pt rhythm, bounded 2pt
-optical exception, semantic spacing, and component anchors. `ScholiumMetrics`
-maps responsibilities to those roles without copying values; no geometry JSON
-mirror exists.
-
-The shared foundation values are closed at their call sites: 4pt
-label/accessory, 8pt inline-control, 12pt nested-content, 16pt section, and
-20pt region spacing are always expressed through `ScholiumGrid.Spacing` rather
-than repeated by leaf Views. Every other nonzero user-interface cadence is
-purpose-owned through `ScholiumMetrics`, including stack gaps, content insets,
-line spacing, and nonzero minimum separation. The architecture inventory
-rejects raw forms of those calls across production Swift. Structural zero
-spacing, native control geometry, scene/window dimensions, and Document CSS
-units remain separate classifications. The Debug component catalog is a proof
-surface, and the coordinate-driven Bootstrap narrative artwork is an art
-composition; neither is treated as production interface cadence.
+`ScholiumGrid` owns the shared 4pt rhythm, bounded 2pt optical exception,
+reusable semantic spacing, and component anchors. `ScholiumMetrics` maps
+genuinely shared responsibilities to those roles without copying values; no
+geometry JSON mirror exists. The shared 4pt label/accessory, 8pt inline-control,
+12pt nested-content, 16pt section, and 20pt region values remain preferred at
+matching call sites. A bounded component may keep a clear local cadence when it
+is not reused, accessibility-critical, or an adaptation rule; equal numbers do
+not create shared ownership. Tests exercise promoted roles and representative
+consumers rather than scanning every production spacing, padding, line spacing,
+or spacer value. Native control geometry, scene/window dimensions, Document CSS
+units, the Debug proof catalog, and coordinate-driven Bootstrap art remain
+separate classifications.
 
 `ScholiumMetrics.ResearchGuidance` owns the categorized Settings surface's
 native list-detail containment thresholds and the explanatory collection-row
@@ -314,16 +314,19 @@ The populated Records and Reading Leads ledgers own
 an ancestor cannot replace the state-specific identity in the accessibility
 tree.
 
-`ScholiumCornerRole` is the closed responsibility vocabulary for custom corner
-geometry. `ScholiumShape` exposes the Native aliases and generates only the
-WebKit custom properties needed by the same or WebKit-specific constructs; it
-does not define a numbered radius scale. `scholiumEditorialSurface` accepts a
+`ScholiumCornerRole` is the current shared responsibility vocabulary for custom
+corner geometry. `ScholiumShape` exposes Native aliases and generates the
+WebKit custom properties needed by shared or WebKit-specific constructs; it
+does not define a numbered radius scale. Feature-local geometry may remain with
+one bounded surface when it has no cross-runtime or adaptation contract.
+`scholiumEditorialSurface` accepts a
 `RoundedRectangularShape` and publishes it with `containerShape`, so a genuinely
 nested custom surface such as the Search availability banner can resolve
 `ConcentricRectangle` from its container. Independent Native controls consume a
 purpose-named role, while Review/Edit styles consume generated
-`--scholium-corner-*` properties. The architecture inventory rejects numeric
-Swift corner arguments and numeric CSS corner declarations outside this owner.
+`--scholium-corner-*` properties. Tests preserve shared Native/WebKit parity and
+representative adoption without treating every numeric corner as a catalog
+violation.
 
 - AppKit owns window, toolbar, split, divider, collapse, fullscreen, and frame
   geometry. The Library's 300pt content minimum is native split-item state, not

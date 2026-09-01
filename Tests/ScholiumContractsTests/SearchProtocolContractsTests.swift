@@ -4,6 +4,24 @@ import Testing
 
 @Suite("Current Search contracts")
 struct SearchProtocolContractsTests {
+    @Test("Limited Note availability retains one compatible generation")
+    func limitedNoteAvailabilityContract() throws {
+        let generation = SearchGenerationID(
+            triptychID: UUID(),
+            sequence: 4,
+            sourceManifestHash: "last-complete-notes"
+        )
+        let availability = SearchAvailability.limited(lastGood: generation)
+        let encoded = try JSONEncoder().encode(availability)
+        let decoded = try JSONDecoder().decode(
+            SearchAvailability.self,
+            from: encoded
+        )
+
+        #expect(decoded == availability)
+        #expect(decoded.lastGoodGeneration == generation)
+    }
+
     @Test("Partial Record availability is current, explicit, and codable")
     func partialRecordAvailabilityContract() throws {
         let generation = RecordSearchGenerationID(

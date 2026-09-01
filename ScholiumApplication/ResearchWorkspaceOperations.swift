@@ -942,17 +942,16 @@ extension WorkspaceHandle {
             if systemTrashPlan.sourceReceipts.contains(where: {
                 $0.progress == .outcomeUnknown
             }) {
-                guard systemTrashPlan.deletedRecordIDs.isEmpty,
-                      systemTrashPlan.removedDiscussionIDs.isEmpty,
+                guard systemTrashPlan.removedDiscussionIDs.isEmpty,
                       let vaultID = systemTrashPlan.preview.sources.first?.vaultID,
                       systemTrashPlan.preview.sources.allSatisfy({
                           $0.vaultID == vaultID
-                      }) else {
+                }) else {
                     throw TriptychTransactionError.invalidPlan(
-                        "This unknown native-Trash outcome can no longer be resolved by retaining Records."
+                        "This unknown native-Trash outcome can no longer be resolved because temporary Discussion cleanup has started."
                     )
                 }
-                try await retainRecordsForUnknownSystemTrashOutcome(
+                try await resolveUnknownSystemTrashOutcome(
                     recoveryRecordID: record.id,
                     vaultID: vaultID
                 )
@@ -972,7 +971,7 @@ extension WorkspaceHandle {
                 )
             }
             try await refreshAfterResearchCommit(
-                "The system-Trash Record cleanup"
+                "The system-Trash cleanup"
             )
             return
         }

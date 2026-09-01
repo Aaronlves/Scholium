@@ -124,11 +124,11 @@ Metadata. It contains stable field definitions by role, About order over
 optional managed fields, and per-source-type optional Agent preferences over
 managed Analysis fields. These are separate subvalues in one transaction;
 adding a definition mutates neither of the other two.
-Definition keys, value kinds, order, and existing controlled choices are
-monotonic identity. Labels, optional descriptions, and active/archived state
-are editable; choices can be appended. Archived definitions remain in record
-validation and Search but are removed from new-value, About, and Agent
-selection by the one candidate compiler.
+Definition keys and value kinds are stable identity, and definitions cannot be
+removed. Existing controlled choices remain valid. Labels, optional
+descriptions, field and choice order, active/archived state, and new choices are
+editable. Archived definitions remain in record validation and Search but are
+removed from new-value, About, and Agent selection by the one candidate compiler.
 `TriptychControlStore.settings()` returns decoded settings plus a
 `SettingsRevision` computed from exact `settings.json` bytes. Save accepts the
 complete candidate and expected revision, rechecks current bytes inside the

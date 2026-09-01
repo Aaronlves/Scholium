@@ -96,17 +96,23 @@ of Appearance. It is not a general component palette.
 
 ### 19.3 Variable boundary
 
-Keep eight Variable families: Color, Typography, Surfaces, Elevation,
-Boundaries, feature Metrics, Motion, and provisional Document Rhythm. Promote
-only stable cross-component decisions or accessibility-critical thresholds.
-Roles are purpose-named, never numbered scales.
+The current shared Variables cover Color, Typography, Surfaces, Elevation,
+Boundaries, reusable Metrics, Motion, and provisional Document Rhythm. This is
+an extensible implementation inventory, not a closed taxonomy or a requirement
+that every local value become a Variable. Promote stable cross-component
+decisions and accessibility-critical thresholds. A bounded single-owner layout
+value may remain local when it carries no state, authority, or adaptation rule.
+Shared roles are purpose-named; do not create a numbered global scale merely to
+avoid a clear local constant.
 
 #### Corner geometry
 
 Native windows, toolbars, menus, sheets, popovers, and controls retain platform
-shapes. Shared custom components own their corner recipes; features name no raw
-radius. Borders do not imply rounding, and unbounded content remains
-unenclosed. Shape never carries state or authority alone.
+shapes. Shared custom components own reused or cross-runtime corner recipes.
+A bounded feature-local surface may own its local geometry; promote it only
+when responsibility or adaptation is genuinely shared. Borders do not imply
+rounding, and unbounded content remains unenclosed. Shape never carries state
+or authority alone.
 
 #### Variable ownership
 
@@ -114,12 +120,14 @@ unenclosed. Shape never carries state or authority alone.
 - **Color:** Accent and Paper inputs; every other color is a semantic output.
 - **Surfaces:** opaque Navigation, Document, and Apparatus planes.
 - **Boundaries:** structural divider, subtle boundary, and floating boundary.
-- **Elevation:** native presentation elevation plus bounded custom floating
-  control, bounded panel, and Search overlay. Structural depth is limited to
-  the Sidebar–Document navigation cue and Record reading–evidence cue.
-- **Metrics:** semantic spacing, target, row, region, and readable-width roles
-  owned by their reusable component.
-- **Motion:** named transitions only, with immediate Reduce Motion behavior.
+- **Elevation:** native presentation elevation plus the current shared custom
+  floating-control, bounded-panel, and Search-overlay recipes. Current
+  structural depth covers the Sidebar–Document navigation cue and Record
+  reading–evidence cue.
+- **Metrics:** reused or adaptation-critical spacing, target, row, region, and
+  readable-width roles owned by their reusable component.
+- **Motion:** shared transitions are purpose-named and always define immediate
+  Reduce Motion behavior.
 - **Document Rhythm:** the selected Appearance's measure and typography.
 
 Structural shadows are noninteractive, logical-edge-based, removed under
@@ -133,11 +141,13 @@ targets remain comfortably clickable and keyboard reachable. Resting controls
 are quiet; focus is stronger than hover and persistent selection stronger than
 both. Pointer activation does not leave a keyboard-only focus effect.
 
-The shared segmented control is the only custom horizontal single-choice owner.
-Toolbar controls remain native and borderless. Library icons share one
-editorial-control recipe. The Document Mode button reports current Review,
-Edit, or Source through symbol, Help, and accessibility value without becoming
-a segmented control.
+The shared segmented control is the default custom owner when a bounded
+text-only horizontal single-choice group matches its interaction contract.
+Native controls and feature-owned alternatives remain valid when their
+semantics or interaction differ. Toolbar controls remain native and borderless.
+Library icons share one editorial-control recipe. The Document Mode button
+reports current Review, Edit, or Source through symbol, Help, and accessibility
+value without becoming a segmented control.
 
 #### Metrics
 
@@ -153,15 +163,19 @@ Metrics express responsibility rather than an application-wide numeric grid:
 | Document | Appearance measure, adaptive insets, top/trailing scrolling space |
 
 Native geometry, divider position, toolbar height, and window chrome are not
-design Variables. Equal values across features do not merge ownership.
+design Variables. Equal values across features do not merge ownership, and a
+single-owner value does not need a catalog entry merely because it is numeric.
 
 #### Motion
 
-Motion is purpose-named, interruptible, and absent under Reduce Motion. Native
-feedback remains system-owned. Custom motion is limited to disclosure, search,
+Motion is purposeful, interruptible, and absent under Reduce Motion. Native
+feedback remains system-owned. Current shared motion covers disclosure, search,
 document/workspace reveal, transient feedback, the Action activity stack,
-Handled disposition, and onboarding steps. It never pulses, loops, parallax-
-scrolls, cascades rows, changes authority, or becomes the sole state signal.
+Handled disposition, and onboarding steps. A bounded feature-local transition
+may remain local when it communicates continuity or feedback and supplies the
+same Reduce Motion behavior. Motion never changes authority or becomes the sole
+state signal; decorative pulsing, looping, parallax scrolling, and row cascades
+remain excluded.
 
 ### 19.4 Provisional layout defaults
 
@@ -242,6 +256,9 @@ hides essential state, names, consequences, or recovery.
 
 A component owns presentation and adaptation, never document, workflow,
 authorization, navigation, or operation lifecycle.
+This catalog records current shared responsibilities; it is not an exhaustive
+permission list. A feature may use a bounded local view without first creating
+a reusable component or catalog entry.
 
 | Component | Presentation responsibility | Semantic owner |
 | --- | --- | --- |
@@ -263,12 +280,14 @@ authorization, navigation, or operation lifecycle.
 | `Content State` | Present page/pane state, explanation, and first repair. | §§18.2–18.5, 19.9 |
 | `Bootstrap Illustration` | Support onboarding narrative without carrying task meaning. | §§16, 19.5 |
 
-New components require a distinct repeated task, one semantic owner, adaptation
-contract, and rejectable proof.
+Promotion into this shared catalog requires a distinct repeated task, one
+semantic owner, an adaptation contract, and rejectable proof.
 
 ### 19.8 Pattern catalog
 
 Patterns combine components around one task without copying workflow authority.
+The table records current shared patterns and does not prohibit a bounded
+feature-local composition.
 
 | Pattern | Boundary | Owner |
 | --- | --- | --- |

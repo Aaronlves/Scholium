@@ -145,21 +145,23 @@ any app window needs them; snapshot performs one-shot loading without watchers
 and shuts down after each CLI invocation.
 
 The live macOS activation may ask `WorkspaceHandle.open` for one selected
-`WorkspaceVaultSlot`. The handle constructs all three repositories, pooled
-catalogs, watchers, and capability objects once, but first publishes an explicit
-`WorkspaceSnapshotPhase.opening` snapshot from only that Vault's authoritative
-catalog and portable identities. `DocumentOperations.load` is usable at this
-phase; Search and Research Action resolution fail closed with
-`workspaceStillLoading`, and absent Graph, Search, and Research projections are
-not complete evidence. The handle owns one utility-priority opening-completion
-task. Watcher events enter the existing bounded journals while a complete
-three-catalog reconcile, Graph build, Search synchronization, research
-projection, and atomic event publication run through the same refresh
-coordinator and source-operation gate. The first live refresh that can replace
-an opening snapshot completes its full post-observation activation reconcile
-before building or publishing `.complete`; Search availability and watcher
-readiness therefore cross one actor-owned completion boundary. The completion
-task waits until the opening Vault's first Document crosses its native
+`WorkspaceVaultSlot`. One handle constructs all repositories, pooled catalogs,
+watchers, and capabilities, then first publishes
+`WorkspaceSnapshotPhase.opening` from only that Vault's authoritative catalog
+and portable identities. Document load and exact current-buffer Search are
+usable. Current-Vault lexical Search reuses the last complete index. The index
+filters candidates by opening fingerprints and resolved stable identities
+before limits and `hasMore`, then returns Limited. No partial generation or
+second index exists. Triptych, Record,
+structured, property, relation, and Research Action resolution fail closed with
+`workspaceStillLoading`; absent complete projections are not complete evidence.
+One utility-priority opening-completion task owns convergence. Watcher events
+enter existing journals; complete reconcile, Graph, Search, research, and
+publication share the coordinator and source-operation gate. The first
+replacement refresh completes post-observation activation reconciliation before
+publishing `.complete`; complete-scope Search and watcher readiness cross one
+actor-owned boundary. The task waits until the opening Vault's first Document
+crosses its native
 visible-layout boundary, so
 the full reconcile cannot contend with that initial presentation; a bounded
 fallback still completes a Library-only window or a failed renderer. The
@@ -675,7 +677,7 @@ called by the split resize callback, so the offer cannot override a user drag.
 The offer is neither persisted nor replayed; all later resizing, hiding,
 showing, and restoration remain AppKit-owned. No item receives a Scholium
 fraction, holding priority, or restoration state. A scene/window minimum
-remains contingent on the complete adaptation matrix.
+remains contingent on §20's representative adaptation acceptance set.
 
 Apparatus remains the semantic Inspector, but does not use
 `NSSplitViewItem(inspectorWithViewController:)`: on macOS 14 and later that

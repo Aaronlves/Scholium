@@ -304,11 +304,12 @@ The retained-memory journey uses a run-specific app handshake. Initial load
 and each typed Live Preview/Source transition publish progress after bridge
 acknowledgement; the external sampler records the attributed app/WebKit process
 set and acknowledges before the driver advances. Its QA transport addresses
-the retained session directly to prevent SwiftUI request coalescing. The gate
-applies the convergence rule in [Specification §21.4](../Specification/10-release-and-open-decisions.md#214-packaged-performance-gate).
-A separate attached-WKWebView journey drives 50 transitions and checks the dirty buffer,
-accessibility chrome, and diagnostic ring; it cannot establish memory
-convergence or visible p95.
+the retained session directly to prevent SwiftUI request coalescing. The runner
+supplies a predeclared bounded transition count and the summarizer applies the
+two-tail convergence rule in [Specification §21.4](../Specification/10-release-and-open-decisions.md#214-packaged-performance-gate).
+A separate attached-WKWebView journey checks the dirty buffer, accessibility
+chrome, and diagnostic ring; it cannot establish memory convergence or visible
+p95.
 
 The connected Editor driver measures visible or accessible boundaries.
 A Document uses a source-free, network-denied view to prime
@@ -329,13 +330,16 @@ QA-only notifications drive those paths; `PerformanceProbe` enforces metric,
 fixture, duration, and sample budget.
 
 `generate-rdf1.py` owns manifest-listed RDF-1 bytes;
-`run-performance-benchmarks.sh` owns isolated driving, sampling, inventory
-recheck, evidence class, and production-state nonmutation. Packaged Release
-honors `SCHOLIUM_HOME` only with the marker. Warm metrics reuse
+`run-performance-benchmarks.sh` owns isolated driving, predeclared sampling,
+inventory recheck, evidence class, and production-state nonmutation. Packaged
+Release honors `SCHOLIUM_HOME` only with the marker. Warm metrics reuse
 processes; launch/first-use metrics relaunch. Records retain timing,
-correctness, and provenance without research content. Gate mode requires
-clean-tag package and every series; scenario omissions remain explicit. Limits
-and evidence rules belong to [Specification
+correctness, and provenance without research content. Gate mode requires a
+clean-tag package and may capture either the complete campaign or one focused
+replacement series. `summarize-performance-results.py` accepts only the bounded
+product-gate plans, labels a focused report Incomplete, and can pass G7 only
+when every series and shared correctness check are present. Scenario omissions
+remain explicit. Limits and evidence rules belong to [Specification
 §21.4](../Specification/10-release-and-open-decisions.md#214-packaged-performance-gate);
 dated evidence belongs to [Status](../IMPLEMENTATION_STATUS.md).
 

@@ -25,8 +25,12 @@
 - Live app activation can publish the selected Vault's authoritative source,
   metadata, and stable identities first, then replace that explicit opening
   phase with one complete three-Vault generation through the existing refresh
-  owner. Document reads are usable immediately; Search and Research Actions
-  fail closed until Graph, Search, and research projections are complete.
+  owner. Document reads and exact This Note Search are usable immediately.
+  This Vault lexical Search can expose only last-complete-index hits whose
+  source fingerprints and indexed stable identities still match the opening
+  snapshot, explicitly as Limited;
+  Triptych/Record/structured/relationship Search and Research Actions fail
+  closed until the required projections are complete.
 - Exact Markdown bytes remain authoritative. Repository reads and mutations
   enforce containment, regular-file identity, expected revisions, coordinated
   system replacement, exact canonical readback, conflict, and recoverable
@@ -40,8 +44,9 @@
   values; adding Metadata never changes the YAML envelope.
 - Portable Metadata settings own stable custom field definitions for Analyses,
   Topics, and Works. Key and value shape are permanent; labels, descriptions,
-  append-only controlled choices, and reversible active/archived lifecycle are
-  manageable. Archived fields retain existing values and Search while leaving
+  field and controlled-choice order, new choices, and reversible active/archived
+  lifecycle are manageable. Existing choices cannot be removed. Archived fields
+  retain existing values and Search while leaving
   new-value, About, and Agent selection. The current workspace-scoped resolved catalog combines those
   definitions with built-ins and governs Metadata validation, Search, Library
   filters, About, Complete Metadata, and Agent field plans. About visibility
@@ -78,16 +83,16 @@
   cross-feature effects; it no longer proxies their operation APIs or recovery
   state.
 - Note and Folder deletion prepare exact source/folder inventories, associated
-  Critiques, active Discussions, and whole finished Records before confirmation.
-  All source items move first; durable recovery then resumes Discussion, exact-
-  fingerprint Record, and machine-local evidence cleanup. A
-  multi-Note Record is deleted as one object when any participant is affected.
+  Critiques, and active Discussions before confirmation. All source items move
+  first; durable recovery then resumes only active-Discussion cleanup. Finished
+  Records and their Record-bound Local Execution and Agent-change evidence
+  remain unchanged even when a participant source is moved to system Trash.
 - Settlement, source access, stable identity, Zotero binding, and Critique
   association are retained. External source absence without a Scholium plan
   refreshes source projections but does not delete Discussions or Records.
 - The researcher CLI exposes the same Note system-Trash preparation and execute
-  path with exact revision and explicit associated-Record consent. No prior
-  holding-location or application-owned restore/delete command is reachable.
+  path with an exact revision. It has no associated-Record deletion flag, prior
+  holding location, or application-owned source restore/delete command.
 - Review, Edit, and Source share one retained document session. Autosave,
   selection, focus, scroll, composition, Undo, conflict, external-change
   handling, and recovery remain bound to the same exact source.

@@ -121,8 +121,13 @@ MEMORY_ALLOWED_KEYS = {
     "role_process_counts",
     "role_resident_bytes",
 }
-MEMORY_TRANSITIONS = 50
 MEMORY_TAIL_GROWTH_LIMIT = 0.05
+GATE_MIN_WARMUPS = 2
+GATE_MAX_WARMUPS = 5
+GATE_MIN_SAMPLES = 20
+GATE_MAX_SAMPLES = 50
+GATE_MIN_MEMORY_TRANSITIONS = 30
+GATE_MAX_MEMORY_TRANSITIONS = 60
 CJK_CORRECTNESS_FILE = "editor_large_cjk_correctness.jsonl"
 CJK_CORRECTNESS_KEYS = {
     "schema",
@@ -144,6 +149,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--warmups", required=True, type=int)
     parser.add_argument("--samples", required=True, type=int)
+    parser.add_argument("--memory-transitions", default=20, type=int)
     parser.add_argument(
         "--evidence-class",
         required=True,
@@ -166,6 +172,43 @@ def nearest_rank(values: list[float], percentile: float) -> float:
     ordered = sorted(values)
     index = max(0, math.ceil(percentile * len(ordered)) - 1)
     return ordered[index]
+
+
+def validate_product_gate_sampling(
+    warmups: int,
+    samples: int,
+    memory_transitions: int,
+) -> None:
+    if not GATE_MIN_WARMUPS <= warmups <= GATE_MAX_WARMUPS:
+        raise SystemExit(
+            f"A product gate requires {GATE_MIN_WARMUPS}...{GATE_MAX_WARMUPS} "
+            "excluded warm-ups."
+        )
+    if not GATE_MIN_SAMPLES <= samples <= GATE_MAX_SAMPLES:
+        raise SystemExit(
+            f"A product gate requires {GATE_MIN_SAMPLES}...{GATE_MAX_SAMPLES} "
+            "retained latency samples."
+        )
+    if not (
+        GATE_MIN_MEMORY_TRANSITIONS
+        <= memory_transitions
+        <= GATE_MAX_MEMORY_TRANSITIONS
+    ):
+        raise SystemExit(
+            "A product gate requires "
+            f"{GATE_MIN_MEMORY_TRANSITIONS}...{GATE_MAX_MEMORY_TRANSITIONS} "
+            "retained-memory transitions."
+        )
+
+
+def product_gate_status(
+    selected_metrics: tuple[str, ...],
+    selected_series_passed: bool,
+) -> tuple[str, list[str]]:
+    missing = [metric for metric in ALL_METRICS if metric not in selected_metrics]
+    if not selected_series_passed:
+        return "failed", missing
+    return ("passed" if not missing else "incomplete"), missing
 
 
 def summarize_latency(metric: str, measured: list[float]) -> dict[str, object]:
@@ -330,11 +373,16 @@ def load_metric(
     return records, measured
 
 
-def load_editor_memory(path: Path) -> tuple[list[dict[str, object]], dict[str, object]]:
+def load_editor_memory(
+    path: Path,
+    transitions: int,
+) -> tuple[list[dict[str, object]], dict[str, object]]:
     if not path.is_file():
         raise SystemExit(f"Missing Editor memory results: {path}")
+    if transitions < 20:
+        raise SystemExit(f"{path}: memory convergence requires at least 20 transitions")
     records: list[dict[str, object]] = []
-    expected_count = MEMORY_TRANSITIONS + 1
+    expected_count = transitions + 1
     for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         try:
             record = json.loads(raw_line)
@@ -387,7 +435,7 @@ def load_editor_memory(path: Path) -> tuple[list[dict[str, object]], dict[str, o
     indexes = [record["sample"] for record in records]
     if indexes != list(range(expected_count)):
         raise SystemExit(
-            f"{path}: expected ordered memory samples 0...{MEMORY_TRANSITIONS}, got {indexes}"
+            f"{path}: expected ordered memory samples 0...{transitions}, got {indexes}"
         )
     first_counts = records[0]["role_process_counts"]
     stable_counts = all(record["role_process_counts"] == first_counts for record in records)
@@ -413,7 +461,7 @@ def load_editor_memory(path: Path) -> tuple[list[dict[str, object]], dict[str, o
     )
     summary = {
         "sample_count": len(records),
-        "transition_count": MEMORY_TRANSITIONS,
+        "transition_count": transitions,
         "stable_process_counts": stable_counts,
         "role_process_counts": first_counts,
         "initial_resident_bytes": totals[0],
@@ -491,6 +539,23 @@ def environment_missing_fields(path: Path) -> list[str]:
 
 
 def self_test() -> None:
+    validate_product_gate_sampling(2, 20, 30)
+    validate_product_gate_sampling(5, 50, 60)
+    for invalid_plan in ((1, 20, 30), (2, 19, 30), (2, 20, 61)):
+        try:
+            validate_product_gate_sampling(*invalid_plan)
+        except SystemExit:
+            pass
+        else:
+            raise AssertionError("An out-of-bounds product-gate plan was accepted.")
+    assert product_gate_status(ALL_METRICS, True) == ("passed", [])
+    focused_status, focused_missing = product_gate_status(
+        ("indexed_search",), True
+    )
+    assert focused_status == "incomplete"
+    assert "indexed_search" not in focused_missing
+    assert product_gate_status(("indexed_search",), False)[0] == "failed"
+
     search_completion = summarize_latency("indexed_search", [199.0] * 30)
     assert search_completion["threshold_ms_exclusive"] == 200.0
     assert search_completion["threshold_met"] is True
@@ -722,15 +787,18 @@ def self_test() -> None:
                 for sample, total in enumerate(totals)
             ]
 
+        memory_transitions = 50
         decelerating = [
             100_000_000 + sum(50_000 - step * 800 for step in range(sample))
-            for sample in range(MEMORY_TRANSITIONS + 1)
+            for sample in range(memory_transitions + 1)
         ]
         memory_path.write_text(
             "".join(json.dumps(record) + "\n" for record in memory_records(decelerating)),
             encoding="utf-8",
         )
-        _, decelerating_summary = load_editor_memory(memory_path)
+        _, decelerating_summary = load_editor_memory(
+            memory_path, memory_transitions
+        )
         assert decelerating_summary["monotonic_tail_growth"] is True
         assert decelerating_summary["tail_growth_decelerated"] is True
         assert decelerating_summary["convergence_observed"] is True
@@ -740,7 +808,7 @@ def self_test() -> None:
             "".join(json.dumps(record) + "\n" for record in memory_records(constant_growth)),
             encoding="utf-8",
         )
-        _, leaking_summary = load_editor_memory(memory_path)
+        _, leaking_summary = load_editor_memory(memory_path, memory_transitions)
         assert leaking_summary["tail_growth_decelerated"] is False
         assert leaking_summary["convergence_observed"] is False
 
@@ -749,17 +817,24 @@ def self_test() -> None:
 
 def main() -> None:
     arguments = parse_args()
-    if arguments.warmups < 0 or arguments.samples <= 0:
-        raise SystemExit("Warm-ups must be nonnegative and samples must be positive.")
-    if arguments.evidence_class == "product_gate" and (
-        arguments.warmups != 5 or arguments.samples != 30
+    if (
+        arguments.warmups < 0
+        or arguments.samples <= 0
+        or arguments.memory_transitions < 20
     ):
-        raise SystemExit("A product gate requires exactly 5 warm-ups and 30 retained samples.")
+        raise SystemExit(
+            "Warm-ups must be nonnegative, samples positive, and memory "
+            "transitions at least 20."
+        )
+    if arguments.evidence_class == "product_gate":
+        validate_product_gate_sampling(
+            arguments.warmups,
+            arguments.samples,
+            arguments.memory_transitions,
+        )
     selected_metrics = tuple(arguments.metrics)
     if len(set(selected_metrics)) != len(selected_metrics):
         raise SystemExit("Performance metrics must be unique.")
-    if arguments.evidence_class == "product_gate" and set(selected_metrics) != set(ALL_METRICS):
-        raise SystemExit("A product gate requires every performance metric.")
     if not arguments.environment.is_file():
         raise SystemExit("Missing environment metadata.")
     missing_environment_fields = environment_missing_fields(arguments.environment)
@@ -831,7 +906,8 @@ def main() -> None:
 
     if "editor_retained_memory" in selected_metrics:
         memory_records, memory_summary = load_editor_memory(
-            arguments.input_dir / "editor_retained_memory.jsonl"
+            arguments.input_dir / "editor_retained_memory.jsonl",
+            arguments.memory_transitions,
         )
         summaries["editor_retained_memory"] = memory_summary
         raw_durations["editor_retained_memory"] = {
@@ -840,26 +916,52 @@ def main() -> None:
         }
         all_pass = all_pass and bool(memory_summary["convergence_observed"])
     missing_editor_metrics = missing_required_editor_metrics(summaries)
-    all_pass = all_pass and not missing_editor_metrics
     correctness: dict[str, object] = {}
-    if arguments.evidence_class == "product_gate":
+    full_gate_run = set(selected_metrics) == set(ALL_METRICS)
+    if arguments.evidence_class == "product_gate" and full_gate_run:
         correctness["hundred_thousand_cjk"] = load_cjk_correctness(
             arguments.input_dir / CJK_CORRECTNESS_FILE,
             arguments.run_id,
         )
+    if arguments.evidence_class == "product_gate":
         all_pass = all_pass and not missing_environment_fields
 
     gate_status = "not_applicable"
+    missing_gate_metrics: list[str] = []
+    selected_series_status = "not_applicable"
     if arguments.evidence_class == "product_gate":
-        gate_status = "passed" if all_pass else "failed"
+        gate_status, missing_gate_metrics = product_gate_status(
+            selected_metrics,
+            all_pass,
+        )
+        selected_series_status = "passed" if all_pass else "failed"
     report = {
         "schema": "scholium-performance-report-v1",
         "evidence_class": arguments.evidence_class,
         "gate_status": gate_status,
+        "campaign_complete": (
+            arguments.evidence_class == "product_gate" and full_gate_run
+        ),
+        "selected_series_status": selected_series_status,
         "run_id": arguments.run_id,
         "percentile_method": "nearest-rank",
+        "sampling_protocol": {
+            "selection": "predeclared_before_measurement",
+            "warmup_count": arguments.warmups,
+            "retained_latency_sample_count": arguments.samples,
+            "retained_memory_transition_count": arguments.memory_transitions,
+            "product_gate_bounds": {
+                "warmups": [GATE_MIN_WARMUPS, GATE_MAX_WARMUPS],
+                "latency_samples": [GATE_MIN_SAMPLES, GATE_MAX_SAMPLES],
+                "memory_transitions": [
+                    GATE_MIN_MEMORY_TRANSITIONS,
+                    GATE_MAX_MEMORY_TRANSITIONS,
+                ],
+            },
+        },
         "invalidated_trials": [],
         "measured_metrics": list(selected_metrics),
+        "missing_gate_metrics": missing_gate_metrics,
         "missing_required_editor_metrics": missing_editor_metrics,
         "environment": {
             "file": arguments.environment.name,
@@ -877,7 +979,7 @@ def main() -> None:
         encoding="utf-8",
     )
     if arguments.evidence_class == "product_gate" and not all_pass:
-        raise SystemExit("Product performance gate failed.")
+        raise SystemExit("Selected product-performance series failed.")
 
 
 if __name__ == "__main__":

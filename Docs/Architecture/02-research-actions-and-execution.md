@@ -531,7 +531,10 @@ and replaces the parent Record's feedback in one Record write; a stale token
 rejects the candidate. Settlement, Method Feedback, and recommendation
 disposition remain excluded from finalized-result identity. Record deletion
 removes those partitions and writes the existing minimal machine-local
-tombstone; no other operation can recreate or reparent them.
+tombstone; the Application permanent-deletion use case then removes that Run's
+Agent-change evidence and completed Local Execution. No Note or filesystem
+operation calls this cleanup, and no other operation can recreate or reparent
+the Record.
 
 Action completion derives each modified change's starting revision from the
 expected revision of its first `committed` Agent write record, not the Run-start
@@ -735,12 +738,12 @@ authority. A source change makes only the affected check stale.
 
 System-Trash preparation rejects any relevant active or write-recovering local
 execution. After all native source receipts commit, its recovery plan discards
-affected active Discussions, deletes each associated finished Record as a
-whole using its exact byte fingerprint, and purges local execution and
-Agent-change evidence. An external source absence
-without that plan performs none of this cleanup. Unsupported pre-production files
-remain byte-unchanged, unread, and nonauthorizing; current decoders do not
-interpret them as configuration, execution, or Record authority.
+affected active Discussions. It never deletes a finished Record or any
+Record-bound Local Execution or Agent-change evidence. Explicit permanent
+Record deletion remains the sole owner of that cleanup. An external source
+absence without a plan performs none of the temporary cleanup. Unsupported
+pre-production files remain byte-unchanged, unread, and nonauthorizing; current
+decoders do not interpret them as configuration, execution, or Record authority.
 
 CLI decodes Contracts, invokes the same Application capabilities, and encodes
 canonical Run/Context/write/result families. Secrets arrive only through

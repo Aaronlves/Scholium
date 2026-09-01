@@ -38,6 +38,17 @@ history. It is one compact command surface with visible scope and a bounded
 result list. Opening it retains the workspace; dismissal cancels work and
 clears query/results while retaining ordinary scope and Saved Searches.
 
+During live workspace opening, **This Note** performs exact lexical Search over
+the current unsaved buffer. **This Vault** may reuse only lexical matches from
+the last complete compatible index whose source fingerprint still equals the
+authoritative opening snapshot and whose indexed stable identity, when present,
+still resolves there; it reports **Limited**, excludes new, changed, deleted,
+retargeted, or unverifiable Notes, and never publishes a partial generation.
+Triptych scope, the Record provider, managed-property and structured clauses,
+direct relations, and operations requiring complete Search remain unavailable
+until the complete generation publishes. Completion replaces the limitation
+without moving focus or invalidating already usable Library content.
+
 Document Find is a separate inline editor operation over the current unsaved
 buffer. It supports literal text, case and whole-word options, count,
 Previous/Next, and standard keyboard routes. Edit and Source add Replace
@@ -106,10 +117,10 @@ request provider-owned pagination, exact filtered totals, and ordering without
 creating another parser or query language.
 
 Every response binds contract version, provider, authorized scope, source
-generation, and freshness. **Building**, **Partial**, **Stale**, **Unavailable**,
-**Invalid**, and **Cancelled** remain distinct. A failed refresh may retain only
-a last complete compatible generation. Derived indexes remain disposable and
-never writable authority.
+generation, and freshness. **Building**, **Limited**, **Partial**, **Stale**,
+**Unavailable**, **Invalid**, and **Cancelled** remain distinct. A failed
+refresh may retain only a last complete compatible generation. Derived indexes
+remain disposable and never writable authority.
 
 The parser exposes one typed capability description used by completion,
 **Explain Query**, and CLI help. Completion edits only visible query text.
@@ -180,10 +191,11 @@ source, valid neighbor records, settings, identity state, or the complete
 `.scholium` directory.
 
 System-Trash recovery is a separate forward plan showing source items, known
-Finder destinations, receipts, Discussions, and Records. When every move is
-proven, Retry performs only pending cleanup. An unknown native outcome permits
-**Retain Records and Resolve** after researcher inspection; that releases the
-gate and removes only the Scholium plan. It never restores or erases source.
+Finder destinations, receipts, and affected temporary Discussions. When every
+move is proven, Retry performs only pending temporary cleanup. An unknown
+native outcome permits **Resolve** after researcher inspection; that releases
+the gate and removes only the Scholium plan. It never restores or erases source,
+and neither route changes a finished Research Record.
 
 Watchers and sync observations are refresh evidence only. External absence or
 restoration passes through ordinary identity and exact-byte reconciliation and

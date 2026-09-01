@@ -2517,8 +2517,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             controlStore: services.controlStore,
             recoveryStore: services.transactionRecoveryStore,
             portableRecordStore: services.portableResearchRecordStore,
-            localExecutionStore: services.localResearchExecutionStore,
-            agentChangeEvidenceStore: services.agentChangeEvidenceStore
+            localExecutionStore: services.localResearchExecutionStore
         )
     }
 
@@ -2644,8 +2643,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 controlStore: services.controlStore,
                 recoveryStore: services.transactionRecoveryStore,
                 portableRecordStore: services.portableResearchRecordStore,
-                localExecutionStore: services.localResearchExecutionStore,
-                agentChangeEvidenceStore: services.agentChangeEvidenceStore
+                localExecutionStore: services.localResearchExecutionStore
             )
             do {
                 try await coordinator.recoverInterruptedTransactions()
@@ -2656,7 +2654,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         return issues
     }
 
-    func retainRecordsForUnknownSystemTrashOutcome(
+    func resolveUnknownSystemTrashOutcome(
         recoveryRecordID: UUID,
         vaultID: UUID
     ) async throws {
@@ -2664,7 +2662,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         let mutationLease = try await beginSourceMutation()
         defer { endSourceMutation(mutationLease) }
         try await systemTrashCoordinator(vaultID: vaultID)
-            .retainRecordsForUnknownOutcome(
+            .resolveUnknownOutcome(
                 recoveryRecordID: recoveryRecordID
             )
     }
@@ -3528,9 +3526,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
 
     func search(_ request: SearchRequest) async throws -> SearchResponse {
         try requireActive()
-        guard currentSnapshot.phase.isComplete else {
-            throw ScholiumApplicationError.workspaceStillLoading(id)
-        }
         if let diagnostic = searchScopeDiagnostic(request) {
             return await searchDiagnosticResponse(
                 request: request,
@@ -3544,6 +3539,37 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         let parsed = SearchQueryParser.parse(request.query)
         guard let ast = parsed.ast, parsed.diagnostics.isEmpty else {
             return await searchDiagnosticResponse(request: request, parsed: parsed)
+        }
+        if !currentSnapshot.phase.isComplete {
+            guard ast.provider == .note else {
+                throw ScholiumApplicationError.workspaceStillLoading(id)
+            }
+            switch request.executionScope {
+            case .currentNote:
+                break
+            case .currentVault:
+                guard ast.clauses.allSatisfy({ clause in
+                    if case .lexical = clause { return true }
+                    return false
+                }) else {
+                    return await searchDiagnosticResponse(
+                        request: request,
+                        parsed: SearchQueryParseResult(
+                            provider: .note,
+                            providerWasExplicit: ast.providerWasExplicit,
+                            ast: ast,
+                            diagnostics: [SearchQueryDiagnostic(
+                                code: .notApplicable,
+                                message: "While this Triptych is opening, This Vault Search supports words, phrases, and lexical fields only.",
+                                utf16LowerBound: 0,
+                                utf16UpperBound: request.query.utf16.count
+                            )]
+                        )
+                    )
+                }
+            case .triptych:
+                throw ScholiumApplicationError.workspaceStillLoading(id)
+            }
         }
         switch ast.provider {
         case .note:
@@ -3586,11 +3612,13 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     )
                 )
             }
-            return try await services.searchIndex.search(
+            let response = try await services.searchIndex.search(
                 request,
                 ast: ast,
-                relationshipMatches: relation.matches
+                relationshipMatches: relation.matches,
+                eligibleDocuments: openingSearchEligibility(for: request)
             )
+            return openingVaultSearchResponse(response, request: request)
 
         case .record:
             return try searchRecords(request, ast: ast)
@@ -3605,6 +3633,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         ast: SearchQueryAST
     ) throws -> SearchResponse {
         try requireActive()
+        guard currentSnapshot.phase.isComplete else {
+            throw ScholiumApplicationError.workspaceStillLoading(id)
+        }
         precondition(ast.provider == .record)
         let index = ResearchRecordSearchIndex(
             triptychID: assignment.id,
@@ -3656,6 +3687,15 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     utf16UpperBound: 0
                 )
             }
+            if case .opening(let availableSlot) = currentSnapshot.phase,
+               assignment.vault(for: availableSlot)?.id != vaultID {
+                return SearchQueryDiagnostic(
+                    code: .notApplicable,
+                    message: "Only the currently open vault can be searched while this Triptych finishes opening.",
+                    utf16LowerBound: 0,
+                    utf16UpperBound: 0
+                )
+            }
         case .currentNote(let source):
             guard authorizedVaultIDs.contains(source.noteID.vaultID),
                   currentSnapshot.discovery.catalog.notes.contains(where: {
@@ -3696,6 +3736,13 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 }
             }
         case .record:
+            guard currentSnapshot.phase.isComplete else {
+                availability = .record(.unavailable)
+                freshness = SearchFreshnessToken(
+                    "record:\(id.uuidString.lowercased()):unavailable"
+                )
+                break
+            }
             let generation = RecordSearchGenerationID(
                 triptychID: id,
                 sourceManifestHash:
@@ -3711,7 +3758,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             }
             freshness = .record(generation)
         }
-        return SearchResponse(
+        let response = SearchResponse(
             requestID: request.id,
             scope: request.presentationScope,
             explanation: parsed.explanation(scope: request.presentationScope),
@@ -3720,6 +3767,65 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             results: [],
             hasMore: false,
             diagnostics: parsed.diagnostics
+        )
+        return openingVaultSearchResponse(response, request: request)
+    }
+
+    /// Supplies exact opening authority to the index so rejected prior-
+    /// generation candidates do not consume the visible limit or distort
+    /// `hasMore`. The index remains the sole ranking and pagination owner.
+    private func openingSearchEligibility(
+        for request: SearchRequest
+    ) -> [VaultQualifiedNoteID: SearchIndexDocumentEligibility]? {
+        guard case .opening = currentSnapshot.phase,
+              case .currentVault(let vaultID) = request.executionScope else {
+            return nil
+        }
+        return Dictionary(uniqueKeysWithValues: currentSnapshot.vaults
+            .filter { $0.vault.id == vaultID }
+            .flatMap(\.documents)
+            .map { note in
+                (
+                    note.id,
+                    SearchIndexDocumentEligibility(
+                        fingerprint: note.fingerprint,
+                        resolvedStableNoteID: note.stableIdentity.resolvedID
+                    )
+                )
+            })
+    }
+
+    /// Opening never publishes a partial generation. The index has already
+    /// filtered the last complete generation against exact opening authority;
+    /// this adapter changes only the visible availability grade.
+    private func openingVaultSearchResponse(
+        _ response: SearchResponse,
+        request: SearchRequest
+    ) -> SearchResponse {
+        guard case .opening = currentSnapshot.phase,
+              case .currentVault = request.executionScope,
+              case .note(let availability) = response.availability else {
+            return response
+        }
+        let openingAvailability: SearchAvailability = switch availability {
+        case .current(let generation), .refreshing(let generation):
+            .limited(lastGood: generation)
+        case .unavailable:
+            .building(SearchBuildProgress(completed: 0, total: 0))
+        case .limited, .building, .stale, .failed:
+            availability
+        }
+        return SearchResponse(
+            contractVersion: response.contractVersion,
+            requestID: response.requestID,
+            scope: response.scope,
+            explanation: response.explanation,
+            freshnessToken: response.freshnessToken,
+            availability: .note(openingAvailability),
+            results: response.results,
+            hasMore: response.hasMore,
+            totalResultCount: response.totalResultCount,
+            diagnostics: response.diagnostics
         )
     }
 

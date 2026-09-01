@@ -1201,8 +1201,8 @@ struct ResearchRecordV1StoresTests {
         #expect(try await store.activeExecutionIDs(containing: [noteID]).isEmpty)
     }
 
-    @Test("Terminal envelope permits cleanup without decoding its payload revision")
-    func terminalEnvelopePermitsUnsupportedPayloadCleanup() async throws {
+    @Test("Terminal envelope permits Trash preflight without decoding its payload revision")
+    func terminalEnvelopePermitsUnsupportedPayloadPreflight() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let store = try fixture.localStore()
@@ -1222,8 +1222,7 @@ struct ResearchRecordV1StoresTests {
 
         try await store.validateDeletionAuthority()
         #expect(try await store.activeExecutionIDs(containing: [noteID]).isEmpty)
-        #expect(try await store.purgeExecutions(containing: [noteID]) == [record.id])
-        #expect(!FileManager.default.fileExists(atPath: url.path))
+        #expect(FileManager.default.fileExists(atPath: url.path))
     }
 
     @Test("Agent creation schema failure is isolated from system Trash authority")
@@ -1558,31 +1557,6 @@ struct ResearchRecordV1StoresTests {
         #expect(listing.issues.isEmpty)
         #expect(try await store.record(id: runID).completion?
             .literatureRecommendations == nil)
-    }
-
-    @Test("System Trash cleanup removes only executions containing the Note")
-    func localExecutionPurgeIsIdentityBound() async throws {
-        let fixture = try Fixture()
-        defer { fixture.remove() }
-        let store = try fixture.localStore()
-        let deletedNoteID = UUID(uuidString: "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC")!
-        let retainedNoteID = UUID(uuidString: "EEEEEEEE-EEEE-EEEE-EEEE-EEEEEEEEEEEE")!
-        let deletedRun = try makeLocalExecutionRecord(
-            runID: UUID(),
-            noteID: deletedNoteID
-        )
-        let retainedRun = try makeLocalExecutionRecord(
-            runID: UUID(),
-            noteID: retainedNoteID
-        )
-        _ = try await store.create(deletedRun)
-        _ = try await store.create(retainedRun)
-
-        let removed = try await store.purgeExecutions(containing: [deletedNoteID])
-
-        #expect(removed == [deletedRun.id])
-        #expect(try await store.recordIfPresent(id: deletedRun.id) == nil)
-        #expect(try await store.record(id: retainedRun.id) == retainedRun)
     }
 
     @Test("Prepared execution is an active deletion conflict only for participating Notes")

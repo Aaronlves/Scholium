@@ -15,11 +15,28 @@ struct SearchStatePresentationTests {
         sourceManifestHash: "records"
     )
 
+    @Test("Opening scope rejection is presented as unavailable rather than failed")
+    @MainActor
+    func openingScopeRejectionPresentation() {
+        let issue = WindowSearchController.executionIssue(
+            for: ScholiumApplicationError.workspaceStillLoading(UUID())
+        )
+        guard case .unavailable(let message) = issue else {
+            Issue.record("Opening scope rejection was presented as a Search failure.")
+            return
+        }
+        #expect(message.contains("currently open vault"))
+        #expect(message.contains("Triptych Search"))
+    }
+
     @Test("Note Search maps every non-current availability explicitly")
     func noteAvailabilityMapping() throws {
         let unavailable = try #require(SearchStatePresentation.note(.unavailable))
         let building = try #require(SearchStatePresentation.note(
             .building(SearchBuildProgress(completed: 1, total: 3))
+        ))
+        let limited = try #require(SearchStatePresentation.note(
+            .limited(lastGood: noteGeneration)
         ))
         let refreshing = try #require(SearchStatePresentation.note(
             .refreshing(lastGood: noteGeneration)
@@ -35,6 +52,8 @@ struct SearchStatePresentationTests {
         #expect(unavailable.action == .refresh)
         #expect(building.meaning == .loading)
         #expect(building.action == nil)
+        #expect(limited.meaning == .unavailable)
+        #expect(limited.action == nil)
         #expect(refreshing.meaning == .loading)
         #expect(stale.meaning == .stale)
         #expect(stale.action == .refresh)
@@ -111,6 +130,11 @@ struct SearchStatePresentationTests {
         #expect(!SearchStatePresentation.suppressesNoMatchContent(
             for: .note(.stale(lastGood: noteGeneration, reason: "changed")),
             scope: .triptych,
+            hasExecutionIssue: false
+        ))
+        #expect(!SearchStatePresentation.suppressesNoMatchContent(
+            for: .note(.limited(lastGood: noteGeneration)),
+            scope: .currentVault,
             hasExecutionIssue: false
         ))
         #expect(!SearchStatePresentation.suppressesNoMatchContent(

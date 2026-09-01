@@ -316,7 +316,7 @@ struct TransactionRecoveryView: View {
             )
         case .systemTrashDeletion:
             String(
-                localized: "System Trash and Record Cleanup",
+                localized: "System Trash Cleanup",
                 table: "Localizable",
                 bundle: .module
             )
@@ -345,13 +345,13 @@ struct TransactionRecoveryActionPresentation: Equatable {
             if plan.sourceReceipts.contains(where: {
                 $0.progress == .outcomeUnknown
             }) {
-                alertTitle = String(localized: "Retain Records and Resolve?", table: "Localizable", bundle: .module)
-                buttonTitle = String(localized: "Retain Records", table: "Localizable", bundle: .module)
-                message = String(localized: "Scholium cannot prove whether the native Trash move completed. After you inspect Finder and the listed paths, this releases the deletion gate and retains every associated finished Research Record. It neither restores nor removes any file.", table: "Localizable", bundle: .module)
+                alertTitle = String(localized: "Resolve Unknown Trash Outcome?", table: "Localizable", bundle: .module)
+                buttonTitle = String(localized: "Resolve", table: "Localizable", bundle: .module)
+                message = String(localized: "Scholium cannot prove whether the native Trash move completed. After you inspect Finder and the listed paths, Resolve releases the temporary deletion gate without restoring or removing a file. Finished Research Records remain unchanged.", table: "Localizable", bundle: .module)
             } else {
-                alertTitle = String(localized: "Continue Record Cleanup?", table: "Localizable", bundle: .module)
+                alertTitle = String(localized: "Continue Trash Cleanup?", table: "Localizable", bundle: .module)
                 buttonTitle = String(localized: "Continue Cleanup", table: "Localizable", bundle: .module)
-                message = String(localized: "Scholium will resume only the persisted forward plan. Items already moved to the macOS Trash remain under Finder control. Associated finished Research Records are then deleted one by one with exact-fingerprint checks.", table: "Localizable", bundle: .module)
+                message = String(localized: "Scholium will resume only the persisted forward plan. Items already moved to the macOS Trash remain under Finder control. Affected temporary Discussions are discarded; finished Research Records and their machine evidence remain unchanged.", table: "Localizable", bundle: .module)
             }
             return
         }

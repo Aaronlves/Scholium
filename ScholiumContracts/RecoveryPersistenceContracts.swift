@@ -24,25 +24,22 @@ public struct SystemTrashDeletionSourceReceipt: Codable, Hashable, Sendable {
     }
 }
 
-/// Durable forward-only evidence for two deliberately non-atomic boundaries:
-/// native system-Trash moves first, then irreversible portable Record cleanup.
+/// Durable forward-only evidence for native system-Trash moves followed by
+/// cleanup of temporary application state that cannot outlive the source.
 public struct SystemTrashDeletionPlan: Codable, Hashable, Sendable {
     public let preview: SystemTrashDeletionPreview
     public let sourceReceipts: [SystemTrashDeletionSourceReceipt]
-    public let deletedRecordIDs: [UUID]
     public let removedDiscussionIDs: [UUID]
 
     public init(
         preview: SystemTrashDeletionPreview,
         sourceReceipts: [SystemTrashDeletionSourceReceipt]? = nil,
-        deletedRecordIDs: [UUID] = [],
         removedDiscussionIDs: [UUID] = []
     ) {
         self.preview = preview
         self.sourceReceipts = sourceReceipts ?? preview.sources.map {
             SystemTrashDeletionSourceReceipt(targetID: $0.id, progress: .pending)
         }
-        self.deletedRecordIDs = deletedRecordIDs.sorted { $0.uuidString < $1.uuidString }
         self.removedDiscussionIDs = removedDiscussionIDs.sorted { $0.uuidString < $1.uuidString }
     }
 

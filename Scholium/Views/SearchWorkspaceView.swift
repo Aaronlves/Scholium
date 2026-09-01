@@ -111,6 +111,14 @@ enum SearchStatePresentation {
             )
         case .current:
             nil
+        case .limited:
+            SearchStateBannerPresentation(
+                meaning: .unavailable,
+                title: String(localized: "Search Limited to This Vault"),
+                message: String(localized: "Showing indexed matches whose source is unchanged in this vault. New or externally changed notes appear after the Triptych finishes opening."),
+                systemImage: "magnifyingglass.circle",
+                action: nil
+            )
         case .refreshing:
             SearchStateBannerPresentation(
                 meaning: .loading,

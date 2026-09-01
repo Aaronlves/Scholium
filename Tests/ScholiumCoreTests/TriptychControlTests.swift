@@ -319,6 +319,52 @@ struct TriptychControlTests {
         #expect(loaded.settings.analysisAgentCreation.preferredFields(for: .journalArticle) == ["title", "authors"])
     }
 
+    @Test("Metadata field and controlled-choice order round-trip through portable settings")
+    func metadataDefinitionOrderPersistence() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+        let ids = Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) })
+        _ = try await store.bootstrap(vaultIDs: ids)
+
+        let initial = try await store.settings()
+        var seeded = initial.settings
+        seeded.metadataFields[.output] = [
+            MetadataFieldDefinition(
+                key: "draft_stage",
+                valueKind: .choice,
+                allowedValues: ["draft", "review"]
+            ),
+            MetadataFieldDefinition(key: "target_words", valueKind: .number),
+        ]
+        let committed = try await store.saveSettings(
+            seeded,
+            expectedRevision: initial.revision
+        )
+
+        var reordered = committed.settings
+        reordered.metadataFields[.output] = [
+            MetadataFieldDefinition(key: "target_words", valueKind: .number),
+            MetadataFieldDefinition(
+                key: "draft_stage",
+                valueKind: .choice,
+                allowedValues: ["complete", "review", "draft"]
+            ),
+        ]
+        _ = try await store.saveSettings(
+            reordered,
+            expectedRevision: committed.revision
+        )
+        let loaded = try await store.settings()
+
+        #expect(loaded.settings.metadataFields[.output]?.map(\.key) == [
+            "target_words", "draft_stage",
+        ])
+        #expect(loaded.settings.metadataFields[.output]?[1].allowedValues == [
+            "complete", "review", "draft",
+        ])
+    }
+
     @Test("Missing vault Properties entries receive role defaults")
     func propertiesConfigurationCompletesTriptych() {
         let settings = TriptychSettings(about: [

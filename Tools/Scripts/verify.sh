@@ -237,6 +237,34 @@ if rg -n --hidden \
   exit 1
 fi
 
+# System Trash owns source movement and temporary Discussion/execution cleanup.
+# Finished Research Records and their exact Agent-change evidence remain under
+# the separately confirmed permanent Record-deletion use case.
+if rg -n --glob '*.swift' --glob '*.md' \
+  '\b(SystemTrashDeletionRecordTarget|SystemTrashDeletionRecordParticipant|deletedRecordIDs|retainRecordsForUnknownOutcome)\b|--delete-associated-records|Move to Trash and Delete Records' \
+  "${ROOT}/Scholium/App" \
+  "${ROOT}/Scholium/Features" \
+  "${ROOT}/Scholium/Models" \
+  "${ROOT}/Scholium/Services" \
+  "${ROOT}/Scholium/Views" \
+  "${ROOT}/ScholiumApplication" \
+  "${ROOT}/ScholiumContracts" \
+  "${ROOT}/ScholiumCore" \
+  "${ROOT}/ScholiumCLI" \
+  "${ROOT}/UITests" \
+  "${ROOT}/README.md" \
+  "${ROOT}/README.zh-Hans.md"; then
+  echo "System Trash/Record ownership guard failed: retired cascade residue remains." >&2
+  exit 1
+fi
+
+if rg -n \
+  'deletePermanently|removeEvidence|purgeExecutions|portableRecordStore\.listing' \
+  "${ROOT}/ScholiumCore/SystemTrashDeletion.swift"; then
+  echo "System Trash/Record ownership guard failed: Trash regained finished-Record authority." >&2
+  exit 1
+fi
+
 # Note and Folder deletion has one clean system-Trash route. Prevent the
 # retired Set Aside/internal-Trash lifecycle, commands, contracts, and routed
 # specification name from becoming reachable again.

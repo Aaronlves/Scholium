@@ -222,9 +222,8 @@ public struct PortableResearchStatement: Codable, Hashable, Identifiable, Sendab
 }
 
 /// One stable Note identity and its exact starting and ending revisions during
-/// the recorded scholarly exchange. A Record never substitutes a participant
-/// tombstone for a deleted source: the whole associated Record is deleted by
-/// the confirmed system-Trash plan.
+/// the recorded scholarly exchange. Source presence is current filesystem
+/// state and never rewrites or deletes this historical participant.
 public struct PortableResearchNoteRevision: Codable, Hashable, Identifiable, Sendable {
     public let noteID: UUID
     public let note: VaultQualifiedNoteID

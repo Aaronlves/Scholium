@@ -236,6 +236,70 @@ struct TriptychSearchIndexTests {
         #expect(vault.noteResults.allSatisfy { $0.vaultID == fixture.works.id })
     }
 
+    @Test("Opening eligibility filters before result limits and has-more calculation")
+    func openingEligibilityOwnsBoundedResultSet() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let index = try TriptychSearchIndex(
+            databaseURL: fixture.databaseURL,
+            triptychID: fixture.triptychID,
+            vaults: [fixture.analyses]
+        )
+        let stableIDs = (0..<5).map { _ in UUID() }
+        let documents = (0..<5).map { number in
+            fixture.item(
+                vault: fixture.analyses,
+                path: "\(number).md",
+                source: "# Candidate \(number)\n\nshared opening term",
+                stableNoteID: stableIDs[number].uuidString.lowercased()
+            )
+        }
+        _ = try await index.synchronize(documents)
+        let eligible = Dictionary(uniqueKeysWithValues: documents.dropFirst(2).map {
+            (
+                VaultQualifiedNoteID(
+                    vaultID: $0.vaultID,
+                    relativePath: $0.relativePath
+                ),
+                SearchIndexDocumentEligibility(
+                    fingerprint: $0.document.fingerprint,
+                    resolvedStableNoteID: UUID(uuidString: $0.stableNoteID ?? "")
+                )
+            )
+        })
+
+        let limited = try await index.testSearch(
+            fixture.request(
+                "opening",
+                scope: .currentVault(fixture.analyses.id),
+                limit: 2
+            ),
+            eligibleDocuments: eligible
+        )
+        #expect(limited.noteResults.map(\.relativePath) == ["2.md", "3.md"])
+        #expect(limited.hasMore)
+
+        var mismatched = eligible
+        let finalID = VaultQualifiedNoteID(
+            vaultID: fixture.analyses.id,
+            relativePath: "4.md"
+        )
+        mismatched[finalID] = SearchIndexDocumentEligibility(
+            fingerprint: documents[4].document.fingerprint,
+            resolvedStableNoteID: UUID()
+        )
+        let exact = try await index.testSearch(
+            fixture.request(
+                "opening",
+                scope: .currentVault(fixture.analyses.id),
+                limit: 2
+            ),
+            eligibleDocuments: mismatched
+        )
+        #expect(exact.noteResults.map(\.relativePath) == ["2.md", "3.md"])
+        #expect(!exact.hasMore)
+    }
+
     @Test("Exact groups retain BM25 order and filename fallback is not a source title")
     func exactGroupRankingAndFilenameFallback() async throws {
         let fixture = try Fixture()
@@ -889,13 +953,15 @@ struct TriptychSearchIndexTests {
             path: String,
             source: String,
             broken: Bool = false,
-            metadata: NoteMetadataSnapshot? = nil
+            metadata: NoteMetadataSnapshot? = nil,
+            stableNoteID: String? = nil
         ) -> SearchIndexDocument {
             SearchIndexDocument(
                 vaultID: vault.id,
                 vaultName: vault.name,
                 vaultRole: vault.role,
                 document: NoteDocument(relativePath: path, rawContent: source),
+                stableNoteID: stableNoteID,
                 metadata: metadata,
                 hasBrokenLink: broken
             )

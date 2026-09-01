@@ -32,9 +32,9 @@ public enum TriptychSettingsValidationError: LocalizedError, Equatable, Sendable
         case .invalidMetadataFieldChoices(let role, let field):
             "The \(role.rawValue) Metadata definition \(field) has invalid controlled choices."
         case .metadataFieldIdentityChanged(let role, let field):
-            "The stable key, value kind, or order of \(role.rawValue) Metadata definition \(field) changed or the definition was removed."
+            "The stable key or value kind of \(role.rawValue) Metadata definition \(field) changed or the definition was removed."
         case .metadataFieldChoicesRemoved(let role, let field):
-            "Existing controlled choices for \(role.rawValue) Metadata definition \(field) cannot be removed or reordered."
+            "Existing controlled choices for \(role.rawValue) Metadata definition \(field) cannot be removed."
         case .noncanonicalConfigurationField(let role, let field):
             "The \(role.rawValue) Metadata Profile contains a blank, duplicate, or unnormalized field: \(field)."
         case .invalidPreferredField(let type, let key):
@@ -155,15 +155,8 @@ public enum TriptychSettingsValidator {
         for role in WorkspaceVaultSlot.allCases {
             let existing = current.metadataFields[role] ?? []
             let proposed = candidate.metadataFields[role] ?? []
-            guard proposed.count >= existing.count else {
-                throw TriptychSettingsValidationError.metadataFieldIdentityChanged(
-                    role,
-                    existing[proposed.count].key
-                )
-            }
-            for (index, prior) in existing.enumerated() {
-                let next = proposed[index]
-                guard next.key == prior.key,
+            for prior in existing {
+                guard let next = proposed.first(where: { $0.key == prior.key }),
                       next.valueKind == prior.valueKind else {
                     throw TriptychSettingsValidationError.metadataFieldIdentityChanged(
                         role,
@@ -172,8 +165,8 @@ public enum TriptychSettingsValidator {
                 }
                 if prior.valueKind == .choice {
                     let oldChoices = prior.allowedValues ?? []
-                    let newChoices = next.allowedValues ?? []
-                    guard newChoices.starts(with: oldChoices) else {
+                    let newChoices = Set(next.allowedValues ?? [])
+                    guard oldChoices.allSatisfy(newChoices.contains) else {
                         throw TriptychSettingsValidationError.metadataFieldChoicesRemoved(
                             role,
                             prior.key

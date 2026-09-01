@@ -261,12 +261,11 @@ final class WindowSearchController: ObservableObject {
             return
         } catch {
             guard self.executionID == executionID else { return }
-            let issue: SearchExecutionIssue
-            if let executionError = error as? DiscoverySearchExecutionError {
-                issue = executionError.searchIssue
+            let issue = Self.executionIssue(for: error)
+            switch issue {
+            case .unavailable:
                 dependencies.setAvailabilityStatus("Search unavailable")
-            } else {
-                issue = .failed(error.localizedDescription)
+            case .failed:
                 dependencies.setAvailabilityStatus("Search failed")
                 dependencies.reportCatalogFailure(
                     "Search refresh failed. \(error.localizedDescription)"
@@ -274,6 +273,21 @@ final class WindowSearchController: ObservableObject {
             }
             discoveryController.failPendingSearch(issue, for: state)
         }
+    }
+
+    static func executionIssue(for error: any Error) -> SearchExecutionIssue {
+        if let executionError = error as? DiscoverySearchExecutionError {
+            return executionError.searchIssue
+        }
+        if let applicationError = error as? ScholiumApplicationError,
+           case .workspaceStillLoading(_) = applicationError {
+            return .unavailable(String(
+                localized: "This Note and the currently open vault support bounded text Search while the Triptych opens. Triptych Search, Research Records, relationships, and Research Actions remain unavailable until loading finishes.",
+                table: "Localizable",
+                bundle: .module
+            ))
+        }
+        return .failed(error.localizedDescription)
     }
 
     private func refreshAfterStaleResult(_ result: SearchResult) async {

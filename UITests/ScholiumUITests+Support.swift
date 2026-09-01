@@ -1716,7 +1716,7 @@ extension ScholiumUITests {
         try FileManager.default.copyItem(at: stagedFixtures, to: triptychDirectory)
 
         if name.contains("testResearchActionsRolePointerKeyboardFocusAccessibilityAndMinimumWidth")
-            || name.contains("testResearchActionsVoiceOverSpeechOrder")
+            || name.contains("testResearchActionsVoiceOverServiceSpeechOrder")
             || name.contains("testResearchActionsRemainUsableInLightAndDarkAppearances")
             || name.contains("testLineCommentAgentReplyArchivesRecord")
             || name.contains("testCritiqueActionUsesTriptychWorkingMethodWithoutAdHocPrompting")

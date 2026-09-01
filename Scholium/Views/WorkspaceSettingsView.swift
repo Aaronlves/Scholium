@@ -952,7 +952,7 @@ private struct MetadataSettingsView: View {
     private var fieldDefinitionsSection: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             settingsSectionTitle("Managed Fields")
-            Text("Fields added here become optional Metadata fields for every Note in this role. A field key and value type are permanent. Labels and descriptions can change; archiving is reversible and preserves every stored value.")
+            Text("Fields added here become optional Metadata fields for every Note in this role. A field key and value type are permanent. Labels, descriptions, and order can change; archiving is reversible and preserves every stored value.")
                 .font(ScholiumTypography.interface(.small))
                 .scholiumForeground(.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1061,10 +1061,25 @@ private struct MetadataSettingsView: View {
             .accessibilityLabel("Description for \(definition.key)")
 
             if definition.valueKind == .choice {
-                Text((definition.allowedValues ?? []).joined(separator: " · "))
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
-                    .textSelection(.enabled)
+                ForEach(definition.allowedValues ?? [], id: \.self) { choice in
+                    HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                        Text(choice)
+                            .font(ScholiumTypography.interface(.small))
+                            .scholiumForeground(.secondaryText)
+                            .textSelection(.enabled)
+                        Spacer()
+                        Button("Move Up") {
+                            moveChoice(choice, in: definition.key, by: -1)
+                        }
+                        .disabled(!canMoveChoice(choice, in: definition.key, by: -1))
+                        .accessibilityLabel("Move \(choice) up")
+                        Button("Move Down") {
+                            moveChoice(choice, in: definition.key, by: 1)
+                        }
+                        .disabled(!canMoveChoice(choice, in: definition.key, by: 1))
+                        .accessibilityLabel("Move \(choice) down")
+                    }
+                }
                 HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                     TextField(
                         "Add Choice",
@@ -1082,6 +1097,16 @@ private struct MetadataSettingsView: View {
                     .font(ScholiumTypography.interface(.small))
                     .scholiumForeground(.secondaryText)
                 Spacer()
+                Button("Move Up") {
+                    moveField(definition.key, by: -1)
+                }
+                .disabled(!canMoveField(definition.key, by: -1))
+                .accessibilityLabel("Move \(definition.label) up")
+                Button("Move Down") {
+                    moveField(definition.key, by: 1)
+                }
+                .disabled(!canMoveField(definition.key, by: 1))
+                .accessibilityLabel("Move \(definition.label) down")
                 Button(definition.lifecycle == .active ? "Archive Field" : "Restore Field") {
                     setLifecycle(
                         definition.lifecycle == .active ? .archived : .active,
@@ -1196,6 +1221,38 @@ private struct MetadataSettingsView: View {
               let index = definitions.firstIndex(where: { $0.key == key }) else { return }
         update(&definitions[index])
         metadataFields[selectedSlot] = definitions
+    }
+
+    private func canMoveField(_ key: String, by offset: Int) -> Bool {
+        guard let definitions = metadataFields[selectedSlot],
+              let index = definitions.firstIndex(where: { $0.key == key }) else { return false }
+        return definitions.indices.contains(index + offset)
+    }
+
+    private func moveField(_ key: String, by offset: Int) {
+        guard var definitions = metadataFields[selectedSlot],
+              let source = definitions.firstIndex(where: { $0.key == key }),
+              definitions.indices.contains(source + offset) else { return }
+        let definition = definitions.remove(at: source)
+        definitions.insert(definition, at: source + offset)
+        metadataFields[selectedSlot] = definitions
+    }
+
+    private func canMoveChoice(_ choice: String, in key: String, by offset: Int) -> Bool {
+        guard let choices = definition(for: key)?.allowedValues,
+              let index = choices.firstIndex(of: choice) else { return false }
+        return choices.indices.contains(index + offset)
+    }
+
+    private func moveChoice(_ choice: String, in key: String, by offset: Int) {
+        updateDefinition(key) { definition in
+            guard var choices = definition.allowedValues,
+                  let source = choices.firstIndex(of: choice),
+                  choices.indices.contains(source + offset) else { return }
+            let moved = choices.remove(at: source)
+            choices.insert(moved, at: source + offset)
+            definition.allowedValues = choices
+        }
     }
 
     private func setLifecycle(_ lifecycle: MetadataFieldLifecycle, for key: String) {
@@ -1677,17 +1734,17 @@ private struct MetadataSettingsView: View {
             role = value; sourceType = nil; key = field
             section = .fieldDefinitions
             diagnosticReason = String(localized: "This custom Metadata field has invalid controlled choices.", table: "Localizable", bundle: .module)
-            repair = String(localized: "Provide unique nonempty choices. Existing choices can only be extended.", table: "Localizable", bundle: .module)
+            repair = String(localized: "Provide unique nonempty choices. Existing choices must remain available.", table: "Localizable", bundle: .module)
         case .metadataFieldIdentityChanged(let value, let field):
             role = value; sourceType = nil; key = field
             section = .fieldDefinitions
-            diagnosticReason = String(localized: "This custom Metadata field's stable key, value type, or position changed.", table: "Localizable", bundle: .module)
+            diagnosticReason = String(localized: "This custom Metadata field's stable key or value type changed, or the field was removed.", table: "Localizable", bundle: .module)
             repair = String(localized: "Restore its identity and use Archive Field to stop offering it.", table: "Localizable", bundle: .module)
         case .metadataFieldChoicesRemoved(let value, let field):
             role = value; sourceType = nil; key = field
             section = .fieldDefinitions
-            diagnosticReason = String(localized: "An existing controlled choice was removed or reordered.", table: "Localizable", bundle: .module)
-            repair = String(localized: "Restore the existing order; controlled choices may only be appended.", table: "Localizable", bundle: .module)
+            diagnosticReason = String(localized: "An existing controlled choice was removed.", table: "Localizable", bundle: .module)
+            repair = String(localized: "Restore every existing controlled choice. Their order may change.", table: "Localizable", bundle: .module)
         case .noncanonicalConfigurationField(let value, let field):
             role = value; sourceType = nil; key = field
             section = .configuration

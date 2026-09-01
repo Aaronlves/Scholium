@@ -49,7 +49,7 @@ extension ScholiumUITests {
         let trashSheet = app.sheets.firstMatch
         XCTAssertTrue(trashSheet.waitForExistence(timeout: 10))
         XCTAssertTrue(
-            trashSheet.buttons["Move to Trash and Delete Records"].exists
+            trashSheet.buttons["Move to Trash"].exists
         )
         trashSheet.buttons["Cancel"].click()
 
@@ -909,13 +909,13 @@ extension ScholiumUITests {
         let folderTrashSheet = app.sheets.firstMatch
         XCTAssertTrue(folderTrashSheet.waitForExistence(timeout: 5))
         let confirmFolderTrash = folderTrashSheet.buttons[
-            "Move to Trash and Delete Records"
+            "Move to Trash"
         ]
         XCTAssertTrue(confirmFolderTrash.waitForExistence(timeout: 5))
         XCTAssertTrue(folderTrashSheet.staticTexts.matching(NSPredicate(
             format: "label == %@ OR value == %@",
-            "Finder owns file restoration, but it cannot restore the finished Research Records that Scholium deletes after the file move succeeds.",
-            "Finder owns file restoration, but it cannot restore the finished Research Records that Scholium deletes after the file move succeeds."
+            "Finder owns file restoration. Finished Research Records remain available as historical provenance and can be deleted only from Research Records.",
+            "Finder owns file restoration. Finished Research Records remain available as historical provenance and can be deleted only from Research Records."
         )).firstMatch.exists)
         folderTrashSheet.buttons["Cancel"].click()
         XCTAssertTrue(FileManager.default.fileExists(atPath: renamedFolderURL.path))
@@ -1790,10 +1790,10 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func testResearchActionsVoiceOverSpeechOrder() throws {
+    func testResearchActionsVoiceOverServiceSpeechOrder() throws {
         guard ProcessInfo.processInfo.environment["SCHOLIUM_QA_ENABLE_VOICEOVER"] == "1" else {
             throw XCTSkip(
-                "Real VoiceOver traversal is an explicit acceptance journey; set SCHOLIUM_QA_ENABLE_VOICEOVER=1 to run it."
+                "VoiceOver-service automation is opt-in engineering evidence, not human acceptance; set SCHOLIUM_QA_ENABLE_VOICEOVER=1 to run it."
             )
         }
         guard #available(macOS 27.0, *) else {

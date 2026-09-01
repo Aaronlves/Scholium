@@ -644,6 +644,34 @@ struct WorkspaceRuntimeTests {
                 "Catalog Measurement \(index).md"
             ))
         }
+        let baselineRuntime = try await WorkspaceRuntime.snapshot(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )
+        let baselineHandle = try await baselineRuntime.openWorkspace(
+            id: fixture.assignment.id
+        )
+        #expect(try await baselineHandle.snapshot().discovery.searchGeneration != nil)
+        await baselineRuntime.shutdown()
+
+        let changedOpeningURL = fixture.analysesURL.appendingPathComponent(
+            fixture.analysisNoteID.relativePath
+        )
+        let changedOpeningSource = try String(
+            contentsOf: changedOpeningURL,
+            encoding: .utf8
+        ) + "\nOpening source changed after the last complete index.\n"
+        try Data(changedOpeningSource.utf8).write(to: changedOpeningURL)
+
+        let openingOnlyNoteID = VaultQualifiedNoteID(
+            vaultID: fixture.analysisNoteID.vaultID,
+            relativePath: "Opening Only.md"
+        )
+        try Data(
+            "# Opening Only\n\nopeninguniqueterm exists only after the last complete index.\n".utf8
+        ).write(to: fixture.analysesURL.appendingPathComponent(
+            openingOnlyNoteID.relativePath
+        ))
         let runtime = WorkspaceRuntime(configuration: .live(.init(
             applicationSupportURL: fixture.applicationSupportURL,
             workspaceRegistryStorageURL: fixture.registryStorageURL
@@ -674,6 +702,102 @@ struct WorkspaceRuntimeTests {
 
         let openedDocument = try await handle.documents.load(fixture.analysisNoteID)
         #expect(openedDocument.rawContent.contains("Freedom enables action"))
+        #expect(openedDocument.rawContent.contains("Opening source changed"))
+        let thisNoteResponse = try await handle.discovery.search(SearchRequest(
+            query: "freedom",
+            presentationScope: .thisNote,
+            executionScope: .currentNote(SearchSourceSnapshot(
+                noteID: fixture.analysisNoteID,
+                editorSessionID: UUID(),
+                source: openedDocument.rawContent,
+                editorRevision: 1
+            )),
+            limit: 20
+        ))
+        #expect(!thisNoteResponse.results.isEmpty)
+        #expect(thisNoteResponse.freshnessToken.rawValue.hasPrefix("note:"))
+
+        let thisVaultResponse = try await handle.discovery.search(SearchRequest(
+            query: "freedom",
+            presentationScope: .currentVault,
+            executionScope: .currentVault(fixture.analysisNoteID.vaultID),
+            limit: 20
+        ))
+        guard case .note(.limited) = thisVaultResponse.availability else {
+            Issue.record("Opening This Vault Search did not expose its limited state.")
+            await runtime.shutdown()
+            return
+        }
+        #expect(thisVaultResponse.results.isEmpty)
+        #expect(!thisVaultResponse.hasMore)
+
+        let trustedOpeningResponse = try await handle.discovery.search(SearchRequest(
+            query: "bounded",
+            presentationScope: .currentVault,
+            executionScope: .currentVault(fixture.analysisNoteID.vaultID),
+            limit: 20
+        ))
+        guard case .note(.limited) = trustedOpeningResponse.availability else {
+            Issue.record("Trusted opening Search did not retain its limited state.")
+            await runtime.shutdown()
+            return
+        }
+        #expect(!trustedOpeningResponse.results.isEmpty)
+        for result in trustedOpeningResponse.results {
+            guard case .note(let note) = result else {
+                Issue.record("Opening This Vault Search returned a non-Note result.")
+                continue
+            }
+            #expect(
+                openingEvent.snapshot.document(id: note.noteReference)?.fingerprint
+                    == note.fingerprint
+            )
+            if let indexedStableID = note.stableNoteID.flatMap(UUID.init(uuidString:)) {
+                #expect(
+                    openingEvent.snapshot.document(id: note.noteReference)?
+                        .stableIdentity.resolvedID == indexedStableID
+                )
+            }
+        }
+
+        let notYetIndexed = try await handle.discovery.search(SearchRequest(
+            query: "openinguniqueterm",
+            presentationScope: .currentVault,
+            executionScope: .currentVault(fixture.analysisNoteID.vaultID),
+            limit: 20
+        ))
+        #expect(notYetIndexed.results.isEmpty)
+        guard case .note(.limited) = notYetIndexed.availability else {
+            Issue.record("Opening-only source was not reported as outside the limited index.")
+            await runtime.shutdown()
+            return
+        }
+
+        let structuredOpening = try await handle.discovery.search(SearchRequest(
+            query: "has:broken-link",
+            presentationScope: .currentVault,
+            executionScope: .currentVault(fixture.analysisNoteID.vaultID),
+            limit: 20
+        ))
+        #expect(structuredOpening.results.isEmpty)
+        #expect(structuredOpening.diagnostics.map(\.code) == [.notApplicable])
+
+        do {
+            _ = try await handle.discovery.search(SearchRequest(
+                query: "kind:record freedom",
+                presentationScope: .currentVault,
+                executionScope: .currentVault(fixture.analysisNoteID.vaultID),
+                limit: 20
+            ))
+            Issue.record("Opening Search presented an incomplete Record corpus.")
+        } catch let error as ScholiumApplicationError {
+            guard case .workspaceStillLoading(let id) = error else {
+                Issue.record("Unexpected opening Record Search error: \(error)")
+                await runtime.shutdown()
+                return
+            }
+            #expect(id == fixture.assignment.id)
+        }
         do {
             _ = try await handle.discovery.search(SearchRequest(
                 query: "freedom",
@@ -717,7 +841,7 @@ struct WorkspaceRuntimeTests {
         #expect(completeEvent.snapshot.vaults.count == 3)
         #expect(
             completeEvent.snapshot.vaults.flatMap(\.documents).count
-                == 3 + measurementDocumentCount
+                == 4 + measurementDocumentCount
         )
         #expect(completeEvent.snapshot.discovery.searchGeneration != nil)
         #expect(completeEvent.snapshot.discovery.catalog.graph != nil)
@@ -729,6 +853,17 @@ struct WorkspaceRuntimeTests {
             limit: 20
         ))
         #expect(!response.results.isEmpty)
+        #expect(response.results.contains { result in
+            guard case .note(let note) = result else { return false }
+            return note.noteReference == fixture.analysisNoteID
+        })
+        let completedOpeningOnly = try await handle.discovery.search(SearchRequest(
+            query: "openinguniqueterm",
+            presentationScope: .triptych,
+            executionScope: .triptych,
+            limit: 20
+        ))
+        #expect(!completedOpeningOnly.results.isEmpty)
         #expect(await handle.watcherReadinessEvidence != nil)
 
         await runtime.shutdown()

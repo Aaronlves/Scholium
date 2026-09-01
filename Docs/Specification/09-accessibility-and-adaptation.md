@@ -41,9 +41,9 @@
 - Operation feedback exposes semantic type, complete message, and Dismiss or
   repair in reading order. Field-specific validation remains programmatically
   associated with its field.
-- Synthetic automation cannot establish genuine VoiceOver, Voice Control,
-  Dictation, Full Keyboard Access, installed input method, or system text
-  service acceptance.
+- Automation may inspect accessibility structure or drive a real system
+  service, but cannot establish human VoiceOver, Voice Control, Dictation, Full
+  Keyboard Access, installed input-method, or perceptual acceptance.
 
 ### Workspace, Library, and navigation
 
@@ -108,9 +108,9 @@
 - Metadata settings expose role, field definitions, applicability, About order,
   Agent preferences, dirty/save/conflict state, and exact recovery consequence.
   Invalid or conflicting drafts remain local and named.
-- Field definitions expose immutable key/kind, editable label/description,
-  choices, lifecycle, scope, and use count. Archive/Restore retain stored values
-  and change no Note automatically.
+- Field definitions expose immutable key/kind; editable label/description,
+  field/choice order, and choice addition; lifecycle, scope, and use count.
+  Archive/Restore retain stored values and change no Note automatically.
 - Metadata/About retain accessible semantic groups, field labels, contributor
   structure, source-authority distinction, and complete values at narrow width
   and enlarged text. Hover-revealed actions remain in keyboard/accessibility
@@ -173,11 +173,50 @@
 - Source deletion, permanent Record deletion, and feedback editing use distinct
   labels, confirmations, consequences, recovery, and focus restoration.
 
+### Evidence and representative human acceptance
+
+Deterministic conformance covers every declared core workflow: semantic names,
+roles, values and state; menu and keyboard reachability; focus and cancellation;
+localization; reflow; non-color meaning; and retained source, conflict and
+recovery behavior. Accessibility-tree inspection, unit/integration tests, and
+XCUITest remain automated evidence even when they drive a real system service
+or capture speech.
+
+Human acceptance is selected by independent failure mode, not by multiplying
+every workflow, state, width, appearance, adaptation and input method. Reuse one
+representative journey across several native, AppKit, SwiftUI and WebKit
+surfaces; add another only for a distinct custom interaction, input-service,
+perceptual, or high-consequence recovery boundary.
+
+Core App acceptance keeps four bounded human checks:
+
+1. one genuine VoiceOver journey through shell, Library/Search, Document mode,
+   and one persistent error or recovery surface, judging naming, grouping,
+   reading order, announcements and focus continuity;
+2. one physical Full Keyboard Access journey through menu/toolbar, Library,
+   editor, a sheet, cancellation and recovery;
+3. one installed Simplified Chinese input-method journey in Edit and Source,
+   including nondefault candidate selection, mixed-script selection, Undo,
+   save, reopen and exact-source comparison; and
+4. one representative visual-adaptation set spanning populated content and one
+   consequential error/recovery state. Across that set, exercise ordinary and
+   minimum width, Light and Dark, Increase Contrast, Reduce Transparency,
+   Reduce Motion, inactive-window treatment, enlarged interface text and 200%
+   document text at least once, without requiring their Cartesian product.
+
+Voice Control and Dictation are targeted human compatibility checks only when a
+release explicitly claims those routes or a change touches command naming,
+discoverability or text-service integration. Agent Collaboration adds one
+representative human journey across handoff, activity, Result and recovery; it
+does not repeat the matrix for every Action or lifecycle state.
+
 ### Acceptance threshold
 
 Test long English and Simplified Chinese labels, mixed content, enlarged text,
 minimum supported widths, file/error/recovery states, and native/editor focus
-transitions. Beta/1.0 require complete keyboard and VoiceOver coverage for the
-declared core and no unresolved critical or high-severity accessibility
-defects. Human acceptance is required for assistive technologies and input
-methods; additional languages and complete RTL acceptance remain deferred.
+transitions at deterministic layers. Beta/1.0 require complete keyboard and
+VoiceOver semantic/action coverage for the declared core, the bounded human
+checks above, and no unresolved critical or high-severity accessibility defects.
+Automation never becomes human acceptance; human acceptance does not require
+every covered state or adaptation combination. Additional languages and
+complete RTL acceptance remain deferred.

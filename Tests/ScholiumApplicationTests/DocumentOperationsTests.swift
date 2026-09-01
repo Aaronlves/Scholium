@@ -1299,6 +1299,21 @@ struct DocumentOperationsTests {
             try await handle.snapshot().document(id: fixture.targetID)
         )
         let stableID = try #require(projected.stableIdentity.resolvedID)
+        let finishedDiscussion = try await handle.research.createDiscussion(
+            target: ResearchActionNoteSnapshot(
+                noteID: stableID,
+                note: fixture.targetID,
+                role: .analysis,
+                fingerprint: source.fingerprint,
+                title: "Target",
+            ),
+            focalNotes: [],
+            passage: nil,
+            researcherMessage: "Retain this completed exchange as provenance."
+        )
+        let retainedRecord = try await handle.research.finishDiscussion(
+            discussionID: finishedDiscussion.id
+        )
         let discussion = try await handle.research.createDiscussion(
             target: ResearchActionNoteSnapshot(
                 noteID: stableID,
@@ -1309,7 +1324,7 @@ struct DocumentOperationsTests {
             ),
             focalNotes: [],
             passage: nil,
-            researcherMessage: "Inspect this private note."
+            researcherMessage: "Discard only this unfinished exchange."
         )
         let preview = try await handle.documents.prepareSystemTrash(
             NoteMutationTarget(
@@ -1329,6 +1344,8 @@ struct DocumentOperationsTests {
         #expect(commit.noteIDs == [stableID])
         #expect(commit.removedDiscussionIDs == [discussion.id])
         #expect(try await handle.research.activeDiscussions(noteID: stableID).isEmpty)
+        #expect(try await handle.research.finishedResearchRecords(noteID: stableID)
+            .contains { $0.id == retainedRecord.id })
         #expect(try await handle.snapshot().document(id: fixture.targetID) == nil)
         #expect(!FileManager.default.fileExists(atPath: fixture.analysesURL
             .appendingPathComponent("Target.md").path))

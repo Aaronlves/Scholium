@@ -109,8 +109,11 @@ initial count is unavailable, not zero.
 
 Live opening may make the selected vault's trustworthy Library usable before
 cross-vault projections are complete. Unavailable workspace rows remain
-disabled; one persistent progress status names remaining work. Search, Graph,
-Attention totals, Records, and Actions remain unavailable until their complete
+disabled; one persistent progress status names remaining work. Search follows
+§13's explicit opening grades: current-buffer This Note Search is exact, and
+source-fingerprint-validated This Vault lexical results may remain usable under
+a nonblocking **Limited** notice. Triptych Search, Graph, Attention totals,
+Records, relations, and Actions remain unavailable until their complete
 authoritative generation exists. Completion must not replace usable Library
 content or move focus.
 

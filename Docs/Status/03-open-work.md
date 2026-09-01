@@ -4,43 +4,49 @@
 
 ## Interface and accessibility acceptance
 
-- Complete researcher visual acceptance for representative populated, empty,
-  loading, unavailable, error, conflict, and recovery states at ordinary and
-  minimum widths in Light and Dark.
-- Exercise genuine VoiceOver, physical Full Keyboard Access, Voice Control,
-  Dictation, installed CJK input methods, 200% interface text, Increase
-  Contrast, Reduce Transparency, Reduce Motion, inactive windows, and complete
-  English and Simplified Chinese localization.
+- Complete deterministic accessibility conformance for every Core App workflow:
+  semantic state, menu/keyboard reachability, focus, cancellation, recovery,
+  English/Simplified Chinese localization, non-color meaning, reflow, and exact
+  source preservation. Existing automated journeys remain engineering evidence,
+  not human acceptance.
+- Complete §20's four bounded Core App human checks: one representative genuine
+  VoiceOver journey; one physical Full Keyboard Access journey; one installed
+  Simplified Chinese IME exact-source journey; and one visual-adaptation set.
+  The visual set distributes ordinary/minimum width, Light/Dark, Increase
+  Contrast, Reduce Transparency, Reduce Motion, inactive-window treatment,
+  enlarged interface text, and 200% document text across representative
+  populated and consequential error/recovery states rather than crossing every
+  combination.
+- Run Voice Control or Dictation human compatibility only when a named release
+  claims that route or a change touches command discoverability or text-service
+  integration. Do not keep them as unconditional per-feature release rows.
 - Recheck fullscreen, native Sidebar/Inspector collapse and restoration,
   scenes, Dock/New Window behavior, last-tab closure, auxiliary windows, and
   focus restoration after system-Trash and recovery operations.
 - Complete disposable and then human Finder acceptance for Note and Folder
   Trash naming/collisions, separately moved Critiques, multi-window dirty peers,
   File Provider/sync races, original-path reappearance, system Trash emptying,
-  process interruption at every receipt boundary, and Finder restoration after
-  Record cleanup. Focused tests do not establish these Finder and multi-window
-  usability outcomes.
+  process interruption at every receipt boundary, and Finder restoration while
+  retained Records remain queryable. Focused tests do not establish these
+  Finder and multi-window usability outcomes.
 - Complete direct acceptance for long Connect clusters, Attention queue sizes,
   folder dragging, Library shortcuts, Research Records at regular/minimum width,
   and Action/Discussion cancellation and recovery.
-- Complete direct keyboard, VoiceOver, English and Simplified Chinese,
-  ordinary/minimum-width, and conflict acceptance for Metadata custom-field
-  definition, per-type optional Agent preferences, About selection/order,
-  stable-key/lifecycle explanation, controlled choices, Archive/Restore use
-  counts, Complete Metadata chooser,
-  CreatorList editor, first-record creation, removal/Undo, and Source routes for
-  authored `summary` and `keywords`.
-- Complete direct keyboard, VoiceOver, unavailable-Zotero, empty/no-result,
-  same-key multi-library, proposed-fill, retained-conflict, changed-server/item,
-  source/binding/Metadata revision, partial-commit, set, rebind,
-  bound-item fill/update/no-change refresh, confirmed-clear, enlarged-text, and
-  minimum-width acceptance for the Analysis Overview Zotero Link and Fill
-  sheet.
-- Complete direct keyboard, VoiceOver, Full Keyboard Access, relaunch, menu
-  update, conflict, reserved-shortcut, clear/default, Settings-search, and
-  minimum-width acceptance for the grouped Settings navigation and Hotkey
-  recorder. Complete visual acceptance for Appearance disclosures and unsaved-
-  draft profile switching in Light, Dark, Increase Contrast, and enlarged text.
+- Close remaining deterministic Metadata coverage for custom definitions,
+  optional Agent preferences, About order, lifecycle/use counts, controlled
+  choices, Complete Metadata, CreatorList, first-record creation, removal/Undo,
+  conflict and authored `summary`/`keywords` Source routes. Add a separate human
+  journey only if a custom boundary is not exercised by §20's representative
+  VoiceOver, keyboard or adaptation checks.
+- Close remaining deterministic Zotero Link/Fill coverage for unavailable,
+  empty/no-result, library identity, proposed fill, retained conflict, changed
+  item/server, revision, partial commit, set/rebind/refresh and confirmed clear.
+  Reuse the representative human checks instead of repeating every state at
+  every width and adaptation.
+- Close remaining deterministic grouped Settings, Hotkey and Appearance
+  coverage for relaunch, menu update, conflict, reserved shortcut, clear/default,
+  search, unsaved-draft switching, narrow reflow and enlarged text. Human visual
+  judgment belongs to the one §20 adaptation set.
 
 ## Agent collaboration and research quality
 
@@ -66,26 +72,32 @@
   academic adequacy. Keep analyst-supplied
   illustrations explicit and make recommendation locators cover every source
   role claimed in their rationale without hard-coding one paper's content.
-- Complete human accessibility and enlarged mixed-script acceptance for
-  handoff, activity tracking, results, evaluation, continuation, and recovery.
+- Complete one Agent Collaboration human accessibility journey across handoff,
+  activity tracking, Result and recovery, with enlarged mixed-script content.
+  Deterministic coverage retains evaluation and continuation semantics; do not
+  repeat the human matrix for every Action or lifecycle state.
 
 ## Editor input and semantics
 
-- Recheck physical English and installed Chinese IME across Review, Edit, and
-  Source, including composition, mixed-script cursor/selection, selection
-  replacement, Undo, autosave, mode switching, window inactivity, conflict, and
-  recovery.
+- Complete §20's installed Simplified Chinese IME journey in Edit and Source,
+  including nondefault candidate selection, mixed-script cursor/selection,
+  selection replacement, Undo, autosave, mode switching, reopen and exact-source
+  comparison. Deterministic tests continue to cover inactivity, conflict and
+  recovery without requiring each branch in the human journey.
 - Exercise pointer and keyboard behavior for construct-scoped syntax, completed-
   selection toolbar timing, context menus, Callouts, footnotes, lists, tables,
   suggestions, previews, and source-return navigation.
-- Complete direct keyboard, VoiceOver, relaunch, missing-path, and
-  cleanup acceptance for image Import, pasted-image Import, absolute-path
-  Index, and indexed-attachment reminders. Focused tests prove the typed
-  transactions and path/bookmark boundaries but are not human acceptance.
-- Run the complete Editor latency, correctness, and retained-memory series on
-  the exact clean tagged packaged artifact. Focused scenario measurements remain
-  in Verification and do not satisfy G7. Extend shared source-range fixtures
-  before changing parser or syntax rules.
+- Complete deterministic keyboard, semantic, relaunch, missing-path and cleanup
+  coverage for image Import, pasted-image Import, absolute-path Index and
+  indexed-attachment reminders. Focused tests prove typed transactions and
+  path/bookmark boundaries but not human acceptance; add no separate human row
+  unless an independent custom interaction remains outside §20's core journeys.
+- Complete the Editor latency, correctness, and retained-memory campaign on the
+  exact clean tagged packaged artifact. A full report or provenance-matched
+  focused series may close the campaign; each planned series must pass, while a
+  focused report alone remains Incomplete. Focused scenario measurements in
+  Verification do not satisfy G7. Extend shared source-range fixtures before
+  changing parser or syntax rules.
 - Repeat the direct-to-Edit QA journey with and without a `summary`/`keywords`
   value after the isolated fixture reaches a usable document surface. The
   2026-08-23 custom-Metadata/fixed-YAML journey compiled, but its run stopped
@@ -102,12 +114,15 @@
   completion before deciding whether Note-identity completion is also needed.
   Keep Explain Query compact only if its complete fields remain keyboard and
   VoiceOver reachable.
-- Complete GUI first-paint, pointer, ranking, CJK IME, VoiceOver, Voice Control,
-  Dictation, visual, and research-use acceptance for Note and Record Search.
-- Freeze the exact source, artifact, and fixture, then rerun every approved G7
-  series from one reviewed, committed, exactly tagged package on the cooled
-  reference machine. Working-tree and scenario evidence is not release
-  acceptance.
+- Complete GUI first-paint, pointer, ranking, deterministic accessibility and
+  research-use acceptance for Note and Record Search. The representative Core
+  VoiceOver/keyboard journey crosses Search once; CJK IME belongs to its editor
+  journey, while Voice Control and Dictation follow §20's change-triggered rule.
+- Freeze the exact source, artifact, fixture, driver, and reference-machine
+  configuration, then complete the bounded G7 sampling plan. Preserve already
+  complete matching series when replacing a recorded invalid series; do not
+  replace a valid threshold failure by changing the plan after inspection.
+  Working-tree and scenario evidence is not release acceptance.
 
 ## Source coordination, recovery, and external locators
 
@@ -116,8 +131,10 @@
   packaged-process interruption. Prove silent Saved only after exact canonical
   readback, Conflict on revision change, Autosave Failed on unproven commit,
   and retained editor bytes in both exceptional outcomes.
-- Recheck conflict focus, direct Record Undo, retained interrupted candidates,
-  and recovery with assistive technology. Finder
+- Recheck conflict focus, direct Record Undo and retained interrupted candidates
+  deterministically. Include one high-consequence conflict or recovery route in
+  §20's representative VoiceOver/keyboard checks rather than repeating every
+  recovery branch with assistive technology. Finder
   metadata, ACL/xattr identity, parent-directory synchronization, and cleanup
   completion are not save-success acceptance criteria.
 - Verify packaged reopen after an external Skill folder or Analyze source
@@ -128,13 +145,17 @@
 
 ## Distribution and release
 
-- Exercise the exact mounted DMG, copied App, and expanded CLI archive in a
-  clean external account through setup, read/edit/autosave/restart, Search,
-  conflict/recovery, Inspector, Agent Action, independent CLI download/install,
-  CLI self-update, unavailable integrations, and restoration.
+- Complete the Core App profile by exercising the exact mounted DMG and copied
+  App in a clean external account through setup, read/edit/autosave/restart,
+  Search, conflict/recovery, Inspector, unavailable optional integrations, and
+  restoration.
+- Separately complete the Agent Collaboration profile with the expanded CLI
+  archive, independent download/install, CLI self-update, Agent Action, Session,
+  Context, write/recovery, Result, and unavailable-Agent journeys.
 - Inspect the canonical icon in Finder, Dock, small sizes, Light/Dark, and the
   packaged application.
-- Close current packaged performance, remaining distribution-integrity, Agent
-  field trials, and final researcher release acceptance. The Beta-release
-  waivers recorded through `v0.1.0-beta.10` did not convert them into passed
-  evidence.
+- Close current packaged performance, remaining Core App distribution
+  integrity, and final researcher Core App acceptance. Agent field trials and
+  collaboration acceptance remain separate and cannot block the Core App
+  profile. The Beta-release waivers recorded through `v0.1.0-beta.10` did not
+  convert either profile's missing evidence into a pass.

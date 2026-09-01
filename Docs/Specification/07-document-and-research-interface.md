@@ -226,8 +226,9 @@ or saved-with-warning state.
 Recovery candidates use one native Recovery surface with exact source,
 relationship to canonical source, Copy, Reveal, and Restore only when the
 recorded revision permits it. System-Trash recovery is visibly distinct and
-offers only safe forward cleanup or **Retain Records and Resolve**. Source
-Trash and permanent Record deletion retain separate names and confirmations.
+offers only safe forward cleanup or **Resolve** after an unknown native
+outcome. Source Trash and permanent Record deletion retain separate names and
+confirmations; System Trash never deletes a finished Record.
 
 ## 18.7 Simplified Chinese terminology and translation boundary
 

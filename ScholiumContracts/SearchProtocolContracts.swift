@@ -272,6 +272,9 @@ public enum SearchAvailability: Codable, Hashable, Sendable {
     case unavailable
     case building(SearchBuildProgress)
     case current(SearchGenerationID)
+    /// A source-validated subset from the last complete compatible index is
+    /// usable while the wider authoritative workspace is still opening.
+    case limited(lastGood: SearchGenerationID)
     case refreshing(lastGood: SearchGenerationID)
     case stale(lastGood: SearchGenerationID, reason: String)
     case failed(lastGood: SearchGenerationID?, reason: String)
@@ -279,6 +282,7 @@ public enum SearchAvailability: Codable, Hashable, Sendable {
     public var lastGoodGeneration: SearchGenerationID? {
         switch self {
         case .current(let generation): generation
+        case .limited(let generation): generation
         case .refreshing(let generation): generation
         case .stale(let generation, _): generation
         case .failed(let generation, _): generation

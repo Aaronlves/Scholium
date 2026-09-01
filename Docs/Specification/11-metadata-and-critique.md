@@ -94,8 +94,9 @@ One revision-checked `settings.json` stores managed-field definitions, About
 profiles, and Analysis Agent preferences. A custom field uses a lowercase
 snake-case key and text, multiline text, text list, number, boolean, source-safe
 date, or controlled-choice shape. It cannot shadow built-in or authored YAML.
-Key, value kind, and order are immutable; label/description may change and
-choices may only be appended.
+Key and value kind are immutable. Label, description, field order, and
+controlled-choice order may change. Existing choices cannot be removed; new
+choices may be inserted at any position.
 
 Archive/Restore preserves stored values and Search/editing validation while
 removing the field from new-value, About-selection, and Agent-preference

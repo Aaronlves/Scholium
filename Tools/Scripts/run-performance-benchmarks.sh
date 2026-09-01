@@ -7,8 +7,9 @@ MODE=scenario_only
 APP=""
 FIXTURE=""
 OUTPUT=""
-WARMUPS=0
-SAMPLES=1
+WARMUPS=""
+SAMPLES=""
+MEMORY_TRANSITIONS=""
 RELAUNCH_COOLDOWN_MS=0
 METRIC_COOLDOWN_SECONDS=0
 MEMORY_WATCH_PID=""
@@ -20,17 +21,17 @@ usage() {
 Usage:
   run-performance-benchmarks.sh --app APP --fixture RDF1 --output DIR [--scenario]
   run-performance-benchmarks.sh --app APP --fixture RDF1 --output DIR --scenario --metric NAME
-  run-performance-benchmarks.sh --app APP --fixture RDF1 --output DIR --scenario --metric first_read_activation --warmups 5 --samples 30
-  run-performance-benchmarks.sh --app APP --fixture RDF1 --output DIR --scenario --metric first_edit_activation --warmups 5 --samples 30
-  run-performance-benchmarks.sh --app APP --fixture RDF1 --output DIR --gate --prepared-driver DIR
+  run-performance-benchmarks.sh --app APP --fixture RDF1 --output DIR --gate --prepared-driver DIR [--metric NAME]
 
 Scenario mode defaults to 0 warm-ups and 1 retained sample per metric and is
-bounded to at most 3 + 10, except for fixed 5 + 30 first-use Review or Edit
-diagnostics. Those exceptions remain scenario-only evidence.
-Gate mode is fixed at 5 + 30, batches warm Search and Read inside one process,
-cools between cold relaunches and metrics, and never compiles after the
-prepared-driver boundary. It additionally requires a clean exact-tag checkout,
-matching packaged and driver provenance, and
+bounded to at most 3 + 10. Gate mode defaults to a predeclared 3 + 20 latency
+plan and 40 retained-memory transitions. A gate invocation may choose 2...5
+warm-ups, 20...50 retained latency samples, and 30...60 memory transitions
+before capture. A focused gate invocation emits one eligible series but cannot
+by itself pass G7. Gate mode batches warm Search and Read inside one process,
+cools between cold relaunches and metrics, and never compiles after the prepared-
+driver boundary. It additionally requires a clean exact-tag checkout, matching
+packaged and driver provenance, and
 SCHOLIUM_RELEASE_OWNER_APPROVED_THRESHOLDS=1.
 EOF
 }
@@ -43,14 +44,13 @@ while (( $# > 0 )); do
     --scenario) MODE=scenario_only; shift ;;
     --gate)
       MODE=product_gate
-      WARMUPS=5
-      SAMPLES=30
       RELAUNCH_COOLDOWN_MS=1500
       METRIC_COOLDOWN_SECONDS=15
       shift
       ;;
     --warmups) WARMUPS="$2"; shift 2 ;;
     --samples) SAMPLES="$2"; shift 2 ;;
+    --memory-transitions) MEMORY_TRANSITIONS="$2"; shift 2 ;;
     --metric) ONLY_METRIC="$2"; shift 2 ;;
     --prepared-driver) PREPARED_DRIVER="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -62,27 +62,35 @@ done
   usage >&2
   exit 64
 }
+if [[ -z "${WARMUPS}" ]]; then
+  WARMUPS=$([[ "${MODE}" == product_gate ]] && print 3 || print 0)
+fi
+if [[ -z "${SAMPLES}" ]]; then
+  SAMPLES=$([[ "${MODE}" == product_gate ]] && print 20 || print 1)
+fi
+if [[ -z "${MEMORY_TRANSITIONS}" ]]; then
+  MEMORY_TRANSITIONS=$([[ "${MODE}" == product_gate ]] && print 40 || print 20)
+fi
 [[ "${WARMUPS}" == <-> && "${SAMPLES}" == <-> && "${SAMPLES}" -gt 0 ]] || {
   print -u2 "Warm-ups must be nonnegative and samples must be positive integers."
   exit 64
 }
-IS_FIRST_USE_FULL_SCENARIO=0
+[[ "${MEMORY_TRANSITIONS}" == <-> && "${MEMORY_TRANSITIONS}" -gt 0 ]] || {
+  print -u2 "Memory transitions must be a positive integer."
+  exit 64
+}
 if [[ "${MODE}" == scenario_only
-      && ( "${ONLY_METRIC}" == first_read_activation
-        || "${ONLY_METRIC}" == first_edit_activation )
-      && "${WARMUPS}" == 5
-      && "${SAMPLES}" == 30 ]]; then
-  IS_FIRST_USE_FULL_SCENARIO=1
-  RELAUNCH_COOLDOWN_MS=1500
-fi
-if [[ "${MODE}" == scenario_only
-      && "${IS_FIRST_USE_FULL_SCENARIO}" != 1
-      && ( "${WARMUPS}" -gt 3 || "${SAMPLES}" -gt 10 ) ]]; then
-  print -u2 "A scenario run is limited to 3 warm-ups and 10 retained samples."
+      && ( "${WARMUPS}" -gt 3 || "${SAMPLES}" -gt 10
+        || "${MEMORY_TRANSITIONS}" -gt 60 ) ]]; then
+  print -u2 "A scenario run is limited to 3 warm-ups, 10 retained samples, and 60 memory transitions."
   exit 64
 fi
-if [[ "${MODE}" == product_gate && ( "${WARMUPS}" != 5 || "${SAMPLES}" != 30 ) ]]; then
-  print -u2 "A product gate is fixed at 5 warm-ups and 30 retained samples."
+if [[ "${MODE}" == product_gate
+      && ( "${WARMUPS}" -lt 2 || "${WARMUPS}" -gt 5
+        || "${SAMPLES}" -lt 20 || "${SAMPLES}" -gt 50
+        || "${MEMORY_TRANSITIONS}" -lt 30
+        || "${MEMORY_TRANSITIONS}" -gt 60 ) ]]; then
+  print -u2 "A product-gate plan requires 2...5 warm-ups, 20...50 retained latency samples, and 30...60 memory transitions."
   exit 64
 fi
 if [[ "${MODE}" == product_gate && -z "${PREPARED_DRIVER}" ]]; then
@@ -103,10 +111,6 @@ LATENCY_METRICS=(
 )
 RUN_MEMORY=1
 if [[ -n "${ONLY_METRIC}" ]]; then
-  [[ "${MODE}" == scenario_only ]] || {
-    print -u2 "A focused metric is available only in scenario mode."
-    exit 64
-  }
   case "${ONLY_METRIC}" in
     warm_library_launch|indexed_search|warm_read_activation|first_read_activation|editor_key_to_paint|editor_mode_transition|editor_cached_preview|warm_edit_activation|first_edit_activation|editor_visible_projection)
       LATENCY_METRICS=("${ONLY_METRIC}")
@@ -124,6 +128,10 @@ fi
 SUMMARY_METRICS=("${LATENCY_METRICS[@]}")
 if (( RUN_MEMORY )); then
   SUMMARY_METRICS+=(editor_retained_memory)
+fi
+FULL_GATE_RUN=0
+if [[ "${MODE}" == product_gate && -z "${ONLY_METRIC}" ]]; then
+  FULL_GATE_RUN=1
 fi
 
 APP="${APP:P}"
@@ -396,13 +404,14 @@ set_test_environment "${memory_run_file}" SCHOLIUM_PERFORMANCE_MEMORY_PROGRESS_P
   "${memory_progress}"
 set_test_environment "${memory_run_file}" SCHOLIUM_PERFORMANCE_MEMORY_ACKNOWLEDGMENT_PATH \
   "${memory_acknowledgment}"
-set_test_environment "${memory_run_file}" SCHOLIUM_PERFORMANCE_MEMORY_TRANSITIONS 50
+set_test_environment "${memory_run_file}" SCHOLIUM_PERFORMANCE_MEMORY_TRANSITIONS \
+  "${MEMORY_TRANSITIONS}"
 python3 "${ROOT}/Tools/Scripts/sample-app-process-memory.py" \
   --app "${APP}" \
   --watch-progress "${memory_progress}" \
   --acknowledgment "${memory_acknowledgment}" \
   --output "${memory_results}" \
-  --samples 51 \
+  --samples "$((MEMORY_TRANSITIONS + 1))" \
   --timeout-seconds 900 \
   >"${SCRATCH}/editor-retained-memory-sampler.log" 2>&1 &
 MEMORY_WATCH_PID=$!
@@ -429,7 +438,7 @@ MEMORY_WATCH_PID=""
 cp "${memory_results}" "${RAW}/editor_retained_memory.jsonl"
 fi
 
-if [[ "${MODE}" == product_gate ]]; then
+if [[ "${MODE}" == product_gate && "${FULL_GATE_RUN}" == 1 ]]; then
 cjk_results="${RAW}/editor_large_cjk_correctness.jsonl"
 cjk_driver_results="${APP_RESULT_ROOT}/editor_large_cjk_correctness.jsonl"
 cjk_home="${APP_SCRATCH}/home-editor-large-cjk-correctness"
@@ -470,6 +479,7 @@ python3 "${ROOT}/Tools/Scripts/summarize-performance-results.py" \
   --run-id "${RUN_ID}" \
   --warmups "${WARMUPS}" \
   --samples "${SAMPLES}" \
+  --memory-transitions "${MEMORY_TRANSITIONS}" \
   --evidence-class "${MODE}" \
   --metrics "${SUMMARY_METRICS[@]}"
 

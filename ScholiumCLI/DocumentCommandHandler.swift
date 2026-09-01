@@ -217,7 +217,6 @@ extension ScholiumCLI {
             writeMutationWarnings(outcome)
         case "move-to-trash":
             guard arguments.count >= 2,
-                  arguments.contains("--delete-associated-records"),
                   let expected = option("--expected", in: arguments) else {
                 throw commandUsageError("note move-to-trash")
             }
@@ -244,7 +243,7 @@ extension ScholiumCLI {
             )
             let outcome = try await handle.documents.moveToSystemTrash(preview)
             write(
-                "Moved \(vault.name):\(path) to the macOS Trash. Deleted \(outcome.committedValue.deletedRecordIDs.count) associated finished Research Record(s); Finder owns file restoration.\n"
+                "Moved \(vault.name):\(path) to the macOS Trash. Finished Research Records remain unchanged; Finder owns file restoration.\n"
             )
             writeMutationWarnings(outcome)
         default:

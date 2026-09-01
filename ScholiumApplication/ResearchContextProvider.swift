@@ -1040,6 +1040,7 @@ struct FoundationResearchContextProvider: ResearchContextProviding {
         case .note(let value):
             switch value {
             case .current: .current
+            case .limited: .partial
             case .refreshing: .partial
             case .stale: .stale
             case .failed(let lastGood, _): lastGood == nil ? .unavailable : .stale

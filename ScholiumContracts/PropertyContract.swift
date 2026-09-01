@@ -664,7 +664,8 @@ public struct NoteMetadataCatalog: Codable, Hashable, Sendable {
     }
 
     /// Built-in Analysis fields retain source-type profile order. Custom
-    /// fields are globally applicable and follow in definition order.
+    /// fields are globally applicable and follow researcher-controlled
+    /// definition order.
     public func analysisContracts(
         for sourceType: AnalysisSourceType
     ) -> [PropertyContract] {

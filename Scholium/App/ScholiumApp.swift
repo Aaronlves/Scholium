@@ -6094,13 +6094,22 @@ final class WindowModel: ObservableObject {
                 )
             }
             let discovery = try? await discoveryController.discoverySnapshot()
+            let cached = workspaceProjectionController.cachedNote(
+                vaultID: note.vaultID,
+                stableNoteID: note.stableNoteID.flatMap(UUID.init(uuidString:)),
+                relativePath: note.relativePath
+            )
+            let freshness = discovery?.searchGeneration.map(
+                SearchFreshnessToken.triptych
+            ) ?? (
+                workspaceProjectionController.snapshotPhase?.isComplete == false
+                    && cached?.fingerprint == note.fingerprint
+                    ? note.freshnessToken
+                    : nil
+            )
             return WindowSearchResultEvidence(
-                freshness: discovery?.searchGeneration.map(SearchFreshnessToken.triptych),
-                fingerprint: workspaceProjectionController.cachedNote(
-                    vaultID: note.vaultID,
-                    stableNoteID: note.stableNoteID.flatMap(UUID.init(uuidString:)),
-                    relativePath: note.relativePath
-                )?.fingerprint
+                freshness: freshness,
+                fingerprint: cached?.fingerprint
             )
         case .record(let record):
             guard let snapshot = try? await researchController.researchSnapshot(),

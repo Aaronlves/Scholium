@@ -3859,12 +3859,12 @@
         }
       }
     },
-    "An existing controlled choice was removed or reordered." : {
+    "An existing controlled choice was removed." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已有的受控选项被移除或重新排序。"
+            "value" : "已有的受控选项被移除。"
           }
         }
       }
@@ -8923,6 +8923,16 @@
         }
       }
     },
+    "Continue Trash Cleanup?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "继续纸篓清理？"
+          }
+        }
+      }
+    },
     "Continue the current Discussion." : {
       "localizations" : {
         "zh-Hans" : {
@@ -13014,16 +13024,6 @@
         }
       }
     },
-    "Existing custom Metadata definitions cannot be renamed, reordered, or removed." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "现有自定义元数据定义不能重命名、重新排序或移除。"
-          }
-        }
-      }
-    },
     "Expand %@" : {
       "localizations" : {
         "en" : {
@@ -13457,12 +13457,12 @@
         }
       }
     },
-    "Fields added here become optional Metadata fields for every Note in this role. A field key and value type are permanent. Labels and descriptions can change; archiving is reversible and preserves every stored value." : {
+    "Fields added here become optional Metadata fields for every Note in this role. A field key and value type are permanent. Labels, descriptions, and order can change; archiving is reversible and preserves every stored value." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此处添加的字段会成为该角色下每篇笔记的可选元数据字段。字段键和值类型不可更改。标签和说明可以修改；归档可撤销，并会保留所有已存储的值。"
+            "value" : "此处添加的字段会成为该角色下每篇笔记的可选元数据字段。字段键和值类型不可更改。标签、说明和顺序可以修改；归档可撤销，并会保留所有已存储的值。"
           }
         }
       }
@@ -13653,6 +13653,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Finder 负责恢复文件，但无法恢复 Scholium 在文件移动成功后删除的已完成研究记录。"
+          }
+        }
+      }
+    },
+    "Finder owns file restoration. Finished Research Records remain available as historical provenance and can be deleted only from Research Records." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Finder 负责恢复文件。已完成的研究记录继续作为历史 provenance 保留，只能从“研究记录”中删除。"
           }
         }
       }
@@ -14869,6 +14879,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "身份恢复失败。%arg"
+          }
+        }
+      }
+    },
+    "If temporary cleanup fails after Finder accepts the items, Scholium keeps a recovery plan. External file deletion only refreshes the workspace and never deletes Research Records or Discussions." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如果 Finder 接受项目后临时清理失败，Scholium 会保留恢复计划。外部文件删除只会刷新工作区，绝不会删除研究记录或讨论。"
           }
         }
       }
@@ -18599,6 +18619,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在移动精确来源并执行已确认的研究记录清理…"
+          }
+        }
+      }
+    },
+    "Moving items to Trash…" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在将项目移至纸篓…"
           }
         }
       }
@@ -23550,12 +23580,12 @@
         }
       }
     },
-    "Provide unique nonempty choices. Existing choices can only be extended." : {
+    "Provide unique nonempty choices. Existing choices must remain available." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "请提供不重复的非空选项。已有选项只能扩充。"
+            "value" : "请提供不重复的非空选项。必须保留所有已有选项。"
           }
         }
       }
@@ -26681,6 +26711,16 @@
         }
       }
     },
+    "Resolve Unknown Trash Outcome?" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "解决未知的纸篓结果？"
+          }
+        }
+      }
+    },
     "Resolve the current save status before marking this Note reviewed." : {
       "localizations" : {
         "zh-Hans" : {
@@ -27126,12 +27166,12 @@
         }
       }
     },
-    "Restore the existing order; controlled choices may only be appended." : {
+    "Restore every existing controlled choice. Their order may change." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "恢复已有顺序；受控选项只能追加。"
+            "value" : "恢复所有已有的受控选项；它们的顺序可以更改。"
           }
         }
       }
@@ -29008,6 +29048,16 @@
         }
       }
     },
+    "Scholium cannot prove whether the native Trash move completed. After you inspect Finder and the listed paths, Resolve releases the temporary deletion gate without restoring or removing a file. Finished Research Records remain unchanged." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 无法证明原生纸篓移动是否完成。检查 Finder 和列出的路径后，选择“解决”会解除临时删除锁，但不会恢复或移除任何文件。已完成的研究记录保持不变。"
+          }
+        }
+      }
+    },
     "Scholium cannot prove whether the native Trash move completed. After you inspect Finder and the listed paths, this releases the deletion gate and retains every associated finished Research Record. It neither restores nor removes any file." : {
       "localizations" : {
         "zh-Hans" : {
@@ -29759,12 +29809,32 @@
         }
       }
     },
+    "Scholium will resume only the persisted forward plan. Items already moved to the macOS Trash remain under Finder control. Affected temporary Discussions are discarded; finished Research Records and their machine evidence remain unchanged." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 只会继续已持久化的前向计划。已移至 macOS 纸篓的项目仍由 Finder 管理。受影响的临时讨论会被丢弃；已完成的研究记录及其机器证据保持不变。"
+          }
+        }
+      }
+    },
     "Scholium will resume only the persisted forward plan. Items already moved to the macOS Trash remain under Finder control. Associated finished Research Records are then deleted one by one with exact-fingerprint checks." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scholium 只会继续已持久化的前向计划。已移至 macOS 纸篓的项目继续由 Finder 控制；随后将通过精确指纹核对逐一删除关联的已完成研究记录。"
+          }
+        }
+      }
+    },
+    "Scholium will resume only the persisted forward plan. Items already moved to the macOS Trash remain under Finder control. Temporary Discussions and completed local execution state are cleaned up; finished Research Records remain unchanged." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scholium 只会继续已持久化的前向计划。已移至 macOS 纸篓的项目仍由 Finder 管理。临时讨论和已完成的本地执行状态会被清理；已完成的研究记录保持不变。"
           }
         }
       }
@@ -29976,6 +30046,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "搜索问题"
+          }
+        }
+      }
+    },
+    "Search Limited to This Vault" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索仅限此资料库"
           }
         }
       }
@@ -31114,6 +31194,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在“推荐”中显示此条目"
+          }
+        }
+      }
+    },
+    "Showing indexed matches whose source is unchanged in this vault. New or externally changed notes appear after the Triptych finishes opening." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在显示此资料库中源码未发生变化的索引匹配项。三联体完成打开后，新建或由外部更改的笔记才会出现。"
           }
         }
       }
@@ -32368,6 +32458,16 @@
         }
       }
     },
+    "System Trash Cleanup" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "系统纸篓清理"
+          }
+        }
+      }
+    },
     "System Trash and Record Cleanup" : {
       "localizations" : {
         "zh-Hans" : {
@@ -32634,6 +32734,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "模板"
+          }
+        }
+      }
+    },
+    "Temporary Application State" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "临时应用状态"
           }
         }
       }
@@ -34425,6 +34535,16 @@
         }
       }
     },
+    "This Note and the currently open vault support bounded text Search while the Triptych opens. Triptych Search, Research Records, relationships, and Research Actions remain unavailable until loading finishes." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "三联体打开期间，此笔记和当前打开的资料库支持有限的文本搜索。加载完成前，三联体搜索、研究记录、关系和研究操作仍不可用。"
+          }
+        }
+      }
+    },
     "This Note — %@" : {
       "localizations" : {
         "zh-Hans" : {
@@ -34663,12 +34783,12 @@
         }
       }
     },
-    "This custom Metadata field's stable key, value type, or position changed." : {
+    "This custom Metadata field's stable key or value type changed, or the field was removed." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此自定义元数据字段的稳定键、值类型或位置已改变。"
+            "value" : "此自定义元数据字段的稳定键或值类型已改变，或该字段已被移除。"
           }
         }
       }

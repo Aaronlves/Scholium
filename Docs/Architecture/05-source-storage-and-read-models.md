@@ -85,7 +85,7 @@ that pair to the Triptych, exact starting bytes/fingerprint, and optional final 
 bytes/fingerprint. It enforces the Run Activity Ledger source-size limit,
 descriptor-safe storage, atomic replacement, and cross-process locking. It is
 not queried as history, cannot reconstruct source authority, and is consumed
-only by exact Record comparison, direct Undo, and post-Record system-Trash
+only by exact Record comparison, direct Undo, and explicit permanent Record
 cleanup.
 
 `SecureRecordDirectory` is the Core-only descriptor-relative primitive for
@@ -98,14 +98,15 @@ own schema, path, transaction, recovery, and error semantics, and translate
 primitive failures at that owner boundary. The primitive neither interprets a
 Record nor becomes a writable research-source authority.
 
-## System Trash and Record cleanup boundary
+## System Trash and temporary cleanup boundary
 
 `NoteSystemTrashDeletionCoordinator` is the Core owner for one confirmed
-source-and-Record cutover. `prepareNote` and `prepareFolder` bind exact source,
-stable identities, revisions, complete directory manifests, managed Critiques,
-active Discussions, and finished Record byte fingerprints into one immutable
-preview. `WorkspaceHandle` holds the source-mutation lease and flushes every
-Triptych editor before both preparation and execution. System Trash reads the
+source-and-temporary-state cutover. `prepareNote` and `prepareFolder` bind exact
+source, stable identities, revisions, complete directory manifests, managed
+Critiques, and active Discussions into one immutable preview. Finished Records
+and their Agent-change evidence are outside this plan. `WorkspaceHandle` holds
+the source-mutation lease and flushes every Triptych editor before both
+preparation and execution. System Trash reads the
 stable Local Execution envelope rather than its private payload: relevant live
 or recovery-required entries fail preflight, terminal entries remain eligible
 for cleanup, and an unsupported payload cannot block unrelated Notes. A file
@@ -124,7 +125,7 @@ after archival succeeds.
 
 `TriptychMutationRecoveryStore` persists the `SystemTrashDeletionPlan` before
 the first filesystem call. Each source owns an independent receipt and a stable
-binding identity; duplicate source, Note, Record, Discussion, or receipt
+binding identity; duplicate source, Note, Discussion, or receipt
 identities fail before the deletion gate or another side effect.
 `VaultRepository` repeats descriptor-relative containment and revision or
 manifest checks. `VaultMutationCoordinator` atomically renames the checked
@@ -137,22 +138,23 @@ valid binding cannot prove Foundation success and becomes `outcomeUnknown`.
 The returned URL remains machine-local recovery evidence only.
 
 After every source receipt is `movedToSystemTrash`,
-`PortableResearchRecordStore` discards affected active Discussions and deletes
-each previewed finished Record with exact-fingerprint compare-and-swap. A
-durable deletion marker makes retry idempotent. Local executions and Agent
-change evidence are then removed. Settlement,
+`PortableResearchRecordStore` discards affected active Discussions and the plan
+releases its short-lived Note gate. Finished Records, Record-bound Local
+Executions, and Agent-change evidence remain unchanged; their explicit
+permanent deletion use case is the sole cleanup owner. Settlement,
 stable identity, source-access records, Zotero bindings, and Critique
 associations are not cleanup targets. The Note-deletion marker shares the
 portable-store lock with active Discussion, Settlement, and finished Record
-creation, so no participating state can appear after confirmation. Portable
-Record schema 18 has no deleted-participant representation; every unsupported
-schema remains byte-unchanged, unread, and nonauthorizing.
+creation, so no new participating state can appear during the filesystem
+cutover. Portable Record schema 18 already retains historical participant
+identity, location, title, and revisions; source presence is read separately.
+Every unsupported schema remains byte-unchanged, unread, and nonauthorizing.
 
 Watcher reconciliation, Finder actions, and sync tools cannot construct this
-plan or call its Record cleanup. They publish source inventory changes through
-the ordinary refresh and stable-identity diagnostics only. Finder restoration
-therefore re-enters as source and may reconcile retained identity, but it never
-reverses a finished Record deletion.
+plan or call its temporary cleanup. They publish source inventory changes
+through the ordinary refresh and stable-identity diagnostics only. Finder
+restoration therefore re-enters as source and may reconcile retained identity;
+the existing finished Record remains independently available throughout.
 
 ## Shared read models and metadata
 
@@ -167,9 +169,11 @@ Contracts split structured values by authority. `PropertyContractCatalog`
 contains only authored YAML `summary` and `keywords` for all three roles.
 `BuiltInNoteMetadataCatalog` owns the product vocabulary and complex shapes;
 portable schema-8 Settings owns stable simple definitions and lifecycle by role.
-`NoteMetadataCatalog` resolves both once per workspace generation and is the
-sole catalog consumed by Core record validation, Application plans, Search,
-Library filters, Settings, About, and the Metadata editor. It defines
+Definition key/kind is storage identity; field and controlled-choice order are
+researcher-owned presentation. `NoteMetadataCatalog` resolves both once per
+workspace generation and is the sole catalog consumed by Core record validation,
+Application plans, Search, Library filters, Settings, About, and the Metadata
+editor. It defines
 role-valid fields, value kinds, allowed values, and CreatorList structure
 without owning researcher values.
 `AnalysisSourceTypeProfileCatalog` separately owns Analysis applicability,

@@ -1257,28 +1257,6 @@ public actor LocalResearchExecutionStore {
             .sorted { $0.uuidString < $1.uuidString }
     }
 
-    /// Removes machine-local execution evidence after the native Trash moves
-    /// and associated finished Record deletions have durably committed.
-    @discardableResult
-    public func purgeExecutions(containing noteIDs: Set<UUID>) throws -> [UUID] {
-        guard !noteIDs.isEmpty else { return [] }
-        return try lock.withExclusiveLock {
-            let snapshot = try readStoreSnapshot()
-            try requireValidDeletionAuthority(snapshot)
-            let removed = snapshot.authorities
-                .filter { !$0.noteIDs.isDisjoint(with: noteIDs) }
-                .map(\.runID)
-                .sorted { $0.uuidString < $1.uuidString }
-            for runID in removed {
-                try storage.removeIfPresent(
-                    directory: nil,
-                    fileName: Self.fileName(runID)
-                )
-            }
-            return removed
-        }
-    }
-
     fileprivate static func authorityState(
         of record: LocalResearchExecutionRecord
     ) -> LocalResearchExecutionEnvelope.AuthorityState {

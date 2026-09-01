@@ -26,7 +26,26 @@ Developer ID signing, notarization, clean-account Agent and first-launch
 journeys, current packaged G7, icon, visual, and human acceptance remain open.
 The ad-hoc App requires the documented Gatekeeper override.
 
-## Focused interface evidence
+## Current and focused verification evidence
+
+- On 2026-09-01, §20 replaced its per-feature human matrix with complete
+  deterministic Core coverage, four Core and one Agent representative human
+  checks; Voice Control and Dictation are change-triggered. The renamed opt-in
+  VoiceOver XCUITest labels service/speech automation as nonhuman evidence.
+  Documentation authority (3 manifests, 22 chapters, 104 links), its focused
+  test (1/1), and the Xcode 27.0 beta UI-target build passed. No VoiceOver-
+  service or human check ran.
+
+- On 2026-09-01, using Xcode 27.0 beta build 27A5218g and Swift 6.4, the
+  system-Trash/Record cutover passed the complete gate: documentation,
+  localization, resources and residue guards; 207 Web tests; 465 Core plus 3
+  performance tests; 160 Contracts tests; 296 Application tests, 16 bridge
+  tests and 1 architecture measurement; 679 App tests; public symbols; 15
+  executable CLI lifecycles; the sandboxed bridge; and the Release build in
+  191.37 seconds. Focused fixtures prove completed Records, Local Execution,
+  and Agent evidence remain while affected active Discussions are removed;
+  explicit permanent deletion still works. This is not Finder, multi-window,
+  VoiceOver, packaged-artifact, or human acceptance.
 
 - On 2026-09-01, the compact Agent Changes and top-notification refinement
   passed the Debug product build, documentation and interface-localization
@@ -118,23 +137,14 @@ The ad-hoc App requires the documented Gatekeeper override.
   snapshot, Record field, or improvement target remains. No XCUITest or human
   acceptance.
 
-- On 2026-08-23, the Metadata lifecycle and recovery integration passed its
-  focused Contracts, Core, Application, Settings, presentation, Search,
-  localization, architecture, and 11 signed executable-CLI lifecycle owners.
-  Disposable fixtures prove stable key/kind identity; editable labels and
-  descriptions; append-only controlled choices; reversible archival that
-  retains existing values; scope-aware property/choice completion; natural-JSON
-  CLI CAS without source changes; exact single-record recovery; and a
-  Metadata-only refresh with zero source and Metadata-catalog record reads. The
-  task's single complete `verify.sh` run passed documentation and shipped-Skill
-  guards, 199 Web-editor tests, reproducible bundles, RDF-1, 455 Core tests, 3
-  performance tests, 147 Contract tests, 267 Application tests, 15 bridge
-  tests, and the architecture measurement. All 645 App tests ran with one
-  failure: the intended new recovery call was absent from the WindowModel Store
-  allowlist. The allowlist was corrected, and its complete 58-test architecture
-  owner passed. Per the one-complete-gate rule, later symbol, sandbox-bridge,
-  and Release stages were not rerun. This is local automated evidence, not
-  packaged, visual, assistive-technology, or researcher acceptance.
+- On 2026-09-01, the Metadata ordering relaxation passed all 13 property
+  contract tests, its portable-settings round-trip owner, the Settings surface
+  owner, documentation authority, and interface localization. Disposable
+  fixtures prove field and controlled-choice reordering and insertion while
+  stable key/kind, existing-field/choice retention, exact settings revision,
+  and save/readback remain enforced. SwiftPM Debug compiled the interface under
+  Xcode 27 beta. No XCUITest, visual, assistive-technology, packaged, release,
+  or researcher acceptance was claimed.
 
 - On 2026-08-23, managed New Note creation removed the generic complete-source
   `create` port and duplicate Untitled-request construction. GUI, researcher
@@ -311,26 +321,6 @@ The ad-hoc App requires the documented Gatekeeper override.
   and creation-record isolation; the owning Application archive-and-retry test
   and architecture-boundary test also passed. The UI helper parsed after its
   stale storage epoch was removed, but no XCUITest journey was run.
-- On 2026-08-21, the untagged system-Trash cutover passed 7 coordinated
-  deletion tests covering whole multi-Note Record cleanup, active Discussion
-  discard, Work-plus-Critique receipts, plan-persistence and post-move crash
-  recovery, unknown native outcomes, same-path recreation, and complete
-  Folder-manifest drift. The earlier 22-test Vault repository suite exercised
-  an exchange before its last identity check; it did not cover the interval
-  after that check and before the path-based native Trash call. The associated
-  37 Record-store, 25 document-operation, 4 CLI-delegation, 12
-  workspace-projection, 58 window-architecture, 98 frontend-architecture, and
-  8 localization tests passed on disposable fixtures. The latest aggregate
-  `swift test` attempt passed the complete lower-layer batch and 645 of 646 App
-  tests; its sole failure was an existing serialized Action-sheet test missing
-  its asynchronous capture under the concurrent runner. That exact test passed
-  alone in 0.014 seconds and its complete 20-test suite passed in 0.315 seconds;
-  the WKWebView baseline that timed out in the preceding aggregate attempt also
-  passed in this run. The Debug build, documentation authority (3 manifests, 22
-  chapters, and 109 local links), interface localization, JSON, duplicate-key,
-  whitespace, and retired-name checks passed. This is local automated evidence:
-  no real research vault was used, and Finder restoration, the complete UI
-  suite, VoiceOver speech, and researcher acceptance remain human QA work.
 - On 2026-08-16, the recovery simplification cutover passed focused Core and
   Application owner tests for transaction-only save recovery, monotonic
   the then-current deletion owner, natural-key Agent evidence, direct Undo after conflict
@@ -408,22 +398,25 @@ The ad-hoc App requires the documented Gatekeeper override.
   together, and the same parallel Application batch passed 223/223. The latest
   current-tree coverage above now includes that repair. 2026-08-25 root-authority
   passed; File Provider acceptance remains open.
-- On 2026-08-13, the progressive-opening Application contract test proved that
-  one selected live Vault publishes first, its Note remains loadable, Search
-  fails closed with `workspaceStillLoading`, and the same handle later publishes
-  a complete three-Vault Graph/Search generation. The window-projection test
-  proved the corresponding opening-to-current atomic state transition, and the
-  catalog test proved that deferred Search offsets complete without rereading
-  source. The
-  complete pre-existing Workspace runtime suite also passed 16/16 before the
-  new focused case. This is deterministic implementation evidence, not packaged
-  launch performance or human loading-state acceptance.
+- On 2026-09-01, an Xcode-beta SwiftPM build and focused Search run passed 24
+  Contracts, all 29 Workspace-runtime Application, and 6 App presentation tests.
+  The live test seeded one complete index, then proved exact current-buffer This
+  Note Search; Limited This Vault lexical results filtered by the opening
+  snapshot's exact source fingerprints and stable identities; exclusion of a post-index Note;
+  rejection of structured opening queries; closed Record and Triptych scope;
+  and later inclusion of that Note after complete Graph/Search publication.
+  A subsequent focused regression proved opening eligibility is applied before
+  result limits and `hasMore`: old fingerprint and stable-identity candidates
+  neither consume the visible result budget nor imply unavailable extra hits.
+  Presentation tests proved Limited is neither current nor a false no-results
+  state. This is deterministic implementation evidence, not packaged launch,
+  assistive-technology, or human loading-state acceptance.
 - A 2026-08-13 isolated Release diagnostic with RDF-1 and 267 visible Analysis
   Notes retained three warm Library samples of 785.8–819.0ms after one warm-up
   (median 797.8ms). Its unretained cold-page-cache sample was 1126.6ms. The
   diagnostic used the existing test driver against a dirty, ad-hoc-signed
-  diagnostic bundle; it demonstrates margin for integration but is not the
-  clean tagged packaged 5+30 G7 result.
+  diagnostic bundle; it demonstrates margin for integration but is not a clean
+  tagged packaged G7 campaign under the current sampling protocol.
 - The 2026-08-13 integration verification passed the unchanged Web, Core,
   Contracts, Search-performance, bridge, architecture-measurement, App, CLI,
   sandbox, symbol-boundary, and Release-build gates. Its initial parallel
@@ -444,10 +437,10 @@ The ad-hoc App requires the documented Gatekeeper override.
   76.419 seconds. After deletion of the final Record, the live accessibility
   tree exposed `scholium.researchRecords.empty`; reopening retained the
   controller's republished empty state.
-- Focused native and attached-WKWebView tests cover shared interaction feedback,
-  Search and editor floating controls, Callout focus, footnote/link preview,
-  selection completion, semantic color, corner, typography, spacing, and
-  component-cadence ownership.
+- On 2026-09-01, all 100 Frontend architecture tests passed after global
+  spacing/corner/cadence inventories were removed. Shared corner parity, grid
+  roles, copy/empty-state AX, and surface/depth adaptation remain covered;
+  automation is not visual or human acceptance.
 - The 2026-08-10 Records comparison correction passed 3 focused App tests
   across 3 owning suites. Its former independent reviewed-state journey is
   superseded. The complementary Response journey passed in 57.615 seconds,
@@ -464,9 +457,9 @@ The ad-hoc App requires the documented Gatekeeper override.
   speech remain open.
 
 Synthetic input and screenshots establish bounded engineering evidence only.
-They do not replace physical keyboard, installed IME, Voice Control, Dictation,
-genuine VoiceOver, Dark/Increase Contrast, 200% interface text, or researcher
-visual acceptance.
+They do not replace §20's representative physical-keyboard, installed-IME,
+genuine-VoiceOver or visual-adaptation human checks. Voice Control and Dictation
+remain change-triggered compatibility checks rather than universal matrix rows.
 
 ## Focused Agent-inheritance evidence
 
@@ -615,10 +608,10 @@ same `X=355 Y=110 W=760 H=680` frame through list, detail, and returned list;
 the proof shell was not used.
 
 This remains bounded development evidence, not an installed App/CLI journey or
-human acceptance. Genuine VoiceOver, physical
-Full Keyboard Access, 200% mixed-script, Dark appearance, Increase Contrast,
-Reduce Transparency, Reduce Motion, and researcher visual acceptance remain
-open.
+human acceptance. Section 20's representative VoiceOver, physical Full Keyboard
+Access, installed Chinese IME and visual-adaptation checks remain open; the
+listed settings are distributed across that bounded set rather than multiplied
+against every workflow.
 
 ## Search case pack
 
@@ -646,6 +639,12 @@ scope authorization, stale refusal, and App/CLI parity.
 
 ## Performance evidence
 
+On 2026-09-01, the performance gate changed from fixed 5 + 30 latency and 50
+memory transitions to predeclared 2–5 + 20–50 and 30–60 ranges, defaulting to
+3 + 20 and 40. A focused clean-tag series remains Incomplete. Runner bounds,
+shell/Python checks, documentation authority, its focused test, and the
+scenario-class UI-driver build passed. No performance journey ran; G7 is open.
+
 On 2026-08-14, the approved Edit gate boundary was aligned with the shipped
 cold-launch behavior: launch settles on a no-document Workspace, Library opens
 the frozen 5,000-word Note into interactive Review as unmeasured setup, and the
@@ -668,7 +667,8 @@ Library selection of the frozen 5,000-word RDF-1 Note and reports the complete
 activation-to-interactive phase decomposition. Its focused eight-test
 `PerformanceProbe` suite, summary self-test, documentation validator, shell
 syntax check, fail-closed threshold preflight, and UI-driver test build passed.
-The cooled ad-hoc QA 5+30 scenario then completed all 35 ordered records with
+The cooled ad-hoc QA run used the then-current 5+30 scenario and completed all
+35 ordered records with
 no invalid trial, passed Review correctness, and preserved the exact 800-Note
 RDF-1 tree. Its 30 retained samples measured 572.096ms p50, 742.752ms
 nearest-rank p95, 612.138ms mean, and 1,442.219ms maximum. The release owner

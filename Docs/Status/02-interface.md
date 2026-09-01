@@ -40,16 +40,19 @@
   full-page Loading state before the remaining two Vaults finish. Their rows
   retain unavailable counts and selection until the complete generation; the
   existing derived-state progress presentation remains visible without
-  blocking the available list or moving focus.
+  blocking the available list or moving focus. Search keeps the same compact
+  surface: This Note works from the current buffer, and source-validated
+  This Vault lexical results appear under a persistent **Search Limited to This
+  Vault** notice while complete-scope choices report unavailable rather than no
+  results.
 - Library is the only source-list destination. Add, context-menu, keyboard,
   drag, menu, and accessibility routes converge on the same source mutations.
   Note and Folder rows expose **Move to Trash…**; File-menu Command-Delete and
   named accessibility actions reach the same bounded confirmation.
-- System-Trash confirmation lists every filesystem item, associated active
-  Discussion, whole finished Record, and unaffected multi-Note participant,
-  and states that Finder restoration cannot restore deleted Records. Recovery
-  distinguishes forward cleanup from the outcome-unknown **Retain Records and
-  Resolve** route.
+- System-Trash confirmation lists every filesystem item and any affected active
+  Discussion, and states that finished Research Records remain historical
+  provenance under their separate deletion command. Recovery distinguishes
+  forward temporary cleanup from the outcome-unknown **Resolve** route.
 - New Note and New Folder are immediate. Successful source mutations publish
   their exact selected destination before disposable derived views finish
   refreshing; failures preserve the prior presentation. New Note installs one
@@ -255,8 +258,9 @@
   deliberately independent sections: stable Managed Fields for the
   selected role, source-type-specific optional Agent preferences for Analyses,
   and About visibility/order. Custom rows expose editable labels and
-  descriptions, controlled-choice extension, lifecycle, use counts, and named
-  Archive/Restore without permitting key/kind mutation or value deletion.
+  descriptions, field and controlled-choice reordering, choice addition,
+  lifecycle, use counts, and named Archive/Restore without permitting key/kind
+  mutation, existing-choice removal, or value deletion.
   Adding a field does not populate Notes or select it in Agent or About settings;
   reset, clear, revert, reload after
   conflict, and atomic Save are separate actions. Current-schema repair keeps
@@ -274,10 +278,11 @@
   kind, and Records View now share one equal-segment control with an adaptive
   neutral track and selection plate, continuous corners, Left/Right traversal,
   and no Accent-filled selection.
-- Shared semantic owners cover surfaces, boundaries, transient elevation,
-  structural depth, interaction feedback, corner geometry, symbols, typography,
-  spacing, component cadence, and purpose-named motion. Native system controls
-  retain platform presentation.
+- Shared semantic owners cover genuinely reused or adaptation-critical
+  surfaces, boundaries, elevation, interaction feedback, geometry, symbols,
+  typography, metrics, and motion. Bounded feature-local spacing, corner, and
+  cadence values need no catalog entry; native controls retain platform
+  presentation.
 - Increase Contrast strengthens semantic boundaries and removes custom soft
   shadows. Reduce Motion removes custom animation. Content and controls reflow
   rather than clip where the declared adaptation permits growth.

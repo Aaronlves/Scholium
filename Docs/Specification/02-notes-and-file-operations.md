@@ -174,7 +174,7 @@ available. Cross-vault moves, managed Critique placement, stale revisions,
 invalid descendants, and self/descendant folder targets fail without source
 change.
 
-## 6. System Trash deletion and application cleanup
+## 6. System Trash deletion and temporary application cleanup
 
 Scholium has no application Trash, erase command, or source restore command.
 **Move to Trash…** and **Move Folder and Notes to Trash…** use the macOS system
@@ -183,36 +183,39 @@ Trash; Finder owns restoration and final deletion.
 Confirmation discloses two ordered boundaries:
 
 1. move every listed source item to system Trash; then
-2. after all move receipts are durable, discard affected active Discussions and
-   delete each complete Research Record involving an affected Note.
+2. after all move receipts are durable, discard affected active Discussions
+   that cannot outlive the source.
 
 Preparation flushes dirty editors and freezes exact paths, identities,
 fingerprints, folder contents, separately located managed Critiques,
-Discussions, Records, and portable-byte fingerprints. Active Agent work,
-unresolved write recovery, identity ambiguity, source or manifest drift,
-unsafe filesystem entries, or changing Record participation blocks the move.
+and active Discussions. Active Agent work, unresolved write recovery, identity
+ambiguity, source or manifest drift, unsafe filesystem entries, or changing
+Discussion participation blocks the move.
 
-A finished Record is indivisible provenance: if any participant is deleted,
-the complete Record is deleted. Stable Note identity, Settlement, Zotero
-binding, source-access provenance, and Critique association remain so Finder
-restoration can reconcile exact source; deleted Records are never recreated.
+A finished Record is immutable historical provenance. Moving or deleting a
+participant's source does not alter or delete the Record; its frozen identity,
+title, location, revisions, attribution, and result remain inspectable. Only a
+separately confirmed **Delete Permanently** operation in Research Records may
+delete the complete Record and its Record-bound machine evidence. Stable Note
+identity, Settlement, Zotero binding, source-access provenance, and Critique
+association also remain so Finder restoration can reconcile exact source.
 
 Before the first move Scholium installs a deletion gate and durable forward
 plan with one receipt per source item. It binds each native operation to the
 exact checked filesystem object, never a replacement that later appears at the
-same path. Partial success is representable; Record and Discussion cleanup
-waits for every source receipt.
+same path. Partial success is representable; temporary Discussion cleanup waits
+for every source receipt.
 
 Recovery follows these rules:
 
 | Condition | Required outcome |
 | --- | --- |
-| Preflight or first-move failure | Preserve all source and application records. |
+| Preflight or first-move failure | Preserve all source and application state. |
 | Proven native move | Resume from its receipt; never move the item again. |
-| Bound operation with unknown native outcome | Preserve Records; require researcher inspection before releasing the plan. |
-| All source moved but cleanup failed | Resume exact-fingerprint cleanup idempotently. |
+| Bound operation with unknown native outcome | Preserve Records and temporary state; require researcher inspection before releasing the plan. |
+| All source moved but cleanup failed | Resume only the temporary cleanup idempotently. |
 | External move or deletion without a Scholium plan | Refresh projections only; never cascade Record or Discussion deletion. |
-| Finder restores source | Reconcile retained identity and bytes; never fabricate Records. |
+| Finder restores source | Reconcile retained identity and bytes; preserve existing Records without fabricating another. |
 
 Watchers report filesystem observations but cannot create deletion authority.
 Multiple windows converge through shared workspace coordination. A committed

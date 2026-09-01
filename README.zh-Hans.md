@@ -4,9 +4,9 @@
 
 > 面向哲学与人文研究、本地优先、以文档为权威的研究环境。
 
-**当前公开 Beta：**[v0.1.1-beta1](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.1-beta1) ·
+**当前公开 Core App Beta：**[v0.1.1-beta1](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.1-beta1) ·
 [下载 Apple 芯片版 Scholium](https://github.com/Aaronlves/Scholium/releases/download/v0.1.1-beta1/Scholium-v0.1.1-beta1-macos-arm64.dmg) ·
-[下载独立 CLI](https://github.com/Aaronlves/Scholium/releases/download/v0.1.1-beta1/Scholium-CLI-macos.zip)
+[作为 Agent 协作 Preview 下载独立 CLI](https://github.com/Aaronlves/Scholium/releases/download/v0.1.1-beta1/Scholium-CLI-macos.zip)
 
 Scholium 是一款面向持续哲学与人文研究的原生 macOS 研究环境。它的内容核心是
 一套由研究者治理、以文档为权威，并可由一位研究者与获得授权的外部 Agent 共同
@@ -17,6 +17,9 @@ Scholium 是一款面向持续哲学与人文研究的原生 macOS 研究环境�
 Markdown 始终是研究者所选文件夹中普通、可检查的文本。阅读、写作、搜索、关联、
 评审与恢复不依赖 Agent。研究者邀请外部 Agent 时，Scholium 会冻结准确的目标、
 材料、修订、方法与权限，使协助保持有边界、可归属、可审查、可恢复。
+
+Core App Beta 的验收结论只覆盖本地人工研究环境。外部 Agent 协作与独立安装的
+CLI 保持为单独的 Preview，直到它们通过自己的验收 profile。
 
 ## 产品定位
 
@@ -90,10 +93,11 @@ Zotero MCP 传输继续可用。研究者选择子目录时，先由研究者创
 产品验收。持续真实研究、辅助技术审查、干净账户 App／CLI 与外部 Agent 验收，
 以及方案比较仍是明确的证据门。
 
-研究文档、搁置与纸篓共享同一棵原生 AppKit 文件夹／笔记大纲及浏览逻辑。研究文档
-可以创建笔记和文件夹，并保留菜单、键盘、辅助功能与拖动等组织路径；搁置与纸篓内
-的笔记仍可正常浏览，放回则是直接且可逆的操作。新建或移动的来源一经持久化提交，
-就会立即发布到所属窗口；可丢弃的搜索、图与诊断投影继续在后台刷新。
+研究文档使用一棵原生 AppKit 文件夹／笔记大纲，并保留菜单、键盘、辅助功能与拖动
+等组织路径。笔记和文件夹删除使用 macOS 系统纸篓；Finder 负责恢复，而已完成的
+研究记录作为历史 provenance 保留，只有在“研究记录”中单独确认后才会永久删除。
+新建、移动或已确认缺失的来源会立即发布到所属窗口；可丢弃的搜索、图与诊断投影
+继续在后台刷新。
 
 每篇笔记的研究库限定稳定身份与准确来源指纹分别承担身份和版本职责。因此，重命名
 与文件夹移动可以保留编辑器、标签页和研究身份，而每次变更仍会在提交前重新核验
@@ -184,9 +188,10 @@ Documents、CloudStorage 和其他 File Provider 管理路径之外。
 
 ## 源码优先的 Beta 分发
 
-源码优先的 Beta 在同一个 GitHub release 页面发布采用 `GPL-3.0-or-later` 的
-准确标签源码、注明架构的应用 DMG、独立的 `Scholium-CLI-macos.zip` 以及两者的
-SHA-256 校验值。tag、版本和 package provenance 必须一致。应用启用 Sandbox，
+源码优先的 Core App Beta 在同一个 GitHub release 页面发布采用
+`GPL-3.0-or-later` 的准确标签源码、注明架构的应用 DMG 及其 SHA-256 校验值。
+Agent Collaboration Preview 可另外发布版本匹配的独立 `Scholium-CLI-macos.zip` 及其校验值。
+每个实际发布的产物都必须与 tag 和 package provenance 一致。应用启用 Sandbox，
 不包含也不安装 CLI。打开 DMG 时，Finder 会并列显示 Scholium 与“应用程序”别名，
 安装只需执行一次普通拖拽。
 
@@ -208,10 +213,12 @@ shasum -a 256 -c Scholium-CLI-macos.zip.sha256
 
 准确 tag 已通过完整仓库门禁、优化 Release 构建、隔离 CLI 安装与 PATH 启动、
 DMG 结构与签名检查、package checksum 以及固定 5 + 30 的打包性能门禁。四个已发布
-资产随后均从 GitHub 重新下载并通过 release checksum。完整自动化 UI 运行加上聚焦的
-干净账户闭合验证建立了 88 项功能通过证据；环境没有提供 VoiceOver 时，真实
-VoiceOver journey 仍为条件性跳过。人工挂载 DMG、视觉与辅助技术验收仍然开放，
-不计作已经通过的证据。准确测试数量与边界见[验证证据](Docs/Status/04-verification.md)。
+资产随后均从 GitHub 重新下载并通过 release checksum。该版本采用的是当时有效的固定
+采样规则；当前开发改用规格 §21.4 的有界、预先声明协议。完整自动化 UI 运行加上聚焦的
+干净账户闭合验证建立了 88 项功能通过证据；环境没有提供 VoiceOver 时，可选的
+VoiceOver 服务自动化仍为条件性跳过。§20 所定义的有界真人 VoiceOver、键盘、IME 与
+视觉适应检查仍然开放，不计作已经通过的证据。准确测试数量与边界见
+[验证证据](Docs/Status/04-verification.md)。
 
 便利版应用没有 Developer ID 签名，也未经过公证。DMG 版本从可信的项目 release
 下载并核对校验值后：

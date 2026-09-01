@@ -295,7 +295,7 @@ Run outcomes. Missing evidence narrows or blocks the result; it never permits
 fabrication. Ending revokes future operations but cannot erase an in-flight
 transaction, confirmed write, or recovery duty. Unsupported local Run payloads
 authorize no resumption; system-Trash safety follows
-[§6](02-notes-and-file-operations.md#6-system-trash-deletion-and-application-cleanup).
+[§6](02-notes-and-file-operations.md#6-system-trash-deletion-and-temporary-application-cleanup).
 
 ## 9. Analyses workflow
 

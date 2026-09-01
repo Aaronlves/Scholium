@@ -216,6 +216,11 @@ extension ScholiumCLI {
                     noteGeneration = generation
                     progress = nil
                     reason = nil
+                case .limited(let generation):
+                    status = "limited"
+                    noteGeneration = generation
+                    progress = nil
+                    reason = nil
                 case .refreshing(let generation):
                     status = "refreshing"
                     noteGeneration = generation

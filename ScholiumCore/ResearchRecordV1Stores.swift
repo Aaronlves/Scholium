@@ -644,7 +644,7 @@ public actor PortableResearchRecordStore {
     }
 
     /// Releases only the short-lived gate owned by a completed or abandoned
-    /// system-Trash plan. Permanent Record deletion markers remain separate.
+    /// system-Trash plan. Explicit permanent Record deletion remains separate.
     public func clearNoteDeletionGate(noteIDs: Set<UUID>) throws {
         guard !noteIDs.isEmpty else { return }
         try lock.withExclusiveLock {

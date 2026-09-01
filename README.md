@@ -5,9 +5,9 @@
 > A local-first, document-authoritative research environment for philosophy
 > and the humanities.
 
-**Current public Beta:** [v0.1.1-beta1](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.1-beta1) ·
+**Current public Core App Beta:** [v0.1.1-beta1](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.1-beta1) ·
 [Download Scholium for Apple silicon](https://github.com/Aaronlves/Scholium/releases/download/v0.1.1-beta1/Scholium-v0.1.1-beta1-macos-arm64.dmg) ·
-[Download the independent CLI](https://github.com/Aaronlves/Scholium/releases/download/v0.1.1-beta1/Scholium-CLI-macos.zip)
+[Agent collaboration Preview: download the independent CLI](https://github.com/Aaronlves/Scholium/releases/download/v0.1.1-beta1/Scholium-CLI-macos.zip)
 
 Scholium is a native macOS research environment for sustained work in
 philosophy and the humanities. Its content core is a researcher-governed,
@@ -24,6 +24,10 @@ depend on an agent. When an external agent is invited, Scholium records the
 Run, exact targets, revisions, operations, outcomes, and scholarly result so
 assistance remains attributable, reviewable, and recoverable without repeated
 permission prompts.
+
+The Core App Beta verdict covers the local manual research environment. External
+Agent collaboration and the independently installed CLI remain a separate
+Preview until their own acceptance profile passes.
 
 ## Product position
 
@@ -127,10 +131,10 @@ gates.
 Library uses one native AppKit folder-and-note outline. It creates notes and
 folders and retains menu, keyboard, accessibility, and drag alternatives for
 organization. Note and Folder deletion use the macOS system Trash; Finder owns
-restoration, while Scholium durably resumes separately disclosed associated
-Research Record cleanup. A durably created, moved, or absent source is
-published immediately in its owning window while disposable Search, graph, and
-diagnostic projections refresh in the background.
+restoration, while finished Research Records remain as historical provenance
+until separately deleted from Research Records. A durably created, moved, or
+absent source is published immediately in its owning window while disposable
+Search, graph, and diagnostic projections refresh in the background.
 
 Each Note has a vault-qualified stable identity distinct from its exact source
 fingerprint. Renames and folder moves can therefore preserve editor, tab, and
@@ -237,13 +241,14 @@ current results and gaps are in Implementation Status.
 
 ## Source-first Beta distribution
 
-Source-first Beta releases publish exact tagged source under
-`GPL-3.0-or-later` plus an architecture-labelled App DMG and independent
-`Scholium-CLI-macos.zip`, with SHA-256 checksums on the same GitHub release
-page. The tag and both artifacts' package provenance and versions must agree.
-The App is sandboxed and does not contain or install the CLI. Opening the DMG
-presents Scholium beside an Applications alias so installation is one ordinary
-Finder drag.
+Source-first Core App Beta releases publish exact tagged source under
+`GPL-3.0-or-later` plus an architecture-labelled App DMG and SHA-256 checksum on
+the same GitHub release page. An Agent Collaboration Preview may additionally
+publish an independent version-matched `Scholium-CLI-macos.zip` and checksum.
+Every emitted artifact must agree with the tag and package provenance. The App
+is sandboxed and does not contain or install the CLI. Opening the DMG presents
+Scholium beside an Applications alias so installation is one ordinary Finder
+drag.
 
 The current release is
 [v0.1.1-beta1](https://github.com/Aaronlves/Scholium/releases/tag/v0.1.1-beta1):
@@ -265,13 +270,15 @@ shasum -a 256 -c Scholium-CLI-macos.zip.sha256
 On the exact tagged commit, the complete repository gate, optimized Release
 build, DMG structure and signature checks, isolated CLI installation and PATH
 launch, package checksums, and fixed 5 + 30 packaged performance gate passed.
-All four published assets were downloaded again from GitHub and matched the
-release checksums. The complete automated UI run plus the focused clean-account
-closure established 88 functional passes; genuine VoiceOver remained
-conditionally skipped when unavailable. Human mounted-DMG, visual, and
-assistive-technology acceptance remain open rather than becoming passed
-evidence. See [Verification Evidence](Docs/Status/04-verification.md) for exact
-test counts and boundaries.
+That release used the then-current fixed sampling rule; current development uses
+the bounded predeclared protocol in Specification §21.4. All four published
+assets were downloaded again from GitHub and matched the release checksums. The
+complete automated UI run plus the focused clean-account
+closure established 88 functional passes; the opt-in VoiceOver-service
+automation remained conditionally skipped when unavailable. The bounded human
+VoiceOver, keyboard, IME and visual-adaptation checks in §20 remain open rather
+than becoming passed evidence. See [Verification Evidence](Docs/Status/04-verification.md)
+for exact test counts and boundaries.
 
 The convenience app is not Developer ID signed or notarized. For a DMG release,
 after downloading it from the trusted project release and verifying the

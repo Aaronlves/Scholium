@@ -7,14 +7,16 @@ extension TriptychSearchIndex {
     /// diagnostics belong to the Contracts target; the index never reparses.
     func testSearch(
         _ request: SearchRequest,
-        relationshipMatches: [VaultQualifiedNoteID: SearchRelationshipMatch] = [:]
+        relationshipMatches: [VaultQualifiedNoteID: SearchRelationshipMatch] = [:],
+        eligibleDocuments: [VaultQualifiedNoteID: SearchIndexDocumentEligibility]? = nil
     ) async throws -> SearchResponse {
         let ast = try #require(SearchQueryParser.parse(request.query).ast)
         await Task.yield()
         return try search(
             request,
             ast: ast,
-            relationshipMatches: relationshipMatches
+            relationshipMatches: relationshipMatches,
+            eligibleDocuments: eligibleDocuments
         )
     }
 }

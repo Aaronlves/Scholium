@@ -58,7 +58,7 @@ struct CLIApplicationDelegationTests {
         #expect(sources.document.contains("handle.documents.move("))
         #expect(sources.document.contains("handle.documents.prepareSystemTrash("))
         #expect(sources.document.contains("handle.documents.moveToSystemTrash("))
-        #expect(sources.document.contains("--delete-associated-records"))
+        #expect(!sources.document.contains("--delete-associated-records"))
         #expect(sources.entry.contains(#"case "zotero":"#))
         #expect(sources.entry.contains("context: context"))
         #expect(sources.zotero.contains("context.runtime.zotero"))

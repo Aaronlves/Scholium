@@ -190,9 +190,8 @@ final class ScholiumPerformanceUITests: XCTestCase {
 
     /// Samples only the app and WebKit service PIDs attributed to this exact
     /// process while the retained CodeMirror surface changes presentation.
-    /// The shell runner fixes the release journey at 50 transitions; a smaller
-    /// count is accepted here only so the focused harness can be exercised
-    /// without impersonating retained acceptance evidence.
+    /// The shell runner supplies the predeclared scenario or product-gate
+    /// transition count; this driver enforces only the protocol's hard cap.
     @MainActor
     func testRDF1EditorRetainedMemory() throws {
         continueAfterFailure = false
@@ -210,7 +209,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
             in: environment
         )
         let transitions = try positive("SCHOLIUM_PERFORMANCE_MEMORY_TRANSITIONS", in: environment)
-        XCTAssertLessThanOrEqual(transitions, 50)
+        XCTAssertLessThanOrEqual(transitions, 60)
 
         let application = XCUIApplication(
             url: URL(fileURLWithPath: applicationPath, isDirectory: true)

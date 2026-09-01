@@ -15,7 +15,7 @@ struct SystemTrashConfirmationView: View {
                 .font(ScholiumTypography.interface(.primaryTitle, emphasis: .strong))
                 .accessibilityAddTraits(.isHeader)
 
-            Text("Finder owns file restoration, but it cannot restore the finished Research Records that Scholium deletes after the file move succeeds.")
+            Text("Finder owns file restoration. Finished Research Records remain available as historical provenance and can be deleted only from Research Records.")
                 .font(ScholiumTypography.interface(.body))
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -41,41 +41,19 @@ struct SystemTrashConfirmationView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
-                    GroupBox("Application State Deleted Afterward") {
-                        VStack(
-                            alignment: .leading,
-                            spacing: ScholiumGrid.Spacing.inlineControlGap
-                        ) {
-                            Text("\(preview.records.count) finished Research Record(s)")
-                            ForEach(preview.records) { record in
-                                VStack(
-                                    alignment: .leading,
-                                    spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment
-                                ) {
-                                    Text(record.title)
-                                        .font(ScholiumTypography.interface(.body, emphasis: .medium))
-                                    if !record.unaffectedParticipants.isEmpty {
-                                        Text("This whole multi-Note Record will be deleted; these participating Notes are not being moved:")
-                                            .font(ScholiumTypography.interface(.small))
-                                            .scholiumForeground(.secondaryText)
-                                        ForEach(record.unaffectedParticipants) { participant in
-                                            Text("\(participant.title) — \(participant.relativePath)")
-                                                .font(ScholiumTypography.interface(.small))
-                                                .scholiumForeground(.secondaryText)
-                                                .lineLimit(2)
-                                                .truncationMode(.middle)
-                                        }
-                                    }
-                                }
-                            }
-                            if !preview.activeDiscussionIDs.isEmpty {
+                    if !preview.activeDiscussionIDs.isEmpty {
+                        GroupBox("Temporary Application State") {
+                            VStack(
+                                alignment: .leading,
+                                spacing: ScholiumGrid.Spacing.inlineControlGap
+                            ) {
                                 Text("\(preview.activeDiscussionIDs.count) active Discussion(s) will be discarded without becoming Records.")
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
-                    Text("These steps are recoverable separately, not atomically. If Record cleanup fails after Finder accepts the files, Scholium keeps a recovery plan and resumes only that confirmed cleanup. External file deletion never triggers this cascade.")
+                    Text("If temporary cleanup fails after Finder accepts the items, Scholium keeps a recovery plan. External file deletion only refreshes the workspace and never deletes Research Records or Discussions.")
                         .font(ScholiumTypography.interface(.small))
                         .scholiumForeground(.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -98,7 +76,7 @@ struct SystemTrashConfirmationView: View {
                 Button("Cancel", action: cancel)
                     .keyboardShortcut(.cancelAction)
                     .disabled(isWorking)
-                Button("Move to Trash and Delete Records", role: .destructive) {
+                Button("Move to Trash", role: .destructive) {
                     perform()
                 }
                 .keyboardShortcut(.defaultAction)
@@ -113,7 +91,8 @@ struct SystemTrashConfirmationView: View {
         )
         .overlay {
             if isWorking {
-                ProgressView("Moving exact sources and applying the confirmed Record cleanup…")
+                ProgressView()
+                    .accessibilityLabel("Moving items to Trash…")
                     .padding()
                     .background(
                         .regularMaterial,

@@ -14,6 +14,22 @@ public struct TriptychSearchIndexOpenResult: Sendable {
     }
 }
 
+/// Exact source authority supplied for a bounded query against a previously
+/// complete disposable generation. Candidate filtering happens inside the
+/// index before result limits and `hasMore` are computed.
+public struct SearchIndexDocumentEligibility: Hashable, Sendable {
+    public let fingerprint: DocumentFingerprint
+    public let resolvedStableNoteID: UUID?
+
+    public init(
+        fingerprint: DocumentFingerprint,
+        resolvedStableNoteID: UUID?
+    ) {
+        self.fingerprint = fingerprint
+        self.resolvedStableNoteID = resolvedStableNoteID
+    }
+}
+
 /// One transaction-bound change set for a disposable Triptych search index.
 /// The workspace generation is persisted in the same transaction and prevents
 /// an older refresh from publishing after a newer source generation.
@@ -485,7 +501,8 @@ public actor TriptychSearchIndex {
     public func search(
         _ request: SearchRequest,
         ast: SearchQueryAST,
-        relationshipMatches: [VaultQualifiedNoteID: SearchRelationshipMatch] = [:]
+        relationshipMatches: [VaultQualifiedNoteID: SearchRelationshipMatch] = [:],
+        eligibleDocuments: [VaultQualifiedNoteID: SearchIndexDocumentEligibility]? = nil
     ) throws -> SearchResponse {
         try database.readTransaction {
             try Task.checkCancellation()
@@ -565,7 +582,8 @@ public actor TriptychSearchIndex {
                     freshness: freshness,
                     generation: readGeneration,
                     availability: availability,
-                    relationshipMatches: relationshipMatches
+                    relationshipMatches: relationshipMatches,
+                    eligibleDocuments: eligibleDocuments
                 )
             case .triptych:
                 return try searchIndex(
@@ -576,7 +594,8 @@ public actor TriptychSearchIndex {
                     freshness: freshness,
                     generation: readGeneration,
                     availability: availability,
-                    relationshipMatches: relationshipMatches
+                    relationshipMatches: relationshipMatches,
+                    eligibleDocuments: eligibleDocuments
                 )
             }
         }
@@ -734,7 +753,8 @@ public actor TriptychSearchIndex {
         freshness: SearchFreshnessToken,
         generation: SearchGenerationID?,
         availability: SearchAvailability,
-        relationshipMatches: [VaultQualifiedNoteID: SearchRelationshipMatch]
+        relationshipMatches: [VaultQualifiedNoteID: SearchRelationshipMatch],
+        eligibleDocuments: [VaultQualifiedNoteID: SearchIndexDocumentEligibility]?
     ) throws -> SearchResponse {
         guard let generation, generation.sequence > 0 else {
             return SearchResponse(
@@ -765,7 +785,8 @@ public actor TriptychSearchIndex {
                 exactOffset += exact.count
                 for candidate in exact {
                     try Task.checkCancellation()
-                    guard seen.insert(candidate.document.rowID).inserted,
+                    guard Self.isEligible(candidate.document, in: eligibleDocuments),
+                          seen.insert(candidate.document.rowID).inserted,
                           SearchMatcher.satisfies(
                             ast,
                             document: candidate.document,
@@ -807,7 +828,8 @@ public actor TriptychSearchIndex {
                 offset += page.count
                 for candidate in page {
                     try Task.checkCancellation()
-                    guard seen.insert(candidate.document.rowID).inserted,
+                    guard Self.isEligible(candidate.document, in: eligibleDocuments),
+                          seen.insert(candidate.document.rowID).inserted,
                           SearchMatcher.satisfies(
                             ast,
                             document: candidate.document,
@@ -839,6 +861,22 @@ public actor TriptychSearchIndex {
             results: hits.map(SearchResult.note),
             hasMore: hasMore
         )
+    }
+
+    private nonisolated static func isEligible(
+        _ document: StoredSearchDocument,
+        in eligibleDocuments: [VaultQualifiedNoteID: SearchIndexDocumentEligibility]?
+    ) -> Bool {
+        guard let eligibleDocuments else { return true }
+        guard let eligibility = eligibleDocuments[document.noteID],
+              eligibility.fingerprint == document.fingerprint else {
+            return false
+        }
+        guard let storedStableNoteID = document.stableNoteID else { return true }
+        guard let indexedStableNoteID = UUID(uuidString: storedStableNoteID) else {
+            return false
+        }
+        return eligibility.resolvedStableNoteID == indexedStableNoteID
     }
 
     private func relatedIdentityCandidates(

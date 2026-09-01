@@ -6,8 +6,6 @@ enum SystemTrashDeletionFaultPoint: Hashable, Sendable {
     case afterSystemTrashMoveBeforeReceipt
     case afterSourceReceipts
     case afterDiscussionRemoval
-    case afterRecordDeletion
-    case afterExecutionCleanup
 }
 
 struct SystemTrashDeletionFaultPlan: Sendable {
@@ -35,9 +33,9 @@ private struct InjectedSystemTrashDeletionFailure: LocalizedError, Sendable {
     }
 }
 
-/// Coordinates one researcher-confirmed cutover without claiming atomicity
-/// across Finder's system Trash and portable Research Record storage. Files
-/// move first. Record deletion is then idempotently resumed forward.
+/// Coordinates one researcher-confirmed system-Trash operation and the
+/// temporary application state that cannot outlive the moved source. Finished
+/// Research Records remain under their independent explicit deletion owner.
 public actor NoteSystemTrashDeletionCoordinator {
     private let triptychID: UUID
     private let repository: VaultRepository
@@ -46,7 +44,6 @@ public actor NoteSystemTrashDeletionCoordinator {
     private let recoveryStore: TriptychMutationRecoveryStore
     private let portableRecordStore: PortableResearchRecordStore
     private let localExecutionStore: LocalResearchExecutionStore?
-    private let agentChangeEvidenceStore: AgentChangeEvidenceStore?
     private let faultPlan: SystemTrashDeletionFaultPlan
 
     public init(
@@ -56,8 +53,7 @@ public actor NoteSystemTrashDeletionCoordinator {
         controlStore: TriptychControlStore,
         recoveryStore: TriptychMutationRecoveryStore,
         portableRecordStore: PortableResearchRecordStore,
-        localExecutionStore: LocalResearchExecutionStore? = nil,
-        agentChangeEvidenceStore: AgentChangeEvidenceStore? = nil
+        localExecutionStore: LocalResearchExecutionStore? = nil
     ) {
         self.triptychID = triptychID
         self.repository = repository
@@ -66,7 +62,6 @@ public actor NoteSystemTrashDeletionCoordinator {
         self.recoveryStore = recoveryStore
         self.portableRecordStore = portableRecordStore
         self.localExecutionStore = localExecutionStore
-        self.agentChangeEvidenceStore = agentChangeEvidenceStore
         faultPlan = .none
     }
 
@@ -78,7 +73,6 @@ public actor NoteSystemTrashDeletionCoordinator {
         recoveryStore: TriptychMutationRecoveryStore,
         portableRecordStore: PortableResearchRecordStore,
         localExecutionStore: LocalResearchExecutionStore? = nil,
-        agentChangeEvidenceStore: AgentChangeEvidenceStore? = nil,
         faultPlan: SystemTrashDeletionFaultPlan
     ) {
         self.triptychID = triptychID
@@ -88,7 +82,6 @@ public actor NoteSystemTrashDeletionCoordinator {
         self.recoveryStore = recoveryStore
         self.portableRecordStore = portableRecordStore
         self.localExecutionStore = localExecutionStore
-        self.agentChangeEvidenceStore = agentChangeEvidenceStore
         self.faultPlan = faultPlan
     }
 
@@ -282,9 +275,9 @@ public actor NoteSystemTrashDeletionCoordinator {
 
     /// Resolves only the irreducible native-Trash uncertainty case. This is
     /// deliberately not an automatic recovery path: Finder owns the source
-    /// item, while Scholium explicitly retains every associated Record and
-    /// releases only the short-lived deletion gate after researcher review.
-    public func retainRecordsForUnknownOutcome(
+    /// item, while Scholium releases only the short-lived deletion gate after
+    /// researcher review.
+    public func resolveUnknownOutcome(
         recoveryRecordID: UUID
     ) async throws {
         guard let record = try await recoveryStore.pending().first(where: {
@@ -296,10 +289,9 @@ public actor NoteSystemTrashDeletionCoordinator {
         }
         try validatePlanShape(plan, recoveryRecord: record)
         guard plan.sourceReceipts.contains(where: { $0.progress == .outcomeUnknown }),
-              plan.deletedRecordIDs.isEmpty,
               plan.removedDiscussionIDs.isEmpty else {
             throw TriptychTransactionError.invalidPlan(
-                "Records can be retained only before any Discussion or Record cleanup committed and when a native Trash result is unknown."
+                "An unknown native Trash outcome can be resolved only before temporary Discussion cleanup commits."
             )
         }
         try await portableRecordStore.clearNoteDeletionGate(
@@ -313,35 +305,13 @@ public actor NoteSystemTrashDeletionCoordinator {
     ) async throws -> SystemTrashDeletionPreview {
         let noteIDs = Set(sources.flatMap(\.notes).map(\.noteID))
         try await requireNoActiveExecutions(noteIDs: noteIDs)
-        let recordListing = try await portableRecordStore.listing()
         let discussions = try await portableRecordStore.activeDiscussions()
-        guard recordListing.issues.isEmpty, discussions.issues.isEmpty else {
+        guard discussions.issues.isEmpty else {
             throw ResearchRecordStoreError.unreadableStore(
-                kind: "Portable Research Record",
-                reason: (recordListing.issues + discussions.issues)
+                kind: "Portable Research Discussion",
+                reason: discussions.issues
                     .map { "\($0.id): \($0.reason)" }
                     .joined(separator: "; ")
-            )
-        }
-        let records = recordListing.revisions.compactMap { revision
-            -> SystemTrashDeletionRecordTarget? in
-            let participants = Set(revision.record.participatingNotes.map(\.noteID))
-            guard !participants.isDisjoint(with: noteIDs) else { return nil }
-            let unaffected = revision.record.participatingNotes.compactMap { participant
-                -> SystemTrashDeletionRecordParticipant? in
-                guard !noteIDs.contains(participant.noteID) else { return nil }
-                return SystemTrashDeletionRecordParticipant(
-                    noteID: participant.noteID,
-                    title: participant.title,
-                    relativePath: participant.note.relativePath
-                )
-            }
-            return SystemTrashDeletionRecordTarget(
-                id: revision.id,
-                title: revision.record.title.value,
-                fingerprint: revision.fingerprint,
-                participantNoteIDs: Array(participants),
-                unaffectedParticipants: unaffected
             )
         }
         let activeDiscussionIDs = discussions.discussions.filter {
@@ -350,7 +320,6 @@ public actor NoteSystemTrashDeletionCoordinator {
         return SystemTrashDeletionPreview(
             triptychID: triptychID,
             sources: sources,
-            records: records,
             activeDiscussionIDs: activeDiscussionIDs
         )
     }
@@ -394,27 +363,6 @@ public actor NoteSystemTrashDeletionCoordinator {
                 }
             }
         }
-        let listing = try await portableRecordStore.listing()
-        guard listing.issues.isEmpty else {
-            throw ResearchRecordStoreError.unreadableStore(
-                kind: "Portable Research Record",
-                reason: listing.issues.map(\.reason).joined(separator: "; ")
-            )
-        }
-        let expectedByID = Dictionary(uniqueKeysWithValues: preview.records.map {
-            ($0.id, $0.fingerprint)
-        })
-        let current = listing.revisions.filter { revision in
-            !Set(revision.record.participatingNotes.map(\.noteID))
-                .isDisjoint(with: preview.affectedNoteIDs)
-        }
-        guard current.count == expectedByID.count,
-              current.allSatisfy({ expectedByID[$0.id] == $0.fingerprint }) else {
-            throw TriptychTransactionError.preflightFailed(
-                note: nil,
-                detail: "Associated finished Research Records changed after confirmation."
-            )
-        }
         let discussions = try await portableRecordStore.activeDiscussions()
         guard discussions.issues.isEmpty else {
             throw ResearchRecordStoreError.unreadableStore(
@@ -448,11 +396,10 @@ public actor NoteSystemTrashDeletionCoordinator {
                 noteIDs: plan.affectedNoteIDs
             )
             if plan.sourceReceipts.allSatisfy({ $0.progress == .pending }),
-               plan.deletedRecordIDs.isEmpty,
                plan.removedDiscussionIDs.isEmpty {
                 // The durable plan precedes the gate so a crash cannot strand
                 // an unowned gate. Revalidate after installing the gate to
-                // close the Record/Discussion race before the first native
+                // close the Discussion race before the first native
                 // filesystem move.
                 try await validate(plan.preview)
             }
@@ -469,7 +416,7 @@ public actor NoteSystemTrashDeletionCoordinator {
                     continue
                 case .outcomeUnknown:
                     throw TriptychTransactionError.invalidPlan(
-                        "The system Trash result for \(source.relativePath) is unknown. Restore the exact item to its original path before retrying, or retain the associated Records."
+                        "The system Trash result for \(source.relativePath) is unknown. Inspect Finder before resolving this recovery record."
                     )
                 case .pending:
                     break
@@ -542,7 +489,7 @@ public actor NoteSystemTrashDeletionCoordinator {
                 try await persist(
                     plan,
                     replacing: record,
-                    failure: "System Trash completed; associated Research Record cleanup is pending."
+                    failure: "System Trash completed; temporary application cleanup is pending."
                 )
             }
             try faultPlan.trigger(.afterSourceReceipts)
@@ -552,50 +499,22 @@ public actor NoteSystemTrashDeletionCoordinator {
             plan = SystemTrashDeletionPlan(
                 preview: plan.preview,
                 sourceReceipts: plan.sourceReceipts,
-                deletedRecordIDs: plan.deletedRecordIDs,
                 removedDiscussionIDs: Array(Set(plan.removedDiscussionIDs + removedDiscussions))
             )
-            try await persist(plan, replacing: record, failure: "Research Record cleanup is pending.")
+            try await persist(plan, replacing: record, failure: "Temporary application cleanup is pending.")
             try faultPlan.trigger(.afterDiscussionRemoval)
 
-            for target in plan.preview.records where !plan.deletedRecordIDs.contains(target.id) {
-                do {
-                    _ = try await portableRecordStore.deletePermanently(
-                        id: target.id,
-                        expectedFingerprint: target.fingerprint
-                    )
-                } catch ResearchRecordStoreV1Error.recordNotFound {
-                    guard await portableRecordStore.isRecordPermanentlyDeleted(id: target.id) else {
-                        throw ResearchRecordStoreV1Error.recordNotFound(target.id)
-                    }
-                }
-                plan = SystemTrashDeletionPlan(
-                    preview: plan.preview,
-                    sourceReceipts: plan.sourceReceipts,
-                    deletedRecordIDs: Array(Set(plan.deletedRecordIDs + [target.id])),
-                    removedDiscussionIDs: plan.removedDiscussionIDs
-                )
-                try await persist(plan, replacing: record, failure: "Research Record cleanup is pending.")
-            }
-            try faultPlan.trigger(.afterRecordDeletion)
-
-            try await localExecutionStore?.purgeExecutions(containing: plan.affectedNoteIDs)
-            for noteID in plan.affectedNoteIDs {
-                try await agentChangeEvidenceStore?.removeEvidence(noteID: noteID)
-            }
-            try faultPlan.trigger(.afterExecutionCleanup)
             try await portableRecordStore.clearNoteDeletionGate(noteIDs: plan.affectedNoteIDs)
 
             let completedRecord = await makeRecord(
                 plan: plan,
-                failure: "System Trash and associated Research Record cleanup completed."
+                failure: "System Trash and temporary application cleanup completed."
             )
             try await recoveryStore.record(completedRecord)
             try await recoveryStore.resolve(completedRecord)
             return SystemTrashDeletionCommit(
                 planID: plan.id,
                 noteIDs: Array(plan.affectedNoteIDs),
-                deletedRecordIDs: plan.deletedRecordIDs,
                 removedDiscussionIDs: plan.removedDiscussionIDs,
                 originalRelativePaths: plan.preview.sources.map(\.relativePath),
                 resultingTrashPaths: plan.sourceReceipts.compactMap(\.resultingTrashPath)
@@ -633,7 +552,6 @@ public actor NoteSystemTrashDeletionCoordinator {
                     resultingTrashPath: resultingTrashPath
                 )
             },
-            deletedRecordIDs: plan.deletedRecordIDs,
             removedDiscussionIDs: plan.removedDiscussionIDs
         )
     }
@@ -657,17 +575,15 @@ public actor NoteSystemTrashDeletionCoordinator {
         let noteTargets = preview.sources.flatMap(\.notes)
         let noteIDs = noteTargets.map(\.noteID)
         let notePaths = noteTargets.map(\.relativePath)
-        let recordIDs = preview.records.map(\.id)
         let discussionIDs = preview.activeDiscussionIDs
         guard !preview.sources.isEmpty,
               Set(sourceIDs).count == sourceIDs.count,
               Set(sourcePaths).count == sourcePaths.count,
               Set(noteIDs).count == noteIDs.count,
               Set(notePaths).count == notePaths.count,
-              Set(recordIDs).count == recordIDs.count,
               Set(discussionIDs).count == discussionIDs.count else {
             throw TriptychTransactionError.invalidPlan(
-                "System-Trash source, Note, Record, and Discussion identities must be unique."
+                "System-Trash source, Note, and Discussion identities must be unique."
             )
         }
         for source in preview.sources {
@@ -693,21 +609,6 @@ public actor NoteSystemTrashDeletionCoordinator {
                 )
             }
         }
-        let affectedNoteIDs = preview.affectedNoteIDs
-        for record in preview.records {
-            let participantIDs = record.participantNoteIDs
-            let unaffectedIDs = record.unaffectedParticipants.map(\.noteID)
-            guard !participantIDs.isEmpty,
-                  Set(participantIDs).count == participantIDs.count,
-                  Set(unaffectedIDs).count == unaffectedIDs.count,
-                  !Set(participantIDs).isDisjoint(with: affectedNoteIDs),
-                  Set(unaffectedIDs).isDisjoint(with: affectedNoteIDs),
-                  Set(unaffectedIDs).isSubset(of: Set(participantIDs)) else {
-                throw TriptychTransactionError.invalidPlan(
-                    "A system-Trash Record has an invalid participant inventory."
-                )
-            }
-        }
     }
 
     private func validatePlanShape(
@@ -717,8 +618,6 @@ public actor NoteSystemTrashDeletionCoordinator {
         try validatePreviewShape(plan.preview)
         let sourceIDs = plan.preview.sources.map(\.id)
         let receiptIDs = plan.sourceReceipts.map(\.targetID)
-        let recordIDs = plan.preview.records.map(\.id)
-        let deletedRecordIDs = plan.deletedRecordIDs
         let discussionIDs = plan.preview.activeDiscussionIDs
         let removedDiscussionIDs = plan.removedDiscussionIDs
         guard recoveryRecord.id == plan.id,
@@ -728,8 +627,6 @@ public actor NoteSystemTrashDeletionCoordinator {
               receiptIDs.count == sourceIDs.count,
               Set(receiptIDs).count == receiptIDs.count,
               Set(receiptIDs) == Set(sourceIDs),
-              Set(deletedRecordIDs).count == deletedRecordIDs.count,
-              Set(deletedRecordIDs).isSubset(of: Set(recordIDs)),
               Set(removedDiscussionIDs).count == removedDiscussionIDs.count,
               Set(removedDiscussionIDs).isSubset(of: Set(discussionIDs)) else {
             throw TriptychTransactionError.invalidPlan(
@@ -770,7 +667,7 @@ public actor NoteSystemTrashDeletionCoordinator {
                 detail = "Foundation moved the item to the system Trash. Finder owns restoration."
             case .outcomeUnknown:
                 state = .unreadable
-                detail = "Scholium cannot prove the system Trash outcome and will not infer Record deletion from source absence."
+                detail = "Scholium cannot prove the system Trash outcome and will not infer cleanup from source absence."
             }
             return TriptychMutationRecoveryFile(
                 vaultID: source.vaultID,
@@ -801,13 +698,12 @@ public actor NoteSystemTrashDeletionCoordinator {
             throw ResearchRecordStoreError.unreadableStore(kind: "Critique", reason: error)
         }
         try await localExecutionStore?.validateDeletionAuthority()
-        let records = try await portableRecordStore.listing()
         let discussions = try await portableRecordStore.activeDiscussions()
-        let issues = records.issues + discussions.issues
-        guard issues.isEmpty else {
+        guard discussions.issues.isEmpty else {
             throw ResearchRecordStoreError.unreadableStore(
-                kind: "Portable Research Record",
-                reason: issues.map { "\($0.id): \($0.reason)" }.joined(separator: "; ")
+                kind: "Portable Research Discussion",
+                reason: discussions.issues.map { "\($0.id): \($0.reason)" }
+                    .joined(separator: "; ")
             )
         }
     }

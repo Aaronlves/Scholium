@@ -77,7 +77,7 @@ struct PropertyContractTests {
         }
     }
 
-    @Test("Custom definitions retain stable identity while guidance and lifecycle evolve")
+    @Test("Custom definitions retain stable identity while presentation and lifecycle evolve")
     func customDefinitionLifecycle() throws {
         var current = TriptychSettings()
         current.metadataFields[.output] = [
@@ -88,17 +88,26 @@ struct PropertyContractTests {
                 description: "Current editorial stage",
                 allowedValues: ["draft", "review"]
             ),
+            MetadataFieldDefinition(key: "target_words", valueKind: .number),
         ]
         var evolved = current
-        evolved.metadataFields[.output]?[0].label = "Writing Stage"
-        evolved.metadataFields[.output]?[0].description = "Researcher-defined workflow stage"
-        evolved.metadataFields[.output]?[0].allowedValues?.append("complete")
-        evolved.metadataFields[.output]?[0].lifecycle = .archived
-        evolved.metadataFields[.output, default: []].append(
-            MetadataFieldDefinition(key: "target_words", valueKind: .number)
-        )
+        evolved.metadataFields[.output] = [
+            MetadataFieldDefinition(key: "target_words", valueKind: .number),
+            MetadataFieldDefinition(
+                key: "draft_stage",
+                valueKind: .choice,
+                label: "Writing Stage",
+                description: "Researcher-defined workflow stage",
+                allowedValues: ["complete", "review", "draft"],
+                lifecycle: .archived
+            ),
+            MetadataFieldDefinition(key: "audience", valueKind: .text),
+        ]
         try TriptychSettingsValidator.validate(evolved)
         try TriptychSettingsValidator.validateTransition(from: current, to: evolved)
+        #expect(evolved.metadataFields[.output]?.map(\.key) == [
+            "target_words", "draft_stage", "audience",
+        ])
 
         let catalog = NoteMetadataCatalog(settings: evolved)
         #expect(catalog.contract(for: "draft_stage", profile: .draftProject) != nil)
@@ -122,12 +131,30 @@ struct PropertyContractTests {
             try TriptychSettingsValidator.validateTransition(from: current, to: renamed)
         }
 
+        var reshaped = current
+        reshaped.metadataFields[.output]?[1] = MetadataFieldDefinition(
+            key: "target_words",
+            valueKind: .text
+        )
+        #expect(throws: TriptychSettingsValidationError.self) {
+            try TriptychSettingsValidator.validateTransition(from: current, to: reshaped)
+        }
+
         var removedChoice = current
         removedChoice.metadataFields[.output]?[0].allowedValues = ["review"]
         #expect(throws: TriptychSettingsValidationError.self) {
             try TriptychSettingsValidator.validateTransition(
                 from: current,
                 to: removedChoice
+            )
+        }
+
+        var removedField = current
+        removedField.metadataFields[.output]?.removeAll { $0.key == "target_words" }
+        #expect(throws: TriptychSettingsValidationError.self) {
+            try TriptychSettingsValidator.validateTransition(
+                from: current,
+                to: removedField
             )
         }
     }

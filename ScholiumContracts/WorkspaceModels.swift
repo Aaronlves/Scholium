@@ -998,7 +998,7 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
         case .vaultNotInWorkspace(let id):
             "Vault \(id.uuidString) is not part of this Scholium Triptych."
         case .workspaceStillLoading(let id):
-            "Scholium is still loading the complete Triptych \(id.uuidString). Search, relationships, and Research Actions will become available when loading finishes."
+            "Scholium is still loading the complete Triptych \(id.uuidString). This Note and the currently open vault support bounded text Search; Triptych Search, Research Records, relationships, and Research Actions will become available when loading finishes."
         case .workspaceRegistrationInUse(let id):
             "Scholium cannot remove Triptych registration \(id.uuidString) while that Triptych is open. Close its other windows and try again."
         case .portableControlRecoveryRequired(let controlPath, let reason):
