@@ -35,12 +35,11 @@
   actual minimum usable bound, and Action/Discussion cancellation and recovery.
   Do not treat initial frame coordinates or default dimensions as gate values.
 - Close remaining deterministic Metadata coverage for custom definitions,
-  optional Agent preferences, About always-shown order and inline editor error
-  states, lifecycle/use counts, controlled choices, Complete Metadata,
-  CreatorList, first-record creation, removal/Undo, conflict and authored
-  `summary`/`keywords` exact-source routes. Add a separate human
-  journey only if a custom boundary is not exercised by §20's representative
-  VoiceOver, keyboard or adaptation checks.
+  optional Agent preferences, lifecycle/use counts, controlled choices,
+  Complete Metadata, CreatorList, first-record creation, removal/Undo,
+  conflict and authored `summary`/`keywords` exact-source routes. Add a
+  separate human journey only if a custom boundary is not exercised by §20's
+  representative VoiceOver, keyboard or adaptation checks.
 - Close remaining deterministic Zotero Link/Fill coverage for unavailable,
   empty/no-result, library identity, proposed fill, retained conflict, changed
   item/server, revision, partial commit, set/rebind/refresh and confirmed clear.

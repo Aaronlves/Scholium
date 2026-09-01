@@ -249,6 +249,58 @@ struct PropertyPresentationTests {
         #expect(!keys.contains("title"))
     }
 
+    @Test("About preserves configured order within semantic groups")
+    func aboutPreservesConfiguredGroupOrder() {
+        let groups = AboutProfileCatalog.groupedEntries(
+            for: .analysis,
+            visibleFields: ["authors", "type", "publication_date"],
+            presentManagedFields: ["publisher", "doi"],
+            catalog: .builtIn
+        )
+
+        #expect(groups.map(\.group) == [
+            .source,
+            .publication,
+            .accessAndIdentifiers,
+            .authoredYAML,
+        ])
+        #expect(groups.map(\.keys) == [
+            ["authors", "type"],
+            ["publication_date", "publisher"],
+            ["doi"],
+            ["summary", "keywords"],
+        ])
+    }
+
+    @Test("About inline save state distinguishes conflicts and permits retry or cancel")
+    func aboutInlineSaveState() {
+        var state = AboutFieldOperationState.idle
+        state.beginSaving()
+        #expect(state.isSaving)
+        #expect(state.failure == nil)
+
+        state.finishSaving(with: NoteMetadataError.revisionConflict(UUID()))
+        #expect(!state.isSaving)
+        #expect(state.failure?.isConflict == true)
+        #expect(state.failure?.message.contains("changed after it was loaded") == true)
+
+        state.beginSaving()
+        state.finishSaving(with: VaultRepositoryError.conflict(
+            expected: DocumentFingerprint(content: "expected"),
+            current: DocumentFingerprint(content: "current")
+        ))
+        #expect(state.failure?.isConflict == true)
+
+        state.beginSaving()
+        #expect(state == .saving)
+        state.finishSaving(with: VaultRepositoryError.invalidFrontmatter("Fixture"))
+        #expect(state.failure?.isConflict == false)
+        #expect(state.failure?.message.contains("Fixture") == true)
+
+        state.reset()
+        #expect(state == .idle)
+    }
+
     @Test("About keeps a present archived custom value without making it selectable when empty")
     func aboutKeepsPresentArchivedValue() throws {
         let catalog = NoteMetadataCatalog(customFieldsByRole: [

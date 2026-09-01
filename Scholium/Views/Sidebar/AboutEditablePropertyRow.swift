@@ -29,6 +29,57 @@ struct AboutPropertyDescriptor: Identifiable, Hashable, Sendable {
     }
 }
 
+struct AboutFieldSaveFailure: Hashable {
+    let isConflict: Bool
+    let message: String
+
+    init(_ error: Error) {
+        isConflict = if let metadataError = error as? NoteMetadataError,
+                        case .revisionConflict = metadataError {
+            true
+        } else if let repositoryError = error as? VaultRepositoryError,
+                  case .conflict = repositoryError {
+            true
+        } else {
+            false
+        }
+        message = error.localizedDescription
+    }
+
+    var accessibilityIdentifierSuffix: String {
+        isConflict ? "conflict" : "error"
+    }
+}
+
+enum AboutFieldOperationState: Hashable {
+    case idle
+    case saving
+    case failed(AboutFieldSaveFailure)
+
+    var isSaving: Bool { self == .saving }
+
+    var failure: AboutFieldSaveFailure? {
+        guard case .failed(let failure) = self else { return nil }
+        return failure
+    }
+
+    mutating func beginSaving() {
+        self = .saving
+    }
+
+    mutating func finishSaving() {
+        self = .idle
+    }
+
+    mutating func finishSaving(with error: Error) {
+        self = .failed(AboutFieldSaveFailure(error))
+    }
+
+    mutating func reset() {
+        self = .idle
+    }
+}
+
 private struct AboutListItemDraft: Identifiable, Hashable {
     let id: UUID
     var value: String
@@ -136,8 +187,7 @@ struct AboutEditablePropertyRow: View {
     @State private var booleanValue = false
     @State private var listItems: [AboutListItemDraft] = []
     @State private var creators: [AboutCreatorDraft] = []
-    @State private var isSaving = false
-    @State private var errorMessage: String?
+    @State private var operationState: AboutFieldOperationState = .idle
     @FocusState private var scalarIsFocused: Bool
 
     private var isEditing: Bool { activeEditorKey == descriptor.key }
@@ -156,24 +206,27 @@ struct AboutEditablePropertyRow: View {
                 displayButton
             }
 
-            if let errorMessage {
-                Label(errorMessage, systemImage: "exclamationmark.circle.fill")
+            if let failure = operationState.failure {
+                Label(failure.message, systemImage: "exclamationmark.circle.fill")
                     .font(ScholiumTypography.interface(.small))
                     .scholiumForeground(.destructive)
                     .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("scholium.about.field.\(descriptor.key).error")
+                    .accessibilityIdentifier(
+                        "scholium.about.field.\(descriptor.key)."
+                            + failure.accessibilityIdentifierSuffix
+                    )
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onChange(of: descriptor.value) { _, _ in
             guard !isEditing else { return }
             installDraft()
-            errorMessage = nil
+            operationState.reset()
         }
         .onChange(of: isEditing) { _, editing in
             guard editing else { return }
             installDraft()
-            errorMessage = nil
+            operationState.reset()
             if usesScalarControl {
                 Task { @MainActor in
                     await Task.yield()
@@ -322,11 +375,11 @@ struct AboutEditablePropertyRow: View {
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
                     .keyboardShortcut(.return, modifiers: [.command])
-                    .disabled(isSaving || candidateValue == descriptor.value)
+                    .disabled(operationState.isSaving || candidateValue == descriptor.value)
             }
         }
         .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
-        .disabled(isSaving)
+        .disabled(operationState.isSaving)
     }
 
     private var authorityLabel: String {
@@ -543,27 +596,27 @@ struct AboutEditablePropertyRow: View {
     }
 
     private func cancel() {
-        guard !isSaving else { return }
+        guard !operationState.isSaving else { return }
         installDraft()
-        errorMessage = nil
+        operationState.reset()
         activeEditorKey = nil
     }
 
     private func commit(_ value: YAMLValue?) {
-        guard !isSaving else { return }
-        isSaving = true
-        errorMessage = nil
+        guard !operationState.isSaving else { return }
+        operationState.beginSaving()
         Task { @MainActor in
             do {
                 try await save(value)
+                operationState.finishSaving()
                 activeEditorKey = nil
             } catch is CancellationError {
                 // A cancelled field mutation retains the draft without adding
                 // a misleading failure state.
+                operationState.finishSaving()
             } catch {
-                errorMessage = error.localizedDescription
+                operationState.finishSaving(with: error)
             }
-            isSaving = false
         }
     }
 }

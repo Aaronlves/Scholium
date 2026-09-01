@@ -40,13 +40,14 @@ The ad-hoc App requires the documented Gatekeeper override.
   tests; 467 Core plus 3 performance tests; 161 Contracts tests; 296
   Application tests, 16 bridge tests and 1 architecture measurement; 686 App
   tests; public symbols; 15 executable CLI lifecycles; the sandboxed bridge;
-  and the Release build in 196.43 seconds. Exploratory use of the isolated QA
-  app confirmed visible About groups, empty core fields, a human-readable
-  managed choice, file and Settlement facts, and inline managed/source saves;
-  the authored save changed only the `summary` line in the disposable fixture.
-  That visual pass followed dismissal of unrelated unsupported legacy Record
-  notices already present in the QA fixture. It is not deterministic UI,
-  VoiceOver, adaptation, packaged-artifact, or human acceptance.
+  and the Release build in 196.43 seconds. A later 18-test presentation pass
+  under Xcode 27.0 beta proves configured group order and field-local
+  saving, failure, Metadata/source conflict, retry, and cancel state. Isolated
+  QA confirmed visible groups, empty core fields, readable choices, file and
+  Settlement facts, and inline managed/source saves; the authored save changed
+  only `summary` in the disposable fixture after unrelated legacy notices were
+  dismissed. This is not deterministic UI, VoiceOver, adaptation,
+  packaged-artifact, or human acceptance.
 
 - On 2026-09-01, §20 replaced its per-feature human matrix with complete
   deterministic Core coverage, four Core and one Agent representative human
