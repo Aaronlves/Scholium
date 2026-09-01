@@ -142,11 +142,20 @@
   recovery branch with assistive technology. Finder
   metadata, ACL/xattr identity, parent-directory synchronization, and cleanup
   completion are not save-success acceptance criteria.
-- Verify packaged reopen after an external Skill folder or Analyze source
-  moves, disappears, is evicted, or is restored. Skill-file content changes are
-  intentionally outside Scholium observation.
-- Complete direct acceptance of Zotero attachment selection and the built-in
-  reader versus MCP boundary.
+- Treat packaged reopen after an external Skill folder or selected Analyze
+  source moves, disappears, is evicted, or is restored as an Agent
+  Collaboration integration journey under §21.5: rerun it for a Beta only when
+  its locator, source-access, or package boundary changes, and close its
+  applicable profile-scoped acceptance for 1.0. It never blocks the Core App
+  profile. Skill-file content changes remain outside Scholium observation.
+- Implement the specific-Zotero-attachment route in the Analyze source
+  selector before claiming direct selection acceptance. Its functional and
+  packaged acceptance belongs to the Agent Collaboration/Zotero integration
+  and follows §21.5's change-triggered cadence. Deterministic tests already own
+  exact parent/attachment identity, selected-file and symlink refusal, and
+  missing, changed, or unavailable source behavior; they do not prove the
+  direct interface journey. Scholium has no built-in PDF reader, and §17
+  defers attachment presentation, so there is no reader-versus-MCP gate.
 
 ## Distribution and release
 
