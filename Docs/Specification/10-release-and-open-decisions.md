@@ -40,7 +40,9 @@ Actions, Skills and routed references, Profiles/Results, direct Agent start and
 GUI handoff, secure
 process-bound Sessions, Activity Ledgers, Research Context, portable Records,
 Follow-up/feedback, Connections, Attention, Zotero read-only/unavailable
-behavior, CLI parity, Record Search, adaptations, and declared window sizes.
+behavior, CLI parity, Record Search, adaptations, and resizable auxiliary-window
+usability at its supported bounds. Exact initial frames and coordinates remain
+implementation defaults rather than release thresholds.
 
 Search acceptance covers scope/provider authorization, Metadata and relation
 provenance, Record attribution/locators, Explain/completion, Saved Search

@@ -606,10 +606,10 @@ fails closed, and the current Note revision remains actor-unknown unless a
 separate existing operation or Record owner proves authorship. No block-scalar
 support, field-level writer history, or attribution database was added.
 
-The bounded Records-window repair passed its one owning frame test. One
-disposable ordinary-product QA with 100 portable Records then preserved the
-same `X=355 Y=110 W=760 H=680` frame through list, detail, and returned list;
-the proof shell was not used.
+The bounded Records-window repair passed its owning frame test. One disposable
+ordinary-product QA with 100 portable Records retained one frame through list,
+detail, and returned list; the proof shell was not used. This establishes
+continuity, not a required coordinate or default size.
 
 This remains bounded development evidence, not an installed App/CLI journey or
 human acceptance. Section 20's representative VoiceOver, physical Full Keyboard

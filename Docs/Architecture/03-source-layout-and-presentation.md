@@ -131,8 +131,10 @@ Triptych window owns one `ResearchRecordBrowserModel`: Application Record-query
 requests, a disposable Reading Leads index, independent Scope and View,
 presentation filters, and one collection/detail route.
 It owns no Record parser, flattened Record corpus, ranking, or freshness rule.
-The native resizable window has a 760 × 680 default frame and 700 × 520
-minimum. Its hidden-title style retains native traffic lights, toolbar, and
+The native resizable window currently has a 760 × 680 default frame and
+700 × 520 content minimum. These are implementation-owned construction values,
+not release thresholds; acceptance checks usability at the actual supported
+bounds. Its hidden-title style retains native traffic lights, toolbar, and
 dragging while applying `fullSizeContentView` once for the complete window
 lifetime. Collection content remains below the native toolbar safe area, while
 a Record detail's split-plane backgrounds continue behind the transparent

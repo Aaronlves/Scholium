@@ -31,8 +31,9 @@
   retained Records remain queryable. Focused tests do not establish these
   Finder and multi-window usability outcomes.
 - Complete direct acceptance for long Connect clusters, Attention queue sizes,
-  folder dragging, Library shortcuts, Research Records at regular/minimum width,
-  and Action/Discussion cancellation and recovery.
+  folder dragging, Library shortcuts, Research Records at ordinary size and its
+  actual minimum usable bound, and Action/Discussion cancellation and recovery.
+  Do not treat initial frame coordinates or default dimensions as gate values.
 - Close remaining deterministic Metadata coverage for custom definitions,
   optional Agent preferences, About always-shown order and inline editor error
   states, lifecycle/use counts, controlled choices, Complete Metadata,
