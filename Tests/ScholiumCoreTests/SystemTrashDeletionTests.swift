@@ -124,6 +124,52 @@ struct SystemTrashDeletionTests {
         #expect(try await fixture.recoveryStore.pending().isEmpty)
     }
 
+    @Test("A crash after Discussion cleanup resumes without replaying proven moves")
+    func discussionCleanupThenGateReleaseResumesForward() async throws {
+        let fixture = try await Fixture()
+        defer { fixture.remove() }
+        var trashURLs: [URL] = []
+        defer { trashURLs.forEach { try? FileManager.default.removeItem(at: $0) } }
+        let coordinator = fixture.coordinator(faultPlan: SystemTrashDeletionFaultPlan(
+            failures: [],
+            interruptions: [.afterDiscussionRemoval]
+        ))
+        let preview = try await coordinator.prepareNote(
+            noteID: fixture.firstIdentity.id,
+            vaultID: fixture.vaultID,
+            relativePath: fixture.firstPath,
+            expectedRevision: fixture.firstFingerprint
+        )
+
+        await #expect(throws: TriptychTransactionError.self) {
+            _ = try await coordinator.moveToSystemTrash(preview)
+        }
+        let pending = try #require(try await fixture.recoveryStore.pending().first)
+        let plan = try #require(pending.systemTrashDeletionPlan)
+        trashURLs = plan.sourceReceipts.compactMap {
+            $0.resultingTrashPath.map(URL.init(fileURLWithPath:))
+        }
+        #expect(plan.sourceReceipts.map(\.progress) == [.movedToSystemTrash])
+        #expect(plan.removedDiscussionIDs == [fixture.activeDiscussion.id])
+        #expect(!FileManager.default.fileExists(atPath: fixture.firstURL.path))
+        #expect(try await fixture.portableRecordStore.activeDiscussions().discussions.isEmpty)
+        #expect(try await fixture.portableRecordStore.record(
+            id: fixture.sharedRecord.id
+        ) == fixture.sharedRecord)
+
+        let commits = try await fixture.coordinator().recoverInterruptedTransactions()
+
+        #expect(commits.count == 1)
+        #expect(commits.first?.removedDiscussionIDs == [fixture.activeDiscussion.id])
+        #expect(!FileManager.default.fileExists(atPath: fixture.firstURL.path))
+        #expect(try await fixture.recoveryStore.pending().isEmpty)
+        _ = try await fixture.portableRecordStore.settle(
+            noteID: fixture.firstIdentity.id,
+            fingerprint: fixture.firstFingerprint,
+            rationale: "The deletion gate was released after recovery."
+        )
+    }
+
     @Test("A crash after plan persistence leaves source intact and recovery owns the gate")
     func durablePlanPrecedesDeletionGate() async throws {
         let fixture = try await Fixture()

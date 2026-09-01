@@ -58,16 +58,17 @@ The ad-hoc App requires the documented Gatekeeper override.
   test (1/1), and the Xcode 27.0 beta UI-target build passed. No VoiceOver-
   service or human check ran.
 
-- On 2026-09-01, using Xcode 27.0 beta build 27A5218g and Swift 6.4, the
+- On 2026-09-01 under Xcode 27.0 beta build 27A5218g and Swift 6.4, the
   system-Trash/Record cutover passed the complete gate: documentation,
-  localization, resources and residue guards; 207 Web tests; 465 Core plus 3
-  performance tests; 160 Contracts tests; 296 Application tests, 16 bridge
-  tests and 1 architecture measurement; 679 App tests; public symbols; 15
-  executable CLI lifecycles; the sandboxed bridge; and the Release build in
-  191.37 seconds. Focused fixtures prove completed Records, Local Execution,
-  and Agent evidence remain while affected active Discussions are removed;
-  explicit permanent deletion still works. This is not Finder, multi-window,
-  VoiceOver, packaged-artifact, or human acceptance.
+  localization, resource and residue guards; 207 Web; 465 Core plus 3
+  performance; 160 Contracts; 296 Application, 16 bridge and 1 architecture
+  measurement; 679 App; public symbols; 15 CLI lifecycles; the sandboxed
+  bridge; and the 191.37-second Release build. A later 11-test focused pass
+  proves plan-persisted, native-outcome-unknown, post-receipt, and
+  post-Discussion-cleanup recovery without replaying proven moves; Records,
+  Local Execution, and Agent evidence remain while affected active Discussions
+  are removed. This is not Finder, multi-window, VoiceOver, packaged-artifact,
+  or human acceptance.
 
 - On 2026-09-01, the compact Agent Changes and top-notification refinement
   passed the Debug product build, documentation and interface-localization
