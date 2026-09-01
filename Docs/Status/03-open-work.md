@@ -98,14 +98,14 @@
   complete Core App 1.0 or named-baseline campaign. Each selected series must
   pass, while a focused report remains Incomplete and never becomes G7. Extend
   shared source-range fixtures before changing parser or syntax rules.
-- Repeat the direct-to-Edit QA journey with and without a `summary`/`keywords`
-  value after the isolated fixture reaches a usable document surface. The
-  2026-08-23 custom-Metadata/fixed-YAML journey compiled, but its run stopped
-  before launch because the configured disposable `Desktop/TestVaults`
-  fixture was absent. It therefore provides no interaction evidence for body
-  focus, first-keystroke persistence, Settings, Complete Metadata, or source
-  fidelity. Then measure command dispatch to acknowledged selection and
-  complete human-visible acceptance before describing the path as zero latency.
+- Include one representative managed-New-Note direct-to-Edit journey in the
+  first complete UI baseline and rerun it when the creation or editor-focus
+  owner changes. It proves immediate Edit, exact body-start focus, first-key
+  persistence, and that adding a custom Metadata definition does not alter the
+  fixed YAML scaffold. Deterministic creation, YAML-patch, and editor tests own
+  empty and populated `summary`/`keywords`; do not multiply those states into
+  UI or human journeys. §21.4 owns applicable latency evidence, and Scholium
+  makes no zero-latency claim. No retained run currently closes this journey.
 
 ## Search and performance
 
