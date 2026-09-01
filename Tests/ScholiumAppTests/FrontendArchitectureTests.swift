@@ -4253,6 +4253,38 @@ struct FrontendArchitectureTests {
         )
     }
 
+    @Test("Heading Outline toolbar navigation has a matching View-menu route")
+    func headingOutlineHasViewMenuRoute() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let app = try String(
+            contentsOf: repository.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
+            encoding: .utf8
+        )
+        let viewCommandsStart = try #require(
+            app.range(of: "private struct ScholiumSidebarCommandContent")
+        )
+        let viewCommandsEnd = try #require(
+            app.range(
+                of: "private struct ScholiumAttentionCommandContent",
+                range: viewCommandsStart.upperBound..<app.endIndex
+            )
+        )
+        let viewCommands = app[
+            viewCommandsStart.lowerBound..<viewCommandsEnd.lowerBound
+        ]
+
+        #expect(viewCommands.contains("Menu(\"Heading Outline\")"))
+        #expect(
+            viewCommands.contains(
+                "appState?.pendingSourceLine = heading.span.start.line"
+            )
+        )
+        #expect(viewCommands.contains("Button(\"No Headings\")"))
+    }
+
     @Test("Research Action launchers assign no keyboard shortcuts")
     func researchActionLaunchersAssignNoKeyboardShortcuts() throws {
         let repository = URL(fileURLWithPath: #filePath)

@@ -21,9 +21,10 @@ and Library presentation without restating those workflows.
 - Distinguish source, researcher prose, Agent content, Discussion, Result,
   Settle, Critique, Connect, and diagnostics through text and structure, not
   color alone.
-- Preserve menu, toolbar, keyboard, pointer, focus, accessibility,
-  cancellation, conflict, and recovery routes. Hover, drag, color, motion,
-  secondary click, and gesture are supplementary.
+- Apply §20's route applicability. Menus remain comprehensive; the toolbar stays
+  bounded to frequent or high-value commands, and no toolbar command exists only
+  there. Hover, drag, color, motion, secondary click, and gesture are
+  supplementary.
 - Construct no workspace until Application Support bootstrap is Ready.
 
 ### 18.2 Workspace shell and Document tabs
@@ -83,7 +84,8 @@ Menus follow task ownership:
 - **File**: Triptych/window, New Note, Import, Duplicate, Rename, Move, Reveal,
   and system-Trash actions.
 - **Edit**: editing, Find, formatting, and Edit Metadata.
-- **View**: Back/Forward, Search, Document mode/text size, Sidebar, and Inspector.
+- **View**: Back/Forward, Heading Outline, Search, Document mode/text size,
+  Sidebar, and Inspector.
 - **Research**: role-valid Actions and Triptych Records.
 - **Window**: standard windows plus Notifications.
 - **Settings**: one searchable native list/detail window with **Application**,

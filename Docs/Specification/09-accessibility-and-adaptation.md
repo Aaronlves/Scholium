@@ -25,9 +25,15 @@
 
 ### Input, focus, and semantics
 
-- Every core task has appropriate keyboard, menu/toolbar, pointer, focus,
-  cancellation, recovery, and accessibility routes. Drag and secondary click
-  remain redundant.
+- Every core task is keyboard- and accessibility-operable with visible,
+  predictable focus. App commands use the macOS menu bar; frequent or
+  high-value commands may additionally use toolbar or direct pointer controls.
+  Field-local and standard native controls need not be duplicated into a menu
+  or toolbar.
+- Interruptible work exposes cancellation when stopping is safe and meaningful.
+  Failure or consequential mutation exposes recovery only when an applicable
+  repair, retained state, or reversal exists. Drag and secondary click remain
+  redundant.
 - Focus is visible and predictable. Native presentations preserve initiating
   modality and return focus to the initiator or next valid semantic target.
   Custom features do not override native focus restoration. Shared custom
@@ -179,12 +185,15 @@
 
 ### Evidence and representative human acceptance
 
-Deterministic conformance covers every declared core workflow: semantic names,
-roles, values and state; menu and keyboard reachability; focus and cancellation;
-localization; reflow; non-color meaning; and retained source, conflict and
-recovery behavior. Accessibility-tree inspection, unit/integration tests, and
-XCUITest remain automated evidence even when they drive a real system service
-or capture speech.
+Deterministic conformance covers every declared core workflow at the boundaries
+it exposes: semantic names, roles, values, and state; menu and keyboard
+reachability for app commands; predictable focus for interaction; cancellation
+for interruptible work; recovery for recoverable failure or consequential
+mutation; localization; reflow; non-color meaning; and retained source and
+conflict behavior. A workflow adds no inapplicable route merely to complete
+this list. Accessibility-tree inspection, unit/integration tests, and XCUITest
+remain automated evidence even when they drive a real system service or capture
+speech.
 
 Human acceptance is selected by independent failure mode, not by multiplying
 every workflow, state, width, appearance, adaptation and input method. Reuse one

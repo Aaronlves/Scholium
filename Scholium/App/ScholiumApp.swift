@@ -1799,6 +1799,28 @@ private struct ScholiumSidebarCommandContent: View {
         }
         .scholiumKeyboardShortcut(shortcut(for: .searchResearch))
         .disabled(searchActions == nil)
+        Menu("Heading Outline") {
+            let headings = appState?.currentNote?.workspaceSnapshot?.headings ?? []
+            if headings.isEmpty {
+                Button("No Headings") {}
+                    .disabled(true)
+            } else {
+                ForEach(headings.indices, id: \.self) { index in
+                    let heading = headings[index]
+                    Button {
+                        appState?.pendingSourceLine = heading.span.start.line
+                    } label: {
+                        Text(
+                            verbatim: String(
+                                repeating: "  ",
+                                count: max(0, heading.level - 1)
+                            ) + heading.text
+                        )
+                    }
+                }
+            }
+        }
+        .disabled(appState?.currentNote == nil)
         Button(
             ScholiumL10n.dynamicString(
                 appState?.researchInspectorVisible == true

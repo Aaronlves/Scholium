@@ -28,6 +28,12 @@ The ad-hoc App requires the documented Gatekeeper override.
 
 ## Current and focused verification evidence
 
+- On 2026-09-01, §20 replaced its universal interaction-route matrix with
+  applicability rules, and **View → Heading Outline** became the menu-bar peer
+  of its existing toolbar control. Documentation and localization validation,
+  the focused command-route test, and all seven Workspace toolbar tests passed
+  under Xcode 27.0 beta. No Full Keyboard Access or human acceptance ran.
+
 - On 2026-09-01, the Zotero-style About cutover passed documentation and
   interface-localization validation, 145 focused presentation, Settings, and
   frontend-architecture tests, and the complete repository gate: 207 Web

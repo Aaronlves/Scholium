@@ -29,6 +29,12 @@
 - Native Sidebar and Inspector controls mirror actual split visibility.
   The platform owns window, toolbar, divider, collapse, resize, fullscreen, and focus
   behavior; the document-navigation depth cue is decorative and noninteractive.
+- The menu bar owns app-command structure. The bounded Workspace toolbar
+  contains only shell and high-value Document commands, and each current item
+  now has a menu-bar peer, including **View → Heading Outline**. Field-local
+  controls are not duplicated into menus or the toolbar merely to complete a
+  route matrix; cancellation and recovery remain with interruptible or
+  recoverable owners.
 
 ## Library and navigation
 

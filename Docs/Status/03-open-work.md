@@ -4,11 +4,12 @@
 
 ## Interface and accessibility acceptance
 
-- Complete deterministic accessibility conformance for every Core App workflow:
-  semantic state, menu/keyboard reachability, focus, cancellation, recovery,
+- Complete deterministic accessibility conformance across Core App workflows at
+  their applicable boundaries: semantic state, menu/keyboard reachability for
+  app commands, predictable focus, operation-owned cancellation/recovery,
   English/Simplified Chinese localization, non-color meaning, reflow, and exact
   source preservation. Existing automated journeys remain engineering evidence,
-  not human acceptance.
+  not human acceptance; add no inapplicable route merely to fill the list.
 - Complete §20's four bounded Core App human checks: one representative genuine
   VoiceOver journey; one physical Full Keyboard Access journey; one installed
   Simplified Chinese IME exact-source journey; and one visual-adaptation set.
