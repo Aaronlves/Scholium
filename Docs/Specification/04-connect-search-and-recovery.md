@@ -25,13 +25,11 @@ There is no Combined or All direction.
 
 ## 13. Search and Attention
 
-Search has three visible scopes whose meaning depends on the selected provider:
+Search has three visible Note scopes:
 
-- **This Note** searches the open Note's unsaved buffer or Records in which the
-  Note participates;
-- **This Vault** searches present Notes in the selected role vault or Records
-  with at least one participant there; and
-- **Triptych** searches all present Notes or all Records.
+- **This Note** searches the open Note's unsaved buffer;
+- **This Vault** searches present Notes in the selected role vault; and
+- **Triptych** searches all present Notes.
 
 Search owns known-Note navigation but not Recents, Quick Open, or navigation
 history. It is one compact command surface with visible scope and a bounded
@@ -55,9 +53,11 @@ Previous/Next, and standard keyboard routes. Edit and Source add Replace
 Current/All as single Undo transactions. Find creates no Search provider,
 index, saved query, or navigation history.
 
-Search has a closed **Note / Record** provider contract. Omitted `kind:` means
-`kind:note`; `kind:record` selects Records. Query text never changes the visible
-scope, and App and CLI share one parser and ordered response.
+Search currently has one available **Note** provider. Omitted `kind:` means
+`kind:note`; the reserved `kind:record` clause returns **Unavailable** until
+§22 defines and activates the replacement Record contract. Query text never
+changes the visible scope, and App, CLI, and Scholium MCP share one parser and
+ordered response.
 
 The Note provider uses one deterministic present-source corpus. It returns each
 occurrence for This Note and one row per Note for broader scopes. Its finite
@@ -76,22 +76,19 @@ Authored YAML matches retain source ranges; managed Metadata matches retain
 record revision without claiming a Markdown range. Relation queries preserve
 direction, remain direct, and require a current complete graph.
 
-The Record provider supports unfielded terms plus `note`, `action`, `skill`,
-`participant:researcher|agent`, and `date:today|7d|30d`. It searches frozen
-Record Title, Action, Skill display name, participant Note titles, and
-attributed statements. Results sort by finished time then stable identity unless
-the Records collection requests another provider-owned order.
+The Record provider remains unavailable until §22's replacement Research
+Record contract defines its canonical fields, pagination, and ordering. Search
+must not preserve superseded workflow fields or infer a new Record schema from
+existing implementation bytes.
 
 Unknown fields or values, malformed syntax, provider mismatch, unsupported
 grouping/OR/regex/fuzzy/range syntax, CJK prefix use, and unsafe structured
 exclusion produce an inline diagnostic and never broaden retrieval. Queries
 are bounded before execution.
 
-Every result identifies its provider object, stable identity, exact source
-fingerprint, matched field/reason, and available locator/range. Note and Record
-results never masquerade as each other. One unreadable Record yields
-**Partial** availability while valid Records remain usable; operations needing
-a complete corpus still fail closed.
+Every Note result identifies its provider object, stable identity, exact source
+fingerprint, matched field/reason, and available locator/range. No current
+result or stored index entry masquerades as a Research Record.
 
 Search indexes visible semantic text and canonical fields, not raw delimiters
 or link destinations. Exact title, alias, filename, and path identity outrank
@@ -107,14 +104,9 @@ reasons and source fingerprints. It never synthesizes a relation, score,
 summary, or evidence claim. Search and Graph must share one complete source
 manifest before Connection candidates are executable.
 
-Authenticated Runs may request related content for exact unambiguous seed Notes.
-Application excludes the seeds, combines per-seed typed reasons, and exposes no
-reading history. Stale, invalid, or unavailable generation yields no executable
-candidate.
-
-Ordinary Search returns bounded slices. Research Records and Reading Leads may
-request provider-owned pagination, exact filtered totals, and ordering without
-creating another parser or query language.
+Ordinary Search returns bounded slices. If the replacement Research Record
+contract later activates a provider, it must define its own fields, identity,
+pagination, exact filtered totals, and ordering while reusing this parser.
 
 Every response binds contract version, provider, authorized scope, source
 generation, and freshness. **Building**, **Limited**, **Partial**, **Stale**,
@@ -123,16 +115,17 @@ refresh may retain only a last complete compatible generation. Derived indexes
 remain disposable and never writable authority.
 
 The parser exposes one typed capability description used by completion,
-**Explain Query**, and CLI help. Completion edits only visible query text.
+**Explain Query**, CLI help, and the MCP tool schema. Completion edits only
+visible query text.
 Saved Searches store only raw query, visible scope, and contract version; they
 store no AST, resolved identity, result, or generation. Changed semantics
 require **Needs Editing** rather than silent rewrite or execution. Invalid saved
 bytes remain unchanged and nonexecuting; a damaged Saved Search store has a
 confirmed archive-and-reset route that never changes vault content.
 
-App and CLI consume the same ordered result identity, reasons, provenance,
-availability, and freshness. Presentation may reword but never reparse, reorder,
-broaden, or change relation direction.
+App, CLI, and Scholium MCP consume the same ordered result identity, reasons,
+provenance, availability, and freshness. Presentation may reword but never
+reparse, reorder, broaden, or change relation direction.
 
 Authored YAML `summary` participates as an explainable Note field with its exact
 scalar range. A hit opens the complete current Note and is only a discovery
@@ -140,42 +133,44 @@ lead. Missing or unbounded values receive no generated substitute. Search never
 writes or reconstructs YAML or managed Metadata.
 
 New providers or fields require a versioned typed clause, discriminated result
-identity, capability entry, source/freshness contract, and App/CLI parity.
+identity, capability entry, source/freshness contract, and App/CLI/MCP parity.
 Vector search, embeddings, AI interpretation/ranking, automatic relation
 extraction, multi-hop expansion, arbitrary structured paths, and chat-style
 Search remain outside the target.
 
-Research Context reuses this owner under
-[§8.2](03-research-actions-and-workflows.md#82-agent-entry-local-pairing-layered-delivery-and-research-context)
-and adds no second parser, resolver, index, or confidence score.
+Scholium MCP reuses this owner under
+[§8.3](03-agent-collaboration-and-workflows.md#83-tool-contract) and adds no
+second parser, resolver, index, or confidence score.
 
-**Notifications** combines persistent Action activities, derived Settlement
-reminders, and Triptych-wide structural Attention. These remain separate
-owners and completion or dismissal semantics. Structural Attention may report:
+**Notifications** combines Agent Changes, derived Settlement reminders, and
+Triptych-wide structural Attention. These remain separate owners and dismissal
+semantics. Structural Attention may report:
 
 - **Possible Orphan** only when a Note has no resolved incoming or outgoing
   Connection;
 - Broken/Ambiguous Connections, malformed Metadata, or unresolved identity;
   and
-- **Synthesis Material Changed** only when a completed Synthesize Record proves
-  an exact Analysis participant and recorded revision that later changed.
+- source/index drift or failure that has an exact mechanical basis and safe
+  repair.
 
 Attention never declares a Note wrong, outdated, Superseded, accepted, or
 philosophically deficient. Warnings are dismissible against their exact
 identity/revision and may recur after a later change.
 
-Settlement reminders are not structural Attention and have no Dismiss action.
-They follow §7.1 and recur only from a later saved revision or confirmed Agent
-change after the covering Settlement.
+Changed Since Settle reminders are not structural Attention. Dismiss hides the
+reminder without changing Settlement; a later source change may produce a new
+reminder under §7.1.
 
 ## 14. Save, Agent changes, and recovery
 
 Autosave creates no visible version history, Checkpoint product, whole-Triptych
 rollback, or settled-version store.
 
-Run-bound Agent change evidence stores only exact starting and final revisions
-for diff and direct Undo under §8.4. It grants no authority and uses the
-ordinary repository save path.
+Each MCP mutation stores one machine-local Agent Change under §8.4. An update
+retains only exact starting and final revisions needed for comparison and
+eligible direct Undo. Creation and system-Trash operations retain their own
+operation receipts and recovery. Agent Change evidence grants no authority and
+uses the ordinary repository save path.
 
 Interrupted-save recovery remains machine-local and source-specific. When
 startup proves a distinct retained candidate, **Recovery** shows its Note,
@@ -191,15 +186,15 @@ source, valid neighbor records, settings, identity state, or the complete
 `.scholium` directory.
 
 System-Trash recovery is a separate forward plan showing source items, known
-Finder destinations, receipts, and affected temporary Discussions. When every
+Finder destinations, receipts, and affected temporary Comments. When every
 move is proven, Retry performs only pending temporary cleanup. An unknown
 native outcome permits **Resolve** after researcher inspection; that releases
 the gate and removes only the Scholium plan. It never restores or erases source,
-and neither route changes a finished Research Record.
+and neither route reads or changes Research Record bytes.
 
 Watchers and sync observations are refresh evidence only. External absence or
 restoration passes through ordinary identity and exact-byte reconciliation and
-never authorizes Record deletion or recreation.
+never authorizes Research Record deletion or recreation.
 
 After Saving, a writable Document has exactly three outcomes:
 

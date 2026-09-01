@@ -6,21 +6,17 @@
 
 - A **Scholium Triptych** (**Triptych**) is one research context with exactly
   three vault-backed workspaces: **Analyses**, **Topics**, and **Works**.
-- A **Research Action** is a researcher-selected scholarly operation executed
-  through the Application API. The defaults are Discuss, Analyze, Synthesize,
-  Write, Critique, and Check Fidelity.
-- An Action's immutable starting Note is its **Origin**; its intended Note or
-  passage is its **Target**. **Focal Materials** guide attention but grant no
-  write authority.
-- A **Discussion** is a bounded researcher–Agent exchange. Its first successful
-  Agent response, or explicit End without a response, creates one attributed
-  **Research Record**. Completion implies no acceptance, truth, or settlement.
-- A **Research Skill Registration** relates one Action to one
-  researcher-owned Skill folder. Scholium owns the relation and availability;
-  the folder owns method content. **Philosophical lenses** are ordinary
-  Skill-routed references, not registrations or authority.
-- An **Action Profile** configures bounded academic inputs and result fields; it
-  cannot grant platform capability or permission.
+- **Scholium MCP** is the local application adapter through which an external
+  Agent can obtain current Triptych state and perform exact Note operations.
+- The **Scholium Core Protocol** is the release-bundled System Skill governing
+  source authority, retrieval, permission, mutation scope, and reporting. It
+  is not a complete philosophical method.
+- A researcher-owned **method Skill** is optional instruction installed in the
+  Agent host. Scholium does not register, inspect, execute, or grant authority
+  through it.
+- An **Agent Change** is one machine-local, exact MCP mutation record used for
+  comparison and eligible recovery. It is not a research task, result,
+  acceptance, review state, or Research Record.
 - **Settle** is the researcher's replaceable judgment that one saved fingerprint
   is sufficiently stable for current research. It stores no source version.
 - **Critique** is an attributed Agent assessment of one Work. **Fidelity**
@@ -30,12 +26,11 @@
 - **Metadata** is the researcher-owned structured state managed by Scholium.
   About combines selected managed values with authored YAML `summary` and
   `keywords` without becoming another status model.
-- A **Run** is one Action's working object. A process-bound **Connection
-  Session** attributes local Agent operations; a short-lived **Run Activity
-  Ledger** records exact targets, revisions, operations, and outcomes.
-- A **Research Record** is the portable intellectual record of one finished
-  Discussion or validated Action Run. Records, active Discussions, and Markdown
-  annotations remain distinct.
+- A **Research Record** is durable research history organized around a
+  continuing research question and substantive steps. It is not one MCP call,
+  complete chat, operation log, or automatic task result. Its replacement
+  storage and creation contract remains unresolved under §22 and is not part of
+  the first Scholium MCP tool set.
 
 ## 2. Product role and authority
 
@@ -44,8 +39,8 @@
 Scholium is a local-first macOS environment for sustained humanities research.
 Exact researcher-governed Markdown is the primary interface and sole writable
 research-content authority. Rendered views, YAML projections, Metadata,
-indexes, diagnostics, Agent conversations, and Records must not reconstruct or
-silently replace it.
+indexes, diagnostics, external Agent output, and Records must not reconstruct
+or silently replace it.
 
 The manual core—setup, open, create, read, edit, autosave, Search, Library,
 tabs, conflicts, and recovery—must work without Obsidian, Zotero, or Agents.
@@ -56,10 +51,11 @@ chat, or an Obsidian replacement.
 
 ### 2.2 Researcher responsibility and optional agent access
 
-The researcher governs the Triptych and may authorize an external Agent through
-a Run to create or mutate relevant documents. Scholium does not add a
-per-document approval layer inside that task. Every CLI-mediated operation is
-bound to the current Session, Run, exact identity, revision, and operation.
+The researcher governs the Triptych and instructs an external Agent in the
+Agent host. A clear create, modify, or move-to-Trash instruction authorizes only
+the named task and targets; Scholium adds no second approval sheet and does not
+attempt to reconstruct the conversation. The Core Protocol defaults to
+read-only work when no such instruction exists.
 
 Scholium provides:
 
@@ -67,26 +63,27 @@ Scholium provides:
   writes;
 - autosave, external-change detection, conflicts, and interrupted-write
   recovery; and
-- Run-bound attribution, exact change evidence, diff, and direct Undo.
+- current source/index reconciliation plus exact Agent Change evidence, diff,
+  and eligible direct Undo.
 
 Raw external filesystem edits remain unattributed external changes.
-Fingerprints identify revisions, not permission. The protected Application
-protocol owns capability, safety, operations, Result validation, and recovery;
-the registered Skill owns intellectual method. Current bundled Skills are
-editable starting points and are never silently restored after researcher
-changes.
+Fingerprints identify revisions, not permission. Scholium MCP owns tool shape
+and application safety; the Core Protocol owns common research boundaries; an
+optional researcher-owned Skill owns its declared intellectual method. None
+becomes epistemic authority or researcher adoption.
 
 ### 2.3 Authorship and provenance
 
 Each Triptych has one researcher authority. Agents are attributed participants,
-not additional researchers. Keep distinct: Origin and modified Notes; vault role
-and location; Settlement and changed-since-settled state; Critique authorship;
-Discussion turns; and Agent changes. Later completion, editing, incorporation,
-or Settle never erases provenance.
+not additional researchers. Keep distinct: source and modified Notes; vault
+role and location; Settlement state; Critique authorship; external conversation;
+Research Records; and Agent Changes. Later editing, incorporation, or Settle
+never erases provenance.
 
-Use sparse visible labels. Vault placement communicates Note role; About and
-Research Records carry detail, and reminders appear only when the current
-revision requires a researcher action.
+Use sparse visible labels. Vault placement communicates Note role; About
+carries Note detail, and reminders appear only when the current revision
+requires a researcher action. Research Records gain no presentation role until
+their replacement contract is approved under §22.
 
 ## 3. The Scholium Triptych
 
@@ -130,14 +127,12 @@ interpret the same Triptych:
 - manifest and stable identity mappings;
 - the Triptych Guide and Triptych-local settings;
 - Metadata profiles and identity-keyed Note Metadata;
-- Analysis–Zotero bindings and attachment identity/location catalogs;
-- Skill registrations, Action Profiles, and Action bindings; and
-- portable Research Records.
+- and Analysis–Zotero bindings and attachment identity/location catalogs.
 
 Application Support contains machine-local access and execution state:
 security-scoped bookmarks and paths, window sessions, derived indexes and
-caches, pairing/session/Run data, transport state, exact Agent-change evidence,
-and recovery artifacts. Markdown/YAML contains only portable research content.
+caches, local MCP bridge state, exact Agent Change evidence, and recovery
+artifacts. Markdown/YAML contains only portable research content.
 Attachment bytes remain ordinary Finder-owned files.
 
 Portable control state never contains secrets, absolute paths, bookmarks,
@@ -146,17 +141,18 @@ uploads it automatically. Production must resolve and verify the real per-user
 Application Support root before constructing a workspace; only QA may supply an
 explicit isolated root.
 
-### 3.4 Triptych Guide and AI instructions
+### 3.4 Triptych Guide and agent instructions
 
 The Guide states vault roles, Works organization, relation syntax,
-fidelity/provenance/uncertainty/conflict rules, and safe CLI/file conventions.
+fidelity/provenance/uncertainty/conflict rules, and safe external-edit
+conventions. It remains researcher-owned research context, not the MCP or Core
+Protocol.
 
-Scholium does not create or alter workspace `AGENTS.md` except through an
-explicit protected one-shot bootstrap. That operation resolves the exact root,
-honors ancestor instructions, refuses any applicable existing file, validates
-and reads back the new file, and leaves the result researcher-owned. Settings
-owns Triptych-local Research Guidance; discovery reads the filesystem and CLI
-rather than a generated index.
+Scholium ships one protected, project-neutral `scholium-core-protocol` Skill.
+It does not create or alter workspace `AGENTS.md`/`CLAUDE.md`, scan arbitrary
+Skill locations, or register researcher methods. Settings reveals the bundled
+folder and copies host-specific user-scope setup commands; the researcher owns
+whether and how optional method Skills are installed.
 
 ### 3.5 Import
 

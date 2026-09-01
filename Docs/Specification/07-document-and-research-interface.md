@@ -17,10 +17,9 @@ selection, focus, task, or mode ends. Cancelling Comment must not erase the
 visible selection.
 
 Current-revision Comments use one quiet source-line treatment and counted
-margin marker per Discussion/range. Activation opens the matching Discussion
-turn; its locator returns to Review. Revision mismatch removes the current
-marker and labels the locator **Earlier revision**. The first Agent response
-forms the Record and removes the active markers.
+margin marker per Comment group/range. Activation opens the matching group; its
+locator returns to Review. Revision mismatch removes the current marker and
+labels the locator **Earlier revision**.
 
 Managed New Note opens Edit at the exact body start after durable commit.
 Editor failure retains the Note and offers **Retry Edit** and **Source**. An
@@ -86,72 +85,40 @@ multi-field editing; definitions come from Settings and archived present fields
 remain editable/removable. About coordinates these existing owners without
 creating another one.
 
-## 18.5 Contextual research and Actions
+## 18.5 Contextual research and Agent Changes
 
-Apparatus contains Research Inspector only. Active Discussion remains an Action
-sheet. Research Records is a separate, resizable, nonrestored native auxiliary
-window bound to one Triptych; it never follows unrelated window focus or
-appears inside Inspector.
+Apparatus contains Research Inspector only. A researcher-owned Comment group
+uses a local sheet and never becomes Agent chat. Research Records remains a
+separate, resizable, nonrestored native auxiliary window bound to one Triptych;
+it never follows unrelated window focus or appears inside Inspector.
 
-Research Records opens collection-first with a native **Records / Reading
-Leads** index, one search/scope/filter header, and flat rule-separated ledgers.
-Rows show the minimum scanning identity: frozen Record Title, focal Note when
-needed, Action, date, and exceptional limitation/blocked state; Reading Leads
-show disposition plus bibliographic identity. Method, reason, uncertainty, and
-complete result remain in detail. Collections support provider-owned ordering,
-bounded pagination, exact filtered total, and retained loaded rows on later-page
-failure.
+Until §22's replacement Record contract is resolved, the Records window shows
+one explicit unavailable state and produces, imports, mutates, searches, or
+deletes no Record. The window boundary is retained so the later contract does
+not force a shell redesign; current implementation bytes cannot silently define
+the new Record format or presentation.
 
-Selecting a Record opens one reading-first detail with a narrower optional
-**Evidence** rail. Back restores collection state. The reading plane contains
-Action/time, scholarly title, distinct Method/source context, attributed
-researcher and Agent prose, Research Result, Follow Up, and optional Method
-Feedback. The Evidence rail contains Changes, Effects, Participants, and
-Technical Details without becoming writable source or a second result owner.
+**Agent Changes** is a temporary read-only comparison presentation, not a
+fourth Document mode, Records collection state, durable review state, or
+research history. An Agent Change notification opens one exact
+`(change_id, Note ID)` result. An updated Note shows only the exact preimage and
+confirmed readback revision. A created Note shows **Created by External Agent**
+and current content without a fabricated empty baseline. A system-Trash change
+shows the original Note identity and location plus the Finder-owned recovery
+boundary; it is not rendered as an editable deletion diff.
 
-Record prose supports a limited safe read-only Markdown subset: headings,
-emphasis, inline code, lists, quotations, safe web links, internal links, and
-Wikilinks. Unsupported extensions remain visible as literal source. Resolved
-links use ordinary accessible navigation; missing or ambiguous destinations
-remain noninteractive exact text. Generated presentation never rewrites Record
-content.
+Several Agent Changes never become one cumulative diff. They appear one at a
+time in confirmation order with exact position and deterministic **Previous**
+and **Next** routes. The compact header names Note, operation, time, and
+current-revision state; `change_id`, complete path, and exact fingerprints use
+progressive detail. Ordinary Review continues to show the current complete
+Note. If current saved source differs from the ending fingerprint, comparison
+is **Earlier Revision** and is never overlaid on current prose.
 
-A Reading Lead detail uses one centered flow: reversible
-Unprocessed/Handled disposition, full citation, bibliography, discovery
-locator, reason, uncertainty, researcher note, source/parent destinations, and
-technical identity. Handled means processed only. Grouping and presentation do
-not turn the lead into an Analysis, Zotero match, or evidence.
-
-Record participants and evidence remain bounded provenance, not a dossier or
-reading history. **Agent Changes** is a temporary read-only comparison
-presentation, not a fourth Document mode, Records collection state, or durable
-review state. A Settlement reminder opens it directly for one exact `(Record
-ID, Note ID)` activity; Record Evidence may open the same presentation for its
-selected activity. A modified activity shows only its first committed
-Agent-write preimage through its last confirmed Agent revision. A created Note
-shows **Created by this Run** and current content without a fabricated empty
-baseline.
-
-Several uncovered activities never become one cumulative diff. They appear one
-at a time in confirmation order, with exact position and deterministic
-**Previous** and **Next** routes. A Record affecting several Notes opens the
-activity for the current Note and names the other affected Notes as
-destinations rather than hiding or merging them. The comparison keeps Note,
-change kind, Action, abbreviated Run identity, and current-revision state in one
-compact reading header; full Run, Record, and path identity remains available
-through progressive detail instead of occupying the comparison vertically.
-Ordinary Review continues to show the current complete Note. If current saved
-source differs from the activity ending revision, Agent
-Changes labels the comparison **Earlier Revision** and never overlays it on
-current prose. Closing returns to the originating context, records no
-viewed/unread progress, and never clears Settlement. Settle remains in the
-Document Action Rail. Direct Undo remains per eligible Note and uses §8.4
-revision requirements; created Notes have no fabricated preimage/Undo.
-
-**Follow Up…** starts a new Action from the selected Record, preserving parent
-lineage. Optional **Feedback on Previous Result** writes Method Feedback to the
-parent, not the child. Record deletion is a separately confirmed permanent
-operation and never masquerades as Finder-restorable source deletion.
+Closing returns to the originating context, records no viewed/unread progress,
+and never changes Settlement. Direct Undo remains per eligible update and uses
+§8.4's revision requirement; creation and system Trash have no fabricated
+source preimage or Undo.
 
 There is one native trailing Inspector with **Overview** and **Connect** modes.
 Each workspace retains its selected mode; Note/tab/mode changes do not alter it.
@@ -180,29 +147,17 @@ context without adding a second panel, graph owner, or Combined direction.
 Switching direction changes only the projection and returns scroll to its
 beginning.
 
-Document owns a trailing-centered overlay rail. **Research Actions** presents
-the role-valid Actions from §8.1 in canonical order as neutral icon-only,
-fully named accessible buttons; Settle follows as the quiet current-Note
-judgment. The rail never owns lifecycle status or a separate review milestone.
+Document owns a trailing-centered overlay **Document Rail**. Settle, Settle
+Again, or Mark Unsettled appears as the quiet state-valid researcher judgment;
+there are no Agent-launch or fixed research-method buttons. Agent Integration
+belongs to Settings, and the external conversation remains in its host.
 
-Action launchers open sheets containing scholarly inputs, target effect,
-read-only context, availability, repair, and **Copy Handoff**. They never expose
-assembled prompts, secrets, registration keys, or technical modes. Closing
-preserves unfinished work. Re-pairing invalidates prior Session authority
-without replacing the Run. Discussion shows Comments, locators, handoff, Close,
-and End, but no manual Agent reply or duplicate Finish.
-
-After preparation, persistent Run state belongs to Notifications:
-**Waiting for Agent**, **Running**, **Needs Attention**, **Result Ready**, and
-**Recovery Required**. Updates never activate the app, move focus, or present
-approval sheets. Completion offers Review Result, Follow Up, and explicit
-Dismiss; Dismiss means none of read, review, acceptance, adoption, Undo, or
-cancellation.
-
-One multi-Note Run remains one activity with disclosed affected Notes; each
-Note retains independent Settlement and Undo. The Inspector, Document mode,
-projection refresh, and pane visibility never replace the retained editor host
-or its state.
+MCP status, Search, and read calls create no persistent activity UI. A confirmed
+mutation adds its Agent Change to Notifications without activating the App,
+moving focus, or presenting an approval sheet. Dismissal hides the notification
+but does not delete exact recovery evidence or imply reading, acceptance,
+adoption, Undo, or Settlement. The Inspector, Document mode, projection
+refresh, and pane visibility never replace the retained editor host or state.
 
 ## 18.6 Document-owned state and action meanings
 
@@ -224,7 +179,8 @@ These Document states retain their source-specific meanings:
 Conflict offers **Compare Changes**, **Reload from Disk**, and **Keep Editing**.
 Comparison shows exact soft-wrapped source lines without altering either
 revision and returns to Editing or explicit Reload. Editor Undo affects only
-the live editor; Agent direct Undo follows its Record-bound recovery contract.
+the live editor; Agent direct Undo follows the selected Agent Change's
+fingerprint-bound recovery contract.
 
 After Saving, the only terminal outcomes are silent Saved, persistent Autosave
 Failed, or persistent Conflict. Failures remain above Document content with
@@ -235,8 +191,8 @@ Recovery candidates use one native Recovery surface with exact source,
 relationship to canonical source, Copy, Reveal, and Restore only when the
 recorded revision permits it. System-Trash recovery is visibly distinct and
 offers only safe forward cleanup or **Resolve** after an unknown native
-outcome. Source Trash and permanent Record deletion retain separate names and
-confirmations; System Trash never deletes a finished Record.
+outcome. Source Trash has no Research Record effect. Any future Record deletion
+route requires its own §22 contract, name, consequence, and confirmation.
 
 ## 18.7 Simplified Chinese terminology and translation boundary
 
@@ -251,15 +207,15 @@ paths, source, researcher prose, and Skill names remain verbatim.
 | Vault | 研究库 |
 | Library | 研究文档 |
 | Analyses / Topics / Works | 分析 / 议题 / 写作 |
-| Discuss / Analyze / Synthesize / Write | 讨论 / 分析 / 综合 / 写入 |
-| Critique / Check Fidelity | 评析 / 核查 |
+| Agent Integration / Agent Changes | Agent 集成 / Agent 修改 |
+| Critique / Fidelity | 评析 / 忠实性 |
 | Research / Review / Judgment | 研究 / 审查 / 判断 |
 | Settle / Settled | 暂定 / 已暂定 |
 | Attention / Connect | 关注 / 连接 |
 | Incoming Links / Outgoing Links | 传入连接 / 传出连接 |
 | Summary / Source Basis / Limitations | 摘要 / 来源依据 / 局限 |
 | Review / Edit / Source | 审阅 / 编辑 / 源文本 |
-| Comment / Discussion / Response | 评论 / 讨论 / 回应 |
+| Comment / Comment Group | 评论 / 评论组 |
 | Research Record | 研究记录 |
 | No Document Selected | 未选择文档 |
 | Expand / Collapse All Folders | 展开 / 折叠所有文件夹 |

@@ -30,18 +30,15 @@ a platform-owned presentation whose readability, contrast, focus, hit testing,
 and adaptation remain intact; it creates no reusable permission elsewhere.
 
 Chrome, menus, controls, focus, selection, separators, tabs, sheets, and
-popovers stay native. Research Guidance, Actions, and Records use continuous
-planes, editorial hierarchy, rules, and whitespace rather than cards, tiles,
-badges, avatars, chat bubbles, or nested decorative containers. Small capsules
-are reserved for finite semantic values, never general decoration or status
-walls.
+popovers stay native. Research Guidance, Agent Integration, Agent Changes, and
+Records use continuous planes, editorial hierarchy, rules, and whitespace
+rather than cards, tiles, badges, avatars, chat bubbles, or nested decorative
+containers. Small capsules are reserved for finite semantic values, never
+general decoration or status walls.
 
-Record collections are flat ledgers. Record detail pairs a dominant reading
-plane with a quieter evidence rail; Reading Lead detail is one centered reading
-flow. Scholarly Record prose uses the same semantic typography and safe
-read-only markup across surfaces. Resolved links use Accent and underline;
-Wikilinks may add one quiet inline surface. Unresolved destinations remain exact
-secondary text.
+Until §22 defines the replacement Record contract, the retained Records window
+uses one ordinary Content State rather than preserving the superseded ledger,
+detail, evidence-rail, or bibliographic-lead presentation.
 
 ### 19.2 Typography and color
 
@@ -71,8 +68,8 @@ Callouts preserve their source-owned rhythm and object-local overflow.
 Native selection is authoritative in every mode and uses the resolved Accent
 consistently. Authored `==highlight==` uses one protected high-contrast Markup
 highlight, not Accent or status color. Current Comment anchoring uses a quiet
-Accent boundary/field plus a counted margin control; stale or finished
-Discussions do not paint current prose.
+Accent boundary/field plus a counted margin control; stale Comment groups do
+not paint current prose.
 
 Hyperlinks use Accent plus underline. Wikilinks and Vector Links use the same
 Accent with one small trailing symbol for neutral, support, opposition, or
@@ -170,8 +167,8 @@ single-owner value does not need a catalog entry merely because it is numeric.
 
 Motion is purposeful, interruptible, and absent under Reduce Motion. Native
 feedback remains system-owned. Current shared motion covers disclosure, search,
-document/workspace reveal, transient feedback, the Action activity stack,
-Handled disposition, and onboarding steps. A bounded feature-local transition
+document/workspace reveal, transient feedback, the Agent Change notification
+stack, and onboarding steps. A bounded feature-local transition
 may remain local when it communicates continuity or feedback and supplies the
 same Reduce Motion behavior. Motion never changes authority or becomes the sole
 state signal; decorative pulsing, looping, parallax scrolling, and row cascades
@@ -194,9 +191,8 @@ geometry. Search leads its navigation; Application, This Triptych, and Research
 Guidance form concise groups. It has no card grid, icon toolbar, bottom action
 strip, or catch-all General/Advanced page.
 
-Metadata settings present field definitions, Analysis Agent preferences, and
-the order of fields always shown in About without repeating the complete
-built-in schema. Document Appearance
+Metadata settings present field definitions and the order of fields always
+shown in About without repeating the complete built-in schema. Document Appearance
 presents the selected configuration and common controls first; detailed Body,
 Heading, Callout, and CSS controls remain progressively disclosed. Unsaved
 configuration changes require Save or explicit Revert.
@@ -219,7 +215,7 @@ state.
 #### Bootstrap narrative illustration
 
 Onboarding illustrations combine the canonical hand, one simple directional
-pattern, and one solid field to support Welcome, Triptych, Agent, and Ready.
+pattern, and one solid field to support Welcome, Triptych, and Ready.
 They are decorative and absent from accessibility. Adjacent text and controls
 must fully communicate the task. No tuner or inferred readiness ships.
 
@@ -249,9 +245,10 @@ One meaning has one presentation:
 - permission, provenance, destructive consequence, conflict, failure, and
   recovery remain complete in the owning body, alert, comparison, or sheet.
 
-Default Actions prefer title-only rows. Unavailable Actions show the first
-executable repair rather than repeating ordinary explanation. Brevity never
-hides essential state, names, consequences, or recovery.
+Agent Integration uses practical verb labels: **Copy Codex Setup Command**,
+**Copy Claude Setup Command**, and **Show Core Protocol in Finder…**. Status
+copy names only what Scholium can verify. Brevity never hides essential state,
+names, consequences, or recovery.
 
 ### 19.7 Component catalog
 
@@ -268,15 +265,15 @@ a reusable component or catalog entry.
 | `Segmented Control` | Shared bounded text-only single-choice input with native-equivalent focus/traversal. | §§18.4–18.5 |
 | `Source List` | Quiet hierarchical Note navigation with complete content states. | §18.3 |
 | `Connection Direction Control` | Switch Incoming/Outgoing without changing graph authority. | §§12, 18.5 |
-| `Document Action Rail` | Keep role-valid Actions and Settle at the Document edge. | §§7.1, 8.1, 18.5 |
-| `Triptych Notifications Entry` | Open the complete Action/Attention queue with exact nonzero total. | §§13, 18.2–18.3 |
-| `Top Notification Banner` | Give Action, Settlement, permission, and persistent operation notices one concise adaptive grammar. | §§18.3–18.5, 20 |
-| `Activity Notification Stack` | Present attention-requiring Run actions and the current Note's Settlement reminder without becoming the queue. | §§7.1, 18.3, 18.5 |
+| `Document Rail` | Keep Settle at the Document edge without an Agent launcher or review milestone. | §§7.1, 18.5 |
+| `Triptych Notifications Entry` | Open the complete Agent Change/Settlement/Attention queue with exact nonzero total. | §§13, 18.2–18.3 |
+| `Top Notification Banner` | Give Agent Change, Settlement, permission, and persistent operation notices one concise adaptive grammar. | §§18.3–18.5, 20 |
+| `Activity Notification Stack` | Present Agent Changes and Changed Since Settle reminders without becoming the queue or changing Settlement. | §§7.1, 18.3, 18.5 |
 | `Operation Feedback` | Present transient information or persistent consequence/repair. | §§18.2–18.5, 20 |
-| `Agent Changes` | Present one temporary exact `(Record, Note)` Agent activity at a time without creating review state or completing Settlement. | §§7.1, 8.4, 18.5 |
+| `Agent Changes` | Present one temporary exact `(change_id, Note)` mutation at a time without creating review state or completing Settlement. | §§7.1, 8.4, 18.5 |
 | `Recovery Notice` | Present candidate, consequence, and safe repair from the workflow owner. | §§14, 18.6 |
 | `Document Find Bar` | Find/replace in the current unsaved buffer while preserving editor state. | §§13, 18.4 |
-| `Review Comment Anchor` | Locate current Discussion Comments without becoming authored annotation. | §§7.2, 18.4 |
+| `Review Comment Anchor` | Locate current Comment groups without becoming authored Markdown. | §§7.2, 18.4 |
 | `Property Group` | Group Metadata/About fields through a concise visible heading, spacing, and stable action slots. | §§5.2, 18.4–18.5 |
 | `Content State` | Present page/pane state, explanation, and first repair. | §§18.2–18.5, 19.9 |
 | `Bootstrap Illustration` | Support onboarding narrative without carrying task meaning. | §§16, 19.5 |
@@ -298,12 +295,11 @@ feature-local composition.
 | `Document Find` | Inline literal Find/Replace, distinct from Research Search. | §§13, 18.4 |
 | `Search` | Explicit provider/scope, explanation, freshness, and bounded results. | §§13, 18.3 |
 | `Connect` | Direct authored relations with direction and source anchors. | §§12, 18.5 |
-| `Notifications` | Complete queue in Sidebar/Inspector; Action subset in Document. | §§8.4, 13, 18.2–18.3 |
-| `Research Action` | Launch, track, review, follow up, dismiss, or recover one Run. | §§8–11, 18.5 |
+| `Notifications` | Complete queue in Sidebar/Inspector; Agent Change/Settlement subset in Document. | §§8.4, 13, 18.2–18.3 |
+| `Agent Integration` | Present verifiable local status and copy user-scope host setup without editing external configuration. | §§8.2, 16, 18.2 |
 | `Conflict / Recovery` | Retain bytes, compare exact revisions, and expose safe repair. | §§14, 18.4–18.6 |
-| `Research Records` | Read portable results and evidence without reconstructing Markdown. | §§8.4, 18.5 |
-| `Settlement Reminder` | Keep the reminder visible until the current revision is Settled from the Document Action Rail; route uncovered Agent activity directly to one temporary Agent Changes presentation at a time. | §§7.1, 8.4, 18.3–18.5 |
-| `Bootstrap Agent Preparation` | Prepare an external project without granting research access. | §16 |
+| `Research Records` | Retain the dedicated window boundary and explicit unavailable state until §22 defines Record content. | §§18.2, 18.5, 22 |
+| `Settlement Reminder` | Invite explicit Settle Again, Mark Unsettled, or no status change; dismissal changes no judgment, and exact Agent Changes open one comparison at a time. | §§7.1, 8.4, 18.3–18.5 |
 
 ### 19.9 Cross-functional state language
 
@@ -321,14 +317,12 @@ is not a universal runtime enum or second state store.
 | **Conflict** | Expected authoritative revision diverged; retain buffer and compare. | Stale derived data |
 | **Recovery** | Consequential repair after failure/interruption with verification. | Generic toast or overwrite |
 | **Disabled** | Known action lacks a prerequisite; keep discoverable when core. | Unavailable content |
-| **Running** | Researcher-started Action executing within its scope. | Passive loading/refresh |
 
 Every state retains owner and visible context; communicates state, consequence,
 and first repair through redundant channels; keeps exact domain meaning with
 the workflow owner; preserves focus/cancellation/source/recovery; and never
 relies solely on color, motion, hover, position, or timeout.
 
-Settle, Result arrival, Dismiss, Follow-up, and Method Feedback
-remain their own workflow meanings. Page/pane states use `Content State`;
+Settle and Dismiss remain their own workflow meanings. Page/pane states use `Content State`;
 field validation, compact rows, operation feedback, and recovery notices keep
 their purpose-owned presentations while using this vocabulary.

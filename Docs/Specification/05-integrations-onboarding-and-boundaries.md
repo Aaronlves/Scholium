@@ -41,17 +41,16 @@ commits, retain the binding and report the partial outcome. Commit rereads the
 same server, library, item, source, binding, and Metadata revisions reviewed in
 the preview.
 
-An eligible bound Analysis Action performs one fresh exact Zotero item read and
-adds a typed, task-scoped integration adapter. The Run receives an immutable
-bibliographic snapshot and instructions for using the already-bound external
-route. The adapter grants no transport, write, Markdown, or independent
-discovery authority. Each new Run rereads Zotero; no metadata cache crosses
-Runs.
+Scholium MCP does not fold Zotero data into automatic Note context. A current
+task may use the separately configured Zotero MCP to read a fresh exact item or
+attachment route. That adapter grants no Scholium write, Markdown, or
+independent discovery authority, and bibliographic results are not cached as a
+cross-task research context.
 
 Bibliographic context remains distinct from paper content and philosophical
 evidence. Zotero attachments, Notes, annotations, PDFs, and full text do not
 enter automatic Scholium context. An Agent may retrieve the selected paper
-through its separately configured Zotero capability when the Analyze task
+through its separately configured Zotero capability when the research task
 requires it, reporting what was and was not available.
 
 Link/Refresh may map only applicable bibliographic fields into managed Metadata:
@@ -63,27 +62,7 @@ become managed values; abstract and tags never become authored `summary` or
 explicitly displayed differing mapped values, and never deletes local values
 because Zotero omitted them.
 
-### 15.3 Literature Recommendations and the Zotero boundary
-
-Literature Recommendations are optional structured Analyze output, not a new
-Action, object, Settings capability, CLI lifecycle, or Zotero write path. A
-recommendation is warranted only when the inspected source grounds both its
-citation and reason. Citation occurrence, substantive discussion, praise,
-criticism, verified metadata, centrality, and independent inspection remain
-distinct.
-
-The parent Analyze Record is the sole portable authority and provenance owner.
-Each recommendation occurrence retains only its bounded bibliographic lead,
-reason, uncertainty, and **Unprocessed/Handled** disposition with optional
-researcher note. Handling means processed, not read, accepted, verified, cited,
-or endorsed.
-
-Reading Leads may group occurrences by exactly normalized DOI or Zotero item key
-when identifiers do not conflict. Grouping never queries or writes Zotero,
-infers a matching Analysis, or creates evidence. Presentation belongs to
-[§18.5](07-document-and-research-interface.md#185-contextual-research-and-actions).
-
-### 15.4 Optional external-agent Zotero MCP
+### 15.3 Optional external-agent Zotero MCP
 
 Beta supplies a protected Zotero integration Skill and a supported local MCP
 service or installation route. The Skill owns stable research and safety
@@ -122,36 +101,22 @@ Bootstrap asks one decision at a time, preserves input on failure, and opens the
 configured workspace only after registration succeeds. It contains no inert
 workspace shell, project model, feature tour, or duplicate navigation.
 
-Only first-launch registration offers optional **Prepare an Agent**. **Set Up
-Later** leaves the workspace fully usable. **Copy Prompt** provides
-provider-neutral instructions to:
+Agent setup is not part of first launch. The workspace remains fully usable
+without an Agent, CLI, or external host configuration. Later, Settings →
+Research Guidance → **Agent Integration** reports only what Scholium can verify
+locally: whether the App bridge and compatible CLI are available.
 
-- download the compatible standalone CLI only from the fixed official release;
-- install its executable and resource bundle in the researcher-local location,
-  without `sudo`, shell/global configuration edits, alternative sources, or
-  quarantine mutation;
-- verify the product/version response, run `doctor`, and read Agent help;
-- inspect applicable ancestor/root instructions; and
-- register the CLI-reported release-managed Protocols and current
-  researcher-owned Action Skill folders through the Agent host's project-level
-  discovery mechanism.
+The page provides user-scope Codex and Claude setup commands using the verified
+absolute CLI path and a Finder route to the bundled Core Protocol. Copying or
+revealing performs no research read and grants no write authority. Scholium
+does not edit external host settings, install Skills, store a readiness flag,
+or claim the copied command was run. A missing CLI offers only the official
+standalone installation instructions.
 
-The App never embeds, installs, updates, removes, executes, or claims to inspect
-the CLI or external Agent configuration. The standalone CLI owns explicit,
-verified, architecture-matched, recoverable self-update of only its executable
-and adjacent resource bundle; it never runs in the background or edits PATH,
-shell profiles, or the App.
-
-Workspace instruction bootstrap is protected: it honors applicable existing
-`AGENTS.md`/`CLAUDE.md`, validates the exact root, refuses overwrite/merge/
-shadow behavior, and creates only the minimal missing instruction file.
-Project Skill-source discovery scans no arbitrary directories and grants no
-research read, `.scholium` mutation, Run, Session, or write authority.
-
-After the Agent host confirms discovery, the researcher explicitly confirms
-setup. Scholium records only that confirmation, not durable Agent readiness.
-Preparation itself performs no research read or pairing. Later direct start or
-a Run-specific GUI handoff establishes the research Session.
+The App never embeds, updates, removes, or configures the external Agent. The
+standalone CLI retains explicit, verified, architecture-matched, recoverable
+self-update of only its executable and adjacent resource bundle; it never runs
+in the background or edits PATH, shell profiles, or the App.
 
 Success attaches one native workspace window before Bootstrap closes. Expired
 access uses **Restore Access** without discarding active document state.
@@ -181,12 +146,11 @@ Scholium does not become:
   arbitrary Obsidian-theme host; or
 - a source of generic instructions purporting to teach philosophy.
 
-The target keeps one protected platform protocol, one editable Skill
-registration per Action, Skill-routed ordinary references, academic-only
-Profiles, Run-owned Activity Ledgers, portable Records, and bounded Zotero/local
-Agent transports. Finder remains authoritative for Markdown, Skill files, and
-attachment bytes; Zotero remains authoritative for its library and PDFs;
-external Agents remain authoritative for optional open-ended work.
+The target keeps one protected Core Protocol, one fixed local MCP tool surface,
+optional researcher-owned method Skills, and bounded Zotero/local Agent
+transports. Finder remains authoritative for Markdown and attachment bytes;
+the external host owns its Skills; Zotero remains authoritative for its library
+and PDFs; external Agents remain authoritative for optional open-ended work.
 
 Outside Beta/1.0 are document/project/HTML/PDF/DOCX export, executable
 extensions and Skill marketplace/evolution/sharing, Work finding overlays,
@@ -198,13 +162,12 @@ Beta/1.0 interface localization covers English and Simplified Chinese.
 Additional translations, right-to-left chrome/navigation, and complete RTL
 input acceptance remain deferred; exact Unicode preservation is mandatory.
 
-Project-level Agent registrations are nonauthoritative discovery pointers, not
-editable copies, package lifecycles, capability, or permission. Researcher Skill
-edits remain in the selected folder and are never silently replaced. Protected
-Core follows the compatible CLI bundle; conditional adapters become required
-only when typed Run Context names them.
+External-host Skill registrations are nonauthoritative discovery pointers, not
+Scholium state, capability, evidence, or permission. Researcher Skill edits
+remain host-owned and are never silently replaced by Scholium. The protected
+Core Protocol follows the compatible CLI release.
 
-Scholium defines no separate durable research memory, handoff packet, or
-ontology. Analyses, Topics, Works, and authored Markdown remain the research
-context. A transient Action handoff is neither another research object nor
-portable Record content.
+Scholium defines no separate durable Agent memory or ontology. Analyses,
+Topics, Works, and authored Markdown remain the research context. A future
+lightweight Handoff requires its own approved contract and cannot become a
+hidden research object or permission mechanism.

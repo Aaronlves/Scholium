@@ -42,9 +42,9 @@ Scholium does not split, invert, transliterate, or normalize names.
 `software`, `archival_item`, `correspondence`, `audiovisual`, or `other`.
 
 Source-type profiles own applicable fields and recommended discovery order.
-`other` permits the complete catalog. Agent-preferred fields must be applicable
-and shape-known but remain optional. The required `source_type` creation input
-only routes creation and derives managed `type`.
+`other` permits the complete catalog. No field is automatically required or
+maintained for an Agent. MCP creation does not accept the prior
+`source_type`/managed bibliographic creation route.
 
 Default About always shows managed `type`, `authors`, and `publication_date`
 even when empty, then authored `summary` and `keywords`. Every other present
@@ -91,29 +91,28 @@ fields remain discoverable through Add Field rather than filling the Inspector.
 Authored `summary` and `keywords` are always shown. Keywords are neutral content
 capsules when not being edited.
 
-Defined, applicable, recommended, Agent-preferred, present, and About-always-
-shown remain independent. A definition or always-shown choice creates no Note
-value; presence alone makes an existing value visible.
+Defined, applicable, recommended, present, and About-always-shown remain
+independent. A definition or always-shown choice creates no Note value;
+presence alone makes an existing value visible.
 
 One revision-checked `settings.json` stores managed-field definitions, About
-profiles, and Analysis Agent preferences. A custom field uses a lowercase
-snake-case key and text, multiline text, text list, number, boolean, source-safe
-date, or controlled-choice shape. It cannot shadow built-in or authored YAML.
+profiles, and catalog presentation. A custom field uses a lowercase snake-case
+key and text, multiline text, text list, number, boolean, source-safe date, or
+controlled-choice shape. It cannot shadow built-in or authored YAML.
 Key and value kind are immutable. Label, description, field order, and
 controlled-choice order may change. Existing choices cannot be removed; new
 choices may be inserted at any position.
 
 Archive/Restore preserves stored values, About presentation, and
 Search/editing validation while removing the field from new-value,
-About-always-shown, and Agent-preference choices. Restore About defaults changes
-no definitions or Agent preferences.
+About-always-shown choices. Restore About defaults changes no definitions.
 The fixed authored-YAML scaffold is creation policy, not editable Settings.
 
-## Appendix B. Bundled Critique Method requirements
+## Appendix B. Critique requirements
 
-The bundled Critique Skill inspects the bounded Work plus applicable Analyses
-and Topics. It distinguishes what those Notes report, support, dispute, or leave
-uncertain from the Agent's own reconstruction and evaluation. Neutral links and
+A Critique inspects the bounded Work plus applicable Analyses and Topics. It
+distinguishes what those Notes report, support, dispute, or leave uncertain
+from the Agent's own reconstruction and evaluation. Neutral links and
 transitive paths are never evidence.
 
 Whole-Work Critique addresses material strengths, weaknesses, method fit,
@@ -132,6 +131,6 @@ completeness, or researcher competence.
 Agent judgments, not Scholium statuses. Critique never modifies the Work; a
 source change requires current Write authority.
 
-The Critique registration identifies one researcher-owned Skill folder.
-Scholium does not read, edit, validate, snapshot, or restore its contents. This
-appendix specifies outcomes without duplicating that Skill's method prose.
+The researcher may select a host-owned Critique method Skill. Scholium does not
+register, read, edit, validate, snapshot, or restore it. This appendix specifies
+product outcomes without duplicating a method's prose.

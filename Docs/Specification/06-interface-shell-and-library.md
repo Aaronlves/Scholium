@@ -18,9 +18,9 @@ and Library presentation without restating those workflows.
   are shared workspace services, not view state.
 - Derive reading and research projections reversibly from authoritative
   Markdown. Managed Metadata remains a separate portable authority.
-- Distinguish source, researcher prose, Agent content, Discussion, Result,
-  Settle, Critique, Connect, and diagnostics through text and structure, not
-  color alone.
+- Distinguish source, researcher prose, external Agent content, Agent Changes,
+  Research Records, Settle, Critique, Connect, and diagnostics through text and
+  structure, not color alone.
 - Apply §20's route applicability. Menus remain comprehensive; the toolbar stays
   bounded to frequent or high-value commands, and no toolbar command exists only
   there. Hover, drag, color, motion, secondary click, and gesture are
@@ -86,16 +86,16 @@ Menus follow task ownership:
 - **Edit**: editing, Find, formatting, and Edit Metadata.
 - **View**: Back/Forward, Heading Outline, Search, Document mode/text size,
   Sidebar, and Inspector.
-- **Research**: role-valid Actions and Triptych Records.
+- **Research**: Settle, Agent Changes when present, and Triptych Records.
 - **Window**: standard windows plus Notifications.
 - **Settings**: one searchable native list/detail window with **Application**,
   **This Triptych**, and **Research Guidance** groups.
 
 Settings search indexes static page/control metadata, not research or Skill
 content. Triptychs, Document Appearance, and Hotkeys are Application settings;
-Metadata Profiles and Attention are Triptych settings; Skills, Action Profiles,
-Agent Access, and integrations are Research Guidance. Scope is explicit where a
-page mixes This Triptych and This Mac.
+Metadata Profiles and Attention are Triptych settings; Agent Integration and
+Zotero are Research Guidance. Scope is explicit where a page mixes This
+Triptych and This Mac.
 
 Hotkeys is machine-local and limited to frequent Scholium-specific menu
 commands. It requires Command, rejects conflicts and reserved shortcuts, and
@@ -115,13 +115,13 @@ disabled; one persistent progress status names remaining work. Search follows
 §13's explicit opening grades: current-buffer This Note Search is exact, and
 source-fingerprint-validated This Vault lexical results may remain usable under
 a nonblocking **Limited** notice. Triptych Search, Graph, Attention totals,
-Records, relations, and Actions remain unavailable until their complete
+Records, relations, and cross-Triptych Search remain unavailable until their complete
 authoritative generation exists. Completion must not replace usable Library
 content or move focus.
 
 Library provides:
 
-- one native Filter menu for Integrity, Metadata, Order, and Actions;
+- one native Filter menu for Integrity, Metadata, and Order;
 - one adaptive Expand/Collapse All control;
 - one Add menu for immediate New Note and New Folder;
 - a single scrollable hierarchy of real folders and Notes, including root Notes
@@ -147,25 +147,24 @@ Library reveal does not steal editor focus. If editor activation fails after
 source commit, the UI offers Retry Edit/Source without duplicate creation.
 
 Triptych Notifications has one stable Sidebar entry and exact nonzero total.
-It opens the complete Action/Attention queue without changing the selected
-workspace or Document. Zero is quiet; nonzero uses Attention semantics but not
-a badge, unread model, animation, or auto-open.
+It opens the complete Agent Change/Settlement/Attention queue without changing
+the selected workspace or Document. Zero is quiet; nonzero uses Attention
+semantics but not a badge, unread model, animation, or auto-open.
 
-Attention-required Action activities and the current Note's Settlement reminder
+An Agent Change requiring inspection and the current Note's Settlement reminder
 may appear in the top-centered **Activity Notification Stack** over the window
-without reflow. One item shows its exact state, target, and notification-valid
-actions. With multiple items, the foremost real notification remains visible;
-hover or one explicit disclosure reveals the remaining real notifications
-downward. The disclosure names the exact count but never inserts a synthetic
-summary row. Each notification keeps at most one primary action beside one
-bounded More menu; copy is limited to its key state and target and truncates
-before displacing operations. A Settlement reminder with uncovered Agent-change
-activities shows **Review Changes**, which bypasses the Records collection and
-opens the exact temporary **Agent Changes** activity; a reminder caused only by
-a later non-Agent save does not invent that action. The reminder has no Settle
-or Dismiss action and persists until the exact current revision is Settled
-through the Document Action Rail. The stack excludes structural Attention and
-never becomes the complete queue. Waiting/Running remain in the complete queue.
+without reflow. One item shows its exact state, Note, and valid actions. With
+multiple items, the foremost real notification remains visible; hover or one
+explicit disclosure reveals the remaining real notifications downward. The
+disclosure names the exact count but never inserts a synthetic summary row. Each
+notification keeps at most one primary action beside one bounded More menu;
+copy is limited to its key state and Note and truncates before displacing
+operations. A Changed Since Settle reminder with Agent Changes may show
+**Review Changes**, which opens the exact temporary comparison without routing
+through Records. A non-Agent save never invents an Agent Change. Dismiss hides
+only the reminder; Settle Again and Mark Unsettled remain explicit researcher
+choices in the Document Rail. The stack excludes structural Attention and
+never becomes the complete queue.
 Reduce Motion preserves all content and controls without geometry animation.
 
 Window operation feedback follows consequence:
@@ -181,17 +180,17 @@ order, announcement, and dismissal only. Persistent feedback never times out.
 
 The complete Notifications queue is a window-owned native popover. Sidebar
 opens Triptych scope; Inspector may open a current-Note subset. Popover closure
-does not dismiss persistent Action activity or complete a Settlement reminder.
-The queue presents Action activities, then Settlement reminders, then grouped
-structural issues with exact reason, Note/path location, and only valid actions.
+does not dismiss an Agent Change or alter Settlement. The queue
+presents Agent Changes, then Settlement reminders, then grouped structural
+issues with exact reason, Note/path location, and only valid actions.
 Search/filter changes only this presentation.
 Stale or failed refresh retains last trustworthy content and Retry; empty and
 unavailable remain distinct.
 
-System-notification routes carry exact Triptych, Run, Record, target, and
-fingerprint identity. Cold launch waits for authoritative validation rather
-than guessing or dropping the route. System permission education never
-preempts more consequential Action or recovery feedback.
+Scholium MCP produces no system notification and never activates the App or
+moves focus. In-app Agent Change routes carry exact Triptych, `change_id`, Note,
+operation, and fingerprint identity. Reopening waits for authoritative
+validation rather than guessing or dropping the route.
 
 Workspace switching stages the destination from trustworthy source and commits
 atomically after source safety. It never replaces the origin with a full-page

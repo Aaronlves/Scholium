@@ -16,10 +16,11 @@ dated evidence; acceptance reports link rather than copy it.
 
 Release acceptance is profile-scoped. **Core App** covers the local manual
 research environment and never depends on an Agent or standalone CLI.
-**Agent Collaboration** adds external-Agent, CLI, Run, Session, Context, and
-Record-production behavior to an already accepted Core App. Evidence or failure
-in one profile does not silently pass or block the other. Release names and
-notes state the accepted profile; an unaccepted optional profile is labelled
+**Agent Collaboration** adds the external host, compatible CLI, local stdio MCP,
+Core Protocol, live App bridge, current retrieval, guarded mutations, Agent
+Changes, and recovery to an already accepted Core App. Evidence or failure in
+one profile does not silently pass or block the other. Release names and notes
+state the accepted profile; an unaccepted optional profile is labelled
 **Preview** and is never represented as part of the Core App verdict.
 
 **Usable Core** must cover:
@@ -32,30 +33,31 @@ notes state the accepted profile; an unaccepted optional profile is labelled
 - native split behavior, focus, keyboard, light/dark, enlarged text, minimum
   supported width, and core VoiceOver; and
 - external edits, conflicts, rename/move, system-Trash Note/Folder deletion and
-  partial recovery, Finder restoration, Agent direct Undo, interrupted saves,
-  and multiple-window dirty-peer behavior.
+  partial recovery, Finder restoration, interrupted saves, and multiple-window
+  dirty-peer behavior.
 
 **Agent Collaboration Beta/1.0** additionally covers applicable Research
-Actions, Skills and routed references, Profiles/Results, direct Agent start and
-GUI handoff, secure
-process-bound Sessions, Activity Ledgers, Research Context, portable Records,
-Follow-up/feedback, Connections, Attention, Zotero read-only/unavailable
-behavior, CLI parity, Record Search, adaptations, and resizable auxiliary-window
-usability at its supported bounds. Exact initial frames and coordinates remain
-implementation defaults rather than release thresholds.
+Guidance and Settings, Core Protocol discovery, user-scope Codex and Claude
+configuration, the seven MCP tools, multi-Triptych selection, App-unavailable
+behavior, source/index currentness, exact paging, role filtering, fingerprinted
+create/update/system-Trash, Agent Changes, direct Undo, outcome-unknown
+recovery, Connections, Attention, Zotero read-only/unavailable behavior, and
+App/CLI/MCP parity. Exact initial frames and coordinates remain implementation
+defaults rather than release thresholds.
 
 Search acceptance covers scope/provider authorization, Metadata and relation
-provenance, Record attribution/locators, Explain/completion, Saved Search
-re-evaluation, App/CLI parity, stale refusal, corruption rebuild, and
+provenance, Explain/completion, Saved Search re-evaluation, App/CLI/MCP parity,
+stale refusal, corruption rebuild, and
 incremental/clean equivalence. Retrieval success never establishes
 philosophical relevance, evidential support, or researcher acceptance.
 
-Agent evidence includes one direct start and one copied one-use handoff;
-stdin-only code exchange; Session secrecy, expiry, restart invalidation, and
-re-pairing; authenticated local bridge; current-Run scope; reload; bounded
-Context and multi-document writes; End; recovery; accessibility; and
-unavailable fallback. It does not require an embedded or provider-specific
-Agent runtime.
+Agent evidence includes both copied setup commands; user-scope stdio launch;
+the current-user-only authenticated App bridge; single and ambiguous Triptych
+selection; current status followed by search/read/link retrieval; one body
+update and one create or system-Trash mutation; stale/conflict and uncertain
+outcome recovery; exact Agent Change comparison; direct Undo; accessibility;
+and App-unavailable fallback. It does not require an embedded or
+provider-specific Agent runtime.
 
 These are functional evidence categories, not one serial clean-account or human
 script. Deterministic fixtures own protocol variants and failure branches;
@@ -64,13 +66,15 @@ version, and production-bridge boundaries; §20 owns one representative human
 Agent journey. Do not repeat every deterministic variant in the packaged or
 human path merely to restate its coverage.
 
-Method-content acceptance follows §8.1. Before the first Agent Collaboration
-1.0, each shipped bundled template has one bounded representative run and
-independent review; later releases review only new or materially changed
-templates. Sustained real-research use and comparative Method evaluation do not
-block a release or certify general philosophical adequacy. This cadence never
-relaxes a known fabrication, source-fidelity, researcher-authority, privacy, or
-permission defect.
+Core Protocol acceptance follows §8.5. Before the first Agent Collaboration
+Beta it passes representative complete-source, partial-source,
+conceptually-neighboring, conflicting-note, read-only, requested-update,
+stale-revision, and uncertain-outcome cases. Later releases repeat only affected
+cases after a material Core Protocol/tool change and retain a small regression
+set. Optional researcher-owned method Skills are not release artifacts or
+general philosophical certification. This cadence never relaxes a known
+fabrication, source-fidelity, researcher-authority, privacy, or permission
+defect.
 
 Evidence that exercises research content uses disposable nonprivate fixtures.
 Focused development evidence records the procedure or command, inputs,
@@ -89,13 +93,13 @@ the current artifact.
 | **G1 Functional completeness** | Every in-scope requirement has evidence or explicit waiver. |
 | **G2 Workflow independence** | Manual core works without Obsidian, Zotero, Agents, or manual filesystem repair. |
 | **G3 Source integrity** | Exact-source tests cover malformed/unknown YAML, BOM/newlines, targeted edits, atomic failure, and readback. |
-| **G4 Recovery and deletion** | Conflict, Agent Undo, save recovery, system-Trash receipts/cleanup, external deletion/restore/rename, and derived failure pass. |
-| **G5 Scholarly transparency** | Source, researcher/Agent content, Discussion, Result, Settle, Critique, Fidelity, provenance, and uncertainty remain distinct. |
+| **G4 Recovery and deletion** | Conflict, Agent Change Undo, save recovery, system-Trash receipts/cleanup, external deletion/restore/rename, and derived failure pass. |
+| **G5 Scholarly transparency** | Source, researcher/Agent content, Agent Changes, Research Records, Settle, Critique, Fidelity, provenance, and uncertainty remain distinct. |
 | **G6 Accessibility/localization** | §20's current guards, required UI baseline/affected journeys, bounded human threshold, and severity threshold are met for the named profile. |
 | **G7 Performance** | The packaged-app protocol in §21.4 passes. |
 | **G8 Documentation consistency** | Specification, architecture, status, README, source, and tests do not silently conflict. |
 | **G9 Distribution integrity** | Distributed artifacts match an exact clean tag, source/licenses, signatures, architecture, checksum, and clean-account smoke test. |
-| **G10 Agent collaboration** | Skills, Profiles/Results, Sessions, Ledger writes, Context, Records, and local bridges pass their journeys. |
+| **G10 Agent collaboration** | Core Protocol, Codex/Claude setup, MCP tools, currentness, guarded mutations, Agent Changes, recovery, and local bridge pass their journeys. |
 
 Usable Core/0.1 requires G1–G4, G6, and G8. **Core App Beta** requires G1–G6,
 G8, and G9 within the Core App profile and does not require G10. Human and
@@ -157,8 +161,7 @@ target under 5 ms and yield before a display-refresh interval.
 
 The frozen performance fixture contains 800 Notes and representative folders,
 links, malformed frontmatter, large CJK, and 5,000-word Review/Edit content.
-Separate generated Record fixtures cover current schema and attribution. Fixture
-generators and runner ownership belong to
+Fixture generators and runner ownership belong to
 [Documents and Editor](../Architecture/06-documents-and-editor.md#documents-and-codemirror).
 
 The retained-memory series similarly predeclares 30–60 mode transitions; its
@@ -246,22 +249,23 @@ state variants, and §20 retains its bounded human checks; do not repeat either
 matrix in every clean-account artifact smoke.
 
 When the Finder-restoration journey needs human judgment, limit that judgment
-to Finder-owned Trash naming/collision presentation, restoration discoverability,
-and continued access to retained Records. Receipt stages, separately moved
+to Finder-owned Trash naming/collision presentation and restoration
+discoverability. Receipt stages, separately moved
 Critiques, dirty peers, File Provider/sync races, original-path reappearance,
 Trash emptying, and cleanup recovery remain deterministic or system-integration
 dimensions; they do not each create another human process interruption. Reuse
 an applicable §20 representative check instead of duplicating it.
 
 Agent Collaboration distribution additionally verifies independent CLI
-installation and version, production-bridge availability, and one representative
-Action route through Session, Context, an applicable write or recovery, and
-Result, plus the unavailable-App fallback. Include CLI self-update when the
-updater or installer changes and for 1.0. Deterministic suites retain checksum/provenance
-rejection, interruption stages, direct-start/handoff variants, restart,
-re-pairing, expiry, preflight field and destination states, stale/replay/
-conflict, and outcome-unknown coverage. Do not multiply those variants into the
-clean-account or §20 human journey. Use disposable fixtures only.
+installation and version, both user-scope setup commands, Core Protocol
+availability, production-bridge availability, and one representative route
+through current status, retrieval, a mutation, Agent Changes, recovery, and the
+unavailable-App fallback. Include CLI self-update when the updater or installer
+changes and for 1.0. Deterministic suites retain checksum/provenance rejection,
+interruption stages, multiple-workspace selection, stale/conflict,
+outcome-unknown, App restart, and path/fingerprint rejection coverage. Do not
+multiply those variants into the clean-account or §20 human journey. Use
+disposable fixtures only.
 
 A future notarized channel must rebuild from the exact release commit and repeat
 external verification; never re-sign an already accepted artifact.
@@ -272,6 +276,12 @@ Only current questions that can still change the target belong here:
 
 - decide whether any provisional interface metric should become normative after
   §20's representative adaptation and human visual-acceptance set.
+- define the replacement Research Record storage, continuing-question/step
+  structure, creation and editing authority, Search fields, and activation of
+  the retained Records window before enabling Record production.
+- define a lightweight, nonauthorizing Handoff and its complete-copy fallback
+  before Scholium offers a route from a Note or selection into an external
+  Agent conversation.
 
 Resolution updates the owning chapter and removes the question in the same
 patch. Git, not this specification, retains decision history.

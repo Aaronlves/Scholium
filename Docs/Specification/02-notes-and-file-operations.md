@@ -7,7 +7,7 @@
 Analysis, Topic, and ordinary Work Notes support Review, Edit, and Source over
 one exact Markdown buffer; autosave; create, duplicate, import, rename, move,
 Reveal in Finder, and system-Trash deletion; Search, Find/Replace, Connect,
-Comments, Metadata, Research Actions, Records, conflicts, and recovery.
+Comments, Metadata, Agent Changes, Records, conflicts, and recovery.
 Critique bodies are read-only in Scholium but remain ordinary externally
 editable Markdown.
 
@@ -102,9 +102,9 @@ concurrently changed records fail closed and preserve exact bytes for bounded,
 confirmed recovery.
 
 [Appendix A](11-metadata-and-critique.md#appendix-a-metadata-catalogs-and-settings)
-owns catalogs, applicability, custom fields, About order, and Agent field
-preferences. One role-specific resolved catalog serves validation, Metadata,
-Search, Library filters, About, and Agent plans. A definition creates no value.
+owns catalogs, applicability, custom fields, and About order. One role-specific
+resolved catalog serves validation, Metadata, Search, Library filters, and
+About. A definition creates no value.
 Scholium validates shape and structural safety, not bibliographic or
 philosophical truth.
 
@@ -137,7 +137,7 @@ vault root or exact selected folder. New paths are atomically claimed as
 replace an existing comparison-equivalent path.
 
 A managed New Note uses one Application-owned creator shared by GUI, CLI, and
-authenticated Agent routes. GUI creation writes exactly:
+Scholium MCP. GUI and MCP creation write exactly:
 
 ```yaml
 ---
@@ -151,10 +151,9 @@ Metadata, naming sheet, or classification step. Import, Duplicate, Restore,
 external discovery, and managed Critique creation keep their own exact-source
 contracts and do not inject this scaffold.
 
-Agent Analysis creation supplies a typed source discriminator plus optional
-applicable managed and authored values. The Application derives managed
-`type`, accepts no YAML fragments, and grants no continuing create authority
-after the identity exists.
+MCP creation accepts only exact role/path, body, and optional authored
+`summary`/`keywords`. It accepts no YAML fragment, creates no bibliographic
+Metadata, and grants no continuing create authority after the identity exists.
 
 A successful source-and-identity commit appears immediately in Library; derived
 indexes refresh afterward without blocking writing. Presentation failure must
@@ -186,30 +185,28 @@ Scholium has no application Trash, erase command, or source restore command.
 **Move to Trash…** and **Move Folder and Notes to Trash…** use the macOS system
 Trash; Finder owns restoration and final deletion.
 
-Confirmation discloses two ordered boundaries:
+Folder deletion confirmation discloses two ordered boundaries:
 
 1. move every listed source item to system Trash; then
-2. after all move receipts are durable, discard affected active Discussions
+2. after all move receipts are durable, discard affected Comment groups
    that cannot outlive the source.
 
 Preparation flushes dirty editors and freezes exact paths, identities,
-fingerprints, folder contents, separately located managed Critiques,
-and active Discussions. Active Agent work, unresolved write recovery, identity
-ambiguity, source or manifest drift, unsafe filesystem entries, or changing
-Discussion participation blocks the move.
+fingerprints, folder contents, separately located managed Critiques, and Comment
+groups. An in-flight or uncertain MCP mutation, unresolved write recovery,
+identity ambiguity, source or manifest drift, unsafe filesystem entries, or
+changing Comment participation blocks the move.
 
-A finished Record is immutable historical provenance. Moving or deleting a
-participant's source does not alter or delete the Record; its frozen identity,
-title, location, revisions, attribution, and result remain inspectable. Only a
-separately confirmed **Delete Permanently** operation in Research Records may
-delete the complete Record and its Record-bound machine evidence. Stable Note
-identity, Settlement, Zotero binding, source-access provenance, and Critique
-association also remain so Finder restoration can reconcile exact source.
+A Research Record, when present under its separately approved contract, is
+independent historical research content. Moving its participant source to
+system Trash does not alter or delete it. Stable Note identity, Settlement,
+Zotero binding, source-access provenance, and Critique association also remain
+so Finder restoration can reconcile exact source.
 
 Before the first move Scholium installs a deletion gate and durable forward
 plan with one receipt per source item. It binds each native operation to the
 exact checked filesystem object, never a replacement that later appears at the
-same path. Partial success is representable; temporary Discussion cleanup waits
+same path. Partial success is representable; temporary Comment cleanup waits
 for every source receipt.
 
 Recovery follows these rules:
@@ -220,7 +217,7 @@ Recovery follows these rules:
 | Proven native move | Resume from its receipt; never move the item again. |
 | Bound operation with unknown native outcome | Preserve Records and temporary state; require researcher inspection before releasing the plan. |
 | All source moved but cleanup failed | Resume only the temporary cleanup idempotently. |
-| External move or deletion without a Scholium plan | Refresh projections only; never cascade Record or Discussion deletion. |
+| External move or deletion without a Scholium plan | Refresh projections only; never cascade Record or Comment deletion. |
 | Finder restores source | Reconcile retained identity and bytes; preserve existing Records without fabricating another. |
 
 Watchers report filesystem observations but cannot create deletion authority.
@@ -228,33 +225,30 @@ Multiple windows converge through shared workspace coordination. A committed
 absence closes only affected pages and refreshes derived projections while
 preserving unrelated tabs and focus.
 
-## 7. Settlement, annotation, and Discussion
+## 7. Settlement and annotation
 
 ### 7.1 Settle
 
 Settle binds an optional rationale, date, and researcher identity to the exact
 saved fingerprint of any Analysis, Topic, or Work. Save failure, conflict,
 unknown identity, or revision mismatch blocks it. Repeating Settle replaces the
-current marker. The marker also covers every confirmed Agent-change activity
-for that Note that exists when Settle commits. A later saved fingerprint or a
-later confirmed Agent change preserves the prior judgment but makes the current
-revision **Not Settled** and exposes **Settle Again**.
+current marker. **Mark Unsettled** is a separate explicit researcher action.
+Neither a researcher edit, external edit, MCP mutation, Agent Change, index
+refresh, nor elapsed time changes Settled/Unsettled automatically.
 
-A persistent in-app Settlement reminder appears only after a confirmed Agent
-source change or after a previously Settled Note changes. It remains until
-Settle succeeds for the exact current saved revision. When uncovered confirmed
-Agent-change activities exist, **Review Changes** opens their temporary
-activity-scoped **Agent Changes** presentation; a later non-Agent save never
-fabricates an Agent activity or comparison. Opening or closing that
-presentation, editing, restoring, changing windows, or dismissing another
-notification never clears the reminder. A never-Settled Note with no confirmed
-Agent source change has no reminder.
+When current source differs from the fingerprint at which Settle was last
+affirmed, Scholium derives **Changed Since Settle** without changing the
+Settlement judgment. A dismissible reminder may invite the researcher to
+review the current Note and choose Settle Again, Mark Unsettled, or no status
+change. When exact Agent Changes are available, **Review Changes** opens their
+temporary comparisons; a non-Agent save never fabricates one. Opening,
+closing, or dismissing any presentation has no Settlement effect.
 
-Each Note has one portable Settlement marker and no separate reviewed marker.
-It is not a Record, verdict, source version, restore point, retention policy,
-or Agent requirement.
+Each Note has one portable Settlement judgment and no separate reviewed
+marker. It is not a Record, verdict, source version, restore point, retention
+policy, or Agent requirement.
 
-### 7.2 Discussion, Comment, and written annotation
+### 7.2 Comment and written annotation
 
 Review exposes **Comment** for a nonempty commentable passage selection; Edit
 exposes formatting instead, and Source exposes neither contextual surface.
@@ -268,20 +262,13 @@ promise. Return saves, Shift-Return inserts a newline, Escape cancels, and a
 failed portable write preserves the draft. A later source revision marks the
 locator **Earlier revision** rather than guessing a new anchor.
 
-Current-revision active Comments project as keyboard-reachable line markers.
-Comments in the same Discussion and line range share one counted marker. The
-marker opens the Discussion; the Discussion locator returns to Review. The
-first successful Agent response removes active markers and retains the exchange
-in its Record.
-
-**Discuss** opens the one active Discussion for the current Note, includes its
-Comments, and permits a whole-note request plus focal Notes. Comments may be
-added until Agent handoff, never initiate an Agent on their own, and survive
-sheet closure. Preparation freezes the Action configuration and Result
-Contract. The first attributed Agent reply atomically creates one Record and
-ends the active presentation. Explicit End preserves an unanswered exchange.
-Neither route implies approval, truth, or Settlement.
+Current-revision Comments project as keyboard-reachable line markers. Comments
+in the same researcher-owned Comment group and line range share one counted
+marker. The marker opens the group; its locator returns to Review. Comments
+survive sheet closure and never launch an Agent, grant MCP access, capture an
+external response, or create a Research Record. A future Handoff/Record
+contract must explicitly define any transition beyond this local annotation.
 
 Authoritative annotation remains Markdown, including semantic Callouts.
-Scholium owns no separate writable Annotation store; Comment markers are
-temporary projections of active Discussion.
+Comment markers are portable research cues, not authored Markdown or evidence
+that the selected passage is accepted, important, or settled.

@@ -68,10 +68,10 @@
   not remain open in an unusably compressed state.
 - Attention exposes group, issue, Note, locator, state, actions, freshness, and
   Retry in a coherent order.
-- Action activity banners expose exact Run identity, state, target, and valid
-  actions. A multi-activity disclosure states its count; keyboard/pointer
-  expansion and pin/collapse are equivalent. Reduce Motion changes transition,
-  not content or state.
+- Agent Change notifications expose exact Note, operation, time,
+  current/Earlier Revision state, and valid actions. A multi-change disclosure
+  states its count; keyboard/pointer expansion and collapse are equivalent.
+  Reduce Motion changes transition, not content or state.
 - Settings and workspace feedback remain in window reading order without moving
   existing controls or obscuring their owners.
 
@@ -112,8 +112,7 @@
 - Hotkeys expose command, menu location, binding, recording state, validation,
   Save, Clear, and Restore. Invalid drafts never change menus.
 - Metadata settings expose role, field definitions, applicability, About
-  always-shown order, Agent preferences, dirty/save/conflict state, and exact
-  recovery consequence.
+  always-shown order, dirty/save/conflict state, and exact recovery consequence.
   Invalid or conflicting drafts remain local and named.
 - Field definitions expose immutable key/kind; editable label/description,
   field/choice order, and choice addition; lifecycle, scope, and use count.
@@ -130,7 +129,7 @@
   cancellation, and retry. Abstract/tags/YAML/Markdown/non-write boundaries are
   visible before commit.
 
-### Search, Inspector, and Research Actions
+### Search, Inspector, and Agent integration
 
 - Research Search and Document Find have distinct names, shortcuts, focus,
   scope, and results.
@@ -142,46 +141,34 @@
   remains a nonempty read-only state.
 - Connect states direction textually; undirected rows say they appear in both
   directions. Navigation and source-return routes remain separately named.
-- Document Action rail exposes Research Actions and Settle without a parallel
-  review milestone. Icon-only buttons have complete names, Help, availability,
-  and first executable repair. Opening Inspector does not alter reading or
-  focus order.
-- Pairing and re-pairing present one linear flow. Codes remain inside copied
-  handoff; secrets and opaque identifiers are never separate researcher fields.
-  Agent updates neither activate the app nor move focus.
-- Follow-up exposes lineage, statement, next Action, request, and optional
-  default-collapsed Method Feedback with distinct dirty/saving/stale/error/clear
-  states.
+- Document Rail exposes the state-valid Settle, Settle Again, or Mark Unsettled
+  researcher action without a parallel review milestone or Agent launcher.
+  Opening Inspector does not alter reading or focus order.
+- Agent Integration in Settings exposes App/bridge/CLI state, the two distinct
+  setup-copy actions, and the Core Protocol Finder route in one predictable
+  order. Command and path text is selectable; copied-command success is not
+  represented as host configuration success.
+- MCP operations neither activate the App nor move focus. `app_unavailable`,
+  workspace selection, stale revision, conflict, and uncertain outcome have
+  distinct names and recovery.
 
 ### Research Records
 
-- Records remains available with Triptych scope when no Document is selected
-  and This Note scope when one is selected.
-- Scope/View, collection headers, ordering, exact total, pagination, loading,
-  partial state, and Retry are named. Loaded rows survive later-page failure.
-- Selecting detail removes the collection from the active tree; Back restores
-  it. Evidence visibility changes the tree without disturbing reading order.
-- Record detail reads authorship before attributed prose. Links use native
-  semantics; unresolved destinations remain exact nonactions.
-- Follow Up and Method Feedback precede Evidence. Change comparison exposes
-  document selection, changed/unchanged structure, and per-document Undo.
-- A Settlement reminder names the Note, exact pending state, and Agent-change
-  count when present. A nonzero count is followed by Review Changes in reading
-  order; no such action is invented otherwise. Agent Changes names the
-  Note, Action/Run, exact activity position and revisions, change kind, and any
-  Earlier Revision or Created by this Run state. Before/After and inserted,
-  removed, or changed structure remain perceivable without color. Previous and
-  Next have keyboard, pointer, focus, and accessibility equivalents. Compact
-  visual identity never abbreviates the accessible Run identity, and the
-  progressive activity-detail control exposes full Record and Note-path text.
-  Neither
-  surface has Settle or Dismiss; closing Agent Changes records no review state,
-  and the Document Action Rail retains the accessible Settle route.
-- Reading Lead detail preserves the order of disposition, citation,
-  bibliography, discovery, reason, uncertainty, note, source, parent, and
-  technical identity.
-- Source deletion, permanent Record deletion, and feedback editing use distinct
-  labels, confirmations, consequences, recovery, and focus restoration.
+- The separate Records window's unresolved state is a named, nonempty read-only
+  group explaining that the replacement Record contract is not yet available.
+  It exposes no inert collection controls or fabricated empty result.
+- Agent Changes names Note, operation, exact change position and revisions,
+  `change_id`, and Earlier Revision, Created by External Agent, or system-Trash
+  state as applicable. Before/After and inserted, removed, or changed structure
+  remain perceivable without color. Previous and Next have keyboard, pointer,
+  focus, and accessibility equivalents. Progressive detail exposes complete
+  path and fingerprints.
+- Closing Agent Changes records no review state and never changes Settlement.
+  Document Rail retains the accessible Settle route. Direct Undo states its
+  current-fingerprint prerequisite and exact outcome.
+- Source deletion and Agent Change recovery use distinct labels,
+  consequences, and focus restoration. Any future Record deletion interaction
+  must define the same properties in its own §22 contract.
 
 ### Evidence and representative human acceptance
 
@@ -229,8 +216,9 @@ Core App acceptance keeps four bounded human checks:
 Voice Control and Dictation are targeted human compatibility checks only when a
 release explicitly claims those routes or a change touches command naming,
 discoverability or text-service integration. Agent Collaboration adds one
-representative human journey across handoff, activity, Result and recovery; it
-does not repeat the matrix for every Action or lifecycle state.
+representative human journey across Settings setup, current status, retrieval,
+one mutation, Agent Changes, and recovery; it does not repeat the matrix for
+every tool or error state.
 
 A Beta with no retained accepted baseline for its named profile completes all
 applicable bounded human checks on the exact packaged artifact. A later Beta
