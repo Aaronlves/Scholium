@@ -57,6 +57,13 @@ Context and multi-document writes; End; recovery; accessibility; and
 unavailable fallback. It does not require an embedded or provider-specific
 Agent runtime.
 
+These are functional evidence categories, not one serial clean-account or human
+script. Deterministic fixtures own protocol variants and failure branches;
+packaged acceptance owns downloaded artifact, independent installation,
+version, and production-bridge boundaries; §20 owns one representative human
+Agent journey. Do not repeat every deterministic variant in the packaged or
+human path merely to restate its coverage.
+
 Evidence that exercises research content uses disposable nonprivate fixtures.
 Focused development evidence records the procedure or command, inputs,
 environment, and result only to the extent needed to reproduce its bounded
@@ -202,10 +209,17 @@ Before Core App distribution, verify the exact clean tag, source/privacy audit,
 repository gates, package contents, metadata, entitlements, architectures,
 signatures, icons, checksums, licenses, read-only DMG, clean-account App
 installation, and representative first-launch, edit/save, Search,
-conflict/recovery, and unavailable-optional-integration journeys. Agent
-Collaboration distribution additionally verifies independent CLI installation,
-Action, Session, Context, write/recovery, Result, and unavailable-Agent journeys.
-Use disposable fixtures only.
+conflict/recovery, and unavailable-optional-integration journeys.
+
+Agent Collaboration distribution additionally verifies independent CLI
+installation and version, production-bridge availability, and one representative
+Action route through Session, Context, an applicable write or recovery, and
+Result, plus the unavailable-App fallback. Include CLI self-update when the
+updater or installer changes and for 1.0. Deterministic suites retain checksum/provenance
+rejection, interruption stages, direct-start/handoff variants, restart,
+re-pairing, expiry, preflight field and destination states, stale/replay/
+conflict, and outcome-unknown coverage. Do not multiply those variants into the
+clean-account or §20 human journey. Use disposable fixtures only.
 
 A future notarized channel must rebuild from the exact release commit and repeat
 external verification; never re-sign an already accepted artifact.

@@ -484,23 +484,17 @@ architecture measurement; all 652 App tests; the 10 signed executable CLI
 lifecycles; the sandboxed App-to-standalone-CLI bridge probe; and the optimized
 Release build.
 
-On 2026-08-27, the external-Agent operation reduction passed the complete
-repository gate after its first attempt exposed and the focused 24-test
-architecture suite corrected two delivery-boundary assertions. The final gate
-passed documentation and 9 shipped-Skill roots; 206 Web editor tests and
-reproducible bundles; 464 Core plus 3 performance tests; 150 Contracts tests;
-284 Application tests, 16 bridge tests, and 1 architecture measurement; all 668
-App tests; public symbol guards; all 16 signed executable CLI lifecycles; the
-sandboxed App-to-standalone-CLI probe; and the optimized Release build. The CLI
-fixtures execute all six Actions, required exact reads, bounded Search, owner-
-routed initial Action/Method context, reload-only initial-delivery recovery,
-required-only Result templates, Continue after Result, and exact expired-
-credential pruning while preserving malformed and symlink entries. Query calls
-create no durable reading history. The same signed CLI simulation proves every
-Action's first start output contains the exact bundled Core runtime protocol and
-exact Action-specific `SKILL.md` plus its installed folder; reload omits Core
-while retaining that Method. This is disposable local engineering evidence, not
-packaged clean-account use, scholarly adequacy, or human acceptance.
+On 2026-09-01 under Xcode 27.0 beta build 27A5218g and Swift 6.4, 13 CLI-update
+tests, 41 Run/Session/preflight/bridge tests, and all 15 executable CLI
+lifecycles passed. They prove checksum/provenance rejection, every precommit
+replacement interruption, authored/preferred-field freezing, occupied,
+missing/trashed, stale and replay states, restart, re-pairing, expiry, and
+operation-specific recovery errors. Together they cover all six Actions,
+direct start, pairing, reload, Context, bounded writes, Result, Continue, End,
+unavailable App, and exact expired-credential pruning. This is
+disposable local deterministic and executable evidence, not downloaded
+clean-account installation, a packaged production bridge, scholarly adequacy,
+or human acceptance.
 
 On 2026-08-21, independent-review hardening passed 34 Core storage tests, 19
 Agent-start and portable-Record Contract tests, 104 Application/bridge tests,

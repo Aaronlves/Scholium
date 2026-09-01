@@ -55,22 +55,20 @@
 
 ## Agent collaboration and research quality
 
-- Exercise the separately downloaded CLI archive and sandboxed installed App
-  in a clean external account, including the copied Agent instruction,
-  user-local installation, explicit CLI self-update from an older disposable
-  install, checksum/provenance rejection, interrupted-replacement recovery,
-  and production bridge: pairing, restart
-  invalidation, re-pairing, Research Context, authenticated Discuss turns,
-  bounded
-  writes, conflict/recovery, Result, Continue Research, End,
-  and automatic expiry-bounded credential cleanup without a post-Result End.
-- In that clean external-Agent pass, exercise `preflight-analysis` with omitted
-  and populated authored YAML, optional Settings-preferred fields, managed-root and explicit researcher-selected
-  existing-Analysis destinations, occupied path/identity, a Finder-restored Analysis, an emptied
-  system Trash, App update/restart after confirmed source commit, stale
+- In one clean external account, independently download and install the CLI
+  archive and sandboxed App, verify the copied instruction and version-matched
+  user-local launch, then exercise the production bridge through one
+  representative handoff, Context, applicable bounded write or recovery,
+  Result, continuation or End, and unavailable-App fallback. Include explicit
+  CLI self-update only when its updater/installer changed and for 1.0. This is
+  artifact smoke, not a human failure-state matrix.
+- On those artifacts, exercise one representative `preflight-analysis` route.
+  Deterministic fixtures retain omitted/populated authored YAML, optional
+  Settings preferences, managed-root/existing-Analysis destinations,
+  path/identity occupation, missing/trashed or restored source, restart, stale
   projection, replay conflict, expired Session, and outcome-unknown transport.
-  Automated disposable fixtures do not establish that the recovery wording or
-  researcher branch choice is usable.
+  Use §20's single Agent human journey to judge one consequential recovery's
+  wording and branch choice; do not replay the deterministic matrix there.
 - Conduct sustained real research use across the bundled Methods. One clean
   current-schema, independently reviewed baseline for each of the six Actions
   passed on 2026-08-29; they do not establish field coverage or sustained
@@ -158,9 +156,9 @@
   App in a clean external account through setup, read/edit/autosave/restart,
   Search, conflict/recovery, Inspector, unavailable optional integrations, and
   restoration.
-- Separately complete the Agent Collaboration profile with the expanded CLI
-  archive, independent download/install, CLI self-update, Agent Action, Session,
-  Context, write/recovery, Result, and unavailable-Agent journeys.
+- Close the Agent Collaboration distribution profile with the clean-account
+  artifact smoke above and §20's one representative human Agent journey;
+  deterministic protocol variants and Method field trials remain separate.
 - Inspect the canonical icon in Finder, Dock, small sizes, Light/Dark, and the
   packaged application.
 - Close the complete packaged G7 campaign before Core App 1.0 or the next named
