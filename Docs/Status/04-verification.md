@@ -646,11 +646,12 @@ scope authorization, stale refusal, and App/CLI parity.
 
 ## Performance evidence
 
-On 2026-09-01, the performance gate changed from fixed 5 + 30 latency and 50
-memory transitions to predeclared 2–5 + 20–50 and 30–60 ranges, defaulting to
-3 + 20 and 40. A focused clean-tag series remains Incomplete. Runner bounds,
-shell/Python checks, documentation authority, its focused test, and the
-scenario-class UI-driver build passed. No performance journey ran; G7 is open.
+On 2026-09-01, Core App Beta stopped repeating G7 when measured performance
+surfaces are unchanged. G7 remains exact-tag and complete for Core App 1.0 and
+named baselines; a performance-affecting Beta runs affected packaged series,
+which stay Incomplete rather than a gate pass. Runner bounds, focused-series
+help, summary self-test, shell syntax, and documentation validation passed. No
+performance journey ran; G7 is open.
 
 On 2026-08-14, the approved Edit gate boundary was aligned with the shipped
 cold-launch behavior: launch settles on a no-document Workspace, Library opens

@@ -79,12 +79,22 @@ toolchain, build/artifact, fixture identity, procedure or command, and result.
 | **G9 Distribution integrity** | Distributed artifacts match an exact clean tag, source/licenses, signatures, architecture, checksum, and clean-account smoke test. |
 | **G10 Agent collaboration** | Skills, Profiles/Results, Sessions, Ledger writes, Context, Records, and local bridges pass their journeys. |
 
-Usable Core/0.1 requires G1–G4, G6, and G8. **Core App Beta** requires G1–G9
-within the Core App profile and does not require G10. **Agent Collaboration
-Beta** requires the accepted Core App profile, G10, and the Agent-scoped parts
-of G1, G3–G7, and G9. G9 applies only to artifacts actually distributed for the
-named profile. Baseline, partial, waived, or other-profile evidence must not be
-presented as a gate pass.
+Usable Core/0.1 requires G1–G4, G6, and G8. **Core App Beta** requires G1–G6,
+G8, and G9 within the Core App profile and does not require G10. Beta
+performance evidence is change-triggered: when a release changes a measured
+runtime owner, visible or correctness boundary, fixture, prepared driver,
+threshold, or process attribution, run the affected packaged series. A focused
+pass remains **Incomplete** rather than G7, and an unchanged performance surface
+does not trigger a complete campaign. **Core App 1.0** requires G1–G9; any
+release explicitly designated as a new performance baseline also requires G7.
+
+**Agent Collaboration Beta** requires an accepted Core App Beta, G10, and the
+Agent-scoped parts of G1, G3–G6, and G9; Core performance changes follow the
+same change-triggered rule. **Agent Collaboration 1.0** requires an accepted
+Core App 1.0 plus G10 and the Agent-scoped parts of G1, G3–G6, and G9. G9
+applies only to artifacts actually distributed for the named profile.
+Baseline, partial, waived, or other-profile evidence must not be presented as a
+gate pass.
 
 ### 21.4 Packaged performance gate
 
@@ -95,12 +105,14 @@ Performance evidence has three distinct classes:
 3. product-gate measurements use the exact packaged Release app, frozen fixture,
    complete visible boundary, and full retained sample set.
 
-Only product-gate evidence satisfies G7. Before capture, each latency series
-declares 2–5 excluded warm-ups and 20–50 retained samples; the ordinary plan is
-3 + 20. The count may differ between series when prior scenario evidence
-justifies it, but it cannot change after gate values are inspected. Nearest-rank
-p95 uses every valid retained sample. This bounded plan is a pragmatic release
-comparison, not a statistical-confidence claim.
+Only a complete product-gate campaign satisfies G7. A focused product-gate
+report is eligible change-triggered series evidence under §21.3 but never a G7
+pass. Before capture, each latency series declares 2–5 excluded warm-ups and
+20–50 retained samples; the ordinary plan is 3 + 20. The count may differ
+between series when prior scenario evidence justifies it, but it cannot change
+after gate values are inspected. Nearest-rank p95 uses every valid retained
+sample. This bounded plan is a pragmatic release comparison, not a statistical-
+confidence claim.
 
 | Interaction | p95 | Maximum when required |
 | --- | ---: | ---: |

@@ -97,12 +97,11 @@
   indexed-attachment reminders. Focused tests prove typed transactions and
   path/bookmark boundaries but not human acceptance; add no separate human row
   unless an independent custom interaction remains outside §20's core journeys.
-- Complete the Editor latency, correctness, and retained-memory campaign on the
-  exact clean tagged packaged artifact. A full report or provenance-matched
-  focused series may close the campaign; each planned series must pass, while a
-  focused report alone remains Incomplete. Focused scenario measurements in
-  Verification do not satisfy G7. Extend shared source-range fixtures before
-  changing parser or syntax rules.
+- For a Beta that changes an Editor performance owner or boundary, run the
+  affected packaged latency, correctness, and memory series; include them in the
+  complete Core App 1.0 or named-baseline campaign. Each selected series must
+  pass, while a focused report remains Incomplete and never becomes G7. Extend
+  shared source-range fixtures before changing parser or syntax rules.
 - Repeat the direct-to-Edit QA journey with and without a `summary`/`keywords`
   value after the isolated fixture reaches a usable document surface. The
   2026-08-23 custom-Metadata/fixed-YAML journey compiled, but its run stopped
@@ -123,14 +122,16 @@
   research-use acceptance for Note and Record Search. The representative Core
   VoiceOver/keyboard journey crosses Search once; CJK IME belongs to its editor
   journey, while Voice Control and Dictation follow §20's change-triggered rule.
-- Freeze the exact source, artifact, fixture, driver, and reference-machine
-  configuration, then complete the bounded G7 sampling plan. Preserve already
-  complete matching series when replacing a recorded invalid series; do not
-  replace a valid threshold failure by changing the plan after inspection.
-  Working-tree and scenario evidence is not release acceptance. Confirm that
-  blank owners expose accessible Loading and that long or unbounded work keeps
-  nonblocking progress and safe cancellation where applicable; retained-content
-  transitions require no synthetic progress state solely because of duration.
+- For Core App 1.0 or the next named G7 baseline, freeze the exact source,
+  artifact, fixture, driver, and reference-machine configuration, then complete
+  the bounded campaign. A performance-affecting Beta freezes the same applicable
+  provenance but runs only affected packaged series. Preserve complete matching
+  series when replacing an invalid series; do not erase a valid threshold
+  failure by changing the plan after inspection. Working-tree and scenario
+  evidence is not release acceptance. Confirm that blank owners expose
+  accessible Loading and that long or unbounded work keeps nonblocking progress
+  and safe cancellation where applicable; retained-content transitions require
+  no synthetic progress state solely because of duration.
 
 ## Source coordination, recovery, and external locators
 
@@ -162,10 +163,11 @@
   Context, write/recovery, Result, and unavailable-Agent journeys.
 - Inspect the canonical icon in Finder, Dock, small sizes, Light/Dark, and the
   packaged application.
-- Close current packaged performance, remaining Core App distribution
-  integrity, and final researcher Core App acceptance. Agent field trials and
-  collaboration acceptance remain separate and cannot block the Core App
-  profile. The Beta-release waivers recorded through `v0.1.0-beta.10` did not
-  convert either profile's missing evidence into a pass. These release and gate
+- Close the complete packaged G7 campaign before Core App 1.0 or the next named
+  performance baseline; it is not an unconditional Beta blocker when measured
+  surfaces are unchanged. Complete remaining Core App distribution integrity
+  and final researcher acceptance. Agent field trials and collaboration
+  acceptance remain separate and cannot block the Core App profile. Earlier
+  Beta waivers did not convert missing evidence into a pass. Release and gate
   decisions retain exact source, toolchain, artifact, fixture, procedure, and
   result provenance; focused evidence keeps only the context its claim needs.

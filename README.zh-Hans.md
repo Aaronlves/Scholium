@@ -182,7 +182,9 @@ Documents、CloudStorage 和其他 File Provider 管理路径之外。
 清理命令默认为 dry run；审查准确的 allowlist 目标后才添加 `--delete`。它们不会
 删除源码、应用状态、打包构建、脉络文件或便携式 `.scholium/` 数据。
 
-打包性能属于独立发布门禁。规范性阈值、fixture、采样、provenance 与证据要求位于
+打包性能采用严格的 G7 基线门禁。规格 §21.3 规定何时需要完整 campaign；影响性能的
+Beta 只运行受影响的 packaged series。规范性阈值、fixture、采样、provenance 与证据
+要求位于
 [规格 §21.4](Docs/Specification/10-release-and-open-decisions.md#214-packaged-performance-gate)；当前结果和缺口
 位于实现状态。
 

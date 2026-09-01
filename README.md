@@ -234,8 +234,10 @@ Clean commands are dry runs unless `--delete` is supplied after reviewing the
 exact allowlisted targets. They never remove source, app state, packaged builds,
 Triptych files, or portable `.scholium/` data.
 
-Packaged performance is a separate release gate. Its normative thresholds,
-fixture, sampling, provenance, and evidence requirements are in
+Packaged performance uses a strict G7 baseline gate. Specification §21.3
+defines when a complete campaign is required; a performance-affecting Beta runs
+the affected packaged series. Normative thresholds, fixture, sampling,
+provenance, and evidence requirements are in
 [Specification §21.4](Docs/Specification/10-release-and-open-decisions.md#214-packaged-performance-gate);
 current results and gaps are in Implementation Status.
 
