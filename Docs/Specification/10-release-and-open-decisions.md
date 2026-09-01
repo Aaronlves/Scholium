@@ -213,10 +213,16 @@ acceptance. Documentation may describe **Open Anyway** for the trusted download
 but never advise disabling Gatekeeper, stripping quarantine, or installing a
 root certificate.
 
-Before Core App distribution, verify the exact clean tag, source/privacy audit,
-repository gates, package contents, metadata, entitlements, architectures,
-signatures, icons, checksums, licenses, and read-only DMG. Every distributed
-Core App also completes one exact mounted-and-copied clean-account smoke:
+Before every Core App distribution, rerun repository gates and artifact checks
+for the exact clean tag and provenance, package contents, metadata,
+entitlements, architectures, signatures, private-path disclosure, icons,
+checksums, licenses, and read-only DMG. Run a source/privacy audit for a Beta
+only when a change can alter permissions, credentials, source containment,
+external-data disclosure, generated state or logs, or package ownership; scope
+it to the affected boundaries and their adversarial cases. Core App 1.0 repeats
+the complete audit. Unchanged owners do not require another manual audit and
+never waive the per-artifact checks or safety requirements above. Every
+distributed Core App also completes one exact mounted-and-copied clean-account smoke:
 Bootstrap, connect one disposable Triptych, open one Note, edit/save with exact
 readback, relaunch and reopen. Unavailable optional integrations must not block
 that Agent-independent Core path.

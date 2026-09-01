@@ -28,11 +28,12 @@ The ad-hoc App requires the documented Gatekeeper override.
 
 ## Current and focused verification evidence
 
-- On 2026-09-01, Core Beta G9 retained artifact checks and one
-  setup/edit/readback/relaunch smoke; other packaged journeys became
-  change-triggered. Package, first-launch, and UI-runner shell syntax plus
-  documentation validation passed. No artifact was built, mounted, copied, or
-  launched; the smoke remains open.
+- On 2026-09-01, G9 retained per-artifact source/privacy guards and one
+  setup/edit/readback/relaunch smoke; complete manual review and secondary
+  packaged journeys became change-triggered. Package and runner syntax,
+  entitlement self-test, and documentation validation passed. No product trust
+  owner or artifact changed; no manual review was triggered, and the artifact
+  smoke remains open.
 
 - On 2026-09-01, §20 replaced its universal interaction-route matrix with
   applicability rules, and **View → Heading Outline** became the menu-bar peer

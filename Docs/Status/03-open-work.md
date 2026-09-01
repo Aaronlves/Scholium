@@ -146,6 +146,12 @@
 
 ## Distribution and release
 
+- Run a focused source/privacy audit when a Beta changes permissions,
+  credentials, source containment, external-data disclosure, generated state
+  or logging, or package ownership; repeat the complete audit for Core App 1.0.
+  Unchanged owners do not block a Beta, while per-artifact source, package,
+  entitlement, private-path, credential, and state-disclosure guards remain
+  mandatory.
 - Complete the per-Beta G9 smoke on the exact mounted DMG and copied App in one
   clean external account: Bootstrap, connect a disposable Triptych, open one
   Note, edit/save with exact readback, relaunch, and reopen. Confirm that absent
