@@ -565,7 +565,10 @@ tracks quantificational force, while Core requires a result-centered title.
 These runs accept one baseline per Action, not field coverage or sustained
 Method adequacy. Synthesize setup also exposed and fixed private-directory
 ordering for an explicit `SCHOLIUM_HOME`; its focused lifecycle regression
-passed.
+passed. `5f9e798` was the final bundled-template change, and current HEAD has no
+later Method-template diff. The six accepted baselines therefore close the
+initial per-template review; future review is change-triggered and no general
+philosophical adequacy is claimed.
 
 The subsequent Researcher State continuation cutover passed 44 focused tests
 across eight owning Contracts, Application, Core-store, bridge, and architecture suites

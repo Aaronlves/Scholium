@@ -64,6 +64,14 @@ version, and production-bridge boundaries; §20 owns one representative human
 Agent journey. Do not repeat every deterministic variant in the packaged or
 human path merely to restate its coverage.
 
+Method-content acceptance follows §8.1. Before the first Agent Collaboration
+1.0, each shipped bundled template has one bounded representative run and
+independent review; later releases review only new or materially changed
+templates. Sustained real-research use and comparative Method evaluation do not
+block a release or certify general philosophical adequacy. This cadence never
+relaxes a known fabrication, source-fidelity, researcher-authority, privacy, or
+permission defect.
+
 Evidence that exercises research content uses disposable nonprivate fixtures.
 Focused development evidence records the procedure or command, inputs,
 environment, and result only to the extent needed to reproduce its bounded

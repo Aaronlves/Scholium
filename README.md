@@ -124,9 +124,12 @@ revision while later external drift still fails closed.
 
 These paths establish current engineering reachability, not that long-term
 Agent inheritance or philosophical research quality has already been accepted.
-Sustained research use, assistive-technology review, clean-account App/CLI and
-external-Agent acceptance, and comparative evaluation remain explicit evidence
-gates.
+Assistive-technology review, clean-account App/CLI acceptance, and external-
+Agent acceptance remain explicit evidence gates. The six bundled Method templates have
+bounded independent baselines; later review is triggered only by a new or
+materially changed template. Sustained research use and comparative Method
+evaluation remain nonblocking product research and never certify general
+philosophical adequacy.
 
 Library uses one native AppKit folder-and-note outline. It creates notes and
 folders and retains menu, keyboard, accessibility, and drag alternatives for

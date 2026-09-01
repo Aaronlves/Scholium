@@ -66,6 +66,13 @@ A conflict between the researcher request and method is reported rather than
 silently resolved from the evidence. Bundled methods are editable defaults, not
 certification, universal philosophical instruction, or a quality grade.
 
+A bounded representative run plus independent review may establish one bundled
+template's current release baseline against applicable integrity gates. It
+cannot establish general philosophical adequacy. After the initial baseline,
+review only a new or materially changed bundled template. Sustained field use,
+researcher feedback, and comparative Method evaluation remain nonblocking
+product research rather than a finite software acceptance gate.
+
 ### 8.2 Agent entry, local pairing, layered delivery, and Research Context
 
 GUI handoff and Agent-originated `agent start` create the same Run contract and

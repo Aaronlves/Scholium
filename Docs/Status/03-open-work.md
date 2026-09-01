@@ -53,7 +53,7 @@
   search, unsaved-draft switching, narrow reflow and enlarged text. Human visual
   judgment belongs to the one §20 adaptation set.
 
-## Agent collaboration and research quality
+## Agent collaboration acceptance
 
 - In one clean external account, independently download and install the CLI
   archive and sandboxed App, verify the copied instruction and version-matched
@@ -69,12 +69,6 @@
   projection, replay conflict, expired Session, and outcome-unknown transport.
   Use §20's single Agent human journey to judge one consequential recovery's
   wording and branch choice; do not replay the deterministic matrix there.
-- Conduct sustained real research use across the bundled Methods. One clean
-  current-schema, independently reviewed baseline for each of the six Actions
-  passed on 2026-08-29; they do not establish field coverage or sustained
-  academic adequacy. Keep analyst-supplied
-  illustrations explicit and make recommendation locators cover every source
-  role claimed in their rationale without hard-coding one paper's content.
 - Complete one Agent Collaboration human accessibility journey across handoff,
   activity tracking, Result and recovery, with enlarged mixed-script content.
   Deterministic coverage retains evaluation and continuation semantics; do not
@@ -158,14 +152,16 @@
   restoration.
 - Close the Agent Collaboration distribution profile with the clean-account
   artifact smoke above and §20's one representative human Agent journey;
-  deterministic protocol variants and Method field trials remain separate.
+  deterministic protocol variants and any changed-template review remain
+  separate.
 - Inspect the canonical icon in Finder, Dock, small sizes, Light/Dark, and the
   packaged application.
 - Close the complete packaged G7 campaign before Core App 1.0 or the next named
   performance baseline; it is not an unconditional Beta blocker when measured
   surfaces are unchanged. Complete remaining Core App distribution integrity
-  and final researcher acceptance. Agent field trials and collaboration
-  acceptance remain separate and cannot block the Core App profile. Earlier
+  and final researcher acceptance. Ongoing Method field use is nonblocking
+  product research; Agent collaboration acceptance remains separate and cannot
+  block the Core App profile. Earlier
   Beta waivers did not convert missing evidence into a pass. Release and gate
   decisions retain exact source, toolchain, artifact, fixture, procedure, and
   result provenance; focused evidence keeps only the context its claim needs.
