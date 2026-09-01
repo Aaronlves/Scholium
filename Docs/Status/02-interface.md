@@ -45,6 +45,9 @@
   This Vault lexical results appear under a persistent **Search Limited to This
   Vault** notice while complete-scope choices report unavailable rather than no
   results.
+- Loading and progress remain operation-owned: blank owners present Loading,
+  progressive operations retain trustworthy content, and no shared duration
+  timer overlays otherwise usable transitions solely because of duration.
 - Library is the only source-list destination. Add, context-menu, keyboard,
   drag, menu, and accessibility routes converge on the same source mutations.
   Note and Folder rows expose **Move to Trash…**; File-menu Command-Delete and

@@ -123,7 +123,10 @@
   configuration, then complete the bounded G7 sampling plan. Preserve already
   complete matching series when replacing a recorded invalid series; do not
   replace a valid threshold failure by changing the plan after inspection.
-  Working-tree and scenario evidence is not release acceptance.
+  Working-tree and scenario evidence is not release acceptance. Confirm that
+  blank owners expose accessible Loading and that long or unbounded work keeps
+  nonblocking progress and safe cancellation where applicable; retained-content
+  transitions require no synthetic progress state solely because of duration.
 
 ## Source coordination, recovery, and external locators
 

@@ -109,10 +109,13 @@ comparison, not a statistical-confidence claim.
 | First-use Edit after cold-launch Review | < 750 ms | < 1,000 ms |
 | One visible-range projection | < 3 ms | < 5 ms |
 
-Work exceeding 100 ms must expose accessible nonblocking progress within
-100 ms; progress does not turn incomplete work into a pass. Editor callbacks
-during input/scroll target under 5 ms and yield before a display-refresh
-interval.
+An operation that would otherwise leave its owner blank exposes an accessible
+loading state immediately; progressive work retains trustworthy content when
+available. Long or unbounded work exposes accessible nonblocking progress and
+safe cancellation when applicable. No universal duration threshold requires a
+transient progress indicator, and progress never turns incomplete work or a
+missed interaction threshold into a pass. Editor callbacks during input/scroll
+target under 5 ms and yield before a display-refresh interval.
 
 The frozen performance fixture contains 800 Notes and representative folders,
 links, malformed frontmatter, large CJK, and 5,000-word Review/Edit content.
