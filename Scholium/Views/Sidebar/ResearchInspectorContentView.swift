@@ -137,6 +137,77 @@ struct AboutSettlementPresentation: Hashable, Sendable {
     }
 }
 
+/// Pure mapping from immutable source facts to the rows About presents. The
+/// view supplies locale-aware date formatting; this type owns no file or
+/// Settlement state.
+enum AboutFactPresentation {
+    static func fileHistory(
+        metadata: WorkspaceFileMetadata?,
+        formatDate: (Date?) -> String
+    ) -> [ScholiumApparatusFact] {
+        [
+            ScholiumApparatusFact(
+                id: "file-created",
+                label: String(localized: "File Created"),
+                value: formatDate(metadata?.creationDate),
+                monospacedDigits: true
+            ),
+            ScholiumApparatusFact(
+                id: "source-modified",
+                label: String(localized: "Source Modified"),
+                value: formatDate(metadata?.modificationDate),
+                monospacedDigits: true
+            ),
+        ]
+    }
+
+    static func settlement(
+        _ settlement: AboutSettlementPresentation,
+        formatDate: (Date?) -> String
+    ) -> [ScholiumApparatusFact] {
+        let settledValue = switch settlement.state {
+        case .notYetSettled:
+            String(localized: "Never")
+        case .unavailable:
+            String(localized: "Unavailable")
+        case .settled, .changedSinceSettlement:
+            formatDate(settlement.settledAt)
+        }
+        var facts = [
+            ScholiumApparatusFact(
+                id: "settlement-status",
+                label: String(localized: "Status"),
+                value: settlementStatus(settlement.state)
+            ),
+            ScholiumApparatusFact(
+                id: "settled-at",
+                label: settlement.state == .changedSinceSettlement
+                    ? String(localized: "Last Settled")
+                    : String(localized: "Settled"),
+                value: settledValue,
+                monospacedDigits: true
+            ),
+        ]
+        if let researcher = settlement.researcher, !researcher.isEmpty {
+            facts.append(ScholiumApparatusFact(
+                id: "settled-by",
+                label: String(localized: "Researcher"),
+                value: researcher
+            ))
+        }
+        return facts
+    }
+
+    private static func settlementStatus(_ state: AboutSettlementState) -> String {
+        switch state {
+        case .settled: String(localized: "Settled")
+        case .changedSinceSettlement: String(localized: "Changed since settlement")
+        case .notYetSettled: String(localized: "Not yet settled")
+        case .unavailable: String(localized: "Unavailable")
+        }
+    }
+}
+
 struct ResearchInspectorContentContext {
     let presentation: ResearchOverviewPresentation
     let attentionPopoverSession: AttentionPopoverSession?
@@ -461,55 +532,17 @@ struct ResearchOverviewView: View {
     }
 
     private var fileHistoryFacts: [ScholiumApparatusFact] {
-        [
-            ScholiumApparatusFact(
-                id: "file-created",
-                label: String(localized: "File Created"),
-                value: formattedDate(note.workspaceSnapshot?.fileMetadata.creationDate),
-                monospacedDigits: true
-            ),
-            ScholiumApparatusFact(
-                id: "source-modified",
-                label: String(localized: "Source Modified"),
-                value: formattedDate(note.workspaceSnapshot?.fileMetadata.modificationDate),
-                monospacedDigits: true
-            ),
-        ]
+        AboutFactPresentation.fileHistory(
+            metadata: note.workspaceSnapshot?.fileMetadata,
+            formatDate: formattedDate
+        )
     }
 
     private var settlementFacts: [ScholiumApparatusFact] {
-        var facts = [
-            ScholiumApparatusFact(
-                id: "settlement-status",
-                label: String(localized: "Status"),
-                value: settlementStatus
-            ),
-            ScholiumApparatusFact(
-                id: "settled-at",
-                label: context.settlement.state == .changedSinceSettlement
-                    ? String(localized: "Last Settled")
-                    : String(localized: "Settled"),
-                value: context.settlement.settledAt.map(formattedDate) ?? String(localized: "Never"),
-                monospacedDigits: true
-            ),
-        ]
-        if let researcher = context.settlement.researcher, !researcher.isEmpty {
-            facts.append(ScholiumApparatusFact(
-                id: "settled-by",
-                label: String(localized: "Researcher"),
-                value: researcher
-            ))
-        }
-        return facts
-    }
-
-    private var settlementStatus: String {
-        switch context.settlement.state {
-        case .settled: String(localized: "Settled")
-        case .changedSinceSettlement: String(localized: "Changed since settlement")
-        case .notYetSettled: String(localized: "Not yet settled")
-        case .unavailable: String(localized: "Unavailable")
-        }
+        AboutFactPresentation.settlement(
+            context.settlement,
+            formatDate: formattedDate
+        )
     }
 
     private func formattedDate(_ date: Date?) -> String {

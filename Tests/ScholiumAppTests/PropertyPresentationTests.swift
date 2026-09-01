@@ -375,6 +375,75 @@ struct PropertyPresentationTests {
         #expect(never.settledAt == nil)
     }
 
+    @Test("About presents file creation and modification facts from the snapshot")
+    func aboutFileHistoryFacts() {
+        let created = Date(timeIntervalSince1970: 10)
+        let modified = Date(timeIntervalSince1970: 20)
+        let facts = AboutFactPresentation.fileHistory(
+            metadata: WorkspaceFileMetadata(
+                byteCount: 42,
+                creationDate: created,
+                modificationDate: modified
+            ),
+            formatDate: fixtureDate
+        )
+
+        #expect(facts == [
+            ScholiumApparatusFact(
+                id: "file-created",
+                label: "File Created",
+                value: "10",
+                monospacedDigits: true
+            ),
+            ScholiumApparatusFact(
+                id: "source-modified",
+                label: "Source Modified",
+                value: "20",
+                monospacedDigits: true
+            ),
+        ])
+        #expect(AboutFactPresentation.fileHistory(
+            metadata: nil,
+            formatDate: fixtureDate
+        ).map(\.value) == ["Unavailable", "Unavailable"])
+    }
+
+    @Test("About distinguishes unavailable Settlement facts from never settled")
+    func aboutSettlementFacts() {
+        let changed = AboutFactPresentation.settlement(
+            AboutSettlementPresentation(
+                state: .changedSinceSettlement,
+                settledAt: Date(timeIntervalSince1970: 30),
+                researcher: "Researcher",
+                rationale: "Stable enough"
+            ),
+            formatDate: fixtureDate
+        )
+        let never = AboutFactPresentation.settlement(
+            AboutSettlementPresentation(
+                state: .notYetSettled,
+                settledAt: nil,
+                researcher: nil,
+                rationale: nil
+            ),
+            formatDate: fixtureDate
+        )
+        let unavailable = AboutFactPresentation.settlement(
+            .unavailable,
+            formatDate: fixtureDate
+        )
+
+        #expect(changed.map(\.id) == [
+            "settlement-status", "settled-at", "settled-by",
+        ])
+        #expect(changed.map(\.label) == ["Status", "Last Settled", "Researcher"])
+        #expect(changed.map(\.value) == [
+            "Changed since settlement", "30", "Researcher",
+        ])
+        #expect(never.map(\.value) == ["Not yet settled", "Never"])
+        #expect(unavailable.map(\.value) == ["Unavailable", "Unavailable"])
+    }
+
     @Test("About authored edits preserve every unrelated source byte")
     func aboutAuthoredEditUsesTargetedSourcePatch() throws {
         let source = "\u{FEFF}---\r\n# exact comment\r\nsummary: Old value\r\nkeywords: [one, two]\r\nunknown: 'keep'\r\n---\r\n# Body 😀"
@@ -404,6 +473,10 @@ struct PropertyPresentationTests {
 
         #expect(result == "\u{FEFF}---\r\nkeywords:\r\n  - agency\r\n  - reasons\r\n---\r\n# Existing body\r\n\r\nExact tail")
     }
+}
+
+private func fixtureDate(_ date: Date?) -> String {
+    date.map { String(Int($0.timeIntervalSince1970)) } ?? "Unavailable"
 }
 
 private func propertyWorkspaceLocation(

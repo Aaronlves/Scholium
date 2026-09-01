@@ -40,9 +40,10 @@ The ad-hoc App requires the documented Gatekeeper override.
   tests; 467 Core plus 3 performance tests; 161 Contracts tests; 296
   Application tests, 16 bridge tests and 1 architecture measurement; 686 App
   tests; public symbols; 15 executable CLI lifecycles; the sandboxed bridge;
-  and the Release build in 196.43 seconds. A later 18-test presentation pass
-  under Xcode 27.0 beta proves configured group order and field-local
-  saving, failure, Metadata/source conflict, retry, and cancel state. Isolated
+  and the Release build in 196.43 seconds. A later 20-test presentation pass
+  under Xcode 27.0 beta proves configured group order, file/Settlement fact
+  mapping, distinct `Never`/`Unavailable` state, and field-local saving,
+  failure, Metadata/source conflict, retry, and cancel. Isolated
   QA confirmed visible groups, empty core fields, readable choices, file and
   Settlement facts, and inline managed/source saves; the authored save changed
   only `summary` in the disposable fixture after unrelated legacy notices were
