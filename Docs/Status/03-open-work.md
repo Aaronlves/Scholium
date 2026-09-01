@@ -22,9 +22,17 @@
 - Run Voice Control or Dictation human compatibility only when a named release
   claims that route or a change touches command discoverability or text-service
   integration. Do not keep them as unconditional per-feature release rows.
-- Recheck fullscreen, native Sidebar/Inspector collapse and restoration,
-  scenes, Dock/New Window behavior, last-tab closure, auxiliary windows, and
-  focus restoration after system-Trash and recovery operations.
+- Put shell/lifecycle and stress coverage inside the first complete
+  deterministic UI baseline, then rerun only when their owners or supported
+  macOS behavior changes. Existing journeys cover native Sidebar/Inspector
+  visibility, independent/new windows and relaunch, document-tab neighbor
+  closure, Note/Folder/root drag-and-drop, Library minimum width, Records window
+  routing, one Attention item/notification stack, and Action focus/minimum
+  width. The baseline still must close fullscreen, Dock/last-tab system
+  behavior, long Connect/Attention populations, Library command shortcuts,
+  Records' actual minimum, and Action/Discussion cancellation/recovery. These
+  are deterministic UI claims unless §20 identifies an independent human
+  failure mode; default coordinates and sizes remain non-gates.
 - When Finder-facing naming/restoration or its package owner changes, run one
   representative packaged Finder journey; Core App 1.0 also runs it. Limit
   human judgment to Trash naming/collisions, restoration discoverability, and
@@ -33,10 +41,6 @@
   races, original-path reappearance, Trash emptying, plan persistence, native
   outcome uncertainty, receipts, and cleanup recovery. Do not repeat human
   process interruption for those variants; no Finder acceptance is retained yet.
-- Complete direct acceptance for long Connect clusters, Attention queue sizes,
-  folder dragging, Library shortcuts, Research Records at ordinary size and its
-  actual minimum usable bound, and Action/Discussion cancellation and recovery.
-  Do not treat initial frame coordinates or default dimensions as gate values.
 - Close remaining deterministic Metadata coverage for custom definitions,
   optional Agent preferences, lifecycle/use counts, controlled choices,
   Complete Metadata, CreatorList, first-record creation, removal/Undo,
