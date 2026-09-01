@@ -215,8 +215,8 @@ root certificate.
 
 Before every Core App distribution, rerun repository gates and artifact checks
 for the exact clean tag and provenance, package contents, metadata,
-entitlements, architectures, signatures, private-path disclosure, icons,
-checksums, licenses, and read-only DMG. Run a source/privacy audit for a Beta
+entitlements, architectures, signatures, private-path disclosure, icon
+resource/reference, checksums, licenses, and read-only DMG. Run a source/privacy audit for a Beta
 only when a change can alter permissions, credentials, source containment,
 external-data disclosure, generated state or logs, or package ownership; scope
 it to the affected boundaries and their adversarial cases. Core App 1.0 repeats
@@ -226,6 +226,12 @@ distributed Core App also completes one exact mounted-and-copied clean-account s
 Bootstrap, connect one disposable Triptych, open one Note, edit/save with exact
 readback, relaunch and reopen. Unavailable optional integrations must not block
 that Agent-independent Core path.
+
+A Beta runs human icon inspection in Finder, Dock, standard small sizes,
+Light/Dark, and the packaged App only when no retained accepted baseline exists
+or when the canonical artwork, icon generation, bundle metadata, package
+presentation, or supported macOS icon presentation changes. Core App 1.0
+repeats the complete icon inspection. Structural icon checks remain per artifact.
 
 For a Beta, packaged Search, Inspector, conflict/recovery, Finder restoration,
 and integration-specific journeys are change-triggered by their functional

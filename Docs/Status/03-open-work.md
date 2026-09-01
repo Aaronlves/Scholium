@@ -166,8 +166,12 @@
   artifact smoke above and §20's one representative human Agent journey;
   deterministic protocol variants and any changed-template review remain
   separate.
-- Inspect the canonical icon in Finder, Dock, small sizes, Light/Dark, and the
-  packaged application.
+- Establish the retained human icon baseline on the next Core Beta because none
+  exists: inspect the canonical icon in Finder, Dock, standard small sizes,
+  Light/Dark, and the packaged App. Later Betas repeat only after artwork, icon
+  generation, bundle metadata, package presentation, or supported macOS icon
+  presentation changes; Core App 1.0 repeats the complete inspection. Every
+  artifact still verifies the icon resource and reference structurally.
 - Close the complete packaged G7 campaign before Core App 1.0 or the next named
   performance baseline; it is not an unconditional Beta blocker when measured
   surfaces are unchanged. Complete remaining Core App distribution integrity
