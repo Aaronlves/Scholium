@@ -477,6 +477,65 @@ public enum ResearchRecordProgressKind: String, Codable, Hashable, Sendable {
     case appended
 }
 
+public enum ResearchRecordProgressTarget: Hashable, Sendable {
+    case new(question: String)
+    case existing(
+        recordID: UUID,
+        expectedFingerprint: DocumentFingerprint,
+        replacementQuestion: String?
+    )
+}
+
+public struct ResearchRecordProgressRequest: Hashable, Sendable {
+    public let target: ResearchRecordProgressTarget
+    public let submittedBy: ResearchRecordSubmitter
+    public let bodyMarkdown: String
+    public let revisesStepIDs: [UUID]
+    public let noteReferences: [ResearchRecordNoteReference]
+
+    public init(
+        target: ResearchRecordProgressTarget,
+        submittedBy: ResearchRecordSubmitter,
+        bodyMarkdown: String,
+        revisesStepIDs: [UUID] = [],
+        noteReferences: [ResearchRecordNoteReference] = []
+    ) {
+        self.target = target
+        self.submittedBy = submittedBy
+        self.bodyMarkdown = bodyMarkdown
+        self.revisesStepIDs = revisesStepIDs
+        self.noteReferences = noteReferences
+    }
+}
+
+public struct ResearchRecordCorrectionRequest: Hashable, Sendable {
+    public let recordID: UUID
+    public let stepID: UUID
+    public let expectedFingerprint: DocumentFingerprint
+    public let submittedBy: ResearchRecordSubmitter
+    public let bodyMarkdown: String
+    public let revisesStepIDs: [UUID]
+    public let noteReferences: [ResearchRecordNoteReference]
+
+    public init(
+        recordID: UUID,
+        stepID: UUID,
+        expectedFingerprint: DocumentFingerprint,
+        submittedBy: ResearchRecordSubmitter,
+        bodyMarkdown: String,
+        revisesStepIDs: [UUID],
+        noteReferences: [ResearchRecordNoteReference]
+    ) {
+        self.recordID = recordID
+        self.stepID = stepID
+        self.expectedFingerprint = expectedFingerprint
+        self.submittedBy = submittedBy
+        self.bodyMarkdown = bodyMarkdown
+        self.revisesStepIDs = revisesStepIDs
+        self.noteReferences = noteReferences
+    }
+}
+
 public struct ResearchRecordProgressResult: Hashable, Sendable {
     public let kind: ResearchRecordProgressKind
     public let revision: ResearchRecordRevision

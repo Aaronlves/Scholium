@@ -17,6 +17,7 @@ struct WorkspaceServices: Sendable {
     let indexedAttachmentAccessStore: IndexedAttachmentAccessStore
     let zotero: ZoteroOperations
     let settlementStore: SettlementStore
+    let researchRecordStore: ResearchRecordStore
     let agentChangeStore: AgentChangeStore
     let critiqueRegistry: CritiqueRegistry
     let transactionRecoveryStore: TriptychMutationRecoveryStore
@@ -619,6 +620,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 applicationSupportURL: applicationSupportURL,
                 triptychID: manifest.id
             )
+            let researchRecordStore = try ResearchRecordStore(
+                controlURL: controlURL,
+                applicationSupportURL: applicationSupportURL,
+                triptychID: manifest.id
+            )
             let agentChangeStore = try AgentChangeStore(
                 applicationSupportURL: applicationSupportURL,
                 triptychID: manifest.id
@@ -644,6 +650,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 ),
                 zotero: zotero,
                 settlementStore: settlementStore,
+                researchRecordStore: researchRecordStore,
                 agentChangeStore: agentChangeStore,
                 critiqueRegistry: critiqueRegistry,
                 transactionRecoveryStore: transactionRecoveryStore,

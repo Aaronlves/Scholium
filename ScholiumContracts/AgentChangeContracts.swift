@@ -228,6 +228,14 @@ public struct AgentNoteTrashResult: Sendable {
 }
 
 public protocol AgentCollaborationUseCases: Sendable {
+    func researchRecords() async throws -> ResearchRecordListing
+    func researchRecord(id: UUID) async throws -> ResearchRecordRevision
+    func recordProgress(
+        _ request: ResearchRecordProgressRequest
+    ) async throws -> ResearchRecordProgressResult
+    func correctRecordStep(
+        _ request: ResearchRecordCorrectionRequest
+    ) async throws -> ResearchRecordRevision
     func createNote(_ request: ManagedNoteCreationRequest) async throws
         -> AgentNoteCreationResult
     func updateNote(
