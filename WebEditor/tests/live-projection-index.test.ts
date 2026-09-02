@@ -5,16 +5,14 @@ import {createLiveProjectionIndexController} from "../live-projection-index";
 import type {MarkdownEditingDialect} from "../protocol";
 
 const dialect: MarkdownEditingDialect = {
-  version: 4,
+  version: 5,
   callouts: [
     {identifier: "state", aliases: [], label: "Statement", meaning: "Statement"},
   ],
-  vectorLinkOperators: [
-    {marker: "", kind: "neutral", meaning: "Neutral"},
-    {marker: "+", kind: "supports", meaning: "Supports"},
-    {marker: "-", kind: "opposes", meaning: "Opposes"},
-    {marker: "?", kind: "incompatible", meaning: "Incompatible"},
-  ],
+  linkAnnotation: {
+    openingDelimiter: "{{", closingDelimiter: "}}", escapeCharacter: "\\",
+    allowsMultiline: true, allowsNesting: false,
+  },
   footnotes: {
     namedReferenceOpening: "[^",
     namedReferenceClosing: "]",

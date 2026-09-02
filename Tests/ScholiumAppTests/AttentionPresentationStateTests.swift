@@ -209,7 +209,6 @@ struct AttentionPresentationStateTests {
             ("Missing Note", "笔记缺失"),
             ("Missing heading", "标题缺失"),
             ("Missing block", "块缺失"),
-            ("Invalid relationship endpoint", "关联端点无效"),
         ]
         for (message, expected) in issueMessages {
             let item = AttentionQueueItem(

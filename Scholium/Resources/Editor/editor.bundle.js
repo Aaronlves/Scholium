@@ -21040,7 +21040,7 @@
   var completionKeymapExt = /* @__PURE__ */ Prec.highest(/* @__PURE__ */ keymap.computeN([completionConfig], (state) => state.facet(completionConfig).defaultKeymap ? [completionKeymap] : []));
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 15;
+  var EDITOR_PROTOCOL_VERSION = 16;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -21081,9 +21081,7 @@
     "markdownComment",
     "standardLink",
     "wikilink",
-    "vectorSupports",
-    "vectorOpposes",
-    "vectorIncompatible",
+    "annotatedWikilink",
     "paragraph",
     "heading1",
     "heading2",
@@ -21160,10 +21158,10 @@
     if (!value || typeof value !== "object") return false;
     const dialect = value;
     const callouts = dialect.callouts;
-    const vectors = dialect.vectorLinkOperators;
+    const annotation = dialect.linkAnnotation;
     const footnotes = dialect.footnotes;
     const mathematics = dialect.mathematics;
-    return dialect.version === 4 && Array.isArray(callouts) && callouts.length > 0 && callouts.length <= 32 && callouts.every((callout) => Boolean(callout) && typeof callout.identifier === "string" && callout.identifier.length <= 64 && Array.isArray(callout.aliases) && callout.aliases.length <= 32 && callout.aliases.every((alias) => typeof alias === "string" && alias.length <= 64) && typeof callout.label === "string" && callout.label.length <= 120 && typeof callout.meaning === "string" && callout.meaning.length <= 1e3) && Array.isArray(vectors) && vectors.length === 4 && vectors.every((vector) => Boolean(vector) && ["", "+", "-", "?"].includes(vector.marker) && ["neutral", "supports", "opposes", "incompatible"].includes(vector.kind) && typeof vector.meaning === "string" && vector.meaning.length <= 1e3) && Boolean(footnotes) && footnotes?.namedReferenceOpening === "[^" && footnotes.namedReferenceClosing === "]" && footnotes.definitionSeparator === ":" && footnotes.inlineOpening === "^[" && footnotes.continuationIndentSpaces === 2 && footnotes.allowsTabContinuation === true && footnotes.caseSensitiveIdentifiers === true && footnotes.ordinalByFirstReference === true && Boolean(mathematics) && mathematics?.inlineDelimiter === "$" && mathematics.displayDelimiter === "$$" && mathematics.singleDollarInline === true;
+    return dialect.version === 5 && Array.isArray(callouts) && callouts.length > 0 && callouts.length <= 32 && callouts.every((callout) => Boolean(callout) && typeof callout.identifier === "string" && callout.identifier.length <= 64 && Array.isArray(callout.aliases) && callout.aliases.length <= 32 && callout.aliases.every((alias) => typeof alias === "string" && alias.length <= 64) && typeof callout.label === "string" && callout.label.length <= 120 && typeof callout.meaning === "string" && callout.meaning.length <= 1e3) && Boolean(annotation) && annotation?.openingDelimiter === "{{" && annotation.closingDelimiter === "}}" && annotation.escapeCharacter === "\\" && annotation.allowsMultiline === true && annotation.allowsNesting === false && Boolean(footnotes) && footnotes?.namedReferenceOpening === "[^" && footnotes.namedReferenceClosing === "]" && footnotes.definitionSeparator === ":" && footnotes.inlineOpening === "^[" && footnotes.continuationIndentSpaces === 2 && footnotes.allowsTabContinuation === true && footnotes.caseSensitiveIdentifiers === true && footnotes.ordinalByFirstReference === true && Boolean(mathematics) && mathematics?.inlineDelimiter === "$" && mathematics.displayDelimiter === "$$" && mathematics.singleDollarInline === true;
   }
   function validOperation(operation) {
     switch (operation.type) {
@@ -21422,10 +21420,7 @@ ${blankRow(table.position.columnCount)}`;
     strikethrough: ["~~", "~~", "Strikethrough"],
     highlight: ["==", "==", "Highlight"],
     markdownComment: ["%% ", " %%", "Markdown Comment"],
-    wikilink: ["[[", "]]", "Wikilink"],
-    vectorSupports: ["+[[", "]]", "Supports Link"],
-    vectorOpposes: ["-[[", "]]", "Opposes Link"],
-    vectorIncompatible: ["?[[", "]]", "Incompatible Link"]
+    wikilink: ["[[", "]]", "Wikilink"]
   };
   function normalized(range) {
     return { from: Math.min(range.anchor, range.head), to: Math.max(range.anchor, range.head) };
@@ -21511,6 +21506,19 @@ ${blankRow(table.position.columnCount)}`;
       const anchor = selected ? range.from + selected.length + 3 : range.from + 1;
       const head = selected ? anchor + destination.length : anchor;
       return { change: { ...range, insert: insert2 }, selection: { anchor, head }, label: "Link" };
+    }
+    if (command2 === "annotatedWikilink") {
+      const selected = source.slice(range.from, range.to);
+      const target = selected || "Target";
+      const annotation = "Annotation";
+      const insert2 = `[[${target}]]{{${annotation}}}`;
+      const anchor = selected ? range.from + target.length + 6 : range.from + 2;
+      const head = selected ? anchor + annotation.length : anchor + target.length;
+      return {
+        change: { ...range, insert: insert2 },
+        selection: { anchor, head },
+        label: "Annotated Wikilink"
+      };
     }
     if (command2 === "pastePlain" || command2 === "pasteMarkdown") {
       const insert2 = argument ?? "";
@@ -29637,7 +29645,7 @@ ${fence}
     }
     return null;
   }
-  function addWikiLink(cx, from, openingFrom, nodeName, prefixName) {
+  function addWikiLink(cx, from, openingFrom, prefixName) {
     const contentFrom = openingFrom + 2;
     const end = wikiLinkEnd(cx, contentFrom);
     if (!end) return -1;
@@ -29654,7 +29662,7 @@ ${fence}
       }
     }
     children.push(cx.elt("WikiLinkCloseMark", end.closingFrom, end.to));
-    return cx.addElement(cx.elt(nodeName, from, end.to, children));
+    return cx.addElement(cx.elt("WikiLink", from, end.to, children));
   }
   function parseObsidianInlineComment(cx, next, position) {
     if (next !== 37 || cx.char(position + 1) !== 37) return -1;
@@ -29665,25 +29673,13 @@ ${fence}
     }
     return cx.addElement(cx.elt("UnclosedObsidianComment", position, cx.end));
   }
-  function parseVectorLink(cx, next, position) {
-    if (![43, 45, 63].includes(next) || cx.char(position + 1) !== 91 || cx.char(position + 2) !== 91) return -1;
-    if (isEscaped3(cx, position)) return -1;
-    if (position > cx.offset) {
-      const priorText = cx.slice(Math.max(cx.offset, position - 2), position);
-      const previous = Array.from(priorText).at(-1) ?? "";
-      if (new RegExp("\\p{L}|\\p{N}", "u").test(previous) || ["_", "\\", "!", "+", "-", "?"].includes(previous)) {
-        return -1;
-      }
-    }
-    return addWikiLink(cx, position, position + 1, "VectorLink", "VectorLinkMark");
-  }
   function parseWikiLink(cx, next, position) {
     if (next !== 91 || cx.char(position + 1) !== 91) return -1;
-    return addWikiLink(cx, position, position, "WikiLink", "WikiLinkOpenMark");
+    return addWikiLink(cx, position, position, "WikiLinkOpenMark");
   }
   function parseWikiEmbed(cx, next, position) {
     if (next !== 33 || cx.char(position + 1) !== 91 || cx.char(position + 2) !== 91) return -1;
-    return addWikiLink(cx, position, position + 1, "WikiLink", "WikiEmbedMark");
+    return addWikiLink(cx, position, position + 1, "WikiEmbedMark");
   }
   function parseFootnoteReference(cx, next, position) {
     if (next !== 91 || cx.char(position + 1) !== 94) return -1;
@@ -29870,10 +29866,8 @@ ${fence}
   var scholiumMarkdownDialect = {
     defineNodes: [
       "WikiLink",
-      "VectorLink",
       "WikiLinkOpenMark",
       "WikiEmbedMark",
-      "VectorLinkMark",
       "WikiLinkTarget",
       "WikiLinkAliasMark",
       "WikiLinkAlias",
@@ -29909,7 +29903,6 @@ ${fence}
     ],
     parseInline: [
       { name: "ScholiumObsidianComment", parse: parseObsidianInlineComment, before: "Link" },
-      { name: "ScholiumVectorLink", parse: parseVectorLink, before: "Link" },
       { name: "ScholiumFootnoteReference", parse: parseFootnoteReference, before: "Link" },
       { name: "ScholiumWikiLink", parse: parseWikiLink, before: "Link" },
       { name: "ScholiumInlineFootnote", parse: parseInlineFootnote, before: "Link" },
@@ -29943,7 +29936,6 @@ ${fence}
       Link: "ltr",
       Autolink: "ltr",
       WikiLink: "ltr",
-      VectorLink: "ltr",
       FootnoteReference: "ltr"
     })]
   };
@@ -29954,6 +29946,38 @@ ${fence}
   var scholiumNoteLanguage = yamlFrontmatter({
     content: scholiumMarkdownContentLanguage
   });
+
+  // link-annotation.ts
+  function isEscaped4(source, position) {
+    let backslashes = 0;
+    for (let cursor = position - 1; cursor >= 0 && source.charCodeAt(cursor) === 92; cursor -= 1) {
+      backslashes += 1;
+    }
+    return backslashes % 2 === 1;
+  }
+  function hasVisibleMarkdownContent(markdown2) {
+    let remaining = markdown2.replace(/(`+)[\s]*\1/g, "");
+    remaining = remaining.replace(/^[ \t]{0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/gm, "").replace(/^[ \t]{0,3}(?:#{1,6}|>+|[-+*]|\d+[.)])[ \t]*$/gm, "");
+    return remaining.trim().length > 0;
+  }
+  function linkAnnotationAfter(source, linkTo) {
+    if (source.slice(linkTo, linkTo + 2) !== "{{") return null;
+    for (let cursor = linkTo + 2; cursor + 1 < source.length; cursor += 1) {
+      const pair2 = source.slice(cursor, cursor + 2);
+      if (pair2 === "{{" && !isEscaped4(source, cursor)) return null;
+      if (pair2 !== "}}" || isEscaped4(source, cursor)) continue;
+      const markdown2 = source.slice(linkTo + 2, cursor);
+      if (!hasVisibleMarkdownContent(markdown2)) return null;
+      return {
+        from: linkTo,
+        to: cursor + 2,
+        contentFrom: linkTo + 2,
+        contentTo: cursor,
+        markdown: markdown2
+      };
+    }
+    return null;
+  }
 
   // semantic-projection.ts
   function projectionRangesFromCatalog(state, blocks, inlines, literals2) {
@@ -29985,7 +30009,7 @@ ${fence}
       if (inline.kind === "strong") result.strong.add(key);
       if (inline.kind === "emphasis") result.emphasis.add(key);
       if (inline.kind === "link") result.links.add(key);
-      if (inline.kind === "wikilink" || inline.kind === "vectorLink") result.wikilinks.add(key);
+      if (inline.kind === "wikilink") result.wikilinks.add(key);
       if (inline.kind === "strikethrough") result.strikethrough.add(key);
       if (inline.kind === "highlight") result.highlights.add(key);
     }
@@ -30015,7 +30039,10 @@ ${fence}
       markerRanges: inline.markerRanges.map(mapRange2),
       visibleRanges: inline.visibleRanges.map(mapRange2),
       targetRange: inline.targetRange ? mapRange2(inline.targetRange) : null,
-      aliasRange: inline.aliasRange ? mapRange2(inline.aliasRange) : null
+      aliasRange: inline.aliasRange ? mapRange2(inline.aliasRange) : null,
+      linkRange: inline.linkRange ? mapRange2(inline.linkRange) : null,
+      annotationRange: inline.annotationRange ? mapRange2(inline.annotationRange) : null,
+      annotationContentRange: inline.annotationContentRange ? mapRange2(inline.annotationContentRange) : null
     }));
     const literals2 = previous.literals.map((literal2) => ({
       ...literal2,
@@ -30051,7 +30078,6 @@ ${fence}
     ["Image", "image"],
     ["Highlight", "highlight"],
     ["WikiLink", "wikilink"],
-    ["VectorLink", "vectorLink"],
     ["InlineMath", "inlineMath"],
     ["FootnoteReference", "footnoteReference"],
     ["InlineFootnote", "inlineFootnote"],
@@ -30091,7 +30117,7 @@ ${fence}
       return { from: range.from, to };
     });
   }
-  function inlinePresentation(node, kind) {
+  function inlinePresentation(node, kind, source) {
     const markerNames = /* @__PURE__ */ new Set();
     switch (kind) {
       case "strong":
@@ -30112,10 +30138,8 @@ ${fence}
         markerNames.add("HighlightMark");
         break;
       case "wikilink":
-      case "vectorLink":
         markerNames.add("WikiLinkOpenMark");
         markerNames.add("WikiEmbedMark");
-        markerNames.add("VectorLinkMark");
         markerNames.add("WikiLinkAliasMark");
         markerNames.add("WikiLinkCloseMark");
         break;
@@ -30136,6 +30160,10 @@ ${fence}
     const markerRanges = childRanges(node, markerNames);
     let targetRange = null;
     let aliasRange = null;
+    let linkRange = null;
+    let annotationRange = null;
+    let annotationContentRange = null;
+    let projectionTo = node.to;
     let visibleRanges = complementRanges(node.from, node.to, markerRanges);
     if (kind === "link" || kind === "image") {
       const explicitVisible = childRanges(node, /* @__PURE__ */ new Set(["URL"]));
@@ -30145,12 +30173,20 @@ ${fence}
         const linkMarks = markerRanges;
         visibleRanges = linkMarks.length >= 2 ? [{ from: linkMarks[0].to, to: linkMarks[1].from }] : [];
       }
-    } else if (kind === "wikilink" || kind === "vectorLink") {
+    } else if (kind === "wikilink") {
       const alias = childRanges(node, /* @__PURE__ */ new Set(["WikiLinkAlias"]));
       const target = childRanges(node, /* @__PURE__ */ new Set(["WikiLinkTarget"]));
       targetRange = target[0] ?? null;
       aliasRange = alias[0] ?? null;
       visibleRanges = alias.length > 0 ? alias : target;
+      linkRange = { from: node.from, to: node.to };
+      const embedded = markerRanges.some((range) => source.slice(range.from, range.to).startsWith("!"));
+      const annotation = embedded ? null : linkAnnotationAfter(source, node.to);
+      if (annotation) {
+        annotationRange = { from: annotation.from, to: annotation.to };
+        annotationContentRange = { from: annotation.contentFrom, to: annotation.contentTo };
+        projectionTo = annotation.to;
+      }
     } else if (kind === "inlineMath") {
       visibleRanges = childRanges(node, /* @__PURE__ */ new Set(["MathContent"]));
     } else if (kind === "footnoteReference") {
@@ -30164,11 +30200,14 @@ ${fence}
       kind,
       nodeName: node.name,
       from: node.from,
-      to: node.to,
+      to: projectionTo,
       markerRanges,
       visibleRanges,
       targetRange,
-      aliasRange
+      aliasRange,
+      linkRange,
+      annotationRange,
+      annotationContentRange
     };
   }
   function rangeKey(from, to) {
@@ -30211,6 +30250,7 @@ ${fence}
     const from = Math.max(0, Math.min(...visibleRanges.map((range) => range.from)) - margin);
     const to = Math.min(state.doc.length, Math.max(...visibleRanges.map((range) => range.to)) + margin);
     const blockStack = [];
+    const source = state.doc.toString();
     tree.iterate({
       from,
       to,
@@ -30284,7 +30324,7 @@ ${fence}
         }
         const inlineKind = inlineKinds.get(node.name);
         if (inlineKind) {
-          const inline = inlinePresentation(node, inlineKind);
+          const inline = inlinePresentation(node, inlineKind, source);
           result.inlines.push(inline);
         }
         if ([
@@ -30321,7 +30361,7 @@ ${fence}
     const sourceLine = document2.lineAt(offset);
     const lineFrom = sourceLine.from;
     const line = sourceLine.text;
-    for (const match of line.matchAll(/(?:!|[+\-?])?\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)) {
+    for (const match of line.matchAll(/!?\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)) {
       const from = lineFrom + match.index;
       const to = from + match[0].length;
       if (offset >= from && offset < to) return match[1].trim();
@@ -30705,10 +30745,9 @@ ${fence}
     "Inline code",
     "Exact Markdown and YAML source",
     "Task item",
-    "Related note",
-    "Supports",
-    "Opposes",
-    "Incompatible",
+    "Show Link Annotation",
+    "Hide Link Annotation",
+    "linked note",
     "Markdown table",
     "Embedded note {title}",
     "Open embedded note {title}",
@@ -30744,8 +30783,7 @@ ${fence}
     "Link (\u2318K)",
     "Wiki links",
     "Wiki",
-    "Vector Link Options",
-    "Vector Link",
+    "Annotated Wikilink",
     "More Formatting",
     "Import Image\u2026",
     "Index Image\u2026",
@@ -31868,9 +31906,7 @@ ${fence}
     "highlight",
     "standardLink",
     "wikilink",
-    "vectorSupports",
-    "vectorOpposes",
-    "vectorIncompatible",
+    "annotatedWikilink",
     "inlineCode",
     "fencedCode",
     "bulletList",
@@ -32340,18 +32376,15 @@ ${fence}
       wikiLabel.textContent = localized("Wiki");
       wiki.append(wikiLabel);
       bindCommand(wiki, "wikilink");
-      const vector = createToolbarButton(
-        localized("Vector Link Options"),
-        localized("Vector Link"),
+      const annotated = createToolbarButton(
+        localized("Annotated Wikilink"),
+        localized("Annotated Wikilink"),
         "scholium-selection-wiki-menu-trigger"
       );
-      vector.append(chevronIcon("scholium-selection-chevron"));
-      wikiGroup.append(wiki, vector);
+      annotated.append(selectionSymbol("text-bubble", "scholium-selection-link-annotation-icon"));
+      bindCommand(annotated, "annotatedWikilink");
+      wikiGroup.append(wiki, annotated);
       commandBar.append(wikiGroup);
-      const vectorMenu = createMenu(vector, "scholium-selection-vector-menu");
-      addMenuItem(vectorMenu, localized("Supports"), "vectorSupports", "", false, "plus-circle");
-      addMenuItem(vectorMenu, localized("Opposes"), "vectorOpposes", "", false, "minus-circle");
-      addMenuItem(vectorMenu, localized("Incompatible"), "vectorIncompatible", "", false, "xmark-circle");
       const secondSeparator = document.createElement("span");
       secondSeparator.className = "scholium-selection-separator";
       secondSeparator.setAttribute("role", "separator");
@@ -32580,518 +32613,7 @@ ${fence}
     return /^(\s*(?:>\s*)+)\[!([^\]]+)\]([+-])?\s*(.*)$/.exec(text);
   }
 
-  // table-presentation.ts
-  function alignmentFor(separator) {
-    const value = separator.trim();
-    if (value.startsWith(":") && value.endsWith(":")) return "center";
-    if (value.endsWith(":")) return "right";
-    if (value.startsWith(":")) return "left";
-    return null;
-  }
-  function cellSource(source, from, to) {
-    return source.slice(from, to).replaceAll("\\|", "|");
-  }
-  function tablePresentation(source, from, to) {
-    if (from < 0 || to <= from || to > source.length) return null;
-    const parsed = tableAt(source, Math.min(to, from + 1));
-    if (!parsed || parsed.rows[0].lineFrom !== from) return null;
-    const finalRow = parsed.rows[parsed.rows.length - 1];
-    if (finalRow.lineTo !== to) return null;
-    const separator = parsed.rows[parsed.separatorIndex];
-    const alignments = separator.cells.map(
-      (cell) => alignmentFor(source.slice(cell.contentFrom, cell.contentTo))
-    );
-    const rows = parsed.rows.filter((_, index) => index !== parsed.separatorIndex).map((row) => row.cells.map((cell, column) => ({
-      source: cellSource(source, cell.contentFrom, cell.contentTo),
-      sourceOffset: cell.contentFrom,
-      alignment: alignments[column] ?? null
-    })));
-    const header = rows.shift();
-    if (!header) return null;
-    return {
-      from,
-      to,
-      source: source.slice(from, to),
-      header,
-      body: rows
-    };
-  }
-
-  // markdown-fragment.ts
-  var vectorLinkSemantics = {
-    neutral: { label: localized("Related note"), symbol: "link" },
-    supports: { label: localized("Supports"), symbol: "plus" },
-    opposes: { label: localized("Opposes"), symbol: "minus" },
-    incompatible: { label: localized("Incompatible"), symbol: "xmark" }
-  };
-  var inlineMarkerNodes = /* @__PURE__ */ new Set([
-    "EmphasisMark",
-    "CodeMark",
-    "LinkMark",
-    "URL",
-    "StrikethroughMark"
-  ]);
-  function documentFor(parent) {
-    if (parent.nodeType === 9) return parent;
-    const owner = parent.ownerDocument;
-    if (!owner) throw new Error("Markdown fragments require an owning document.");
-    return owner;
-  }
-  function locatedOffset(options, offset) {
-    return options.sourceOffset?.(offset) ?? offset;
-  }
-  function optionsAt(options, offset) {
-    return {
-      ...options,
-      sourceOffset: (nestedOffset) => locatedOffset(options, offset + nestedOffset)
-    };
-  }
-  function optionsWithMap(options, offsets) {
-    return {
-      ...options,
-      sourceOffset: (nestedOffset) => locatedOffset(
-        options,
-        offsets[Math.max(0, Math.min(nestedOffset, offsets.length - 1))] ?? 0
-      )
-    };
-  }
-  function identifyProjectedLink(element, target, from, to, caret, options) {
-    element.dataset.scholiumLinkTarget = target;
-    element.dataset.scholiumSourceFrom = String(locatedOffset(options, from));
-    element.dataset.scholiumSourceTo = String(locatedOffset(options, to));
-    element.dataset.scholiumSourceCaret = String(locatedOffset(options, caret));
-  }
-  function appendInlineMarkdownNode(cursor, source, parent, options) {
-    const document2 = documentFor(parent);
-    const raw = source.slice(cursor.from, cursor.to);
-    if (inlineMarkerNodes.has(cursor.name)) return;
-    if (cursor.name === "InlineCode") {
-      const code2 = document2.createElement("code");
-      code2.dir = "ltr";
-      const opening = raw.match(/^`+/)?.[0] ?? "";
-      const closing2 = raw.endsWith(opening) ? opening.length : 0;
-      code2.textContent = raw.slice(opening.length, raw.length - closing2);
-      parent.append(code2);
-      return;
-    }
-    if (cursor.name === "Link") {
-      const link = /^\[([\s\S]*?)\]\(([\s\S]*?)\)$/.exec(raw);
-      const span = document2.createElement("span");
-      span.className = "cm-live-link";
-      span.dir = "auto";
-      span.textContent = link?.[1] ?? raw;
-      if (link) {
-        identifyProjectedLink(
-          span,
-          link[2].trim().replace(/^<|>$/g, ""),
-          cursor.from,
-          cursor.to,
-          cursor.from + 1,
-          options
-        );
-      }
-      parent.append(span);
-      return;
-    }
-    if (cursor.name === "WikiLink" || cursor.name === "VectorLink") {
-      const link = /^(!?)([+\-?]?)\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/.exec(raw);
-      if (!link) {
-        parent.append(document2.createTextNode(raw));
-        return;
-      }
-      const span = document2.createElement("span");
-      const embed = link[1] === "!";
-      const kind = options.resolveVectorLink?.(link[2]) ?? "neutral";
-      span.className = embed ? "cm-live-embed" : `cm-live-vector-link cm-live-vector-${kind.replaceAll("_", "-")}`;
-      span.dir = "auto";
-      const target = link[3].trim();
-      const alias = link[4]?.trim();
-      if (!embed) {
-        const semantics = vectorLinkSemantics[kind];
-        const icon = systemSymbolElement(
-          semantics.symbol,
-          `cm-live-vector-icon cm-live-vector-icon-${kind.replaceAll("_", "-")}`,
-          document2
-        );
-        icon.title = semantics.label;
-        span.setAttribute("aria-label", `${semantics.label} ${alias || target}`);
-        span.append(document2.createTextNode(alias || target));
-        span.append(icon);
-      } else {
-        span.append(document2.createTextNode(alias || target));
-      }
-      identifyProjectedLink(span, target, cursor.from, cursor.to, cursor.to, options);
-      parent.append(span);
-      return;
-    }
-    if (cursor.name === "Escape") {
-      parent.append(document2.createTextNode(raw.startsWith("\\") ? raw.slice(1) : raw));
-      return;
-    }
-    const wrapperName = cursor.name === "StrongEmphasis" ? "strong" : cursor.name === "Emphasis" ? "em" : cursor.name === "Strikethrough" ? "del" : null;
-    const destination = wrapperName ? document2.createElement(wrapperName) : parent;
-    let position = cursor.from;
-    if (cursor.firstChild()) {
-      do {
-        if (cursor.from > position) {
-          destination.append(document2.createTextNode(source.slice(position, cursor.from)));
-        }
-        appendInlineMarkdownNode(cursor, source, destination, options);
-        position = cursor.to;
-      } while (cursor.nextSibling());
-      cursor.parent();
-      if (position < cursor.to) {
-        destination.append(document2.createTextNode(source.slice(position, cursor.to)));
-      }
-    } else if (!wrapperName) {
-      destination.append(document2.createTextNode(raw));
-    }
-    if (wrapperName) parent.append(destination);
-  }
-  function appendInlineMarkdownPlain(source, parent, options) {
-    const tree = scholiumMarkdownContentLanguage.language.parser.parse(source);
-    const cursor = tree.cursor();
-    appendInlineMarkdownNode(cursor, source, parent, options);
-  }
-  function appendMath(expression, parent) {
-    const document2 = documentFor(parent);
-    const element = document2.createElement(expression.kind === "display" ? "div" : "span");
-    element.className = `scholium-math scholium-math-${expression.kind} scholium-math-fragment`;
-    element.dir = "ltr";
-    element.dataset.scholiumProtected = "math";
-    const runtime = document2.defaultView?.scholiumMath;
-    const rendered = runtime?.version === 1 ? runtime.render({ source: expression.content, kind: expression.kind }) : null;
-    if (rendered?.ok) {
-      element.classList.add("scholium-math-rendered");
-      element.innerHTML = rendered.html;
-    } else {
-      element.classList.add("scholium-math-error");
-      const exact = document2.createElement("code");
-      exact.className = "scholium-math-source";
-      exact.dir = "ltr";
-      const delimiter = "$".repeat(expression.delimiterLength);
-      exact.textContent = expression.kind === "display" ? `${delimiter}
-${expression.content}
-${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
-      element.append(exact);
-    }
-    parent.append(element);
-  }
-  function appendInlineMarkdown(source, parent, options = {}) {
-    const expressions = options.mathematics ? scanMath(source, options.mathematics).filter((expression) => expression.kind === "inline") : [];
-    if (expressions.length === 0) {
-      appendInlineMarkdownPlain(source, parent, options);
-      return;
-    }
-    let position = 0;
-    for (const expression of expressions) {
-      if (position < expression.from) {
-        appendInlineMarkdownPlain(
-          source.slice(position, expression.from),
-          parent,
-          optionsAt(options, position)
-        );
-      }
-      appendMath({ ...expression, from: 0, to: expression.to - expression.from }, parent);
-      position = expression.to;
-    }
-    if (position < source.length) {
-      appendInlineMarkdownPlain(source.slice(position), parent, optionsAt(options, position));
-    }
-  }
-  function appendBlockChildren(cursor, source, parent, options) {
-    if (!cursor.firstChild()) return;
-    do {
-      appendMarkdownBlockNode(cursor, source, parent, options);
-    } while (cursor.nextSibling());
-    cursor.parent();
-  }
-  function tableCellDOM(cell, header, document2, options) {
-    const element = document2.createElement(header ? "th" : "td");
-    element.dir = "auto";
-    if (header) element.setAttribute("scope", "col");
-    if (cell.alignment) element.classList.add(`scholium-table-align-${cell.alignment}`);
-    element.dataset.sourceOffset = String(locatedOffset(options, cell.sourceOffset));
-    appendInlineMarkdown(cell.source, element, options);
-    return element;
-  }
-  function createTableDOM(presentation, document2, options = {}) {
-    const scroller = document2.createElement("div");
-    scroller.className = "scholium-table-scroll";
-    scroller.dataset.scholiumProtected = "table";
-    const table = document2.createElement("table");
-    table.className = "scholium-table";
-    table.setAttribute("aria-label", localized("Markdown table"));
-    const head = document2.createElement("thead");
-    const headRow = document2.createElement("tr");
-    headRow.append(...presentation.header.map((cell) => tableCellDOM(cell, true, document2, options)));
-    head.append(headRow);
-    const body = document2.createElement("tbody");
-    for (const row of presentation.body) {
-      const rowElement = document2.createElement("tr");
-      rowElement.append(...row.map((cell) => tableCellDOM(cell, false, document2, options)));
-      body.append(rowElement);
-    }
-    table.append(head, body);
-    scroller.append(table);
-    return scroller;
-  }
-  function calloutParts(raw, options) {
-    if (!options.resolveCallout) return null;
-    const lines = [];
-    let lineFrom = 0;
-    while (lineFrom <= raw.length) {
-      const lineFeed = raw.indexOf("\n", lineFrom);
-      const rawTo = lineFeed < 0 ? raw.length : lineFeed;
-      const lineTo = rawTo > lineFrom && raw.charCodeAt(rawTo - 1) === 13 ? rawTo - 1 : rawTo;
-      lines.push({ text: raw.slice(lineFrom, lineTo), from: lineFrom });
-      if (lineFeed < 0) break;
-      lineFrom = lineFeed + 1;
-    }
-    const match = /^\s*>\s*\[!([^\]]+)\]([+-])?\s*(.*)$/.exec(lines[0]?.text ?? "");
-    if (!match) return null;
-    const rawTitle = match[3];
-    const title = rawTitle.trim();
-    const titleInMatch = match[0].length - rawTitle.length + Math.max(0, rawTitle.indexOf(title));
-    let body = "";
-    const bodyOffsets = [];
-    for (const [index, line] of lines.slice(1).entries()) {
-      const content2 = /^(\s*> ?)(.*)$/.exec(line.text);
-      const prefixLength = content2?.[1].length ?? 0;
-      const text = content2?.[2] ?? line.text;
-      if (index > 0) {
-        body += "\n";
-        bodyOffsets.push(line.from);
-      }
-      const contentFrom = line.from + prefixLength;
-      if (bodyOffsets.length === 0) bodyOffsets.push(contentFrom);
-      else bodyOffsets[bodyOffsets.length - 1] = contentFrom;
-      body += text;
-      for (let offset = 1; offset <= text.length; offset += 1) {
-        bodyOffsets.push(contentFrom + offset);
-      }
-    }
-    return {
-      definition: options.resolveCallout(match[1]),
-      rawKind: match[1],
-      fold: match[2] === "+" ? "expanded" : match[2] === "-" ? "collapsed" : "fixed",
-      title,
-      titleFrom: titleInMatch,
-      body,
-      bodyOffsets
-    };
-  }
-  function appendCallout(parts, parent, options) {
-    const document2 = documentFor(parent);
-    const callout = document2.createElement(parts.fold === "fixed" ? "aside" : "details");
-    callout.className = `scholium-callout scholium-callout-${parts.definition.identifier}`;
-    callout.dataset.callout = parts.definition.identifier;
-    callout.dataset.calloutSource = parts.rawKind;
-    callout.dataset.calloutFold = parts.fold;
-    callout.dataset.scholiumProtected = "callout";
-    if (parts.fold === "expanded") callout.open = true;
-    const headingContainer = document2.createElement(parts.fold === "fixed" ? "header" : "summary");
-    const heading2 = document2.createElement("span");
-    heading2.className = "scholium-callout-heading";
-    heading2.setAttribute("role", "heading");
-    heading2.setAttribute("aria-level", "2");
-    const orientationTitleBecomesBody = parts.definition.identifier === "orient" && parts.title.length > 0 && parts.body.trim().length === 0;
-    const role = document2.createElement("span");
-    role.className = "scholium-callout-role";
-    role.dir = "auto";
-    role.title = parts.definition.meaning;
-    role.textContent = parts.definition.label;
-    heading2.append(role);
-    if (parts.title && !orientationTitleBecomesBody) {
-      const title = document2.createElement("span");
-      title.className = "scholium-callout-title";
-      title.dir = "auto";
-      appendInlineMarkdown(parts.title, title, optionsAt(options, parts.titleFrom));
-      heading2.append(title);
-    }
-    headingContainer.append(heading2);
-    if (parts.fold !== "fixed") {
-      const marker = document2.createElement("span");
-      marker.className = "scholium-callout-fold-mark";
-      marker.setAttribute("aria-hidden", "true");
-      headingContainer.append(marker);
-    }
-    const body = document2.createElement("div");
-    body.className = "scholium-callout-body";
-    const signature = document2.createElement("span");
-    signature.className = "scholium-callout-signature";
-    signature.setAttribute("aria-hidden", "true");
-    const content2 = document2.createElement("div");
-    content2.className = "scholium-callout-content";
-    const destination = parts.definition.identifier === "quote" ? document2.createElement("blockquote") : content2;
-    if (destination !== content2) {
-      destination.className = "scholium-callout-quotation";
-      destination.dir = "auto";
-      content2.append(destination);
-    }
-    if (orientationTitleBecomesBody) {
-      const paragraph = document2.createElement("p");
-      paragraph.className = "scholium-callout-orient-title-body";
-      paragraph.dir = "auto";
-      appendInlineMarkdown(parts.title, paragraph, optionsAt(options, parts.titleFrom));
-      destination.append(paragraph);
-    } else {
-      appendMarkdownBlocks(parts.body, destination, optionsWithMap(options, parts.bodyOffsets));
-    }
-    body.append(signature, content2);
-    callout.append(headingContainer, body);
-    parent.append(callout);
-  }
-  function fencedCode(raw) {
-    const lines = raw.replaceAll("\r\n", "\n").split("\n");
-    const opening = /^\s*(`{3,}|~{3,})\s*([^\s`]*)?.*$/.exec(lines[0] ?? "");
-    const language2 = opening?.[2] ?? "";
-    const fence = opening?.[1] ?? "```";
-    const closing2 = new RegExp(`^\\s*${fence[0]}{${fence.length},}\\s*$`);
-    if (lines.length > 1 && closing2.test(lines.at(-1) ?? "")) lines.pop();
-    lines.shift();
-    return { language: language2, code: lines.join("\n") };
-  }
-  function appendMarkdownBlockNode(cursor, source, parent, options) {
-    const document2 = documentFor(parent);
-    const raw = source.slice(cursor.from, cursor.to);
-    switch (cursor.name) {
-      case "Paragraph": {
-        const paragraph = document2.createElement("p");
-        paragraph.dir = "auto";
-        appendInlineMarkdown(raw, paragraph, options);
-        parent.append(paragraph);
-        return;
-      }
-      case "BulletList": {
-        const list = document2.createElement("ul");
-        appendBlockChildren(cursor, source, list, options);
-        parent.append(list);
-        return;
-      }
-      case "OrderedList": {
-        const list = document2.createElement("ol");
-        const start = /^\s*(\d+)[.)]\s/.exec(raw)?.[1];
-        if (start && start !== "1") list.setAttribute("start", start);
-        appendBlockChildren(cursor, source, list, options);
-        parent.append(list);
-        return;
-      }
-      case "ListItem": {
-        const item = document2.createElement("li");
-        item.dir = "auto";
-        appendBlockChildren(cursor, source, item, options);
-        parent.append(item);
-        return;
-      }
-      case "Callout":
-      case "Blockquote": {
-        const calloutOptions = optionsAt(options, cursor.from);
-        const callout = calloutParts(raw, calloutOptions);
-        if (callout) {
-          appendCallout(callout, parent, calloutOptions);
-          return;
-        }
-        const quote = document2.createElement("blockquote");
-        quote.dir = "auto";
-        appendBlockChildren(cursor, source, quote, options);
-        parent.append(quote);
-        return;
-      }
-      case "FencedCode": {
-        const projection = fencedCode(raw);
-        const pre = document2.createElement("pre");
-        pre.dir = "ltr";
-        const code2 = document2.createElement("code");
-        code2.dir = "ltr";
-        if (projection.language) code2.className = `language-${projection.language}`;
-        code2.textContent = projection.code;
-        pre.append(code2);
-        parent.append(pre);
-        return;
-      }
-      case "HTMLBlock": {
-        const pre = document2.createElement("pre");
-        pre.className = "raw-html";
-        pre.dir = "ltr";
-        const code2 = document2.createElement("code");
-        code2.dir = "ltr";
-        code2.textContent = raw;
-        pre.append(code2);
-        parent.append(pre);
-        return;
-      }
-      case "Table": {
-        const presentation = tablePresentation(raw, 0, raw.length);
-        if (presentation) parent.append(createTableDOM(presentation, document2, options));
-        return;
-      }
-      case "ATXHeading1":
-      case "ATXHeading2":
-      case "ATXHeading3":
-      case "ATXHeading4":
-      case "ATXHeading5":
-      case "ATXHeading6": {
-        const level = Number(cursor.name.at(-1));
-        const heading2 = document2.createElement(`h${level}`);
-        heading2.dir = "auto";
-        const opening = /^\s*#{1,6}\s+/.exec(raw)?.[0].length ?? 0;
-        const trailing = /\s+#+\s*$/.exec(raw.slice(opening));
-        const contentTo = trailing ? opening + trailing.index : raw.length;
-        appendInlineMarkdown(
-          raw.slice(opening, contentTo),
-          heading2,
-          optionsAt(options, cursor.from + opening)
-        );
-        parent.append(heading2);
-        return;
-      }
-      case "HorizontalRule":
-        parent.append(document2.createElement("hr"));
-        return;
-      case "ListMark":
-      case "QuoteMark":
-      case "HeaderMark":
-      case "CodeMark":
-      case "CodeInfo":
-      case "CodeText":
-        return;
-      default:
-        appendBlockChildren(cursor, source, parent, options);
-    }
-  }
-  function appendMarkdownBlocks(source, parent, options = {}) {
-    const displays = options.mathematics ? scanMath(source, options.mathematics).filter((expression) => expression.kind === "display") : [];
-    if (displays.length > 0) {
-      let position = 0;
-      for (const expression of displays) {
-        if (position < expression.from) {
-          appendMarkdownBlocks(
-            source.slice(position, expression.from),
-            parent,
-            optionsAt(options, position)
-          );
-        }
-        appendMath(expression, parent);
-        position = expression.to;
-      }
-      if (position < source.length) {
-        appendMarkdownBlocks(source.slice(position), parent, optionsAt(options, position));
-      }
-      return;
-    }
-    const tree = scholiumMarkdownContentLanguage.language.parser.parse(source);
-    const cursor = tree.cursor();
-    appendBlockChildren(cursor, source, parent, options);
-  }
-
   // previews.ts
-  var vectorKinds = /* @__PURE__ */ new Set([
-    "neutral",
-    "supports",
-    "opposes",
-    "incompatible"
-  ]);
   function validatedLinkPreviews(value, documentLength) {
     if (!Array.isArray(value)) return [];
     return value.slice(0, 128).flatMap((candidate) => {
@@ -33102,10 +32624,9 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       const title = typeof record.title === "string" ? record.title.slice(0, 240).trim() : "";
       const isEmbedded = record.isEmbedded === true;
       const htmlBody = typeof record.htmlBody === "string" ? isEmbedded ? record.htmlBody : record.htmlBody.slice(0, 24e3) : "";
-      const relationship = typeof record.relationship === "string" && vectorKinds.has(record.relationship) ? record.relationship : void 0;
       const fragment = typeof record.fragment === "string" ? record.fragment.slice(0, 240).trim() || void 0 : void 0;
       if (from < 0 || to <= from || to > documentLength || !title || !htmlBody) return [];
-      return [{ from, to, title, isEmbedded, relationship, fragment, htmlBody }];
+      return [{ from, to, title, isEmbedded, fragment, htmlBody }];
     });
   }
 
@@ -33908,12 +33429,569 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     };
   }
 
+  // table-presentation.ts
+  function alignmentFor(separator) {
+    const value = separator.trim();
+    if (value.startsWith(":") && value.endsWith(":")) return "center";
+    if (value.endsWith(":")) return "right";
+    if (value.startsWith(":")) return "left";
+    return null;
+  }
+  function cellSource(source, from, to) {
+    return source.slice(from, to).replaceAll("\\|", "|");
+  }
+  function tablePresentation(source, from, to) {
+    if (from < 0 || to <= from || to > source.length) return null;
+    const parsed = tableAt(source, Math.min(to, from + 1));
+    if (!parsed || parsed.rows[0].lineFrom !== from) return null;
+    const finalRow = parsed.rows[parsed.rows.length - 1];
+    if (finalRow.lineTo !== to) return null;
+    const separator = parsed.rows[parsed.separatorIndex];
+    const alignments = separator.cells.map(
+      (cell) => alignmentFor(source.slice(cell.contentFrom, cell.contentTo))
+    );
+    const rows = parsed.rows.filter((_, index) => index !== parsed.separatorIndex).map((row) => row.cells.map((cell, column) => ({
+      source: cellSource(source, cell.contentFrom, cell.contentTo),
+      sourceOffset: cell.contentFrom,
+      alignment: alignments[column] ?? null
+    })));
+    const header = rows.shift();
+    if (!header) return null;
+    return {
+      from,
+      to,
+      source: source.slice(from, to),
+      header,
+      body: rows
+    };
+  }
+
+  // markdown-fragment.ts
+  var inlineMarkerNodes = /* @__PURE__ */ new Set([
+    "EmphasisMark",
+    "CodeMark",
+    "LinkMark",
+    "URL",
+    "StrikethroughMark"
+  ]);
+  function documentFor(parent) {
+    if (parent.nodeType === 9) return parent;
+    const owner = parent.ownerDocument;
+    if (!owner) throw new Error("Markdown fragments require an owning document.");
+    return owner;
+  }
+  function locatedOffset(options, offset) {
+    return options.sourceOffset?.(offset) ?? offset;
+  }
+  function optionsAt(options, offset) {
+    return {
+      ...options,
+      sourceOffset: (nestedOffset) => locatedOffset(options, offset + nestedOffset)
+    };
+  }
+  function optionsWithMap(options, offsets) {
+    return {
+      ...options,
+      sourceOffset: (nestedOffset) => locatedOffset(
+        options,
+        offsets[Math.max(0, Math.min(nestedOffset, offsets.length - 1))] ?? 0
+      )
+    };
+  }
+  function identifyProjectedLink(element, target, from, to, caret, options) {
+    element.dataset.scholiumLinkTarget = target;
+    element.dataset.scholiumSourceFrom = String(locatedOffset(options, from));
+    element.dataset.scholiumSourceTo = String(locatedOffset(options, to));
+    element.dataset.scholiumSourceCaret = String(locatedOffset(options, caret));
+  }
+  function appendInlineMarkdownNode(cursor, source, parent, options) {
+    const document2 = documentFor(parent);
+    const raw = source.slice(cursor.from, cursor.to);
+    if (inlineMarkerNodes.has(cursor.name)) return;
+    if (cursor.name === "InlineCode") {
+      const code2 = document2.createElement("code");
+      code2.dir = "ltr";
+      const opening = raw.match(/^`+/)?.[0] ?? "";
+      const closing2 = raw.endsWith(opening) ? opening.length : 0;
+      code2.textContent = raw.slice(opening.length, raw.length - closing2);
+      parent.append(code2);
+      return;
+    }
+    if (cursor.name === "Link") {
+      const link = /^\[([\s\S]*?)\]\(([\s\S]*?)\)$/.exec(raw);
+      const span = document2.createElement("span");
+      span.className = "cm-live-link";
+      span.dir = "auto";
+      span.textContent = link?.[1] ?? raw;
+      if (link) {
+        identifyProjectedLink(
+          span,
+          link[2].trim().replace(/^<|>$/g, ""),
+          cursor.from,
+          cursor.to,
+          cursor.from + 1,
+          options
+        );
+      }
+      parent.append(span);
+      return;
+    }
+    if (cursor.name === "WikiLink") {
+      const link = /^(!?)\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/.exec(raw);
+      if (!link) {
+        parent.append(document2.createTextNode(raw));
+        return;
+      }
+      const span = document2.createElement("span");
+      const embed = link[1] === "!";
+      span.className = embed ? "cm-live-embed" : "cm-live-wiki-link";
+      span.dir = "auto";
+      const target = link[2].trim();
+      const alias = link[3]?.trim();
+      span.append(document2.createTextNode(alias || target));
+      identifyProjectedLink(span, target, cursor.from, cursor.to, cursor.to, options);
+      parent.append(span);
+      return;
+    }
+    if (cursor.name === "Escape") {
+      parent.append(document2.createTextNode(raw.startsWith("\\") ? raw.slice(1) : raw));
+      return;
+    }
+    const wrapperName = cursor.name === "StrongEmphasis" ? "strong" : cursor.name === "Emphasis" ? "em" : cursor.name === "Strikethrough" ? "del" : null;
+    const destination = wrapperName ? document2.createElement(wrapperName) : parent;
+    let position = cursor.from;
+    if (cursor.firstChild()) {
+      do {
+        if (cursor.from > position) {
+          destination.append(document2.createTextNode(source.slice(position, cursor.from)));
+        }
+        appendInlineMarkdownNode(cursor, source, destination, options);
+        position = cursor.to;
+      } while (cursor.nextSibling());
+      cursor.parent();
+      if (position < cursor.to) {
+        destination.append(document2.createTextNode(source.slice(position, cursor.to)));
+      }
+    } else if (!wrapperName) {
+      destination.append(document2.createTextNode(raw));
+    }
+    if (wrapperName) parent.append(destination);
+  }
+  function appendInlineMarkdownPlain(source, parent, options) {
+    const tree = scholiumMarkdownContentLanguage.language.parser.parse(source);
+    const cursor = tree.cursor();
+    appendInlineMarkdownNode(cursor, source, parent, options);
+  }
+  function appendMath(expression, parent) {
+    const document2 = documentFor(parent);
+    const element = document2.createElement(expression.kind === "display" ? "div" : "span");
+    element.className = `scholium-math scholium-math-${expression.kind} scholium-math-fragment`;
+    element.dir = "ltr";
+    element.dataset.scholiumProtected = "math";
+    const runtime = document2.defaultView?.scholiumMath;
+    const rendered = runtime?.version === 1 ? runtime.render({ source: expression.content, kind: expression.kind }) : null;
+    if (rendered?.ok) {
+      element.classList.add("scholium-math-rendered");
+      element.innerHTML = rendered.html;
+    } else {
+      element.classList.add("scholium-math-error");
+      const exact = document2.createElement("code");
+      exact.className = "scholium-math-source";
+      exact.dir = "ltr";
+      const delimiter = "$".repeat(expression.delimiterLength);
+      exact.textContent = expression.kind === "display" ? `${delimiter}
+${expression.content}
+${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
+      element.append(exact);
+    }
+    parent.append(element);
+  }
+  function firstAnnotatedWikilink(source) {
+    const expression = /\[\[([^\]\r\n]+)\]\]/g;
+    for (const match of source.matchAll(expression)) {
+      const from = match.index;
+      let backslashes = 0;
+      for (let cursor = from - 1; cursor >= 0 && source[cursor] === "\\"; cursor -= 1) backslashes += 1;
+      if (backslashes % 2 === 1 || source[from - 1] === "!") continue;
+      const linkTo = from + match[0].length;
+      const annotation = linkAnnotationAfter(source, linkTo);
+      if (annotation) return { from, linkTo, raw: match[0], annotation };
+    }
+    return null;
+  }
+  function appendAnnotatedWikilink(rawLink, annotationMarkdown, parent, options) {
+    const parsed = /^\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/.exec(rawLink);
+    if (!parsed) {
+      parent.append(documentFor(parent).createTextNode(`${rawLink}{{${annotationMarkdown}}}`));
+      return;
+    }
+    const document2 = documentFor(parent);
+    const wrapper = document2.createElement("span");
+    wrapper.className = "scholium-annotated-link";
+    wrapper.dataset.scholiumProtected = "link-annotation";
+    const link = document2.createElement("span");
+    link.className = "cm-live-wiki-link";
+    link.dir = "auto";
+    const target = parsed[1].trim();
+    const alias = parsed[2]?.trim();
+    link.textContent = alias || target;
+    identifyProjectedLink(link, target, 0, rawLink.length, rawLink.length, options);
+    const button = document2.createElement("button");
+    button.type = "button";
+    button.className = "scholium-link-annotation-button";
+    button.setAttribute("aria-expanded", "false");
+    button.setAttribute("aria-label", `${localized("Show Link Annotation")} ${alias || target}`);
+    button.append(systemSymbolElement("text-bubble", "scholium-link-annotation-icon", document2));
+    const panel = document2.createElement("span");
+    panel.className = "scholium-link-annotation-panel";
+    panel.setAttribute("role", "note");
+    panel.hidden = true;
+    const content2 = document2.createElement("span");
+    content2.className = "scholium-link-annotation-content";
+    appendMarkdownBlocks(annotationMarkdown, content2, optionsAt(options, rawLink.length + 2));
+    panel.append(content2);
+    button.addEventListener("click", () => {
+      panel.hidden = !panel.hidden;
+      button.setAttribute("aria-expanded", panel.hidden ? "false" : "true");
+      button.setAttribute(
+        "aria-label",
+        `${localized(panel.hidden ? "Show Link Annotation" : "Hide Link Annotation")} ${alias || target}`
+      );
+    });
+    wrapper.append(link, button, panel);
+    parent.append(wrapper);
+  }
+  function appendInlineMarkdown(source, parent, options = {}) {
+    const annotated = firstAnnotatedWikilink(source);
+    if (annotated) {
+      if (annotated.from > 0) {
+        appendInlineMarkdown(source.slice(0, annotated.from), parent, options);
+      }
+      appendAnnotatedWikilink(
+        annotated.raw,
+        annotated.annotation.markdown,
+        parent,
+        optionsAt(options, annotated.from)
+      );
+      if (annotated.annotation.to < source.length) {
+        appendInlineMarkdown(
+          source.slice(annotated.annotation.to),
+          parent,
+          optionsAt(options, annotated.annotation.to)
+        );
+      }
+      return;
+    }
+    const expressions = options.mathematics ? scanMath(source, options.mathematics).filter((expression) => expression.kind === "inline") : [];
+    if (expressions.length === 0) {
+      appendInlineMarkdownPlain(source, parent, options);
+      return;
+    }
+    let position = 0;
+    for (const expression of expressions) {
+      if (position < expression.from) {
+        appendInlineMarkdownPlain(
+          source.slice(position, expression.from),
+          parent,
+          optionsAt(options, position)
+        );
+      }
+      appendMath({ ...expression, from: 0, to: expression.to - expression.from }, parent);
+      position = expression.to;
+    }
+    if (position < source.length) {
+      appendInlineMarkdownPlain(source.slice(position), parent, optionsAt(options, position));
+    }
+  }
+  function appendBlockChildren(cursor, source, parent, options) {
+    if (!cursor.firstChild()) return;
+    do {
+      appendMarkdownBlockNode(cursor, source, parent, options);
+    } while (cursor.nextSibling());
+    cursor.parent();
+  }
+  function tableCellDOM(cell, header, document2, options) {
+    const element = document2.createElement(header ? "th" : "td");
+    element.dir = "auto";
+    if (header) element.setAttribute("scope", "col");
+    if (cell.alignment) element.classList.add(`scholium-table-align-${cell.alignment}`);
+    element.dataset.sourceOffset = String(locatedOffset(options, cell.sourceOffset));
+    appendInlineMarkdown(cell.source, element, options);
+    return element;
+  }
+  function createTableDOM(presentation, document2, options = {}) {
+    const scroller = document2.createElement("div");
+    scroller.className = "scholium-table-scroll";
+    scroller.dataset.scholiumProtected = "table";
+    const table = document2.createElement("table");
+    table.className = "scholium-table";
+    table.setAttribute("aria-label", localized("Markdown table"));
+    const head = document2.createElement("thead");
+    const headRow = document2.createElement("tr");
+    headRow.append(...presentation.header.map((cell) => tableCellDOM(cell, true, document2, options)));
+    head.append(headRow);
+    const body = document2.createElement("tbody");
+    for (const row of presentation.body) {
+      const rowElement = document2.createElement("tr");
+      rowElement.append(...row.map((cell) => tableCellDOM(cell, false, document2, options)));
+      body.append(rowElement);
+    }
+    table.append(head, body);
+    scroller.append(table);
+    return scroller;
+  }
+  function calloutParts(raw, options) {
+    if (!options.resolveCallout) return null;
+    const lines = [];
+    let lineFrom = 0;
+    while (lineFrom <= raw.length) {
+      const lineFeed = raw.indexOf("\n", lineFrom);
+      const rawTo = lineFeed < 0 ? raw.length : lineFeed;
+      const lineTo = rawTo > lineFrom && raw.charCodeAt(rawTo - 1) === 13 ? rawTo - 1 : rawTo;
+      lines.push({ text: raw.slice(lineFrom, lineTo), from: lineFrom });
+      if (lineFeed < 0) break;
+      lineFrom = lineFeed + 1;
+    }
+    const match = /^\s*>\s*\[!([^\]]+)\]([+-])?\s*(.*)$/.exec(lines[0]?.text ?? "");
+    if (!match) return null;
+    const rawTitle = match[3];
+    const title = rawTitle.trim();
+    const titleInMatch = match[0].length - rawTitle.length + Math.max(0, rawTitle.indexOf(title));
+    let body = "";
+    const bodyOffsets = [];
+    for (const [index, line] of lines.slice(1).entries()) {
+      const content2 = /^(\s*> ?)(.*)$/.exec(line.text);
+      const prefixLength = content2?.[1].length ?? 0;
+      const text = content2?.[2] ?? line.text;
+      if (index > 0) {
+        body += "\n";
+        bodyOffsets.push(line.from);
+      }
+      const contentFrom = line.from + prefixLength;
+      if (bodyOffsets.length === 0) bodyOffsets.push(contentFrom);
+      else bodyOffsets[bodyOffsets.length - 1] = contentFrom;
+      body += text;
+      for (let offset = 1; offset <= text.length; offset += 1) {
+        bodyOffsets.push(contentFrom + offset);
+      }
+    }
+    return {
+      definition: options.resolveCallout(match[1]),
+      rawKind: match[1],
+      fold: match[2] === "+" ? "expanded" : match[2] === "-" ? "collapsed" : "fixed",
+      title,
+      titleFrom: titleInMatch,
+      body,
+      bodyOffsets
+    };
+  }
+  function appendCallout(parts, parent, options) {
+    const document2 = documentFor(parent);
+    const callout = document2.createElement(parts.fold === "fixed" ? "aside" : "details");
+    callout.className = `scholium-callout scholium-callout-${parts.definition.identifier}`;
+    callout.dataset.callout = parts.definition.identifier;
+    callout.dataset.calloutSource = parts.rawKind;
+    callout.dataset.calloutFold = parts.fold;
+    callout.dataset.scholiumProtected = "callout";
+    if (parts.fold === "expanded") callout.open = true;
+    const headingContainer = document2.createElement(parts.fold === "fixed" ? "header" : "summary");
+    const heading2 = document2.createElement("span");
+    heading2.className = "scholium-callout-heading";
+    heading2.setAttribute("role", "heading");
+    heading2.setAttribute("aria-level", "2");
+    const orientationTitleBecomesBody = parts.definition.identifier === "orient" && parts.title.length > 0 && parts.body.trim().length === 0;
+    const role = document2.createElement("span");
+    role.className = "scholium-callout-role";
+    role.dir = "auto";
+    role.title = parts.definition.meaning;
+    role.textContent = parts.definition.label;
+    heading2.append(role);
+    if (parts.title && !orientationTitleBecomesBody) {
+      const title = document2.createElement("span");
+      title.className = "scholium-callout-title";
+      title.dir = "auto";
+      appendInlineMarkdown(parts.title, title, optionsAt(options, parts.titleFrom));
+      heading2.append(title);
+    }
+    headingContainer.append(heading2);
+    if (parts.fold !== "fixed") {
+      const marker = document2.createElement("span");
+      marker.className = "scholium-callout-fold-mark";
+      marker.setAttribute("aria-hidden", "true");
+      headingContainer.append(marker);
+    }
+    const body = document2.createElement("div");
+    body.className = "scholium-callout-body";
+    const signature = document2.createElement("span");
+    signature.className = "scholium-callout-signature";
+    signature.setAttribute("aria-hidden", "true");
+    const content2 = document2.createElement("div");
+    content2.className = "scholium-callout-content";
+    const destination = parts.definition.identifier === "quote" ? document2.createElement("blockquote") : content2;
+    if (destination !== content2) {
+      destination.className = "scholium-callout-quotation";
+      destination.dir = "auto";
+      content2.append(destination);
+    }
+    if (orientationTitleBecomesBody) {
+      const paragraph = document2.createElement("p");
+      paragraph.className = "scholium-callout-orient-title-body";
+      paragraph.dir = "auto";
+      appendInlineMarkdown(parts.title, paragraph, optionsAt(options, parts.titleFrom));
+      destination.append(paragraph);
+    } else {
+      appendMarkdownBlocks(parts.body, destination, optionsWithMap(options, parts.bodyOffsets));
+    }
+    body.append(signature, content2);
+    callout.append(headingContainer, body);
+    parent.append(callout);
+  }
+  function fencedCode(raw) {
+    const lines = raw.replaceAll("\r\n", "\n").split("\n");
+    const opening = /^\s*(`{3,}|~{3,})\s*([^\s`]*)?.*$/.exec(lines[0] ?? "");
+    const language2 = opening?.[2] ?? "";
+    const fence = opening?.[1] ?? "```";
+    const closing2 = new RegExp(`^\\s*${fence[0]}{${fence.length},}\\s*$`);
+    if (lines.length > 1 && closing2.test(lines.at(-1) ?? "")) lines.pop();
+    lines.shift();
+    return { language: language2, code: lines.join("\n") };
+  }
+  function appendMarkdownBlockNode(cursor, source, parent, options) {
+    const document2 = documentFor(parent);
+    const raw = source.slice(cursor.from, cursor.to);
+    switch (cursor.name) {
+      case "Paragraph": {
+        const paragraph = document2.createElement("p");
+        paragraph.dir = "auto";
+        appendInlineMarkdown(raw, paragraph, options);
+        parent.append(paragraph);
+        return;
+      }
+      case "BulletList": {
+        const list = document2.createElement("ul");
+        appendBlockChildren(cursor, source, list, options);
+        parent.append(list);
+        return;
+      }
+      case "OrderedList": {
+        const list = document2.createElement("ol");
+        const start = /^\s*(\d+)[.)]\s/.exec(raw)?.[1];
+        if (start && start !== "1") list.setAttribute("start", start);
+        appendBlockChildren(cursor, source, list, options);
+        parent.append(list);
+        return;
+      }
+      case "ListItem": {
+        const item = document2.createElement("li");
+        item.dir = "auto";
+        appendBlockChildren(cursor, source, item, options);
+        parent.append(item);
+        return;
+      }
+      case "Callout":
+      case "Blockquote": {
+        const calloutOptions = optionsAt(options, cursor.from);
+        const callout = calloutParts(raw, calloutOptions);
+        if (callout) {
+          appendCallout(callout, parent, calloutOptions);
+          return;
+        }
+        const quote = document2.createElement("blockquote");
+        quote.dir = "auto";
+        appendBlockChildren(cursor, source, quote, options);
+        parent.append(quote);
+        return;
+      }
+      case "FencedCode": {
+        const projection = fencedCode(raw);
+        const pre = document2.createElement("pre");
+        pre.dir = "ltr";
+        const code2 = document2.createElement("code");
+        code2.dir = "ltr";
+        if (projection.language) code2.className = `language-${projection.language}`;
+        code2.textContent = projection.code;
+        pre.append(code2);
+        parent.append(pre);
+        return;
+      }
+      case "HTMLBlock": {
+        const pre = document2.createElement("pre");
+        pre.className = "raw-html";
+        pre.dir = "ltr";
+        const code2 = document2.createElement("code");
+        code2.dir = "ltr";
+        code2.textContent = raw;
+        pre.append(code2);
+        parent.append(pre);
+        return;
+      }
+      case "Table": {
+        const presentation = tablePresentation(raw, 0, raw.length);
+        if (presentation) parent.append(createTableDOM(presentation, document2, options));
+        return;
+      }
+      case "ATXHeading1":
+      case "ATXHeading2":
+      case "ATXHeading3":
+      case "ATXHeading4":
+      case "ATXHeading5":
+      case "ATXHeading6": {
+        const level = Number(cursor.name.at(-1));
+        const heading2 = document2.createElement(`h${level}`);
+        heading2.dir = "auto";
+        const opening = /^\s*#{1,6}\s+/.exec(raw)?.[0].length ?? 0;
+        const trailing = /\s+#+\s*$/.exec(raw.slice(opening));
+        const contentTo = trailing ? opening + trailing.index : raw.length;
+        appendInlineMarkdown(
+          raw.slice(opening, contentTo),
+          heading2,
+          optionsAt(options, cursor.from + opening)
+        );
+        parent.append(heading2);
+        return;
+      }
+      case "HorizontalRule":
+        parent.append(document2.createElement("hr"));
+        return;
+      case "ListMark":
+      case "QuoteMark":
+      case "HeaderMark":
+      case "CodeMark":
+      case "CodeInfo":
+      case "CodeText":
+        return;
+      default:
+        appendBlockChildren(cursor, source, parent, options);
+    }
+  }
+  function appendMarkdownBlocks(source, parent, options = {}) {
+    const displays = options.mathematics ? scanMath(source, options.mathematics).filter((expression) => expression.kind === "display") : [];
+    if (displays.length > 0) {
+      let position = 0;
+      for (const expression of displays) {
+        if (position < expression.from) {
+          appendMarkdownBlocks(
+            source.slice(position, expression.from),
+            parent,
+            optionsAt(options, position)
+          );
+        }
+        appendMath(expression, parent);
+        position = expression.to;
+      }
+      if (position < source.length) {
+        appendMarkdownBlocks(source.slice(position), parent, optionsAt(options, position));
+      }
+      return;
+    }
+    const tree = scholiumMarkdownContentLanguage.language.parser.parse(source);
+    const cursor = tree.cursor();
+    appendBlockChildren(cursor, source, parent, options);
+  }
+
   // live-structured-block-projections.ts
   function createLiveStructuredBlockProjections(options) {
     const resolveCallout = (rawKind) => calloutDefinition(options.editingDialect(), rawKind);
-    const resolveVectorLink = (marker) => options.editingDialect()?.vectorLinkOperators.find(
-      (candidate) => candidate.marker === marker
-    )?.kind ?? "neutral";
     class TableWidget extends WidgetType {
       constructor(presentation) {
         super();
@@ -33928,8 +34006,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       toDOM() {
         const scroller = createTableDOM(this.presentation, document, {
           mathematics: options.editingDialect()?.mathematics,
-          resolveCallout,
-          resolveVectorLink
+          resolveCallout
         });
         scroller.classList.add("cm-live-table-widget");
         options.widgets.setTable(scroller, this.presentation);
@@ -34093,7 +34170,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         appendMarkdownBlocks(this.presentation.source, slot, {
           mathematics: options.editingDialect()?.mathematics,
           resolveCallout,
-          resolveVectorLink,
           sourceOffset: (offset) => this.presentation.from + offset
         });
         const callout = slot.firstElementChild;
@@ -34363,7 +34439,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         boundary
       );
       const inlineLinkRange = projectionRangeAtBoundary(
-        index.syntax.inlines.filter((candidate) => candidate.kind === "wikilink" || candidate.kind === "vectorLink"),
+        index.syntax.inlines.filter((candidate) => candidate.kind === "wikilink"),
         offset,
         boundary
       );
@@ -34432,7 +34508,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       const projection = horizontalRangeAt(view.state, selection.head, forward);
       if (!projection) return false;
       const alreadyActive = projection.kind === "callout" ? selectionActivatesCallout(selection, projection) : selectionIntersectsProjection(selection, projection);
-      const isProjectedLink = projection.kind === "wikilink" || projection.kind === "vectorLink";
+      const isProjectedLink = projection.kind === "wikilink";
       if (alreadyActive && !(isProjectedLink && forward && selection.head === projection.from)) {
         return false;
       }
@@ -34458,59 +34534,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   }
 
   // live-inline-widgets.ts
-  var legacyRelationshipPredicates = /* @__PURE__ */ new Set([
-    "supports",
-    "contradicts",
-    "extends",
-    "refines",
-    "incompatible_with",
-    "cites",
-    "see_also",
-    "connected",
-    "answers",
-    "subquestion_of",
-    "premise_of",
-    "concludes",
-    "assumes",
-    "pressures",
-    "uses_concept",
-    "has_commitment",
-    "targets",
-    "objects_to",
-    "rebuts",
-    "undercuts",
-    "replies_to",
-    "concedes",
-    "depends_on",
-    "supersedes",
-    "qualifies",
-    "elicits",
-    "tests",
-    "illustrates",
-    "counterexample_to",
-    "evidence_for",
-    "attributes_to",
-    "interprets",
-    "derived_from",
-    "is_case_for",
-    "is_source_for",
-    "is_background_for",
-    "is_not_evidence_for"
-  ]);
-  function isLegacyRelationshipPredicate(raw) {
-    const normalized2 = raw.trim().toLowerCase().replaceAll("-", "_");
-    if (legacyRelationshipPredicates.has(normalized2)) return true;
-    return [
-      "seealso",
-      "objectsto",
-      "repliesto",
-      "dependson",
-      "iscasefor",
-      "issourcefor",
-      "isbackgroundfor",
-      "isnotevidencefor"
-    ].includes(normalized2);
-  }
   function createLiveInlineWidgets(options) {
     function listIndent(depth2) {
       if (depth2 <= 0) return "";
@@ -34600,26 +34623,56 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         return false;
       }
     }
-    class VectorLinkIconWidget extends WidgetType {
-      constructor(kind) {
+    class LinkAnnotationWidget extends WidgetType {
+      constructor(markdown2, target) {
         super();
-        this.kind = kind;
+        this.markdown = markdown2;
+        this.target = target;
       }
-      kind;
+      markdown;
+      target;
       eq(other) {
-        return other.kind === this.kind;
+        return other.markdown === this.markdown && other.target === this.target;
       }
       toDOM() {
-        const semantics = vectorLinkSemantics[this.kind];
-        const span = systemSymbolElement(
-          semantics.symbol,
-          `cm-live-vector-icon cm-live-vector-icon-${this.kind.replaceAll("_", "-")}`
-        );
-        span.title = semantics.label;
-        return span;
+        const wrapper = document.createElement("span");
+        wrapper.className = "scholium-link-annotation-disclosure";
+        wrapper.dataset.scholiumProtected = "link-annotation";
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "scholium-link-annotation-button";
+        button.setAttribute("aria-expanded", "false");
+        button.setAttribute("aria-label", `${localized("Show Link Annotation")} ${this.target}`);
+        button.append(systemSymbolElement("text-bubble", "scholium-link-annotation-icon"));
+        const panel = document.createElement("span");
+        panel.className = "scholium-link-annotation-panel";
+        panel.setAttribute("role", "note");
+        panel.hidden = true;
+        const content2 = document.createElement("span");
+        content2.className = "scholium-link-annotation-content";
+        appendMarkdownBlocks(this.markdown, content2);
+        panel.append(content2);
+        button.addEventListener("mousedown", (event) => {
+          if (event.button !== 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+        });
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          panel.hidden = !panel.hidden;
+          button.setAttribute("aria-expanded", panel.hidden ? "false" : "true");
+          button.setAttribute(
+            "aria-label",
+            `${localized(panel.hidden ? "Show Link Annotation" : "Hide Link Annotation")} ${this.target}`
+          );
+        });
+        wrapper.append(button, panel);
+        return wrapper;
       }
-      ignoreEvent() {
-        return false;
+      ignoreEvent(event) {
+        const target = event.target instanceof Element ? event.target : null;
+        return Boolean(target?.closest(".scholium-link-annotation-disclosure"));
       }
     }
     class EmbeddedNoteWidget extends WidgetType {
@@ -34648,7 +34701,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         const header = document.createElement("header");
         header.className = "scholium-embedded-note-header";
         const open = document.createElement("span");
-        open.className = "cm-live-vector-link cm-live-vector-neutral scholium-embedded-note-open";
+        open.className = "cm-live-wiki-link scholium-embedded-note-open";
         open.dir = "auto";
         open.dataset.scholiumLinkTarget = this.target;
         open.dataset.scholiumSourceCaret = String(this.sourceCaret);
@@ -34727,44 +34780,12 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         return false;
       }
     }
-    function wikilinkPresentation(targetStart, target, annotationStart, annotation) {
-      const targetPresentation = {
-        displayStart: targetStart,
-        displayEnd: targetStart + target.length,
-        isLegacyRelationship: false
-      };
-      if (annotationStart === null || annotation === void 0) return targetPresentation;
-      const trimmed = annotation.trim();
-      if (trimmed.startsWith(":") && isLegacyRelationshipPredicate(trimmed.slice(1))) {
-        return { ...targetPresentation, isLegacyRelationship: true };
-      }
-      const lastColon = trimmed.lastIndexOf(":");
-      if (lastColon >= 0 && isLegacyRelationshipPredicate(trimmed.slice(lastColon + 1))) {
-        const rawAlias = trimmed.slice(0, lastColon);
-        const alias = rawAlias.trim();
-        if (!alias) return { ...targetPresentation, isLegacyRelationship: true };
-        const trimmedOffset = annotation.indexOf(trimmed);
-        const aliasOffset = rawAlias.indexOf(alias);
-        const displayStart = annotationStart + trimmedOffset + aliasOffset;
-        return {
-          displayStart,
-          displayEnd: displayStart + alias.length,
-          isLegacyRelationship: true
-        };
-      }
-      return {
-        displayStart: annotationStart,
-        displayEnd: annotationStart + annotation.length,
-        isLegacyRelationship: false
-      };
-    }
     return {
       embeddedNote: (preview, target, sourceCaret) => new EmbeddedNoteWidget(preview, target, sourceCaret),
       listIndent,
       listMarker: (value) => new ListMarkerWidget(value),
       math: (expression) => new MathWidget(expression),
-      vectorLinkIcon: (kind) => new VectorLinkIconWidget(kind),
-      wikilinkPresentation
+      linkAnnotation: (markdown2, target) => new LinkAnnotationWidget(markdown2, target)
     };
   }
 
@@ -36417,6 +36438,30 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       decorations2.push(range);
       atomicRanges2.push(range);
     };
+    const addMultilineAtomicReplacement = (decoration, from, to) => {
+      if (to <= from) return;
+      atomicRanges2.push(Decoration.mark({}).range(from, to));
+      const firstLineNumber = doc2.lineAt(from).number;
+      let line = doc2.lineAt(from);
+      let placedWidget = false;
+      while (line.from < to || line.from === from) {
+        const segmentFrom = Math.max(from, line.from);
+        const segmentTo = Math.min(to, line.to);
+        if (segmentTo > segmentFrom) {
+          decorations2.push(
+            (placedWidget ? hiddenSyntax : decoration).range(segmentFrom, segmentTo)
+          );
+          placedWidget = true;
+        }
+        if (line.number !== firstLineNumber && from <= line.from && to >= line.to) {
+          decorations2.push(Decoration.line({
+            attributes: { class: "cm-live-link-annotation-source-line" }
+          }).range(line.from));
+        }
+        if (line.to >= to || line.to === doc2.length) break;
+        line = doc2.line(line.number + 1);
+      }
+    };
     const addMark = (from, to, className) => {
       if (to > from) decorations2.push(liveMark(className).range(from, to));
     };
@@ -36603,66 +36648,65 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             parsedProjection.inlines,
             scanFrom,
             lineQueryTo
-          ).filter((candidate) => candidate.kind === "wikilink" || candidate.kind === "vectorLink")) {
-            if (construct.from < scanFrom || construct.to > scanTo || overlaps3(excluded, construct.from, construct.to) || overlaps3(structuralInlineExclusions, construct.from, construct.to)) continue;
+          ).filter((candidate) => candidate.kind === "wikilink")) {
+            const linkRange = construct.linkRange ?? { from: construct.from, to: construct.to };
+            if (linkRange.from < scanFrom || linkRange.to > scanTo || overlaps3(excluded, construct.from, construct.to) || overlaps3(structuralInlineExclusions, construct.from, construct.to)) continue;
             const targetRange = construct.targetRange;
             if (!targetRange) continue;
             excluded.push({ from: construct.from, to: construct.to });
             if (inlineConstructIsActive(construct.from, construct.to)) continue;
-            const embed = construct.kind === "wikilink" && doc2.sliceString(construct.from, Math.min(construct.to, construct.from + 3)) === "![[";
-            const marker = construct.kind === "vectorLink" ? doc2.sliceString(construct.from, construct.from + 1) : "";
-            const kind = construct.kind === "vectorLink" ? editingDialect?.vectorLinkOperators.find((candidate) => candidate.marker === marker)?.kind ?? "neutral" : "neutral";
+            const embed = doc2.sliceString(linkRange.from, Math.min(linkRange.to, linkRange.from + 3)) === "![[";
             const target = doc2.sliceString(targetRange.from, targetRange.to);
             const alias = construct.aliasRange ? doc2.sliceString(construct.aliasRange.from, construct.aliasRange.to) : void 0;
-            const presentation = liveInlineWidgets.wikilinkPresentation(
-              targetRange.from,
-              target,
-              construct.aliasRange?.from ?? null,
-              alias
-            );
-            const previewIndex = linkPreviewIndexByRange.get(rangeKey(construct.from, construct.to));
+            const displayRange = construct.aliasRange ?? targetRange;
+            const previewIndex = linkPreviewIndexByRange.get(rangeKey(linkRange.from, linkRange.to));
             const preview = previewIndex === void 0 ? void 0 : linkPreviews[previewIndex];
             if (embed && preview?.isEmbedded) {
               addAtomicReplacement(
                 Decoration.replace({
-                  widget: liveInlineWidgets.embeddedNote(preview, target, construct.to)
+                  widget: liveInlineWidgets.embeddedNote(preview, target, linkRange.to)
                 }),
-                construct.from,
-                construct.to
+                linkRange.from,
+                linkRange.to
               );
               continue;
             }
-            addHidden(construct.from, targetRange.from);
-            const linkClass = embed ? "cm-live-embed" : presentation.isLegacyRelationship && kind === "neutral" ? "cm-live-vector-link cm-live-vector-neutral cm-live-vector-legacy" : `cm-live-vector-link cm-live-vector-${kind.replaceAll("_", "-")}`;
+            addHidden(linkRange.from, displayRange.from);
+            const linkClass = embed ? "cm-live-embed" : "cm-live-wiki-link";
             const projectedLinkAttributes = {
               "data-scholium-link-target": target,
-              "data-scholium-source-caret": String(construct.to),
-              ...embed ? {} : {
-                "aria-label": `${vectorLinkSemantics[kind].label} ${alias || target}`
-              }
+              "data-scholium-source-caret": String(linkRange.to)
             };
-            addHidden(targetRange.from, presentation.displayStart);
             if (previewIndex === void 0) {
               decorations2.push(Decoration.mark({
                 class: linkClass,
                 attributes: projectedLinkAttributes
-              }).range(presentation.displayStart, presentation.displayEnd));
+              }).range(displayRange.from, displayRange.to));
             } else {
               addPreviewMark(
-                presentation.displayStart,
-                presentation.displayEnd,
+                displayRange.from,
+                displayRange.to,
                 linkClass,
                 previewIndex,
                 projectedLinkAttributes
               );
             }
-            if (!embed) {
-              decorations2.push(Decoration.widget({
-                widget: liveInlineWidgets.vectorLinkIcon(kind),
-                side: -1
-              }).range(presentation.displayEnd));
+            addHidden(displayRange.to, linkRange.to);
+            if (construct.annotationRange && construct.annotationContentRange) {
+              addMultilineAtomicReplacement(
+                Decoration.replace({
+                  widget: liveInlineWidgets.linkAnnotation(
+                    doc2.sliceString(
+                      construct.annotationContentRange.from,
+                      construct.annotationContentRange.to
+                    ),
+                    alias || target
+                  )
+                }),
+                construct.annotationRange.from,
+                construct.annotationRange.to
+              );
             }
-            addHidden(presentation.displayEnd, construct.to);
           }
           for (const construct of projectionRangesIntersecting(
             parsedProjection.inlines,

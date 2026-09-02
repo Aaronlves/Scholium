@@ -56,8 +56,6 @@ struct ScholiumCLI {
                     try await runSearch(Array(arguments.dropFirst()), context: context)
                 case "links":
                     try await runLinks(Array(arguments.dropFirst()), context: context)
-                case "graph":
-                    try await runGraph(Array(arguments.dropFirst()), context: context)
                 case "workspace":
                     try await runWorkspace(Array(arguments.dropFirst()), context: context)
                 case "read":

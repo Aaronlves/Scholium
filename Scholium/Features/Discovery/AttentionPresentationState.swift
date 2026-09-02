@@ -142,11 +142,6 @@ enum AttentionIssueCopy {
             ScholiumL10n.string("Missing heading", locale: locale)
         case "Missing block":
             ScholiumL10n.string("Missing block", locale: locale)
-        case "Invalid relationship endpoint":
-            ScholiumL10n.string(
-                "Invalid relationship endpoint",
-                locale: locale
-            )
         default:
             // Unknown projection copy remains visible rather than being
             // replaced with a misleading generic condition.

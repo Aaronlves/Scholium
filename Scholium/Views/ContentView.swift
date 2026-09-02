@@ -587,7 +587,7 @@ struct ContentView: View {
             sourceMutationGeneration: appState.sourceMutationGeneration,
             filterOptions: SidebarLibraryFilterOptions(
                 catalogIsAvailable: appState.workspaceCatalog != nil,
-                graphIsAvailable: appState.relationshipGraph != nil,
+                graphIsAvailable: appState.linkGraph != nil,
                 tags: appState.allTags,
                 authors: appState.availableAuthors,
                 propertyKeys: propertyFilterOptions.keys,
@@ -916,7 +916,7 @@ struct ContentView: View {
             ResearchInspectorView(
                 note: note,
                 shellState: appState.shellState,
-                graph: appState.relationshipGraph,
+                graph: appState.linkGraph,
                 catalog: appState.workspaceCatalog,
                 currentVaultID: appState.currentDocumentVaultID,
                 researchInspectorContentContext: researchInspectorContentContext,

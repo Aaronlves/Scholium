@@ -42,14 +42,14 @@ Topic Synthesize 同样获得初始目录，但候选只能是 Analyses。每个
 - Triptych 只含 Analyses、Topics 和 Works；Analyses 与 Topics 明确被设计为可跨 Works 复用的研究资源，见 [Foundation and Triptych](../../Docs/Specification/01-foundation-and-triptych.md)。
 - 研究者选择 Action 已授权 Agent 读取任务相关 Triptych 材料；读 Work 不触发 Works 写入政策，见 [Research Actions and Workflows](../../Docs/Specification/03-research-actions-and-workflows.md)。
 - `ResearchAuthenticatedRunContext` 已向 Agent 交付 Brief、Result Contract、Bounded Write Set 和 typed `next_actions`。现有 `next_actions` 已能携带完整、可直接执行的 Research Context request，见 [`ResearchAgentConnectionContracts.swift`](../../ScholiumContracts/ResearchAgentConnectionContracts.swift) 和 [`ResearchAgentConnectionOperations.swift`](../../ScholiumApplication/ResearchAgentConnectionOperations.swift)。
-- Research Context 已支持 Note discovery、exact Note／section read、direct Relations、Metadata、Records、selected source Material 与窄 researcher-state 检查；它的 Source Reference Envelope 保留 owner、identity、revision、locator、scope、currentness、evidential layer 和 retrieval reason。
-- Search contract v10／schema 11 已索引 title、alias、heading、`summary`、body、author、keyword、footnote 和 path，并支持显式 direct-relation query。结果已携带 role、source range、fingerprint、freshness 和 typed match reasons，见 [Connect, Search, and Recovery](../../Docs/Specification/04-connect-search-and-recovery.md) 与 [`SearchProtocolContracts.swift`](../../ScholiumContracts/SearchProtocolContracts.swift)。
+- Research Context 已支持 Note discovery、exact Note／section read、direct links、Metadata、Records、selected source Material 与窄 researcher-state 检查；它的 Source Reference Envelope 保留 owner、identity、revision、locator、scope、currentness、evidential layer 和 retrieval reason。
+- Search contract 已索引 title、alias、heading、`summary`、body、author、keyword、footnote、`link_annotation` 和 path，并支持显式 direct-link query。结果携带 role、source range、fingerprint、freshness 和 typed match reasons，见 [Connect, Search, and Recovery](../../Docs/Specification/04-connect-search-and-recovery.md) 与 [`SearchProtocolContracts.swift`](../../ScholiumContracts/SearchProtocolContracts.swift)。
 - 当前 App 已能在不 flush 或 save 的情况下，从 CodeMirror 取得绑定 editor session 与 revision 的精确内存 source snapshot，供 This Note Search 使用，见 [`ScholiumApp.swift`](../../Scholium/App/ScholiumApp.swift)。
 - `summary` 与 `keywords` 是 Analysis、Topic 和 Work 的唯一共享 canonical authored YAML 字段；其他未知 YAML 只无损保留，见 [Metadata and Critique](../../Docs/Specification/11-metadata-and-critique.md)。
 
 ### 3.2 Agent-only 实现后尚缺的能力
 
-当前已具备 Related-Content Retrieval contract 3、Graph direct Connection、Search exact title／alias 与加权 lexical、typed candidate-role restriction、Work／Topic 初始目录、`agent related` 多 seed 动态排序、chunked exact-read actions 及 Application coordinator。仍未具备：
+当前已具备 Related-Content Retrieval contract 3、direct-link、Search exact title／alias 与加权 lexical、typed candidate-role restriction、Work／Topic 初始目录、`agent related` 多 seed 动态排序、chunked exact-read actions 及 Application coordinator。仍未具备：
 
 - 以 Works 未保存 editor snapshot 驱动的消费者、取消合同和界面；
 - 能证明推荐减少额外 Search 但不降低必要阅读召回的评测基线。
@@ -77,7 +77,7 @@ Agent 获得初始 authenticated Run Context 时，同时获得：
 
 这一设计省去的是“搜索和初步筛选”，不是“读原文”。
 
-`agent related` 只接受 current Triptych 中唯一匹配的 title、alias、filename、relative path 或 stable identity。缺失与歧义不猜测；组合结果按命中 seed 数、direct Connection、exact identity、各 seed 内 owner rank 与稳定 identity tie-break 动态排序，不暴露数值分数。
+`agent related` 只接受 current Triptych 中唯一匹配的 title、alias、filename、relative path 或 stable identity。缺失与歧义不猜测；组合结果按命中 seed 数、direct link、exact identity、各 seed 内 owner rank 与稳定 identity tie-break 动态排序，不暴露数值分数。
 
 ### 4.2 第二切片：Works 写作中的动态候选
 
@@ -152,7 +152,7 @@ RelatedContentResponse
 Coordinator 只负责：
 
 - 验证 source identity、Action eligibility、seed revision、Triptych read scope 和 Workspace generation；
-- 获取 source／selected-passage 到候选角色的显式 direct Connections；
+- 获取 source／selected-passage 到候选角色的显式 direct links；
 - 请求 Related-Content Retrieval；
 - 保留渠道 availability 和 typed reasons；
 - 按固定 channel precedence 与独立配额组合结果；
@@ -177,11 +177,11 @@ Coordinator 不得：
 | 层级 | 渠道 | 解释 | 不能推出 |
 | --- | --- | --- | --- |
 | T0 | scope、role、currentness、availability | 候选资格门，不是相关度分数 | 新内容比旧内容更重要 |
-| T1 | Work／passage direct Connection | 保留 relation predicate、direction 和 source occurrence | 关系为真或候选支持 Work |
+| T1 | Work／passage direct link | 保留 direction、source occurrence 和可选 annotation | 注释为真或候选支持 Work |
 | T2 | Analysis／Topic title 或 alias 在 seed 中精确出现 | 保留 seed kind、identity kind 与 Work field | 研究者有意建立关系 |
 | T3 | Related-Content lexical result | 保留 candidate matched fields、source ranges 和 Search-owned rank reason | 两份 Note 立场相同或构成证据 |
 
-T1–T3 有独立配额：direct Connection 为 4，exact title／alias 为 3，lexical overlap 为 4；最终目录上限为 8。Application 以 T1 → T2 → T3 的固定顺序合并，但不把不同渠道压成一个对研究者或 Agent 可见的“相关度”分数。同一 Note 只出现一次并保留全部 typed reasons。同一 channel 内使用 owner-provided ordering 和稳定 identity／title／path tie-break。
+T1–T3 有独立配额：direct link 为 4，exact title／alias 为 3，lexical overlap 为 4；最终目录上限为 8。Application 以 T1 → T2 → T3 的固定顺序合并，但不把不同渠道压成一个对研究者或 Agent 可见的“相关度”分数。同一 Note 只出现一次并保留全部 typed reasons。同一 channel 内使用 owner-provided ordering 和稳定 identity／title／path tie-break。
 
 ### 6.2 后续渠道
 
@@ -277,7 +277,7 @@ Response 不包含内部数值分数、机器生成摘要、候选全文、absol
 - 第二 Markdown parser、Search index、Graph 或持久 recommendation store；
 - 全局 Related Notes UI、feed、第四个 Inspector mode 或新窗口；
 - 从点击、打开、滚动、停留、忽略、编辑频率或沉默学习的研究者 profile；
-- 把 lexical／semantic similarity 命名为 supports、opposes、accepted、important 或 consensus；
+- 为 lexical／semantic similarity 指定关系、接受、重要性或共识标签；
 - 自动把候选加入 Materials、Bounded Write Set、Context Use、Connection 或 Work source；
 - 无预算的全文注入、隐藏 prompt 拼接或不可检查的研究摘要；
 - 第一版的 embeddings、LLM reranking、automatic relation extraction 或外部网络依赖。
@@ -365,7 +365,7 @@ Agent effectiveness 不替代 Works UI 验收，UI 可用性也不替代 Agent �
 本次窄切片已经更新：
 
 1. [Research Actions and Workflows](../../Docs/Specification/03-research-actions-and-workflows.md)：定义 Work Write／Critique、Topic Synthesize 的 role-bounded 目录、exact-read action 与按名 related command；保留显式读取和 Context Use 规则。
-2. [Connect, Search, and Recovery](../../Docs/Specification/04-connect-search-and-recovery.md)：定义 contract 3、Graph direct Connection、Search identity／weighted lexical、candidate roles、多 seed Application ordering、budgets、freshness 和 App／CLI 边界；继续 deferred vector／AI ranking。
+2. [Connect, Search, and Recovery](../../Docs/Specification/04-connect-search-and-recovery.md)：定义 direct-link、Search identity／weighted lexical、candidate roles、多 seed Application ordering、budgets、freshness 和 App／CLI 边界；继续 deferred vector／AI ranking。
 3. [Implementation Architecture](../../Docs/IMPLEMENTATION_ARCHITECTURE.md)：在 Search owner 与 Research Action owner 的现有边界内记录 Related-Content Retrieval 与 `RecommendedReadingCoordinator`，不新建 runtime 或持久 store。
 
 Works 界面位置获批准时，才更新 [Document and Research Interface](../../Docs/Specification/07-document-and-research-interface.md) 与 [Accessibility and Adaptation](../../Docs/Specification/09-accessibility-and-adaptation.md)；Agent-only 第一切片不预建界面规则。

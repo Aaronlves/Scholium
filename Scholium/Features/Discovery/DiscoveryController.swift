@@ -3,7 +3,7 @@ import Foundation
 
 struct DiscoveryFilterState: Equatable, Sendable {
     var needsAttention = false
-    var hasExplicitConnections = false
+    var hasLinkAnnotations = false
     var hasMalformedMetadata = false
     var tag: String?
     var author: String?

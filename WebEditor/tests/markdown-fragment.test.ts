@@ -46,7 +46,7 @@ describe("appendMarkdownBlocks", () => {
     const root = document.querySelector<HTMLElement>("#root")!;
     const source = [
       "> [!state] Main claim",
-      "> Body with $x^2$, [[work-031|a linked note]], and +[[analysis-001|support]].",
+      "> Body with $x^2$, [[work-031|a linked note]]{{Why **this** matters.}}, and [[analysis-001|source]].",
       "",
       "| Formula | Status |",
       "|:---|---:|",
@@ -67,7 +67,6 @@ describe("appendMarkdownBlocks", () => {
         label: rawKind === "state" ? "Statement" : "Note",
         meaning: "Semantic role",
       }),
-      resolveVectorLink: (marker) => marker === "+" ? "supports" : "neutral",
       sourceOffset: (offset) => 100 + offset,
     });
 
@@ -88,19 +87,13 @@ describe("appendMarkdownBlocks", () => {
     expect(Number(calloutLink?.dataset.scholiumSourceCaret))
       .toBe(100 + source.indexOf("[[work-031|a linked note]]")
         + "[[work-031|a linked note]]".length);
-    const calloutLinkIcons = Array.from(
-      root.querySelectorAll<HTMLElement>(
-        ".scholium-callout-content .cm-live-vector-icon",
-      ),
-    );
-    expect(calloutLinkIcons.map((icon) => icon.dataset.scholiumSystemSymbol))
-      .toEqual(["link", "plus"]);
-    expect(calloutLinkIcons.map((icon) => icon.getAttribute("aria-label")))
-      .toEqual([null, null]);
-    expect(calloutLinkIcons.map((icon) => icon.getAttribute("aria-hidden")))
-      .toEqual(["true", "true"]);
-    expect(calloutLink?.getAttribute("aria-label")).toBe("Related note a linked note");
-    expect(calloutLinkIcons.every((icon) => icon.querySelector("svg") === null)).toBe(true);
+    const annotationButton = root.querySelector<HTMLButtonElement>(
+      ".scholium-link-annotation-button",
+    )!;
+    expect(annotationButton.getAttribute("aria-expanded")).toBe("false");
+    annotationButton.click();
+    expect(root.querySelector(".scholium-link-annotation-panel")?.textContent)
+      .toContain("Why this matters.");
     expect(root.querySelectorAll("table.scholium-table th")).toHaveLength(2);
     expect([...root.querySelectorAll("table.scholium-table th, table.scholium-table td")]
       .every((cell) => cell.getAttribute("dir") === "auto")).toBe(true);

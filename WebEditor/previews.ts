@@ -1,25 +1,11 @@
-export type VectorLinkKind =
-  | "neutral"
-  | "supports"
-  | "opposes"
-  | "incompatible";
-
 export interface LinkPreview {
   from: number;
   to: number;
   title: string;
   isEmbedded: boolean;
-  relationship?: VectorLinkKind;
   fragment?: string;
   htmlBody: string;
 }
-
-const vectorKinds = new Set<VectorLinkKind>([
-  "neutral",
-  "supports",
-  "opposes",
-  "incompatible",
-]);
 
 export function validatedLinkPreviews(value: unknown, documentLength: number): LinkPreview[] {
   if (!Array.isArray(value)) return [];
@@ -33,15 +19,11 @@ export function validatedLinkPreviews(value: unknown, documentLength: number): L
     const htmlBody = typeof record.htmlBody === "string"
       ? (isEmbedded ? record.htmlBody : record.htmlBody.slice(0, 24_000))
       : "";
-    const relationship = typeof record.relationship === "string"
-      && vectorKinds.has(record.relationship as VectorLinkKind)
-      ? record.relationship as VectorLinkKind
-      : undefined;
     const fragment = typeof record.fragment === "string"
       ? record.fragment.slice(0, 240).trim() || undefined
       : undefined;
     if (from < 0 || to <= from || to > documentLength || !title || !htmlBody) return [];
-    return [{from, to, title, isEmbedded, relationship, fragment, htmlBody}];
+    return [{from, to, title, isEmbedded, fragment, htmlBody}];
   });
 }
 

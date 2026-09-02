@@ -259,8 +259,8 @@ extension MarkdownEditorSession {
         let renderedLinkTexts: [String]
         let renderedLinkTargets: [String]
         let renderedLinkCaretOffsets: [Int]
-        let renderedLinkIconNames: [String]
-        let renderedLinkIconMaskCount: Int
+        let renderedAnnotationIconNames: [String]
+        let renderedAnnotationIconMaskCount: Int
     }
 
     struct TestingPointerProjectionResult: Sendable {
@@ -692,7 +692,7 @@ extension MarkdownEditorSession {
                 highlightColors: styles('.cm-live-highlight', 'color'),
                 codeTexts: texts('.cm-live-code'),
                 linkTexts: texts('.cm-live-link'),
-                wikiLinkTexts: texts('.cm-live-vector-link, .cm-live-embed')
+                wikiLinkTexts: texts('.cm-live-wiki-link, .cm-live-embed')
             };
             """,
             arguments: ["requestedText": requestedText],
@@ -719,8 +719,8 @@ extension MarkdownEditorSession {
             const links = widget
                 ? Array.from(widget.querySelectorAll('[data-scholium-link-target]'))
                 : [];
-            const linkIcons = widget
-                ? Array.from(widget.querySelectorAll('.cm-live-vector-icon'))
+            const annotationIcons = widget
+                ? Array.from(widget.querySelectorAll('.scholium-link-annotation-icon'))
                 : [];
             const activeSourceLines = Array.from(
                 document.querySelectorAll('.cm-line.cm-live-callout')
@@ -766,10 +766,10 @@ extension MarkdownEditorSession {
                 renderedLinkCaretOffsets: links.map(
                     link => Number(link.dataset.scholiumSourceCaret || '-1')
                 ),
-                renderedLinkIconNames: linkIcons.map(
+                renderedAnnotationIconNames: annotationIcons.map(
                     icon => icon.dataset.scholiumSystemSymbol || ''
                 ),
-                renderedLinkIconMaskCount: linkIcons.filter(icon => {
+                renderedAnnotationIconMaskCount: annotationIcons.filter(icon => {
                     const style = getComputedStyle(icon);
                     return [style.webkitMaskImage, style.maskImage].some(
                         value => Boolean(value) && value !== 'none'

@@ -56,8 +56,8 @@ struct CSSSnippetSanitizerTests {
         "[data-scholium-protected] { opacity: 0; }",
         ".review-annotation { color: white; }",
         ".provenance-warning { color: green; }",
-        ".scholium-vector { opacity: 0; }",
-        ".cm-live-vector { color: transparent; }"
+        ".scholium-link-annotation-content { opacity: 0; }",
+        ".scholium-link-annotation-button { color: transparent; }"
     ])
     func protectsResearchSignals(source: String) {
         #expect(throws: CSSSnippetSanitizationError.self) {

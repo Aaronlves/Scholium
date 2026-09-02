@@ -52,8 +52,7 @@ export function createLiveProjectionNavigation(options: {
       boundary,
     );
     const inlineLinkRange = projectionRangeAtBoundary(
-      index.syntax.inlines.filter((candidate) =>
-        candidate.kind === "wikilink" || candidate.kind === "vectorLink"),
+      index.syntax.inlines.filter((candidate) => candidate.kind === "wikilink"),
       offset,
       boundary,
     );
@@ -142,8 +141,7 @@ export function createLiveProjectionNavigation(options: {
     const alreadyActive = projection.kind === "callout"
       ? selectionActivatesCallout(selection, projection)
       : selectionIntersectsProjection(selection, projection);
-    const isProjectedLink = projection.kind === "wikilink"
-      || projection.kind === "vectorLink";
+    const isProjectedLink = projection.kind === "wikilink";
     // Forward traversal treats a projected Wikilink as one object. Backward
     // traversal from its end still exposes the authored closing delimiter.
     if (alreadyActive

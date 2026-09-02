@@ -70,7 +70,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         var tags: [String] = []
         var authors: [String] = []
         var documentRevisions: [String: DocumentFingerprint] = [:]
-        var relationshipGraph: GraphSnapshot?
+        var linkGraph: GraphSnapshot?
         var searchGeneration: SearchGenerationID?
         var snapshotPhase: WorkspaceSnapshotPhase?
         var derivedRefreshStatus: WorkspaceDerivedRefreshStatus?
@@ -117,7 +117,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
     var tags: [String] { state.tags }
     var authors: [String] { state.authors }
     var documentRevisions: [String: DocumentFingerprint] { state.documentRevisions }
-    var relationshipGraph: GraphSnapshot? { state.relationshipGraph }
+    var linkGraph: GraphSnapshot? { state.linkGraph }
     var searchGeneration: SearchGenerationID? { state.searchGeneration }
     var snapshotPhase: WorkspaceSnapshotPhase? { state.snapshotPhase }
     var derivedRefreshStatus: WorkspaceDerivedRefreshStatus? {
@@ -241,7 +241,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         var next = state
         next.vaultSnapshotsByID[snapshot.vault.id] = snapshot
         installVisibleNotes(notes, in: &next)
-        next.relationshipGraph = next.catalog?.graph
+        next.linkGraph = next.catalog?.graph
         state = next
     }
 
@@ -538,7 +538,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         invalidateCatalogLoad()
         var next = state
         next.catalog = catalog
-        next.relationshipGraph = catalog.graph
+        next.linkGraph = catalog.graph
         next.catalogError = nil
         next.isRefreshingCatalog = false
         state = next
@@ -569,7 +569,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
             guard catalogRevision == revision else { return }
             var complete = state
             complete.catalog = catalog
-            complete.relationshipGraph = catalog.graph
+            complete.linkGraph = catalog.graph
             complete.catalogError = nil
             complete.isRefreshingCatalog = false
             state = complete
@@ -614,7 +614,7 @@ final class WindowWorkspaceProjectionController: ObservableObject {
         next.vaultSnapshotsByID = Dictionary(
             uniqueKeysWithValues: snapshot.vaults.map { ($0.vault.id, $0) }
         )
-        next.relationshipGraph = snapshot.discovery.catalog.graph
+        next.linkGraph = snapshot.discovery.catalog.graph
         next.searchGeneration = snapshot.discovery.searchGeneration
         next.snapshotPhase = snapshot.phase
         next.derivedRefreshStatus = status

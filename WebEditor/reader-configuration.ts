@@ -3,7 +3,6 @@ export interface ReadLinkPreview {
   utf16UpperBound: number;
   title: string;
   isEmbedded: boolean;
-  relationship?: string;
   fragment?: string;
   htmlBody: string;
 }
@@ -13,7 +12,7 @@ export interface ReaderLocalization {
 }
 
 export interface ReaderConfiguration {
-  version: 1;
+  version: 2;
   documentID: string;
   fingerprint: string;
   loadGeneration: number;
@@ -23,13 +22,12 @@ export interface ReaderConfiguration {
   userCSS: string;
   localization: ReaderLocalization;
   linkPreviews: ReadLinkPreview[];
-  vectorSymbols: Record<string, string>;
 }
 
 export function validatedReaderConfiguration(value: unknown): ReaderConfiguration | null {
   if (!value || typeof value !== "object") return null;
   const config = value as Partial<ReaderConfiguration>;
-  if (config.version !== 1
+  if (config.version !== 2
       || typeof config.documentID !== "string" || !config.documentID
       || config.documentID.length > 4_096
       || typeof config.fingerprint !== "string" || !config.fingerprint
@@ -41,7 +39,6 @@ export function validatedReaderConfiguration(value: unknown): ReaderConfiguratio
       || typeof config.userCSS !== "string"
       || !config.localization || typeof config.localization !== "object"
       || !config.localization.strings || typeof config.localization.strings !== "object"
-      || !Array.isArray(config.linkPreviews) || config.linkPreviews.length > 128
-      || !config.vectorSymbols || typeof config.vectorSymbols !== "object") return null;
+      || !Array.isArray(config.linkPreviews) || config.linkPreviews.length > 128) return null;
   return config as ReaderConfiguration;
 }

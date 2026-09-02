@@ -115,8 +115,6 @@ public enum LinkGraphDiagnosticCode: String, Codable, Hashable, Sendable {
     case missingHeading
     case ambiguousHeading
     case missingBlock
-    case invalidRelationshipEndpoint
-    case duplicateRelationship
 }
 
 public struct LinkGraphDiagnostic: Codable, Hashable, Sendable {
@@ -128,16 +126,15 @@ public struct LinkGraphDiagnostic: Codable, Hashable, Sendable {
 }
 
 public struct GraphSnapshot: Codable, Sendable {
-    public static let currentContractVersion = 5
+    public static let currentContractVersion = 6
     public let contractVersion: Int
     public let generation: Int
     /// Hash of the complete source manifest from which this graph was built.
-    /// Related is compatible only with a Search generation carrying this hash.
+    /// Direct-link Search is compatible only with a generation carrying this hash.
     public let sourceManifestHash: String
     public let outgoing: [VaultQualifiedNoteID: [LinkGraphEdge]]
     public let incoming: [VaultQualifiedNoteID: [LinkGraphEdge]]
     public let diagnostics: [LinkGraphDiagnostic]
-    public let relationships: [RelationshipEdge]
 
     public init(
         contractVersion: Int,
@@ -145,8 +142,7 @@ public struct GraphSnapshot: Codable, Sendable {
         sourceManifestHash: String = "",
         outgoing: [VaultQualifiedNoteID: [LinkGraphEdge]],
         incoming: [VaultQualifiedNoteID: [LinkGraphEdge]],
-        diagnostics: [LinkGraphDiagnostic],
-        relationships: [RelationshipEdge]
+        diagnostics: [LinkGraphDiagnostic]
     ) {
         self.contractVersion = contractVersion
         self.generation = generation
@@ -154,32 +150,6 @@ public struct GraphSnapshot: Codable, Sendable {
         self.outgoing = outgoing
         self.incoming = incoming
         self.diagnostics = diagnostics
-        self.relationships = relationships
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case contractVersion, generation, sourceManifestHash
-        case outgoing, incoming, diagnostics, relationships
-    }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        contractVersion = try container.decode(Int.self, forKey: .contractVersion)
-        generation = try container.decode(Int.self, forKey: .generation)
-        sourceManifestHash = try container.decodeIfPresent(
-            String.self,
-            forKey: .sourceManifestHash
-        ) ?? ""
-        outgoing = try container.decode(
-            [VaultQualifiedNoteID: [LinkGraphEdge]].self,
-            forKey: .outgoing
-        )
-        incoming = try container.decode(
-            [VaultQualifiedNoteID: [LinkGraphEdge]].self,
-            forKey: .incoming
-        )
-        diagnostics = try container.decode([LinkGraphDiagnostic].self, forKey: .diagnostics)
-        relationships = try container.decode([RelationshipEdge].self, forKey: .relationships)
     }
 }
 
@@ -194,7 +164,7 @@ public enum LinkResolutionScope: String, Codable, Hashable, Sendable {
 }
 
 /// A navigation-only resolution for one authored link target. It carries no
-/// relationship meaning and never creates a Graph edge.
+/// connection meaning and never creates a Graph edge.
 public enum LinkNavigationResolution: Hashable, Sendable {
     case resolved(LinkDestination)
     case ambiguous([VaultQualifiedNoteID])
@@ -206,7 +176,7 @@ public enum LinkNavigationResolution: Hashable, Sendable {
 
 /// Reusable immutable lookup state for consumers that need the same
 /// fail-closed Note, heading, and block resolution as the Link Graph without
-/// publishing an outgoing or incoming relationship.
+/// publishing an outgoing or incoming link occurrence.
 public struct LinkResolutionCatalog: Sendable {
     private let notesByID: [VaultQualifiedNoteID: LinkCatalogNote]
     private let index: LinkGraphBuilder.ResolutionIndex
@@ -307,8 +277,6 @@ public enum LinkGraphBuilder {
         var outgoing: [VaultQualifiedNoteID: [LinkGraphEdge]] = [:]
         var incoming: [VaultQualifiedNoteID: [LinkGraphEdge]] = [:]
         var diagnostics: [LinkGraphDiagnostic] = []
-        var relationships: [RelationshipEdge] = []
-        var vectorSources: [UUID: [(VaultQualifiedNoteID, LinkOccurrence)]] = [:]
         var processedLinkCount = 0
 
         for source in documents.keys.sorted() {
@@ -358,42 +326,8 @@ public enum LinkGraphBuilder {
                         span: occurrence.span
                     ))
                 }
-                if occurrence.syntax != .embed {
-                    let normalizedRelationship = relationship(from: source, occurrence: occurrence)
-                    relationships.append(normalizedRelationship)
-                    if normalizedRelationship.vectorKind != nil {
-                        vectorSources[normalizedRelationship.id, default: []].append((source, occurrence))
-                    }
-                }
             }
             outgoing[source] = edges
-        }
-
-        var normalizedRelationships: [RelationshipEdge] = []
-        var vectorIndexByID: [UUID: Int] = [:]
-        for edge in relationships {
-            guard edge.vectorKind != nil else {
-                normalizedRelationships.append(edge)
-                continue
-            }
-            if let index = vectorIndexByID[edge.id] {
-                normalizedRelationships[index] = normalizedRelationships[index].mergingOccurrences(from: edge)
-            } else {
-                vectorIndexByID[edge.id] = normalizedRelationships.count
-                normalizedRelationships.append(edge)
-            }
-        }
-        for edge in normalizedRelationships where edge.vectorKind != nil
-            && edge.vectorKind != .neutral && edge.occurrences.count > 1 {
-            for (source, occurrence) in vectorSources[edge.id, default: []].dropFirst() {
-                diagnostics.append(LinkGraphDiagnostic(
-                    code: .duplicateRelationship,
-                    source: source,
-                    target: occurrence.target,
-                    message: "This vector relation is declared more than once; Scholium normalized all occurrences to one edge.",
-                    span: occurrence.span
-                ))
-            }
         }
 
         return GraphSnapshot(
@@ -402,8 +336,7 @@ public enum LinkGraphBuilder {
             sourceManifestHash: sourceManifestHash,
             outgoing: outgoing,
             incoming: incoming,
-            diagnostics: diagnostics.sorted(by: diagnosticOrder),
-            relationships: normalizedRelationships
+            diagnostics: diagnostics.sorted(by: diagnosticOrder)
         )
     }
 
@@ -595,57 +528,6 @@ public enum LinkGraphBuilder {
             ? "The target note has no heading named \(fragment)."
             : "The target note has more than one heading named \(fragment)."
         return (nil, [LinkGraphDiagnostic(code: code, source: source, target: occurrence.target, message: message, span: occurrence.span)])
-    }
-
-    private static func relationship(from source: VaultQualifiedNoteID, occurrence: LinkOccurrence) -> RelationshipEdge {
-        let targetPath: String
-        let targetNote: VaultQualifiedNoteID?
-        let relationshipResolution: RelationshipResolution
-        switch occurrence.resolution {
-        case .resolved(let destination):
-            targetPath = destination.relativePath
-            targetNote = destination
-            relationshipResolution = .resolved(destination.relativePath)
-        case .ambiguous(let destinations):
-            targetPath = occurrence.target
-            targetNote = nil
-            relationshipResolution = .ambiguous(destinations.map(\.relativePath))
-        case .broken:
-            targetPath = occurrence.target
-            targetNote = nil
-            relationshipResolution = .broken(occurrence.target)
-        case .unresolved:
-            targetPath = occurrence.target
-            targetNote = nil
-            relationshipResolution = .broken(occurrence.target)
-        }
-        let locator = SourceLocator(
-            file: source.relativePath,
-            line: occurrence.span.start.line,
-            column: occurrence.span.start.utf16Column,
-            headingOrBlock: occurrence.fragment
-        )
-        if let vectorKind = occurrence.vectorKind {
-            return .vector(
-                containing: source,
-                target: targetNote,
-                targetPath: targetPath,
-                kind: vectorKind,
-                locator: locator,
-                syntax: occurrence.syntax,
-                resolution: relationshipResolution
-            )
-        }
-        // Vector-Link is the only source syntax that may create an explicit
-        // philosophical relationship. Any predicate retained in older decoded
-        // semantic data is deliberately ignored and remains a neutral link.
-        return .explicit(
-            containingPath: source.relativePath,
-            targetPath: targetPath,
-            predicate: .connected,
-            locator: locator,
-            resolution: relationshipResolution
-        )
     }
 
     private static func normalizedMarkdownPath(_ raw: String) -> String {

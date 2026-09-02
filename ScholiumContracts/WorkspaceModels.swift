@@ -585,7 +585,7 @@ public struct WorkspaceDerivedRefreshIssue: Sendable, Equatable {
     }
 }
 
-/// Delivery-neutral freshness of search, relationship, diagnostic, and other
+/// Delivery-neutral freshness of Search, link graph, diagnostic, and other
 /// derived workspace state.
 ///
 /// - `opening`: one vault is trustworthy and usable, but cross-vault derived
@@ -864,7 +864,7 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
         case .vaultNotInWorkspace(let id):
             "Vault \(id.uuidString) is not part of this Scholium Triptych."
         case .workspaceStillLoading(let id):
-            "Scholium is still loading the complete Triptych \(id.uuidString). This Note and the currently open vault support bounded text Search; Triptych Search and relationships will become available when loading finishes."
+            "Scholium is still loading the complete Triptych \(id.uuidString). This Note and the currently open vault support bounded text Search; Triptych Search and direct links will become available when loading finishes."
         case .workspaceRegistrationInUse(let id):
             "Scholium cannot remove Triptych registration \(id.uuidString) while that Triptych is open. Close its other windows and try again."
         case .portableControlRecoveryRequired(let controlPath, let reason):

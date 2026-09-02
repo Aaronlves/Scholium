@@ -25,7 +25,9 @@
   Review Comment or passage Discussion UI.
 - Inspector presents Overview and Connect. Overview exposes current About,
   file, Settlement, Critique, and applicable Zotero facts and operations.
-  Connect presents current graph relationships. It has no Actions mode.
+  Connect presents exact incoming or outgoing link occurrences, their local
+  context, and any source-owned Markdown annotation. Incoming annotations are
+  read-only and route editing to the source Note. It has no Actions mode.
 - Search presents Note results only and never mixes removed research-object
   results into its scope or completion vocabulary.
 - System-Trash confirmation describes the exact source and any managed Critique

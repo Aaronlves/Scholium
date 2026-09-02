@@ -17,7 +17,7 @@ struct TriptychMoveCoordinatorTests {
         _ = try await fixture.create(
             vault: .topicKnowledge,
             path: "Topics/A.md",
-            content: "+[[Sources/B#Claim|paper]]\r\n"
+            content: "[[Sources/B#Claim|paper]]{{Move-safe context.}}\r\n"
         )
         let (documents, graph) = try await fixture.workspaceGraph()
         let sourceID = fixture.id(.paperAnalysis, "Sources/B.md")
@@ -41,7 +41,7 @@ struct TriptychMoveCoordinatorTests {
         await #expect(throws: VaultRepositoryError.self) {
             _ = try await fixture.repository(.paperAnalysis).load(relativePath: sourceID.relativePath)
         }
-        #expect(try await fixture.repository(.topicKnowledge).load(relativePath: "Topics/A.md").rawContent == "+[[Sources/Renamed B#Claim|paper]]\r\n")
+        #expect(try await fixture.repository(.topicKnowledge).load(relativePath: "Topics/A.md").rawContent == "[[Sources/Renamed B#Claim|paper]]{{Move-safe context.}}\r\n")
     }
 
     @Test("A stale source fails before the destination or any rewrite mutates")
@@ -102,7 +102,7 @@ struct TriptychMoveCoordinatorTests {
         defer { fixture.remove() }
         let target = try await fixture.create(vault: .paperAnalysis, path: "B.md", content: "B\n")
         let topic = try await fixture.create(vault: .topicKnowledge, path: "A.md", content: "[[B]]\r\n")
-        _ = try await fixture.create(vault: .output, path: "W.md", content: "+[[B|evidence]]\n")
+        _ = try await fixture.create(vault: .output, path: "W.md", content: "[[B|evidence]]{{Rollback context.}}\n")
         let plan = try await fixture.planMove(from: fixture.id(.paperAnalysis, "B.md"), to: "C.md")
         let coordinator = fixture.moveCoordinator(
             faults: TriptychTransactionFaultPlan(points: [.afterRewrite(0)])
@@ -181,7 +181,7 @@ struct TriptychMoveCoordinatorTests {
         let link = try await fixture.create(
             vault: .topicKnowledge,
             path: "论题.md",
-            content: "前文 +[[资料/é#标题|来源]] 后文\r\n"
+            content: "前文 [[资料/é#标题|来源]]{{保留这一处上下文。}} 后文\r\n"
         )
         let plan = try await fixture.planMove(
             from: fixture.id(.paperAnalysis, "资料/é.md"),

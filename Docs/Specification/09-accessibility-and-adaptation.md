@@ -137,8 +137,14 @@
 - Inspector Overview/Connect and Incoming/Outgoing are labelled single-choice
   groups with visible selection and keyboard traversal. No-document Inspector
   remains a nonempty read-only state.
-- Connect states direction textually; undirected rows say they appear in both
-  directions. Navigation and source-return routes remain separately named.
+- Connect states the authored occurrence direction textually. Each row names
+  source or destination, local context, and whether a link annotation is
+  present. Incoming annotations are identified as read-only at the destination;
+  destination navigation and **Edit at Source** remain separately named.
+- An inactive annotated Wikilink exposes one adjacent disclosure with its linked
+  title and expanded/collapsed state. Keyboard and pointer activation reveal
+  the same Markdown annotation, focus remains predictable, and source editing
+  exposes the exact delimiters without relying on color or icon alone.
 - Document Rail exposes the state-valid Settle, Settle Again, or Mark Unsettled
   researcher action without a parallel review milestone or Agent launcher.
   Opening Inspector does not alter reading or focus order.

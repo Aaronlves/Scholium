@@ -3,7 +3,7 @@ import ScholiumContracts
 import Testing
 @testable import ScholiumCore
 
-@Suite("Search v9 metadata and relationship filters")
+@Suite("Search v10 metadata and direct-link filters")
 struct SearchPropertyIndexTests {
     @Test("Authored YAML and managed metadata retain distinct provenance")
     func metadataPresenceEqualityAndProvenance() async throws {
@@ -137,7 +137,7 @@ struct SearchPropertyIndexTests {
         #expect(updated.disposition == .incrementallyUpdated)
 
         let clean = try fixture.index(
-            at: fixture.root.appendingPathComponent("clean-search-v9.sqlite")
+            at: fixture.root.appendingPathComponent("clean-search-v10.sqlite")
         )
         _ = try await clean.synchronize([edited])
         for query in [
@@ -205,8 +205,8 @@ struct SearchPropertyIndexTests {
         } == true)
     }
 
-    @Test("Relationship candidates remain externally resolved and source attributed")
-    func relationshipCandidateRestrictionAndProvenance() async throws {
+    @Test("Direct-link candidates remain externally resolved and source attributed")
+    func linkCandidateRestrictionAndProvenance() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try fixture.index()
@@ -222,14 +222,12 @@ struct SearchPropertyIndexTests {
             vaultID: fixture.vault.id,
             relativePath: "Matched.md"
         )
-        let occurrence = RelationshipSourceOccurrence(
-            sourceNote: anchor,
-            locator: SourceLocator(file: "Anchor.md", line: 8, column: 3),
-            syntax: .vectorWikilink,
-            vectorKind: .supports
-        )
-        let match = SearchRelationshipMatch(
-            relation: .supports,
+        let authored = try #require(MarkdownSemanticDocument(parsing: NoteDocument(
+            relativePath: "Anchor.md",
+            rawContent: "# Anchor\n\n[[Matched]]{{A direct reason.}}\n"
+        )).links.first)
+        let occurrence = SearchLinkOccurrence(sourceNote: anchor, occurrence: authored)
+        let match = SearchLinkMatch(
             direction: .fromNote,
             anchorIdentity: "Anchor",
             targetNote: target,
@@ -237,16 +235,51 @@ struct SearchPropertyIndexTests {
         )
 
         let response = try await index.testSearch(
-            fixture.request("autonomy from-note:Anchor relation:supports"),
-            relationshipMatches: [target: match]
+            fixture.request("autonomy from-note:Anchor"),
+            linkMatches: [target: match]
         )
         #expect(response.noteResults.map(\.relativePath) == ["Matched.md"])
         let hit = try #require(response.noteResults.first)
-        let relationships: [SearchRelationshipMatch] = hit.matchReasons.compactMap { reason in
-            guard case .relationship(let value) = reason else { return nil }
+        let links: [SearchLinkMatch] = hit.matchReasons.compactMap { reason in
+            guard case .link(let value) = reason else { return nil }
             return value
         }
-        #expect(try #require(relationships.first).occurrences == [occurrence])
+        #expect(try #require(links.first).occurrences == [occurrence])
+    }
+
+    @Test("Link annotations are an independent visible-text field with exact source provenance")
+    func linkAnnotationLexicalField() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let index = try fixture.index()
+        let source = """
+        # Annotated
+
+        Intro [[Hidden Destination#claim|visible link]]{{First **annotated reason** with [[Hidden Evidence|visible evidence]].
+
+        Second line.}} tail prose.
+        """
+        _ = try await index.synchronize([fixture.item("Annotated.md", source)])
+
+        let annotation = try await index.testSearch(
+            fixture.request(#"link_annotation:"annotated reason""#)
+        )
+        let hit = try #require(annotation.noteResults.first)
+        #expect(hit.matchedField == .linkAnnotation)
+        #expect(sourceText(source, range: try #require(hit.sourceRange)) == "annotated reason")
+
+        #expect(try await index.testSearch(
+            fixture.request("visible evidence")
+        ).noteResults.first?.matchedField == .linkAnnotation)
+        #expect(try await index.testSearch(
+            fixture.request("visible link tail prose")
+        ).noteResults.map(\.relativePath) == ["Annotated.md"])
+        #expect(try await index.testSearch(
+            fixture.request(#""Hidden Destination""#)
+        ).noteResults.isEmpty)
+        #expect(try await index.testSearch(
+            fixture.request(#""Hidden Evidence""#)
+        ).noteResults.isEmpty)
     }
 
     private final class Fixture: @unchecked Sendable {
@@ -265,13 +298,13 @@ struct SearchPropertyIndexTests {
                 isDirectory: true
             )
                 .appendingPathComponent(".build", isDirectory: true)
-                .appendingPathComponent("search-v9-property-tests", isDirectory: true)
+                .appendingPathComponent("search-v10-property-tests", isDirectory: true)
                 .appendingPathComponent(UUID().uuidString, isDirectory: true)
             try FileManager.default.createDirectory(
                 at: root,
                 withIntermediateDirectories: true
             )
-            databaseURL = root.appendingPathComponent("search-v9.sqlite")
+            databaseURL = root.appendingPathComponent("search-v10.sqlite")
         }
 
         func index(at url: URL? = nil) throws -> TriptychSearchIndex {

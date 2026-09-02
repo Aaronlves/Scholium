@@ -172,10 +172,12 @@ public struct MarkdownEditingDialect: Codable, Hashable, Sendable {
         public let meaning: String
     }
 
-    public struct VectorLinkOperator: Codable, Hashable, Sendable {
-        public let marker: String
-        public let kind: VectorLinkKind
-        public let meaning: String
+    public struct LinkAnnotationSyntax: Codable, Hashable, Sendable {
+        public let openingDelimiter: String
+        public let closingDelimiter: String
+        public let escapeCharacter: String
+        public let allowsMultiline: Bool
+        public let allowsNesting: Bool
     }
 
     public struct Mathematics: Codable, Hashable, Sendable {
@@ -197,26 +199,26 @@ public struct MarkdownEditingDialect: Codable, Hashable, Sendable {
 
     public let version: Int
     public let callouts: [Callout]
-    public let vectorLinkOperators: [VectorLinkOperator]
+    public let linkAnnotation: LinkAnnotationSyntax
     public let footnotes: Footnotes
     public let mathematics: Mathematics
 
     public init(
         version: Int,
         callouts: [Callout],
-        vectorLinkOperators: [VectorLinkOperator],
+        linkAnnotation: LinkAnnotationSyntax,
         footnotes: Footnotes,
         mathematics: Mathematics
     ) {
         self.version = version
         self.callouts = callouts
-        self.vectorLinkOperators = vectorLinkOperators
+        self.linkAnnotation = linkAnnotation
         self.footnotes = footnotes
         self.mathematics = mathematics
     }
 
     public static let current = MarkdownEditingDialect(
-        version: 4,
+        version: 5,
         callouts: CalloutSemanticRole.allCases.compactMap { role in
             guard role != .neutral else { return nil }
             return Callout(
@@ -226,28 +228,13 @@ public struct MarkdownEditingDialect: Codable, Hashable, Sendable {
                 meaning: role.purpose
             )
         },
-        vectorLinkOperators: [
-            VectorLinkOperator(
-                marker: "",
-                kind: .neutral,
-                meaning: "Records a neutral connection without evidential direction."
-            ),
-            VectorLinkOperator(
-                marker: "+",
-                kind: .supports,
-                meaning: "The containing note supports the target note."
-            ),
-            VectorLinkOperator(
-                marker: "-",
-                kind: .opposes,
-                meaning: "The containing note opposes the target note."
-            ),
-            VectorLinkOperator(
-                marker: "?",
-                kind: .incompatible,
-                meaning: "The containing and target notes are mutually incompatible."
-            ),
-        ],
+        linkAnnotation: LinkAnnotationSyntax(
+            openingDelimiter: "{{",
+            closingDelimiter: "}}",
+            escapeCharacter: "\\",
+            allowsMultiline: true,
+            allowsNesting: false
+        ),
         footnotes: Footnotes(
             namedReferenceOpening: "[^",
             namedReferenceClosing: "]",
@@ -309,24 +296,26 @@ public struct MathExpression: Codable, Hashable, Sendable {
 
 public enum LinkSyntax: String, Codable, Hashable, Sendable {
     case wikilink
-    case vectorWikilink
     case markdown
     case embed
-    /// Retired typed-arrow syntax represented only for source-preserving,
-    /// semantically neutral diagnostics.
-    case relationArrow
 }
 
-/// Scholium's compact, workspace-wide relation language. The marker describes
-/// the relationship relative to the note containing the wikilink.
-public enum VectorLinkKind: String, Codable, Hashable, CaseIterable, Sendable {
-    case neutral
-    /// Plus-prefixed B in A means A supports B.
-    case supports
-    /// Minus-prefixed B in A means A opposes B without asserting contradiction.
-    case opposes
-    /// Question-prefixed B in A records an undirected incompatibility between A and B.
-    case incompatible
+public struct LinkAnnotation: Codable, Hashable, Sendable {
+    /// Exact authored Markdown between the annotation delimiters.
+    public let markdown: String
+    /// Visible semantic text used by Search and compact projections.
+    public let text: String
+    /// Exact `{{...}}` source range.
+    public let span: SourceSpan
+    /// Exact authored Markdown range inside the delimiters.
+    public let contentSpan: SourceSpan
+
+    public init(markdown: String, text: String, span: SourceSpan, contentSpan: SourceSpan) {
+        self.markdown = markdown
+        self.text = text
+        self.span = span
+        self.contentSpan = contentSpan
+    }
 }
 
 public enum LinkOccurrenceResolution: Codable, Hashable, Sendable {
@@ -358,10 +347,13 @@ public struct LinkOccurrence: Codable, Hashable, Sendable {
     public let target: String
     public let alias: String?
     public let fragment: String?
-    public let relationship: RelationshipPredicate?
-    public let vectorKind: VectorLinkKind?
+    public let annotation: LinkAnnotation?
+    public let localContext: String
     public let isExternal: Bool
+    /// Whole valid occurrence, including an adjacent annotation when present.
     public let span: SourceSpan
+    /// The exact link source, excluding an adjacent annotation.
+    public let linkSpan: SourceSpan
     public var resolution: LinkOccurrenceResolution
 
     public init(
@@ -369,20 +361,22 @@ public struct LinkOccurrence: Codable, Hashable, Sendable {
         target: String,
         alias: String?,
         fragment: String?,
-        relationship: RelationshipPredicate?,
-        vectorKind: VectorLinkKind? = nil,
+        annotation: LinkAnnotation? = nil,
+        localContext: String = "",
         isExternal: Bool,
         span: SourceSpan,
+        linkSpan: SourceSpan? = nil,
         resolution: LinkOccurrenceResolution = .unresolved
     ) {
         self.syntax = syntax
         self.target = target
         self.alias = alias
         self.fragment = fragment
-        self.relationship = relationship
-        self.vectorKind = vectorKind
+        self.annotation = annotation
+        self.localContext = localContext
         self.isExternal = isExternal
         self.span = span
+        self.linkSpan = linkSpan ?? span
         self.resolution = resolution
     }
 }
@@ -400,8 +394,7 @@ public enum MarkdownDiagnosticCode: String, Codable, Hashable, Sendable {
     case unreferencedFootnote
     case malformedMath
     case malformedComment
-    case unknownRelationshipPredicate
-    case noncanonicalRelationshipSyntax
+    case malformedLinkAnnotation
 }
 
 public struct MarkdownDiagnostic: Codable, Hashable, Sendable {
@@ -462,6 +455,24 @@ public enum MarkdownSemanticParser {
             relativePath: "research-record-fragment.md",
             rawContent: prefix + source
         )
+        func removingPrefix(from span: SourceSpan) -> SourceSpan {
+            SourceSpan(
+                utf8LowerBound: span.utf8LowerBound - prefix.utf8.count,
+                utf8UpperBound: span.utf8UpperBound - prefix.utf8.count,
+                utf16LowerBound: span.utf16LowerBound - prefix.utf16.count,
+                utf16UpperBound: span.utf16UpperBound - prefix.utf16.count,
+                start: SourcePosition(
+                    line: span.start.line - 1,
+                    utf8Column: span.start.utf8Column,
+                    utf16Column: span.start.utf16Column
+                ),
+                end: SourcePosition(
+                    line: span.end.line - 1,
+                    utf8Column: span.end.utf8Column,
+                    utf16Column: span.end.utf16Column
+                )
+            )
+        }
         return parse(document).links.compactMap { occurrence in
             guard occurrence.span.utf8LowerBound >= prefix.utf8.count,
                 occurrence.span.utf16LowerBound >= prefix.utf16.count
@@ -471,31 +482,23 @@ public enum MarkdownSemanticParser {
                 target: occurrence.target,
                 alias: occurrence.alias,
                 fragment: occurrence.fragment,
-                relationship: occurrence.relationship,
-                vectorKind: occurrence.vectorKind,
-                isExternal: occurrence.isExternal,
-                span: SourceSpan(
-                    utf8LowerBound: occurrence.span.utf8LowerBound - prefix.utf8.count,
-                    utf8UpperBound: occurrence.span.utf8UpperBound - prefix.utf8.count,
-                    utf16LowerBound: occurrence.span.utf16LowerBound - prefix.utf16.count,
-                    utf16UpperBound: occurrence.span.utf16UpperBound - prefix.utf16.count,
-                    start: SourcePosition(
-                        line: occurrence.span.start.line - 1,
-                        utf8Column: occurrence.span.start.utf8Column,
-                        utf16Column: occurrence.span.start.utf16Column
-                    ),
-                    end: SourcePosition(
-                        line: occurrence.span.end.line - 1,
-                        utf8Column: occurrence.span.end.utf8Column,
-                        utf16Column: occurrence.span.end.utf16Column
+                annotation: occurrence.annotation.map { annotation in
+                    LinkAnnotation(
+                        markdown: annotation.markdown,
+                        text: annotation.text,
+                        span: removingPrefix(from: annotation.span),
+                        contentSpan: removingPrefix(from: annotation.contentSpan)
                     )
-                )
+                },
+                localContext: occurrence.localContext,
+                isExternal: occurrence.isExternal,
+                span: removingPrefix(from: occurrence.span),
+                linkSpan: removingPrefix(from: occurrence.linkSpan)
             )
         }
     }
 
     public static func parse(_ document: NoteDocument) -> MarkdownSemanticDocument {
-        let diagnosesLegacyRelationArrows = true
         let sourceMapper = SemanticSourceMapper(document.rawContent)
         let bodyOffset = sourceMapper.utf16Offset(forUTF8Offset: document.bodyByteRange.lowerBound) ?? 0
         let bodyMapper = SemanticSourceMapper(document.body)
@@ -552,8 +555,7 @@ public enum MarkdownSemanticParser {
             body: document.body,
             bodyUTF16Offset: bodyOffset,
             sourceMapper: sourceMapper,
-            excluded: literalRanges,
-            diagnosesLegacyRelationArrows: diagnosesLegacyRelationArrows
+            excluded: literalRanges
         )
         return MarkdownSemanticDocument(
             fingerprint: document.fingerprint,
@@ -1155,8 +1157,7 @@ public enum MarkdownSemanticParser {
         body: String,
         bodyUTF16Offset: Int,
         sourceMapper: SemanticSourceMapper,
-        excluded: [NSRange],
-        diagnosesLegacyRelationArrows: Bool
+        excluded: [NSRange]
     ) -> LinkParseResult {
         let nsBody = body as NSString
         let fullRange = NSRange(location: 0, length: nsBody.length)
@@ -1173,37 +1174,43 @@ public enum MarkdownSemanticParser {
                     ? nsBody.substring(with: NSRange(location: prefixLocation, length: 1))
                     : nil
                 let isEmbed = prefix == "!" && !isEscaped(at: prefixLocation, in: nsBody)
-                let vectorKind = vectorKind(
-                    for: prefix,
-                    at: prefixLocation,
-                    in: body,
-                    nsBody: nsBody
-                )
-                let sourceRange = (isEmbed || vectorKind != nil)
+                let linkRange = isEmbed
                     ? NSRange(location: prefixLocation, length: match.range.length + 1)
                     : match.range
-                guard !intersectsExcluded(sourceRange, excluded),
-                      !isEscaped(at: sourceRange.location, in: nsBody) else { continue }
+                guard !intersectsExcluded(linkRange, excluded),
+                      !isEscaped(at: linkRange.location, in: nsBody) else { continue }
                 let inner = nsBody.substring(with: match.range(at: 1))
                 let parsed = parseWikilinkInner(inner)
-                guard let span = sourceMapper.span(for: shifted(sourceRange, by: bodyUTF16Offset)) else { continue }
-                if parsed.relationship != nil {
-                    diagnostics.append(MarkdownDiagnostic(
-                        code: .noncanonicalRelationshipSyntax,
-                        severity: .information,
-                        message: "The legacy typed annotation is ignored. Use +[[Target]] to support, -[[Target]] to oppose, or ?[[Target]] for incompatibility.",
-                        span: span
-                    ))
+                guard let linkSpan = sourceMapper.span(for: shifted(linkRange, by: bodyUTF16Offset)) else { continue }
+                var occurrenceRange = linkRange
+                var annotation: LinkAnnotation?
+                if !isEmbed {
+                    switch parseLinkAnnotation(after: linkRange, in: body, sourceMapper: sourceMapper, bodyUTF16Offset: bodyUTF16Offset) {
+                    case .absent:
+                        break
+                    case .valid(let value, let range):
+                        annotation = value
+                        occurrenceRange = NSUnionRange(linkRange, range)
+                    case .malformed(let range, let message):
+                        diagnostics.append(MarkdownDiagnostic(
+                            code: .malformedLinkAnnotation,
+                            severity: .warning,
+                            message: message,
+                            span: sourceMapper.span(for: shifted(range, by: bodyUTF16Offset))
+                        ))
+                    }
                 }
+                guard let span = sourceMapper.span(for: shifted(occurrenceRange, by: bodyUTF16Offset)) else { continue }
                 links.append(LinkOccurrence(
-                    syntax: isEmbed ? .embed : (vectorKind == nil ? .wikilink : .vectorWikilink),
+                    syntax: isEmbed ? .embed : .wikilink,
                     target: parsed.target,
                     alias: parsed.alias,
                     fragment: parsed.fragment,
-                    relationship: nil,
-                    vectorKind: isEmbed ? nil : (vectorKind ?? .neutral),
+                    annotation: annotation,
+                    localContext: localContext(in: nsBody, containing: occurrenceRange),
                     isExternal: false,
-                    span: span
+                    span: span,
+                    linkSpan: linkSpan
                 ))
             }
         }
@@ -1221,52 +1228,8 @@ public enum MarkdownSemanticParser {
                     target: destination.target.removingPercentEncoding ?? destination.target,
                     alias: alias,
                     fragment: destination.fragment,
-                    relationship: nil,
+                    localContext: localContext(in: nsBody, containing: match.range),
                     isExternal: isExternalDestination(rawDestination),
-                    span: span
-                ))
-            }
-        }
-
-        // Retired relation arrows remain source-located neutral links. Keeping
-        // the syntax classification lets diagnostics and rename rewriting point
-        // to the original bytes without allowing the predicate into the graph.
-        if diagnosesLegacyRelationArrows, let relationRegex = try? NSRegularExpression(
-            pattern: #"(?m)^\s*-\s*`([a-z][a-z0-9_]*)`\s*->\s*\[\[([^\]\r\n]+)\]\]\s*$"#
-        ) {
-            for match in relationRegex.matches(in: body, range: fullRange) {
-                guard !intersectsExcludedExceptInlinePredicate(match.range, predicate: match.range(at: 1), excluded: excluded),
-                      !isEscaped(at: match.range.location, in: nsBody),
-                      isInsideLevelTwoSection(named: "Relations", at: match.range.location, in: body) else { continue }
-                let rawPredicate = nsBody.substring(with: match.range(at: 1))
-                guard let span = sourceMapper.span(for: shifted(match.range, by: bodyUTF16Offset)) else { continue }
-                guard relationshipPredicate(rawPredicate) != nil else {
-                    diagnostics.append(MarkdownDiagnostic(
-                        code: .unknownRelationshipPredicate,
-                        severity: .warning,
-                        message: "Unknown relationship predicate '\(rawPredicate)'.",
-                        span: span
-                    ))
-                    continue
-                }
-                let parsed = parseWikilinkInner(nsBody.substring(with: match.range(at: 2)))
-                links.removeAll { existing in
-                    existing.syntax == .wikilink && NSIntersectionRange(existing.span.nsRange, span.nsRange).length > 0
-                }
-                diagnostics.append(MarkdownDiagnostic(
-                    code: .noncanonicalRelationshipSyntax,
-                    severity: .information,
-                    message: "Legacy relation arrows are neutral connections. Use +[[Target]] to support, -[[Target]] to oppose, or ?[[Target]] for incompatibility.",
-                    span: span
-                ))
-                links.append(LinkOccurrence(
-                    syntax: .relationArrow,
-                    target: parsed.target,
-                    alias: parsed.alias,
-                    fragment: parsed.fragment,
-                    relationship: nil,
-                    vectorKind: .neutral,
-                    isExternal: false,
                     span: span
                 ))
             }
@@ -1278,115 +1241,100 @@ public enum MarkdownSemanticParser {
         )
     }
 
-    private static func vectorKind(
-        for prefix: String?,
-        at location: Int,
-        in body: String,
-        nsBody: NSString
-    ) -> VectorLinkKind? {
-        guard location >= 0, let prefix else { return nil }
-        let kind: VectorLinkKind
-        switch prefix {
-        case "+": kind = .supports
-        case "-": kind = .opposes
-        case "?": kind = .incompatible
-        default: return nil
-        }
-        guard !isEscaped(at: location, in: nsBody), isVectorTokenBoundary(before: location, in: body) else {
-            return nil
-        }
-        return kind
+    private enum LinkAnnotationParseResult {
+        case absent
+        case valid(LinkAnnotation, NSRange)
+        case malformed(NSRange, String)
     }
 
-    private static func isVectorTokenBoundary(before markerUTF16Offset: Int, in source: String) -> Bool {
-        guard markerUTF16Offset > 0 else { return true }
-        let utf16 = source.utf16
-        guard let markerIndex = utf16.index(utf16.startIndex, offsetBy: markerUTF16Offset, limitedBy: utf16.endIndex),
-              let stringIndex = String.Index(markerIndex, within: source),
-              let previous = source[..<stringIndex].last else { return true }
-        if previous.isLetter || previous.isNumber || previous.isWhitespace == false
-            && ["_", "\\", "!", "+", "-", "?"].contains(String(previous)) {
-            return false
+    private static func parseLinkAnnotation(
+        after linkRange: NSRange,
+        in source: String,
+        sourceMapper: SemanticSourceMapper,
+        bodyUTF16Offset: Int
+    ) -> LinkAnnotationParseResult {
+        let nsSource = source as NSString
+        let opening = NSMaxRange(linkRange)
+        guard opening + 1 < nsSource.length,
+              nsSource.character(at: opening) == 0x7B,
+              nsSource.character(at: opening + 1) == 0x7B else { return .absent }
+
+        var cursor = opening + 2
+        while cursor + 1 < nsSource.length {
+            let isDelimiter = nsSource.character(at: cursor) == 0x7B
+                && nsSource.character(at: cursor + 1) == 0x7B
+            if isDelimiter, !isEscaped(at: cursor, in: nsSource) {
+                return .malformed(
+                    NSRange(location: opening, length: cursor + 2 - opening),
+                    "Link annotations cannot nest; escape literal '{{' as '\\{{'."
+                )
+            }
+
+            let isClosing = nsSource.character(at: cursor) == 0x7D
+                && nsSource.character(at: cursor + 1) == 0x7D
+            if isClosing, !isEscaped(at: cursor, in: nsSource) {
+                let annotationRange = NSRange(location: opening, length: cursor + 2 - opening)
+                let contentRange = NSRange(location: opening + 2, length: cursor - opening - 2)
+                let markdown = nsSource.substring(with: contentRange)
+                let text = visibleLinkAnnotationText(markdown)
+                guard !text.isEmpty else {
+                    return .malformed(annotationRange, "Link annotations must contain visible text.")
+                }
+                guard let span = sourceMapper.span(for: shifted(annotationRange, by: bodyUTF16Offset)),
+                      let contentSpan = sourceMapper.span(for: shifted(contentRange, by: bodyUTF16Offset)) else {
+                    return .malformed(annotationRange, "The link annotation source range is invalid.")
+                }
+                return .valid(
+                    LinkAnnotation(markdown: markdown, text: text, span: span, contentSpan: contentSpan),
+                    annotationRange
+                )
+            }
+            cursor += 1
         }
-        return true
+
+        return .malformed(
+            NSRange(location: opening, length: nsSource.length - opening),
+            "Link annotation is missing its closing '}}' delimiter."
+        )
+    }
+
+    /// Link annotations are Markdown, but ordinary Wikilinks inside that
+    /// Markdown are Scholium syntax rather than CommonMark. Project their
+    /// reader-visible label before asking the shared Markdown renderer for
+    /// plain text so Search and MCP never expose raw link delimiters or a
+    /// hidden destination as annotation prose.
+    private static func visibleLinkAnnotationText(_ markdown: String) -> String {
+        let fragment = NoteDocument(relativePath: "Link Annotation.md", rawContent: markdown)
+        let semantic = MarkdownSemanticDocument(parsing: fragment)
+        let nsMarkdown = markdown as NSString
+        var projected = markdown
+        for link in semantic.links.reversed()
+            where link.syntax == .wikilink || link.syntax == .embed {
+            let range = link.linkSpan.nsRange
+            guard NSMaxRange(range) <= nsMarkdown.length else { continue }
+            let visible = markdownEscapedText(link.alias ?? link.target)
+            guard let swiftRange = Range(range, in: projected) else { continue }
+            projected.replaceSubrange(swiftRange, with: visible)
+        }
+        return MarkdownVisibleText.render(projected)
+    }
+
+    private static func markdownEscapedText(_ text: String) -> String {
+        let special = CharacterSet(charactersIn: #"\`*_{}[]<>()#+-.!|"#)
+        return text.unicodeScalars.reduce(into: "") { result, scalar in
+            if special.contains(scalar) { result.append("\\") }
+            result.unicodeScalars.append(scalar)
+        }
     }
 
     private static func parseWikilinkInner(
         _ inner: String
-    ) -> (target: String, alias: String?, fragment: String?, relationship: RelationshipPredicate?) {
+    ) -> (target: String, alias: String?, fragment: String?) {
         let pipe = inner.firstIndex(of: "|")
         let targetPart = pipe.map { String(inner[..<$0]) } ?? inner
-        let annotation = pipe.map { String(inner[inner.index(after: $0)...]) }
+        let alias = pipe.map { optionalTrimmed(String(inner[inner.index(after: $0)...])) } ?? nil
         let destination = splitTargetAndFragment(targetPart.trimmingCharacters(in: .whitespaces))
-        let relationAndAlias = parseRelationshipAnnotation(annotation)
-        return (
-            target: destination.target,
-            alias: relationAndAlias.alias,
-            fragment: destination.fragment,
-            relationship: relationAndAlias.relationship
-        )
-    }
-
-    private static func isInsideLevelTwoSection(named name: String, at offset: Int, in source: String) -> Bool {
-        guard let regex = try? NSRegularExpression(pattern: #"(?m)^(#{1,2})\s+([^\r\n#]+?)\s*#*\s*$"#) else { return false }
-        let nsSource = source as NSString
-        var activeSection: String?
-        for match in regex.matches(in: source, range: NSRange(location: 0, length: nsSource.length)) {
-            if match.range.location >= offset { break }
-            let level = match.range(at: 1).length
-            if level == 1 { activeSection = nil }
-            if level == 2 {
-                activeSection = nsSource.substring(with: match.range(at: 2))
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-        }
-        return activeSection?.caseInsensitiveCompare(name) == .orderedSame
-    }
-
-    private static func intersectsExcludedExceptInlinePredicate(
-        _ range: NSRange, predicate: NSRange, excluded: [NSRange]
-    ) -> Bool {
-        let allowed = NSRange(location: max(0, predicate.location - 1), length: predicate.length + 2)
-        return excluded.contains { candidate in
-            NSIntersectionRange(candidate, range).length > 0
-                && !(candidate.location >= allowed.location && NSMaxRange(candidate) <= NSMaxRange(allowed))
-        }
-    }
-
-    private static func parseRelationshipAnnotation(
-        _ annotation: String?
-    ) -> (alias: String?, relationship: RelationshipPredicate?) {
-        guard let annotation = optionalTrimmed(annotation ?? "") else { return (nil, nil) }
-        if annotation.hasPrefix(":"), let predicate = relationshipPredicate(String(annotation.dropFirst())) {
-            return (nil, predicate)
-        }
-        guard let colon = annotation.lastIndex(of: ":") else { return (annotation, nil) }
-        let suffix = String(annotation[annotation.index(after: colon)...])
-        guard let predicate = relationshipPredicate(suffix) else { return (annotation, nil) }
-        return (optionalTrimmed(String(annotation[..<colon])), predicate)
-    }
-
-    private static func relationshipPredicate(_ raw: String) -> RelationshipPredicate? {
-        let normalized = raw
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-            .replacingOccurrences(of: "-", with: "_")
-        if let exact = RelationshipPredicate.allCases.first(where: {
-            $0.rawValue.lowercased().replacingOccurrences(of: "-", with: "_") == normalized
-        }) {
-            return exact
-        }
-        return switch normalized {
-        case "see_also", "seealso": .seeAlso
-        case "objectsto": .objectsTo
-        case "repliesto": .repliesTo
-        case "dependson": .dependsOn
-        case "iscasefor": .isCaseFor
-        case "issourcefor": .isSourceFor
-        case "isbackgroundfor": .isBackgroundFor
-        case "isnotevidencefor": .isNotEvidenceFor
-        default: nil
-        }
+        return (target: destination.target, alias: alias, fragment: destination.fragment)
     }
 
     private static func splitTargetAndFragment(_ raw: String) -> (target: String, fragment: String?) {
@@ -1395,6 +1343,18 @@ public enum MarkdownSemanticParser {
             String(raw[..<hash]),
             optionalTrimmed(String(raw[raw.index(after: hash)...]))
         )
+    }
+
+    private static func localContext(in source: NSString, containing range: NSRange) -> String {
+        let start = min(max(0, range.location), source.length)
+        let upper = min(max(start, NSMaxRange(range)), source.length)
+        let firstLine = source.lineRange(for: NSRange(location: start, length: 0))
+        let lastLocation = upper > start ? upper - 1 : upper
+        let lastLine = source.lineRange(for: NSRange(location: lastLocation, length: 0))
+        return source.substring(with: NSRange(
+            location: firstLine.location,
+            length: NSMaxRange(lastLine) - firstLine.location
+        )).trimmingCharacters(in: .newlines)
     }
 
     private static func isExternalDestination(_ raw: String) -> Bool {

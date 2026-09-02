@@ -126,32 +126,12 @@ extension ScholiumCLI {
                 rule: .init(pathLength: 2, positionalCount: 1 ... 1, options: format),
                 help: "Usage: scholium links outgoing <vault>:<path> --format json"
             ),
-            "links relationships": .init(
-                rule: .init(pathLength: 2, positionalCount: 1 ... 1, options: format),
-                help: "Usage: scholium links relationships <vault>:<path> --format json"
-            ),
             "links diagnostics": .init(
                 rule: .init(
                     pathLength: 2,
                     options: ["--workspace": .flag, "--triptych": .value, "--format": .value]
                 ),
                 help: "Usage: scholium links diagnostics --workspace [--triptych <selector>] --format json"
-            ),
-            "graph trace": .init(
-                rule: .init(
-                    pathLength: 2,
-                    positionalCount: 2 ... 2,
-                    options: ["--max-depth": .value, "--format": .value]
-                ),
-                help: "Usage: scholium graph trace <source> <target> [--max-depth <1...10>] --format json"
-            ),
-            "graph relation-trace": .init(
-                rule: .init(
-                    pathLength: 2,
-                    positionalCount: 2 ... 2,
-                    options: ["--max-depth": .value, "--format": .value]
-                ),
-                help: "Usage: scholium graph relation-trace <source> <target> [--max-depth <1...10>] --format json"
             ),
             "workspace catalog": .init(
                 rule: .init(pathLength: 2, options: selected),

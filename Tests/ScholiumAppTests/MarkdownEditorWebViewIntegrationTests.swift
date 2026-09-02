@@ -1313,11 +1313,11 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Callout content boundaries, nested links, and arrows share one source projection")
+    @Test("Callout content boundaries and annotated links share one source projection")
     func calloutContentBoundaryAndNestedLinksShareOneProjection() async throws {
         let calloutSource = """
         > [!cite]- Synthetic source boundary
-        > +[[analysis-001|support]]; body ends with [[work-031|linked note]].
+        > [[analysis-001|support]]{{A source reason.}}; body ends with [[work-031|linked note]].
         """
         let source = "Lead.\n\n\(calloutSource)\n\nAfter.\n"
         let range = try #require(source.range(of: calloutSource))
@@ -1326,8 +1326,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         let linkRange = try #require(source.range(of: "[[work-031|linked note]]"))
         let linkFrom = linkRange.lowerBound.utf16Offset(in: source)
         let linkTo = linkRange.upperBound.utf16Offset(in: source)
-        let vectorLinkRange = try #require(source.range(of: "+[[analysis-001|support]]"))
-        let vectorLinkTo = vectorLinkRange.upperBound.utf16Offset(in: source)
+        let annotatedLinkRange = try #require(source.range(of: "[[analysis-001|support]]"))
+        let annotatedLinkTo = annotatedLinkRange.upperBound.utf16Offset(in: source)
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
@@ -1350,9 +1350,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
         #expect(inactive.renderedLinkTexts == ["support", "linked note"])
         #expect(inactive.renderedLinkTargets == ["analysis-001", "work-031"])
-        #expect(inactive.renderedLinkCaretOffsets == [vectorLinkTo, linkTo])
-        #expect(inactive.renderedLinkIconNames == ["plus", "link"])
-        #expect(inactive.renderedLinkIconMaskCount == 2)
+        #expect(inactive.renderedLinkCaretOffsets == [annotatedLinkTo, linkTo])
+        #expect(inactive.renderedAnnotationIconNames == ["text-bubble"])
+        #expect(inactive.renderedAnnotationIconMaskCount == 1)
 
         do {
             try await harness.session.testingClickFirstCalloutText("linked note")
@@ -1414,13 +1414,13 @@ struct MarkdownEditorWebViewIntegrationTests {
         let activeBody = try await harness.session.testingInlineProjectionSnapshot(
             containing: "body ends"
         )
-        #expect(activeBody.lineText.contains("> support; body ends"))
-        #expect(!activeBody.lineText.contains("+[[analysis-001|support]]"))
+        #expect(activeBody.lineText.contains("> supportA source reason.; body ends"))
+        #expect(!activeBody.lineText.contains("[[analysis-001|support]]"))
         try await harness.session.perform(.pastePlain, argument: "继续")
         let editedTo = calloutTo + 2
         try await harness.waitUntilSelection(head: editedTo)
         let edited = try await harness.session.currentText(for: harness.documentID)
-        #expect(edited.contains("> +[[analysis-001|support]]; body ends with [[work-031|linked note]].继续"))
+        #expect(edited.contains("> [[analysis-001|support]]{{A source reason.}}; body ends with [[work-031|linked note]].继续"))
         try await harness.session.testingPressArrow("ArrowRight")
         try await harness.waitUntilSelection(head: editedTo + 1, stage: "real separator after Callout")
         _ = try await harness.waitUntilPresentation(stage: "Callout restored after separator entry") {
@@ -2671,62 +2671,45 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
     }
 
-    @Test("Edit Vector Links use only the shared SF Symbol masks")
-    func editVectorLinksUseSystemSymbols() async throws {
-        let source = "Intro.\n\n+[[Support]] -[[Oppose]] ?[[Conflict]] [[Related]] [External](https://example.com)\n"
+    @Test("Edit presents an annotated link through one accessible disclosure")
+    func editAnnotatedLinkDisclosure() async throws {
+        let source = "Intro.\n\n[[Support]]{{First **reason**.\n\n- Second reason.}}\n"
         let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
 
-        let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: .seconds(3))
-        var snapshot: [String: Any] = [:]
-        while true {
-            snapshot = try #require(try await harness.callPageJavaScript(
+        let snapshot = try #require(try await harness.callPageJavaScript(
                 """
-                const icons = [...document.querySelectorAll('.cm-live-vector-icon')];
+                const button = document.querySelector('.scholium-link-annotation-button');
+                const panel = document.querySelector('.scholium-link-annotation-panel');
+                const icon = button?.querySelector('.scholium-link-annotation-icon');
+                if (!button || !panel || !icon) return null;
+                const initiallyHidden = panel.hidden;
+                button.click();
+                const style = getComputedStyle(icon);
                 return {
-                  names: icons.map(icon => icon.dataset.scholiumSystemSymbol || ''),
-                  maskCount: icons.filter(icon => {
-                    const style = getComputedStyle(icon);
-                    return [style.webkitMaskImage, style.maskImage].some(
-                      value => Boolean(value) && value !== 'none'
-                    );
-                  }).length,
-                  svgCount: icons.reduce((count, icon) => count + icon.querySelectorAll('svg').length, 0),
-                  visibleText: icons.map(icon => icon.textContent || '').join(''),
-                  sizes: icons.map(icon => {
-                    const rect = icon.getBoundingClientRect();
-                    return `${rect.width.toFixed(2)}x${rect.height.toFixed(2)}`;
-                  }),
-                  wikiColor: getComputedStyle(document.querySelector('.cm-live-vector-neutral')).color,
-                  externalColor: getComputedStyle(document.querySelector('.cm-live-link')).color,
-                  wikiDecoration: getComputedStyle(document.querySelector('.cm-live-vector-neutral')).textDecorationLine,
-                  externalDecoration: getComputedStyle(document.querySelector('.cm-live-link')).textDecorationLine
+                  initiallyHidden,
+                  expanded: button.getAttribute('aria-expanded'),
+                  panelHidden: panel.hidden,
+                  panelText: panel.textContent || '',
+                  strongText: panel.querySelector('strong')?.textContent || '',
+                  iconName: icon.dataset.scholiumSystemSymbol || '',
+                  iconMasked: [style.webkitMaskImage, style.maskImage].some(
+                    value => Boolean(value) && value !== 'none'
+                  ),
+                  svgCount: icon.querySelectorAll('svg').length
                 };
                 """
             ) as? [String: Any])
-            if (snapshot["names"] as? [String])?.count == 4 { break }
-            if clock.now >= deadline {
-                Issue.record("Edit did not project all Vector Link symbols: \(snapshot).")
-                throw MarkdownEditorSession.SessionError.unavailable
-            }
-            try await Task.sleep(for: .milliseconds(20))
-        }
 
-        #expect(snapshot["names"] as? [String] == [
-            "plus",
-            "minus",
-            "xmark",
-            "link",
-        ])
-        #expect(snapshot["maskCount"] as? Int == 4)
+        #expect(snapshot["initiallyHidden"] as? Bool == true)
+        #expect(snapshot["expanded"] as? String == "true")
+        #expect(snapshot["panelHidden"] as? Bool == false)
+        #expect((snapshot["panelText"] as? String)?.contains("Second reason.") == true)
+        #expect(snapshot["strongText"] as? String == "reason")
+        #expect(snapshot["iconName"] as? String == "text-bubble")
+        #expect(snapshot["iconMasked"] as? Bool == true)
         #expect(snapshot["svgCount"] as? Int == 0)
-        #expect(snapshot["visibleText"] as? String == "")
-        #expect(Set(snapshot["sizes"] as? [String] ?? []).count == 1)
-        #expect((snapshot["wikiColor"] as? String) == (snapshot["externalColor"] as? String))
-        #expect(snapshot["wikiDecoration"] as? String == "none")
-        #expect((snapshot["externalDecoration"] as? String)?.contains("underline") == true)
         await harness.closeAndDrain()
     }
 
@@ -2753,7 +2736,6 @@ struct MarkdownEditorWebViewIntegrationTests {
             targetFingerprint: DocumentFingerprint(content: "Embedded target"),
             title: "Embedded note",
             syntax: .embed,
-            relationship: nil,
             fragment: nil,
             htmlBody: "<h1>Embedded note</h1>" + String(
                 repeating: "<p>Complete projected paragraph.</p>",
@@ -2794,7 +2776,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                     .filter(heading => (heading.textContent || '').trim() === 'Embedded note').length,
                   hasTail: (body.textContent || '').includes('Complete editor embedded tail'),
                   scrolls: viewport.scrollHeight > viewport.clientHeight && viewport.scrollTop > 0,
-                  openBadgeCount: open.querySelectorAll('.cm-live-vector-icon').length,
+                  openBadgeCount: open.querySelectorAll('.scholium-system-symbol').length,
                   viewportTabIndex: viewport.tabIndex,
                   sourceLocatorCount: body.querySelectorAll('[data-source-utf16-start]').length
                 };
@@ -2861,7 +2843,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             "Highlight",
             "Link",
             "Wiki",
-            "Vector Link Options",
+            "Annotated Wikilink",
             "More Formatting",
         ])
         #expect(toolbar.wikiSeparatorCount == 0)
@@ -2891,7 +2873,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             "strikethrough",
             "highlighter",
             "link",
-            "chevron-down",
+            "text-bubble",
             "ellipsis",
         ])
         #expect(toolbar.toolbarSystemSymbolMaskCount == toolbar.toolbarSystemSymbolNames.count)
@@ -2920,16 +2902,6 @@ struct MarkdownEditorWebViewIntegrationTests {
             count: 7
         ))
         #expect(textStyle.minimumMenuRowHeight >= 28)
-
-        let vector = try await harness.session.testingSelectionToolbarSnapshot(
-            opening: "Vector Link Options"
-        )
-        #expect(vector.visibleMenuLabels == ["Supports", "Opposes", "Incompatible"])
-        #expect(vector.visibleMenuSystemSymbolNames == [
-            "plus-circle",
-            "minus-circle",
-            "xmark-circle",
-        ])
 
         let more = try await harness.session.testingSelectionToolbarSnapshot(
             opening: "More Formatting"
@@ -3932,7 +3904,6 @@ struct MarkdownEditorWebViewIntegrationTests {
             targetFingerprint: DocumentFingerprint(content: "Target body"),
             title: "Target note",
             syntax: .wikilink,
-            relationship: .neutral,
             fragment: nil,
             htmlBody: "<p>Target body</p>"
         )

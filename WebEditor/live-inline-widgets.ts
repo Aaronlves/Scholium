@@ -3,10 +3,10 @@ import {EditorView, WidgetType} from "@codemirror/view";
 import type {MathProjection} from "./math";
 import {localized, localizedTemplate} from "./localization";
 import {populatePreviewDocument} from "./preview-popover";
-import type {LinkPreview, VectorLinkKind} from "./previews";
+import type {LinkPreview} from "./previews";
 import {systemSymbolElement} from "./system-symbols";
 import {toggledTaskMarker} from "./transformations";
-import {vectorLinkSemantics} from "./markdown-fragment";
+import {appendMarkdownBlocks} from "./markdown-fragment";
 
 interface ListMarkerOptions {
   marker: string;
@@ -18,31 +18,6 @@ interface ListMarkerOptions {
   taskMarkerFrom: number | null;
   taskMarkerTo: number | null;
   taskChecked: boolean;
-}
-
-interface WikilinkPresentation {
-  displayStart: number;
-  displayEnd: number;
-  isLegacyRelationship: boolean;
-}
-
-const legacyRelationshipPredicates = new Set([
-  "supports", "contradicts", "extends", "refines", "incompatible_with",
-  "cites", "see_also", "connected", "answers", "subquestion_of", "premise_of",
-  "concludes", "assumes", "pressures", "uses_concept", "has_commitment", "targets",
-  "objects_to", "rebuts", "undercuts", "replies_to", "concedes", "depends_on",
-  "supersedes", "qualifies", "elicits", "tests", "illustrates", "counterexample_to",
-  "evidence_for", "attributes_to", "interprets", "derived_from", "is_case_for",
-  "is_source_for", "is_background_for", "is_not_evidence_for",
-]);
-
-function isLegacyRelationshipPredicate(raw: string): boolean {
-  const normalized = raw.trim().toLowerCase().replaceAll("-", "_");
-  if (legacyRelationshipPredicates.has(normalized)) return true;
-  return [
-    "seealso", "objectsto", "repliesto", "dependson", "iscasefor", "issourcefor",
-    "isbackgroundfor", "isnotevidencefor",
-  ].includes(normalized);
 }
 
 export function createLiveInlineWidgets(options: {
@@ -156,19 +131,57 @@ export function createLiveInlineWidgets(options: {
     }
   }
 
-  class VectorLinkIconWidget extends WidgetType {
-    constructor(readonly kind: VectorLinkKind) { super(); }
-    eq(other: VectorLinkIconWidget) { return other.kind === this.kind; }
-    toDOM() {
-      const semantics = vectorLinkSemantics[this.kind];
-      const span = systemSymbolElement(
-        semantics.symbol,
-        `cm-live-vector-icon cm-live-vector-icon-${this.kind.replaceAll("_", "-")}`,
-      );
-      span.title = semantics.label;
-      return span;
+  class LinkAnnotationWidget extends WidgetType {
+    constructor(
+      readonly markdown: string,
+      readonly target: string,
+    ) { super(); }
+
+    eq(other: LinkAnnotationWidget) {
+      return other.markdown === this.markdown && other.target === this.target;
     }
-    ignoreEvent() { return false; }
+
+    toDOM() {
+      const wrapper = document.createElement("span");
+      wrapper.className = "scholium-link-annotation-disclosure";
+      wrapper.dataset.scholiumProtected = "link-annotation";
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "scholium-link-annotation-button";
+      button.setAttribute("aria-expanded", "false");
+      button.setAttribute("aria-label", `${localized("Show Link Annotation")} ${this.target}`);
+      button.append(systemSymbolElement("text-bubble", "scholium-link-annotation-icon"));
+      const panel = document.createElement("span");
+      panel.className = "scholium-link-annotation-panel";
+      panel.setAttribute("role", "note");
+      panel.hidden = true;
+      const content = document.createElement("span");
+      content.className = "scholium-link-annotation-content";
+      appendMarkdownBlocks(this.markdown, content);
+      panel.append(content);
+      button.addEventListener("mousedown", (event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+      });
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        panel.hidden = !panel.hidden;
+        button.setAttribute("aria-expanded", panel.hidden ? "false" : "true");
+        button.setAttribute(
+          "aria-label",
+          `${localized(panel.hidden ? "Show Link Annotation" : "Hide Link Annotation")} ${this.target}`,
+        );
+      });
+      wrapper.append(button, panel);
+      return wrapper;
+    }
+
+    ignoreEvent(event: Event) {
+      const target = event.target instanceof Element ? event.target : null;
+      return Boolean(target?.closest(".scholium-link-annotation-disclosure"));
+    }
   }
 
   class EmbeddedNoteWidget extends WidgetType {
@@ -199,7 +212,7 @@ export function createLiveInlineWidgets(options: {
       const header = document.createElement("header");
       header.className = "scholium-embedded-note-header";
       const open = document.createElement("span");
-      open.className = "cm-live-vector-link cm-live-vector-neutral scholium-embedded-note-open";
+      open.className = "cm-live-wiki-link scholium-embedded-note-open";
       open.dir = "auto";
       open.dataset.scholiumLinkTarget = this.target;
       open.dataset.scholiumSourceCaret = String(this.sourceCaret);
@@ -284,51 +297,13 @@ export function createLiveInlineWidgets(options: {
     ignoreEvent() { return false; }
   }
 
-  function wikilinkPresentation(
-    targetStart: number,
-    target: string,
-    annotationStart: number | null,
-    annotation: string | undefined,
-  ): WikilinkPresentation {
-    const targetPresentation = {
-      displayStart: targetStart,
-      displayEnd: targetStart + target.length,
-      isLegacyRelationship: false,
-    };
-    if (annotationStart === null || annotation === undefined) return targetPresentation;
-
-    const trimmed = annotation.trim();
-    if (trimmed.startsWith(":") && isLegacyRelationshipPredicate(trimmed.slice(1))) {
-      return {...targetPresentation, isLegacyRelationship: true};
-    }
-    const lastColon = trimmed.lastIndexOf(":");
-    if (lastColon >= 0 && isLegacyRelationshipPredicate(trimmed.slice(lastColon + 1))) {
-      const rawAlias = trimmed.slice(0, lastColon);
-      const alias = rawAlias.trim();
-      if (!alias) return {...targetPresentation, isLegacyRelationship: true};
-      const trimmedOffset = annotation.indexOf(trimmed);
-      const aliasOffset = rawAlias.indexOf(alias);
-      const displayStart = annotationStart + trimmedOffset + aliasOffset;
-      return {
-        displayStart,
-        displayEnd: displayStart + alias.length,
-        isLegacyRelationship: true,
-      };
-    }
-    return {
-      displayStart: annotationStart,
-      displayEnd: annotationStart + annotation.length,
-      isLegacyRelationship: false,
-    };
-  }
-
   return {
     embeddedNote: (preview: LinkPreview, target: string, sourceCaret: number) =>
       new EmbeddedNoteWidget(preview, target, sourceCaret),
     listIndent,
     listMarker: (value: ListMarkerOptions) => new ListMarkerWidget(value),
     math: (expression: MathProjection) => new MathWidget(expression),
-    vectorLinkIcon: (kind: VectorLinkKind) => new VectorLinkIconWidget(kind),
-    wikilinkPresentation,
+    linkAnnotation: (markdown: string, target: string) =>
+      new LinkAnnotationWidget(markdown, target),
   };
 }

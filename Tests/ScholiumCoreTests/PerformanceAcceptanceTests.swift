@@ -50,10 +50,10 @@ struct PerformanceRegressionMicrobenchmarkTests {
         )
     }
 
-    @Test("Search v9 records its 2,056-note cold, warm, and incremental acceptance evidence")
+    @Test("Search v10 records its 2,056-note cold, warm, and incremental acceptance evidence")
     func searchFoundationAcceptanceEvidence() async throws {
         let root = repositoryRoot
-            .appendingPathComponent(".build/search-v9-performance-artifacts", isDirectory: true)
+            .appendingPathComponent(".build/search-v10-performance-artifacts", isDirectory: true)
             .appendingPathComponent(UUID().uuidString.lowercased(), isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let triptychID = UUID()
@@ -62,7 +62,7 @@ struct PerformanceRegressionMicrobenchmarkTests {
             RegisteredVault(name: "Topics", role: .topicKnowledge, canonicalPath: "/fixture/topics"),
             RegisteredVault(name: "Works", role: .draftProject, canonicalPath: "/fixture/works"),
         ]
-        let databaseURL = root.appendingPathComponent("search-v9.sqlite")
+        let databaseURL = root.appendingPathComponent("search-v10.sqlite")
         let index = try TriptychSearchIndex(
             databaseURL: databaseURL,
             triptychID: triptychID
@@ -130,7 +130,7 @@ struct PerformanceRegressionMicrobenchmarkTests {
         let incrementalP95 = p95(incrementalSamples)
         let generation = try #require(await index.generation())
         let report: [String: Any] = [
-            "artifact_schema": "scholium-search-v9-performance-v2",
+            "artifact_schema": "scholium-search-v10-performance-v2",
             "fixture": "synthetic-mixed-script-2056",
             "fixture_note_count": documents.count,
             "fixture_manifest": generation.sourceManifestHash,
@@ -166,10 +166,10 @@ struct PerformanceRegressionMicrobenchmarkTests {
         print("SEARCH_V9_PERFORMANCE_REPORT \(reportURL.path)")
         print(String(decoding: reportData, as: UTF8.self))
 
-        #expect(warmQueryP95 <= 0.100, "Warm Search v9 p95 was \(warmQueryP95) seconds")
+        #expect(warmQueryP95 <= 0.100, "Warm Search v10 p95 was \(warmQueryP95) seconds")
         #expect(
             incrementalP95 <= 0.250,
-            "Single-note Search v9 publication p95 was \(incrementalP95) seconds"
+            "Single-note Search v10 publication p95 was \(incrementalP95) seconds"
         )
     }
 

@@ -268,7 +268,7 @@ public actor ScholiumMCPServer {
         ),
         tool(
             .listLinks,
-            description: "List authored incoming or outgoing link occurrences and exact source locators.",
+            description: "List authored incoming or outgoing link occurrences with source-owned annotations and exact locators.",
             properties: [
                 "triptych_id": uuidSchema("Open Triptych UUID."),
                 "note_id": uuidSchema("Stable Note UUID."),
@@ -533,6 +533,10 @@ public actor ScholiumMCPServer {
                     "has_more": booleanSchema,
                     "links": arraySchema(closedObject(
                         properties: [
+                            "occurrence_direction": .object([
+                                "type": .string("string"),
+                                "enum": .array([.string("outgoing")]),
+                            ]),
                             "source_note_id": nullable(uuidSchema("Stable Note UUID.")),
                             "destination_note_id": nullable(uuidSchema("Stable Note UUID.")),
                             "source_role": .object([
@@ -543,16 +547,29 @@ public actor ScholiumMCPServer {
                                 ]),
                             ]),
                             "source_relative_path": simpleSchema("string"),
-                            "exact_markup": simpleSchema("string"),
+                            "destination_role": nullable(roleSchema),
+                            "destination_relative_path": nullable(simpleSchema("string")),
+                            "occurrence_markup": simpleSchema("string"),
+                            "link_markup": simpleSchema("string"),
+                            "annotation_markup": nullable(simpleSchema("string")),
+                            "annotation_text": nullable(simpleSchema("string")),
                             "authored_target": simpleSchema("string"),
+                            "local_context": simpleSchema("string"),
                             "source_fingerprint": fingerprintSchema,
                             "source_locator": locatorSchema,
+                            "link_locator": locatorSchema,
+                            "annotation_locator": nullable(locatorSchema),
                         ],
                         required: [
+                            "occurrence_direction",
                             "source_note_id", "destination_note_id",
                             "source_role", "source_relative_path",
-                            "exact_markup", "authored_target",
+                            "destination_role", "destination_relative_path",
+                            "occurrence_markup", "link_markup",
+                            "annotation_markup", "annotation_text",
+                            "authored_target", "local_context",
                             "source_fingerprint", "source_locator",
+                            "link_locator", "annotation_locator",
                         ]
                     )),
                 ],
@@ -627,7 +644,7 @@ public actor ScholiumMCPServer {
             properties: properties.merging([
                 "schema_version": .object([
                     "type": .string("integer"),
-                    "const": .integer(1),
+                    "const": .integer(ScholiumMCPContract.currentToolSchemaVersion),
                 ]),
                 "status": .object([
                     "type": .string("string"),
@@ -642,7 +659,7 @@ public actor ScholiumMCPServer {
         properties: [
             "schema_version": .object([
                 "type": .string("integer"),
-                "const": .integer(1),
+                "const": .integer(ScholiumMCPContract.currentToolSchemaVersion),
             ]),
             "status": .object([
                 "type": .string("string"),

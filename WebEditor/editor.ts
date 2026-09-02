@@ -135,9 +135,6 @@ import {
   calloutDefinition as resolveCalloutDefinition,
   calloutHeader,
 } from "./callout-presentation";
-import {
-  vectorLinkSemantics,
-} from "./markdown-fragment";
 import {validatedLinkPreviews, type LinkPreview} from "./previews";
 import {
   createLiveSelectionController,
@@ -480,6 +477,37 @@ function buildLiveDecorations(
     decorations.push(range);
     atomicRanges.push(range);
   };
+  // ViewPlugin decorations cannot replace line breaks. Keep the complete
+  // annotation atomic while projecting its exact per-line source segments,
+  // and collapse continuation lines that contain annotation source only.
+  const addMultilineAtomicReplacement = (
+    decoration: Decoration,
+    from: number,
+    to: number,
+  ) => {
+    if (to <= from) return;
+    atomicRanges.push(Decoration.mark({}).range(from, to));
+    const firstLineNumber = doc.lineAt(from).number;
+    let line = doc.lineAt(from);
+    let placedWidget = false;
+    while (line.from < to || line.from === from) {
+      const segmentFrom = Math.max(from, line.from);
+      const segmentTo = Math.min(to, line.to);
+      if (segmentTo > segmentFrom) {
+        decorations.push(
+          (placedWidget ? hiddenSyntax : decoration).range(segmentFrom, segmentTo),
+        );
+        placedWidget = true;
+      }
+      if (line.number !== firstLineNumber && from <= line.from && to >= line.to) {
+        decorations.push(Decoration.line({
+          attributes: {class: "cm-live-link-annotation-source-line"},
+        }).range(line.from));
+      }
+      if (line.to >= to || line.to === doc.length) break;
+      line = doc.line(line.number + 1);
+    }
+  };
   /** @param {number} from @param {number} to @param {string} className */
   const addMark = (from: number, to: number, className: string) => {
     if (to > from) decorations.push(liveMark(className).range(from, to));
@@ -722,16 +750,16 @@ function buildLiveDecorations(
           }
         }
 
-        // The Lezer-owned catalog decides whether this is a wikilink, embed,
-        // or vector link and supplies its exact target/alias ranges. This
-        // adapter only chooses the inactive visual representation.
+        // The Lezer-owned catalog supplies the exact Wikilink target/alias
+        // ranges. The semantic projection extends a valid adjacent annotation
+        // without making the annotation a second link.
         for (const construct of rangesIntersecting(
           parsedProjection.inlines,
           scanFrom,
           lineQueryTo,
-        ).filter((candidate) =>
-          candidate.kind === "wikilink" || candidate.kind === "vectorLink")) {
-          if (construct.from < scanFrom || construct.to > scanTo
+        ).filter((candidate) => candidate.kind === "wikilink")) {
+          const linkRange = construct.linkRange ?? {from: construct.from, to: construct.to};
+          if (linkRange.from < scanFrom || linkRange.to > scanTo
               || overlaps(excluded, construct.from, construct.to)
               || overlaps(structuralInlineExclusions, construct.from, construct.to)) continue;
           const targetRange = construct.targetRange;
@@ -739,73 +767,61 @@ function buildLiveDecorations(
           excluded.push({from: construct.from, to: construct.to});
           if (inlineConstructIsActive(construct.from, construct.to)) continue;
 
-          const embed = construct.kind === "wikilink"
-            && doc.sliceString(construct.from, Math.min(construct.to, construct.from + 3)) === "![[";
-          const marker = construct.kind === "vectorLink"
-            ? doc.sliceString(construct.from, construct.from + 1)
-            : "";
-          const kind = construct.kind === "vectorLink"
-            ? editingDialect?.vectorLinkOperators.find((candidate) => candidate.marker === marker)?.kind
-              ?? "neutral"
-            : "neutral";
+          const embed = doc.sliceString(linkRange.from, Math.min(linkRange.to, linkRange.from + 3)) === "![[";
           const target = doc.sliceString(targetRange.from, targetRange.to);
           const alias = construct.aliasRange
             ? doc.sliceString(construct.aliasRange.from, construct.aliasRange.to)
             : undefined;
-          const presentation = liveInlineWidgets.wikilinkPresentation(
-            targetRange.from,
-            target,
-            construct.aliasRange?.from ?? null,
-            alias,
-          );
-          const previewIndex = linkPreviewIndexByRange.get(rangeKey(construct.from, construct.to));
+          const displayRange = construct.aliasRange ?? targetRange;
+          const previewIndex = linkPreviewIndexByRange.get(rangeKey(linkRange.from, linkRange.to));
           const preview = previewIndex === undefined ? undefined : linkPreviews[previewIndex];
           if (embed && preview?.isEmbedded) {
             addAtomicReplacement(
               Decoration.replace({
-                widget: liveInlineWidgets.embeddedNote(preview, target, construct.to),
+                widget: liveInlineWidgets.embeddedNote(preview, target, linkRange.to),
               }),
-              construct.from,
-              construct.to,
+              linkRange.from,
+              linkRange.to,
             );
             continue;
           }
-          addHidden(construct.from, targetRange.from);
+          addHidden(linkRange.from, displayRange.from);
 
-          const linkClass = embed
-            ? "cm-live-embed"
-            : presentation.isLegacyRelationship && kind === "neutral"
-              ? "cm-live-vector-link cm-live-vector-neutral cm-live-vector-legacy"
-              : `cm-live-vector-link cm-live-vector-${kind.replaceAll("_", "-")}`;
+          const linkClass = embed ? "cm-live-embed" : "cm-live-wiki-link";
           const projectedLinkAttributes = {
             "data-scholium-link-target": target,
-            "data-scholium-source-caret": String(construct.to),
-            ...(embed ? {} : {
-              "aria-label": `${vectorLinkSemantics[kind].label} ${alias || target}`,
-            }),
+            "data-scholium-source-caret": String(linkRange.to),
           };
-          addHidden(targetRange.from, presentation.displayStart);
           if (previewIndex === undefined) {
             decorations.push(Decoration.mark({
               class: linkClass,
               attributes: projectedLinkAttributes,
-            }).range(presentation.displayStart, presentation.displayEnd));
+            }).range(displayRange.from, displayRange.to));
           } else {
             addPreviewMark(
-              presentation.displayStart,
-              presentation.displayEnd,
+              displayRange.from,
+              displayRange.to,
               linkClass,
               previewIndex,
               projectedLinkAttributes,
             );
           }
-          if (!embed) {
-            decorations.push(Decoration.widget({
-              widget: liveInlineWidgets.vectorLinkIcon(kind),
-              side: -1,
-            }).range(presentation.displayEnd));
+          addHidden(displayRange.to, linkRange.to);
+          if (construct.annotationRange && construct.annotationContentRange) {
+            addMultilineAtomicReplacement(
+              Decoration.replace({
+                widget: liveInlineWidgets.linkAnnotation(
+                  doc.sliceString(
+                    construct.annotationContentRange.from,
+                    construct.annotationContentRange.to,
+                  ),
+                  alias || target,
+                ),
+              }),
+              construct.annotationRange.from,
+              construct.annotationRange.to,
+            );
           }
-          addHidden(presentation.displayEnd, construct.to);
         }
 
         for (const construct of rangesIntersecting(

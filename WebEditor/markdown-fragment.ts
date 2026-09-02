@@ -5,9 +5,9 @@ import {
   type TablePresentation,
   type TablePresentationCell,
 } from "./table-presentation";
-import {systemSymbolElement, type WebSystemSymbolKey} from "./system-symbols";
-import type {VectorLinkKind} from "./previews";
+import {systemSymbolElement} from "./system-symbols";
 import {localized} from "./localization";
+import {linkAnnotationAfter} from "./link-annotation";
 
 export interface MarkdownFragmentCallout {
   identifier: string;
@@ -18,19 +18,8 @@ export interface MarkdownFragmentCallout {
 export interface MarkdownFragmentOptions {
   mathematics?: MathDialect;
   resolveCallout?: (rawKind: string) => MarkdownFragmentCallout;
-  resolveVectorLink?: (marker: string) => VectorLinkKind;
   sourceOffset?: (fragmentOffset: number) => number;
 }
-
-export const vectorLinkSemantics: Record<
-  VectorLinkKind,
-  {label: string; symbol: WebSystemSymbolKey}
-> = {
-  neutral: {label: localized("Related note"), symbol: "link"},
-  supports: {label: localized("Supports"), symbol: "plus"},
-  opposes: {label: localized("Opposes"), symbol: "minus"},
-  incompatible: {label: localized("Incompatible"), symbol: "xmark"},
-};
 
 interface MarkdownTreeCursor {
   readonly name: string;
@@ -127,35 +116,21 @@ function appendInlineMarkdownNode(
     parent.append(span);
     return;
   }
-  if (cursor.name === "WikiLink" || cursor.name === "VectorLink") {
-    const link = /^(!?)([+\-?]?)\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/.exec(raw);
+  if (cursor.name === "WikiLink") {
+    const link = /^(!?)\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/.exec(raw);
     if (!link) {
       parent.append(document.createTextNode(raw));
       return;
     }
     const span = document.createElement("span");
     const embed = link[1] === "!";
-    const kind = options.resolveVectorLink?.(link[2]) ?? "neutral";
     span.className = embed
       ? "cm-live-embed"
-      : `cm-live-vector-link cm-live-vector-${kind.replaceAll("_", "-")}`;
+      : "cm-live-wiki-link";
     span.dir = "auto";
-    const target = link[3].trim();
-    const alias = link[4]?.trim();
-    if (!embed) {
-      const semantics = vectorLinkSemantics[kind];
-      const icon = systemSymbolElement(
-        semantics.symbol,
-        `cm-live-vector-icon cm-live-vector-icon-${kind.replaceAll("_", "-")}`,
-        document,
-      );
-      icon.title = semantics.label;
-      span.setAttribute("aria-label", `${semantics.label} ${alias || target}`);
-      span.append(document.createTextNode(alias || target));
-      span.append(icon);
-    } else {
-      span.append(document.createTextNode(alias || target));
-    }
+    const target = link[2].trim();
+    const alias = link[3]?.trim();
+    span.append(document.createTextNode(alias || target));
     // A rendered Wikilink behaves as one projected object on first entry.
     // Its exact half-open source end is the stable insertion point after `]]`;
     // one subsequent backward move can then reveal and enter the syntax.
@@ -232,11 +207,94 @@ function appendMath(
   parent.append(element);
 }
 
+function firstAnnotatedWikilink(source: string) {
+  const expression = /\[\[([^\]\r\n]+)\]\]/g;
+  for (const match of source.matchAll(expression)) {
+    const from = match.index;
+    let backslashes = 0;
+    for (let cursor = from - 1; cursor >= 0 && source[cursor] === "\\"; cursor -= 1) backslashes += 1;
+    if (backslashes % 2 === 1 || source[from - 1] === "!") continue;
+    const linkTo = from + match[0].length;
+    const annotation = linkAnnotationAfter(source, linkTo);
+    if (annotation) return {from, linkTo, raw: match[0], annotation};
+  }
+  return null;
+}
+
+function appendAnnotatedWikilink(
+  rawLink: string,
+  annotationMarkdown: string,
+  parent: HTMLElement,
+  options: MarkdownFragmentOptions,
+) {
+  const parsed = /^\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/.exec(rawLink);
+  if (!parsed) {
+    parent.append(documentFor(parent).createTextNode(`${rawLink}{{${annotationMarkdown}}}`));
+    return;
+  }
+  const document = documentFor(parent);
+  const wrapper = document.createElement("span");
+  wrapper.className = "scholium-annotated-link";
+  wrapper.dataset.scholiumProtected = "link-annotation";
+  const link = document.createElement("span");
+  link.className = "cm-live-wiki-link";
+  link.dir = "auto";
+  const target = parsed[1].trim();
+  const alias = parsed[2]?.trim();
+  link.textContent = alias || target;
+  identifyProjectedLink(link, target, 0, rawLink.length, rawLink.length, options);
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "scholium-link-annotation-button";
+  button.setAttribute("aria-expanded", "false");
+  button.setAttribute("aria-label", `${localized("Show Link Annotation")} ${alias || target}`);
+  button.append(systemSymbolElement("text-bubble", "scholium-link-annotation-icon", document));
+  const panel = document.createElement("span");
+  panel.className = "scholium-link-annotation-panel";
+  panel.setAttribute("role", "note");
+  panel.hidden = true;
+  const content = document.createElement("span");
+  content.className = "scholium-link-annotation-content";
+  appendMarkdownBlocks(annotationMarkdown, content, optionsAt(options, rawLink.length + 2));
+  panel.append(content);
+  button.addEventListener("click", () => {
+    panel.hidden = !panel.hidden;
+    button.setAttribute("aria-expanded", panel.hidden ? "false" : "true");
+    button.setAttribute(
+      "aria-label",
+      `${localized(panel.hidden ? "Show Link Annotation" : "Hide Link Annotation")} ${alias || target}`,
+    );
+  });
+  wrapper.append(link, button, panel);
+  parent.append(wrapper);
+}
+
 export function appendInlineMarkdown(
   source: string,
   parent: HTMLElement,
   options: MarkdownFragmentOptions = {},
 ) {
+  const annotated = firstAnnotatedWikilink(source);
+  if (annotated) {
+    if (annotated.from > 0) {
+      appendInlineMarkdown(source.slice(0, annotated.from), parent, options);
+    }
+    appendAnnotatedWikilink(
+      annotated.raw,
+      annotated.annotation.markdown,
+      parent,
+      optionsAt(options, annotated.from),
+    );
+    if (annotated.annotation.to < source.length) {
+      appendInlineMarkdown(
+        source.slice(annotated.annotation.to),
+        parent,
+        optionsAt(options, annotated.annotation.to),
+      );
+    }
+    return;
+  }
   const expressions = options.mathematics
     ? scanMath(source, options.mathematics).filter((expression) => expression.kind === "inline")
     : [];

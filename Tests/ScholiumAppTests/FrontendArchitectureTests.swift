@@ -2701,7 +2701,7 @@ struct FrontendArchitectureTests {
         #expect(source.contains("case .lexical("))
         #expect(source.contains("case .structured("))
         #expect(source.contains("case .property("))
-        #expect(source.contains("case .relation("))
+        #expect(source.contains("case .link("))
         #expect(source.contains("Explain Query:"))
     }
 
@@ -3816,9 +3816,6 @@ struct FrontendArchitectureTests {
             .destructive: 0x8D453E,
             .confirmed: 0x3E664B,
             .agentAuthorship: 0x61577C,
-            .connectionNeutral: 0x6F593F,
-            .connectionSupport: 0x2F675E,
-            .connectionIncompatible: 0x72516A,
         ]
         let expectedDark: [ScholiumColorRole: UInt32] = [
             .documentBackground: 0x2E2921,
@@ -3838,9 +3835,6 @@ struct FrontendArchitectureTests {
             .destructive: 0xF6A39A,
             .confirmed: 0x99C4A6,
             .agentAuthorship: 0xBDB3DD,
-            .connectionNeutral: 0xCCB396,
-            .connectionSupport: 0x8CC5BA,
-            .connectionIncompatible: 0xD2ADC8,
         ]
         let expectedIncreasedContrastLight: [ScholiumColorRole: UInt32] = [
             .documentBackground: 0xFEF8ED,
@@ -3860,9 +3854,6 @@ struct FrontendArchitectureTests {
             .destructive: 0x681212,
             .confirmed: 0x1A4129,
             .agentAuthorship: 0x3B3154,
-            .connectionNeutral: 0x48331A,
-            .connectionSupport: 0x01423A,
-            .connectionIncompatible: 0x4A2C43,
         ]
         let expectedIncreasedContrastDark: [ScholiumColorRole: UInt32] = [
             .documentBackground: 0x2E2921,
@@ -3882,9 +3873,6 @@ struct FrontendArchitectureTests {
             .destructive: 0xFFDBD6,
             .confirmed: 0xC3EFD0,
             .agentAuthorship: 0xE6E0FD,
-            .connectionNeutral: 0xFAE0C2,
-            .connectionSupport: 0xB6F0E5,
-            .connectionIncompatible: 0xFED7F4,
         ]
 
         for palette in [
@@ -3933,7 +3921,6 @@ struct FrontendArchitectureTests {
         let foregroundRoles: [ScholiumColorRole] = [
             .primaryText, .secondaryText, .mutedText, .accent, .accentHover,
             .information, .attention, .destructive, .confirmed, .agentAuthorship,
-            .connectionNeutral, .connectionSupport, .connectionIncompatible,
         ]
         let backgroundRoles: [ScholiumColorRole] = [
             .documentBackground, .surfaceBackground, .navigationSurfaceBackground,
@@ -4791,23 +4778,6 @@ struct FrontendArchitectureTests {
         #expect(!css.contains("prefers-reduced-transparency: reduce"))
         #expect(editorHTML.contains(css))
 
-        let preview = DocumentLinkPreview(
-            sourceSpan: SourceSpan(
-                utf8LowerBound: 0,
-                utf8UpperBound: 10,
-                utf16LowerBound: 0,
-                utf16UpperBound: 10,
-                start: SourcePosition(line: 1, utf8Column: 1, utf16Column: 1),
-                end: SourcePosition(line: 1, utf8Column: 11, utf16Column: 11)
-            ),
-            target: VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Target.md"),
-            targetFingerprint: DocumentFingerprint(content: "Target body"),
-            title: "Target note",
-            syntax: .vectorWikilink,
-            relationship: .supports,
-            fragment: "Claim",
-            htmlBody: "<p>Target body</p>"
-        )
         let readHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
             body:
                 #"<a class="wiki-link" data-source-utf16-start="0" data-source-utf16-end="10">Target</a>"#
@@ -4834,153 +4804,46 @@ struct FrontendArchitectureTests {
         #expect(!previewControllerSource.contains("mode()"))
     }
 
-    @Test("Relationship colors provide increased-contrast variants")
-    func increasedContrastRelationshipColors() throws {
-        let aqua = try #require(NSAppearance(named: .aqua))
-        let darkAqua = try #require(NSAppearance(named: .darkAqua))
-
-        #expect(
-            ScholiumColorRole.connectionSupport.resolvedRGBValue(
-                for: aqua,
-                increasedContrast: false
-            ) == 0x2F675E)
-        #expect(
-            ScholiumColorRole.connectionSupport.resolvedRGBValue(
-                for: darkAqua,
-                increasedContrast: false
-            ) == 0x8CC5BA)
-        #expect(
-            ScholiumColorRole.connectionSupport.resolvedRGBValue(
-                for: aqua,
-                increasedContrast: true
-            ) == 0x01423A)
-        #expect(
-            ScholiumColorRole.connectionSupport.resolvedRGBValue(
-                for: darkAqua,
-                increasedContrast: true
-            ) == 0xB6F0E5)
-
-        #expect(
-            ScholiumColorRole.connectionIncompatible.resolvedRGBValue(
-                for: aqua,
-                increasedContrast: false
-            ) == 0x72516A)
-        #expect(
-            ScholiumColorRole.connectionIncompatible.resolvedRGBValue(
-                for: darkAqua,
-                increasedContrast: false
-            ) == 0xD2ADC8)
-        #expect(
-            ScholiumColorRole.connectionIncompatible.resolvedRGBValue(
-                for: aqua,
-                increasedContrast: true
-            ) == 0x4A2C43)
-        #expect(
-            ScholiumColorRole.connectionIncompatible.resolvedRGBValue(
-                for: darkAqua,
-                increasedContrast: true
-            ) == 0xFED7F4)
-
-        #expect(ScholiumWebDesignTokens.increasedContrastCSSDeclarations.contains("#01423a"))
-        #expect(ScholiumWebDesignTokens.increasedContrastCSSDeclarations.contains("#4a2c43"))
-        #expect(ScholiumWebDesignTokens.darkIncreasedContrastCSSDeclarations.contains("#b6f0e5"))
-        #expect(ScholiumWebDesignTokens.darkIncreasedContrastCSSDeclarations.contains("#fed7f4"))
-    }
-
-    @Test("The live Connections inspector uses one semantic presentation")
-    func sharedConnectionPresentation() throws {
-        let expected: [(ScholiumConnectionPresentation, String, ScholiumSystemSymbol)] = [
-            (.supports, "Supports", .plusCircle),
-            (.supportsThisNote, "Supports This Note", .plusCircle),
-            (.opposes, "Opposes", .minusCircle),
-            (.opposesThisNote, "Opposes This Note", .minusCircle),
-            (.incompatible, "Incompatible", .xmarkCircle),
-            (.neutral, "Related", .link),
-        ]
-        for (presentation, title, systemSymbol) in expected {
-            #expect(presentation.title == title)
-            #expect(presentation.systemSymbol == systemSymbol)
-        }
-
-        #expect(
-            ScholiumConnectionPresentation(
-                vectorKind: .supports,
-                currentIsSource: true
-            ) == .supports)
-        #expect(
-            ScholiumConnectionPresentation(
-                vectorKind: .supports,
-                currentIsSource: false
-            ) == .supportsThisNote)
-        #expect(
-            ScholiumConnectionPresentation(
-                vectorKind: .opposes,
-                currentIsSource: true
-            ) == .opposes)
-        #expect(
-            ScholiumConnectionPresentation(
-                vectorKind: .opposes,
-                currentIsSource: false
-            ) == .opposesThisNote)
-        #expect(
-            ScholiumConnectionPresentation(
-                vectorKind: .incompatible,
-                currentIsSource: true
-            ) == .incompatible)
-        #expect(
-            ScholiumConnectionPresentation(
-                vectorKind: .incompatible,
-                currentIsSource: false
-            ) == .incompatible)
-        #expect(
-            ScholiumConnectionPresentation(
-                vectorKind: nil,
-                currentIsSource: true
-            ) == .neutral)
-
+    @Test("Read configuration and native message receipt share one protocol version")
+    func readProtocolVersionIsUnified() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-        for relativePath in ["Scholium/Views/Backlinks/ConnectionsInspectorView.swift"] {
-            let source = try String(
-                contentsOf: repository.appendingPathComponent(relativePath),
-                encoding: .utf8
-            )
-            #expect(source.contains("ScholiumConnectionPresentation"))
-            #expect(!source.contains("VectorRelationshipSection"))
-            #expect(!source.contains("WorkspaceConnectionKind"))
-        }
+        let source = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Note/SafeMarkdownReadWebView.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(source.contains("version: 2,"))
+        #expect(source.contains(#"payload["version"] as? Int == 2"#))
+        #expect(!source.contains(#"payload["version"] as? Int == 1"#))
     }
 
-    @Test("Connection direction filters only directed relations")
+    @Test("The live Connections inspector presents exact link occurrences")
+    func linkOccurrencePresentation() throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let source = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Backlinks/ConnectionsInspectorView.swift"
+            ),
+            encoding: .utf8
+        )
+        #expect(source.contains("LinkOccurrenceRow"))
+        #expect(source.contains("edge.occurrence.annotation"))
+        #expect(source.contains("edge.occurrence.localContext"))
+        #expect(source.contains("Edit at Source"))
+        #expect(!source.contains("ScholiumConnectionPresentation"))
+    }
+
+    @Test("Connection direction names exact incoming and outgoing projections")
     func connectionDirectionMembership() {
-        #expect(
-            ConnectionDirection.outgoing.includes(
-                currentIsSource: true,
-                vectorKind: .supports
-            ))
-        #expect(
-            !ConnectionDirection.outgoing.includes(
-                currentIsSource: false,
-                vectorKind: .supports
-            ))
-        #expect(
-            ConnectionDirection.incoming.includes(
-                currentIsSource: false,
-                vectorKind: .opposes
-            ))
-        #expect(
-            !ConnectionDirection.incoming.includes(
-                currentIsSource: true,
-                vectorKind: .opposes
-            ))
-        for direction in ConnectionDirection.allCases {
-            for vectorKind in [nil, .neutral, .incompatible] as [VectorLinkKind?] {
-                #expect(direction.includes(currentIsSource: true, vectorKind: vectorKind))
-                #expect(direction.includes(currentIsSource: false, vectorKind: vectorKind))
-            }
-        }
+        #expect(ConnectionDirection.outgoing.title == "Outgoing Links")
+        #expect(ConnectionDirection.incoming.title == "Incoming Links")
     }
 
     private func rgbValue(of color: NSColor, appearance: NSAppearance) -> UInt32? {

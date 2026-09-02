@@ -158,20 +158,7 @@ public protocol DiscoveryUseCases: Sendable {
         for note: VaultQualifiedNoteID,
         direction: WorkspaceLinkDirection
     ) async throws -> [LinkGraphEdge]
-    func relationships(
-        for note: VaultQualifiedNoteID
-    ) async throws -> [RelationshipEdge]
     func linkDiagnostics() async throws -> [LinkGraphDiagnostic]
-    func traceLinks(
-        from source: VaultQualifiedNoteID,
-        to target: VaultQualifiedNoteID,
-        maximumDepth: Int
-    ) async throws -> [[LinkGraphEdge]]
-    func traceRelationships(
-        from source: VaultQualifiedNoteID,
-        to target: VaultQualifiedNoteID,
-        maximumDepth: Int
-    ) async throws -> [RelationshipTrace]
 }
 
 /// App-owned researcher judgments and recovery operations. External Agent

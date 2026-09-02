@@ -247,9 +247,7 @@ extension ScholiumCLI {
         let propertyKey: String?
         let matchKind: SearchLexicalMatchKind?
         let excluded: Bool
-        let relation: SearchRelation?
-        let relationDirection: SearchRelationDirection?
-        let symmetric: Bool?
+        let linkDirection: SearchLinkDirection?
         let sourceRange: SearchQuerySourceRangeRecord
 
         init(_ clause: SearchExplanationClause) {
@@ -262,9 +260,7 @@ extension ScholiumCLI {
                 propertyKey = nil
                 matchKind = lexicalKind
                 excluded = isExcluded
-                relation = nil
-                relationDirection = nil
-                symmetric = nil
+                linkDirection = nil
             case .structured(let structuredField, let structuredValue, let isExcluded):
                 kind = "structured"
                 field = structuredField.rawValue
@@ -272,9 +268,7 @@ extension ScholiumCLI {
                 propertyKey = nil
                 matchKind = nil
                 excluded = isExcluded
-                relation = nil
-                relationDirection = nil
-                symmetric = nil
+                linkDirection = nil
             case .property(let key, let exactValue):
                 kind = "property"
                 field = "property"
@@ -282,19 +276,15 @@ extension ScholiumCLI {
                 propertyKey = key
                 matchKind = nil
                 excluded = false
-                relation = nil
-                relationDirection = nil
-                symmetric = nil
-            case .relation(let direction, let identity, let relationValue, let isSymmetric):
-                kind = "relationship"
+                linkDirection = nil
+            case .link(let direction, let identity):
+                kind = "link"
                 field = direction.rawValue
                 value = identity
                 propertyKey = nil
                 matchKind = nil
                 excluded = false
-                relation = relationValue
-                relationDirection = direction
-                symmetric = isSymmetric
+                linkDirection = direction
             }
         }
 
@@ -305,10 +295,8 @@ extension ScholiumCLI {
                 let key = propertyKey ?? "unknown"
                 if let value { return "property \(key)=\"\(value)\"" }
                 return "property \(key) present"
-            case "relationship":
-                return "\(relationDirection?.rawValue ?? field ?? "relation") \"\(value ?? "")\" "
-                    + "relation \(relation?.rawValue ?? "unknown")"
-                    + (symmetric == true ? " (symmetric)" : "")
+            case "link":
+                return "\(linkDirection?.rawValue ?? field ?? "link") \"\(value ?? "")\""
             default:
                 let fieldPrefix = field.map { "\($0):" } ?? ""
                 let renderedValue = matchKind == .phrase ? "\"\(value ?? "")\"" : (value ?? "")
@@ -368,7 +356,7 @@ extension ScholiumCLI {
         let kind: String
         let structured: SearchStructuredMatch?
         let property: SearchPropertyMatch?
-        let relationship: SearchRelationshipMatch?
+        let link: SearchLinkMatch?
 
         init(_ reason: NoteSearchMatchReason) {
             switch reason {
@@ -376,22 +364,22 @@ extension ScholiumCLI {
                 kind = "lexical"
                 structured = nil
                 property = nil
-                relationship = nil
+                link = nil
             case .structured(let value):
                 kind = "structured"
                 structured = value
                 property = nil
-                relationship = nil
+                link = nil
             case .property(let value):
                 kind = "property"
                 structured = nil
                 property = value
-                relationship = nil
-            case .relationship(let value):
-                kind = "relationship"
+                link = nil
+            case .link(let value):
+                kind = "link"
                 structured = nil
                 property = nil
-                relationship = value
+                link = value
             }
         }
 
@@ -409,15 +397,13 @@ extension ScholiumCLI {
                 return property.isEmpty
                     ? "property:\(property.key) (present-empty)"
                     : "property:\(property.key) (\(property.valueKind.rawValue))"
-            case "relationship":
-                guard let relationship else { return kind }
-                let source = relationship.occurrences.first.map {
+            case "link":
+                guard let link else { return kind }
+                let source = link.occurrences.first.map {
                     " source=\($0.sourceNote.vaultID.uuidString.lowercased())/"
-                        + "\($0.sourceNote.relativePath):\($0.locator.line):\($0.locator.column)"
+                        + "\($0.sourceNote.relativePath):\($0.linkSpan.start.line):\($0.linkSpan.start.utf16Column)"
                 } ?? ""
-                return "\(relationship.direction.rawValue):\(relationship.anchorIdentity) "
-                    + "relation:\(relationship.relation.rawValue)"
-                    + source
+                return "\(link.direction.rawValue):\(link.anchorIdentity)" + source
             default:
                 return kind
             }
@@ -525,16 +511,6 @@ extension ScholiumCLI {
                 : .outgoing
             let edges = try await handle.discovery.links(for: id, direction: direction)
             write(String(decoding: try encoder.encode(edges), as: UTF8.self) + "\n")
-        case "relationships":
-            guard arguments.count >= 2 else {
-                throw commandUsageError("links relationships")
-            }
-            let (vault, path) = try await context.resolveTarget(arguments[1])
-            let assignment = try await context.triptych(containing: [vault.id])
-            let handle = try await context.handle(for: assignment)
-            let id = VaultQualifiedNoteID(vaultID: vault.id, relativePath: path)
-            let relationships = try await handle.discovery.relationships(for: id)
-            write(String(decoding: try encoder.encode(relationships), as: UTF8.self) + "\n")
         case "diagnostics":
             guard arguments.contains("--workspace") else {
                 throw commandUsageError("links diagnostics")
@@ -547,46 +523,6 @@ extension ScholiumCLI {
             write(String(decoding: try encoder.encode(diagnostics), as: UTF8.self) + "\n")
         default:
             throw CLIError.usage("Unknown links command '\(subcommand)'.")
-        }
-    }
-
-    static func runGraph(
-        _ arguments: [String],
-        context: CLIContext
-    ) async throws {
-        guard ["trace", "relation-trace"].contains(arguments.first ?? ""), arguments.count >= 3 else {
-            throw commandUsageError("graph")
-        }
-        let (sourceVault, sourcePath) = try await context.resolveTarget(arguments[1])
-        let (targetVault, targetPath) = try await context.resolveTarget(arguments[2])
-        let assignment = try await context.triptych(containing: [sourceVault.id, targetVault.id])
-        let maximumDepthText = option("--max-depth", in: arguments) ?? "3"
-        guard let maximumDepth = Int(maximumDepthText),
-              (1 ... 10).contains(maximumDepth) else {
-            throw CLIError.usage("--max-depth must be a whole number from 1 through 10.")
-        }
-        guard (option("--format", in: arguments) ?? "json") == "json" else {
-            throw CLIError.usage("Graph commands support --format json.")
-        }
-        let handle = try await context.handle(for: assignment)
-        let source = VaultQualifiedNoteID(vaultID: sourceVault.id, relativePath: sourcePath)
-        let target = VaultQualifiedNoteID(vaultID: targetVault.id, relativePath: targetPath)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        if arguments.first == "relation-trace" {
-            let paths = try await handle.discovery.traceRelationships(
-                from: source,
-                to: target,
-                maximumDepth: maximumDepth
-            )
-            write(String(decoding: try encoder.encode(paths), as: UTF8.self) + "\n")
-        } else {
-            let paths = try await handle.discovery.traceLinks(
-                from: source,
-                to: target,
-                maximumDepth: maximumDepth
-            )
-            write(String(decoding: try encoder.encode(paths), as: UTF8.self) + "\n")
         }
     }
 

@@ -81,7 +81,7 @@ describe("Lezer-backed semantic projection", () => {
       "============",
       "",
       "> Quote with **strong** and [link](target.md).",
-      "[[Target Note|Visible alias]] and +[[Support Note]]",
+      "[[Target Note|Visible alias]] and [[Source Note]]{{A long annotation.}}",
       "",
       "- [x] Task",
       "  - Nested",
@@ -92,8 +92,9 @@ describe("Lezer-backed semantic projection", () => {
     const items = ranges.blocks.filter((block) => block.kind === "listItem");
     const strong = ranges.inlines.find((inline) => inline.kind === "strong");
     const link = ranges.inlines.find((inline) => inline.kind === "link");
-    const wikilink = ranges.inlines.find((inline) => inline.kind === "wikilink");
-    const vectorLink = ranges.inlines.find((inline) => inline.kind === "vectorLink");
+    const wikilinks = ranges.inlines.filter((inline) => inline.kind === "wikilink");
+    const wikilink = wikilinks[0];
+    const annotatedLink = wikilinks[1];
 
     expect(headings[0]).toMatchObject({headingLevel: 2, depth: 0, parent: null});
     expect(headings[0]?.markerRanges.map((range) => source.slice(range.from, range.to)))
@@ -121,9 +122,12 @@ describe("Lezer-backed semantic projection", () => {
       .toBe("Target Note");
     expect(wikilink?.aliasRange && source.slice(wikilink.aliasRange.from, wikilink.aliasRange.to))
       .toBe("Visible alias");
-    expect(vectorLink?.targetRange && source.slice(vectorLink.targetRange.from, vectorLink.targetRange.to))
-      .toBe("Support Note");
-    expect(vectorLink?.aliasRange).toBeNull();
+    expect(annotatedLink?.targetRange && source.slice(annotatedLink.targetRange.from, annotatedLink.targetRange.to))
+      .toBe("Source Note");
+    expect(annotatedLink?.annotationContentRange
+      && source.slice(annotatedLink.annotationContentRange.from, annotatedLink.annotationContentRange.to))
+      .toBe("A long annotation.");
+    expect(annotatedLink?.to).toBe(annotatedLink?.annotationRange?.to);
   });
 
   it("maps the complete catalog through non-structural edits", () => {

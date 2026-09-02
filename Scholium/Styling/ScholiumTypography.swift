@@ -240,7 +240,6 @@ enum ScholiumSymbolStyle {
     case prominent
     case emphasizedProminent
     case large
-    case relationship
 
     fileprivate var font: Font {
         switch self {
@@ -250,11 +249,6 @@ enum ScholiumSymbolStyle {
             .system(size: 15, weight: .semibold)
         case .large:
             .system(size: 17, weight: .regular)
-        case .relationship:
-            .system(
-                size: ScholiumMetrics.Apparatus.relationGlyphSize,
-                weight: .regular
-            )
         }
     }
 }

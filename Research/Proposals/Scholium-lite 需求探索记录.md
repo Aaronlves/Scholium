@@ -294,7 +294,7 @@ DeepSeek Harness 是这种启动和使用体验的参考案例。这里只借鉴
 
 Scholium-lite 不从零开发 Markdown 编辑器，已经批准从旧 Scholium 的 `WebEditor` 中选择性复用代码。旧 `WebEditor` 是以 TypeScript 和 CodeMirror 6 实现的浏览器编辑器，已经包含 Markdown 原文精确保留、自定义语法扩展和相关测试，能够作为本地 Web 界面的编辑器基础。旧 Scholium 的相关代码完全由研究者拥有版权，因此不存在由旧仓库自身许可证造成的复用障碍；第三方依赖仍分别遵守其许可证。
 
-这项批准只适用于经过审查后确实服务于新产品需要的编辑器代码，不批准整体迁移旧 `WebEditor`，也不使旧 Scholium 的 Swift/WKWebView 通信、产品架构、界面结构、功能范围或旧 Vector Link 语义成为新版本的默认设计。复用时应保留或改造原文精确保留、CodeMirror 基础、自定义 Markdown 解析框架和必要测试；浏览器通信入口、带长注释双链以及具体显示方式需要按照 Scholium-lite 已确认的需要重新组成。
+这项批准只适用于经过审查后确实服务于新产品需要的编辑器代码，不批准整体迁移 `WebEditor`，也不使既有 Swift/WKWebView 通信、产品架构、界面结构或功能范围成为新版本的默认设计。复用时应保留或改造原文精确保留、CodeMirror 基础、自定义 Markdown 解析框架和必要测试；浏览器通信入口、带长注释链接以及具体显示方式需要按照 Scholium-lite 已确认的需要重新组成。
 
 Scholium-lite 的界面组件体系、布局和视觉风格尚未决定。应先根据真实的阅读、检索、编辑和修改审阅过程确定核心工作界面的信息关系，再选择 Web 框架及组件库，不能因为旧编辑器代码可复用就继承旧 Scholium 的设计。
 
@@ -434,11 +434,9 @@ Agent 应先在各自理论框架中重构观点，再判断它们是否共享�
 
 本地向量模型和 QMD 不进入第一版的必需依赖，也不能成为朋友使用 Scholium 的额外下载门槛。如果真实使用后来证明 Agent 主导的逐步检索仍存在重要且稳定的遗漏，可以再把较小的本地语义检索作为可选增强进行验证。
 
-## 八、带长注释的双链
+## 八、带长注释的链接
 
-研究者所说的“向量链接”原本是带有语义的双链，例如 `A supports B` 或 `A opposes B`。进一步讨论后确认，普遍维护稳定的句子级双端锚点在技术上和操作上都过于复杂，也会重新增加维护负担。
-
-当前接受的替代方式，是让一次双链出现携带自由的长注释：
+一次双链出现可以携带自由的长注释：
 
 ```markdown
 [[目标笔记]]{{关于这一次引用的长注释}}
@@ -457,7 +455,7 @@ Helm 的 import 理论可以启发较弱的实践关切主张，
 
 - 注释属于这一次双链出现，而不是目标笔记的永久属性；
 - 注释可以自由说明支持、反对、限定、继承、类比、解释差距或其他更复杂的关系，不强制压缩成固定关系类型；
-- Agent 在阅读相关笔记时，根据局部正文和注释临时解释关系，不预存一个被视为权威的 `supports` 或 `opposes` 标签；
+- Agent 在阅读相关笔记时，根据局部正文和注释临时解释关系，不预存机器解释的关系标签；
 - 来源笔记中的双链与注释是唯一权威内容；
 - 阅读来源笔记时，长注释显示为双链旁的可展开小标记；
 - 被链接笔记可以显示同一注释的只读反向视图，并保留来源笔记和局部语境；
@@ -560,9 +558,9 @@ Helm 的 import 理论可以启发较弱的实践关切主张，
 | Action 模型 | Analysis/Topic/Work 各有固定 Discuss/Analyze/Synthesize/Write/Critique/Check Fidelity，Run 是唯一工作对象 | 多种 Research Actions、Profiles 和固定 Action 注册未重新证明必要。一次工作只需用户问题、MCP 工具、个人 Skill 和明确写入指令。 |
 | Record 单位 | 每个 Discussion 或 Action Run 最终产生一个不可变 Research Record | Record 围绕持续研究问题组织，可以在同一条内按实质步骤追加；只有新判断、重要修正、研究决定或文件修改才更新，不保存全部对话或普通操作。 |
 | Settle 变化 | 任意后续保存或 Agent 修改自动使当前 revision 成为 Not Settled | `settled/unsettled` 只由研究者手动决定。Agent 修改后可以提醒重新判断，但不能自动改变状态。 |
-| 关系语法 | `+[[B]]`、`-[[B]]`、`?[[B]]` 是唯一 Vector Link，预先编码 supports/opposes/incompatible | 固定 Vector Link 被否决，改为一次链接出现携带自由长注释：`[[B]]{{...}}`。关系由 Agent 结合局部正文和注释解释，不能把标签当作哲学事实。 |
+| 链接注释 | 双链只表达来源与目标身份 | 一次链接出现可以携带自由长注释：`[[B]]{{...}}`。关系由 Agent 结合局部正文和注释解释，不能把机器分类当作哲学事实。 |
 | Analysis 书目 Metadata | Scholium 维护完整、可编辑、可由 Zotero 填充的 managed bibliographic catalog | Zotero 管理书目 Metadata；Scholium 只保存条目／附件关联、自己的研究状态和必要来源边界，右栏只读投影 Zotero。 |
-| 第一阶段重点 | 当前 Beta/1.0 规范同时推进完整 Actions、Records、Metadata、Zotero、通知、恢复与发布 | 继续使用现有 Swift App，不整体重建；当前能用且不冲突的部分保持不变。对确认需要改变的 Action/Run、Record、Settle、Vector Link 和书目 Metadata 分别明确新合同并 clean cutover，不保留旧路径。 |
+| 第一阶段重点 | 当前 Beta/1.0 规范同时推进完整 Actions、Records、Metadata、Zotero、通知、恢复与发布 | 继续使用现有 Swift App，不整体重建；当前能用且不冲突的部分保持不变。对确认需要改变的 Action/Run、Record、Settle、链接注释和书目 Metadata 分别明确新合同并 clean cutover，不保留旧路径。 |
 
 ### 探索后新增、现行规范尚未充分表达
 
@@ -582,7 +580,7 @@ Helm 的 import 理论可以启发较弱的实践关切主张，
 - Agent Changes 的非技术化改进与整次／局部恢复方式；现有 Review/Edit/Source 模式和保存机制暂不因本轮探索改变；
 - 带长注释双链的解析、编辑、展开和反向展示细节；
 - 新 Record 合同如何取代现有 Run-Record 合同，并删除旧格式和旧路径；
-- 新的关系链接和 Zotero 书目投影如何分别取代旧 Vector Link 与 managed bibliographic Metadata，而不保留双重语义。
+- 链接注释和 Zotero 书目投影的完整合同及验证边界。
 
 ### 建议的规范修订顺序
 
@@ -628,7 +626,7 @@ Helm 的 import 理论可以启发较弱的实践关切主张，
 | `scholium_workspace_status` | 可选 `triptych_id` | 当前打开的 Triptych；目标的三库状态、文件数、`workspace_generation`、Search generation 与 source-manifest hash；是否已经 current |
 | `scholium_search_notes` | `triptych_id`、`query`；可选 `roles`、`limit`、`offset` | 按现有 Search owner 排序的候选段落；每项带 Note 身份、库角色、路径、fingerprint、命中字段／理由、snippet 与正文位置；不返回哲学相关性分数 |
 | `scholium_read_note` | `triptych_id`、`note_id`；可选 `start_line`、`line_count` | 对应 current fingerprint 的精确 Markdown 片段、行范围和下一页位置；重复调用可以读完整篇笔记 |
-| `scholium_list_links` | `triptych_id`、`note_id`、`direction`；可选 `limit`、`offset` | incoming／outgoing 的原始链接出现、来源与目标身份、原始 markup 和来源位置；不输出 `supports` 等 Agent 推断关系 |
+| `scholium_list_links` | `triptych_id`、`note_id`、`direction`；可选 `limit`、`offset` | incoming／outgoing 的原始链接出现、来源与目标身份、原始 markup 和来源位置；只输出作者写下的出现数据，不附加机器关系分类 |
 | `scholium_create_note` | `triptych_id`、`role`、精确 `relative_path`、`body`；可选 `summary`、`keywords` | 新 Note 的稳定身份、三库角色、路径、fingerprint 和 `change_id` |
 | `scholium_update_note` | `triptych_id`、`note_id`、`expected_fingerprint`、`mode`、`content` | before／after fingerprint、路径、`change_id` 与 readback 结果 |
 | `scholium_trash_note` | `triptych_id`、`note_id`、`expected_fingerprint` | 已移入 macOS 系统废纸篓的 Note 身份、原路径与 `change_id` |

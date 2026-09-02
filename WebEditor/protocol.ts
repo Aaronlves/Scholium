@@ -1,12 +1,11 @@
-export const EDITOR_PROTOCOL_VERSION = 15;
+export const EDITOR_PROTOCOL_VERSION = 16;
 export const MAX_INBOUND_BYTES = 2_500_000;
 export const MAX_SOURCE_UTF8_BYTES = 8_000_000;
 
 export type EditorMode = "livePreview" | "source";
 export type MarkdownEditorCommand =
   | "bold" | "emphasis" | "strikethrough" | "highlight" | "inlineCode" | "markdownComment"
-  | "standardLink" | "wikilink" | "vectorSupports"
-  | "vectorOpposes" | "vectorIncompatible"
+  | "standardLink" | "wikilink" | "annotatedWikilink"
   | "paragraph" | "heading1" | "heading2" | "heading3" | "heading4"
   | "heading5" | "heading6" | "blockQuotation" | "bulletList"
   | "numberedList" | "taskList" | "fencedCode" | "thematicBreak"
@@ -41,11 +40,13 @@ export interface EditorScrollAnchor {
 export interface MarkdownEditingDialect {
   version: number;
   callouts: Array<{identifier: string; aliases: string[]; label: string; meaning: string}>;
-  vectorLinkOperators: Array<{
-    marker: string;
-    kind: "neutral" | "supports" | "opposes" | "incompatible";
-    meaning: string;
-  }>;
+  linkAnnotation: {
+    openingDelimiter: "{{";
+    closingDelimiter: "}}";
+    escapeCharacter: "\\";
+    allowsMultiline: true;
+    allowsNesting: false;
+  };
   footnotes: {
     namedReferenceOpening: string;
     namedReferenceClosing: string;
@@ -153,7 +154,7 @@ const operationTypes = new Set([
 ]);
 const commandTypes = new Set<MarkdownEditorCommand>([
   "bold", "emphasis", "strikethrough", "highlight", "inlineCode", "markdownComment", "standardLink", "wikilink",
-  "vectorSupports", "vectorOpposes", "vectorIncompatible", "paragraph", "heading1",
+  "annotatedWikilink", "paragraph", "heading1",
   "heading2", "heading3", "heading4", "heading5", "heading6", "blockQuotation", "bulletList",
   "numberedList", "taskList", "fencedCode", "thematicBreak", "calloutOrient", "calloutCite",
   "calloutConnect", "calloutState", "calloutIllustrate", "calloutQuote", "calloutFlag",
@@ -240,10 +241,10 @@ function validDialect(value: unknown): value is MarkdownEditingDialect {
   if (!value || typeof value !== "object") return false;
   const dialect = value as Partial<MarkdownEditingDialect>;
   const callouts = dialect.callouts;
-  const vectors = dialect.vectorLinkOperators;
+  const annotation = dialect.linkAnnotation;
   const footnotes = dialect.footnotes;
   const mathematics = dialect.mathematics;
-  return dialect.version === 4
+  return dialect.version === 5
     && Array.isArray(callouts) && callouts.length > 0 && callouts.length <= 32
     && callouts.every((callout) => Boolean(callout)
       && typeof callout.identifier === "string" && callout.identifier.length <= 64
@@ -251,11 +252,12 @@ function validDialect(value: unknown): value is MarkdownEditingDialect {
       && callout.aliases.every((alias) => typeof alias === "string" && alias.length <= 64)
       && typeof callout.label === "string" && callout.label.length <= 120
       && typeof callout.meaning === "string" && callout.meaning.length <= 1_000)
-    && Array.isArray(vectors) && vectors.length === 4
-    && vectors.every((vector) => Boolean(vector)
-      && ["", "+", "-", "?"].includes(vector.marker)
-      && ["neutral", "supports", "opposes", "incompatible"].includes(vector.kind)
-      && typeof vector.meaning === "string" && vector.meaning.length <= 1_000)
+    && Boolean(annotation)
+    && annotation?.openingDelimiter === "{{"
+    && annotation.closingDelimiter === "}}"
+    && annotation.escapeCharacter === "\\"
+    && annotation.allowsMultiline === true
+    && annotation.allowsNesting === false
     && Boolean(footnotes)
     && footnotes?.namedReferenceOpening === "[^"
     && footnotes.namedReferenceClosing === "]"

@@ -9,6 +9,7 @@ import {
   type BaseBlockKind,
   type BaseInlineKind,
 } from "./semantic-projection";
+import {linkAnnotationAfter} from "./link-annotation";
 
 export type {BaseBlockKind, BaseInlineKind} from "./semantic-projection";
 
@@ -25,7 +26,7 @@ export function linkTargetAt(source: string | Text, offset: number): string | nu
   const sourceLine = document.lineAt(offset);
   const lineFrom = sourceLine.from;
   const line = sourceLine.text;
-  for (const match of line.matchAll(/(?:!|[+\-?])?\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)) {
+  for (const match of line.matchAll(/!?\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)) {
     const from = lineFrom + match.index;
     const to = from + match[0].length;
     if (offset >= from && offset < to) return match[1].trim();
@@ -40,7 +41,7 @@ export function linkTargetAt(source: string | Text, offset: number): string | nu
 
 export interface DialectSemanticProjection {
   callouts: string[];
-  links: Array<{target: string; vectorKind: string | null}>;
+  links: Array<{target: string; annotation: string | null}>;
   footnoteDefinitions: string[];
   footnoteDefinitionContents: string[];
   footnoteReferences: string[];
@@ -154,7 +155,7 @@ export function projectDialectSemantics(source: string, dialect: MarkdownEditing
   tree.iterate({
     enter(node) {
       if (![
-        "Callout", "WikiLink", "VectorLink", "Link", "Autolink",
+        "Callout", "WikiLink", "Link", "Autolink",
         "FootnoteDefinition", "FootnoteReference", "InlineFootnote",
         "InlineMath", "BlockMath",
       ].includes(node.name)) return;
@@ -180,19 +181,19 @@ export function projectDialectSemantics(source: string, dialect: MarkdownEditing
     return match ? [{from, to: headerTo, kind: canonicalCallout(match[1])}] : [];
   });
   const callouts = locatedCallouts.map(({kind}) => kind);
-  const locatedLinks: Array<{from: number; to: number; target: string; vectorKind: string | null}> = [];
-  for (const {from, to} of ranges("WikiLink", "VectorLink")) {
+  const locatedLinks: Array<{from: number; to: number; target: string; annotation: string | null}> = [];
+  for (const {from, to} of ranges("WikiLink")) {
     if (intersects({from, to}, excluded)) continue;
     const raw = source.slice(from, to);
-    const match = /^(!?)([+\-?]?)\[\[([^\]|]+)(?:\|[^\]]+)?\]\]$/.exec(raw);
+    const match = /^(!?)\[\[([^\]|]+)(?:\|[^\]]+)?\]\]$/.exec(raw);
     if (!match) continue;
-    const operator = dialect.vectorLinkOperators.find((candidate) => candidate.marker === match[2]);
     const isEmbed = match[1] === "!";
+    const annotation = isEmbed ? null : linkAnnotationAfter(source, to);
     locatedLinks.push({
       from,
-      to,
-      target: match[3].split("#", 1)[0].trim(),
-      vectorKind: isEmbed ? null : operator?.kind ?? "neutral",
+      to: annotation?.to ?? to,
+      target: match[2].split("#", 1)[0].trim(),
+      annotation: annotation?.markdown ?? null,
     });
   }
   for (const {from, to} of ranges("Link")) {
@@ -207,11 +208,11 @@ export function projectDialectSemantics(source: string, dialect: MarkdownEditing
       from,
       to,
       target,
-      vectorKind: null,
+      annotation: null,
     });
   }
   locatedLinks.sort((left, right) => left.from - right.from);
-  const links = locatedLinks.map(({target, vectorKind}) => ({target, vectorKind}));
+  const links = locatedLinks.map(({target, annotation}) => ({target, annotation}));
   const footnoteRanges = footnotePresentation(source, excluded, dialect.footnotes);
   const namedDefinitionStarts = new Set(ranges("FootnoteDefinition").map(({from}) => from));
   const inlineDefinitionKeys = keyedRanges("InlineFootnote");

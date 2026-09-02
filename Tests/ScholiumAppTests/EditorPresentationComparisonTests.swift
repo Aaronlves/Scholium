@@ -517,7 +517,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         case "link":
             ranges = semantic.links.filter { $0.syntax == .markdown }.map(\.span.utf16Range)
         case "wikilink":
-            ranges = semantic.links.filter { $0.syntax == .wikilink || $0.syntax == .vectorWikilink }
+            ranges = semantic.links.filter { $0.syntax == .wikilink }
                 .map(\.span.utf16Range)
         case "listItem":
             ranges = semantic.blocks.filter { $0.kind == .listItem }.map(\.span.utf16Range)

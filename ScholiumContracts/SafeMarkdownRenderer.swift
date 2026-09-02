@@ -83,7 +83,7 @@ public enum SafeMarkdownRenderer {
                 return locatedSpan(
                     at: linkIndex,
                     from: locatedLinkSpans,
-                    fallback: link.span
+                    fallback: link.linkSpan
                 )
             }
             blockHTML[key] = renderCallout(
@@ -146,8 +146,9 @@ public enum SafeMarkdownRenderer {
                 locatedSpan: locatedSpan(
                     at: index,
                     from: locatedLinkSpans,
-                    fallback: link.span
-                )
+                    fallback: link.linkSpan
+                ),
+                depth: depth + 1
             )
             replacements.append(Replacement(range: relative, text: key))
         }
@@ -276,7 +277,8 @@ public enum SafeMarkdownRenderer {
 
     private static func renderWikilink(
         _ link: LinkOccurrence,
-        locatedSpan: SourceSpan
+        locatedSpan: SourceSpan,
+        depth: Int
     ) -> String {
         let display = link.alias ?? (link.target.isEmpty ? link.fragment ?? "Link" : link.target)
         let destination = link.target + (link.fragment.map { "#\($0)" } ?? "")
@@ -286,10 +288,17 @@ public enum SafeMarkdownRenderer {
         if link.syntax == .embed {
             return "<a class=\"wiki-link scholium-embed\" dir=\"auto\" href=\"scholium-note:\(escapeAttribute(encoded))\" \(sourceAttributes(locatedSpan)) data-scholium-protected=\"embed\">\(escapeHTML(display))</a>"
         }
-        let relation = link.relationship.map { " data-relationship=\"\(escapeAttribute($0.rawValue))\"" } ?? ""
-        let vectorClass = link.vectorKind == nil ? "" : " scholium-vector"
-        let vector = link.vectorKind.map { " data-vector-kind=\"\(escapeAttribute($0.rawValue))\"" } ?? ""
-        return "<a class=\"wiki-link\(vectorClass)\" dir=\"auto\" href=\"scholium-note:\(escapeAttribute(encoded))\" \(sourceAttributes(locatedSpan))\(relation)\(vector)>\(escapeHTML(display))</a>"
+        let linkHTML = "<a class=\"wiki-link\" dir=\"auto\" href=\"scholium-note:\(escapeAttribute(encoded))\" \(sourceAttributes(locatedSpan))>\(escapeHTML(display))</a>"
+        guard let annotation = link.annotation else { return linkHTML }
+        let identifier = "link-annotation-\(link.span.utf16LowerBound)-\(link.span.utf16UpperBound)"
+        let fragment = NoteDocument(relativePath: "link-annotation.md", rawContent: annotation.markdown)
+        let annotationHTML = renderBody(
+            document: fragment,
+            semantic: MarkdownSemanticDocument(parsing: fragment),
+            depth: depth
+        )
+        let label = escapeAttribute("Show link annotation for \(display)")
+        return "<span class=\"scholium-annotated-link\" data-scholium-protected=\"link-annotation\">\(linkHTML)<button type=\"button\" class=\"scholium-link-annotation-button\" data-link-annotation=\"\(identifier)\" aria-expanded=\"false\" aria-controls=\"\(identifier)\" aria-label=\"\(label)\"><span aria-hidden=\"true\"></span></button><template id=\"\(identifier)-template\"><div class=\"scholium-link-annotation-content\" dir=\"auto\" role=\"note\" \(sourceAttributes(annotation.span))>\(annotationHTML)</div></template></span>"
     }
 
     private static func bodyUTF16Offset(in document: NoteDocument) -> Int {

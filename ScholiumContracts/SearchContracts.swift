@@ -5,6 +5,7 @@ public enum SearchMatchedField: String, Codable, Hashable, Sendable {
     case tag = "keyword"
     case publicationDate = "publication_date"
     case brokenLink = "broken_link"
+    case linkAnnotation = "link_annotation"
 }
 
 public enum SearchResultClassification: String, Codable, Hashable, Sendable {
@@ -44,24 +45,33 @@ public struct SearchPropertyMatch: Codable, Hashable, Sendable {
     }
 }
 
-public struct SearchRelationshipMatch: Codable, Hashable, Sendable {
-    public let relation: SearchRelation
-    public let direction: SearchRelationDirection
-    public let symmetric: Bool
+public struct SearchLinkOccurrence: Codable, Hashable, Sendable {
+    public let sourceNote: VaultQualifiedNoteID
+    public let span: SourceSpan
+    public let linkSpan: SourceSpan
+    public let annotationSpan: SourceSpan?
+
+    public init(sourceNote: VaultQualifiedNoteID, occurrence: LinkOccurrence) {
+        self.sourceNote = sourceNote
+        span = occurrence.span
+        linkSpan = occurrence.linkSpan
+        annotationSpan = occurrence.annotation?.span
+    }
+}
+
+public struct SearchLinkMatch: Codable, Hashable, Sendable {
+    public let direction: SearchLinkDirection
     public let anchorIdentity: String
     public let targetNote: VaultQualifiedNoteID
-    public let occurrences: [RelationshipSourceOccurrence]
+    public let occurrences: [SearchLinkOccurrence]
 
     public init(
-        relation: SearchRelation,
-        direction: SearchRelationDirection,
+        direction: SearchLinkDirection,
         anchorIdentity: String,
         targetNote: VaultQualifiedNoteID,
-        occurrences: [RelationshipSourceOccurrence]
+        occurrences: [SearchLinkOccurrence]
     ) {
-        self.relation = relation
         self.direction = direction
-        symmetric = relation.isSymmetric
         self.anchorIdentity = anchorIdentity
         self.targetNote = targetNote
         self.occurrences = occurrences
@@ -88,7 +98,7 @@ public enum NoteSearchMatchReason: Codable, Hashable, Sendable {
     case lexical
     case structured(SearchStructuredMatch)
     case property(SearchPropertyMatch)
-    case relationship(SearchRelationshipMatch)
+    case link(SearchLinkMatch)
 }
 
 public struct SearchHighlight: Codable, Hashable, Sendable {

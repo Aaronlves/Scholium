@@ -115,7 +115,7 @@ public enum IncomingLinkRewriter {
                 source: edge.source,
                 syntax: edge.occurrence.syntax,
                 target: edge.occurrence.target,
-                span: edge.occurrence.span
+                span: edge.occurrence.linkSpan
             )
         })
         let incoming = currentGraph.outgoing.values.flatMap { $0 }.filter { edge in
@@ -125,7 +125,7 @@ public enum IncomingLinkRewriter {
                 source: edge.source,
                 syntax: edge.occurrence.syntax,
                 target: edge.occurrence.target,
-                span: edge.occurrence.span
+                span: edge.occurrence.linkSpan
             )
             return suppliedKeys.contains(key)
         }
@@ -159,7 +159,7 @@ public enum IncomingLinkRewriter {
             guard resolution == .resolved(destination) else {
                 blocked.append(IncomingLinkRewriteBlock(
                     source: edge.source,
-                    span: edge.occurrence.span,
+                    span: edge.occurrence.linkSpan,
                     reason: "The destination path would resolve this incoming link to another note or remain ambiguous."
                 ))
                 continue
@@ -265,7 +265,7 @@ public enum IncomingLinkRewriter {
                 source: edge.source,
                 syntax: edge.occurrence.syntax,
                 target: edge.occurrence.target,
-                span: edge.occurrence.span
+                span: edge.occurrence.linkSpan
             )
         })
         guard !suppliedKeys.isEmpty else {
@@ -296,7 +296,7 @@ public enum IncomingLinkRewriter {
                     source: sourceID,
                     syntax: occurrence.syntax,
                     target: occurrence.target,
-                    span: occurrence.span
+                    span: occurrence.linkSpan
                 )
                 guard suppliedKeys.contains(key) else { continue }
                 verifiedOccurrences[sourceID, default: []].append((
@@ -339,7 +339,7 @@ public enum IncomingLinkRewriter {
                 ) == .resolved(destination) else {
                     blocked.append(IncomingLinkRewriteBlock(
                         source: sourceID,
-                        span: occurrence.span,
+                        span: occurrence.linkSpan,
                         reason: "The destination path would resolve this incoming link to another note or remain ambiguous."
                     ))
                     continue
@@ -469,7 +469,7 @@ public enum IncomingLinkRewriter {
             guard resolution == .resolved(destination) else {
                 blocked.append(IncomingLinkRewriteBlock(
                     source: edge.source,
-                    span: edge.occurrence.span,
+                    span: edge.occurrence.linkSpan,
                     reason: "The destination path would resolve this incoming link to another note or remain ambiguous."
                 ))
                 return false
@@ -575,7 +575,7 @@ public enum IncomingLinkRewriter {
                     source: sourceID,
                     syntax: occurrence.syntax,
                     target: occurrence.target,
-                    span: occurrence.span
+                    span: occurrence.linkSpan
                 )
                 guard suppliedKeys.contains(key) else { continue }
                 verifiedOccurrences[sourceID, default: []].append(occurrence)
@@ -612,7 +612,7 @@ public enum IncomingLinkRewriter {
                 ) == .resolved(destination) else {
                     blocked.append(IncomingLinkRewriteBlock(
                         source: sourceID,
-                        span: occurrence.span,
+                        span: occurrence.linkSpan,
                         reason: "The destination path would resolve this incoming link to another note or remain ambiguous."
                     ))
                     continue
@@ -683,7 +683,7 @@ public enum IncomingLinkRewriter {
             source: edge.source,
             syntax: edge.occurrence.syntax,
             target: edge.occurrence.target,
-            span: edge.occurrence.span
+            span: edge.occurrence.linkSpan
         )
     }
 
@@ -693,7 +693,7 @@ public enum IncomingLinkRewriter {
         newRelativePath: String
     ) -> Replacement? {
         let nsSource = source as NSString
-        let occurrenceRange = occurrence.span.nsRange
+        let occurrenceRange = occurrence.linkSpan.nsRange
         guard NSMaxRange(occurrenceRange) <= nsSource.length else { return nil }
         let raw = nsSource.substring(with: occurrenceRange) as NSString
 

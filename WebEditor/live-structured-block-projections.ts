@@ -53,11 +53,6 @@ export function createLiveStructuredBlockProjections(options: {
 } {
   const resolveCallout = (rawKind: string) =>
     calloutDefinition(options.editingDialect(), rawKind);
-  const resolveVectorLink = (marker: string) =>
-    options.editingDialect()?.vectorLinkOperators.find(
-      (candidate) => candidate.marker === marker,
-    )?.kind ?? "neutral";
-
   class TableWidget extends WidgetType {
     constructor(readonly presentation: TablePresentation) { super(); }
 
@@ -73,7 +68,6 @@ export function createLiveStructuredBlockProjections(options: {
       const scroller = createTableDOM(this.presentation, document, {
         mathematics: options.editingDialect()?.mathematics,
         resolveCallout,
-        resolveVectorLink,
       });
       scroller.classList.add("cm-live-table-widget");
       options.widgets.setTable(scroller, this.presentation);
@@ -247,9 +241,8 @@ export function createLiveStructuredBlockProjections(options: {
       const slot = document.createElement("div");
       slot.className = "cm-live-callout-slot";
       appendMarkdownBlocks(this.presentation.source, slot, {
-        mathematics: options.editingDialect()?.mathematics,
-        resolveCallout,
-        resolveVectorLink,
+            mathematics: options.editingDialect()?.mathematics,
+            resolveCallout,
         sourceOffset: (offset) => this.presentation.from + offset,
       });
       const callout = slot.firstElementChild;

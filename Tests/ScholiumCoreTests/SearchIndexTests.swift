@@ -5,9 +5,9 @@ import Testing
 @testable import ScholiumCore
 
 /// The original 17 lexical baselines are retained here, but execute against
-/// the only user-reachable Search v9 engine. They are regression evidence, not a
+/// the only user-reachable Search v10 engine. They are regression evidence, not a
 /// second implementation contract.
-@Suite("Search v9 retained lexical baselines")
+@Suite("Search v10 retained lexical baselines")
 struct SearchIndexTests {
     @Test("Phrases, prefixes, fields, CJK, and retrieval classification share one contract")
     func queryContract() async throws {
@@ -512,10 +512,10 @@ struct SearchIndexTests {
                 fileURLWithPath: FileManager.default.currentDirectoryPath,
                 isDirectory: true
             )
-                .appendingPathComponent(".build/search-v9-retained-tests", isDirectory: true)
+                .appendingPathComponent(".build/search-v10-retained-tests", isDirectory: true)
                 .appendingPathComponent(UUID().uuidString, isDirectory: true)
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-            databaseURL = root.appendingPathComponent("search-v9.sqlite")
+            databaseURL = root.appendingPathComponent("search-v10.sqlite")
         }
 
         func index(at url: URL? = nil) throws -> TriptychSearchIndex {

@@ -48,9 +48,6 @@ enum ScholiumColorRole: String, CaseIterable, Sendable {
     case destructive
     case confirmed
     case agentAuthorship
-    case connectionNeutral
-    case connectionSupport
-    case connectionIncompatible
 
     var cssVariableName: String {
         "--scholium-color-\(rawValue.kebabCased)"
@@ -161,9 +158,6 @@ struct ScholiumResolvedColorPalette: Equatable, Sendable {
     let destructive: UInt32
     let confirmed: UInt32
     let agentAuthorship: UInt32
-    let connectionNeutral: UInt32
-    let connectionSupport: UInt32
-    let connectionIncompatible: UInt32
 
     subscript(role: ScholiumColorRole) -> UInt32 {
         switch role {
@@ -184,9 +178,6 @@ struct ScholiumResolvedColorPalette: Equatable, Sendable {
         case .destructive: destructive
         case .confirmed: confirmed
         case .agentAuthorship: agentAuthorship
-        case .connectionNeutral: connectionNeutral
-        case .connectionSupport: connectionSupport
-        case .connectionIncompatible: connectionIncompatible
         }
     }
 }
@@ -333,10 +324,7 @@ struct ScholiumColorResolver: Sendable {
             attention: semanticColor(FunctionalAnchor.attention),
             destructive: semanticColor(FunctionalAnchor.destructive),
             confirmed: semanticColor(FunctionalAnchor.confirmed),
-            agentAuthorship: semanticColor(FunctionalAnchor.agentAuthorship),
-            connectionNeutral: semanticColor(FunctionalAnchor.connectionNeutral),
-            connectionSupport: semanticColor(FunctionalAnchor.connectionSupport),
-            connectionIncompatible: semanticColor(FunctionalAnchor.connectionIncompatible)
+            agentAuthorship: semanticColor(FunctionalAnchor.agentAuthorship)
         )
     }
 
@@ -346,9 +334,6 @@ struct ScholiumColorResolver: Sendable {
         static let destructive: UInt32 = 0xA34A43
         static let confirmed: UInt32 = 0x4D755A
         static let agentAuthorship: UInt32 = 0x665C82
-        static let connectionNeutral: UInt32 = 0x80694E
-        static let connectionSupport: UInt32 = 0x3D746B
-        static let connectionIncompatible: UInt32 = 0x77566F
     }
 
     private struct OKLCH: Sendable {
@@ -480,57 +465,6 @@ struct ScholiumColorResolver: Sendable {
 
     private static func clamp(_ value: Double, minimum: Double, maximum: Double) -> Double {
         min(maximum, max(minimum, value))
-    }
-}
-
-/// One visual and accessible vocabulary for explicit Markdown Connections.
-/// Standard command symbols remain direct SF Symbols at their call sites.
-enum ScholiumConnectionPresentation: Int, CaseIterable, Hashable, Identifiable, Sendable {
-    case supports
-    case supportsThisNote
-    case opposes
-    case opposesThisNote
-    case incompatible
-    case neutral
-
-    var id: Self { self }
-
-    init(vectorKind: VectorLinkKind?, currentIsSource: Bool) {
-        self =
-            switch vectorKind {
-            case .supports:
-                currentIsSource ? .supports : .supportsThisNote
-            case .opposes:
-                currentIsSource ? .opposes : .opposesThisNote
-            case .incompatible:
-                .incompatible
-            case .neutral, .none:
-                .neutral
-            }
-    }
-
-    var title: String {
-        switch self {
-        case .supports: ScholiumL10n.dynamicString("Supports")
-        case .supportsThisNote: ScholiumL10n.dynamicString("Supports This Note")
-        case .opposes: ScholiumL10n.dynamicString("Opposes")
-        case .opposesThisNote: ScholiumL10n.dynamicString("Opposes This Note")
-        case .incompatible: ScholiumL10n.dynamicString("Incompatible")
-        case .neutral: ScholiumL10n.dynamicString("Related")
-        }
-    }
-
-    var systemSymbol: ScholiumSystemSymbol {
-        switch self {
-        case .supports, .supportsThisNote: .plusCircle
-        case .opposes, .opposesThisNote: .minusCircle
-        case .incompatible: .xmarkCircle
-        case .neutral: .link
-        }
-    }
-
-    var isUndirected: Bool {
-        self == .neutral || self == .incompatible
     }
 }
 
@@ -870,9 +804,7 @@ enum ScholiumWebDesignTokens {
           text-underline-offset: 0.15em;
         }
         .scholium-document .wiki-link,
-        .scholium-document .scholium-vector-link,
-        .scholium-live-mode .cm-live-wikilink,
-        .scholium-live-mode .cm-live-vector-link {
+        .scholium-live-mode .cm-live-wiki-link {
           color: var(--scholium-color-accent);
           line-height: 1.2;
           text-decoration: none;
@@ -1301,12 +1233,9 @@ enum ScholiumGrid {
         static let contentLineSpacing = foundationUnit
         static let iconColumnWidth = foundationUnit * 4
         static let iconToTextGap = foundationUnit * 2
-        static let relationGlyphColumnWidth = foundationUnit * 6
-        static let relationGlyphSize = foundationUnit * 3.5
-        static let relationGlyphToTextGap = foundationUnit
-        static let relationClusterGap = foundationUnit * 3
-        static let relationRowVerticalInset = foundationUnit
-        static let relationRowMinimumHeight = Dimension.preferredCustomTarget
+        static let connectionOccurrenceGap = foundationUnit * 3
+        static let connectionOccurrenceVerticalInset = foundationUnit
+        static let connectionOccurrenceMinimumHeight = Dimension.preferredCustomTarget
         static let actionRowVerticalInset = foundationUnit * 2
         static let actionRowMinimumHeight = foundationUnit * 11
         static let actionCopyGap = foundationUnit
@@ -1683,16 +1612,11 @@ enum ScholiumMetrics {
         /// regardless of the optical width of its SF Symbol.
         static let iconColumnWidth = ScholiumGrid.Apparatus.iconColumnWidth
         static let iconToTextSpacing = ScholiumGrid.Apparatus.iconToTextGap
-        static let relationGlyphColumnWidth =
-            ScholiumGrid.Apparatus.relationGlyphColumnWidth
-        static let relationGlyphSize = ScholiumGrid.Apparatus.relationGlyphSize
-        static let relationGlyphToTextSpacing =
-            ScholiumGrid.Apparatus.relationGlyphToTextGap
-        static let relationClusterSpacing = ScholiumGrid.Apparatus.relationClusterGap
-        static let relationRowVerticalInset =
-            ScholiumGrid.Apparatus.relationRowVerticalInset
-        static let relationRowMinimumHeight =
-            ScholiumGrid.Apparatus.relationRowMinimumHeight
+        static let connectionOccurrenceSpacing = ScholiumGrid.Apparatus.connectionOccurrenceGap
+        static let connectionOccurrenceVerticalInset =
+            ScholiumGrid.Apparatus.connectionOccurrenceVerticalInset
+        static let connectionOccurrenceMinimumHeight =
+            ScholiumGrid.Apparatus.connectionOccurrenceMinimumHeight
         static let bottomInset = ScholiumGrid.Apparatus.bottomInset
     }
 

@@ -326,7 +326,7 @@
   function validatedReaderConfiguration(value) {
     if (!value || typeof value !== "object") return null;
     const config = value;
-    if (config.version !== 1 || typeof config.documentID !== "string" || !config.documentID || config.documentID.length > 4096 || typeof config.fingerprint !== "string" || !config.fingerprint || config.fingerprint.length > 256 || !Number.isSafeInteger(config.loadGeneration) || Number(config.loadGeneration) < 0 || typeof config.selectionEnabled !== "boolean" || typeof config.testingEnabled !== "boolean" || typeof config.presentationCSS !== "string" || typeof config.userCSS !== "string" || !config.localization || typeof config.localization !== "object" || !config.localization.strings || typeof config.localization.strings !== "object" || !Array.isArray(config.linkPreviews) || config.linkPreviews.length > 128 || !config.vectorSymbols || typeof config.vectorSymbols !== "object") return null;
+    if (config.version !== 2 || typeof config.documentID !== "string" || !config.documentID || config.documentID.length > 4096 || typeof config.fingerprint !== "string" || !config.fingerprint || config.fingerprint.length > 256 || !Number.isSafeInteger(config.loadGeneration) || Number(config.loadGeneration) < 0 || typeof config.selectionEnabled !== "boolean" || typeof config.testingEnabled !== "boolean" || typeof config.presentationCSS !== "string" || typeof config.userCSS !== "string" || !config.localization || typeof config.localization !== "object" || !config.localization.strings || typeof config.localization.strings !== "object" || !Array.isArray(config.linkPreviews) || config.linkPreviews.length > 128) return null;
     return config;
   }
 
@@ -350,7 +350,6 @@
       userCSS,
       localization,
       linkPreviews,
-      vectorSymbols,
       testingEnabled
     } = config;
     const presentationStyle = requiredElement("scholium-presentation-css");
@@ -423,12 +422,6 @@
       preview
     ]));
     const origins = /* @__PURE__ */ new Map();
-    const vectorSemantics = {
-      neutral: { label: localized("Related note"), symbolName: "link", symbol: vectorSymbols.neutral ?? "" },
-      supports: { label: localized("Supports"), symbolName: "plus", symbol: vectorSymbols.supports ?? "" },
-      opposes: { label: localized("Opposes"), symbolName: "minus", symbol: vectorSymbols.opposes ?? "" },
-      incompatible: { label: localized("Incompatible"), symbolName: "xmark", symbol: vectorSymbols.incompatible ?? "" }
-    };
     function renderMathNodes() {
       const runtime = readerWindow.scholiumMath;
       if (!runtime || runtime.version !== 1) return;
@@ -588,22 +581,39 @@
     ]) {
       mediaQuery.addEventListener("change", scheduleMermaidRefresh);
     }
-    document.querySelectorAll("a.wiki-link[data-vector-kind]").forEach((link) => {
-      const kind = link.dataset.vectorKind;
-      const semantics = kind ? vectorSemantics[kind] : void 0;
-      if (!kind || !semantics) return;
-      const noteName = (link.textContent || "").trim();
-      link.classList.add("scholium-vector-link", "scholium-vector-" + kind.replaceAll("_", "-"));
-      link.dataset.scholiumProtected = "vector-link";
-      link.setAttribute("aria-label", semantics.label + " " + noteName);
-      link.title = semantics.label + " " + noteName;
-      const icon = document.createElement("span");
-      icon.className = "scholium-vector-icon";
-      icon.setAttribute("aria-hidden", "true");
-      icon.dataset.scholiumSystemSymbol = semantics.symbolName;
-      icon.style.webkitMaskImage = `url("${semantics.symbol}")`;
-      icon.style.maskImage = `url("${semantics.symbol}")`;
-      link.append(icon);
+    document.querySelectorAll("button[data-link-annotation]").forEach((button) => {
+      const identifier = button.dataset.linkAnnotation;
+      if (!identifier) return;
+      const wrapper = button.closest(".scholium-annotated-link");
+      const template = document.getElementById(`${identifier}-template`);
+      const linkName = wrapper?.querySelector(".wiki-link")?.textContent?.trim() || localized("linked note");
+      if (!wrapper || !template) return;
+      const setLabel = (expanded) => {
+        button.setAttribute(
+          "aria-label",
+          `${localized(expanded ? "Hide Link Annotation" : "Show Link Annotation")} ${linkName}`
+        );
+      };
+      setLabel(false);
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const existing = wrapper.querySelector(":scope > .scholium-link-annotation-panel");
+        if (existing) {
+          existing.remove();
+          button.setAttribute("aria-expanded", "false");
+          setLabel(false);
+          return;
+        }
+        const panel = document.createElement("span");
+        panel.id = identifier;
+        panel.className = "scholium-link-annotation-panel";
+        panel.setAttribute("role", "note");
+        panel.append(template.content.cloneNode(true));
+        wrapper.append(panel);
+        button.setAttribute("aria-expanded", "true");
+        setLabel(true);
+      });
     });
     let popoverHideTimer;
     function hidePopover() {
@@ -678,7 +688,7 @@
       const header = document.createElement("header");
       header.className = "scholium-embedded-note-header";
       const open = document.createElement("a");
-      open.className = "wiki-link scholium-vector-link scholium-vector-neutral scholium-embedded-note-open";
+      open.className = "wiki-link scholium-embedded-note-open";
       open.dir = "auto";
       open.href = shell.dataset.embedHref ?? "";
       open.append(document.createTextNode(preview.title));

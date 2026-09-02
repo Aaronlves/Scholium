@@ -139,7 +139,7 @@ struct SafeMarkdownRendererTests {
         #expect(!rendered.contains("[x]"))
     }
 
-    @Test("Obsidian embeds remain neutral navigable links without transclusion")
+    @Test("Obsidian embeds remain navigable links without transclusion")
     func obsidianEmbedLink() {
         let source = "![[Notes/Claim#Ground|Claim ground]]"
         let rendered = SafeMarkdownRenderer.render(
@@ -150,7 +150,6 @@ struct SafeMarkdownRendererTests {
         #expect(rendered.contains("href=\"scholium-note:Notes/Claim%23Ground\""))
         #expect(rendered.contains("data-scholium-protected=\"embed\""))
         #expect(rendered.contains(">Claim ground</a>"))
-        #expect(!rendered.contains("data-relationship="))
     }
 
     @Test("Callouts render as protected semantic components")
@@ -186,7 +185,7 @@ struct SafeMarkdownRendererTests {
 
         > [!connect] Curated connections
         > - [[Target]]
-        > - +[[Support]]
+        > - [[Support]]{{Why this source links to Support.}}
         """
         let document = NoteDocument(relativePath: "callout-links.md", rawContent: source)
         let result = SafeMarkdownRenderer.render(document)
@@ -194,14 +193,14 @@ struct SafeMarkdownRendererTests {
         #expect(result.semanticDocument.links.count == 2)
         for link in result.semanticDocument.links {
             #expect(result.htmlBody.contains(
-                "data-source-utf16-start=\"\(link.span.utf16LowerBound)\" "
-                    + "data-source-utf16-end=\"\(link.span.utf16UpperBound)\""
+                "data-source-utf16-start=\"\(link.linkSpan.utf16LowerBound)\" "
+                    + "data-source-utf16-end=\"\(link.linkSpan.utf16UpperBound)\""
             ))
         }
         #expect(result.htmlBody.contains("href=\"scholium-note:Target\""))
         #expect(result.htmlBody.contains("href=\"scholium-note:Support\""))
-        #expect(result.htmlBody.contains("class=\"wiki-link scholium-vector\""))
-        #expect(result.htmlBody.contains("data-vector-kind=\"supports\""))
+        #expect(result.htmlBody.contains("class=\"scholium-link-annotation-button\""))
+        #expect(result.htmlBody.contains("Why this source links to Support."))
     }
 
     @Test("Callout fold markers select expanded or collapsed Read state")
@@ -376,33 +375,34 @@ struct SafeMarkdownRendererTests {
         #expect(!rendered.contains("<thead><td>"))
     }
 
-    @Test("Legacy typed wikilinks render as inert neutral navigation")
+    @Test("Wikilinks render as ordinary navigation without invented relation metadata")
     func wikilinks() {
         let rendered = SafeMarkdownRenderer.render(
             NoteDocument(
                 relativePath: "links.md",
-                rawContent: "See [[Paper#Claim|Source:supports]]."
+                rawContent: "See [[Paper#Claim|Source]]."
             )
         ).htmlBody
 
         #expect(rendered.contains("href=\"scholium-note:Paper%23Claim\""))
-        #expect(rendered.contains("data-vector-kind=\"neutral\""))
-        #expect(!rendered.contains("data-relationship="))
         #expect(rendered.contains(">Source</a>"))
     }
 
-    @Test("Vector links expose protected semantic rendering metadata")
-    func vectorLinks() {
+    @Test("Annotated Wikilinks expose one protected Markdown disclosure")
+    func annotatedLinks() {
         let rendered = SafeMarkdownRenderer.render(
-            NoteDocument(relativePath: "vectors.md", rawContent: "+[[B]] -[[C]] ?[[D]] [[E]]")
+            NoteDocument(
+                relativePath: "links.md",
+                rawContent: "[[B]]{{First **reason**.\n\n- Second reason.}} [[C]]"
+            )
         ).htmlBody
 
-        #expect(rendered.contains("class=\"wiki-link scholium-vector\""))
-        #expect(rendered.contains("data-vector-kind=\"supports\""))
-        #expect(rendered.contains("data-vector-kind=\"opposes\""))
-        #expect(rendered.contains("data-vector-kind=\"incompatible\""))
-        #expect(rendered.contains("data-vector-kind=\"neutral\""))
-        #expect(!rendered.contains("+[[B]]"))
+        #expect(rendered.contains("class=\"scholium-annotated-link\""))
+        #expect(rendered.contains("class=\"scholium-link-annotation-button\""))
+        #expect(rendered.contains("<template id="))
+        #expect(rendered.contains("<strong>reason</strong>"))
+        #expect(rendered.contains("Second reason."))
+        #expect(!rendered.contains("{{"))
     }
 
     @Test("Relative Markdown links use internal navigation while approved schemes remain external")

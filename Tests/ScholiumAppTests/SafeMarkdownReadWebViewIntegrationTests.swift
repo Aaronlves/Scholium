@@ -554,14 +554,12 @@ extension MarkdownEditorWebViewIntegrationTests {
             Self.linkPreview(
                 at: targetLink.span,
                 title: "Target note",
-                relationship: .neutral,
                 htmlBody: previewBody
             ),
             Self.linkPreview(
                 at: embeddedLink.span,
                 title: "Embedded note",
                 syntax: .embed,
-                relationship: nil,
                 htmlBody: embeddedBody
             ),
         ], revision: "complete-embedded-note-1")
@@ -588,9 +586,8 @@ extension MarkdownEditorWebViewIntegrationTests {
             const viewport = shell?.querySelector('.scholium-embedded-note-viewport');
             const embeddedBody = shell?.querySelector('.scholium-embedded-note-body');
             const open = shell?.querySelector('.scholium-embedded-note-open');
-            const icon = wiki?.querySelector('.scholium-vector-icon');
             const popover = document.getElementById('scholium-preview-popover');
-            if (!wiki || !external || !shell || !viewport || !embeddedBody || !open || !icon || !popover) {
+            if (!wiki || !external || !shell || !viewport || !embeddedBody || !open || !popover) {
               return null;
             }
             wiki.dispatchEvent(new PointerEvent('pointerover', {bubbles: true}));
@@ -619,8 +616,6 @@ extension MarkdownEditorWebViewIntegrationTests {
               sameAccent: wikiStyle.color === externalStyle.color,
               wikiDecoration: wikiStyle.textDecorationLine,
               externalDecoration: externalStyle.textDecorationLine,
-              trailingBadge: wiki.lastElementChild === icon && icon.previousSibling !== null,
-              badgeName: icon.dataset.scholiumSystemSymbol || '',
               metadataHidden: metadata.hidden,
               previewUsesDocumentOwner: previewBody.classList.contains('scholium-document'),
               previewDuplicateTitleCount,
@@ -634,7 +629,7 @@ extension MarkdownEditorWebViewIntegrationTests {
               embeddedHasTail: (embeddedBody.textContent || '').includes('Complete embedded tail'),
               embeddedScrollable: viewport.scrollHeight > viewport.clientHeight && viewport.scrollTop > 0,
               embeddedSourceLocators: embeddedBody.querySelectorAll('[data-source-utf16-start]').length,
-              openBadgeCount: open.querySelectorAll('.scholium-vector-icon').length,
+              openBadgeCount: open.querySelectorAll('.scholium-system-symbol').length,
               viewportTabIndex: viewport.tabIndex
             };
             """
@@ -642,8 +637,6 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(snapshot["sameAccent"] as? Bool == true)
         #expect(snapshot["wikiDecoration"] as? String == "none")
         #expect((snapshot["externalDecoration"] as? String)?.contains("underline") == true)
-        #expect(snapshot["trailingBadge"] as? Bool == true)
-        #expect(snapshot["badgeName"] as? String == "link")
         #expect(snapshot["metadataHidden"] as? Bool == true)
         #expect(snapshot["previewUsesDocumentOwner"] as? Bool == true)
         #expect(snapshot["previewDuplicateTitleCount"] as? Int == 0)
@@ -666,7 +659,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         let source = """
         > [!connect] Curated connections
         > - [[Target]]
-        > - +[[Support]]
+        > - [[Support]]{{A scoped reason.}}
         """
         let document = NoteDocument(relativePath: "CalloutPreviews.md", rawContent: source)
         let rendered = SafeMarkdownRenderer.render(document)
@@ -685,14 +678,12 @@ extension MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilReady()
         harness.updateLinkPreviews([
             Self.linkPreview(
-                at: links[0].span,
-                title: "Target note",
-                relationship: .neutral
+                at: links[0].linkSpan,
+                title: "Target note"
             ),
             Self.linkPreview(
-                at: links[1].span,
-                title: "Supporting note",
-                relationship: .supports
+                at: links[1].linkSpan,
+                title: "Supporting note"
             ),
         ], revision: "callout-links-1")
 
@@ -718,10 +709,10 @@ extension MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Review Vector Links use only native SF Symbol masks")
-    func reviewVectorLinksUseSystemSymbols() async throws {
-        let source = "+[[Support]] -[[Oppose]] ?[[Conflict]] [[Related]]\n"
-        let document = NoteDocument(relativePath: "Vectors.md", rawContent: source)
+    @Test("Review presents an annotated link through one accessible disclosure")
+    func reviewAnnotatedLinkDisclosure() async throws {
+        let source = "[[Support]]{{First **reason**.\n\n- Second reason.}}\n"
+        let document = NoteDocument(relativePath: "Links.md", rawContent: source)
         let harness = ReadHarness(
             source: source,
             htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
@@ -734,32 +725,27 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         let snapshot = try #require(try await harness.callPageJavaScript(
             """
-            const icons = [...document.querySelectorAll('.scholium-vector-icon')];
+            const button = document.querySelector('.scholium-link-annotation-button');
+            const icon = button?.querySelector('span');
+            if (!button || !icon) return null;
+            button.click();
+            const panel = document.querySelector('.scholium-link-annotation-panel');
             return {
-              names: icons.map(icon => icon.dataset.scholiumSystemSymbol || ''),
-              maskCount: icons.filter(icon => {
-                const style = getComputedStyle(icon);
-                return [style.webkitMaskImage, style.maskImage].some(
-                  value => Boolean(value) && value !== 'none'
-                );
-              }).length,
-              svgCount: icons.reduce((count, icon) => count + icon.querySelectorAll('svg').length, 0),
-              sizes: icons.map(icon => {
-                const rect = icon.getBoundingClientRect();
-                return `${rect.width.toFixed(2)}x${rect.height.toFixed(2)}`;
-              })
+              expanded: button.getAttribute('aria-expanded'),
+              panelRole: panel?.getAttribute('role') || '',
+              panelText: panel?.textContent || '',
+              strongText: panel?.querySelector('strong')?.textContent || '',
+              sourceLocated: Boolean(panel?.querySelector('[data-source-utf16-start]')),
+              inlineSVGCount: document.querySelectorAll('svg').length
             };
             """
         ) as? [String: Any])
-        #expect(snapshot["names"] as? [String] == [
-            "plus",
-            "minus",
-            "xmark",
-            "link",
-        ])
-        #expect(snapshot["maskCount"] as? Int == 4)
-        #expect(snapshot["svgCount"] as? Int == 0)
-        #expect(Set(snapshot["sizes"] as? [String] ?? []).count == 1)
+        #expect(snapshot["expanded"] as? String == "true")
+        #expect(snapshot["panelRole"] as? String == "note")
+        #expect((snapshot["panelText"] as? String)?.contains("Second reason.") == true)
+        #expect(snapshot["strongText"] as? String == "reason")
+        #expect(snapshot["sourceLocated"] as? Bool == true)
+        #expect(snapshot["inlineSVGCount"] as? Int == 0)
         await harness.closeAndDrain()
     }
 
@@ -1184,8 +1170,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 start: SourcePosition(line: 1, utf8Column: 1, utf16Column: 1),
                 end: SourcePosition(line: 1, utf8Column: 11, utf16Column: 11)
             ),
-            title: "Target note",
-            relationship: .neutral
+            title: "Target note"
         )
     }
 
@@ -1193,7 +1178,6 @@ extension MarkdownEditorWebViewIntegrationTests {
         at span: SourceSpan,
         title: String,
         syntax: LinkSyntax = .wikilink,
-        relationship: VectorLinkKind?,
         htmlBody: String = "<p>Target body</p>"
     ) -> DocumentLinkPreview {
         DocumentLinkPreview(
@@ -1202,7 +1186,6 @@ extension MarkdownEditorWebViewIntegrationTests {
             targetFingerprint: DocumentFingerprint(content: "Target body"),
             title: title,
             syntax: syntax,
-            relationship: relationship,
             fragment: nil,
             htmlBody: htmlBody
         )

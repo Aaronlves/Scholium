@@ -90,7 +90,7 @@ and portable identities. Document load and exact current-buffer Search are
 usable. Current-Vault lexical Search reuses the last complete index. The index
 filters candidates by opening fingerprints and resolved stable identities
 before limits and `hasMore`, then returns Limited. No partial generation or
-second index exists. Triptych-wide structured, property, and relation
+second index exists. Triptych-wide structured, property, and direct-link
 resolution fails closed with
 `workspaceStillLoading`; absent complete projections are not complete evidence.
 One utility-priority opening-completion task owns convergence. Watcher events
@@ -109,7 +109,7 @@ and await that task. Snapshot/CLI opens and live callers without a selected
 opening Vault retain the complete one-shot path.
 
 Each `WorkspaceHandle` owns one Note `TriptychSearchIndex` at
-`Triptychs/<triptych-id>/indexes/search-v9.sqlite`; pooled vault runtimes own
+`Triptychs/<triptych-id>/indexes/search-v10.sqlite`; pooled vault runtimes own
 repositories, watchers, and one shared `VaultSourceCatalog`, but no Search
 index. The catalog retains exact `NoteDocument`, descriptor-observed file
 metadata, `SourceVersion`, cached `MarkdownSemanticDocument`, and the
@@ -189,14 +189,14 @@ another process's winning bytes are loaded and validated rather than replaced.
 Every `identities.json` mutation carries the exact read preimage through one
 coordinated swap and decoded readback proof, so a stale move, reconciliation,
 or creation writer cannot erase a newer portable Note identity.
-Direct relation queries are publishable only when the Graph and Note Search
-manifest hashes agree. A relation clause is part of one structured AND query;
+Direct-link queries are publishable only when the Graph and Note Search
+manifest hashes agree. A `from-note:` or `to-note:` clause is part of one structured AND query;
 Graph absence, staleness, or mismatch fails that complete query closed rather
 than returning its lexical clauses as a broadened substitute. An ordinary
 lexical query remains independently available from its last complete compatible
 Note generation. There is no parallel direct-connection Search presentation;
-explicit relation clauses are the only Search consumer of Graph neighborhoods.
-`DiscoveryOperations` owns vault-qualified Link/Relationship and bounded Graph
+explicit direct-link clauses are the only Search consumer of Graph neighborhoods.
+`DiscoveryOperations` owns vault-qualified link occurrences and bounded Graph
 queries; CLI only formats results.
 Privacy-safe measurements record enumerate/read/parse/source-
 projection counts and durations, identity and research-state projection,
@@ -638,10 +638,12 @@ binding/Metadata revisions; writes absent fields for Link and Fill or previewed
 differences for Refresh; reports partial commit; and refreshes derived state
 after mutation. UI owns no mapping or writes; frontmatter is excluded.
 
-Connect projects direct and derived relations as single full-row targets, pins
-the original collapsible group header within its sole vertical scroll, and
-retains the distinct source anchor as a named secondary action without a
-trailing glyph. Settle and Critique remain researcher-owned current-state
+Connect projects every direct incoming or outgoing link occurrence as a
+separate full-row target, pins the original collapsible peer-role group header
+within its sole vertical scroll, and shows its source-owned Markdown annotation
+and local context when present. Incoming annotation is read-only there; the
+named source action opens the source occurrence for editing. Settle and
+Critique remain researcher-owned current-state
 operations at their specified surfaces. Agent conversation, tool selection,
 and lifecycle state belong to the external Agent host, not the Inspector.
 

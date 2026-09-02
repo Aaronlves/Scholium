@@ -260,7 +260,7 @@ struct ResearchInspectorView: View {
                         context: researchInspectorContentContext
                     )
                 case .connect:
-                    ConnectionsInspectorView(context: relationshipContext)
+                    ConnectionsInspectorView(context: connectionsContext)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -270,8 +270,8 @@ struct ResearchInspectorView: View {
         .accessibilityIdentifier("scholium.researchInspector")
     }
 
-    private var relationshipContext: RelationshipInspectorContext {
-        RelationshipInspectorContext(
+    private var connectionsContext: ConnectionsInspectorContext {
+        ConnectionsInspectorContext(
             graph: graph,
             catalog: catalog,
             current: currentVaultID.map {

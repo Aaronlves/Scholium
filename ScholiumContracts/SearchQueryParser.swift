@@ -14,6 +14,7 @@ public enum SearchLexicalField: String, Codable, CaseIterable, Hashable, Sendabl
     case publicationDate = "publication_date"
     case tag = "keyword"
     case footnote
+    case linkAnnotation = "link_annotation"
     case path
 }
 
@@ -22,20 +23,9 @@ public enum SearchStructuredField: String, Codable, CaseIterable, Hashable, Send
     case has
 }
 
-public enum SearchRelationDirection: String, Codable, CaseIterable, Hashable, Sendable {
+public enum SearchLinkDirection: String, Codable, CaseIterable, Hashable, Sendable {
     case fromNote = "from-note"
     case toNote = "to-note"
-}
-
-public enum SearchRelation: String, Codable, CaseIterable, Hashable, Sendable {
-    case supports
-    case opposes
-    case neutral
-    case incompatible
-
-    public var isSymmetric: Bool {
-        self == .neutral || self == .incompatible
-    }
 }
 
 public enum SearchLexicalValue: Codable, Hashable, Sendable {
@@ -128,21 +118,18 @@ public struct SearchPropertyClause: Codable, Hashable, Sendable {
     }
 }
 
-public struct SearchRelationQuery: Codable, Hashable, Sendable {
-    public let direction: SearchRelationDirection
+public struct SearchLinkQuery: Codable, Hashable, Sendable {
+    public let direction: SearchLinkDirection
     public let noteIdentity: String
-    public let relation: SearchRelation
     public let sourceRange: Range<Int>
 
     public init(
-        direction: SearchRelationDirection,
+        direction: SearchLinkDirection,
         noteIdentity: String,
-        relation: SearchRelation,
         sourceRange: Range<Int>
     ) {
         self.direction = direction
         self.noteIdentity = noteIdentity
-        self.relation = relation
         self.sourceRange = sourceRange
     }
 }
@@ -151,7 +138,7 @@ public enum SearchClause: Codable, Hashable, Sendable {
     case lexical(SearchLexicalClause)
     case structured(SearchStructuredClause)
     case property(SearchPropertyClause)
-    case relation(SearchRelationQuery)
+    case link(SearchLinkQuery)
 }
 
 public enum SearchExplanationOperator: String, Codable, Hashable, Sendable {
@@ -173,14 +160,14 @@ public enum SearchExplanationLimitation: String, Codable, Hashable, Sendable {
     case authorizedScopeOnly = "authorized_scope_only"
     case retrievalLeadNotEvidence = "retrieval_lead_not_evidence"
     case noCrossProviderRanking = "no_cross_provider_ranking"
-    case noteRelationsDirectOnly = "note_relations_direct_only"
+    case noteLinksDirectOnly = "note_links_direct_only"
 }
 
 public enum SearchExplanationClauseKind: Codable, Hashable, Sendable {
     case lexical(SearchLexicalField?, String, SearchLexicalMatchKind, Bool)
     case structured(SearchStructuredField, String, Bool)
     case property(String, String?)
-    case relation(SearchRelationDirection, String, SearchRelation, Bool)
+    case link(SearchLinkDirection, String)
 }
 
 public struct SearchExplanationClause: Codable, Hashable, Sendable {
@@ -221,7 +208,7 @@ public struct SearchExplanation: Codable, Hashable, Sendable {
             .authorizedScopeOnly,
             .retrievalLeadNotEvidence,
             .noCrossProviderRanking,
-            .noteRelationsDirectOnly,
+            .noteLinksDirectOnly,
         ]
     }
 
@@ -264,9 +251,9 @@ public struct SearchQueryAST: Codable, Hashable, Sendable {
         positiveLexicalClauses.first
     }
 
-    public var relationQuery: SearchRelationQuery? {
+    public var linkQuery: SearchLinkQuery? {
         clauses.compactMap {
-            guard case .relation(let query) = $0 else { return nil }
+            guard case .link(let query) = $0 else { return nil }
             return query
         }.first
     }
@@ -282,7 +269,7 @@ public struct SearchQueryAST: Codable, Hashable, Sendable {
         guard !clauses.isEmpty else { return providerWasExplicit }
         return clauses.allSatisfy { clause in
             switch clause {
-            case .structured, .property, .relation: true
+            case .structured, .property, .link: true
             case .lexical: false
             }
         }
@@ -315,14 +302,9 @@ public struct SearchQueryAST: Codable, Hashable, Sendable {
                         kind: .property(value.key, value.value),
                         sourceRange: value.sourceRange
                     )
-                case .relation(let value):
+                case .link(let value):
                     SearchExplanationClause(
-                        kind: .relation(
-                            value.direction,
-                            value.noteIdentity,
-                            value.relation,
-                            value.relation.isSymmetric
-                        ),
+                        kind: .link(value.direction, value.noteIdentity),
                         sourceRange: value.sourceRange
                     )
                 }
@@ -369,14 +351,9 @@ public enum SearchQueryParser {
         let range: Range<Int>
     }
 
-    private struct RelationAnchor {
-        let direction: SearchRelationDirection
+    private struct LinkAnchor {
+        let direction: SearchLinkDirection
         let identity: String
-        let sourceRange: Range<Int>
-    }
-
-    private struct RelationValue {
-        let relation: SearchRelation
         let sourceRange: Range<Int>
     }
 
@@ -436,30 +413,21 @@ public enum SearchQueryParser {
 
         var clauses: [SearchClause] = []
         var diagnostics: [SearchQueryDiagnostic] = []
-        var relationAnchors: [RelationAnchor] = []
-        var relationValues: [RelationValue] = []
+        var linkAnchors: [LinkAnchor] = []
         for token in tokenized.tokens where !isKindToken(token) {
             switch parseNote(token) {
             case .clause(let clause): clauses.append(clause)
-            case .anchor(let anchor): relationAnchors.append(anchor)
-            case .relation(let relation): relationValues.append(relation)
+            case .anchor(let anchor): linkAnchors.append(anchor)
             case .diagnostic(let diagnostic): diagnostics.append(diagnostic)
             }
         }
 
-        diagnostics.append(contentsOf: relationDiagnostics(
-            anchors: relationAnchors,
-            relations: relationValues
-        ))
-        if diagnostics.isEmpty,
-           let anchor = relationAnchors.first,
-           let relation = relationValues.first {
-            clauses.append(.relation(SearchRelationQuery(
+        diagnostics.append(contentsOf: linkDiagnostics(anchors: linkAnchors))
+        if diagnostics.isEmpty, let anchor = linkAnchors.first {
+            clauses.append(.link(SearchLinkQuery(
                 direction: anchor.direction,
                 noteIdentity: anchor.identity,
-                relation: relation.relation,
-                sourceRange: min(anchor.sourceRange.lowerBound, relation.sourceRange.lowerBound)
-                    ..< max(anchor.sourceRange.upperBound, relation.sourceRange.upperBound)
+                sourceRange: anchor.sourceRange
             )))
         }
         guard diagnostics.isEmpty else {
@@ -474,12 +442,12 @@ public enum SearchQueryParser {
         let hasPositiveUnfielded = clauses.contains { clause in
             switch clause {
             case .lexical(let value): !value.excluded
-            case .structured, .property, .relation: false
+            case .structured, .property, .link: false
             }
         }
         let hasFilter = clauses.contains { clause in
             switch clause {
-            case .structured, .property, .relation: true
+            case .structured, .property, .link: true
             case .lexical: false
             }
         }
@@ -487,7 +455,7 @@ public enum SearchQueryParser {
            clauses.allSatisfy({ clause in
                switch clause {
                case .lexical(let value): value.excluded
-               case .structured, .property, .relation: false
+               case .structured, .property, .link: false
                }
            }) {
             let range = tokenized.tokens.first?.range ?? 0..<max(0, raw.utf16.count)
@@ -563,8 +531,7 @@ public enum SearchQueryParser {
 
     private enum NoteParseResult {
         case clause(SearchClause)
-        case anchor(RelationAnchor)
-        case relation(RelationValue)
+        case anchor(LinkAnchor)
         case diagnostic(SearchQueryDiagnostic)
     }
 
@@ -628,19 +595,14 @@ public enum SearchQueryParser {
             case .success(let value): return .clause(.property(value))
             case .failure(let error): return .diagnostic(error)
             }
-        case SearchRelationDirection.fromNote.rawValue, SearchRelationDirection.toNote.rawValue:
-            switch relationAnchor(
-                direction: SearchRelationDirection(rawValue: field)!,
+        case SearchLinkDirection.fromNote.rawValue, SearchLinkDirection.toNote.rawValue:
+            switch linkAnchor(
+                direction: SearchLinkDirection(rawValue: field)!,
                 rawValue: split.value,
                 excluded: excluded,
                 token: token
             ) {
             case .success(let value): return .anchor(value)
-            case .failure(let error): return .diagnostic(error)
-            }
-        case "relation":
-            switch relationValue(rawValue: split.value, excluded: excluded, token: token) {
-            case .success(let value): return .relation(value)
             case .failure(let error): return .diagnostic(error)
             }
         default:
@@ -808,16 +770,16 @@ public enum SearchQueryParser {
         ))
     }
 
-    private static func relationAnchor(
-        direction: SearchRelationDirection,
+    private static func linkAnchor(
+        direction: SearchLinkDirection,
         rawValue: String,
         excluded: Bool,
         token: Token
-    ) -> Result<RelationAnchor, SearchQueryDiagnostic> {
+    ) -> Result<LinkAnchor, SearchQueryDiagnostic> {
         guard !excluded else {
             return .failure(diagnostic(
                 .unsupportedSyntax,
-                "Relation anchors cannot be excluded.",
+                "Link anchors cannot be excluded.",
                 token
             ))
         }
@@ -829,52 +791,23 @@ public enum SearchQueryParser {
         guard !value.hadTrailingAsterisk else {
             return .failure(diagnostic(
                 .unsupportedSyntax,
-                "Relation identities do not support prefixes.",
+                "Link identities do not support prefixes.",
                 token
             ))
         }
         let identity = SearchTextNormalization.normalize(value.text)
         guard !identity.isEmpty else {
-            return .failure(diagnostic(.emptyClause, "A relation identity cannot be empty.", token))
+            return .failure(diagnostic(.emptyClause, "A link identity cannot be empty.", token))
         }
-        return .success(RelationAnchor(
+        return .success(LinkAnchor(
             direction: direction,
             identity: identity,
             sourceRange: token.range
         ))
     }
 
-    private static func relationValue(
-        rawValue: String,
-        excluded: Bool,
-        token: Token
-    ) -> Result<RelationValue, SearchQueryDiagnostic> {
-        guard !excluded else {
-            return .failure(diagnostic(
-                .unsupportedSyntax,
-                "Relation clauses cannot be excluded.",
-                token
-            ))
-        }
-        let value: DecodedValue
-        switch decodeValue(rawValue, token: token) {
-        case .success(let decoded): value = decoded
-        case .failure(let error): return .failure(error)
-        }
-        guard !value.quoted, !value.hadTrailingAsterisk,
-              let relation = SearchRelation(rawValue: value.text.lowercased()) else {
-            return .failure(diagnostic(
-                .unknownStructuredValue,
-                "relation: accepts supports, opposes, neutral, or incompatible.",
-                token
-            ))
-        }
-        return .success(RelationValue(relation: relation, sourceRange: token.range))
-    }
-
-    private static func relationDiagnostics(
-        anchors: [RelationAnchor],
-        relations: [RelationValue]
+    private static func linkDiagnostics(
+        anchors: [LinkAnchor]
     ) -> [SearchQueryDiagnostic] {
         if anchors.count > 1 {
             return [SearchQueryDiagnostic(
@@ -882,30 +815,6 @@ public enum SearchQueryParser {
                 message: "Use exactly one from-note: or to-note: anchor.",
                 utf16LowerBound: anchors[1].sourceRange.lowerBound,
                 utf16UpperBound: anchors[1].sourceRange.upperBound
-            )]
-        }
-        if relations.count > 1 {
-            return [SearchQueryDiagnostic(
-                code: .duplicateClause,
-                message: "relation: may appear only once.",
-                utf16LowerBound: relations[1].sourceRange.lowerBound,
-                utf16UpperBound: relations[1].sourceRange.upperBound
-            )]
-        }
-        if let anchor = anchors.first, relations.isEmpty {
-            return [SearchQueryDiagnostic(
-                code: .missingCompanion,
-                message: "\(anchor.direction.rawValue): requires one relation: clause.",
-                utf16LowerBound: anchor.sourceRange.lowerBound,
-                utf16UpperBound: anchor.sourceRange.upperBound
-            )]
-        }
-        if let relation = relations.first, anchors.isEmpty {
-            return [SearchQueryDiagnostic(
-                code: .missingCompanion,
-                message: "relation: requires one from-note: or to-note: anchor.",
-                utf16LowerBound: relation.sourceRange.lowerBound,
-                utf16UpperBound: relation.sourceRange.upperBound
             )]
         }
         return []
@@ -1073,7 +982,7 @@ public enum SearchQueryParser {
                 unfieldedValues.append(lexical.value.text)
             case .title, .alias, .path:
                 fieldedIdentityValues.append(lexical.value.text)
-            case .heading, .summary, .body, .author, .publicationDate, .tag, .footnote:
+            case .heading, .summary, .body, .author, .publicationDate, .tag, .footnote, .linkAnnotation:
                 continue
             }
         }

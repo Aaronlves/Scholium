@@ -1241,14 +1241,14 @@ struct WorkspaceRuntimeTests {
                 fixture.assignment.id.uuidString.lowercased(),
                 isDirectory: true
             )
-            .appendingPathComponent("indexes/search-v9.sqlite")
+            .appendingPathComponent("indexes/search-v10.sqlite")
         let secondIndex = fixture.applicationSupportURL
             .appendingPathComponent("Triptychs", isDirectory: true)
             .appendingPathComponent(
                 secondAssignment.id.uuidString.lowercased(),
                 isDirectory: true
             )
-            .appendingPathComponent("indexes/search-v9.sqlite")
+            .appendingPathComponent("indexes/search-v10.sqlite")
         #expect(firstIndex != secondIndex)
         #expect(FileManager.default.fileExists(atPath: firstIndex.path))
         #expect(FileManager.default.fileExists(atPath: secondIndex.path))
@@ -1321,15 +1321,15 @@ struct WorkspaceRuntimeTests {
         await runtime.shutdown()
     }
 
-    @Test("Direct relation Search uses the same complete Graph manifest and preserves source provenance")
-    func directRelationSearchIntegration() async throws {
+    @Test("Direct link Search uses the same complete Graph manifest and preserves source provenance")
+    func directLinkSearchIntegration() async throws {
         let fixture = try await ApplicationFixture.make()
         defer { fixture.remove() }
-        try Data("# Anchor\n\n+[[Target]]\n".utf8).write(
+        try Data("# Anchor\n\n[[Target]]{{A bounded **reason**.}}\n".utf8).write(
             to: fixture.topicsURL.appendingPathComponent("Anchor.md"),
             options: .atomic
         )
-        try Data("# Target\n\nA bounded relation target.\n".utf8).write(
+        try Data("# Target\n\nA bounded link target.\n".utf8).write(
             to: fixture.topicsURL.appendingPathComponent("Target.md"),
             options: .atomic
         )
@@ -1340,7 +1340,7 @@ struct WorkspaceRuntimeTests {
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
 
         let response = try await handle.discovery.search(SearchRequest(
-            query: "from-note:Anchor relation:supports",
+            query: "from-note:Anchor",
             presentationScope: .triptych,
             executionScope: .triptych,
             limit: 20
@@ -1351,18 +1351,18 @@ struct WorkspaceRuntimeTests {
             return note
         }.first)
         #expect(target.relativePath == "Target.md")
-        let relationship = try #require(target.matchReasons.compactMap {
-            reason -> SearchRelationshipMatch? in
-            guard case .relationship(let match) = reason else { return nil }
+        let link = try #require(target.matchReasons.compactMap {
+            reason -> SearchLinkMatch? in
+            guard case .link(let match) = reason else { return nil }
             return match
         }.first)
-        #expect(relationship.direction == .fromNote)
-        #expect(relationship.relation == .supports)
-        #expect(relationship.occurrences.first?.sourceNote.relativePath == "Anchor.md")
-        #expect(relationship.occurrences.first?.locator.line == 3)
+        #expect(link.direction == .fromNote)
+        #expect(link.occurrences.first?.sourceNote.relativePath == "Anchor.md")
+        #expect(link.occurrences.first?.linkSpan.start.line == 3)
+        #expect(link.occurrences.first?.annotationSpan != nil)
 
         let narrowed = try await handle.discovery.search(SearchRequest(
-            query: "missing-term from-note:Anchor relation:supports",
+            query: "missing-term from-note:Anchor",
             presentationScope: .triptych,
             executionScope: .triptych,
             limit: 20

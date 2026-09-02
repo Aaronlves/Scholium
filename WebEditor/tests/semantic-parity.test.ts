@@ -4,7 +4,7 @@ import {projectDialectSemantics} from "../projection";
 import type {MarkdownEditingDialect} from "../protocol";
 
 const dialect: MarkdownEditingDialect = {
-  version: 3,
+  version: 5,
   callouts: [
     {identifier: "orient", aliases: ["mini"], label: "Orientation", meaning: "Scope"},
     {identifier: "cite", aliases: ["bibli", "bibliography", "cited"], label: "Source", meaning: "Source"},
@@ -14,12 +14,10 @@ const dialect: MarkdownEditingDialect = {
     {identifier: "quote", aliases: ["quotation", "author", "long-quote"], label: "Quotation", meaning: "Quotation"},
     {identifier: "flag", aliases: ["warning", "caution", "source-warning", "torn", "question"], label: "Caution", meaning: "Caution"},
   ],
-  vectorLinkOperators: [
-    {marker: "", kind: "neutral", meaning: "Neutral"},
-    {marker: "+", kind: "supports", meaning: "Supports"},
-    {marker: "-", kind: "opposes", meaning: "Opposes"},
-    {marker: "?", kind: "incompatible", meaning: "Incompatible"},
-  ],
+  linkAnnotation: {
+    openingDelimiter: "{{", closingDelimiter: "}}", escapeCharacter: "\\",
+    allowsMultiline: true, allowsNesting: false,
+  },
   footnotes: {
     namedReferenceOpening: "[^",
     namedReferenceClosing: "]",
@@ -41,7 +39,7 @@ interface Fixture {
   name: string;
   source: string;
   callouts: string[];
-  links: Array<{target: string; vectorKind: string | null}>;
+  links: Array<{target: string; annotation: string | null}>;
   footnoteDefinitions: string[];
   footnoteDefinitionContents: string[];
   footnoteReferences: string[];

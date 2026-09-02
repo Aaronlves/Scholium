@@ -205,8 +205,8 @@
       "sourceToken": "[[Synthetic Note|a wikilink]]",
       "visibleToken": "a wikilink",
       "level": "inline",
-      "readSelector": ".scholium-document .scholium-vector-link",
-      "editSelector": ".cm-live-vector-link",
+      "readSelector": ".scholium-document .wiki-link",
+      "editSelector": ".cm-live-wiki-link",
       "expectation": "mustMatchReview"
     },
     {

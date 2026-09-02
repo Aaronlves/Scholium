@@ -2,7 +2,7 @@ import {describe, expect, it} from "vitest";
 import {validatedReaderConfiguration} from "../reader-configuration";
 
 const currentConfiguration = {
-  version: 1,
+  version: 2,
   documentID: "work-001",
   fingerprint: "a".repeat(64),
   loadGeneration: 3,
@@ -12,7 +12,6 @@ const currentConfiguration = {
   userCSS: "",
   localization: {strings: {}},
   linkPreviews: [],
-  vectorSymbols: {neutral: "data:image/svg+xml;base64,AA=="},
 };
 
 describe("reader configuration", () => {
@@ -21,7 +20,7 @@ describe("reader configuration", () => {
   });
 
   it("rejects unknown versions and unbounded identities", () => {
-    expect(validatedReaderConfiguration({...currentConfiguration, version: 2})).toBeNull();
+    expect(validatedReaderConfiguration({...currentConfiguration, version: 3})).toBeNull();
     expect(validatedReaderConfiguration({
       ...currentConfiguration,
       documentID: "x".repeat(4_097),

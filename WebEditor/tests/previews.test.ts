@@ -4,13 +4,13 @@ import {footnotePreviewContent, footnoteReferenceAt, validatedLinkPreviews} from
 describe("preview projections", () => {
   it("accepts only bounded previews inside the current document", () => {
     expect(validatedLinkPreviews([
-      {from: 0, to: 5, title: " Target ", relationship: "supports", fragment: "Heading", htmlBody: "<p>Body</p>"},
+      {from: 0, to: 5, title: " Target ", fragment: "Heading", htmlBody: "<p>Body</p>"},
       {from: 6, to: 99, title: "Outside", htmlBody: "<p>No</p>"},
       {from: 6, to: 8, title: "", htmlBody: "<p>No</p>"},
-      {from: 6, to: 8, title: "Bad relationship", relationship: "invented", htmlBody: "<p>Body</p>"},
+      {from: 6, to: 8, title: "Second", htmlBody: "<p>Body</p>"},
     ], 12)).toEqual([
-      {from: 0, to: 5, title: "Target", isEmbedded: false, relationship: "supports", fragment: "Heading", htmlBody: "<p>Body</p>"},
-      {from: 6, to: 8, title: "Bad relationship", isEmbedded: false, relationship: undefined, fragment: undefined, htmlBody: "<p>Body</p>"},
+      {from: 0, to: 5, title: "Target", isEmbedded: false, fragment: "Heading", htmlBody: "<p>Body</p>"},
+      {from: 6, to: 8, title: "Second", isEmbedded: false, fragment: undefined, htmlBody: "<p>Body</p>"},
     ]);
   });
 

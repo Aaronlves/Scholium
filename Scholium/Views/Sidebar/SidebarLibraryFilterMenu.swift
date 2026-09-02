@@ -16,7 +16,7 @@ struct SidebarLibraryFilterOptions: Equatable, Sendable {
 func sidebarActiveLibraryFilterCount(_ filters: DiscoveryFilterState) -> Int {
     [
         filters.needsAttention,
-        filters.hasExplicitConnections,
+        filters.hasLinkAnnotations,
         filters.hasMalformedMetadata,
         filters.tag != nil,
         filters.author != nil,
@@ -50,8 +50,8 @@ struct SidebarLibraryFilterMenu: View {
                     Toggle("Needs Attention", isOn: filterBinding(\.needsAttention))
                         .disabled(!options.catalogIsAvailable)
                     Toggle(
-                        "Explicit Connections",
-                        isOn: filterBinding(\.hasExplicitConnections)
+                        "Link Annotations",
+                        isOn: filterBinding(\.hasLinkAnnotations)
                     )
                     .disabled(!options.graphIsAvailable)
                     Toggle(

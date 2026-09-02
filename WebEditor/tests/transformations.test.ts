@@ -54,10 +54,14 @@ describe("exact Markdown transformations", () => {
     const cases = [
       ["bold", "**claim**"], ["emphasis", "*claim*"], ["strikethrough", "~~claim~~"],
       ["highlight", "==claim=="], ["inlineCode", "`claim`"], ["wikilink", "[[claim]]"],
-      ["vectorSupports", "+[[claim]]"], ["vectorOpposes", "-[[claim]]"],
-      ["vectorIncompatible", "?[[claim]]"], ["markdownComment", "%% claim %%"],
+      ["annotatedWikilink", "[[claim]]{{Annotation}}"],
+      ["markdownComment", "%% claim %%"],
     ] as const;
     for (const [command, expected] of cases) expect(apply("claim", command, 0, 5).source).toBe(expected);
+  });
+  it("selects the annotation placeholder after annotating a selected target", () => {
+    const transformed = apply("claim", "annotatedWikilink", 0, 5);
+    expect(transformed.result.selections).toEqual([{anchor: 11, head: 21}]);
   });
   it("wraps and unwraps only the selected range", () => {
     expect(apply("before thesis after", "bold", 7, 13).source).toBe("before **thesis** after");

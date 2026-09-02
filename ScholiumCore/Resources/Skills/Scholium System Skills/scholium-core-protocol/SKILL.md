@@ -27,6 +27,12 @@ bounded `scholium_search_notes` queries, read the passages that bear on the
 question with `scholium_read_note`, revise retrieval when needed, and follow
 direct authored occurrences with `scholium_list_links` when warranted.
 
+Treat each listed row as one occurrence owned by its source Note. Its optional
+annotation and local context are authored material to read, not a stored
+  machine-interpreted relationship class or evidence verdict. For an incoming occurrence,
+follow its source identity and locator before proposing any edit; only that
+source Note owns the annotation.
+
 Treat Search rank, snippets, Metadata, filenames, tags, and links as candidate
 locators. They do not establish philosophical relevance, identity, support,
 irrelevance, invalidity, consensus, or truth. Read exact Markdown source before

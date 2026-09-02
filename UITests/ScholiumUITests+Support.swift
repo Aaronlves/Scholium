@@ -985,19 +985,19 @@ extension ScholiumUITests {
                 to: footnoteNoteURL
             )
         }
-        if name.contains("testSearchQueriesExplicitDirectRelationsWithoutParallelResults") {
+        if name.contains("testSearchQueriesOneDirectAuthoredLinkWithoutParallelResults") {
             try write(
                 """
                 ---
-                title: "QA Direct Relation Concept 947"
-                aliases: ["QA Direct Relation Alias 947"]
+                title: "QA Direct Link Concept 947"
+                aliases: ["QA Direct Link Alias 947"]
                 status: seed
                 ---
-                # QA Direct Relation Concept 947
+                # QA Direct Link Concept 947
 
-                Synthetic navigation fixture: +[[QA Autosave A|A distinct analysis relation]].
+                Synthetic navigation fixture: [[QA Autosave A|a distinct analysis]]{{A direct authored connection with occurrence-local context.}}.
                 """ + "\n",
-                to: topics.appendingPathComponent("QA Direct Relation Topic.md")
+                to: topics.appendingPathComponent("QA Direct Link Topic.md")
             )
         }
         if name.contains("testSearchExplainsTitleAliasHeadingAndBodyRanking") {
@@ -1117,7 +1117,7 @@ extension ScholiumUITests {
         > Begin with the ordinary prose, then inspect exact objects without treating this note as a source.
 
         > [!connect]
-        > A neutral connection list can remain untitled and still belong to the same document grammar.
+        > A connection list can remain untitled and still belong to the same document grammar.
 
         > [!state] Provisional Claim
         > A displayed distinction should remain visibly subordinate to the surrounding research document.

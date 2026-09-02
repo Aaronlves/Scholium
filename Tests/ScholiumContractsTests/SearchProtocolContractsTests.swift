@@ -145,32 +145,26 @@ struct SearchProtocolContractsTests {
         #expect(SearchQueryParser.parse("property:key=").diagnostics.first?.code == .missingFieldValue)
     }
 
-    @Test("Relation queries require one direction anchor and one canonical relation")
-    func noteRelations() throws {
-        let result = SearchQueryParser.parse(#"from-note:"Groundwork" relation:supports duty"#)
+    @Test("Direct-link queries require exactly one direction anchor")
+    func noteLinks() throws {
+        let result = SearchQueryParser.parse(#"from-note:"Groundwork" duty"#)
         let ast = try #require(result.ast)
         #expect(ast.provider == .note)
-        #expect(ast.relationQuery?.direction == .fromNote)
-        #expect(ast.relationQuery?.noteIdentity == "groundwork")
-        #expect(ast.relationQuery?.relation == .supports)
+        #expect(ast.linkQuery?.direction == .fromNote)
+        #expect(ast.linkQuery?.noteIdentity == "groundwork")
 
-        #expect(SearchQueryParser.parse("from-note:A").diagnostics.first?.code == .missingCompanion)
-        #expect(SearchQueryParser.parse("relation:opposes").diagnostics.first?.code == .missingCompanion)
+        #expect(SearchQueryParser.parse("from-note:A").diagnostics.isEmpty)
         #expect(
-            SearchQueryParser.parse("from-note:A to-note:B relation:neutral")
+            SearchQueryParser.parse("from-note:A to-note:B")
                 .diagnostics.first?.code == .duplicateClause
         )
-        #expect(
-            SearchQueryParser.parse("from-note:A relation:supports relation:opposes")
-                .diagnostics.first?.code == .duplicateClause
-        )
-        #expect(SearchQueryParser.parse("-from-note:A relation:supports").diagnostics.first?.code == .unsupportedSyntax)
+        #expect(SearchQueryParser.parse("-from-note:A").diagnostics.first?.code == .unsupportedSyntax)
     }
 
     @Test("Explanation and capabilities are deterministic products of the current contract")
     func explanationAndCapabilities() throws {
         let ast = try #require(SearchQueryParser.parse(
-            #"kind:note property:author="Arendt" to-note:"Agency" relation:incompatible title:freedom"#
+            #"kind:note property:author="Arendt" to-note:"Agency" title:freedom"#
         ).ast)
         let explanation = ast.explanation(scope: .currentVault)
         #expect(explanation.provider == .note)
@@ -184,7 +178,7 @@ struct SearchProtocolContractsTests {
             .caseSensitiveTopLevelPropertyKey,
         ])
         #expect(explanation.ordering == .noteExactIdentityThenBM25ThenTitleRolePath)
-        #expect(explanation.limitations.contains(.noteRelationsDirectOnly))
+        #expect(explanation.limitations.contains(.noteLinksDirectOnly))
         #expect(explanation.clauses.contains {
             if case .property(let key, let value) = $0.kind {
                 return key == "author" && value == "arendt"
@@ -192,9 +186,8 @@ struct SearchProtocolContractsTests {
             return false
         })
         #expect(explanation.clauses.contains {
-            if case .relation(let direction, let identity, let relation, let symmetric) = $0.kind {
+            if case .link(let direction, let identity) = $0.kind {
                 return direction == .toNote && identity == "agency"
-                    && relation == .incompatible && symmetric
             }
             return false
         })
@@ -425,6 +418,8 @@ struct SearchProtocolContractsTests {
         ![visible diagram](https://hidden.example/image.png "hidden image title"),
         and `inline code`.
 
+        An [[Hidden Destination#claim|visible scholarly label]]{{First **annotated reason** with [[Hidden Evidence|visible evidence]].}} remains searchable prose.
+
         ```swift
         fenced code
         ```
@@ -462,6 +457,13 @@ struct SearchProtocolContractsTests {
         #expect(!projection.body.contains("hidden.example"))
         #expect(!projection.body.contains("hidden image title"))
         #expect(projection.body.contains("inline code"))
+        #expect(projection.body.contains("visible scholarly label"))
+        #expect(projection.body.contains("remains searchable prose"))
+        #expect(!projection.body.contains("Hidden Destination"))
+        #expect(!projection.body.contains("annotated reason"))
+        #expect(projection.linkAnnotations == "First annotated reason with visible evidence.")
+        #expect(!projection.linkAnnotations.contains("Hidden Evidence"))
+        #expect(!projection.linkAnnotations.contains("[["))
         #expect(projection.body.contains("fenced code"))
         #expect(!projection.body.contains("hidden comment"))
         #expect(!projection.body.contains("Heading Text"))
@@ -477,7 +479,9 @@ struct SearchProtocolContractsTests {
             (.summary, "autonomy"),
             (.callout, "body"),
             (.footnote, "content"),
+            (.linkAnnotation, "annotated reason"),
             (.body, "visible diagram"),
+            (.body, "visible scholarly label"),
         ] {
             let segment = try #require(projection.segments.first {
                 $0.field == field && $0.normalizedText.contains(needle.lowercased())

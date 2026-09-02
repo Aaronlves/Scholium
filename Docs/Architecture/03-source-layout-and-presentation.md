@@ -147,11 +147,12 @@ binding for the selected Analysis. Field-local edits delegate to the portable
 Metadata revision owner or, after editor flush and target revalidation, to the
 exact-source writer. File timestamps remain read-only snapshot facts.
 
-`ConnectionsInspectorView` owns one nonpersistent connection direction. The
-shared segmented component projects the same immutable direct graph into
-Incoming or Outgoing rows. Neutral and Incompatible edges enter both
-projections with their original source occurrence. Relationship headings and
-Note rows use one flat scan hierarchy. Direction changes retain major-group
+`ConnectionsInspectorView` owns one nonpersistent link direction. The shared
+segmented component projects the same immutable directed occurrence graph into
+Incoming or Outgoing rows. Each authored occurrence appears once in the chosen
+projection with its exact annotation, context, and source locator; no endpoint
+pair is collapsed or classified. Peer-role headings and occurrence rows use one
+flat scan hierarchy. Direction changes retain major-group
 disclosure and return the sole Connect scroll owner to its beginning.
 
 When the split item remains visible without a selected Document, the

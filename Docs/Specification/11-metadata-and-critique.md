@@ -112,7 +112,7 @@ The fixed authored-YAML scaffold is creation policy, not editable Settings.
 
 A Critique inspects the bounded Work plus applicable Analyses and Topics. It
 distinguishes what those Notes report, support, dispute, or leave uncertain
-from the Agent's own reconstruction and evaluation. Neutral links and
+from the Agent's own reconstruction and evaluation. Link occurrences and
 transitive paths are never evidence.
 
 Whole-Work Critique addresses material strengths, weaknesses, method fit,

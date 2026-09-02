@@ -42,7 +42,7 @@ Edit provides three caret-owned suggestion lists:
 - `[[` completes an unambiguous Note or authored alias and inserts canonical
   Wikilink syntax without rewriting other links.
 - `@` completes an Analysis reference from the Analyses vault and inserts a
-  neutral Wikilink with an available author/year label or Note title. It does
+  Wikilink with an available author/year label or Note title. It does
   not invent citation keys or evidential relations.
 - `/` offers a bounded set of structured insertions, including Callout, date,
   mathematics, Mermaid, table, footnote, code block, and divider where valid.
@@ -68,7 +68,8 @@ Scholium does not move or delete attachments as a side effect of Note editing
 or deletion.
 
 Review and Edit preserve exact Markdown while presenting semantic Callouts,
-lists, quotations, tables, footnotes, mathematics, code, links, and Mermaid.
+lists, quotations, tables, footnotes, mathematics, code, links, occurrence-owned
+link annotations, and Mermaid.
 Protected constructs follow these rules:
 
 - Callout role, title, body, nesting, continuation, and fold state remain
@@ -81,10 +82,15 @@ Protected constructs follow these rules:
   are diagnosed.
 - A Note embed is a bounded, read-only projection of the target's committed
   body with an explicit open route. It is not recursively transcluded, editable,
-  or a relationship edge.
+  and adds no authored link annotation.
 - Link and footnote previews are bounded read-only projections with keyboard,
   pointer, accessibility, dismissal, and source-navigation routes. Missing or
   ambiguous destinations remain exact source.
+- An annotated Wikilink keeps the linked title inline and replaces only its
+  inactive annotation markup with a small adjacent disclosure. Keyboard and
+  pointer activation expose the same annotation; moving the Edit caret into
+  the occurrence reveals its exact authored syntax. This disclosure is not a
+  footnote, Comment, Metadata field, or second writable annotation.
 
 ### 5.2 Authored YAML and Scholium Metadata
 
@@ -239,4 +245,5 @@ marker. It is not a Record, verdict, source version, restore point, retention
 policy, or Agent requirement.
 
 Authoritative written annotation remains Markdown, including semantic
-Callouts. Selection creates no separate portable comment object.
+Callouts and the occurrence-owned link annotations defined by §12. Selection
+creates no separate portable comment object.

@@ -106,8 +106,8 @@ struct WorkspaceCatalogTests {
     func retiredWorkflowStateIsNotAttention() {
         let source = vault("Analyses", .sourceCorpus)
         let topic = vault("Topics", .topicKnowledge)
-        let sourceDoc = note("Paper.md", "---\ntitle: Paper\nsource_access: missing\n---\n-[[Reasons]]")
-        let topicDoc = note("Reasons.md", "---\ntitle: Reasons\nsettlement_status: unsettled\nprose_permission: blocked\n---\n+[[Paper]]")
+        let sourceDoc = note("Paper.md", "---\ntitle: Paper\nsource_access: missing\n---\n[[Reasons]]{{A source-local note.}}")
+        let topicDoc = note("Reasons.md", "---\ntitle: Reasons\nsettlement_status: unsettled\nprose_permission: blocked\n---\n[[Paper]]{{A topic-local note.}}")
         let snapshot = WorkspaceCatalogBuilder.build(
             vaults: [source, topic],
             documents: [source.id: [sourceDoc], topic.id: [topicDoc]]
@@ -135,8 +135,8 @@ struct WorkspaceCatalogTests {
         #expect(Set(snapshot.attention.map(\.kind)).isSubset(of: Set(AttentionQueueKind.allCases)))
     }
 
-    @Test("A resolved neutral same-vault link prevents Possible Orphan")
-    func neutralConnectionPreventsPossibleOrphan() {
+    @Test("A resolved same-vault link prevents Possible Orphan")
+    func resolvedConnectionPreventsPossibleOrphan() {
         let topics = vault("Topics", .topicKnowledge)
         let first = note("First.md", "See [[Second]].")
         let second = note("Second.md", "A connected note.")

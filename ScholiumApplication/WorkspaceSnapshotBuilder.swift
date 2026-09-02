@@ -517,7 +517,7 @@ enum WorkspaceSnapshotBuilder {
             // snapshot. A graph failure must not prevent a complete lexical
             // generation from replacing its predecessor.
             graph = nil
-            graphBuildIssue = "Relationship graph: \(error.localizedDescription)"
+            graphBuildIssue = "Link graph: \(error.localizedDescription)"
         }
         let graphDuration = graphStart.duration(to: clock.now)
         let brokenNoteIDs = Set((graph?.diagnostics ?? []).compactMap { diagnostic in

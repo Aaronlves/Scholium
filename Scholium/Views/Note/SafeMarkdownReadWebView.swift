@@ -180,13 +180,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
 
         static let messageHandlerName = "scholiumRead"
         private static let maximumSelectionLength = 2_000
-        private static let vectorSymbolDataURIs: [String: String] = [
-            "neutral": ScholiumWebSymbolAssets.dataURI(for: .link),
-            "supports": ScholiumWebSymbolAssets.dataURI(for: .plus),
-            "opposes": ScholiumWebSymbolAssets.dataURI(for: .minus),
-            "incompatible": ScholiumWebSymbolAssets.dataURI(for: .xmark),
-        ]
-
         private var documentID: String
         private var fingerprint: String
         private var onLinkClick: (String) -> Void
@@ -555,7 +548,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         ) {
             guard message.name == Self.messageHandlerName,
                   let payload = message.body as? [String: Any],
-                  payload["version"] as? Int == 1,
+                  payload["version"] as? Int == 2,
                   payload["documentID"] as? String == documentID,
                   payload["fingerprint"] as? String == fingerprint,
                   (payload["loadGeneration"] as? NSNumber)?.uint64Value == loadGeneration,
@@ -1193,7 +1186,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let userCSS: String
             let localization: WebKitInterfaceLocalization
             let linkPreviews: [ReadLinkPreview]
-            let vectorSymbols: [String: String]
         }
 
         private static var readerScript: String? {
@@ -1223,7 +1215,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     utf16UpperBound: $0.sourceSpan.utf16UpperBound,
                     title: String($0.title.prefix(240)),
                     isEmbedded: $0.syntax == .embed,
-                    relationship: $0.relationship?.rawValue,
                     fragment: $0.fragment.map { String($0.prefix(240)) },
                     htmlBody: $0.syntax == .embed
                         ? $0.htmlBody
@@ -1231,7 +1222,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 )
             }
             let configuration = ReadBridgeConfiguration(
-                version: 1,
+                version: 2,
                 documentID: documentID,
                 fingerprint: fingerprint,
                 loadGeneration: loadGeneration,
@@ -1240,8 +1231,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 presentationCSS: presentationCSS,
                 userCSS: userCSS,
                 localization: localization,
-                linkPreviews: previews,
-                vectorSymbols: vectorSymbolDataURIs
+                linkPreviews: previews
             )
             let payload = base64JSON(configuration)
             return """
@@ -1261,7 +1251,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let utf16UpperBound: Int
             let title: String
             let isEmbedded: Bool
-            let relationship: String?
             let fragment: String?
             let htmlBody: String
         }
@@ -1275,7 +1264,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     "utf16UpperBound": preview.sourceSpan.utf16UpperBound,
                     "title": String(preview.title.prefix(240)),
                     "isEmbedded": preview.syntax == .embed,
-                    "relationship": preview.relationship?.rawValue ?? NSNull(),
                     "fragment": preview.fragment.map { String($0.prefix(240)) } ?? NSNull(),
                     "htmlBody": preview.syntax == .embed
                         ? preview.htmlBody
@@ -1294,12 +1282,14 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         html.scholium-viewport-resize-suppresses-overlay-scrollbar { scrollbar-width: none; }
         body { font-family: Alegreya, Georgia, serif; font-size: var(--scholium-document-prose-font-size); line-height: var(--scholium-rhythm-prose-line-height); }
         \(ReviewSelectionPresentation.css)
-        .scholium-document .scholium-vector-link { display: inline; opacity: 1; visibility: visible; color: var(--scholium-color-accent); line-height: inherit; text-decoration: none; }
-        .scholium-document .scholium-vector-neutral,
-        .scholium-document .scholium-vector-supports,
-        .scholium-document .scholium-vector-opposes,
-        .scholium-document .scholium-vector-incompatible { color: var(--scholium-color-accent); }
-        .scholium-vector-icon { display: inline-block; width: .52em; height: .52em; margin-inline-start: .08em; vertical-align: .58em; background-color: currentColor; -webkit-mask-position: center; -webkit-mask-size: contain; -webkit-mask-repeat: no-repeat; mask-position: center; mask-size: contain; mask-repeat: no-repeat; }
+        .scholium-document .wiki-link { color: var(--scholium-color-accent); text-decoration: underline; text-underline-offset: .12em; }
+        .scholium-link-annotation-button { display: inline-grid; place-items: center; width: 1.35em; height: 1.35em; margin-inline-start: .12em; padding: 0; border: 0; border-radius: .35em; color: var(--scholium-color-accent); background: transparent; vertical-align: text-bottom; }
+        .scholium-link-annotation-button > span { width: .8em; height: .8em; background: currentColor; -webkit-mask: var(--scholium-system-symbol-text-bubble) center / contain no-repeat; mask: var(--scholium-system-symbol-text-bubble) center / contain no-repeat; }
+        .scholium-link-annotation-button:hover, .scholium-link-annotation-button:focus-visible, .scholium-link-annotation-button[aria-expanded="true"] { background: color-mix(in srgb, var(--scholium-color-accent) 12%, transparent); }
+        .scholium-link-annotation-panel { display: block; margin-block: .45em .7em; padding: .65em .8em; border-inline-start: 2px solid var(--scholium-color-accent); border-radius: .35em; background: var(--scholium-color-secondary-background); }
+        .scholium-link-annotation-panel[hidden] { display: none; }
+        .scholium-link-annotation-content > :first-child { margin-block-start: 0; }
+        .scholium-link-annotation-content > :last-child { margin-block-end: 0; }
         code { font-family: "Victor Mono", ui-monospace, monospace; }
         img, video, svg { max-width: 100%; height: auto; }
         \(ScholiumCalloutStyles.css)

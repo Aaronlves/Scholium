@@ -11,7 +11,7 @@ struct DocumentPreviewCatalogTests {
         let targetID = VaultQualifiedNoteID(vaultID: vaultID, relativePath: "B.md")
         let source = NoteDocument(
             relativePath: sourceID.relativePath,
-            rawContent: "+[[B#Claim]] and [[Missing]]"
+            rawContent: "[[B#Claim]]{{Why this claim matters.}} and [[Missing]]"
         )
         let target = NoteDocument(
             relativePath: targetID.relativePath,
@@ -43,13 +43,12 @@ struct DocumentPreviewCatalogTests {
             profiles: [targetID: .analysis]
         )
 
-        #expect(preview.contractVersion == 2)
+        #expect(preview.contractVersion == 3)
         #expect(preview.graphGeneration == 7)
         #expect(preview.links.count == 1)
         #expect(preview.links[0].target == targetID)
         #expect(preview.links[0].title == "Claim")
-        #expect(preview.links[0].syntax == .vectorWikilink)
-        #expect(preview.links[0].relationship == .supports)
+        #expect(preview.links[0].syntax == .wikilink)
         #expect(preview.links[0].fragment == "Claim")
         #expect(preview.links[0].htmlBody.contains("<strong>Rendered</strong>"))
         #expect(!preview.links[0].htmlBody.contains("<script"))

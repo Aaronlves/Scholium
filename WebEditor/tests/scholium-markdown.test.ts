@@ -23,19 +23,16 @@ function sources(nodes: LocatedNode[], name: string) {
 }
 
 describe("Scholium Lezer Markdown dialect", () => {
-  it("locates wiki, vector, alias, fragment, and embed source exactly", () => {
-    const source = "[[Note]] +[[A#Claim|support]] -[[B]] ?[[C^block]] ![[Figure]] C++[[Adjacent]] \\+[[Escaped]]";
+  it("locates ordinary, aliased, annotated, fragmented, and embedded wiki links", () => {
+    const source = "[[Note]] [[A#Claim|analysis]]{{Scoped annotation.}} [[B]] [[C#^block]] ![[Figure]]";
     const nodes = locatedNodes(source);
     expect(sources(nodes, "WikiLink")).toEqual([
-      "[[Note]]", "![[Figure]]", "[[Adjacent]]", "[[Escaped]]",
-    ]);
-    expect(sources(nodes, "VectorLink")).toEqual([
-      "+[[A#Claim|support]]", "-[[B]]", "?[[C^block]]",
+      "[[Note]]", "[[A#Claim|analysis]]", "[[B]]", "[[C#^block]]", "![[Figure]]",
     ]);
     expect(sources(nodes, "WikiLinkTarget")).toEqual([
-      "Note", "A#Claim", "B", "C^block", "Figure", "Adjacent", "Escaped",
+      "Note", "A#Claim", "B", "C#^block", "Figure",
     ]);
-    expect(sources(nodes, "WikiLinkAlias")).toEqual(["support"]);
+    expect(sources(nodes, "WikiLinkAlias")).toEqual(["analysis"]);
   });
 
   it("locates named, inline, and multiline definition footnotes", () => {
@@ -81,7 +78,7 @@ describe("Scholium Lezer Markdown dialect", () => {
     const source = [
       "---", "value: '[[yaml]] $yaml$ [^yaml]'", "---",
       "`[[code]] $code$ [^code]`",
-      "```md", "+[[fenced]] $fenced$ [^fenced]", "```",
+      "```md", "[[fenced]]{{hidden annotation}} $fenced$ [^fenced]", "```",
       "<!-- [[html]] $html$ [^html] -->",
       "%% [[comment]] $comment$ [^comment] %%",
       "Text %% [[inline-comment]] $inline$ [^inline] %% after.",
@@ -90,7 +87,6 @@ describe("Scholium Lezer Markdown dialect", () => {
     ].join("\n");
     const nodes = locatedNodes(source);
     expect(sources(nodes, "WikiLink")).toEqual(["[[visible]]"]);
-    expect(sources(nodes, "VectorLink")).toEqual([]);
     expect(sources(nodes, "InlineMath")).toEqual(["$visible$"]);
     expect(sources(nodes, "FootnoteReference")).toEqual(["[^visible]"]);
     expect(sources(nodes, "ObsidianCommentBlock")).toEqual(["%% [[comment]] $comment$ [^comment] %%"]);

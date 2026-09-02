@@ -1289,7 +1289,7 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func testSearchQueriesExplicitDirectRelationsWithoutParallelResults() throws {
+    func testSearchQueriesOneDirectAuthoredLinkWithoutParallelResults() throws {
         waitForCurrentDocumentSurface()
 
         app.typeKey("f", modifierFlags: [.command, .shift])
@@ -1300,17 +1300,17 @@ extension ScholiumUITests {
         XCTAssertTrue(triptych.waitForExistence(timeout: 5))
         triptych.click()
         typeCommittedText(
-            "from-note:\"QA Direct Relation Concept 947\" relation:supports",
+            "from-note:\"QA Direct Link Concept 947\"",
             into: field,
             in: app
         )
 
         let relatedAnalysis = searchResult(named: "QA Autosave A")
         XCTAssertTrue(relatedAnalysis.waitForExistence(timeout: 10))
-        XCTAssertFalse(searchResult(named: "QA Direct Relation Topic").exists)
+        XCTAssertFalse(searchResult(named: "QA Direct Link Topic").exists)
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(
             format: "value CONTAINS[c] %@",
-            "directly supported"
+            "direct destination of a link authored"
         )).firstMatch.exists)
 
         let resultScroll = app.outlines["scholium.searchResults"].firstMatch

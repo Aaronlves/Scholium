@@ -1,4 +1,5 @@
-import {describe, expect, it} from "vitest";
+import {parseHTML} from "linkedom";
+import {afterEach, describe, expect, it, vi} from "vitest";
 import {createLiveInlineWidgets} from "../live-inline-widgets";
 
 const widgets = createLiveInlineWidgets({
@@ -7,25 +8,20 @@ const widgets = createLiveInlineWidgets({
 });
 
 describe("live inline widget presentation", () => {
-  it("keeps ordinary aliases visible", () => {
-    expect(widgets.wikilinkPresentation(2, "Target", 12, "Readable")).toEqual({
-      displayStart: 12,
-      displayEnd: 20,
-      isLegacyRelationship: false,
-    });
-  });
+  afterEach(() => vi.unstubAllGlobals());
 
-  it("hides a legacy relationship suffix without losing its authored alias", () => {
-    expect(widgets.wikilinkPresentation(2, "Target", 12, "Readable: supports")).toEqual({
-      displayStart: 12,
-      displayEnd: 20,
-      isLegacyRelationship: true,
-    });
-    expect(widgets.wikilinkPresentation(2, "Target", 12, ":supports")).toEqual({
-      displayStart: 2,
-      displayEnd: 8,
-      isLegacyRelationship: true,
-    });
+  it("projects multiline Markdown behind one accessible annotation disclosure", () => {
+    const {document} = parseHTML("<html><body></body></html>");
+    vi.stubGlobal("document", document);
+    const dom = widgets.linkAnnotation("Reason one.\n\n- Reason two", "Target").toDOM();
+    const button = dom.querySelector<HTMLButtonElement>("button")!;
+    const panel = dom.querySelector<HTMLElement>("[role=note]")!;
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+    expect(panel.hidden).toBe(true);
+    button.click();
+    expect(button.getAttribute("aria-expanded")).toBe("true");
+    expect(panel.hidden).toBe(false);
+    expect(panel.textContent).toContain("Reason two");
   });
 
   it("derives nested list indentation from the shared semantic variable", () => {

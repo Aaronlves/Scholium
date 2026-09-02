@@ -942,6 +942,22 @@
         }
       }
     },
+    "Annotated Wikilink" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Annotated Wikilink"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "带注释双链"
+          }
+        }
+      }
+    },
     "An existing controlled choice was removed." : {
       "localizations" : {
         "zh-Hans" : {
@@ -4094,22 +4110,6 @@
         }
       }
     },
-    "Incompatible" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Incompatible"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "不相容"
-          }
-        }
-      }
-    },
     "Increase Text Size" : {
       "localizations" : {
         "en" : {
@@ -6058,22 +6058,6 @@
         }
       }
     },
-    "Open relation source" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Open relation source"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "打开原文"
-          }
-        }
-      }
-    },
     "Opening Scholium" : {
       "localizations" : {
         "en" : {
@@ -6134,22 +6118,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "操作"
-          }
-        }
-      }
-    },
-    "Opposes" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Opposes"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "反对"
           }
         }
       }
@@ -9108,22 +9076,6 @@
         }
       }
     },
-    "Supports" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Supports"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "支持"
-          }
-        }
-      }
-    },
     "System Trash Cleanup" : {
       "localizations" : {
         "zh-Hans" : {
@@ -9946,12 +9898,12 @@
         }
       }
     },
-    "This Note and the currently open vault support bounded text Search while the Triptych opens. Triptych Search and relationships remain unavailable until loading finishes." : {
+    "This Note and the currently open vault support bounded text Search while the Triptych opens. Triptych Search and direct links remain unavailable until loading finishes." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "脉络打开期间，此笔记和当前打开的研究库支持有界文本搜索。在载入完成前，脉络搜索和关系仍不可用。"
+            "value" : "脉络打开期间，此笔记和当前打开的研究库支持有界文本搜索。在载入完成前，脉络搜索和直接链接仍不可用。"
           }
         }
       }
@@ -10292,16 +10244,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "此笔记仍可阅读，但在其可移植记录从 %1$@ 移至 %2$@ 完成之前，依赖身份的恢复和文件更改均不可用。"
-          }
-        }
-      }
-    },
-    "This relation is undirected and appears in both link directions." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此关系为无向关系，因此会同时显示在传入和传出连接中。"
           }
         }
       }
@@ -10809,22 +10751,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "研究库根目录"
-          }
-        }
-      }
-    },
-    "Vector Link" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Vector Link"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vector-Link"
           }
         }
       }
@@ -13665,22 +13591,6 @@
         }
       }
     },
-    "Invalid relationship endpoint" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Invalid relationship endpoint"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "关联端点无效"
-          }
-        }
-      }
-    },
     "Issue" : {
       "localizations" : {
         "zh-Hans" : {
@@ -14502,22 +14412,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "操作记录不可用"
-          }
-        }
-      }
-    },
-    "Opposes This Note" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Opposes This Note"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "反对此笔记"
           }
         }
       }
@@ -15806,22 +15700,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "结构与连接"
-          }
-        }
-      }
-    },
-    "Supports This Note" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Supports This Note"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "支持此笔记"
           }
         }
       }

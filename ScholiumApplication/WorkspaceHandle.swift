@@ -3271,7 +3271,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         if case .currentNote = request.executionScope,
            ast.clauses.contains(where: { clause in
                switch clause {
-               case .structured, .property, .relation: true
+               case .structured, .property, .link: true
                case .lexical: false
                }
            }) {
@@ -3283,20 +3283,20 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     ast: ast,
                     diagnostics: [SearchQueryDiagnostic(
                         code: .notApplicable,
-                        message: "Structured fields, Metadata, and direct relation clauses are not applicable to This Note occurrence Search.",
+                        message: "Structured fields, Metadata, and direct link clauses are not applicable to This Note occurrence Search.",
                         utf16LowerBound: 0,
                         utf16UpperBound: request.query.utf16.count
                     )]
                 )
             )
         }
-        let relation = NoteRelationSearchResolver.resolve(
+        let link = NoteLinkSearchResolver.resolve(
             ast: ast,
             scope: request.executionScope,
             catalog: currentSnapshot.discovery.catalog,
             searchGeneration: currentSnapshot.discovery.searchGeneration
         )
-        if let diagnostic = relation.diagnostic {
+        if let diagnostic = link.diagnostic {
             return await searchDiagnosticResponse(
                 request: request,
                 parsed: SearchQueryParseResult(
@@ -3310,7 +3310,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         let response = try await services.searchIndex.search(
             request,
             ast: ast,
-            relationshipMatches: relation.matches,
+            linkMatches: link.matches,
             eligibleDocuments: openingSearchEligibility(for: request)
         )
         return openingVaultSearchResponse(response, request: request)

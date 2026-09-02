@@ -20,7 +20,7 @@ exact empty body has a distinct quiet state; malformed YAML, whitespace,
 unavailable source, and render failure are not Empty.
 
 Edit's compact formatting surface presents frequent text styles, Bold, Italic,
-Strikethrough, Highlight, Link, Wikilink/Vector Link, and More. Less frequent
+Strikethrough, Highlight, Link, Wikilink, Annotated Wikilink, and More. Less frequent
 code, lists, blockquote, Markdown Comment, image, and insertion actions may move
 into one bounded menu without losing menu/keyboard access. Menu labels name
 actions rather than syntax.
@@ -126,13 +126,15 @@ metadata section. Freshness appears only when pending, stale, failed, or
 unavailable and retains last trustworthy content plus Retry.
 
 Connect starts with one Incoming/Outgoing control, then role-appropriate groups
-for related Analyses, Topics, and Works. Each direction preserves authored
-relation meaning and exact source anchors. Neutral and Incompatible appear in
-both directions. Groups show relationship clusters and counts; row titles wrap
-and use full-row native activation. The sole scroll owner preserves group
-context without adding a second panel, graph owner, or Combined direction.
-Switching direction changes only the projection and returns scroll to its
-beginning.
+for linked Analyses, Topics, and Works. It shows one row per authored occurrence
+without predicate clusters, inferred grouping, or Combined direction. Each row
+retains its exact source anchor, local context, and optional annotation; repeated
+links remain repeated occurrences. Outgoing annotation editing changes only the
+current source Note. Incoming annotations are read-only and expose a separately
+named **Edit at Source** route that navigates to the source occurrence. Row
+titles and annotation text wrap and use full-row native destination activation.
+The sole scroll owner preserves group context. Switching direction changes only
+the projection and returns scroll to its beginning.
 
 Document owns a trailing-centered overlay **Document Rail**. Settle, Settle
 Again, or Mark Unsettled appears as the quiet state-valid researcher judgment;
@@ -200,6 +202,7 @@ paths, source, researcher prose, and Skill names remain verbatim.
 | Settle / Settled | 暂定 / 已暂定 |
 | Attention / Connect | 关注 / 连接 |
 | Incoming Links / Outgoing Links | 传入连接 / 传出连接 |
+| Annotated Wikilink / Link Annotation | 带注释双链 / 链接注释 |
 | Summary / Source Basis / Limitations | 摘要 / 来源依据 / 局限 |
 | Review / Edit / Source | 审阅 / 编辑 / 源文本 |
 | Research Record | 研究记录 |

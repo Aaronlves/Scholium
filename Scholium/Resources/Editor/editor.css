@@ -192,19 +192,57 @@ body,
   font-weight: inherit;
 }
 
-.cm-live-wikilink,
-.cm-live-vector-link {
+.cm-live-wiki-link {
   color: var(--scholium-color-accent);
-  text-decoration: none;
+  text-decoration: underline;
+  text-underline-offset: .12em;
 }
 
-.cm-live-vector-link {
-  color: var(--scholium-color-accent);
+.scholium-link-annotation-disclosure,
+.scholium-annotated-link {
+  display: inline;
 }
-.cm-live-vector-neutral,
-.cm-live-vector-supports,
-.cm-live-vector-opposes,
-.cm-live-vector-incompatible { color: var(--scholium-color-accent); }
+
+.scholium-link-annotation-button {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 1.35em;
+  block-size: 1.35em;
+  margin-inline-start: .12em;
+  padding: 0;
+  border: 0;
+  border-radius: .35em;
+  background: transparent;
+  color: var(--scholium-color-accent);
+  vertical-align: text-bottom;
+  cursor: pointer;
+}
+
+.scholium-link-annotation-button:hover,
+.scholium-link-annotation-button:focus-visible,
+.scholium-link-annotation-button[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--scholium-color-accent) 12%, transparent);
+}
+
+.scholium-link-annotation-icon {
+  inline-size: .8em;
+  block-size: .8em;
+}
+
+.scholium-link-annotation-panel {
+  display: block;
+  margin-block: .45em .7em;
+  padding: .65em .8em;
+  border-inline-start: 2px solid var(--scholium-color-accent);
+  border-radius: .35em;
+  background: var(--scholium-color-surface-background);
+  color: var(--scholium-color-primary-text);
+}
+
+.scholium-link-annotation-panel[hidden] { display: none; }
+.cm-editor.scholium-live-mode .cm-line.cm-live-link-annotation-source-line { display: none; }
+.scholium-link-annotation-content > :first-child { margin-block-start: 0; }
+.scholium-link-annotation-content > :last-child { margin-block-end: 0; }
 
 .scholium-system-symbol {
   display: inline-block;
@@ -219,18 +257,6 @@ body,
   mask-repeat: no-repeat;
   mask-size: contain;
 }
-
-.cm-live-vector-icon {
-  display: inline-block;
-  inline-size: .52em;
-  block-size: .52em;
-  margin-inline-start: .08em;
-  vertical-align: .58em;
-}
-.cm-live-vector-icon-neutral,
-.cm-live-vector-icon-supports,
-.cm-live-vector-icon-opposes,
-.cm-live-vector-icon-incompatible { color: var(--scholium-color-accent); }
 
 .cm-live-embed {
   display: block;

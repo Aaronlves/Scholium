@@ -1,5 +1,6 @@
 import type {EditorState, Text} from "@codemirror/state";
 import {syntaxTree} from "@codemirror/language";
+import {linkAnnotationAfter} from "./link-annotation";
 
 export type BaseBlockKind =
   | "paragraph"
@@ -30,7 +31,6 @@ export type PresentationBlockKind = BaseBlockKind
 
 export type PresentationInlineKind = BaseInlineKind
   | "wikilink"
-  | "vectorLink"
   | "inlineMath"
   | "footnoteReference"
   | "inlineFootnote"
@@ -56,6 +56,9 @@ export interface SemanticInlineProjection extends SemanticSourceRange {
   visibleRanges: SemanticSourceRange[];
   targetRange: SemanticSourceRange | null;
   aliasRange: SemanticSourceRange | null;
+  linkRange: SemanticSourceRange | null;
+  annotationRange: SemanticSourceRange | null;
+  annotationContentRange: SemanticSourceRange | null;
 }
 
 export interface SemanticProjectionRanges {
@@ -108,7 +111,7 @@ function projectionRangesFromCatalog(
     if (inline.kind === "strong") result.strong.add(key);
     if (inline.kind === "emphasis") result.emphasis.add(key);
     if (inline.kind === "link") result.links.add(key);
-    if (inline.kind === "wikilink" || inline.kind === "vectorLink") result.wikilinks.add(key);
+    if (inline.kind === "wikilink") result.wikilinks.add(key);
     if (inline.kind === "strikethrough") result.strikethrough.add(key);
     if (inline.kind === "highlight") result.highlights.add(key);
   }
@@ -144,6 +147,9 @@ export function mapSemanticProjectionRanges(
     visibleRanges: inline.visibleRanges.map(mapRange),
     targetRange: inline.targetRange ? mapRange(inline.targetRange) : null,
     aliasRange: inline.aliasRange ? mapRange(inline.aliasRange) : null,
+    linkRange: inline.linkRange ? mapRange(inline.linkRange) : null,
+    annotationRange: inline.annotationRange ? mapRange(inline.annotationRange) : null,
+    annotationContentRange: inline.annotationContentRange ? mapRange(inline.annotationContentRange) : null,
   }));
   const literals = previous.literals.map((literal) => ({
     ...literal,
@@ -189,7 +195,6 @@ const inlineKinds = new Map<string, PresentationInlineKind>([
   ["Image", "image"],
   ["Highlight", "highlight"],
   ["WikiLink", "wikilink"],
-  ["VectorLink", "vectorLink"],
   ["InlineMath", "inlineMath"],
   ["FootnoteReference", "footnoteReference"],
   ["InlineFootnote", "inlineFootnote"],
@@ -257,6 +262,7 @@ function presentationBlockMarkerRanges(
 function inlinePresentation(
   node: ProjectionSyntaxNode,
   kind: PresentationInlineKind,
+  source: string,
 ): SemanticInlineProjection {
   const markerNames = new Set<string>();
   switch (kind) {
@@ -268,10 +274,8 @@ function inlinePresentation(
   case "image": markerNames.add("LinkMark"); break;
   case "highlight": markerNames.add("HighlightMark"); break;
   case "wikilink":
-  case "vectorLink":
     markerNames.add("WikiLinkOpenMark");
     markerNames.add("WikiEmbedMark");
-    markerNames.add("VectorLinkMark");
     markerNames.add("WikiLinkAliasMark");
     markerNames.add("WikiLinkCloseMark");
     break;
@@ -289,6 +293,10 @@ function inlinePresentation(
   const markerRanges = childRanges(node, markerNames);
   let targetRange: SemanticSourceRange | null = null;
   let aliasRange: SemanticSourceRange | null = null;
+  let linkRange: SemanticSourceRange | null = null;
+  let annotationRange: SemanticSourceRange | null = null;
+  let annotationContentRange: SemanticSourceRange | null = null;
+  let projectionTo = node.to;
   let visibleRanges = complementRanges(node.from, node.to, markerRanges);
   if (kind === "link" || kind === "image") {
     const explicitVisible = childRanges(node, new Set(["URL"]));
@@ -300,12 +308,20 @@ function inlinePresentation(
         ? [{from: linkMarks[0].to, to: linkMarks[1].from}]
         : [];
     }
-  } else if (kind === "wikilink" || kind === "vectorLink") {
+  } else if (kind === "wikilink") {
     const alias = childRanges(node, new Set(["WikiLinkAlias"]));
     const target = childRanges(node, new Set(["WikiLinkTarget"]));
     targetRange = target[0] ?? null;
     aliasRange = alias[0] ?? null;
     visibleRanges = alias.length > 0 ? alias : target;
+    linkRange = {from: node.from, to: node.to};
+    const embedded = markerRanges.some((range) => source.slice(range.from, range.to).startsWith("!"));
+    const annotation = embedded ? null : linkAnnotationAfter(source, node.to);
+    if (annotation) {
+      annotationRange = {from: annotation.from, to: annotation.to};
+      annotationContentRange = {from: annotation.contentFrom, to: annotation.contentTo};
+      projectionTo = annotation.to;
+    }
   } else if (kind === "inlineMath") {
     visibleRanges = childRanges(node, new Set(["MathContent"]));
   } else if (kind === "footnoteReference") {
@@ -319,11 +335,14 @@ function inlinePresentation(
     kind,
     nodeName: node.name,
     from: node.from,
-    to: node.to,
+    to: projectionTo,
     markerRanges,
     visibleRanges,
     targetRange,
     aliasRange,
+    linkRange,
+    annotationRange,
+    annotationContentRange,
   };
 }
 
@@ -384,6 +403,7 @@ export function semanticProjectionRanges(
   const from = Math.max(0, Math.min(...visibleRanges.map((range) => range.from)) - margin);
   const to = Math.min(state.doc.length, Math.max(...visibleRanges.map((range) => range.to)) + margin);
   const blockStack: SemanticBlockProjection[] = [];
+  const source = state.doc.toString();
   tree.iterate({
     from,
     to,
@@ -463,7 +483,7 @@ export function semanticProjectionRanges(
 
       const inlineKind = inlineKinds.get(node.name);
       if (inlineKind) {
-        const inline = inlinePresentation(node, inlineKind);
+        const inline = inlinePresentation(node, inlineKind, source);
         result.inlines.push(inline);
       }
       if ([

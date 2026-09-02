@@ -19,7 +19,6 @@ const markdownBidiIsolation = {
     Link: "ltr",
     Autolink: "ltr",
     WikiLink: "ltr",
-    VectorLink: "ltr",
     FootnoteReference: "ltr",
   })],
 };

@@ -37,7 +37,7 @@
     "Heading {level}" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Heading {level}"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"{level} 级标题"}}}},
     "Highlight" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Highlight"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"高亮"}}}},
     "Illustration" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Illustration"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"示例"}}}},
-    "Incompatible" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Incompatible"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"不相容"}}}},
+    "Hide Link Annotation" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Hide Link Annotation"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"收起链接注释"}}}},
     "Inline Code" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Inline Code"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"行内代码"}}}},
     "Inline Math" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Inline Math"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"行内公式"}}}},
     "Inline code" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Inline code"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"行内代码"}}}},
@@ -67,7 +67,6 @@
     "Open {count} comments at line {start}" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Open {count} comments at line {start}"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"打开第 {start} 行的 {count} 条评论"}}}},
     "Open {count} comments at lines {start} through {end}" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Open {count} comments at lines {start} through {end}"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"打开第 {start} 至 {end} 行的 {count} 条评论"}}}},
     "Open embedded note {title}" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Open embedded note {title}"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"打开嵌入笔记“{title}”"}}}},
-    "Opposes" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Opposes"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"反对"}}}},
     "Orientation" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Orientation"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"方向"}}}},
     "Paragraph" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Paragraph"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"段落"}}}},
     "Presents a scenario, example, thought experiment, or test case used in reasoning." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Presents a scenario, example, thought experiment, or test case used in reasoning."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"呈现用于推理的情境、例子、思想实验或测试案例。"}}}},
@@ -77,7 +76,7 @@
     "Quotation" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Quotation"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"引用"}}}},
     "Records sources that anchor the note without implying that they support every claim." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Records sources that anchor the note without implying that they support every claim."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"记录作为笔记依据的来源，但不表示这些来源支持其中的每项主张。"}}}},
     "Referenced footnote" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Referenced footnote"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"被引用的脚注"}}}},
-    "Related note" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Related note"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"相关笔记"}}}},
+    "Show Link Annotation" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Show Link Annotation"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"展开链接注释"}}}},
     "Return saves · Shift-Return adds a line · Escape cancels" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Return saves · Shift-Return adds a line · Escape cancels"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"Return 保存 · Shift-Return 换行 · Escape 取消"}}}},
     "Routes the reader to a curated set of neighboring knowledge objects." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Routes the reader to a curated set of neighboring knowledge objects."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"引导读者查看经过整理的相邻知识对象。"}}}},
     "Saving…" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Saving…"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"正在保存…"}}}},
@@ -86,7 +85,6 @@
     "Statement" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Statement"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"陈述"}}}},
     "Strikethrough" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Strikethrough"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"删除线"}}}},
     "Submit Comment for QA" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Submit Comment for QA"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"提交评论以供 QA"}}}},
-    "Supports" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Supports"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"支持"}}}},
     "Table" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Table"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"表格"}}}},
     "Task item" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Task item"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"任务项"}}}},
     "Text Style" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Text Style"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"文本样式"}}}},
@@ -97,10 +95,10 @@
     "This Mermaid diagram could not be isolated safely. Source is shown." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"This Mermaid diagram could not be isolated safely. Source is shown."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"此 Mermaid 图无法安全隔离，现显示源文本。"}}}},
     "This Mermaid diagram could not be rendered. Source is shown." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"This Mermaid diagram could not be rendered. Source is shown."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"此 Mermaid 图无法渲染，现显示源文本。"}}}},
     "This Mermaid diagram is unsupported or could not be rendered. Source is shown." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"This Mermaid diagram is unsupported or could not be rendered. Source is shown."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"此 Mermaid 图不受支持或无法渲染，现显示源文本。"}}}},
-    "Vector Link" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Vector Link"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"向量链接"}}}},
-    "Vector Link Options" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Vector Link Options"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"向量链接选项"}}}},
+    "Annotated Wikilink" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Annotated Wikilink"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"带注释双链"}}}},
     "Wiki" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Wiki"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"Wiki"}}}},
-    "Wiki links" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Wiki links"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"Wiki 链接"}}}}
+    "Wiki links" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Wiki links"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"Wiki 链接"}}}},
+    "linked note" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"linked note"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"所链接的笔记"}}}}
   },
   "version" : "1.3"
 }

@@ -1,13 +1,13 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 15
+let markdownEditorProtocolVersion = 16
 let markdownEditorMaximumInboundBytes = 2_500_000
 let markdownEditorMaximumSelectionRangeCount = 128
 
 enum MarkdownEditorCommand: String, Codable, CaseIterable, Sendable {
     case bold, emphasis, strikethrough, highlight, inlineCode, markdownComment
-    case standardLink, wikilink, vectorSupports, vectorOpposes, vectorIncompatible
+    case standardLink, wikilink, annotatedWikilink
     case paragraph, heading1, heading2, heading3, heading4, heading5, heading6
     case blockQuotation, bulletList, numberedList, taskList, fencedCode, thematicBreak
     case calloutOrient, calloutCite, calloutConnect, calloutState
@@ -122,7 +122,6 @@ struct MarkdownEditorLinkPreview: Codable, Hashable, Sendable {
     let to: Int
     let title: String
     let isEmbedded: Bool
-    let relationship: VectorLinkKind?
     let fragment: String?
     let htmlBody: String
 }

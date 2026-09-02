@@ -12,7 +12,7 @@ struct IncomingLinkRewriterTests {
         let source = NoteDocument(
             relativePath: "A.md",
             rawContent: """
-            [[Topics/B|alias]] +[[Topics/B#Claim]] [B](Topics/B.md#Claim)
+            [[Topics/B|alias]] [[Topics/B#Claim]]{{Keep this annotation exact.}} [B](Topics/B.md#Claim)
             `[[Topics/B]]`
             """
         )
@@ -27,7 +27,7 @@ struct IncomingLinkRewriterTests {
         #expect(plan.count == 1)
         #expect(plan[0].rewrittenOccurrences == 3)
         #expect(plan[0].updatedSource.contains("[[Topics/Renamed B|alias]]"))
-        #expect(plan[0].updatedSource.contains("+[[Topics/Renamed B#Claim]]"))
+        #expect(plan[0].updatedSource.contains("[[Topics/Renamed B#Claim]]{{Keep this annotation exact.}}"))
         #expect(plan[0].updatedSource.contains("[B](Topics/Renamed B.md#Claim)"))
         #expect(plan[0].updatedSource.contains("`[[Topics/B]]`"))
     }
@@ -59,7 +59,7 @@ struct IncomingLinkRewriterTests {
         )
         let topic = NoteDocument(
             relativePath: "Debates/Topic.md",
-            rawContent: "See -[[Sources/Essai#Thèse|source]] and [paper](Sources/Essai.md#Th%C3%A8se).\n"
+            rawContent: "See [[Sources/Essai#Thèse|source]]{{Original context.}} and [paper](Sources/Essai.md#Th%C3%A8se).\n"
         )
         let documents = [
             VaultQualifiedNoteID(vaultID: analysisVault, relativePath: analysis.relativePath): analysis,
@@ -75,7 +75,7 @@ struct IncomingLinkRewriterTests {
 
         #expect(plan.rewrites.count == 1)
         #expect(plan.rewrites[0].source.vaultID == topicVault)
-        #expect(plan.rewrites[0].updatedSource.contains("-[[Sources/Étude finale#Thèse|source]]"))
+        #expect(plan.rewrites[0].updatedSource.contains("[[Sources/Étude finale#Thèse|source]]{{Original context.}}"))
         #expect(plan.rewrites[0].updatedSource.contains("[paper](Sources/Étude finale.md#Th%C3%A8se)"))
     }
 
@@ -156,7 +156,7 @@ struct IncomingLinkRewriterTests {
         let vaultID = UUID()
         let source = NoteDocument(
             relativePath: "A.md",
-            rawContent: "\u{FEFF}---\r\ntitle: 'A' # keep\r\n---\r\n+[[B|别名]]\r\n"
+            rawContent: "\u{FEFF}---\r\ntitle: 'A' # keep\r\n---\r\n[[B|别名]]{{精确注释。}}\r\n"
         )
         let target = NoteDocument(relativePath: "B.md", rawContent: "B\r\n")
         let documents = [
@@ -170,7 +170,7 @@ struct IncomingLinkRewriterTests {
             to: VaultQualifiedNoteID(vaultID: vaultID, relativePath: "资料/乙.md")
         )
 
-        #expect(plan.rewrites.first?.updatedSource == "\u{FEFF}---\r\ntitle: 'A' # keep\r\n---\r\n+[[资料/乙|别名]]\r\n")
+        #expect(plan.rewrites.first?.updatedSource == "\u{FEFF}---\r\ntitle: 'A' # keep\r\n---\r\n[[资料/乙|别名]]{{精确注释。}}\r\n")
     }
 
     @Test("A coherent snapshot plan matches complete graph re-derivation")
@@ -179,7 +179,7 @@ struct IncomingLinkRewriterTests {
         let topicVault = UUID()
         let source = NoteDocument(
             relativePath: "Debates/Topic.md",
-            rawContent: "See +[[Sources/Essay#Claim|source]].\n"
+            rawContent: "See [[Sources/Essay#Claim|source]]{{Exact reason.}}.\n"
         )
         let target = NoteDocument(
             relativePath: "Sources/Essay.md",

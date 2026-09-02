@@ -8,7 +8,7 @@ import {localized, localizedTemplate} from "./localization";
 export const selectionActionCommands = [
   "paragraph", "heading1", "heading2", "heading3", "heading4", "heading5", "heading6",
   "bold", "emphasis", "strikethrough", "highlight", "standardLink", "wikilink",
-  "vectorSupports", "vectorOpposes", "vectorIncompatible", "inlineCode", "fencedCode",
+  "annotatedWikilink", "inlineCode", "fencedCode",
   "bulletList", "numberedList", "taskList", "blockQuotation", "markdownComment",
 ] as const satisfies readonly MarkdownEditorCommand[];
 
@@ -573,18 +573,15 @@ export function createSelectionActionsController(options: {
     wikiLabel.textContent = localized("Wiki");
     wiki.append(wikiLabel);
     bindCommand(wiki, "wikilink");
-    const vector = createToolbarButton(
-      localized("Vector Link Options"),
-      localized("Vector Link"),
+    const annotated = createToolbarButton(
+      localized("Annotated Wikilink"),
+      localized("Annotated Wikilink"),
       "scholium-selection-wiki-menu-trigger",
     );
-    vector.append(chevronIcon("scholium-selection-chevron"));
-    wikiGroup.append(wiki, vector);
+    annotated.append(selectionSymbol("text-bubble", "scholium-selection-link-annotation-icon"));
+    bindCommand(annotated, "annotatedWikilink");
+    wikiGroup.append(wiki, annotated);
     commandBar.append(wikiGroup);
-    const vectorMenu = createMenu(vector, "scholium-selection-vector-menu");
-    addMenuItem(vectorMenu, localized("Supports"), "vectorSupports", "", false, "plus-circle");
-    addMenuItem(vectorMenu, localized("Opposes"), "vectorOpposes", "", false, "minus-circle");
-    addMenuItem(vectorMenu, localized("Incompatible"), "vectorIncompatible", "", false, "xmark-circle");
 
     const secondSeparator = document.createElement("span");
     secondSeparator.className = "scholium-selection-separator";

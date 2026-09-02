@@ -341,7 +341,7 @@ public enum WorkspaceCatalogBuilder {
         })
 
         // Possible Orphan reports only complete observable disconnection. A
-        // neutral, same-vault, or otherwise non-vector link still integrates
+        // same-vault or unresolved authored link still integrates
         // the Note and must not be promoted into a warning.
         for note in notes where note.reference.vaultRole != .other {
             let noteID = VaultQualifiedNoteID(
@@ -386,10 +386,8 @@ public enum WorkspaceCatalogBuilder {
                 switch diagnostic.code {
                 case .ambiguous, .ambiguousHeading:
                     queueKind = .ambiguousConnection
-                case .broken, .missingHeading, .missingBlock, .invalidRelationshipEndpoint:
+                case .broken, .missingHeading, .missingBlock:
                     queueKind = .brokenConnection
-                case .duplicateRelationship:
-                    continue
                 }
                 attention.append(AttentionQueueItem(
                     kind: queueKind,
@@ -433,10 +431,6 @@ public enum WorkspaceCatalogBuilder {
             "Missing heading"
         case .missingBlock:
             "Missing block"
-        case .invalidRelationshipEndpoint:
-            "Invalid relationship endpoint"
-        case .duplicateRelationship:
-            diagnostic.message
         }
     }
 

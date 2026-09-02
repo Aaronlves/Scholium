@@ -13,17 +13,15 @@ import {
 import type {EditorMode, MarkdownEditingDialect} from "../protocol";
 
 const dialect: MarkdownEditingDialect = {
-  version: 4,
+  version: 5,
   callouts: [
     {identifier: "orient", aliases: ["mini"], label: "Orient", meaning: "Purpose and route."},
     {identifier: "state", aliases: ["definition"], label: "State", meaning: "A compact claim."},
   ],
-  vectorLinkOperators: [
-    {marker: "", kind: "neutral", meaning: "Neutral."},
-    {marker: "+", kind: "supports", meaning: "Supports."},
-    {marker: "-", kind: "opposes", meaning: "Opposes."},
-    {marker: "?", kind: "incompatible", meaning: "Incompatible."},
-  ],
+  linkAnnotation: {
+    openingDelimiter: "{{", closingDelimiter: "}}", escapeCharacter: "\\",
+    allowsMultiline: true, allowsNesting: false,
+  },
   footnotes: {
     namedReferenceOpening: "[^",
     namedReferenceClosing: "]",
@@ -224,7 +222,7 @@ describe("Edit input suggestions", () => {
     expect(mutable.state().doc.toString()).toBe("[[Axiology|Value Theory]]");
   });
 
-  it("turns an Analysis-only at completion into a neutral Wikilink reference", async () => {
+  it("turns an Analysis-only at completion into a Wikilink reference", async () => {
     const {suggestions, request, undoLabels} = controller();
     const text = "According to @Scanlon";
     const state = EditorState.create({doc: text, selection: {anchor: text.length}});

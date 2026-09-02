@@ -873,22 +873,10 @@ struct SpotlightSearchPanelView: View {
         case .property(let key, let value):
             return value.map { "Metadata \(key) equals ‘\($0)’" }
                 ?? "Metadata \(key) is present"
-        case .relation(let direction, let identity, let relation, let symmetric):
-            if symmetric {
-                return "has a direct undirected \(relation.rawValue) connection with ‘\(identity)’"
-            }
-            switch (direction, relation) {
-            case (.fromNote, .supports):
-                return "is directly supported by ‘\(identity)’"
-            case (.fromNote, .opposes):
-                return "is directly opposed by ‘\(identity)’"
-            case (.toNote, .supports):
-                return "directly supports ‘\(identity)’"
-            case (.toNote, .opposes):
-                return "directly opposes ‘\(identity)’"
-            case (_, .neutral), (_, .incompatible):
-                preconditionFailure("Symmetric relations are handled above.")
-            }
+        case .link(let direction, let identity):
+            return direction == .fromNote
+                ? "is a direct destination of a link authored in ‘\(identity)’"
+                : "directly links to ‘\(identity)’"
         }
     }
 
@@ -1007,8 +995,8 @@ struct SpotlightSearchPanelView: View {
             "retrieval leads are not evidence or researcher judgments"
         case .noCrossProviderRanking:
             "providers are not cross-ranked"
-        case .noteRelationsDirectOnly:
-            "Note relations are direct and never transitive"
+        case .noteLinksDirectOnly:
+            "Note links are direct and never transitive"
         }
     }
 
@@ -1065,6 +1053,7 @@ struct SpotlightSearchPanelView: View {
         case .path: String(localized: "path")
         case .callout: String(localized: "callout")
         case .footnote: String(localized: "footnote")
+        case .linkAnnotation: String(localized: "link annotation")
         case .brokenLink: String(localized: "broken link")
         case .body: String(localized: "body")
         }
@@ -1088,12 +1077,11 @@ private extension NoteSearchResult {
                 return property.isEmpty
                     ? "property:\(property.key) (present-empty)"
                     : "property:\(property.key) (\(property.valueKind.rawValue))"
-            case .relationship(let relationship):
-                let source = relationship.occurrences.first.map {
-                    " @ \($0.sourceNote.relativePath):\($0.locator.line)"
+            case .link(let link):
+                let source = link.occurrences.first.map {
+                    " @ \($0.sourceNote.relativePath):\($0.linkSpan.start.line)"
                 } ?? ""
-                return "\(relationship.direction.rawValue):\(relationship.anchorIdentity) "
-                    + "relation:\(relationship.relation.rawValue)" + source
+                return "\(link.direction.rawValue):\(link.anchorIdentity)" + source
             }
         }
         return nil
@@ -1201,6 +1189,7 @@ private struct NoteSearchResultRow: View {
         case .body: String(localized: "body")
         case .callout: String(localized: "callout")
         case .footnote: String(localized: "footnote")
+        case .linkAnnotation: String(localized: "link annotation")
         case .brokenLink: String(localized: "broken link")
         case .path: String(localized: "path")
         }

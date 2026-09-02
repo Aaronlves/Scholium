@@ -77,6 +77,7 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
     public let callouts: String
     public let calloutRoles: Set<String>
     public let footnotes: String
+    public let linkAnnotations: String
     public let path: String
     public private(set) var hasBrokenLink: Bool
     public let sourceLineStartsUTF16: [Int]
@@ -262,15 +263,33 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
                 )
             ))
         }
+        for annotation in semantic.links.compactMap(\.annotation) {
+            let range = annotation.contentSpan.utf16Range
+            builtSegments.append(SearchProjectionBuilder.segment(
+                field: .linkAnnotation,
+                ordinal: builtSegments.count,
+                text: annotation.text,
+                sourceRange: range,
+                source: document.rawContent,
+                sourceLocator: sourceLocator,
+                explicitMap: SearchProjectionBuilder.alignedFragments(
+                    text: annotation.text,
+                    sourceRange: range,
+                    source: document.rawContent
+                )
+            ))
+        }
 
         let excluded = semantic.headings.map(\.span.utf16Range)
             + semantic.callouts.map(\.span.utf16Range)
             + semantic.footnoteDefinitions.map(\.span.utf16Range)
+            + semantic.links.compactMap { $0.annotation?.span.utf16Range }
         let bodyStart = document.rawContent.utf16.count - document.body.utf16.count
         var collector = SearchVisibleTextCollector(
             source: document.body,
             fullSourceUTF16Offset: bodyStart,
-            excludedFullSourceRanges: excluded
+            excludedFullSourceRanges: excluded,
+            links: semantic.links
         )
         collector.visit(Document(parsing: document.body))
         if !collector.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -289,6 +308,7 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         body = builtSegments.filter { $0.field == .body }.map(\.text).joined(separator: "\n")
         callouts = builtSegments.filter { $0.field == .callout }.map(\.text).joined(separator: "\n")
         footnotes = builtSegments.filter { $0.field == .footnote }.map(\.text).joined(separator: "\n")
+        linkAnnotations = builtSegments.filter { $0.field == .linkAnnotation }.map(\.text).joined(separator: "\n")
 
         projectionHash = Self.hash(
             segments: builtSegments,
@@ -415,6 +435,7 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         case .body: body
         case .callout: callouts
         case .footnote: footnotes
+        case .linkAnnotation: linkAnnotations
         case .path: path
         case .brokenLink: ""
         }
@@ -635,10 +656,17 @@ private struct SearchVisibleFragment {
 }
 
 private struct SearchVisibleTextCollector: MarkupWalker {
+    private struct SourceProjection {
+        let range: Range<Int>
+        let replacement: String?
+        let replacementSourceRange: Range<Int>?
+    }
+
     private let source: String
     private let mapper: SearchMarkdownSourceMapper
     private let fullSourceUTF16Offset: Int
     private let excludedFullSourceRanges: [Range<Int>]
+    private let links: [LinkOccurrence]
     private(set) var text = ""
     private(set) var fragments: [SearchVisibleFragment] = []
     private var textUTF16Count = 0
@@ -646,12 +674,14 @@ private struct SearchVisibleTextCollector: MarkupWalker {
     init(
         source: String,
         fullSourceUTF16Offset: Int,
-        excludedFullSourceRanges: [Range<Int>]
+        excludedFullSourceRanges: [Range<Int>],
+        links: [LinkOccurrence]
     ) {
         self.source = source
         mapper = SearchMarkdownSourceMapper(source)
         self.fullSourceUTF16Offset = fullSourceUTF16Offset
         self.excludedFullSourceRanges = excludedFullSourceRanges
+        self.links = links
     }
 
     var coveringSourceRange: Range<Int>? {
@@ -686,24 +716,121 @@ private struct SearchVisibleTextCollector: MarkupWalker {
         let fullRange = relative.map {
             ($0.lowerBound + fullSourceUTF16Offset)..<($0.upperBound + fullSourceUTF16Offset)
         }
-        if let fullRange, excludedFullSourceRanges.contains(where: { overlaps($0, fullRange) }) {
-            return
-        }
-        let start = textUTF16Count
-        text += value
-        textUTF16Count += value.utf16.count
-        let end = textUTF16Count
         let exact = relative.map { range in
             (source as NSString).substring(with: NSRange(
                 location: range.lowerBound,
                 length: range.count
             )) == value
         } ?? false
+        if let fullRange, exact, appendProjectedSource(in: fullRange) { return }
+        if let fullRange, excludedFullSourceRanges.contains(where: { overlaps($0, fullRange) }) {
+            return
+        }
+        appendFragment(value, sourceRange: fullRange, exact: exact)
+    }
+
+    /// Removes non-body semantic ranges without dropping neighboring prose and
+    /// replaces custom Wikilink markup with only its reader-visible label.
+    /// Returning false means the original Markdown node needs no custom work.
+    private mutating func appendProjectedSource(in fullRange: Range<Int>) -> Bool {
+        var projections = excludedFullSourceRanges.compactMap { excluded -> SourceProjection? in
+            let lower = max(excluded.lowerBound, fullRange.lowerBound)
+            let upper = min(excluded.upperBound, fullRange.upperBound)
+            guard lower < upper else { return nil }
+            return SourceProjection(range: lower..<upper, replacement: nil, replacementSourceRange: nil)
+        }
+        projections.append(contentsOf: links.compactMap { link -> SourceProjection? in
+            guard link.syntax == .wikilink || link.syntax == .embed else { return nil }
+            let linkRange = link.linkSpan.utf16Range
+            guard fullRange.lowerBound <= linkRange.lowerBound,
+                  linkRange.upperBound <= fullRange.upperBound else { return nil }
+            return SourceProjection(
+                range: linkRange,
+                replacement: link.alias ?? link.target,
+                replacementSourceRange: visibleLabelRange(for: link)
+            )
+        })
+        guard !projections.isEmpty else { return false }
+        projections.sort {
+            if $0.range.lowerBound != $1.range.lowerBound {
+                return $0.range.lowerBound < $1.range.lowerBound
+            }
+            if ($0.replacement == nil) != ($1.replacement == nil) {
+                return $0.replacement == nil
+            }
+            return $0.range.upperBound > $1.range.upperBound
+        }
+
+        var cursor = fullRange.lowerBound
+        for projection in projections {
+            guard projection.range.upperBound > cursor else { continue }
+            if projection.range.lowerBound > cursor {
+                appendExactSource(cursor..<projection.range.lowerBound)
+            }
+            if projection.range.lowerBound >= cursor,
+               let replacement = projection.replacement,
+               !replacement.isEmpty {
+                let sourceRange = projection.replacementSourceRange ?? projection.range
+                appendFragment(
+                    replacement,
+                    sourceRange: sourceRange,
+                    exact: exactSource(replacement, in: sourceRange)
+                )
+            }
+            cursor = max(cursor, projection.range.upperBound)
+        }
+        if cursor < fullRange.upperBound { appendExactSource(cursor..<fullRange.upperBound) }
+        return true
+    }
+
+    private mutating func appendExactSource(_ fullRange: Range<Int>) {
+        let relative = (fullRange.lowerBound - fullSourceUTF16Offset)..<(fullRange.upperBound - fullSourceUTF16Offset)
+        guard relative.lowerBound >= 0,
+              relative.upperBound <= (source as NSString).length else { return }
+        let value = (source as NSString).substring(with: NSRange(
+            location: relative.lowerBound,
+            length: relative.count
+        ))
+        appendFragment(value, sourceRange: fullRange, exact: true)
+    }
+
+    private mutating func appendFragment(
+        _ value: String,
+        sourceRange: Range<Int>?,
+        exact: Bool
+    ) {
+        guard !value.isEmpty else { return }
+        let start = textUTF16Count
+        text += value
+        textUTF16Count += value.utf16.count
         fragments.append(SearchVisibleFragment(
-            textRange: start..<end,
-            sourceRange: fullRange,
+            textRange: start..<textUTF16Count,
+            sourceRange: sourceRange,
             exact: exact
         ))
+    }
+
+    private func visibleLabelRange(for link: LinkOccurrence) -> Range<Int>? {
+        let linkRange = link.linkSpan.utf16Range
+        let relative = (linkRange.lowerBound - fullSourceUTF16Offset)..<(linkRange.upperBound - fullSourceUTF16Offset)
+        let nsSource = source as NSString
+        guard relative.lowerBound >= 0, relative.upperBound <= nsSource.length else { return nil }
+        let raw = nsSource.substring(with: NSRange(location: relative.lowerBound, length: relative.count))
+        let visible = link.alias ?? link.target
+        let options: NSString.CompareOptions = link.alias == nil ? [] : [.backwards]
+        let match = (raw as NSString).range(of: visible, options: options)
+        guard match.location != NSNotFound else { return nil }
+        return (linkRange.lowerBound + match.location)..<(linkRange.lowerBound + NSMaxRange(match))
+    }
+
+    private func exactSource(_ value: String, in fullRange: Range<Int>) -> Bool {
+        let relative = (fullRange.lowerBound - fullSourceUTF16Offset)..<(fullRange.upperBound - fullSourceUTF16Offset)
+        let nsSource = source as NSString
+        guard relative.lowerBound >= 0, relative.upperBound <= nsSource.length else { return false }
+        return nsSource.substring(with: NSRange(
+            location: relative.lowerBound,
+            length: relative.count
+        )) == value
     }
 
     private mutating func appendSeparator(_ value: String) {

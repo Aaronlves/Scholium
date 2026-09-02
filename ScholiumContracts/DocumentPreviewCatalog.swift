@@ -6,7 +6,6 @@ public struct DocumentLinkPreview: Codable, Hashable, Sendable {
     public let targetFingerprint: DocumentFingerprint
     public let title: String
     public let syntax: LinkSyntax
-    public let relationship: VectorLinkKind?
     public let fragment: String?
     public let htmlBody: String
 
@@ -16,7 +15,6 @@ public struct DocumentLinkPreview: Codable, Hashable, Sendable {
         targetFingerprint: DocumentFingerprint,
         title: String,
         syntax: LinkSyntax,
-        relationship: VectorLinkKind?,
         fragment: String?,
         htmlBody: String
     ) {
@@ -25,14 +23,13 @@ public struct DocumentLinkPreview: Codable, Hashable, Sendable {
         self.targetFingerprint = targetFingerprint
         self.title = title
         self.syntax = syntax
-        self.relationship = relationship
         self.fragment = fragment
         self.htmlBody = htmlBody
     }
 }
 
 public struct DocumentPreviewCatalog: Codable, Hashable, Sendable {
-    public static let currentContractVersion = 2
+    public static let currentContractVersion = 3
 
     public let contractVersion: Int
     public let graphGeneration: Int
@@ -103,12 +100,11 @@ public enum DocumentPreviewCatalogBuilder {
                     profile: profiles[destination.note] ?? .genericMarkdown
                 ).title
                 return DocumentLinkPreview(
-                    sourceSpan: edge.occurrence.span,
+                    sourceSpan: edge.occurrence.linkSpan,
                     target: destination.note,
                     targetFingerprint: target.fingerprint,
                     title: title,
                     syntax: edge.occurrence.syntax,
-                    relationship: edge.occurrence.vectorKind,
                     fragment: destination.fragment,
                     htmlBody: rendered
                 )

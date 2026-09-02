@@ -75,7 +75,9 @@ struct InterfacePresentationOwnershipTests {
     #expect(
       webHover == [
         "Scholium/Resources/Editor/callouts.css": 1,
+        "Scholium/Resources/Editor/editor.css": 1,
         "Scholium/UI/Foundation/ScholiumDesignSystem.swift": 3,
+        "Scholium/Views/Note/SafeMarkdownReadWebView.swift": 1,
       ],
       Comment(rawValue: diagnostic(for: webHover))
     )

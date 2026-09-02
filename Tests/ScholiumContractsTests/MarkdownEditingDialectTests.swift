@@ -8,16 +8,17 @@ struct MarkdownEditingDialectTests {
     func dialectProjection() throws {
         let dialect = MarkdownEditingDialect.current
 
-        #expect(dialect.version == 4)
+        #expect(dialect.version == 5)
         #expect(dialect.callouts.map(\.identifier) == [
             "orient", "cite", "connect", "state", "illustrate", "quote", "flag",
         ])
         #expect(dialect.callouts.first { $0.identifier == "orient" }?.aliases == ["mini"])
         #expect(dialect.callouts.first { $0.identifier == "state" }?.aliases.contains("objection") == true)
-        #expect(dialect.vectorLinkOperators.map(\.marker) == ["", "+", "-", "?"])
-        #expect(dialect.vectorLinkOperators.map(\.kind) == [
-            .neutral, .supports, .opposes, .incompatible,
-        ])
+        #expect(dialect.linkAnnotation.openingDelimiter == "{{")
+        #expect(dialect.linkAnnotation.closingDelimiter == "}}")
+        #expect(dialect.linkAnnotation.escapeCharacter == "\\")
+        #expect(dialect.linkAnnotation.allowsMultiline)
+        #expect(!dialect.linkAnnotation.allowsNesting)
         #expect(dialect.footnotes.namedReferenceOpening == "[^")
         #expect(dialect.footnotes.namedReferenceClosing == "]")
         #expect(dialect.footnotes.definitionSeparator == ":")
@@ -76,7 +77,7 @@ struct MarkdownEditingDialectTests {
             #expect(semantic.callouts.map(\.kind) == fixture.callouts)
             #expect(semantic.links.map { LinkFixture(
                 target: $0.target,
-                vectorKind: $0.vectorKind?.rawValue
+                annotation: $0.annotation?.markdown
             ) } == fixture.links)
             #expect(semantic.footnoteDefinitions.map(\.identifier) == fixture.footnoteDefinitions)
             #expect(semantic.footnoteDefinitions.map(\.content) == fixture.footnoteDefinitionContents)
@@ -178,7 +179,7 @@ struct MarkdownEditingDialectTests {
 
     private struct LinkFixture: Codable, Equatable {
         let target: String
-        let vectorKind: String?
+        let annotation: String?
     }
 
     private struct MathFixture: Codable, Equatable {

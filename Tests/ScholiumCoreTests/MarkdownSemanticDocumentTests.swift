@@ -5,124 +5,106 @@ import ScholiumContracts
 
 @Suite("Shared Markdown semantic document")
 struct MarkdownSemanticDocumentTests {
-    @Test("Retired relation arrows remain source-located neutral links")
-    func retiredRelationArrow() {
+    @Test("Adjacent link annotations own exact multiline Markdown and distinct source spans")
+    func annotatedLinkSourceOwnership() throws {
         let source = """
         # Claim
 
-        ## Relations
-        - `premise_of` -> [[Inference A]]
+        [[Inference A#Step|the inference]]{{First **reason**.
+
+        - escaped \\}} text
+        - second reason}}
         """
         let semantic = MarkdownSemanticDocument(parsing: NoteDocument(relativePath: "claim.md", rawContent: source))
-        let relation = semantic.links.first { $0.syntax == .relationArrow }
-        #expect(relation?.relationship == nil)
-        #expect(relation?.vectorKind == .neutral)
-        #expect(relation?.target == "Inference A")
+        let occurrence = try #require(semantic.links.first)
+        let annotation = try #require(occurrence.annotation)
+
         #expect(semantic.links.count == 1)
-        #expect(semantic.diagnostics.contains { $0.code == .noncanonicalRelationshipSyntax })
+        #expect(occurrence.target == "Inference A")
+        #expect(occurrence.fragment == "Step")
+        #expect(occurrence.alias == "the inference")
+        #expect(annotation.markdown.contains("First **reason**."))
+        #expect(annotation.markdown.contains("\\}} text"))
+        #expect(annotation.text.contains("First reason."))
+        #expect((source as NSString).substring(with: occurrence.linkSpan.nsRange)
+            == "[[Inference A#Step|the inference]]")
+        #expect((source as NSString).substring(with: occurrence.span.nsRange)
+            == "[[Inference A#Step|the inference]]{{\(annotation.markdown)}}")
+        #expect((source as NSString).substring(with: annotation.contentSpan.nsRange)
+            == annotation.markdown)
+        #expect(semantic.diagnostics.isEmpty)
     }
 
-    @Test("Relation-looking prose outside the canonical section stays a neutral link")
-    func relationArrowSectionBoundary() {
-        let source = "# Note\n\n- `supports` -> [[Target]]\n"
-        let semantic = MarkdownSemanticDocument(parsing: NoteDocument(relativePath: "note.md", rawContent: source))
-        #expect(semantic.links.count == 1)
-        #expect(semantic.links[0].syntax == .wikilink)
-        #expect(semantic.links[0].relationship == nil)
+    @Test("Malformed annotation markup preserves the ordinary Wikilink and reports its source")
+    func malformedLinkAnnotations() {
+        for source in [
+            "[[Empty]]{{ }}",
+            "[[Empty Code]]{{` `}}",
+            "[[Rule Only]]{{---}}",
+            "[[Nested]]{{outer {{inner}} tail}}",
+            "[[Unclosed]]{{reason",
+        ] {
+            let semantic = MarkdownSemanticDocument(parsing: NoteDocument(
+                relativePath: "Malformed.md",
+                rawContent: source
+            ))
+            #expect(semantic.links.count == 1)
+            #expect(semantic.links[0].annotation == nil)
+            #expect((source as NSString).substring(with: semantic.links[0].span.nsRange)
+                == (source as NSString).substring(with: semantic.links[0].linkSpan.nsRange))
+            #expect(semantic.diagnostics.contains { $0.code == .malformedLinkAnnotation })
+        }
     }
 
-    @Test("Legacy arrows stay neutral and diagnostic without a v4 schema")
-    func relationArrowSchemaBoundary() {
-        let source = "# Legacy\n\n## Relations\n- `supports` -> [[Target]]\n"
-        let semantic = MarkdownSemanticDocument(parsing: NoteDocument(relativePath: "legacy.md", rawContent: source))
-        #expect(semantic.links.count == 1)
-        #expect(semantic.links[0].syntax == .relationArrow)
-        #expect(semantic.links[0].relationship == nil)
-        #expect(semantic.links[0].vectorKind == .neutral)
-        #expect(semantic.diagnostics.contains { $0.code == .noncanonicalRelationshipSyntax })
+    @Test("Detached and escaped annotation openers remain ordinary source")
+    func nonAnnotationOpeners() {
+        for source in ["[[Detached]] {{reason}}", "[[Escaped]]\\{{reason}}"] {
+            let semantic = MarkdownSemanticDocument(parsing: NoteDocument(
+                relativePath: "Ordinary.md",
+                rawContent: source
+            ))
+            #expect(semantic.links.first?.annotation == nil)
+            #expect(semantic.diagnostics.isEmpty)
+        }
     }
 
-    @Test("Legacy predicate aliases stay readable but semantically neutral")
-    func retiredAliasBoundary() {
-        let source = "# Claim\n\n## Relations\n- [[Target|:supports]]\n"
-        let semantic = MarkdownSemanticDocument(parsing: NoteDocument(relativePath: "claim.md", rawContent: source))
-        #expect(semantic.links.first?.relationship == nil)
-        #expect(semantic.links.first?.vectorKind == .neutral)
-        #expect(semantic.diagnostics.contains { $0.code == .noncanonicalRelationshipSyntax })
-    }
-
-    @Test("Unknown canonical relation predicates remain visible diagnostics")
-    func unknownRelationPredicate() {
-        let source = "# Note\n\n## Relations\n- `probably_supports` -> [[Target]]\n"
-        let semantic = MarkdownSemanticDocument(parsing: NoteDocument(relativePath: "note.md", rawContent: source))
-        #expect(semantic.diagnostics.contains { $0.code == .unknownRelationshipPredicate })
-        #expect(semantic.links.first?.relationship == nil)
-    }
-
-    @Test("Retired reified relations remain ordinary neutral links")
-    func reifiedRelation() {
-        let source = """
-        # Pressure Record
-
-        ## Relation
-        - Subject: [[Objection A]]
-        - Predicate: `pressures`
-        - Object: [[Claim B]]
-
-        ## Relations
-        - `depends_on` -> [[Evidence Check]]
-        """
-        let semantic = MarkdownSemanticDocument(parsing: NoteDocument(relativePath: "relation.md", rawContent: source))
-        #expect(semantic.links.contains { $0.target == "Objection A" && $0.vectorKind == .neutral })
-        #expect(semantic.links.contains { $0.target == "Claim B" && $0.vectorKind == .neutral })
-    }
-
-    @Test("Vector links parse everywhere ordinary wikilinks are valid")
-    func vectorLinks() {
+    @Test("Annotated links parse everywhere ordinary Wikilinks are valid")
+    func annotatedLinks() {
         let source = """
         ---
-        title: Vector Fixture
-        hidden: "+[[YAML Literal]]"
+        title: Annotation Fixture
+        hidden: "[[YAML Literal]]{{Hidden}}"
         ---
-        A +[[Supported]] and -[[Opposed]] while ?[[Incompatible]] and [[Related]].
-        + [[List Neutral]]
-        \\+[[Escaped Marker]]
-        C++[[Adjacent Word]]
+        A [[First]]{{A reason.}} and [[Second]]{{Another **reason**.}}.
         ![[Embedded]]
-        `+[[Inline Code]]`
-        ``?[[Long Inline Code]]``
+        `[[Inline Code]]{{Hidden}}`
+        ``[[Long Inline Code]]{{Hidden}}``
         ```md
-        -[[Fenced Code]]
+        [[Fenced Code]]{{Hidden}}
         ```
-        %% -[[Commented]] %%
-        <!-- ?[[HTML Commented]] -->
+        %% [[Commented]]{{Hidden}} %%
+        <!-- [[HTML Commented]]{{Hidden}} -->
         """
-        let semantic = MarkdownSemanticDocument(parsing: NoteDocument(relativePath: "Vector.md", rawContent: source))
+        let semantic = MarkdownSemanticDocument(parsing: NoteDocument(relativePath: "Annotations.md", rawContent: source))
         let byTarget = Dictionary(uniqueKeysWithValues: semantic.links.map { ($0.target, $0) })
 
-        #expect(byTarget["Supported"]?.vectorKind == .supports)
-        #expect(byTarget["Opposed"]?.vectorKind == .opposes)
-        #expect(byTarget["Incompatible"]?.vectorKind == .incompatible)
-        #expect(byTarget["Related"]?.vectorKind == .neutral)
-        #expect(byTarget["List Neutral"]?.vectorKind == .neutral)
-        #expect(byTarget["Escaped Marker"]?.vectorKind == .neutral)
-        #expect(byTarget["Adjacent Word"]?.vectorKind == .neutral)
+        #expect(byTarget["First"]?.annotation?.markdown == "A reason.")
+        #expect(byTarget["Second"]?.annotation?.text == "Another reason.")
         #expect(byTarget["Embedded"]?.syntax == .embed)
-        #expect(byTarget["Embedded"]?.vectorKind == nil)
+        #expect(byTarget["Embedded"]?.annotation == nil)
         #expect(byTarget["Inline Code"] == nil)
         #expect(byTarget["Long Inline Code"] == nil)
         #expect(byTarget["Fenced Code"] == nil)
         #expect(byTarget["Commented"] == nil)
         #expect(byTarget["HTML Commented"] == nil)
         #expect(byTarget["YAML Literal"] == nil)
-        #expect((source as NSString).substring(with: byTarget["Supported"]!.span.nsRange) == "+[[Supported]]")
     }
 
     @Test("Unclosed comments fail closed and diagnose their exact opener")
     func unclosedComments() throws {
         for fixture in [
-            (source: "Visible.\n%%\n+[[Hidden]] $x$ [^hidden]", opener: "%%"),
-            (source: "Visible.\n<!--\n+[[Hidden]] $x$ [^hidden]", opener: "<!--"),
+            (source: "Visible.\n%%\n[[Hidden]]{{Hidden annotation.}} $x$ [^hidden]", opener: "%%"),
+            (source: "Visible.\n<!--\n[[Hidden]]{{Hidden annotation.}} $x$ [^hidden]", opener: "<!--"),
         ] {
             let semantic = MarkdownSemanticDocument(parsing: NoteDocument(
                 relativePath: "comment.md",
@@ -164,11 +146,11 @@ struct MarkdownSemanticDocumentTests {
         #expect(semantic.diagnostics.isEmpty)
     }
 
-    @Test("Mismatched backtick runs do not suppress valid vector links")
+    @Test("Mismatched backtick runs do not suppress valid annotated links")
     func mismatchedBackticks() {
-        let source = "` unmatched +[[Visible]] ``\nText ``` ?[[Hidden]] ```"
+        let source = "` unmatched [[Visible]]{{Reason}} ``\nText ``` [[Hidden]]{{Hidden}} ```"
         let semantic = MarkdownSemanticDocument(parsing: NoteDocument(relativePath: "ticks.md", rawContent: source))
-        #expect(semantic.links.contains { $0.target == "Visible" && $0.vectorKind == .supports })
+        #expect(semantic.links.contains { $0.target == "Visible" && $0.annotation != nil })
         #expect(!semantic.links.contains { $0.target == "Hidden" })
     }
     @Test("Source spans remain exact across BOM, CRLF, and Unicode")
@@ -317,7 +299,7 @@ struct MarkdownSemanticDocumentTests {
     @Test("Links share one syntax-aware source-location contract")
     func links() {
         let source = """
-        前置 🧭 [[Paper#Claim|:supports]] and [Topic](topics/Topic%20Name.md#Scope).
+        前置 🧭 [[Paper#Claim|visible alias]]{{Why **this** matters.}} and [Topic](topics/Topic%20Name.md#Scope).
         `[[Ignored]]`
         %% [[Commented]] %%
         ![[figure.png|320]]
@@ -325,14 +307,17 @@ struct MarkdownSemanticDocumentTests {
         let semantic = MarkdownSemanticDocument(parsing: NoteDocument(relativePath: "links.md", rawContent: source))
 
         #expect(semantic.links.count == 3)
-        let relation = semantic.links[0]
-        #expect(relation.target == "Paper")
-        #expect(relation.fragment == "Claim")
-        #expect(relation.relationship == nil)
-        #expect(relation.vectorKind == .neutral)
-        #expect(relation.span.start.line == 1)
-        #expect((source as NSString).substring(with: relation.span.nsRange) == "[[Paper#Claim|:supports]]")
-        #expect(semantic.diagnostics.contains { $0.code == .noncanonicalRelationshipSyntax })
+        let annotated = semantic.links[0]
+        #expect(annotated.target == "Paper")
+        #expect(annotated.fragment == "Claim")
+        #expect(annotated.alias == "visible alias")
+        #expect(annotated.annotation?.markdown == "Why **this** matters.")
+        #expect(annotated.span.start.line == 1)
+        #expect((source as NSString).substring(with: annotated.span.nsRange)
+            == "[[Paper#Claim|visible alias]]{{Why **this** matters.}}")
+        #expect((source as NSString).substring(with: annotated.linkSpan.nsRange)
+            == "[[Paper#Claim|visible alias]]")
+        #expect(semantic.diagnostics.isEmpty)
 
         #expect(semantic.links[1].target == "topics/Topic Name.md")
         #expect(semantic.links[1].fragment == "Scope")

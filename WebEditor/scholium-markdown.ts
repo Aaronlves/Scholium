@@ -45,8 +45,7 @@ function addWikiLink(
   cx: InlineContext,
   from: number,
   openingFrom: number,
-  nodeName: "WikiLink" | "VectorLink",
-  prefixName: "WikiLinkOpenMark" | "WikiEmbedMark" | "VectorLinkMark",
+  prefixName: "WikiLinkOpenMark" | "WikiEmbedMark",
 ) {
   const contentFrom = openingFrom + 2;
   const end = wikiLinkEnd(cx, contentFrom);
@@ -68,7 +67,7 @@ function addWikiLink(
     }
   }
   children.push(cx.elt("WikiLinkCloseMark", end.closingFrom, end.to));
-  return cx.addElement(cx.elt(nodeName, from, end.to, children));
+  return cx.addElement(cx.elt("WikiLink", from, end.to, children));
 }
 
 function parseObsidianInlineComment(cx: InlineContext, next: number, position: number) {
@@ -81,29 +80,14 @@ function parseObsidianInlineComment(cx: InlineContext, next: number, position: n
   return cx.addElement(cx.elt("UnclosedObsidianComment", position, cx.end));
 }
 
-function parseVectorLink(cx: InlineContext, next: number, position: number) {
-  if (![0x2b, 0x2d, 0x3f].includes(next)
-    || cx.char(position + 1) !== 0x5b
-    || cx.char(position + 2) !== 0x5b) return -1;
-  if (isEscaped(cx, position)) return -1;
-  if (position > cx.offset) {
-    const priorText = cx.slice(Math.max(cx.offset, position - 2), position);
-    const previous = Array.from(priorText).at(-1) ?? "";
-    if (/\p{L}|\p{N}/u.test(previous) || ["_", "\\", "!", "+", "-", "?"].includes(previous)) {
-      return -1;
-    }
-  }
-  return addWikiLink(cx, position, position + 1, "VectorLink", "VectorLinkMark");
-}
-
 function parseWikiLink(cx: InlineContext, next: number, position: number) {
   if (next !== 0x5b || cx.char(position + 1) !== 0x5b) return -1;
-  return addWikiLink(cx, position, position, "WikiLink", "WikiLinkOpenMark");
+  return addWikiLink(cx, position, position, "WikiLinkOpenMark");
 }
 
 function parseWikiEmbed(cx: InlineContext, next: number, position: number) {
   if (next !== 0x21 || cx.char(position + 1) !== 0x5b || cx.char(position + 2) !== 0x5b) return -1;
-  return addWikiLink(cx, position, position + 1, "WikiLink", "WikiEmbedMark");
+  return addWikiLink(cx, position, position + 1, "WikiEmbedMark");
 }
 
 function parseFootnoteReference(cx: InlineContext, next: number, position: number) {
@@ -307,11 +291,11 @@ function parseFootnoteDefinition(cx: BlockContext, line: Line) {
 /**
  * The single incremental syntax owner for Scholium's Markdown additions.
  * Nodes locate syntax only. Swift semantics and GraphSnapshot remain the
- * authority for identities, diagnostics, and philosophical relationships.
+ * authority for identities, diagnostics, and authored link occurrences.
  */
 export const scholiumMarkdownDialect: MarkdownConfig = {
   defineNodes: [
-    "WikiLink", "VectorLink", "WikiLinkOpenMark", "WikiEmbedMark", "VectorLinkMark",
+    "WikiLink", "WikiLinkOpenMark", "WikiEmbedMark",
     "WikiLinkTarget", "WikiLinkAliasMark", "WikiLinkAlias", "WikiLinkCloseMark",
     "FootnoteReference", {
       name: "FootnoteDefinition",
@@ -330,7 +314,6 @@ export const scholiumMarkdownDialect: MarkdownConfig = {
   ],
   parseInline: [
     {name: "ScholiumObsidianComment", parse: parseObsidianInlineComment, before: "Link"},
-    {name: "ScholiumVectorLink", parse: parseVectorLink, before: "Link"},
     {name: "ScholiumFootnoteReference", parse: parseFootnoteReference, before: "Link"},
     {name: "ScholiumWikiLink", parse: parseWikiLink, before: "Link"},
     {name: "ScholiumInlineFootnote", parse: parseInlineFootnote, before: "Link"},

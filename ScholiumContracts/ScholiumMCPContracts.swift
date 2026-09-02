@@ -2,6 +2,7 @@ import Foundation
 
 public enum ScholiumMCPContract {
     public static let maximumDocumentUTF8ByteCount = 512 * 1_024
+    public static let currentToolSchemaVersion = 2
 }
 
 /// JSON values accepted at the MCP delivery boundary. Domain owners decode
@@ -115,7 +116,7 @@ public struct ScholiumMCPFailure: Codable, Hashable, Sendable, Error {
         message: String,
         recovery: String
     ) {
-        schemaVersion = 1
+        schemaVersion = ScholiumMCPContract.currentToolSchemaVersion
         status = "failed"
         self.code = code
         self.message = message

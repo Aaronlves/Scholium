@@ -364,38 +364,8 @@ public actor DiscoveryOperations: DiscoveryUseCases {
         try await graphQueries().links(for: note, direction: direction)
     }
 
-    public func relationships(
-        for note: VaultQualifiedNoteID
-    ) async throws -> [RelationshipEdge] {
-        try await graphQueries().relationships(for: note)
-    }
-
     public func linkDiagnostics() async throws -> [LinkGraphDiagnostic] {
         try await graphQueries().diagnostics()
-    }
-
-    public func traceLinks(
-        from source: VaultQualifiedNoteID,
-        to target: VaultQualifiedNoteID,
-        maximumDepth: Int
-    ) async throws -> [[LinkGraphEdge]] {
-        try await graphQueries().traceLinks(
-            from: source,
-            to: target,
-            maximumDepth: maximumDepth
-        )
-    }
-
-    public func traceRelationships(
-        from source: VaultQualifiedNoteID,
-        to target: VaultQualifiedNoteID,
-        maximumDepth: Int
-    ) async throws -> [RelationshipTrace] {
-        try await graphQueries().traceRelationships(
-            from: source,
-            to: target,
-            maximumDepth: maximumDepth
-        )
     }
 
     private func graphQueries() async throws -> WorkspaceGraphQueries {

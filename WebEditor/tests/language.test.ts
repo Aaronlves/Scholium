@@ -49,7 +49,7 @@ describe("Scholium note language", () => {
   it("owns bidi-isolation metadata for complete Markdown syntax constructs", () => {
     const isolates = nodeIsolates([
       "**دليل** *مصطلح* ~~مسحوب~~ ==مؤقت== `code()`",
-      "[مرجع](https://example.test) [[Target|عارض]] +[[Support|داعم]]",
+      "[مرجع](https://example.test) [[Target|عارض]] [[Support|داعم]]{{سبب}}",
       "^[ملاحظة] [^note] $x^2$",
     ].join("\n\n"));
 
@@ -57,7 +57,7 @@ describe("Scholium note language", () => {
       "StrongEmphasis", "Emphasis", "Strikethrough", "Highlight", "InlineFootnote",
     ]) expect(isolates.get(name)).toBe("auto");
     for (const name of [
-      "InlineCode", "InlineMath", "Link", "WikiLink", "VectorLink", "FootnoteReference",
+      "InlineCode", "InlineMath", "Link", "WikiLink", "FootnoteReference",
     ]) expect(isolates.get(name)).toBe("ltr");
   });
 });

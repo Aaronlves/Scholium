@@ -1159,14 +1159,8 @@ private struct ScholiumInsertCommandContent: View {
             .disabled(editorActions?.isAvailable(.standardLink) != true)
         Button("Wikilink") { editorActions?.perform(.wikilink) }
             .disabled(editorActions?.isAvailable(.wikilink) != true)
-        Menu("Vector Link") {
-            Button("Supports") { editorActions?.perform(.vectorSupports) }
-                .disabled(editorActions?.isAvailable(.vectorSupports) != true)
-            Button("Opposes") { editorActions?.perform(.vectorOpposes) }
-                .disabled(editorActions?.isAvailable(.vectorOpposes) != true)
-            Button("Incompatible") { editorActions?.perform(.vectorIncompatible) }
-                .disabled(editorActions?.isAvailable(.vectorIncompatible) != true)
-        }
+        Button("Annotated Wikilink") { editorActions?.perform(.annotatedWikilink) }
+            .disabled(editorActions?.isAvailable(.annotatedWikilink) != true)
         Divider()
         Button("Footnote") { editorActions?.perform(.insertFootnote) }
             .disabled(editorActions?.isAvailable(.insertFootnote) != true)
@@ -1882,9 +1876,9 @@ final class WindowModel: ObservableObject {
         set { updateDiscoveryFilters { $0.needsAttention = newValue } }
     }
 
-    var isExplicitConnectionsFilter: Bool {
-        get { discoveryController.library.filters.hasExplicitConnections }
-        set { updateDiscoveryFilters { $0.hasExplicitConnections = newValue } }
+    var isLinkAnnotationsFilter: Bool {
+        get { discoveryController.library.filters.hasLinkAnnotations }
+        set { updateDiscoveryFilters { $0.hasLinkAnnotations = newValue } }
     }
 
     var isMalformedMetadataFilter: Bool {
@@ -1922,8 +1916,8 @@ final class WindowModel: ObservableObject {
 
     // Triptych-wide immutable semantic graph forwarded from the exact-window
     // Workspace projection owner.
-    var relationshipGraph: GraphSnapshot? {
-        workspaceProjectionController.relationshipGraph
+    var linkGraph: GraphSnapshot? {
+        workspaceProjectionController.linkGraph
     }
 
     // MARK: Window Presentation
@@ -3079,7 +3073,7 @@ final class WindowModel: ObservableObject {
         if isNeedsAttentionFilter, let paths = currentAttentionPaths {
             result = result.filter { paths.contains($0.relativePath) }
         }
-        if isExplicitConnectionsFilter, let paths = currentExplicitConnectionPaths {
+        if isLinkAnnotationsFilter, let paths = currentLinkAnnotationPaths {
             result = result.filter { paths.contains($0.relativePath) }
         }
         if isMalformedMetadataFilter, let paths = currentMalformedMetadataPaths {
@@ -3100,14 +3094,14 @@ final class WindowModel: ObservableObject {
     var activeResearchFilterCount: Int {
         [
             isNeedsAttentionFilter,
-            isExplicitConnectionsFilter,
+            isLinkAnnotationsFilter,
             isMalformedMetadataFilter,
         ].count(where: { $0 })
     }
 
     func clearResearchFilters() {
         isNeedsAttentionFilter = false
-        isExplicitConnectionsFilter = false
+        isLinkAnnotationsFilter = false
         isMalformedMetadataFilter = false
     }
 
@@ -3129,17 +3123,14 @@ final class WindowModel: ObservableObject {
         })
     }
 
-    private var currentExplicitConnectionPaths: Set<String>? {
+    private var currentLinkAnnotationPaths: Set<String>? {
         guard let vaultID = currentRegisteredVault?.id,
-              let graph = relationshipGraph else { return nil }
+              let graph = linkGraph else { return nil }
         return Set(notes.compactMap { note in
             let noteID = VaultQualifiedNoteID(vaultID: vaultID, relativePath: note.relativePath)
             let edges = (graph.outgoing[noteID] ?? []) + (graph.incoming[noteID] ?? [])
-            let hasExplicitConnection = edges.contains { edge in
-                guard edge.destination != nil else { return false }
-                return edge.occurrence.vectorKind == nil || edge.occurrence.vectorKind != .neutral
-            }
-            return hasExplicitConnection ? note.relativePath : nil
+            let hasLinkAnnotation = edges.contains { $0.occurrence.annotation != nil }
+            return hasLinkAnnotation ? note.relativePath : nil
         })
     }
 

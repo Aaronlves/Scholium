@@ -251,6 +251,11 @@ bridge 工作；当应用、bridge、所选脉络或当前状态不可用时明�
 `scholium_trash_note`。不暴露 MCP Resources、Prompts、Agent Sessions、
 Research Actions、Handoff 或 Research Records。
 
+普通双链可携带由源 Note 拥有的多行 Markdown 注释：
+`[[目标]]{{注释}}`。Connect、Search 与 `scholium_list_links` 都保留每次
+链接出现的方向、注释、局部上下文与来源位置；它们只公开作者写下的
+链接出现，不为其指定关系类别。
+
 ## 存储与安全
 
 权威研究内容始终保存在研究者选择的 Markdown 文件夹。位于“写作”旁边的小型

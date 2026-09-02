@@ -1,11 +1,11 @@
 import Foundation
 import ScholiumContracts
 
-/// Resolves one explicit direct-relation clause against the current Graph
+/// Resolves one direct authored-link clause against the current graph
 /// without copying edges into the lexical index.
-enum NoteRelationSearchResolver {
+enum NoteLinkSearchResolver {
     struct Resolution: Sendable {
-        let matches: [VaultQualifiedNoteID: SearchRelationshipMatch]
+        let matches: [VaultQualifiedNoteID: SearchLinkMatch]
         let diagnostic: SearchQueryDiagnostic?
 
         static let notRequested = Resolution(matches: [:], diagnostic: nil)
@@ -17,7 +17,7 @@ enum NoteRelationSearchResolver {
         catalog: WorkspaceCatalogSnapshot,
         searchGeneration: SearchGenerationID?
     ) -> Resolution {
-        guard let query = ast.relationQuery else { return .notRequested }
+        guard let query = ast.linkQuery else { return .notRequested }
         guard case .currentNote = scope else {
             return resolveAuthorized(
                 query: query,
@@ -28,13 +28,13 @@ enum NoteRelationSearchResolver {
         }
         return Resolution(matches: [:], diagnostic: diagnostic(
             .notApplicable,
-            "Direct relation clauses are not applicable to This Note occurrence Search.",
+            "Direct link clauses are not applicable to This Note occurrence Search.",
             range: query.sourceRange
         ))
     }
 
     private static func resolveAuthorized(
-        query: SearchRelationQuery,
+        query: SearchLinkQuery,
         scope: SearchExecutionScope,
         catalog: WorkspaceCatalogSnapshot,
         searchGeneration: SearchGenerationID?
@@ -50,7 +50,7 @@ enum NoteRelationSearchResolver {
             if anchors.isEmpty {
                 return Resolution(matches: [:], diagnostic: diagnostic(
                     .notApplicable,
-                    "No authorized Note has the exact relation identity ‘\(query.noteIdentity)’.",
+                    "No authorized Note has the exact link identity ‘\(query.noteIdentity)’.",
                     range: query.sourceRange
                 ))
             }
@@ -59,7 +59,7 @@ enum NoteRelationSearchResolver {
             }.sorted().joined(separator: ", ")
             return Resolution(matches: [:], diagnostic: diagnostic(
                 .ambiguousIdentity,
-                "The relation identity ‘\(query.noteIdentity)’ is ambiguous: \(candidates).",
+                "The link identity ‘\(query.noteIdentity)’ is ambiguous: \(candidates).",
                 range: query.sourceRange
             ))
         }
@@ -68,7 +68,7 @@ enum NoteRelationSearchResolver {
               graph.sourceManifestHash == searchGeneration.sourceManifestHash else {
             return Resolution(matches: [:], diagnostic: diagnostic(
                 .notApplicable,
-                "Direct relation Search is unavailable until Graph and Note Search share one complete source manifest.",
+                "Direct link Search is unavailable until Graph and Note Search share one complete source manifest.",
                 range: query.sourceRange
             ))
         }
@@ -83,34 +83,23 @@ enum NoteRelationSearchResolver {
                 relativePath: $0.reference.relativePath
             )
         })
-        var matches: [VaultQualifiedNoteID: SearchRelationshipMatch] = [:]
-        for edge in graph.relationships where edge.vectorKind == vectorKind(query.relation) {
-            guard let subject = edge.subjectNote, let object = edge.objectNote else { continue }
-            let target: VaultQualifiedNoteID?
-            if query.relation.isSymmetric {
-                if subject == anchorID { target = object }
-                else if object == anchorID { target = subject }
-                else { target = nil }
-            } else {
-                switch query.direction {
-                case .fromNote:
-                    target = subject == anchorID ? object : nil
-                case .toNote:
-                    target = object == anchorID ? subject : nil
-                }
+        var matches: [VaultQualifiedNoteID: SearchLinkMatch] = [:]
+        let edges: [LinkGraphEdge] = switch query.direction {
+        case .fromNote: graph.outgoing[anchorID] ?? []
+        case .toNote: graph.incoming[anchorID] ?? []
+        }
+        for edge in edges {
+            let target: VaultQualifiedNoteID? = switch query.direction {
+            case .fromNote: edge.destination?.note
+            case .toNote: edge.source
             }
             guard let target, target != anchorID, authorizedIDs.contains(target) else { continue }
-            let occurrences = Array(Set(
-                (matches[target]?.occurrences ?? []) + edge.occurrences
-            )).sorted {
+            let occurrence = SearchLinkOccurrence(sourceNote: edge.source, occurrence: edge.occurrence)
+            let occurrences = Array(Set((matches[target]?.occurrences ?? []) + [occurrence])).sorted {
                 if $0.sourceNote != $1.sourceNote { return $0.sourceNote < $1.sourceNote }
-                if $0.locator.line != $1.locator.line {
-                    return $0.locator.line < $1.locator.line
-                }
-                return $0.locator.column < $1.locator.column
+                return $0.span.utf16LowerBound < $1.span.utf16LowerBound
             }
-            matches[target] = SearchRelationshipMatch(
-                relation: query.relation,
+            matches[target] = SearchLinkMatch(
                 direction: query.direction,
                 anchorIdentity: query.noteIdentity,
                 targetNote: target,
@@ -142,15 +131,6 @@ enum NoteRelationSearchResolver {
                 .deletingPathExtension,
             note.title,
         ].compactMap { $0 } + note.aliases
-    }
-
-    private static func vectorKind(_ relation: SearchRelation) -> VectorLinkKind {
-        switch relation {
-        case .supports: .supports
-        case .opposes: .opposes
-        case .neutral: .neutral
-        case .incompatible: .incompatible
-        }
     }
 
     private static func diagnostic(

@@ -345,7 +345,7 @@ dated evidence belongs to [Status](../IMPLEMENTATION_STATUS.md).
 
 `ScholiumContracts` owns durable Markdown meanings and the immutable editing
 dialect. TypeScript may parse an uncommitted buffer for immediate projection
-and exact transformations, but cannot invent persistence, relationship,
+and exact transformations, but cannot invent persistence, link meaning,
 callout, or diagnostic semantics. Every Markdown command creates one
 CodeMirror transaction and one undo event. Multi-selection transformations are
 atomic and refuse frontmatter, code, raw HTML, comments, protected literals,
@@ -444,13 +444,14 @@ delimiter rules to CodeMirror. Swift parses committed revisions for Read,
 graph, diagnostics, and persistence-adjacent consumers. TypeScript incrementally
 parses the uncommitted buffer for immediate Live Preview only, and shared
 fixtures require its source spans and meanings to agree with Contracts.
-Dialect 4 explicitly carries the case-sensitive named/inline footnote syntax,
+Dialect 5 explicitly carries the case-sensitive named/inline footnote syntax,
 two-space-or-tab continuation ownership, first-reference ordinal rule, and the
-Vector-Link v3 relation grammar alongside callouts and mathematics. Its four
-kinds are neutral, supports, opposes, and incompatible. Support and opposition
-are directed from the containing Note to the target; neutral and incompatibility
-canonicalize their resolved endpoints and remain undirected. Only support and
-opposition inverse presentation is derived after graph resolution. The
+adjacent link-annotation delimiters alongside callouts and mathematics. A valid
+ordinary Wikilink may be followed immediately by `{{annotation Markdown}}`.
+The first unescaped `}}` closes it; `\{{` and `\}}` escape delimiter
+recognition; annotations may span lines and may not nest. Empty-visible,
+nested, or unclosed annotation source remains exact ordinary source, while the
+Wikilink remains a link and Contracts emits a source-located diagnostic. The
 TypeScript adapter fails closed when it
 receives a dialect it does not implement.
 
@@ -463,7 +464,7 @@ editable, and presents an accessible Source-mode instruction. Table, callout,
 footnote, mathematics, and preview adapters all honor this fail-closed guard.
 
 That Markdown content language is extended through the locked Lezer API with
-typed Wiki/Vector-Link, named/inline footnote, callout, inline/display
+typed Wikilink, named/inline footnote, callout, inline/display
 mathematics, highlight, and Obsidian-comment nodes. Live consumers do not infer
 those constructs outside the corresponding syntax ranges. The shared
 cross-runtime fixture projector parses a normalized LF/BOM-free view only for
@@ -471,15 +472,17 @@ Lezer compatibility and maps every node boundary back to the exact original
 UTF-16 offset, so CRLF, leading BOM, Unicode decomposition, and final-newline
 form remain source-authoritative. These nodes locate editing syntax; Swift
 `MarkdownSemanticDocument` and `GraphSnapshot` remain the authorities for
-diagnostics, identity, relationship meaning, and committed Read output. Graph
-contract 5 publishes only neutral, support, opposition, and undirected
-incompatibility relations with the permitted inverse views.
+diagnostics, identity, authored link occurrences, and committed Read output.
+Graph contract 6 publishes only directed source-to-destination occurrences.
+Outgoing and Incoming are two projections of the same occurrence, preserving
+its whole span, link span, optional annotation, and local context without
+deduplication or inferred meaning.
 
 The mode-neutral presentation catalog is explicit rather than assumed.
 Contracts publishes source-located CommonMark/GFM blocks plus strong,
 emphasis, strikethrough, highlight, inline-code, link, and image nodes. The
 TypeScript catalog extends those base roles with the editing dialect's
-Callouts, footnotes, mathematics, comments, Wiki/Vector-Links, and protected
+Callouts, footnotes, mathematics, comments, Wikilinks with optional annotations, and protected
 literals. Each catalog entry carries its exact half-open UTF-16 range, exact
 marker ranges, visible ranges, parent and nesting role, and, where applicable,
 heading level, list depth, task marker, link target, and alias range. The
@@ -602,7 +605,7 @@ removes an otherwise empty quote prefix on the next Return; each path is one
 CodeMirror transaction. The fragment renderer uses the same extended Markdown
 language and source-offset map, moves a title-only Orient title into Body
 presentation without source mutation or accessible duplication, and retains
-standard, Wiki, and Vector link roles and exact pointer destinations inside the
+standard and Wiki link roles, optional annotation disclosure, and exact pointer destinations inside the
 inactive Callout DOM.
 
 Semantic tables follow that adapter boundary. Read emits a protected scroll
@@ -721,7 +724,7 @@ esbuild input graph deterministically regenerates the distributed Mermaid and
 transitive-package license notice, so packaging cannot silently omit a newly
 bundled runtime dependency.
 
-Link and Vector-Link previews are revision-bound Edit requests. Review resolves
+Link previews are revision-bound Edit requests. Review resolves
 footnote preview and navigation against its committed sanitized projection. Swift
 owns graph resolution, target selection, committed preview content, containment,
 and external-URL policy. WebKit owns only the source anchor, visible geometry,

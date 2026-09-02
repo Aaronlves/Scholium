@@ -23,10 +23,6 @@ enum ScholiumSystemSymbol: String, CaseIterable, Sendable {
     case checklist
     case textQuote = "text.quote"
     case textBubble = "text.bubble"
-    case plus
-    case plusCircle = "plus.circle"
-    case minusCircle = "minus.circle"
-    case xmarkCircle = "xmark.circle"
     case docText = "doc.text"
     case calendar
     case function
@@ -34,7 +30,6 @@ enum ScholiumSystemSymbol: String, CaseIterable, Sendable {
     case tablecells
     case textFormatSuperscript = "textformat.superscript"
     case minus
-    case xmark
 
     var systemName: String { rawValue }
 

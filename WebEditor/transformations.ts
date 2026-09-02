@@ -31,9 +31,6 @@ const inlineMarkers: Partial<Record<MarkdownEditorCommand, [string, string, stri
   highlight: ["==", "==", "Highlight"],
   markdownComment: ["%% ", " %%", "Markdown Comment"],
   wikilink: ["[[", "]]", "Wikilink"],
-  vectorSupports: ["+[[", "]]", "Supports Link"],
-  vectorOpposes: ["-[[", "]]", "Opposes Link"],
-  vectorIncompatible: ["?[[", "]]", "Incompatible Link"],
 };
 
 function normalized(range: SelectionRange) {
@@ -145,6 +142,23 @@ function transformOne(
     const anchor = selected ? range.from + selected.length + 3 : range.from + 1;
     const head = selected ? anchor + destination.length : anchor;
     return {change: {...range, insert}, selection: {anchor, head}, label: "Link"};
+  }
+  if (command === "annotatedWikilink") {
+    const selected = source.slice(range.from, range.to);
+    const target = selected || "Target";
+    const annotation = "Annotation";
+    const insert = `[[${target}]]{{${annotation}}}`;
+    const anchor = selected
+      ? range.from + target.length + 6
+      : range.from + 2;
+    const head = selected
+      ? anchor + annotation.length
+      : anchor + target.length;
+    return {
+      change: {...range, insert},
+      selection: {anchor, head},
+      label: "Annotated Wikilink",
+    };
   }
   if (command === "pastePlain" || command === "pasteMarkdown") {
     const insert = argument ?? "";

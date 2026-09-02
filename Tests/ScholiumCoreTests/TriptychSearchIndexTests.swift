@@ -942,10 +942,10 @@ struct TriptychSearchIndexTests {
         init() throws {
             root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
                 .appendingPathComponent(".build", isDirectory: true)
-                .appendingPathComponent("search-v9-test-artifacts", isDirectory: true)
+                .appendingPathComponent("search-v10-test-artifacts", isDirectory: true)
                 .appendingPathComponent(UUID().uuidString, isDirectory: true)
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-            databaseURL = root.appendingPathComponent("search-v9.sqlite")
+            databaseURL = root.appendingPathComponent("search-v10.sqlite")
         }
 
         func item(

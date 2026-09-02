@@ -6,7 +6,7 @@
   {"name":"malformed-markdown","source":"**unfinished [link]( and `code\n","selections":[]},
   {"name":"escaped-delimiters","source":"\\*literal\\* and \\[[not-link]] and \\|\n","selections":[]},
   {"name":"html-comments","source":"<section data-x='1'>literal</section>\n<!-- exact -->\n%% private exact %%\n","selections":[]},
-  {"name":"links-callouts","source":"> [!mini]+ Route\n> +[[Claim]] -[[Ground]] ?[[Rival]] [[Neighbor]]\n","selections":[]},
+  {"name":"links-callouts","source":"> [!mini]+ Route\n> [[Claim]]{{Why **this** matters.}} [[Ground]] [[Rival]] [[Neighbor]]\n","selections":[]},
   {"name":"footnotes","source":"Claim[^7] and ^[inline].\n\n[^7]: Existing; never renumber.\n","selections":[]},
   {"name":"tables","source":"| A \\| literal | B |\n|:---|---:|\n| 一 | two |\n","selections":[]},
   {"name":"unicode","source":"哲学 e\u0301 👩🏽‍💻 مرحبا עולם\n","selections":[]},

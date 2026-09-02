@@ -274,11 +274,17 @@ final class MCPAppBridgeRequestRouter {
                 sourceDocument = try await handle.documents.load(edge.source)
                 documents[edge.source] = sourceDocument
             }
-            let exactMarkup = Self.exactSubstring(
+            let occurrenceMarkup = Self.exactSubstring(
                 sourceDocument.sourceBytes,
                 range: edge.occurrence.span.utf8Range
             )
+            let linkMarkup = Self.exactSubstring(
+                sourceDocument.sourceBytes,
+                range: edge.occurrence.linkSpan.utf8Range
+            )
+            let destinationNote = edge.destination?.note
             values.append(.object([
+                "occurrence_direction": .string("outgoing"),
                 "source_note_id": stableIdentity(
                     for: edge.source,
                     snapshot: snapshot
@@ -290,15 +296,27 @@ final class MCPAppBridgeRequestRouter {
                     snapshot.document(id: edge.source)?.vaultRole ?? .other
                 )),
                 "source_relative_path": .string(edge.source.relativePath),
-                "exact_markup": .string(exactMarkup),
+                "destination_role": destinationNote.map { destination in
+                    .string(Self.externalRole(snapshot.document(id: destination)?.vaultRole ?? .other))
+                } ?? .null,
+                "destination_relative_path": destinationNote.map { .string($0.relativePath) } ?? .null,
+                "occurrence_markup": .string(occurrenceMarkup),
+                "link_markup": .string(linkMarkup),
+                "annotation_markup": edge.occurrence.annotation.map { annotation in
+                    .string(Self.exactSubstring(sourceDocument.sourceBytes, range: annotation.span.utf8Range))
+                } ?? .null,
+                "annotation_text": edge.occurrence.annotation.map { .string($0.text) } ?? .null,
                 "authored_target": .string(edge.occurrence.target),
+                "local_context": .string(Self.localContext(
+                    in: sourceDocument.rawContent,
+                    containing: edge.occurrence.span
+                )),
                 "source_fingerprint": fingerprintValue(sourceDocument.fingerprint),
-                "source_locator": .object([
-                    "line": .integer(edge.occurrence.span.start.line),
-                    "column": .integer(edge.occurrence.span.start.utf16Column),
-                    "end_line": .integer(edge.occurrence.span.end.line),
-                    "end_column": .integer(edge.occurrence.span.end.utf16Column),
-                ]),
+                "source_locator": Self.locatorValue(edge.occurrence.span),
+                "link_locator": Self.locatorValue(edge.occurrence.linkSpan),
+                "annotation_locator": edge.occurrence.annotation.map {
+                    Self.locatorValue($0.contentSpan)
+                } ?? .null,
             ]))
         }
         return ok([
@@ -593,7 +611,7 @@ final class MCPAppBridgeRequestRouter {
 
     private func ok(_ fields: [String: MCPJSONValue]) -> MCPJSONValue {
         .object(fields.merging([
-            "schema_version": .integer(1),
+            "schema_version": .integer(ScholiumMCPContract.currentToolSchemaVersion),
             "status": .string("ok"),
         ]) { current, _ in current })
     }
@@ -781,6 +799,28 @@ final class MCPAppBridgeRequestRouter {
         return String(decoding: data.subdata(in: range), as: UTF8.self)
     }
 
+    private static func locatorValue(_ span: SourceSpan) -> MCPJSONValue {
+        .object([
+            "line": .integer(span.start.line),
+            "column": .integer(span.start.utf16Column),
+            "end_line": .integer(span.end.line),
+            "end_column": .integer(span.end.utf16Column),
+        ])
+    }
+
+    private static func localContext(in source: String, containing span: SourceSpan) -> String {
+        let nsSource = source as NSString
+        let start = min(max(0, span.utf16LowerBound), nsSource.length)
+        let upper = min(max(start, span.utf16UpperBound), nsSource.length)
+        let startLine = nsSource.lineRange(for: NSRange(location: start, length: 0))
+        let endLocation = upper > start ? upper - 1 : upper
+        let endLine = nsSource.lineRange(for: NSRange(location: endLocation, length: 0))
+        let lower = startLine.location
+        let end = NSMaxRange(endLine)
+        return nsSource.substring(with: NSRange(location: lower, length: end - lower))
+            .trimmingCharacters(in: .newlines)
+    }
+
     private static func exactLineSlice(
         _ data: Data,
         startLine: Int,
@@ -878,7 +918,6 @@ final class MCPAppBridgeRequestRouter {
                     message: "The requested Note is not in the current link generation.",
                     recovery: "Search or read the current Note identity again."
                 )
-            case .invalidMaximumDepth: break
             }
         }
         if let error = error as? VaultRepositoryError {

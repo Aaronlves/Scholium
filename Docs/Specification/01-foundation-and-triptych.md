@@ -21,7 +21,8 @@
   is sufficiently stable for current research. It stores no source version.
 - **Critique** is an attributed Agent assessment of one Work. **Fidelity**
   audits an exact revision. Neither silently edits or settles the Note.
-- **Connect** presents authored relations. **Attention** presents recoverable
+- **Connect** presents authored link occurrences and their annotations.
+  **Attention** presents recoverable
   derived warnings without philosophical judgment.
 - **Metadata** is the researcher-owned structured state managed by Scholium.
   About combines selected managed values with authored YAML `summary` and
@@ -143,7 +144,7 @@ explicit isolated root.
 
 ### 3.4 Triptych Guide and agent instructions
 
-The Guide states vault roles, Works organization, relation syntax,
+The Guide states vault roles, Works organization, annotated-link syntax,
 fidelity/provenance/uncertainty/conflict rules, and safe external-edit
 conventions. It remains researcher-owned research context, not the MCP or Core
 Protocol.

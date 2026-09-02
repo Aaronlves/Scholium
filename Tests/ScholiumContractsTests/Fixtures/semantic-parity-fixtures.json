@@ -1,14 +1,14 @@
 [
   {
-    "name": "canonical and legacy scholarly semantics",
-    "source": "> [!mini] Scope\n\n+[[Support]] -[[Ground]] ?[[Conflict]] [[Neutral]]\n\n[Web](https://example.test)\n\nClaim[^1] with $x + y$.\n\n[^1]: Basis\n",
+    "name": "canonical scholarly semantics with multiline link annotations",
+    "source": "> [!mini] Scope\n\n[[Support]]{{Supports the conclusion with **text**.\n\n- second reason}} [[Ground]] [[Conflict]]{{Open question.}} [[Neutral]]\n\n[Web](https://example.test)\n\nClaim[^1] with $x + y$.\n\n[^1]: Basis\n",
     "callouts": ["orient"],
     "links": [
-      {"target": "Support", "vectorKind": "supports"},
-      {"target": "Ground", "vectorKind": "opposes"},
-      {"target": "Conflict", "vectorKind": "incompatible"},
-      {"target": "Neutral", "vectorKind": "neutral"},
-      {"target": "https://example.test", "vectorKind": null}
+      {"target": "Support", "annotation": "Supports the conclusion with **text**.\n\n- second reason"},
+      {"target": "Ground", "annotation": null},
+      {"target": "Conflict", "annotation": "Open question."},
+      {"target": "Neutral", "annotation": null},
+      {"target": "https://example.test", "annotation": null}
     ],
     "footnoteDefinitions": ["1"],
     "footnoteDefinitionContents": ["Basis"],
@@ -16,7 +16,7 @@
     "mathExpressions": [{"kind": "inline", "content": "x + y"}],
     "sourceSlices": {
       "calloutHeaders": ["> [!mini] Scope"],
-      "links": ["+[[Support]]", "-[[Ground]]", "?[[Conflict]]", "[[Neutral]]", "[Web](https://example.test)"],
+      "links": ["[[Support]]{{Supports the conclusion with **text**.\n\n- second reason}}", "[[Ground]]", "[[Conflict]]{{Open question.}}", "[[Neutral]]", "[Web](https://example.test)"],
       "footnoteDefinitions": ["[^1]: Basis\n"],
       "footnoteReferences": ["[^1]"],
       "mathExpressions": [{"source": "$x + y$", "content": "x + y"}]
@@ -70,8 +70,8 @@
     "source": "\uFEFF---\ntitle: \"[[YAML]] $YAML$\"\nfootnote: \"[^yaml]\"\n---\n\n`[[InlineCode]] $code$ [^code]`\n\n```md\n> [!flag] Fenced\n[[Fenced]] $fenced$ [^fenced]\n```\n\n%% [[Commented]] $commented$ [^commented] %%\n<!-- [[Hidden]] $hidden$ [^hidden] -->\n\n<div>\n[[RawHTML]] $raw$ [^raw]\n</div>\n\n> [!state] Valid\n\n[[Real#Section|Alias]] and [Topic](topics/Topic%20Name.md#Scope).\n\nClaim[^real] with $x + 范围$.\n\n[^real]: Basis\n",
     "callouts": ["state"],
     "links": [
-      {"target": "Real", "vectorKind": "neutral"},
-      {"target": "topics/Topic Name.md", "vectorKind": null}
+      {"target": "Real", "annotation": null},
+      {"target": "topics/Topic Name.md", "annotation": null}
     ],
     "footnoteDefinitions": ["real"],
     "footnoteDefinitionContents": ["Basis"],
@@ -133,17 +133,15 @@
   },
   {
     "name": "source ordered fragment links embeds and mixed line endings",
-    "source": "\uFEFFPrelude 🧭\r\n\r\n+[[Support#Claim|Supports]] then [Topic](topics/Topic%20Name.md#Scope).\r\n-[[Ground#^block]] ?[[Conflict]] [[Neutral]] ![[figure.png|320]] C++[[Adjacent]] \\+[[Escaped]]\r\n",
+    "source": "\uFEFFPrelude 🧭\r\n\r\n[[Support#Claim|Supports]]{{First line.\r\nSecond line.}} then [Topic](topics/Topic%20Name.md#Scope).\r\n[[Ground#^block]] [[Conflict]]{{Escaped \\}} marker.}} [[Neutral]] ![[figure.png|320]]\r\n",
     "callouts": [],
     "links": [
-      {"target": "Support", "vectorKind": "supports"},
-      {"target": "topics/Topic Name.md", "vectorKind": null},
-      {"target": "Ground", "vectorKind": "opposes"},
-      {"target": "Conflict", "vectorKind": "incompatible"},
-      {"target": "Neutral", "vectorKind": "neutral"},
-      {"target": "figure.png", "vectorKind": null},
-      {"target": "Adjacent", "vectorKind": "neutral"},
-      {"target": "Escaped", "vectorKind": "neutral"}
+      {"target": "Support", "annotation": "First line.\r\nSecond line."},
+      {"target": "topics/Topic Name.md", "annotation": null},
+      {"target": "Ground", "annotation": null},
+      {"target": "Conflict", "annotation": "Escaped \\}} marker."},
+      {"target": "Neutral", "annotation": null},
+      {"target": "figure.png", "annotation": null}
     ],
     "footnoteDefinitions": [],
     "footnoteDefinitionContents": [],
@@ -152,14 +150,12 @@
     "sourceSlices": {
       "calloutHeaders": [],
       "links": [
-        "+[[Support#Claim|Supports]]",
+        "[[Support#Claim|Supports]]{{First line.\r\nSecond line.}}",
         "[Topic](topics/Topic%20Name.md#Scope)",
-        "-[[Ground#^block]]",
-        "?[[Conflict]]",
+        "[[Ground#^block]]",
+        "[[Conflict]]{{Escaped \\}} marker.}}",
         "[[Neutral]]",
-        "![[figure.png|320]]",
-        "[[Adjacent]]",
-        "[[Escaped]]"
+        "![[figure.png|320]]"
       ],
       "footnoteDefinitions": [],
       "footnoteReferences": [],
@@ -185,12 +181,12 @@
   },
   {
     "name": "decomposed Unicode emoji CJK and RTL identities without final newline",
-    "source": "> [!state] 范围 🧭\n\n+[[Café#论点|支持]] [[العربية]] ?[[עברית]]\n\n主张[^理由] and ^[توضيح 🧭] with $变量 + x$.\n\n[^理由]: 根拠 é",
+    "source": "> [!state] 范围 🧭\n\n[[Café#论点|支持]]{{يدعم **النطاق**}} [[العربية]] [[עברית]]{{שאלה}}\n\n主张[^理由] and ^[توضيح 🧭] with $变量 + x$.\n\n[^理由]: 根拠 é",
     "callouts": ["state"],
     "links": [
-      {"target": "Café", "vectorKind": "supports"},
-      {"target": "العربية", "vectorKind": "neutral"},
-      {"target": "עברית", "vectorKind": "incompatible"}
+      {"target": "Café", "annotation": "يدعم **النطاق**"},
+      {"target": "العربية", "annotation": null},
+      {"target": "עברית", "annotation": "שאלה"}
     ],
     "footnoteDefinitions": ["理由", "inline-1"],
     "footnoteDefinitionContents": ["根拠 é", "توضيح 🧭"],
@@ -198,7 +194,7 @@
     "mathExpressions": [{"kind": "inline", "content": "变量 + x"}],
     "sourceSlices": {
       "calloutHeaders": ["> [!state] 范围 🧭"],
-      "links": ["+[[Café#论点|支持]]", "[[العربية]]", "?[[עברית]]"],
+      "links": ["[[Café#论点|支持]]{{يدعم **النطاق**}}", "[[العربية]]", "[[עברית]]{{שאלה}}"],
       "footnoteDefinitions": ["[^理由]: 根拠 é", "^[توضيح 🧭]"],
       "footnoteReferences": ["[^理由]", "^[توضيح 🧭]"],
       "mathExpressions": [{"source": "$变量 + x$", "content": "变量 + x"}]
@@ -206,7 +202,7 @@
   },
   {
     "name": "unclosed Obsidian comment fails closed through end of source",
-    "source": "Visible prose.\n%%\n> [!flag] Hidden\n+[[Hidden]] $hidden$ [^hidden]",
+    "source": "Visible prose.\n%%\n> [!flag] Hidden\n[[Hidden]]{{hidden annotation}} $hidden$ [^hidden]",
     "callouts": [],
     "links": [],
     "footnoteDefinitions": [],

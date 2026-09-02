@@ -88,7 +88,7 @@ public struct SearchCapabilities: Codable, Hashable, Sendable {
                 examples: [
                     #"title:"reflective equilibrium" autonomy"#,
                     #"property:language="Greek""#,
-                    #"from-note:"Groundwork" relation:supports duty"#,
+                    #"from-note:"Groundwork" duty"#,
                 ]
             ),
         ]
@@ -136,24 +136,16 @@ public struct SearchCapabilities: Codable, Hashable, Sendable {
             allowsExclusion: false
         ),
         SearchFieldCapability(
-            name: SearchRelationDirection.fromNote.rawValue,
+            name: SearchLinkDirection.fromNote.rawValue,
             valueKind: .noteIdentity,
             allowsPhrase: true,
             allowsPrefix: false,
             allowsExclusion: false
         ),
         SearchFieldCapability(
-            name: SearchRelationDirection.toNote.rawValue,
+            name: SearchLinkDirection.toNote.rawValue,
             valueKind: .noteIdentity,
             allowsPhrase: true,
-            allowsPrefix: false,
-            allowsExclusion: false
-        ),
-        SearchFieldCapability(
-            name: "relation",
-            valueKind: .canonical,
-            allowedValues: SearchRelation.allCases.map(\.rawValue),
-            allowsPhrase: false,
             allowsPrefix: false,
             allowsExclusion: false
         ),

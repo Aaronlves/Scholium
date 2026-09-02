@@ -3,8 +3,8 @@ import {linkTargetAt} from "../projection";
 import {Text} from "@codemirror/state";
 
 describe("exact link activation projection", () => {
-  it("resolves wikilink, embed, vector-link, and standard-link targets", () => {
-    const source = "[[Note|Label]] ![[Figure#Block|Alias]] +[[Support]] [Web](https://example.test)";
+  it("resolves Wikilink, annotated Wikilink, embed, and standard-link targets", () => {
+    const source = "[[Note|Label]] ![[Figure#Block|Alias]] [[Support]]{{Reason.}} [Web](https://example.test)";
     expect(linkTargetAt(source, 4)).toBe("Note");
     expect(linkTargetAt(source, source.indexOf("!"))).toBe("Figure#Block");
     expect(linkTargetAt(source, source.indexOf("Support"))).toBe("Support");

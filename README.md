@@ -93,6 +93,9 @@ Markdown editing, Search and Connections, Note and Folder file operations,
 external-edit conflicts, interrupted-save recovery, Settle, Critique, Zotero,
 and a fixed local MCP collaboration surface. Search remains one disposable
 Note-only projection for the App, CLI, and MCP adapter.
+Ordinary Wikilinks may carry source-owned multiline Markdown annotations with
+`[[Target]]{{annotation}}`; Connect, Search, Review, Edit, and MCP all project
+the same authored occurrence without inventing semantic classification.
 
 The installed `scholium` executable exposes `scholium mcp serve`. It connects
 an external MCP host only to the currently running Scholium App; it does not
@@ -300,6 +303,11 @@ The first release publishes exactly seven tools:
 `scholium_create_note`, `scholium_update_note`, and
 `scholium_trash_note`. MCP Resources, Prompts, Agent Sessions, Research
 Actions, Handoff, and Research Records are not exposed.
+
+An ordinary Wikilink may carry multiline, source-owned Markdown annotation as
+`[[Target]]{{annotation}}`. Connect, Search, and `scholium_list_links` preserve
+each occurrence's direction, annotation, local context, and source location;
+they expose only the authored occurrence and never assign a relationship class.
 
 ## Storage and safety
 

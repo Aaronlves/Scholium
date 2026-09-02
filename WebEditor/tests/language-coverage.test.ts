@@ -47,7 +47,7 @@ describe("complete note-language coverage", () => {
       "==unclosed", "$unclosed", "> [!unclosed",
     ].join("\n"));
     for (const name of [
-      "FootnoteReference", "FootnoteDefinition", "InlineFootnote", "WikiLink", "VectorLink",
+      "FootnoteReference", "FootnoteDefinition", "InlineFootnote", "WikiLink",
       "Highlight", "InlineMath", "Callout",
     ]) expect(names).not.toContain(name);
   });
@@ -55,7 +55,6 @@ describe("complete note-language coverage", () => {
   it("keeps an auto-closed empty Wikilink placeholder as ordinary exact text", () => {
     const names = namesFor("[[]]");
     expect(names).not.toContain("WikiLink");
-    expect(names).not.toContain("VectorLink");
     expect(names).not.toContain("Link");
   });
 

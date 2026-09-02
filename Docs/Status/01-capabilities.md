@@ -33,6 +33,10 @@
   require an exact stable Triptych identity. Every mutating request flushes
   matching live editors, enters the Application source-operation gate, and
   checks the exact target fingerprint where applicable.
+- Link listing returns one authored occurrence per row, including exact
+  occurrence/link/annotation markup, annotation text, local context, source
+  fingerprint, and whole/link/annotation locators. It exposes only authored
+  occurrence data.
 - Create, update, and trash write machine-local Agent Change evidence. Confirmed
   update evidence supports direct Undo only while current source still equals
   the recorded after fingerprint. This evidence is not portable research

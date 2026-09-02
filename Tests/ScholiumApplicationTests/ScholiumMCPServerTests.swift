@@ -10,7 +10,7 @@ struct ScholiumMCPServerTests {
         let recorder = MCPRequestRecorder()
         let server = ScholiumMCPServer { request in
             await recorder.record(request)
-            return .object(["schema_version": .integer(1), "status": .string("ok")])
+            return .object(["schema_version": .integer(2), "status": .string("ok")])
         }
 
         let initialized = try await rpc(
@@ -53,7 +53,7 @@ struct ScholiumMCPServerTests {
         let server = ScholiumMCPServer { request in
             await recorder.record(request)
             return .object([
-                "schema_version": .integer(1),
+                "schema_version": .integer(2),
                 "status": .string("ok"),
                 "current": .bool(false),
             ])
@@ -98,7 +98,7 @@ struct ScholiumMCPServerTests {
         let result = try object(response["result"])
         #expect(result["isError"] as? Bool == true)
         let structured = try object(result["structuredContent"])
-        #expect(structured["schema_version"] as? Int == 1)
+        #expect(structured["schema_version"] as? Int == 2)
         #expect(structured["status"] as? String == "failed")
         #expect(structured["code"] as? String == "workspace_not_ready")
         #expect(structured["recovery"] as? String == "Open one Triptych.")

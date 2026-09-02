@@ -2,26 +2,36 @@
 
 [SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md) · Sections 12–14.
 
-## 12. Connect and Connection syntax
+## 12. Connect and annotated-link syntax
 
 | Markdown in A | Meaning |
 | --- | --- |
-| `[[B]]` | neutral, undirected A—B |
-| `+[[B]]` | A supports B |
-| `-[[B]]` | A opposes B |
-| `?[[B]]` | undirected incompatibility A—B |
+| `[[B]]` | one unannotated authored occurrence from A to B |
+| `[[B]]{{annotation}}` | the same occurrence with a source-owned annotation |
 
-Support and opposition state the containing Note's authored argumentative
-direction. Incompatibility states that both Notes cannot be retained together in
-the researcher's current account without deciding which is false or rejected.
-No relation certifies evidence, truth, success, or acceptance.
+The annotation opener is the exact unescaped ASCII `{{` immediately adjacent
+to the closing `]]` of an ordinary Wikilink; whitespace between them starts
+ordinary Markdown instead. The first unescaped `}}` closes the annotation.
+Annotation content may span lines and is authored Markdown. `\{{` and `\}}`
+prevent delimiter recognition and preserve the exact authored bytes. Unescaped
+nesting is invalid. An unclosed annotation, nested opener, or annotation with no
+visible non-whitespace content produces a malformed-link-annotation diagnostic;
+the ordinary Wikilink remains a link and every source byte remains visible and
+editable. Literal delimiter text inside annotation content must be escaped.
+Aliases, headings, and fragments remain valid ordinary Wikilink targets.
 
-These are the only Vector-Link forms; aliases, headings, and fragments remain
-valid. Scholium preserves exact bytes and never infers a relation from
-keywords, proximity, folders, or multi-hop paths. Incoming and Outgoing are
-projections over the same direct graph. Neutral and Incompatible appear in both
-directions with the same source anchor and an explicit undirected explanation.
-There is no Combined or All direction.
+For example, `[[B|claim B]]{{why this passage matters}}` is one occurrence
+whose link text is `claim B`, destination is B, and annotation belongs to its
+source location in A. Moving or copying the syntax moves or copies the
+annotation. Editing the destination Note never edits that annotation.
+
+Every occurrence is directed by authorship: **Outgoing** from the containing
+Note and **Incoming** at the resolved destination. Connect presents the same
+source occurrence, annotation, and local context in either projection. An
+Incoming annotation is read-only at the destination; editing it navigates to
+the source occurrence. Only the source Note is modified. Scholium never
+combines occurrences, infers argumentative predicates, creates an undirected
+edge, or expands a multi-hop path.
 
 ## 13. Search and Attention
 
@@ -43,7 +53,7 @@ authoritative opening snapshot and whose indexed stable identity, when present,
 still resolves there; it reports **Limited**, excludes new, changed, deleted,
 retargeted, or unverifiable Notes, and never publishes a partial generation.
 Triptych scope, the Record provider, managed-property and structured clauses,
-direct relations, and operations requiring complete Search remain unavailable
+direct links, and operations requiring complete Search remain unavailable
 until the complete generation publishes. Completion replaces the limitation
 without moving focus or invalidating already usable Library content.
 
@@ -65,15 +75,16 @@ grammar supports:
 
 - space-as-AND, exact phrases, a trailing prefix `*`, and clause exclusion;
 - lexical fields `title`, `alias`, `heading`, `summary`, `body`, `author`,
-  `publication_date`, `keyword`, `footnote`, and `path`;
+  `publication_date`, `keyword`, `footnote`, `link_annotation`, and `path`;
 - `callout` and `has:broken-link`;
 - canonical `property:<key>` presence or exact whole-value equality; and
-- exactly one direct `from-note` or `to-note` anchor with one
-  `relation:supports|opposes|neutral|incompatible`.
+- exactly one direct `from-note` or `to-note` anchor.
 
 Structured fields use canonical Metadata or authored `summary`/`keywords` only.
 Authored YAML matches retain source ranges; managed Metadata matches retain
-record revision without claiming a Markdown range. Relation queries preserve
+record revision without claiming a Markdown range. `from-note:A` returns the
+resolved destinations of occurrences authored in A; `to-note:B` returns Notes
+whose authored occurrences resolve to B. These queries preserve occurrence
 direction, remain direct, and require a current complete graph.
 
 The Record provider remains unavailable until §22's replacement Research
@@ -90,8 +101,11 @@ Every Note result identifies its provider object, stable identity, exact source
 fingerprint, matched field/reason, and available locator/range. No current
 result or stored index entry masquerades as a Research Record.
 
-Search indexes visible semantic text and canonical fields, not raw delimiters
-or link destinations. Exact title, alias, filename, and path identity outrank
+Search indexes visible semantic text, valid link-annotation content, and
+canonical fields, not raw delimiters or link destinations. Annotation hits use
+the distinct `link_annotation` field, identify the owning occurrence and source
+range, and remain discovery candidates only: annotation prose never creates a
+predicate or a second edge. Exact title, alias, filename, and path identity outrank
 body matches; normalized title, role order, and path provide stable ties.
 Results explain matched field and rank reason without exposing internal scores.
 CJK uses deterministic projection and substring verification.
@@ -99,10 +113,10 @@ CJK uses deterministic projection and substring verification.
 The versioned **Related-Content Retrieval** contract is an internal,
 nonpersistent discovery operation over exact current Notes and optional passage
 or request focus. It returns bounded Analysis/Topic candidates through separate
-direct-Connection, exact-identity, and lexical channels, preserving typed
+direct-link, exact-identity, and lexical channels, preserving typed
 reasons and source fingerprints. It never synthesizes a relation, score,
 summary, or evidence claim. Search and Graph must share one complete source
-manifest before Connection candidates are executable.
+manifest before direct-link candidates are executable.
 
 Ordinary Search returns bounded slices. If the replacement Research Record
 contract later activates a provider, it must define its own fields, identity,
@@ -125,7 +139,7 @@ confirmed archive-and-reset route that never changes vault content.
 
 App, CLI, and Scholium MCP consume the same ordered result identity, reasons,
 provenance, availability, and freshness. Presentation may reword but never
-reparse, reorder, broaden, or change relation direction.
+reparse, reorder, broaden, or change link direction.
 
 Authored YAML `summary` participates as an explainable Note field with its exact
 scalar range. A hit opens the complete current Note and is only a discovery
@@ -134,7 +148,7 @@ writes or reconstructs YAML or managed Metadata.
 
 New providers or fields require a versioned typed clause, discriminated result
 identity, capability entry, source/freshness contract, and App/CLI/MCP parity.
-Vector search, embeddings, AI interpretation/ranking, automatic relation
+Vector search, embeddings, AI interpretation/ranking, automatic classification
 extraction, multi-hop expansion, arbitrary structured paths, and chat-style
 Search remain outside the target.
 
@@ -147,7 +161,7 @@ Triptych-wide structural Attention. These remain separate owners and dismissal
 semantics. Structural Attention may report:
 
 - **Possible Orphan** only when a Note has no resolved incoming or outgoing
-  Connection;
+  link occurrence;
 - Broken/Ambiguous Connections, malformed Metadata, or unresolved identity;
   and
 - source/index drift or failure that has an exact mechanical basis and safe

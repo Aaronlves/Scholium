@@ -21,12 +21,12 @@ Light Document anchor; one resolver derives every other appearance role for
 native and generated WebKit CSS. The complete Sidebar uses the Navigation
 surface; Inspector uses a distinct Apparatus role whose tone is deliberately
 much closer to Document than Navigation. Sticky Inspector headers and
-relationship-symbol occlusion reuse that exact Apparatus role rather than a
+sticky-header occlusion and link-annotation disclosure reuse that exact Apparatus role rather than a
 floating-control surface. `ScholiumWebDesignTokens` injects the resolved role
 declarations and fixed Markup syntax exception into every document HTML
 surface; authored Editor styles only consume those properties and contain no
 fallback palette. Functional/status anchors stay private. Tests enforce the
-input boundary, mappings, parity, contrast, and relationship variants; no
+input boundary, mappings, parity, and contrast; no
 static appearance palette or JSON mirror exists.
 `ScholiumSystemSymbol` centralizes native symbol names, while
 `ScholiumWebSymbolAssets` transports the same SF Symbols into WebKit as CSS

@@ -11,7 +11,7 @@ enum ResearchInspectorMode: String, CaseIterable, Identifiable, Sendable {
     init(restoring rawValue: String?) {
         switch rawValue?.lowercased() {
         case "connect", "connections", "incoming", "outgoing": self = .connect
-        case "overview", "research", "relationships", .none: self = .overview
+        case "overview", "research", .none: self = .overview
         default: self = .overview
         }
     }

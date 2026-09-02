@@ -15,14 +15,12 @@ const request = {
 };
 
 const dialect = {
-  version: 4,
+  version: 5,
   callouts: [{identifier: "state", aliases: ["definition"], label: "Statement", meaning: "Claim"}],
-  vectorLinkOperators: [
-    {marker: "", kind: "neutral", meaning: "Neutral"},
-    {marker: "+", kind: "supports", meaning: "Supports"},
-    {marker: "-", kind: "opposes", meaning: "Opposes"},
-    {marker: "?", kind: "incompatible", meaning: "Incompatible"},
-  ],
+  linkAnnotation: {
+    openingDelimiter: "{{", closingDelimiter: "}}", escapeCharacter: "\\",
+    allowsMultiline: true, allowsNesting: false,
+  },
   footnotes: {
     namedReferenceOpening: "[^", namedReferenceClosing: "]", definitionSeparator: ":",
     inlineOpening: "^[", continuationIndentSpaces: 2, allowsTabContinuation: true,
@@ -33,7 +31,7 @@ const dialect = {
 
 describe("editor protocol", () => {
   it("uses the coalesced interaction bridge protocol", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(15);
+    expect(EDITOR_PROTOCOL_VERSION).toBe(16);
   });
   it("accepts a complete versioned request", () => expect(isEditorRequest(request)).toBe(true));
   it("accepts the bounded blur operation", () => {

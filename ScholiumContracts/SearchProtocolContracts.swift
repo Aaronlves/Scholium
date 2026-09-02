@@ -4,8 +4,8 @@ import Foundation
 /// Stable versions that make a Search generation reproducible and prevent a
 /// saved query or derived database from silently acquiring new semantics.
 public enum SearchContract {
-    public static let currentVersion = 11
-    public static let schemaVersion = 11
+    public static let currentVersion = 12
+    public static let schemaVersion = 12
     public static let tokenizerPolicyVersion = 2
     public static let rankingPolicyVersion = 2
     public static let maximumInterfaceResults = 100

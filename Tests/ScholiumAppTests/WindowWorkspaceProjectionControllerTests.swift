@@ -60,7 +60,7 @@ struct WindowWorkspaceProjectionControllerTests {
         #expect(controller.vaultSnapshotsByID[fixture.vault.id]?.documents.count == 3)
         #expect(controller.catalog?.notes.count == 3)
         #expect(
-            controller.relationshipGraph?.generation
+            controller.linkGraph?.generation
                 == snapshot.discovery.catalog.graph?.generation
         )
         #expect(controller.searchGeneration?.sequence == 1)

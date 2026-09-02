@@ -61,7 +61,7 @@ async function initializeReader(value: unknown): Promise<void> {
   const {
     version, documentID, fingerprint, loadGeneration,
     selectionEnabled, presentationCSS, userCSS, localization, linkPreviews,
-    vectorSymbols, testingEnabled,
+    testingEnabled,
   } = config;
   const presentationStyle = requiredElement<HTMLStyleElement>('scholium-presentation-css');
   const userStyle = requiredElement<HTMLStyleElement>('scholium-user-css');
@@ -136,13 +136,6 @@ async function initializeReader(value: unknown): Promise<void> {
     preview
   ]));
   const origins = new Map();
-  const vectorSemantics = {
-    neutral: {label: localized('Related note'), symbolName: 'link', symbol: vectorSymbols.neutral ?? ''},
-    supports: {label: localized('Supports'), symbolName: 'plus', symbol: vectorSymbols.supports ?? ''},
-    opposes: {label: localized('Opposes'), symbolName: 'minus', symbol: vectorSymbols.opposes ?? ''},
-    incompatible: {label: localized('Incompatible'), symbolName: 'xmark', symbol: vectorSymbols.incompatible ?? ''}
-  };
-
   function renderMathNodes() {
     const runtime = readerWindow.scholiumMath;
     if (!runtime || runtime.version !== 1) return;
@@ -312,24 +305,39 @@ async function initializeReader(value: unknown): Promise<void> {
     mediaQuery.addEventListener('change', scheduleMermaidRefresh);
   }
 
-  document.querySelectorAll<HTMLAnchorElement>('a.wiki-link[data-vector-kind]').forEach(link => {
-    const kind = link.dataset.vectorKind;
-    const semantics = kind
-      ? vectorSemantics[kind as keyof typeof vectorSemantics]
-      : undefined;
-    if (!kind || !semantics) return;
-    const noteName = (link.textContent || '').trim();
-    link.classList.add('scholium-vector-link', 'scholium-vector-' + kind.replaceAll('_', '-'));
-    link.dataset.scholiumProtected = 'vector-link';
-    link.setAttribute('aria-label', semantics.label + ' ' + noteName);
-    link.title = semantics.label + ' ' + noteName;
-    const icon = document.createElement('span');
-    icon.className = 'scholium-vector-icon';
-    icon.setAttribute('aria-hidden', 'true');
-    icon.dataset.scholiumSystemSymbol = semantics.symbolName;
-    icon.style.webkitMaskImage = `url("${semantics.symbol}")`;
-    icon.style.maskImage = `url("${semantics.symbol}")`;
-    link.append(icon);
+  document.querySelectorAll<HTMLButtonElement>('button[data-link-annotation]').forEach(button => {
+    const identifier = button.dataset.linkAnnotation;
+    if (!identifier) return;
+    const wrapper = button.closest<HTMLElement>('.scholium-annotated-link');
+    const template = document.getElementById(`${identifier}-template`) as HTMLTemplateElement | null;
+    const linkName = wrapper?.querySelector('.wiki-link')?.textContent?.trim() || localized('linked note');
+    if (!wrapper || !template) return;
+    const setLabel = (expanded: boolean) => {
+      button.setAttribute(
+        'aria-label',
+        `${localized(expanded ? 'Hide Link Annotation' : 'Show Link Annotation')} ${linkName}`,
+      );
+    };
+    setLabel(false);
+    button.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const existing = wrapper.querySelector<HTMLElement>(':scope > .scholium-link-annotation-panel');
+      if (existing) {
+        existing.remove();
+        button.setAttribute('aria-expanded', 'false');
+        setLabel(false);
+        return;
+      }
+      const panel = document.createElement('span');
+      panel.id = identifier;
+      panel.className = 'scholium-link-annotation-panel';
+      panel.setAttribute('role', 'note');
+      panel.append(template.content.cloneNode(true));
+      wrapper.append(panel);
+      button.setAttribute('aria-expanded', 'true');
+      setLabel(true);
+    });
   });
 
   let popoverHideTimer: ReturnType<typeof setTimeout> | undefined;
@@ -414,7 +422,7 @@ async function initializeReader(value: unknown): Promise<void> {
     const header = document.createElement('header');
     header.className = 'scholium-embedded-note-header';
     const open = document.createElement('a');
-    open.className = 'wiki-link scholium-vector-link scholium-vector-neutral scholium-embedded-note-open';
+    open.className = 'wiki-link scholium-embedded-note-open';
     open.dir = 'auto';
     open.href = shell.dataset.embedHref ?? '';
     open.append(document.createTextNode(preview.title));

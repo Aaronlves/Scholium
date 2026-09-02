@@ -28,7 +28,7 @@ state the accepted profile; an unaccepted optional profile is labelled
 - Bootstrap, registration/restoration, independent windows, and storage failure;
 - create/open/read/edit/autosave, Review/Edit/Source, Find/Replace, Search,
   Metadata/About, Settle, Library, tabs, and cross-vault navigation;
-- formatting, Callouts, Wikilinks, Analysis references, image
+- formatting, Callouts, Wikilinks, multiline link annotations, Analysis references, image
   Import/Index, statistics, spelling, and exact YAML/source fidelity;
 - native split behavior, focus, keyboard, light/dark, enlarged text, minimum
   supported width, and core VoiceOver; and
@@ -41,12 +41,12 @@ Guidance and Settings, Core Protocol discovery, user-scope Codex and Claude
 configuration, the seven MCP tools, multi-Triptych selection, App-unavailable
 behavior, source/index currentness, exact paging, role filtering, fingerprinted
 create/update/system-Trash, Agent Changes, direct Undo, outcome-unknown
-recovery, Connections, Attention, Zotero read-only/unavailable behavior, and
+recovery, incoming/outgoing authored link occurrences and annotations, Attention, Zotero read-only/unavailable behavior, and
 App/CLI/MCP parity. Exact initial frames and coordinates remain implementation
 defaults rather than release thresholds.
 
-Search acceptance covers scope/provider authorization, Metadata and relation
-provenance, Explain/completion, Saved Search re-evaluation, App/CLI/MCP parity,
+Search acceptance covers scope/provider authorization, Metadata and direct-link
+provenance, `link_annotation` matches, Explain/completion, Saved Search re-evaluation, App/CLI/MCP parity,
 stale refusal, corruption rebuild, and
 incremental/clean equivalence. Retrieval success never establishes
 philosophical relevance, evidential support, or researcher acceptance.

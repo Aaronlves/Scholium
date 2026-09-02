@@ -71,10 +71,10 @@ highlight, not Accent or status color. Current Comment anchoring uses a quiet
 Accent boundary/field plus a counted margin control; stale Comment groups do
 not paint current prose.
 
-Hyperlinks use Accent plus underline. Wikilinks and Vector Links use the same
-Accent with one small trailing symbol for neutral, support, opposition, or
-incompatibility; text and accessibility name retain meaning. Relations never
-receive separate truth/value colors.
+Hyperlinks and Wikilinks use Accent plus underline. An annotated Wikilink adds
+one small trailing `text.bubble` disclosure marker; its text and accessibility
+name say that a source-owned annotation is present. The marker never classifies
+argumentative force, truth, evidence, or value.
 
 Color has exactly two researcher inputs:
 
@@ -201,14 +201,14 @@ configuration changes require Save or explicit Revert.
 
 #### Interface symbols
 
-Standard actions and relationships use direct monochrome SF Symbols matched to
+Standard actions and annotation disclosures use direct monochrome SF Symbols matched to
 adjacent interface text. Visible labels own meaning; otherwise controls expose a
 complete accessibility name. Native tint, disabled, focus, and selection remain
 system-owned.
 
 Passive/auxiliary glyphs use secondary or muted semantic ink; active bounded
 actions may use Accent; Attention, destructive, confirmation, authorship, and
-Connection roles use their named semantic output with textual/shape redundancy.
+link direction use their named semantic output with textual/shape redundancy.
 Multicolor, gradient, or variable symbol rendering never encodes workflow
 state.
 
@@ -294,7 +294,7 @@ feature-local composition.
 | `Review / Edit / Source` | Reversible projections over one buffer and workspace-owned mode. | §§5.1, 18.4 |
 | `Document Find` | Inline literal Find/Replace, distinct from Research Search. | §§13, 18.4 |
 | `Search` | Explicit provider/scope, explanation, freshness, and bounded results. | §§13, 18.3 |
-| `Connect` | Direct authored relations with direction and source anchors. | §§12, 18.5 |
+| `Connect` | Direct authored link occurrences with direction, source anchors, local context, and source-owned annotations. | §§12, 18.5 |
 | `Notifications` | Complete queue in Sidebar/Inspector; Agent Change/Settlement subset in Document. | §§8.4, 13, 18.2–18.3 |
 | `Agent Integration` | Present verifiable local status and copy user-scope host setup without editing external configuration. | §§8.2, 16, 18.2 |
 | `Conflict / Recovery` | Retain bytes, compare exact revisions, and expose safe repair. | §§14, 18.4–18.6 |

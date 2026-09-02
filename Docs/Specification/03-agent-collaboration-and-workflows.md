@@ -89,7 +89,7 @@ The first release exposes exactly these tools:
 | `scholium_workspace_status` | optional `triptych_id` | open Triptych candidates or one reconciled current Triptych with three-vault, source, and Search generations |
 | `scholium_search_notes` | `triptych_id`, `query`; optional `roles`, `limit`, `offset` | ordered candidate passages with Note identity, role, path, fingerprint, match reason, snippet, and source locator |
 | `scholium_read_note` | `triptych_id`, `note_id`; optional `start_line`, `line_count` | an exact current Markdown slice, complete/continuation state, and full Note fingerprint |
-| `scholium_list_links` | `triptych_id`, `note_id`, `direction`; optional `limit`, `offset` | raw incoming/outgoing link occurrences, resolved identities where available, exact markup, and source locators |
+| `scholium_list_links` | `triptych_id`, `note_id`, `direction`; optional `limit`, `offset` | raw incoming/outgoing authored occurrences with source/destination identities, exact link and optional annotation markup/text, local context, fingerprints, and whole/link/annotation source locators |
 | `scholium_create_note` | `triptych_id`, `role`, `relative_path`, `body`; optional `summary`, `keywords` | created stable Note identity, path, fingerprint, and `change_id` |
 | `scholium_update_note` | `triptych_id`, `note_id`, `expected_fingerprint`, `mode`, `content` | before/after fingerprints, path, readback state, and `change_id` |
 | `scholium_trash_note` | `triptych_id`, `note_id`, `expected_fingerprint` | the exact Note moved to macOS system Trash, original location, and `change_id` |
@@ -114,10 +114,14 @@ Read defaults to 200 logical source lines and permits at most 1,000 per call,
 subject to a bounded response size. It preserves exact source bytes and reports
 the next line when more remains. Repeated reads can retrieve the complete Note.
 
-Link results expose authored occurrences and source locations. They do not add
-an inferred relation, convert a transitive path into evidence, or reinterpret
-the authored syntax. The later annotated-link contract may replace this schema
-only through its own clean cutover.
+Link results expose one row per authored occurrence. Each row states requested
+and occurrence direction, source and destination identity/role/path when
+resolved, `link_markup`, nullable `annotation_markup` and `annotation_text`,
+`authored_target`, `local_context`, source fingerprint, and separate locators
+for the whole occurrence, Wikilink, and annotation content. Incoming results
+retain the source Note's fingerprint and locators. They do not add an inferred
+predicate, convert a transitive path into evidence, or reinterpret annotation
+prose.
 
 Create accepts one exact relative `.md` path inside the selected role vault.
 Absolute paths, traversal, collision, and automatic renaming are invalid. It
@@ -133,7 +137,9 @@ Update has exactly two modes:
 
 One update call targets one Note. A request covering several named Notes uses
 separate calls and separate outcomes. No call automatically propagates to
-related Notes, Metadata, links, Records, or Settlement.
+destination Notes, Metadata, links, Records, or Settlement. Editing a link
+annotation is an ordinary source-Note update guarded by that Note's current
+fingerprint.
 
 Trash accepts one current Note and uses only macOS system Trash. It has no
 permanent-delete, recursive-folder, or application-Trash variant.

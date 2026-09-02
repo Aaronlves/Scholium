@@ -78,7 +78,11 @@ struct MCPAppBridgeRequestRouterTests {
         let occurrences = try array(links["links"])
         #expect(occurrences.count == 1)
         let occurrence = try object(occurrences[0])
-        #expect(occurrence["exact_markup"]?.stringValue == "+[[Topic]]")
+        #expect(occurrence["occurrence_markup"]?.stringValue ==
+            "[[Topic]]{{A scoped reason.}}")
+        #expect(occurrence["link_markup"]?.stringValue == "[[Topic]]")
+        #expect(occurrence["annotation_markup"]?.stringValue == "{{A scoped reason.}}")
+        #expect(occurrence["annotation_text"]?.stringValue == "A scoped reason.")
         #expect(occurrence["source_note_id"]?.stringValue ==
             fixture.analysisNoteID.uuidString.lowercased())
         #expect(occurrence["destination_note_id"]?.stringValue ==
@@ -260,7 +264,9 @@ struct MCPAppBridgeRequestRouterTests {
                 )
             }
             let analysisBytes = Data(
-                [0xEF, 0xBB, 0xBF] + Array("# Alpha\r\n\r\n+[[Topic]]\r\n".utf8)
+                [0xEF, 0xBB, 0xBF] + Array(
+                    "# Alpha\r\n\r\n[[Topic]]{{A scoped reason.}}\r\n".utf8
+                )
             )
             try analysisBytes.write(to: analyses.appendingPathComponent("Alpha.md"))
             try Data("# Topic\n\nAgency and reasons.\n".utf8).write(
