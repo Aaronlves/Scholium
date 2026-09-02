@@ -53,67 +53,9 @@ if rg -n --glob '*.swift' '[\p{Han}]' \
   exit 1
 fi
 
-# The typed Research Action route is the one workflow doorway. Retired
-# Scholia routing and standalone Dialogue/Critique presentations would recreate
-# duplicate surfaces beside the Inspector and typed sheet.
-if rg -n --glob '*.swift' \
-  '\b(showDialogue|ScholiaPanelView|ScholiaPresentationState|beginScholiaPresentation|pushScholiaDestination|ResearchFunctionPanelRoute|ResearchFunctionController|ResearchFunctionsInspectorView|ResearchActivityStore|DialogueStore|ResearchSkillMaintenanceProposalDraft)\b|case[[:space:]]+scholia\b|\.[[:space:]]*scholia[[:space:]]*\(|case[[:space:]]+"function"' \
-  "${ROOT}/Scholium/App" \
-  "${ROOT}/Scholium/Features" \
-  "${ROOT}/Scholium/Models" \
-  "${ROOT}/Scholium/Services" \
-  "${ROOT}/Scholium/Views" \
-  "${ROOT}/ScholiumCLI"; then
-  echo "Research Action route guard failed: production sources contain a retired workflow entry." >&2
-  exit 1
-fi
-
-# Literature recommendations belong only to schema-5 Analyze Research Records.
-# Reject the retired standalone product object, its private files and commands,
-# and its dedicated interface tokens without banning ordinary bibliographic
-# metadata terminology used by Zotero and research documents.
-if rg -n -i --hidden \
-  --glob '!.git/**' \
-  --glob '!.build/**' \
-  --glob '!Tools/Scripts/verify.sh' \
-  'recommendedbibliography|recommended bibliography|recommended-bibliography\.json|research-bibliography-method-v1\.json|bibliography-recommendation|bibliographyrecommendation|bibliographycandidatediscriminator|bibliographycandidateidentity|bibliographyrecommendationgoal|bibliographymatchstate|researchbibliographymethod(document|snapshot|store)|bibliographymethodbinding|setbibliographymethodbinding|bibliography[[:space:]]+(prepare|show|complete|cancel)|bibliographypreview|bibliographyemptystate|bibliographytopinset|bibliographybottominset|researchrecordutilityproof|fixedutility|fixed 760 × 680 utility window' \
-  "${ROOT}"; then
-  echo "Recommended Bibliography cutover guard failed: retired product residue remains." >&2
-  exit 1
-fi
-
-# Keep the dedicated CLI route absent even if it is reintroduced without the
-# old command/help phrases caught by the repository-wide guard above.
-if rg -n -i --glob '*.swift' \
-  'case[[:space:]]+("bibliography"|\.bibliography)|(^|[^[:alnum:]_])\.bibliography\b|runbibliography\b|bibliographycommandhandler\b' \
-  "${ROOT}/ScholiumCLI"; then
-  echo "Recommended Bibliography cutover guard failed: the retired CLI route returned." >&2
-  exit 1
-fi
-
-if rg -n --glob '*.swift' \
-  '(struct|class|enum|typealias)[[:space:]]+ResearchRecommendation' \
-  "${ROOT}/Scholium/Features/ResearchRecord" \
-  "${ROOT}/Scholium/Views/ResearchRecord"; then
-  echo "Literature Recommendation naming guard failed: UI types must use the ResearchLiteratureRecommendation prefix." >&2
-  exit 1
-fi
-
-if rg -n --hidden \
-  --glob '!.git/**' \
-  --glob '!.build/**' \
-  --glob '!Tools/Scripts/verify.sh' \
-  'Local Execution v2|Local-v2|research-execution-v2|execution-v2\.lock' \
-  "${ROOT}"; then
-  echo "Local Execution clean-cutover guard failed: v2 residue remains." >&2
-  exit 1
-fi
-
-# The pre-release Skill-package, standing-permission, custom-Action, workflow,
-# and additional-Note decision owners have no compatibility surface. Keep
-# production code and shipped resources on the registration/Profile/Run-owned
-# activity model after the clean cutover.
-LEGACY_RESEARCH_ROOTS=(
+# Agent collaboration has one fixed MCP surface. Legacy in-App lifecycle,
+# portable result, discussion, and local bridge owners must not return.
+LEGACY_AGENT_ROOTS=(
   "${ROOT}/Scholium"
   "${ROOT}/ScholiumCLI"
   "${ROOT}/ScholiumApplication"
@@ -121,147 +63,36 @@ LEGACY_RESEARCH_ROOTS=(
   "${ROOT}/ScholiumCore"
 )
 if rg -n --glob '*.swift' \
-  '\b(ResearchSkillCatalog|ResearchSkillPackage|ResearchSkillInstallation|ResearchPermissionPolicy|ResearchActionProfile|ResearchWorkflowContract|ResearchWorkflowRoute|ResearchWorkingMethodBinding|ResearchCapabilityMethodStore|ResearchGuidanceDocumentStore|ResearchSkillInspector|ResearchSkillResolver|ResearchSkillTransactionCoordinator|AgentNoteChangeRequest)\b' \
-  "${LEGACY_RESEARCH_ROOTS[@]}"; then
-  echo "Research Skill clean-cutover guard failed: a retired production owner returned." >&2
+  '\b(ResearchAction[A-Za-z0-9_]*|PortableResearchRecord[A-Za-z0-9_]*|ResearchAgentSession[A-Za-z0-9_]*|ResearchDiscussion[A-Za-z0-9_]*|LocalAgentBridge[A-Za-z0-9_]*|ResearchRecordBrowser[A-Za-z0-9_]*|ResearchRecordsWindow[A-Za-z0-9_]*)\b' \
+  "${LEGACY_AGENT_ROOTS[@]}"; then
+  echo "Agent collaboration clean-cutover guard failed: a retired production owner returned." >&2
   exit 1
 fi
 
-if rg -n --glob '*.swift' \
-  'researcherOwnedRawValue|researcher_skill' \
-  "${LEGACY_RESEARCH_ROOTS[@]}"; then
-  echo "Platform Action guard failed: the retired custom-Action identity returned." >&2
-  exit 1
-fi
-
-if rg -n --glob '*.swift' \
-  '\b(ResearchFunction[A-Za-z0-9_]*|ResearchActionFunctionMapping|ResearchActionExecutionKind|expectedExecutionKind)\b|execution_kind|case[[:space:]]+"function"' \
-  "${LEGACY_RESEARCH_ROOTS[@]}"; then
-  echo "Research Action single-model guard failed: retired Function identity remains reachable." >&2
-  exit 1
-fi
-
-python3 - "${ROOT}/Scholium/Resources/Localizable.xcstrings" <<'PY'
-import json
-from pathlib import Path
-import sys
-
-catalog = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-allowed = {
-    "A local connection does not imply a local model. Cloud-provider data practices still apply.",
-}
-retired = sorted(
-    key for key in catalog.get("strings", {})
-    if "practice" in key.lower() and key not in allowed
-)
-if retired:
-    print("Skill reference localization guard failed:", file=sys.stderr)
-    print("\n".join(retired), file=sys.stderr)
-    raise SystemExit(1)
-PY
-
-if [[ -d "${ROOT}/.agents/skills/scholium-research-action-collaboration" ]] \
-  && rg -n '\bPractice(s)?\b' \
-    "${ROOT}/.agents/skills/scholium-research-action-collaboration"; then
-  echo "Developer Skill guard failed: Practice returned as a product-level academic object." >&2
-  exit 1
-fi
-
-if rg -n --glob '*.swift' \
-  '\b(ResearchPractice[A-Za-z0-9_]*|PracticeCatalog|PracticeResolver|PracticeRegistration)\b' \
-  "${LEGACY_RESEARCH_ROOTS[@]}"; then
-  echo "Skill reference guard failed: a retired Practice product owner returned." >&2
-  exit 1
-fi
-
-if rg -n 'AgentAnalysisCreation(Reservation|BindingState)' \
-  "${ROOT}/ScholiumCore/LocalResearchExecutionStore.swift"; then
-  echo "Creation reservation ownership guard failed: Run storage owns creation state again." >&2
-  exit 1
-fi
-
-if rg -n --glob 'ScholiumApp.swift' \
-  'func[[:space:]]+(requestUntitledNoteCreation|requestUntitledFolderCreation|moveFolder|duplicateNote|moveNote|prepareNoteSystemTrash|prepareFolderSystemTrash|executeSystemTrash|requestMarkdownImport|restoreWorkspaceAccess|rebuildUnsupportedPortableControl|archiveInvalidNoteMetadataRecord|removeUnavailableTriptychRegistration|prepareZoteroLinkAndFill|prepareZoteroMetadataRefresh|commitZoteroMetadataPlan|clearZoteroBinding)[[:space:]]*\(' \
-  "${ROOT}/Scholium/App"; then
-  echo "Window ownership guard failed: a split Library, Recovery, or Zotero operation returned to WindowModel." >&2
-  exit 1
-fi
+for retired_path in \
+  "${ROOT}/ScholiumResearchRecordsFeature" \
+  "${ROOT}/Scholium/Features/ResearchActions" \
+  "${ROOT}/Scholium/Views/ResearchActions" \
+  "${ROOT}/Scholium/Views/ResearchRecord" \
+  "${ROOT}/ScholiumCore/Resources/Skills/Scholium Method Skills"; do
+  if [[ -d "${retired_path}" ]] \
+    && [[ -n "$(find "${retired_path}" -type f -print -quit)" ]]; then
+    echo "Agent collaboration clean-cutover guard failed: retired path remains: ${retired_path}" >&2
+    exit 1
+  fi
+done
 
 if rg -n --glob '*.swift' --glob '*.sh' \
-  'scholium[[:space:]]+skills|skills[[:space:]]+catalog|scholium[[:space:]]+workflow' \
-  "${LEGACY_RESEARCH_ROOTS[@]}" \
+  'scholium[[:space:]]+(agent|research|skills|workflow)|agent[[:space:]]+(connect|start|resume|complete)|research-records/v1' \
+  "${LEGACY_AGENT_ROOTS[@]}" \
   "${ROOT}/Tools/Scripts/package-app.sh"; then
-  echo "Research CLI cutover guard failed: a retired Skill/workflow command returned." >&2
+  echo "Agent collaboration CLI/storage guard failed: a retired route or path returned." >&2
   exit 1
 fi
 
-if rg -n --hidden \
-  --glob '!.git/**' \
-  --glob '!.build/**' \
-  --glob '!verify.sh' \
-  'skill-registrations-v1|method-edit-recovery-v1|research-execution-v[2-7]|execution-v[2-7]\.lock|Contents/Resources/Skills/catalog\.yaml|Researcher Skills/scholium-philosophical-practices|A Practice already exists|Method/Practice|Skill/Practice|owning Method or Practice|preserve Run, Method, Practice' \
-  "${LEGACY_RESEARCH_ROOTS[@]}" \
-  "${ROOT}/Tools" \
-  "${ROOT}/Tests"; then
-  echo "Research storage/resource guard failed: a retired path or schema remains reachable." >&2
-  exit 1
-fi
-
-# Pairing and Session bearer values and one-use mutation leases must be
-# explicitly unwrapped only by the complete researcher-to-Agent handoff and
-# narrow wire/protected-storage adapters. General Codable/printable conformance
-# would leak transport identity or transaction binding.
-if rg -n -U \
-  'public struct (ResearchPairingCode|ResearchConnectionCredential|ResearchAgentHandoff):[^{]*\bCodable\b' \
-  "${ROOT}/ScholiumContracts/ResearchAgentConnectionContracts.swift" \
-  || rg -n -U \
-  'struct ResearchMutationLease:[^{]*\bCodable\b' \
-  "${ROOT}/ScholiumApplication/ResearchAgentSessionAuthority.swift"; then
-  echo "Agent secret guard failed: a bearer value became generally Codable." >&2
-  exit 1
-fi
-
-if ! rg -Fq 'Pairing Code: \(pairingCode.rawValue)' \
-  "${ROOT}/ScholiumContracts/ResearchAgentConnectionContracts.swift"; then
-  echo "Agent handoff guard failed: copied instructions omit the Pairing Code." >&2
-  exit 1
-fi
-
-if rg -n --hidden \
-  --glob '!.git/**' \
-  --glob '!.build/**' \
-  --glob '!Tools/Scripts/verify.sh' \
-  'PortableResearchRecordLocation|research-records/v1/trash' \
-  "${ROOT}"; then
-  echo "Research Record lifecycle guard failed: retired Record Trash storage remains." >&2
-  exit 1
-fi
-
-# System Trash owns source movement and temporary Discussion/execution cleanup.
-# Finished Research Records and their exact Agent-change evidence remain under
-# the separately confirmed permanent Record-deletion use case.
-if rg -n --glob '*.swift' --glob '*.md' \
-  '\b(SystemTrashDeletionRecordTarget|SystemTrashDeletionRecordParticipant|deletedRecordIDs|retainRecordsForUnknownOutcome)\b|--delete-associated-records|Move to Trash and Delete Records' \
-  "${ROOT}/Scholium/App" \
-  "${ROOT}/Scholium/Features" \
-  "${ROOT}/Scholium/Models" \
-  "${ROOT}/Scholium/Services" \
-  "${ROOT}/Scholium/Views" \
-  "${ROOT}/ScholiumApplication" \
-  "${ROOT}/ScholiumContracts" \
-  "${ROOT}/ScholiumCore" \
-  "${ROOT}/ScholiumCLI" \
-  "${ROOT}/UITests" \
-  "${ROOT}/README.md" \
-  "${ROOT}/README.zh-Hans.md"; then
-  echo "System Trash/Record ownership guard failed: retired cascade residue remains." >&2
-  exit 1
-fi
-
-if rg -n \
-  'deletePermanently|removeEvidence|purgeExecutions|portableRecordStore\.listing' \
-  "${ROOT}/ScholiumCore/SystemTrashDeletion.swift"; then
-  echo "System Trash/Record ownership guard failed: Trash regained finished-Record authority." >&2
+# The current server surface is closed and has exactly seven tool identities.
+if [[ "$(rg -c 'case [A-Za-z]+ = "scholium_' "${ROOT}/ScholiumContracts/ScholiumMCPContracts.swift")" != "7" ]]; then
+  echo "MCP surface guard failed: expected exactly seven Scholium tool identities." >&2
   exit 1
 fi
 
@@ -315,14 +146,10 @@ if rg -n --glob '*.swift' \
   exit 1
 fi
 
-# The document leaf retains only its focused Research Action. Adjacent
-# Inspector and Research Record views in this source file may own their narrow
-# adapters, so inspect only the NoteContentView declaration rather than matching
-# the entire file.
-if sed -n \
-  '/^struct NoteContentView: View/,/^\/\/ MARK: - Research Record/p' \
-  "${ROOT}/Scholium/Views/Note/NoteContentView.swift" \
-  | rg -n '\b(ResearchController|WindowModel)\b'; then
+# The document leaf receives narrow values and closures, never a complete
+# window or Research feature root.
+if rg -n '\b(ResearchController|WindowModel)\b' \
+  "${ROOT}/Scholium/Views/Note/NoteContentView.swift"; then
   echo "Document ownership guard failed: NoteContentView received a window or Research feature root." >&2
   exit 1
 fi
@@ -335,9 +162,12 @@ while IFS= read -r file; do
     "${ROOT}/Scholium/App/ScholiumApp.swift"|\
     "${ROOT}/Scholium/App/ApplicationBootstrapController.swift"|\
     "${ROOT}/Scholium/App/Window/WindowWorkspaceController.swift"|\
-    "${ROOT}/Scholium/Services/LocalAgentBridgeRequestRouter.swift"|\
+    "${ROOT}/Scholium/Services/MCPAppBridgeRequestRouter.swift"|\
+    "${ROOT}/Scholium/Services/ScholiumAppBridgeRequestRouter.swift"|\
     "${ROOT}/Scholium/Services/WindowSession.swift"|\
-    "${ROOT}/ScholiumCLI/CLIContext.swift") ;;
+    "${ROOT}/Scholium/Views/AgentIntegrationSettingsView.swift"|\
+    "${ROOT}/ScholiumCLI/CLIContext.swift"|\
+    "${ROOT}/ScholiumCLI/MCPCommandHandler.swift") ;;
     *)
       echo "Compiler boundary guard failed: ScholiumApplication import outside a composition root: ${file}" >&2
       exit 1
@@ -460,8 +290,6 @@ for shell_script in \
   "${ROOT}/Tools/Scripts/run-ui-tests.sh" \
   "${ROOT}/Tools/Scripts/sync-interface-localization.sh" \
   "${ROOT}/Tools/Scripts/validate-interface-localization.sh" \
-  "${ROOT}/Tools/Scripts/verify-action-cli.sh" \
-  "${ROOT}/Tools/Scripts/verify-agent-bridge.sh" \
   "${ROOT}/Tools/Scripts/verify-qa-upgrade-safety.sh"; do
   zsh -n "${shell_script}"
 done
@@ -554,10 +382,7 @@ run_swift_test_product() {
   if [[ "${test_product}" == "ScholiumApplicationTests" ]]; then
     # The canonical RDF-1 refresh measurement needs its own quiet process
     # boundary so graph/Search timings are not scheduler-contention artifacts.
-    # The Agent bridge likewise compresses production socket and cancellation
-    # deadlines for adversarial tests; run it without unrelated executor load.
     selection_arguments+=(--skip 'ArchitectureStabilityMeasurementTests')
-    selection_arguments+=(--skip 'LocalAgentBridgeTests')
   fi
   mkdir -p "${SCRATCH}"
   for attempt in 1 2 3; do
@@ -599,11 +424,6 @@ for test_product in \
       --filter 'ScholiumCoreTests.PerformanceRegressionMicrobenchmarkTests'
   elif [[ "${test_product}" == "ScholiumApplicationTests" ]]; then
     run_swift_test_once \
-      "ScholiumApplicationTests bridge" \
-      "ScholiumApplicationTests-bridge" \
-      --no-parallel \
-      --filter 'ScholiumApplicationTests.LocalAgentBridgeTests'
-    run_swift_test_once \
       "ScholiumApplicationTests architecture measurement" \
       "ScholiumApplicationTests-architecture" \
       --no-parallel \
@@ -621,11 +441,6 @@ if rg -n 'ScholiumCore' \
   exit 1
 fi
 
-"${ROOT}/Tools/Scripts/verify-action-cli.sh" \
-  "${SCRATCH}/debug/scholium" \
-  "${SCRATCH}"
-SCHOLIUM_AGENT_BRIDGE_BUILD="${SCRATCH}" \
-  "${ROOT}/Tools/Scripts/verify-agent-bridge.sh"
 mkdir -p "${RELEASE_SCRATCH}"
 release_log="${RELEASE_SCRATCH}/release-build.log"
 set +e

@@ -4,16 +4,12 @@ import Combine
 import notify
 import QuartzCore
 import ScholiumApplication
-import ScholiumResearchRecordsFeature
 import SwiftUI
 import UniformTypeIdentifiers
 
 @MainActor
 final class ScholiumApplicationDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     let windowLifecycleRegistry = ScholiumWindowLifecycleRegistry()
-    let researchRecordsWindowCoordinator = ResearchRecordsWindowCoordinator()
-    let researchResultNotificationCoordinator =
-        ResearchResultNotificationCoordinator()
     private var terminationInFlight = false
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -133,22 +129,6 @@ struct ScholiumApp: App {
             ScholiumCommands()
         }
 
-        WindowGroup(
-            "Research Records",
-            id: "scholium-research-records",
-            for: UUID.self,
-            content: makeResearchRecordsWindowContent,
-            defaultValue: { UUID() }
-        )
-        .windowToolbarStyle(.unified(showsTitle: false))
-        .defaultSize(width: 760, height: 680)
-        .windowResizability(.contentMinSize)
-        .defaultLaunchBehavior(.suppressed)
-        .restorationBehavior(.disabled)
-        .environmentObject(applicationBootstrap)
-        .environmentObject(applicationDelegate)
-        .commandsRemoved()
-
         Settings {
             ScholiumSettingsWindowContent()
             .frame(width: 700, height: 560, alignment: .topLeading)
@@ -157,20 +137,6 @@ struct ScholiumApp: App {
         .windowToolbarStyle(.unified(showsTitle: false))
         .environmentObject(applicationBootstrap)
         .environmentObject(applicationDelegate)
-
-        #if DEBUG
-        Window(
-            "Research Workflow Interface Proofs",
-            id: "scholium-research-workflow-proofs"
-        ) {
-            ResearchWorkflowPreviewCatalog()
-        }
-        .defaultSize(width: 1_080, height: 760)
-        .windowResizability(.automatic)
-        .defaultLaunchBehavior(.suppressed)
-        .restorationBehavior(.disabled)
-        .commandsRemoved()
-        #endif
     }
 }
 
@@ -188,12 +154,6 @@ private func makeMainWindowContent(
     _ route: Binding<TriptychWindowRoute>
 ) -> ScholiumMainWindowContent {
     ScholiumMainWindowContent(route: route)
-}
-
-private func makeResearchRecordsWindowContent(
-    _ triptychID: Binding<UUID>
-) -> ScholiumResearchRecordsWindowContent {
-    ScholiumResearchRecordsWindowContent(triptychID: triptychID)
 }
 
 private struct ScholiumBootstrapWindowContent: View {
@@ -277,54 +237,7 @@ private struct ScholiumMainWindowReadyContent: View {
         ScholiumWindowRoot(
             workspaceStore: workspaceStore,
             route: route,
-            lifecycleRegistry: applicationDelegate.windowLifecycleRegistry,
-            researchRecordsWindowCoordinator:
-                applicationDelegate.researchRecordsWindowCoordinator,
-            researchResultNotificationCoordinator:
-                applicationDelegate.researchResultNotificationCoordinator
-        )
-    }
-}
-
-private struct ScholiumResearchRecordsWindowContent: View {
-    @Binding var triptychID: UUID
-
-    nonisolated init(triptychID: Binding<UUID>) {
-        self._triptychID = triptychID
-    }
-
-    var body: some View {
-        ScholiumResearchRecordsWindowEnvironmentContent(triptychID: $triptychID)
-    }
-}
-
-@MainActor
-private struct ScholiumResearchRecordsWindowEnvironmentContent: View {
-    @EnvironmentObject private var applicationBootstrap: ApplicationBootstrapController
-    @Binding var triptychID: UUID
-
-    var body: some View {
-        ApplicationBootstrapGate(controller: applicationBootstrap) {
-            ScholiumResearchRecordsWindowReadyContent(triptychID: $triptychID)
-        }
-        .focusedSceneValue(
-            \.scholiumApplicationBootstrapStatus,
-            ScholiumApplicationBootstrapStatus(isReady: applicationBootstrap.isReady)
-        )
-    }
-}
-
-@MainActor
-private struct ScholiumResearchRecordsWindowReadyContent: View {
-    @EnvironmentObject private var applicationDelegate: ScholiumApplicationDelegate
-    @EnvironmentObject private var workspaceStore: WorkspaceStore
-    @Binding var triptychID: UUID
-
-    var body: some View {
-        ScholiumResearchRecordsRoot(
-            workspaceStore: workspaceStore,
-            triptychID: triptychID,
-            coordinator: applicationDelegate.researchRecordsWindowCoordinator
+            lifecycleRegistry: applicationDelegate.windowLifecycleRegistry
         )
     }
 }
@@ -356,354 +269,9 @@ private struct ScholiumSettingsWindowReadyContent: View {
     @EnvironmentObject private var workspaceStore: WorkspaceStore
 
     var body: some View {
-        ScholiumSettingsRoot(
-            workspaceStore: workspaceStore,
-            researchResultNotificationCoordinator:
-                applicationDelegate.researchResultNotificationCoordinator
-        )
+        ScholiumSettingsRoot(workspaceStore: workspaceStore)
     }
 }
-
-/// One nonmodal auxiliary window bound permanently to its Triptych identity.
-/// It reads the Triptych snapshot and narrow record capability directly from
-/// WorkspaceStore; focused workspace changes cannot retarget it.
-private struct ScholiumResearchRecordsRoot: View {
-    @Environment(\.openWindow) private var openWindow
-    @Environment(\.layoutDirection) private var inheritedLayoutDirection
-    @AppStorage(WindowColorSchemeChoice.defaultsKey)
-    private var storedColorScheme = WindowColorSchemeChoice.system.rawValue
-    @ObservedObject private var workspaceStore: WorkspaceStore
-    private let triptychID: UUID
-    private let coordinator: ResearchRecordsWindowCoordinator
-    @State private var browserModel = ResearchRecordBrowserModel()
-    @State private var capabilities: WindowWorkspaceCapabilities?
-    @State private var currentRequest: ResearchRecordsWindowRequest
-    @State private var recordsEndpointToken: UUID?
-    @State private var isPrepared = false
-    @State private var isLoading = true
-    @State private var errorMessage: String?
-    @State private var recordLoadIssues: [String] = []
-    @State private var proseNavigation = ResearchRecordProseNavigation.empty
-
-    init(
-        workspaceStore: WorkspaceStore,
-        triptychID: UUID,
-        coordinator: ResearchRecordsWindowCoordinator
-    ) {
-        _workspaceStore = ObservedObject(wrappedValue: workspaceStore)
-        self.triptychID = triptychID
-        self.coordinator = coordinator
-        _currentRequest = State(initialValue: ResearchRecordsWindowRequest(
-            triptychID: triptychID
-        ))
-    }
-
-    var body: some View {
-        Group {
-            if let capabilities {
-                recordsContent(capabilities)
-            } else if isLoading {
-                ScholiumContentStateView(
-                    "Loading Research Records…",
-                    indicator: .progress
-                )
-            } else {
-                ScholiumContentStateView(
-                    "Research Records Unavailable",
-                    detail: Text(
-                        errorMessage ?? "This Triptych is not available on this Mac."
-                    ),
-                    indicator: .symbol("exclamationmark.triangle", role: .attention)
-                )
-            }
-        }
-        .frame(minWidth: 700, minHeight: 520)
-        .scholiumSurface(.document)
-        .tint(ScholiumColorRole.accent.color)
-        .preferredColorScheme(
-            WindowColorSchemeChoice(rawValue: storedColorScheme)?.swiftUIColorScheme
-        )
-        .environment(\.layoutDirection, recordsLayoutDirection)
-        .background(ResearchRecordsWindowAttachment(
-            triptychID: triptychID,
-            colorScheme:
-                WindowColorSchemeChoice(rawValue: storedColorScheme) ?? .system
-        ))
-        .task(id: triptychID) { await loadCapabilities() }
-        .onAppear { registerRecordsEndpoint() }
-        .onDisappear { unregisterRecordsEndpoint() }
-        .onReceive(workspaceStore.$workspaceEvents) { events in
-            guard let event = events[triptychID], isPrepared else { return }
-            let snapshot = event.snapshot
-            browserModel.receive(
-                triptychID: triptychID,
-                records: snapshot.research.finishedResearchRecords,
-                fingerprints: snapshot.research.finishedResearchRecordFingerprints
-            )
-            recordLoadIssues = researchRecordIssues(in: snapshot)
-            proseNavigation = ResearchRecordProseNavigation(snapshot: snapshot)
-        }
-        .onReceive(workspaceStore.$workspaceActivations) { activations in
-            guard let activation = activations[triptychID] else { return }
-            capabilities = activation.capabilities
-            recordLoadIssues = researchRecordIssues(in: activation.snapshot)
-            proseNavigation = ResearchRecordProseNavigation(snapshot: activation.snapshot)
-            if isPrepared {
-                browserModel.receive(
-                    triptychID: triptychID,
-                    records: activation.snapshot.research.finishedResearchRecords,
-                    fingerprints:
-                        activation.snapshot.research.finishedResearchRecordFingerprints
-                )
-            }
-        }
-    }
-
-    private var recordsLayoutDirection: LayoutDirection {
-        switch ScholiumRuntimeIsolation.layoutDirectionOverride() {
-        case .leftToRight:
-            .leftToRight
-        case .rightToLeft:
-            .rightToLeft
-        case nil:
-            inheritedLayoutDirection
-        }
-    }
-
-    private func recordsContent(
-        _ capabilities: WindowWorkspaceCapabilities
-    ) -> some View {
-            ResearchRecordBrowserView(
-                model: browserModel,
-                loadIssues: recordLoadIssues,
-                context: ResearchRecordBrowserContext(
-                    proseNavigation: proseNavigation,
-                    setRecommendationDisposition: { recordID, recommendationID, status in
-                        try await capabilities.research.records
-                            .setResearchRecordRecommendationDisposition(
-                                recordID: recordID,
-                                recommendationID: recommendationID,
-                                status: status
-                            )
-                    },
-                    setRecommendationNote: { recordID, recommendationID, note in
-                        try await capabilities.research.records
-                            .setResearchRecordRecommendationNote(
-                                recordID: recordID,
-                                recommendationID: recommendationID,
-                                note: note
-                            )
-                    },
-                    followUpContext: { recordID, resultFingerprint in
-                        try await capabilities.research.actions.followUpContext(
-                            recordID: recordID,
-                            expectedFinalizedResultFingerprint: resultFingerprint
-                        )
-                    },
-                    followUpClient: ResearchActionClient(
-                        availableActions: { target in
-                            try await capabilities.research.actions.availableActions(
-                                for: target
-                            )
-                        },
-                        materialCandidates: { target, definition in
-                            try await capabilities.research.actions.materialCandidates(
-                                for: target,
-                                actionID: definition.id
-                            )
-                        },
-                        sourceAccess: { target in
-                            try await capabilities.research.sourceAccess.sourceAccess(
-                                for: target
-                            )
-                        },
-                        bindLocalSource: { target, url in
-                            try await capabilities.research.sourceAccess.bindSourceAccess(
-                                ResearchSourceBindingRequest(
-                                    target: target,
-                                    selection: .localFile(url)
-                                )
-                            )
-                        },
-                        prepare: { request, _ in
-                            try await capabilities.research.actions.prepareAction(request)
-                        },
-                        prepareFollowUp: { request in
-                            try await capabilities.research.actions.prepareFollowUp(request)
-                        },
-                        actionRun: { runID in
-                            try await capabilities.research.actions.actionRun(id: runID)
-                        },
-                        handoff: { runID in
-                            try await capabilities.research.actions.issueAgentHandoff(
-                                runID: runID,
-                                validity: 10 * 60
-                            )
-                        },
-                        cancel: { runID in
-                            try await capabilities.research.actions.cancelAction(
-                                runID: runID
-                            )
-                        },
-                        openActiveDiscussion: { _ in }
-                    ),
-                    reloadRecord: { recordID in
-                        let records = try await capabilities.research.records
-                            .finishedResearchRecords(noteID: nil)
-                        guard let record = records.first(where: {
-                            $0.id == recordID
-                        }) else {
-                            throw PortableResearchMethodFeedbackMutationError
-                                .recordUnavailable
-                        }
-                        return record
-                    },
-                    changeState: { recordID in
-                        try await capabilities.research.records
-                            .researchRecordChangeState(recordID: recordID)
-                    },
-                    comparison: { recordID, noteID in
-                        try await capabilities.research.records
-                            .researchRecordComparison(
-                                recordID: recordID,
-                                noteID: noteID
-                            )
-                    },
-                    loadDocument: { note in
-                        try await capabilities.documents.load(note)
-                    },
-                    undoChanges: {
-                        recordID, noteIDs, resultFingerprint in
-                        try await capabilities.research.records
-                            .undoResearchRecordChanges(
-                                recordID: recordID,
-                                selectedNoteIDs: noteIDs,
-                                expectedResultFingerprint: resultFingerprint
-                            )
-                    },
-                    deletePermanently: { id in
-                        try await capabilities.research.records
-                            .deleteResearchRecordPermanently(id: id)
-                    },
-                    openNote: { noteID, note, sourceLine in
-                        openNote(
-                            stableNoteID: noteID,
-                            note: note,
-                            sourceLine: sourceLine,
-                            assignment: capabilities.assignment
-                        )
-                    }
-                )
-            )
-    }
-
-    private func loadCapabilities() async {
-        isLoading = true
-        errorMessage = nil
-        do {
-            let capabilities = try await workspaceStore.workspaceCapabilities(id: triptychID)
-            try Task.checkCancellation()
-            self.capabilities = capabilities
-            browserModel.bindRecordSearch { request in
-                try await capabilities.discovery.search(request)
-            }
-            let records: [PortableResearchRecord]
-            let fingerprints: [UUID: DocumentFingerprint]
-            if let snapshot = workspaceStore.workspaceSnapshots[triptychID] {
-                records = snapshot.research.finishedResearchRecords
-                fingerprints = snapshot.research.finishedResearchRecordFingerprints
-                recordLoadIssues = researchRecordIssues(in: snapshot)
-                proseNavigation = ResearchRecordProseNavigation(snapshot: snapshot)
-            } else {
-                let research = try await capabilities.research.records.snapshot()
-                records = research.finishedResearchRecords
-                fingerprints = research.finishedResearchRecordFingerprints
-                recordLoadIssues = []
-                proseNavigation = .empty
-            }
-            browserModel.prepareForOpen(
-                triptychID: triptychID,
-                records: records,
-                fingerprints: fingerprints,
-                request: currentRequest
-            )
-            isPrepared = true
-            isLoading = false
-        } catch is CancellationError {
-            return
-        } catch {
-            capabilities = nil
-            errorMessage = error.localizedDescription
-            isLoading = false
-        }
-    }
-
-    private func registerRecordsEndpoint() {
-        guard recordsEndpointToken == nil else { return }
-        recordsEndpointToken = coordinator.registerRecordsWindow(
-            triptychID: triptychID
-        ) { request in
-            currentRequest = request
-            if isPrepared { browserModel.apply(request) }
-        }
-    }
-
-    private func unregisterRecordsEndpoint() {
-        guard let recordsEndpointToken else { return }
-        coordinator.unregisterRecordsWindow(
-            triptychID: triptychID,
-            token: recordsEndpointToken
-        )
-        self.recordsEndpointToken = nil
-    }
-
-    private func openNote(
-        stableNoteID: UUID,
-        note: VaultQualifiedNoteID,
-        sourceLine: Int?,
-        assignment: TriptychAssignment
-    ) {
-        if coordinator.openInExistingWorkspace(
-            triptychID: triptychID,
-            noteID: stableNoteID,
-            note: note,
-            sourceLine: sourceLine
-        ) {
-            return
-        }
-        guard let vault = assignment.vaults.values.first(where: {
-            $0.id == note.vaultID
-        }) else {
-            browserModel.presentError(
-                "The recorded Analysis vault is no longer part of this Triptych."
-            )
-            return
-        }
-        let reference = VaultNoteReference(
-            vaultID: vault.id,
-            vaultName: vault.name,
-            vaultRole: vault.role,
-            relativePath: note.relativePath,
-            stableNoteID: stableNoteID.uuidString.lowercased()
-        )
-        openWindow(
-            id: "scholium-main",
-            value: TriptychWindowRoute(
-                triptychID: triptychID,
-                initialDocument: reference
-            )
-        )
-    }
-
-    private func researchRecordIssues(in snapshot: WorkspaceSnapshot) -> [String] {
-        snapshot.research.healthIssues.filter {
-            $0.hasPrefix("Portable Research Record ")
-        }
-    }
-}
-
-/// The launch and first-run boundary. Bootstrap deliberately does not create
-/// the workspace split controller or install the workspace toolbar. Once a
 /// Triptych is available it opens a configured workspace window and closes.
 private struct ScholiumBootstrapRoot: View {
     @Environment(\.openWindow) private var openWindow
@@ -776,7 +344,6 @@ private struct ScholiumBootstrapRoot: View {
     private var workspaceSetupContext: WorkspaceSetupContext {
         WorkspaceSetupContext(
             isCreatingNewTriptych: model.isCreatingNewTriptych,
-            offersAgentPreparation: model.offersAgentPreparation,
             targetTriptychID: model.targetTriptychID,
             workspaceAssignment: model.workspaceAssignment,
             registeredTriptychs: model.registeredTriptychs,
@@ -860,13 +427,6 @@ private final class ScholiumBootstrapModel: ObservableObject {
 
     var isCreatingNewTriptych: Bool {
         route.purpose == .newTriptych
-    }
-
-    /// Machine-level preparation appears only after the first Triptych is
-    /// registered. A later launch with an existing registration goes directly
-    /// to the workspace and never turns this optional step into a gate.
-    var offersAgentPreparation: Bool {
-        route.purpose == .firstConfiguration
     }
 
     var targetTriptychID: UUID? {
@@ -975,26 +535,16 @@ private final class ScholiumBootstrapModel: ObservableObject {
 private struct ScholiumWindowRoot: View {
     private let route: TriptychWindowRoute
     private let lifecycleRegistry: ScholiumWindowLifecycleRegistry
-    private let researchRecordsWindowCoordinator: ResearchRecordsWindowCoordinator
-    private let researchResultNotificationCoordinator:
-        ResearchResultNotificationCoordinator
     @StateObject private var appState: WindowModel
     @StateObject private var windowCoordinator: WorkspaceWindowCoordinator
 
     init(
         workspaceStore: WorkspaceStore,
         route: TriptychWindowRoute,
-        lifecycleRegistry: ScholiumWindowLifecycleRegistry,
-        researchRecordsWindowCoordinator: ResearchRecordsWindowCoordinator,
-        researchResultNotificationCoordinator:
-            ResearchResultNotificationCoordinator
+        lifecycleRegistry: ScholiumWindowLifecycleRegistry
     ) {
         self.route = route
         self.lifecycleRegistry = lifecycleRegistry
-        self.researchRecordsWindowCoordinator = researchRecordsWindowCoordinator
-        self.researchResultNotificationCoordinator =
-            researchResultNotificationCoordinator
-        researchResultNotificationCoordinator.bind(to: workspaceStore)
         let model = WindowModel(
             workspaceStore: workspaceStore,
             nativeWindowID: route.windowID,
@@ -1005,10 +555,7 @@ private struct ScholiumWindowRoot: View {
         _windowCoordinator = StateObject(wrappedValue: WorkspaceWindowCoordinator(
             windowID: route.windowID,
             appState: model,
-            lifecycleRegistry: lifecycleRegistry,
-            researchRecordsWindowCoordinator: researchRecordsWindowCoordinator,
-                researchResultNotificationCoordinator:
-                researchResultNotificationCoordinator
+            lifecycleRegistry: lifecycleRegistry
         ))
     }
 
@@ -1017,10 +564,7 @@ private struct ScholiumWindowRoot: View {
             appState: appState,
             windowCoordinator: windowCoordinator,
             route: route,
-            lifecycleRegistry: lifecycleRegistry,
-            researchRecordsWindowCoordinator: researchRecordsWindowCoordinator,
-            researchResultNotificationCoordinator:
-                researchResultNotificationCoordinator
+            lifecycleRegistry: lifecycleRegistry
         )
     }
 }
@@ -1041,9 +585,6 @@ private struct ScholiumWindowObservedRoot: View {
     @ObservedObject private var commandObservation: WindowCommandObservation
     private let route: TriptychWindowRoute
     private let lifecycleRegistry: ScholiumWindowLifecycleRegistry
-    private let researchRecordsWindowCoordinator: ResearchRecordsWindowCoordinator
-    private let researchResultNotificationCoordinator:
-        ResearchResultNotificationCoordinator
     @StateObject private var fileSelectionPresenter = ScholiumFileSelectionPresenter()
     @State private var destinationBootstrapWindowID: UUID?
     @State private var accessRecovery: WorkspaceAccessRecovery?
@@ -1052,10 +593,7 @@ private struct ScholiumWindowObservedRoot: View {
         appState: WindowModel,
         windowCoordinator: WorkspaceWindowCoordinator,
         route: TriptychWindowRoute,
-        lifecycleRegistry: ScholiumWindowLifecycleRegistry,
-        researchRecordsWindowCoordinator: ResearchRecordsWindowCoordinator,
-        researchResultNotificationCoordinator:
-            ResearchResultNotificationCoordinator
+        lifecycleRegistry: ScholiumWindowLifecycleRegistry
     ) {
         self.appState = appState
         _windowCoordinator = ObservedObject(wrappedValue: windowCoordinator)
@@ -1067,9 +605,6 @@ private struct ScholiumWindowObservedRoot: View {
         _commandObservation = ObservedObject(wrappedValue: appState.commandObservation)
         self.route = route
         self.lifecycleRegistry = lifecycleRegistry
-        self.researchRecordsWindowCoordinator = researchRecordsWindowCoordinator
-        self.researchResultNotificationCoordinator =
-            researchResultNotificationCoordinator
         _accessRecovery = State(
             initialValue: appState.windowWorkspaceController.state.accessRecovery
         )
@@ -1155,62 +690,6 @@ private struct ScholiumWindowObservedRoot: View {
             }
             .onAppear {
                 windowCoordinator.activate(
-                    showNoteResearchRecords: {
-                        guard let triptychID = appState.workspaceAssignment?.id,
-                              let noteID = appState.documentController.activeDocument?
-                                .sessionKey.noteID else { return }
-                        researchRecordsWindowCoordinator.submit(
-                            ResearchRecordsWindowRequest(
-                                triptychID: triptychID,
-                                noteID: noteID,
-                                initialView: .records
-                            )
-                        )
-                        openWindow(
-                            id: "scholium-research-records",
-                            value: triptychID
-                        )
-                    },
-                    showTriptychResearchRecords: {
-                        guard let triptychID = appState.workspaceAssignment?.id else {
-                            return
-                        }
-                        researchRecordsWindowCoordinator.submit(
-                            ResearchRecordsWindowRequest(
-                                triptychID: triptychID,
-                                initialView: .records
-                            )
-                        )
-                        openWindow(
-                            id: "scholium-research-records",
-                            value: triptychID
-                        )
-                    },
-                    showResearchRecordsWindow: {
-                        guard let triptychID = appState.workspaceAssignment?.id else {
-                            return
-                        }
-                        openWindow(
-                            id: "scholium-research-records",
-                            value: triptychID
-                        )
-                    },
-                    reviewResearchResult: { destination in
-                        researchRecordsWindowCoordinator.submit(
-                            ResearchRecordsWindowRequest(
-                                triptychID: destination.triptychID,
-                                initialView: .records,
-                                purpose: .reviewResult,
-                                recordID: destination.recordID,
-                                expectedFinalizedResultFingerprint:
-                                    destination.finalizedResultFingerprint
-                            )
-                        )
-                        openWindow(
-                            id: "scholium-research-records",
-                            value: destination.triptychID
-                        )
-                    },
                     showAttention: { request in
                         switch request {
                         case .queue(let anchor, let workspaceSlot, let noteScope):
@@ -1219,36 +698,13 @@ private struct ScholiumWindowObservedRoot: View {
                                 workspaceSlot: workspaceSlot,
                                 noteScope: noteScope
                             )
-                        case .actionStack:
-                            appState.shellState
-                                .requestActionNotificationStackExpansion()
                         }
                     }
                 )
-                windowCoordinator.updateResearchRecordsRouting(
-                    triptychID: windowWorkspaceController.state.assignment?.id
-                )
                 windowCoordinator.update(reduceMotion: reduceMotion)
-            }
-            .onChange(
-                of: windowWorkspaceController.state.assignment?.id,
-                initial: true
-            ) { _, triptychID in
-                windowCoordinator.updateResearchRecordsRouting(triptychID: triptychID)
             }
             .onChange(of: reduceMotion) { _, reduceMotion in
                 windowCoordinator.update(reduceMotion: reduceMotion)
-            }
-            .onChange(
-                of: presentationRouter.researchRecordsWindowRequest
-            ) { _, request in
-                guard let request else { return }
-                researchRecordsWindowCoordinator.submit(request)
-                openWindow(
-                    id: "scholium-research-records",
-                    value: request.triptychID
-                )
-                presentationRouter.researchRecordsWindowRequest = nil
             }
             .onDisappear {
                 windowCoordinator.detach()
@@ -1349,23 +805,25 @@ private struct ScholiumSettingsRoot: View {
     @AppStorage(WindowColorSchemeChoice.defaultsKey)
     private var storedColorScheme = WindowColorSchemeChoice.system.rawValue
     @ObservedObject private var workspaceStore: WorkspaceStore
-    @ObservedObject private var researchResultNotificationCoordinator:
-        ResearchResultNotificationCoordinator
     @StateObject private var settingsModel: WorkspaceSettingsModel
     @StateObject private var fileSelectionPresenter = ScholiumFileSelectionPresenter()
 
-    init(
-        workspaceStore: WorkspaceStore,
-        researchResultNotificationCoordinator:
-            ResearchResultNotificationCoordinator
-    ) {
+    init(workspaceStore: WorkspaceStore) {
         self.workspaceStore = workspaceStore
-        self.researchResultNotificationCoordinator =
-            researchResultNotificationCoordinator
         _settingsModel = StateObject(
             wrappedValue: WorkspaceSettingsModel(
                 capabilities: workspaceStore.settingsCapabilities(),
-                cssSnippetStore: workspaceStore.cssSnippetStore
+                cssSnippetStore: workspaceStore.cssSnippetStore,
+                agentBridgeAvailability: { [weak workspaceStore] in
+                    guard let workspaceStore else {
+                        return .unavailable("Scholium is shutting down.")
+                    }
+                    if workspaceStore.appBridge != nil { return .available }
+                    return .unavailable(
+                        workspaceStore.appBridgeStartupFailure?.localizedDescription
+                            ?? "The App bridge did not start."
+                    )
+                }
             )
         )
     }
@@ -1373,7 +831,6 @@ private struct ScholiumSettingsRoot: View {
     var body: some View {
         ScholiumSettingsView()
             .environmentObject(settingsModel)
-            .environmentObject(researchResultNotificationCoordinator)
             .tint(ScholiumColorRole.accent.color)
             .preferredColorScheme(
                 WindowColorSchemeChoice(rawValue: storedColorScheme)?.swiftUIColorScheme
@@ -1407,23 +864,13 @@ struct ScholiumWorkspaceWindowActionsFocusedKey: FocusedValueKey {
     typealias Value = WorkspaceWindowActions
 }
 
-struct ScholiumFocusedResearchActionActions {
-    let open: @MainActor (ResearchActionID) -> Void
-}
-
-struct ScholiumFocusedResearchActionActionsKey: FocusedValueKey {
-    typealias Value = ScholiumFocusedResearchActionActions
-}
-
 struct ScholiumFocusedEditorActions {
     let documentID: String
     let isComposing: Bool
     let allowsReplace: Bool
     let isAvailable: (MarkdownEditorCommand) -> Bool
-    let canCommentOnSelectedPassage: () -> Bool
     let perform: (MarkdownEditorCommand) -> Void
     let performWithArgument: (MarkdownEditorCommand, String) -> Void
-    let startComment: () -> Void
     let presentFind: () -> Void
     let findNext: () -> Void
     let findPrevious: () -> Void
@@ -1451,11 +898,6 @@ extension FocusedValues {
     var scholiumWorkspaceWindowActions: WorkspaceWindowActions? {
         get { self[ScholiumWorkspaceWindowActionsFocusedKey.self] }
         set { self[ScholiumWorkspaceWindowActionsFocusedKey.self] = newValue }
-    }
-
-    var scholiumResearchActionActions: ScholiumFocusedResearchActionActions? {
-        get { self[ScholiumFocusedResearchActionActionsKey.self] }
-        set { self[ScholiumFocusedResearchActionActionsKey.self] = newValue }
     }
 
     var scholiumEditorActions: ScholiumFocusedEditorActions? {
@@ -1748,13 +1190,6 @@ private struct ScholiumInsertCommandContent: View {
             Button("Caution") { editorActions?.perform(.calloutFlag) }
                 .disabled(editorActions?.isAvailable(.calloutFlag) != true)
         }
-        Divider()
-        Button("Comment on Selection…") { editorActions?.startComment() }
-            .scholiumKeyboardShortcut(shortcut(for: .commentOnSelection))
-            .disabled(
-                editorActions?.canCommentOnSelectedPassage() != true
-                    || editorActions?.isComposing == true
-            )
     }
 
     private func shortcut(for command: ScholiumHotkeyCommand) -> ScholiumHotkeyBinding? {
@@ -1928,83 +1363,8 @@ private struct ScholiumAttentionCommandContent: View {
     }
 }
 
-private struct ScholiumResearchCommandContent: View {
-    @AppStorage(ScholiumHotkeyPreferences.defaultsKey)
-    private var hotkeyPreferencesData = ScholiumHotkeyPreferences.defaultData
-    @FocusedObject private var appState: WindowModel?
-    @FocusedValue(\.scholiumResearchActionActions) private var researchActionActions
-    @FocusedValue(\.scholiumWorkspaceWindowActions) private var workspaceWindowActions
-
-    var body: some View {
-        if let appState, researchActionActions != nil {
-            ForEach(appState.researchController.actions.availability) { action in
-                Button {
-                    researchActionActions?.open(action.id)
-                } label: {
-                    Text(verbatim: action.buttonName)
-                }
-                .disabled(
-                    !action.canPresentInInterface
-                        || !appState.hasConfirmedCurrentResearchActionAvailability
-                        || appState.researchController.actions.hasCancellationBarrier
-                )
-            }
-        }
-        Divider()
-        Button("Triptych Records") {
-            workspaceWindowActions?.showTriptychResearchRecords()
-        }
-        .scholiumKeyboardShortcut(shortcut(for: .showTriptychRecords))
-        .disabled(
-            appState?.workspaceAssignment == nil
-                || workspaceWindowActions == nil
-        )
-    }
-
-    private func shortcut(for command: ScholiumHotkeyCommand) -> ScholiumHotkeyBinding? {
-        ScholiumHotkeyPreferences.binding(
-            for: command,
-            data: hotkeyPreferencesData
-        )
-    }
-}
-
 #if DEBUG
-enum QAActionNotificationProof {
-    static func notifications(
-        triptychID: UUID,
-        arrivals: [WorkspaceResearchResultArrival]
-    ) -> [ResearchActivityNotification] {
-        arrivals.sorted {
-            if $0.finishedAt != $1.finishedAt {
-                return $0.finishedAt > $1.finishedAt
-            }
-            return $0.runID.uuidString < $1.runID.uuidString
-        }
-        .prefix(2)
-        .map { arrival in
-            let destination = ResearchResultReviewDestination(
-                triptychID: triptychID,
-                arrival: arrival
-            )
-            return ResearchActivityNotification(
-                triptychID: triptychID,
-                runID: arrival.runID,
-                actionID: arrival.actionID,
-                targetNoteID: arrival.originNoteID,
-                targetTitle: arrival.targetTitle,
-                state: .resultReady,
-                activity: nil,
-                result: destination,
-                affectedNotes: arrival.affectedNotes,
-                updatedAt: arrival.finishedAt
-            )
-        }
-    }
-}
-
 private struct ScholiumQACommandContent: View {
-    @Environment(\.openWindow) private var openWindow
     @FocusedObject private var appState: WindowModel?
     @FocusedValue(\.scholiumEditorActions) private var editorActions
 
@@ -2022,8 +1382,7 @@ private struct ScholiumQACommandContent: View {
             .keyboardShortcut("w", modifiers: [.command, .option, .control])
             .disabled(editorActions == nil)
         }
-        if qaEditorFaultsAreEnabled
-            && (qaFeedbackProofsAreEnabled || qaResearchWorkflowProofsAreEnabled) {
+        if qaEditorFaultsAreEnabled && qaFeedbackProofsAreEnabled {
             Divider()
         }
         if qaFeedbackProofsAreEnabled {
@@ -2038,31 +1397,12 @@ private struct ScholiumQACommandContent: View {
                 )
             }
             .disabled(appState == nil)
-            Button("Present Action Notification Proof") {
-                appState?.presentQAActionNotificationProof()
-            }
-            .disabled(appState == nil)
-        }
-        if qaFeedbackProofsAreEnabled && qaResearchWorkflowProofsAreEnabled {
-            Divider()
-        }
-        if qaResearchWorkflowProofsAreEnabled {
-            Button("Open Research Workflow Interface Proofs") {
-                openWindow(id: "scholium-research-workflow-proofs")
-            }
         }
     }
 
     private var qaEditorFaultsAreEnabled: Bool {
         Bundle.main.bundleIdentifier == "com.scholium.qa"
             && ProcessInfo.processInfo.arguments.contains("--scholium-editor-qa-faults")
-    }
-
-    private var qaResearchWorkflowProofsAreEnabled: Bool {
-        Bundle.main.bundleIdentifier == "com.scholium.qa"
-            && ProcessInfo.processInfo.arguments.contains(
-                "--scholium-research-workflow-proofs"
-            )
     }
 
     private var qaFeedbackProofsAreEnabled: Bool {
@@ -2093,7 +1433,6 @@ private struct ScholiumCommands: Commands {
         let insertCommand = ScholiumInsertCommandContent()
         let sidebarCommand = ScholiumSidebarCommandContent()
         let attentionCommand = ScholiumAttentionCommandContent()
-        let researchCommand = ScholiumResearchCommandContent()
         #if DEBUG
         let qaCommand = ScholiumQACommandContent()
         #endif
@@ -2118,13 +1457,8 @@ private struct ScholiumCommands: Commands {
         CommandGroup(after: .windowArrangement) {
             attentionCommand
         }
-        CommandMenu("Research") {
-            researchCommand
-        }
         #if DEBUG
-        if qaEditorFaultsAreEnabled
-            || qaFeedbackProofsAreEnabled
-            || qaResearchWorkflowProofsAreEnabled {
+        if qaEditorFaultsAreEnabled || qaFeedbackProofsAreEnabled {
             CommandMenu("QA") {
                 qaCommand
             }
@@ -2136,13 +1470,6 @@ private struct ScholiumCommands: Commands {
     private var qaEditorFaultsAreEnabled: Bool {
         Bundle.main.bundleIdentifier == "com.scholium.qa"
             && ProcessInfo.processInfo.arguments.contains("--scholium-editor-qa-faults")
-    }
-
-    private var qaResearchWorkflowProofsAreEnabled: Bool {
-        Bundle.main.bundleIdentifier == "com.scholium.qa"
-            && ProcessInfo.processInfo.arguments.contains(
-                "--scholium-research-workflow-proofs"
-            )
     }
 
     private var qaFeedbackProofsAreEnabled: Bool {
@@ -2248,9 +1575,6 @@ final class WindowModel: ObservableObject {
     @Published private(set) var libraryFocusRequestGeneration: UInt64 = 0
     @Published var triptychSettings = TriptychSettings()
     @Published private(set) var triptychPropertiesAreAuthoritative = false
-    /// One-shot routing from Actions to one portable active Discussion. The
-    /// document view consumes and clears it without changing record state.
-    @Published var requestedDiscussionID: UUID? = nil
     let presentationRouter = WindowPresentationRouter()
     let shellState = WindowShellState()
     lazy var discoveryController = DiscoveryController(
@@ -2395,9 +1719,6 @@ final class WindowModel: ObservableObject {
             presentSystemTrash: { [weak self] preview in
                 self?.presentationRouter.present(.systemTrash(preview))
             },
-            presentLocalExecutionRecovery: { [weak self] recovery in
-                self?.presentationRouter.alert = .localExecutionRecovery(recovery)
-            },
             clearPresentedAlert: { [weak self] in
                 self?.presentationRouter.alert = nil
             },
@@ -2449,8 +1770,7 @@ final class WindowModel: ObservableObject {
         discoveryController: discoveryController,
         documentController: documentController,
         documentNavigationHistoryController: documentNavigationHistoryController,
-        workspaceProjectionController: workspaceProjectionController,
-        researchActionController: researchController.actions
+        workspaceProjectionController: workspaceProjectionController
     )
     let attentionPresentationState = AttentionPresentationState()
     lazy var attentionPopoverSession = AttentionPopoverSession(
@@ -2463,74 +1783,14 @@ final class WindowModel: ObservableObject {
             dismissalDaysChanges: $triptychSettings
                 .map(\.attentionDismissalDays)
                 .eraseToAnyPublisher(),
-            activityChanges: shellState.$researchActivityNotifications
-                .eraseToAnyPublisher(),
-            settlementRequirementChanges: researchController.$records
+            settlementRequirementChanges: researchController.$researchSnapshot
                 .map { $0?.settlementRequirements ?? [] }
                 .eraseToAnyPublisher(),
             refresh: { [weak self] in
                 await self?.refreshWorkspaceCatalog()
-            },
-            resynthesize: { [weak self] item in
-                self?.requestResynthesis(item)
-            },
-            openAction: { [weak self] notification in
-                guard let activity = notification.activity else { return }
-                self?.openResearchActionRecovery(runIDs: [activity.runID])
-            },
-            endAction: { [weak self] notification in
-                self?.researchController.actions.endActivity(
-                    runID: notification.runID
-                )
-            },
-            reviewResult: { [weak self] notification in
-                guard let result = notification.result else { return }
-                self?.presentationRouter.researchRecordsWindowRequest =
-                    ResearchRecordsWindowRequest(
-                        triptychID: result.triptychID,
-                        initialView: .records,
-                        purpose: .reviewResult,
-                        recordID: result.recordID,
-                        expectedFinalizedResultFingerprint:
-                            result.finalizedResultFingerprint
-                    )
-            },
-            followUp: { [weak self] notification in
-                guard let result = notification.result else { return }
-                self?.presentationRouter.researchRecordsWindowRequest =
-                    ResearchRecordsWindowRequest(
-                        triptychID: result.triptychID,
-                        initialView: .records,
-                        purpose: .followUp,
-                        recordID: result.recordID,
-                        expectedFinalizedResultFingerprint:
-                            result.finalizedResultFingerprint
-                    )
-            },
-            dismissActivity: { [weak self] notification in
-                guard let self else { return }
-                #if DEBUG
-                if self.dismissQAActionNotificationProof(notification) {
-                    return
-                }
-                #endif
-                guard let result = notification.result else { return }
-                self.researchResultNotificationDismissal?(result)
-            },
-            reviewChanges: { [weak self] requirement in
-                guard let self,
-                      let triptychID = self.workspaceAssignment?.id else { return }
-                self.presentationRouter.researchRecordsWindowRequest =
-                    ResearchRecordsWindowRequest(
-                        triptychID: triptychID,
-                        noteID: requirement.noteID,
-                        initialView: .records
-                    )
             }
         )
     )
-    var researchResultNotificationDismissal:
-        (@MainActor (ResearchResultReviewDestination) -> Void)?
 
     var sidebarVisible: Bool {
         get { shellState.libraryVisible }
@@ -2831,17 +2091,12 @@ final class WindowModel: ObservableObject {
     )
     let windowWorkspaceController: WindowWorkspaceController
     private var workspaceCancellables: Set<AnyCancellable> = []
-    private var researchActionOpenTask: Task<Void, Never>?
     private var libraryRevealTask: Task<Void, Never>?
     private var requestedWorkspaceSelection: WorkspaceVaultSlot?
-    private var researchActionOpenRequestID: UUID?
-    private var discussionPresentationRequestID: UUID?
     private var isRestoringWindowSession = false
     private var didRestoreWindowSession = false
     private var identityRefreshGeneration: UInt64 = 0
     private let documentPresentationDidChange = PassthroughSubject<Void, Never>()
-    private var presentResearchRecordSearchResult:
-        @MainActor (RecordSearchResult) -> Void = { _ in }
     private var performanceModeNotificationTokens: [Int32] = []
 
     init(
@@ -2949,14 +2204,7 @@ final class WindowModel: ObservableObject {
         observeWindowSessionChanges()
     }
 
-    func bindResearchRecordSearchPresentation(
-        _ present: @escaping @MainActor (RecordSearchResult) -> Void
-    ) {
-        presentResearchRecordSearchResult = present
-    }
-
     deinit {
-        researchActionOpenTask?.cancel()
         libraryRevealTask?.cancel()
         for token in performanceModeNotificationTokens {
             notify_cancel(token)
@@ -3145,84 +2393,8 @@ final class WindowModel: ObservableObject {
         )
     }
 
-    var currentResearchActionTarget: ResearchActionNoteSnapshot? {
-        guard let descriptor = currentDocumentDescriptor,
-              let note = currentNote,
-              note.workspaceSnapshot?.derivedProjectionState == .current,
-              currentDocumentCapabilities.canUseResearchActions,
-              let role = ResearchActionTargetRole(vaultRole: descriptor.reference.vaultRole) else {
-            return nil
-        }
-        return ResearchActionNoteSnapshot(
-            noteID: descriptor.sessionKey.noteID,
-            note: VaultQualifiedNoteID(
-                vaultID: descriptor.reference.vaultID,
-                relativePath: note.relativePath
-            ),
-            role: role,
-            fingerprint: note.document.fingerprint,
-            title: note.title ?? note.displayName
-        )
-    }
-
-    var hasConfirmedCurrentResearchActionAvailability: Bool {
-        guard let target = currentResearchActionTarget else { return false }
-        let actions = researchController.actions
-        return actions.availabilityTarget == target
-            && !actions.isRefreshingAvailability
-            && actions.availabilityError == nil
-    }
-
-    var currentResearchActionReference: VaultNoteReference? {
-        currentDocumentDescriptor?.reference
-    }
-
-    func researchActionsPresentation() -> ResearchActionsPresentation {
-        let target = currentResearchActionTarget
-        let actions = researchController.actions
-        let matchesTarget = actions.availabilityTarget == target
-        return ResearchActionsPresentation.make(
-            target: target,
-            availability: matchesTarget ? actions.availability : [],
-            isCheckingAvailability: actions.isRefreshingAvailability,
-            availabilityError: matchesTarget ? actions.availabilityError : nil,
-            cancellationRecoveries: researchController.actions.cancellationRecoveries,
-            retryingCancellationRecoveryIDs:
-                researchController.actions.retryingCancellationRecoveryIDs,
-            pendingCancellationBarrierCount:
-                researchController.actions.pendingCancellationBarrierCount,
-            endingActivityRunIDs:
-                researchController.actions.endingActivityRunIDs,
-            activeDiscussions: researchController.records?.activeDiscussions ?? [],
-            settlements: researchController.records?.settlements ?? [],
-            activities: researchController.records?.activities ?? []
-        )
-    }
-
-    func refreshResearchActionAvailability() async {
-        let target = currentResearchActionTarget
-        researchController.setActiveDocument(currentResearchActionReference)
-        researchController.actions.invalidateIfTargetChanged(target)
-        reconcileResearchActionPresentation()
-        await researchController.actions.refreshAvailability(for: target)
-    }
-
-    private func reconcileResearchActionPresentation() {
-        guard case .researchAction(let route) = presentationRouter.sheet else { return }
-        guard researchController.actions.presentationID == route.presentationID,
-              researchController.actions.activeActionID == route.actionID,
-              researchController.actions.target?.noteID == currentResearchActionTarget?.noteID else {
-            presentationRouter.dismissSheet()
-            return
-        }
-    }
-
     var canEditCurrentNote: Bool {
         currentDocumentCapabilities.canEditSource
-    }
-
-    var canCommentCurrentNote: Bool {
-        currentDocumentCapabilities.canComment
     }
 
     var currentDocumentCapabilities: DocumentCapabilities {
@@ -3417,23 +2589,6 @@ final class WindowModel: ObservableObject {
         try await flushRegisteredEditorIfNeeded()
     }
 
-    /// Opening an Action needs the exact current Target, not every open Note
-    /// in the Triptych. The sheet is modal for this window, and a later
-    /// preparation revalidates the frozen Target rather than saving unrelated
-    /// open Notes.
-    func flushCurrentEditorBeforeOpeningResearchAction() async throws {
-        try await editorFlushCoordinator.flushCurrentEditorForResearchAction(
-            selectedDocumentPath: selectedDocumentPath,
-            fallback: { [weak self] in
-                guard let self,
-                      let selectedDocument = self.documentController.selectedDocument else {
-                    return
-                }
-                try await self.documentController.flushBeforeClosing(selectedDocument)
-            }
-        )
-    }
-
     /// Serializes every transition that can replace the active document view.
     /// The newest requested destination wins, but an already-running operation
     /// is allowed to finish before the next begins so vault state is never
@@ -3582,11 +2737,6 @@ final class WindowModel: ObservableObject {
                     self.vaultError = error.localizedDescription
                 }
             }
-        case .presentResearchAction(let route):
-            guard currentResearchActionReference == route.target,
-                  researchController.actions.presentationID == route.presentationID,
-                  researchController.actions.activeActionID == route.actionID else { return }
-            presentationRouter.present(.researchAction(route))
         case .presentNoteFileOperation(let request):
             noteFileRequest = request
         }
@@ -3614,8 +2764,6 @@ final class WindowModel: ObservableObject {
                     fallbackLine: note.sourceLine
                 )
             }
-        case .result(.record(let record)):
-            presentResearchRecordSearchResult(record)
         }
     }
 
@@ -3673,62 +2821,6 @@ final class WindowModel: ObservableObject {
                 tabActivation: .place(.replaceSelected)
             )
         }
-    }
-
-    /// Opens the common Synthesize sheet for one exact, derived
-    /// Topic/Analysis revision condition. Preparation remains fail-closed at
-    /// the Application boundary if either source or record changed meanwhile.
-    func requestResynthesis(_ item: AttentionQueueItem) {
-        guard item.kind == .synthesisMaterialChanged,
-              let context = item.synthesisMaterialChanged else { return }
-        enqueueDocumentTransition(preservingCurrentEditorState: false, { [weak self] in
-            guard let self else { return }
-            try await self.activateWorkspaceReference(
-                item.note,
-                tabActivation: .place(.replaceSelected)
-            )
-            guard let target = self.currentResearchActionTarget,
-                  target.noteID == context.topicNoteID else {
-                throw WindowNavigationError.noteUnavailable(
-                    item.note.relativePath
-                )
-            }
-            await self.researchController.actions.refreshAvailability(
-                for: target
-            )
-            // ContentView also refreshes Actions when the active target
-            // changes. If that task superseded this request, make one final
-            // request so the transition itself owns a confirmed availability
-            // snapshot before presenting the sheet.
-            if !self.hasConfirmedCurrentResearchActionAvailability {
-                await self.researchController.actions.refreshAvailability(
-                    for: target
-                )
-            }
-            let synthesis = self.researchController.actions.availability.first {
-                $0.id == .synthesize
-            }
-            guard self.hasConfirmedCurrentResearchActionAvailability,
-                  synthesis?.canPresentInInterface == true else {
-                let reason = synthesis?.repairReasons.first?.interfaceDescription
-                    ?? String(
-                        localized: "Scholium could not confirm that this Action is available for the current note.",
-                        table: "Localizable",
-                        bundle: .module
-                    )
-                throw ScholiumApplicationError.researchStoreUnavailable(
-                    reason
-                )
-            }
-        }, didFail: { [weak self] error in
-            self?.presentFeedback(error.localizedDescription, kind: .warning)
-        }, didSucceed: { [weak self] in
-            self?.openResearchAction(
-                .synthesize,
-                initialMaterialNoteIDs: [context.materialNoteID],
-                resynthesisContext: context
-            )
-        })
     }
 
     func requestOpenNote(
@@ -3935,254 +3027,6 @@ final class WindowModel: ObservableObject {
                 try? await Task.sleep(for: .milliseconds(50))
             }
         }
-    }
-
-    func openResearchAction(
-        _ actionID: ResearchActionID,
-        selection: CommentAnchor? = nil,
-        initialMaterialNoteIDs: Set<UUID> = [],
-        resynthesisContext: SynthesisMaterialChangedAttentionContext? = nil
-    ) {
-        guard let initialTarget = currentResearchActionTarget else { return }
-        if actionID == .discuss,
-           let discussion = researchController.records?.activeDiscussions.first(where: {
-               $0.primaryNoteID == initialTarget.noteID
-                   && $0.action != nil
-                   && $0.method != nil
-           }) {
-            requestDiscussionPresentation(discussion.id)
-            return
-        }
-        guard !researchController.actions.hasCancellationBarrier else {
-            presentFeedback(
-                String(
-                    localized: "Resolve the pending Action cancellation before starting another Action.",
-                    table: "Localizable",
-                    bundle: .module
-                ),
-                kind: .warning
-            )
-            return
-        }
-        guard hasConfirmedCurrentResearchActionAvailability else { return }
-        guard let initialAvailability = researchController.actions.availability.first(where: {
-                  $0.id == actionID
-              }), initialAvailability.canPresentInInterface else { return }
-        let initialNoteID = initialTarget.noteID
-        let requestID = UUID()
-        researchActionOpenRequestID = requestID
-        researchActionOpenTask?.cancel()
-
-        researchActionOpenTask = Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await self.flushCurrentEditorBeforeOpeningResearchAction()
-                guard !Task.isCancelled,
-                      self.researchActionOpenRequestID == requestID,
-                      let target = self.currentResearchActionTarget,
-                      target.noteID == initialNoteID,
-                      let reference = self.currentResearchActionReference else { return }
-                if actionID == .discuss,
-                   let discussion = self.researchController.records?.activeDiscussions.first(where: {
-                        $0.primaryNoteID == target.noteID
-                            && $0.action != nil
-                            && $0.method != nil
-                   }) {
-                    self.requestDiscussionPresentation(discussion.id)
-                    return
-                }
-                let availability: ResearchActionAvailability
-                if target == initialTarget {
-                    guard self.hasConfirmedCurrentResearchActionAvailability,
-                          self.researchController.actions.availability.first(where: {
-                              $0.id == actionID
-                          }) == initialAvailability else { return }
-                    availability = initialAvailability
-                } else {
-                    await self.researchController.actions.refreshAvailability(for: target)
-                    guard !Task.isCancelled,
-                          self.researchActionOpenRequestID == requestID,
-                          self.hasConfirmedCurrentResearchActionAvailability,
-                          let refreshed = self.researchController.actions.availability.first(where: {
-                              $0.id == actionID
-                          }) else { return }
-                    availability = refreshed
-                }
-                guard let refreshedTarget = self.currentResearchActionTarget,
-                      refreshedTarget == target,
-                      self.researchController.actions.availabilityTarget == target,
-                      !self.researchController.actions.isRefreshingAvailability,
-                      self.researchController.actions.availabilityError == nil,
-                      availability.canPresentInInterface else {
-                    let reason = self.researchController.actions.availability.first(where: {
-                        $0.id == actionID
-                    })?.repairReasons.first?.interfaceDescription
-                        ?? String(
-                            localized: "Scholium could not confirm that this Action is available for the current note.",
-                            table: "Localizable",
-                            bundle: .module
-                        )
-                    self.presentFeedback(reason, kind: .information)
-                    return
-                }
-                let capturedSelection: CommentAnchor?
-                if let selection, selection.fingerprint == target.fingerprint {
-                    capturedSelection = selection
-                } else {
-                    capturedSelection = nil
-                    if selection != nil {
-                        self.presentFeedback(
-                            String(
-                                localized: "The selected passage changed while Scholium saved the note. The Action will open for the whole note.",
-                                table: "Localizable",
-                                bundle: .module
-                            ),
-                            kind: .information
-                        )
-                    }
-                }
-                let presentationID = UUID()
-                guard !self.researchController.actions.hasCancellationBarrier,
-                      self.researchController.actions.begin(
-                    target: target,
-                    availability: availability,
-                    selection: capturedSelection,
-                    initialInstruction: actionID == .discuss
-                        ? "Discuss this note, including any existing Comments."
-                        : nil,
-                    initialMaterialNoteIDs: initialMaterialNoteIDs,
-                    resynthesisContext: resynthesisContext,
-                    presentationID: presentationID
-                      ) else {
-                    self.presentFeedback(
-                        String(
-                            localized: "Resolve the pending Action cancellation before starting another Action.",
-                            table: "Localizable",
-                            bundle: .module
-                        ),
-                        kind: .warning
-                    )
-                    return
-                }
-                self.researchController.requestPresentAction(
-                    actionID,
-                    target: reference,
-                    presentationID: presentationID
-                )
-            } catch {
-                guard !Task.isCancelled,
-                      self.researchActionOpenRequestID == requestID else { return }
-                self.presentFeedback(
-                    String(
-                        localized: "Scholium could not save the current editor before opening this Action. \(error.localizedDescription)",
-                        table: "Localizable",
-                        bundle: .module
-                    ),
-                    kind: .error
-                )
-            }
-        }
-    }
-
-    func openResearchActionStatus(
-        _ activity: WorkspaceResearchActivity
-    ) {
-        guard let target = currentResearchActionTarget,
-              target.noteID == activity.targetNoteID,
-              let reference = currentResearchActionReference,
-              !researchController.actions.hasCancellationBarrier else { return }
-        let availability = researchController.actions.availability.first {
-            $0.id == activity.actionID
-        }
-        let presentationID = UUID()
-        guard researchController.actions.beginStatus(
-            target: target,
-            availability: availability,
-            activity: activity,
-            presentationID: presentationID
-        ) else { return }
-        researchController.requestPresentAction(
-            activity.actionID,
-            target: reference,
-            presentationID: presentationID
-        )
-    }
-
-    /// Routes a blocked file operation to the existing Action status surface.
-    /// The Run identity remains an internal lookup key; the researcher sees
-    /// the participating Note and the one executable recovery path.
-    func openResearchActionRecovery(runIDs: [UUID]) {
-        let requestedRunIDs = Set(runIDs)
-        let activities = researchController.records?.activities.filter {
-            requestedRunIDs.contains($0.runID)
-        } ?? []
-        guard let activity = ResearchActionActivityPresentation.make(
-            activities: activities
-        )?.primary else {
-            presentFeedback(
-                TriptychTransactionError.activeResearchActions(runIDs)
-                    .localizedDescription,
-                kind: .warning
-            )
-            return
-        }
-        if currentResearchActionTarget?.noteID == activity.targetNoteID {
-            openResearchActionStatus(activity)
-            return
-        }
-        guard let reference = workspaceCatalog?.notes.first(where: {
-            $0.reference.stableNoteID.flatMap(UUID.init(uuidString:))
-                == activity.targetNoteID
-        })?.reference else {
-            presentFeedback(
-                String(
-                    localized: "Open the participating Note, then choose its active Action to continue recovery.",
-                    table: "Localizable",
-                    bundle: .module
-                ),
-                kind: .warning
-            )
-            return
-        }
-        enqueueDocumentTransition(
-            preservingCurrentEditorState: false,
-            { [weak self] in
-                guard let self else { return }
-                try await self.activateWorkspaceReference(
-                    reference,
-                    tabActivation: .place(.replaceSelected)
-                )
-                guard let target = self.currentResearchActionTarget,
-                      target.noteID == activity.targetNoteID else {
-                    throw WindowNavigationError.noteUnavailable(
-                        reference.relativePath
-                    )
-                }
-                await self.researchController.actions.refreshAvailability(
-                    for: target
-                )
-            },
-            didSucceed: { [weak self] in
-                self?.openResearchActionStatus(activity)
-            }
-        )
-    }
-
-    func requestDiscussionPresentation(_ discussionID: UUID) {
-        let requestID = UUID()
-        discussionPresentationRequestID = requestID
-        requestedDiscussionID = nil
-        Task { @MainActor [weak self] in
-            await Task.yield()
-            guard let self,
-                  self.discussionPresentationRequestID == requestID else { return }
-            self.requestedDiscussionID = discussionID
-        }
-    }
-
-    func clearRequestedDiscussionPresentation() {
-        discussionPresentationRequestID = nil
-        requestedDiscussionID = nil
     }
 
     var hasDerivedRefreshFailure: Bool {
@@ -4839,76 +3683,12 @@ final class WindowModel: ObservableObject {
         researchController.bind(
             to: ResearchControllerCapabilities(
                 documents: capabilities.documents,
-                records: capabilities.research.records,
-                actions: capabilities.research.actions,
+                research: capabilities.research.research,
                 recoveryRecordsURL: capabilities.research.recoveryRecordsURL
             ),
             snapshot: snapshot
         )
-        researchController.actions.bind(ResearchActionClient(
-            availableActions: { target in
-                try await capabilities.research.actions.availableActions(for: target)
-            },
-            materialCandidates: { target, definition in
-                try await capabilities.research.actions.materialCandidates(
-                    for: target,
-                    actionID: definition.id
-                )
-            },
-            sourceAccess: { target in
-                try await capabilities.research.sourceAccess.sourceAccess(
-                    for: target
-                )
-            },
-            bindLocalSource: { target, url in
-                try await capabilities.research.sourceAccess.bindSourceAccess(
-                    ResearchSourceBindingRequest(
-                        target: target,
-                        selection: .localFile(url)
-                    )
-                )
-            },
-            prepare: { [weak self] request, resynthesisContext in
-                guard self != nil else {
-                    throw ScholiumApplicationError.researchStoreUnavailable(
-                        "No workspace is active."
-                    )
-                }
-                if let resynthesisContext {
-                    return try await capabilities.research.actions.prepareResynthesis(
-                        request,
-                        context: resynthesisContext
-                    )
-                }
-                return try await capabilities.research.actions.prepareAction(request)
-            },
-            prepareFollowUp: { request in
-                try await capabilities.research.actions.prepareFollowUp(request)
-            },
-            actionRun: { runID in
-                try await capabilities.research.actions.actionRun(id: runID)
-            },
-            handoff: { runID in
-                try await capabilities.research.actions.issueAgentHandoff(
-                    runID: runID,
-                    validity: 10 * 60
-                )
-            },
-            cancel: { runID in
-                try await capabilities.research.actions.cancelAction(runID: runID)
-            },
-            openActiveDiscussion: { [weak self] discussionID in
-                guard let self else { return }
-                self.presentationRouter.dismissSheet()
-                Task { @MainActor [weak self] in
-                    await Task.yield()
-                    self?.requestDiscussionPresentation(discussionID)
-                }
-            }
-        ))
-        reconcileResearchActionPresentation()
     }
-
     fileprivate func adoptWorkspaceActivation(_ activation: WorkspaceActivation) {
         guard let replacement = windowWorkspaceController.adopt(activation) else { return }
         PerformanceProbe.shared.markWarmLibraryWorkspaceReady()
@@ -6133,25 +4913,6 @@ final class WindowModel: ObservableObject {
                 freshness: freshness,
                 fingerprint: cached?.fingerprint
             )
-        case .record(let record):
-            guard let snapshot = try? await researchController.researchSnapshot(),
-                  snapshot.finishedResearchRecordProjectionIsComplete,
-                  let fingerprint = snapshot.finishedResearchRecordFingerprints[
-                    record.recordID
-                  ], let triptychID = workspaceAssignment?.id else {
-                return WindowSearchResultEvidence(
-                    freshness: nil,
-                    fingerprint: nil
-                )
-            }
-            let generation = RecordSearchGenerationID(
-                triptychID: triptychID,
-                sourceManifestHash: snapshot.finishedResearchRecordSourceManifestHash
-            )
-            return WindowSearchResultEvidence(
-                freshness: .record(generation),
-                fingerprint: fingerprint
-            )
         }
     }
 
@@ -6964,55 +5725,6 @@ final class WindowModel: ObservableObject {
         shellState.presentFeedback(message, kind: kind)
     }
 
-    #if DEBUG
-    func presentQAActionNotificationProof() {
-        guard Bundle.main.bundleIdentifier == "com.scholium.qa",
-              ProcessInfo.processInfo.arguments.contains(
-                  "--scholium-feedback-proofs"
-              ),
-              let triptychID = workspaceAssignment?.id else { return }
-
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            do {
-                let snapshot = try await researchController.researchSnapshot()
-                guard workspaceAssignment?.id == triptychID else { return }
-                let notifications = QAActionNotificationProof.notifications(
-                    triptychID: triptychID,
-                    arrivals: snapshot.resultArrivals
-                )
-                guard !notifications.isEmpty else {
-                    presentQAActionNotificationProofUnavailable()
-                    return
-                }
-                shellState.presentQAResearchActivityNotifications(notifications)
-            } catch {
-                guard workspaceAssignment?.id == triptychID else { return }
-                presentQAActionNotificationProofUnavailable()
-            }
-        }
-    }
-
-    private func dismissQAActionNotificationProof(
-        _ notification: ResearchActivityNotification
-    ) -> Bool {
-        shellState.dismissQAResearchActivityNotification(
-            runID: notification.runID
-        )
-    }
-
-    private func presentQAActionNotificationProofUnavailable() {
-        presentFeedback(
-            String(
-                localized: "QA Action notification proof is unavailable until the Triptych research projection is ready.",
-                table: "Localizable",
-                bundle: .module
-            ),
-            kind: .information
-        )
-    }
-    #endif
-
     /// Presents post-commit repair truth without turning a durable file
     /// operation into a retryable failure. Returns `true` when a warning was
     /// shown so callers do not immediately add a redundant confirmation.
@@ -7218,12 +5930,6 @@ final class WindowModel: ObservableObject {
             _ = windowWorkspaceController.recordRecovery(
                 for: WorkspaceRegistryError.vaultAccessUnavailable(path)
             )
-        }
-
-        if case .researchConfigurationInvalidated = event {
-            Task { [weak self] in
-                await self?.refreshResearchActionAvailability()
-            }
         }
 
         if case .inventoryChanged(let change) = event,

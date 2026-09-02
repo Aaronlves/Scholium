@@ -54,6 +54,7 @@ struct WindowWorkspaceCapabilities: Sendable {
     let libraryMutations: any LibraryMutationUseCases
     let discovery: any DiscoveryUseCases
     let research: WindowResearchCapabilities
+    let agentCollaboration: any AgentCollaborationUseCases
     let zoteroBindings: any ZoteroBindingUseCases
     let openingPresentationDidComplete: @Sendable () async -> Void
 }
@@ -63,9 +64,7 @@ struct WindowWorkspaceCapabilities: Sendable {
 /// This is an app composition value rather than a Contracts-owned mega-port.
 /// Feature controllers receive only the component protocols they consume.
 struct WindowResearchCapabilities: Sendable {
-    let records: any ResearchRecordUseCases
-    let actions: any ResearchActionUseCases
-    let sourceAccess: any ResearchSourceAccessUseCases
+    let research: any ResearchUseCases
     let recoveryRecordsURL: URL
 }
 
@@ -84,8 +83,8 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
     let applicationRuntime: WorkspaceRuntime
     let cssSnippetStore: CSSSnippetStore
     let zoteroBridge: ZoteroBridge
-    private(set) var localAgentBridge: LocalAgentBridgeServer?
-    private(set) var localAgentBridgeStartupFailure: LocalAgentBridgeError?
+    private(set) var appBridge: ScholiumAppBridgeServer?
+    private(set) var appBridgeStartupFailure: ScholiumAppBridgeError?
 
     @Published private(set) var workspaceSnapshots: [UUID: WorkspaceSnapshot] = [:]
     /// Latest accepted typed Application event per active Triptych. This is
@@ -123,33 +122,37 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         cssSnippetStore = CSSSnippetStore(operations: applicationRuntime.styles)
         zoteroBridge = ZoteroBridge(operations: applicationRuntime.zotero)
         do {
-            let bridgeContainerURL = try ScholiumPaths.agentBridgeContainerURL(
+            let bridgeContainerURL = try ScholiumPaths.appBridgeContainerURL(
                 debugFallbackURL: applicationSupportURL
             )
-            let router = LocalAgentBridgeRequestRouter(
+            let router = ScholiumAppBridgeRequestRouter(
                 runtime: runtime,
                 flushEditors: { [weak self] triptychID in
-                    guard let self else { throw LocalAgentBridgeError.unavailable }
+                    guard let self else { throw ScholiumAppBridgeError.unavailable }
                     try await self.flushEditors(in: triptychID)
+                },
+                openTriptychs: { [weak self] in
+                    guard let self else { return [] }
+                    return self.handles.values.map(\.assignment)
                 }
             )
-            localAgentBridge = try LocalAgentBridgeServer(
+            appBridge = try ScholiumAppBridgeServer(
                 applicationSupportURL: bridgeContainerURL
             ) { request in
-                try await router.handle(request)
+                await router.handle(request)
             }
-            localAgentBridgeStartupFailure = nil
-        } catch let error as LocalAgentBridgeError {
-            localAgentBridge = nil
-            localAgentBridgeStartupFailure = error
+            appBridgeStartupFailure = nil
+        } catch let error as ScholiumAppBridgeError {
+            appBridge = nil
+            appBridgeStartupFailure = error
             Self.publicationLogger.error(
-                "Local Agent bridge startup failed: \(error.localizedDescription, privacy: .public)"
+                "Scholium App bridge startup failed: \(error.localizedDescription, privacy: .public)"
             )
         } catch {
-            localAgentBridge = nil
-            localAgentBridgeStartupFailure = .systemCall("start", EIO)
+            appBridge = nil
+            appBridgeStartupFailure = .systemCall("start", EIO)
             Self.publicationLogger.error(
-                "Local Agent bridge startup failed with an unrecognized local error."
+                "Scholium App bridge startup failed with an unrecognized local error."
             )
         }
     }
@@ -179,7 +182,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
     }
 
     deinit {
-        let bridge = localAgentBridge
+        let bridge = appBridge
         let runtime = applicationRuntime
         Task {
             if let bridge {
@@ -192,10 +195,10 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
     }
 
     func shutdownApplicationRuntime() async {
-        if let localAgentBridge,
-           !(await localAgentBridge.stopAndWait()) {
+        if let appBridge,
+           !(await appBridge.stopAndWait()) {
             Self.publicationLogger.fault(
-                "Application runtime shutdown was deferred because the local Agent bridge handler did not stop."
+                "Application runtime shutdown was deferred because the App bridge handler did not stop."
             )
             return
         }
@@ -604,14 +607,14 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 },
                 saveTriptychSettings: { [self] id, settings, expectedRevision in
                     let handle = try await workspaceHandle(id: id)
-                    let outcome = try await handle.research.saveSettingsOutcome(
+                    let snapshot = try await handle.research.saveSettings(
                         settings,
                         expectedRevision: expectedRevision
                     )
                     return WorkspaceSettingsCommit(
                         triptychID: id,
-                        snapshot: outcome.committedValue,
-                        derivedRefreshWarning: outcome.derivedRefreshWarning
+                        snapshot: snapshot,
+                        derivedRefreshWarning: nil
                     )
                 },
                 portableContainerURL: { [self] url in
@@ -630,64 +633,6 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 refreshZoteroLibraryInfo: { [self] in
                     try await zoteroBridge.refreshLibraryInfo()
                 }
-            ),
-            researchGuidance: WorkspaceSettingsResearchGuidanceCapabilities(
-            researchSkillRegistrations: { [self] id in
-                try await workspaceHandle(id: id).research.researchSkillRegistrations()
-            },
-            saveResearchSkillRegistrations: { [self] id, document, revision in
-                try await workspaceHandle(id: id).research.saveResearchSkillRegistrations(
-                    document,
-                    expectedRevision: revision
-                )
-            },
-            academicActionProfiles: { [self] id in
-                try await workspaceHandle(id: id).research.academicActionProfiles()
-            },
-            saveAcademicActionProfiles: { [self] id, document, revision in
-                try await workspaceHandle(id: id).research.saveAcademicActionProfiles(
-                    document,
-                    expectedRevision: revision
-                )
-            },
-            researchSkillBinding: { [self] id, actionID in
-                try await workspaceHandle(id: id).research.researchSkillBinding(
-                    for: actionID
-                )
-            },
-            registerExternalResearchSkillFolder: {
-                [self] id, actionID, name, folderPath, revision in
-                try await workspaceHandle(id: id).research
-                    .registerExternalResearchSkillFolder(
-                    actionID: actionID,
-                    displayName: name,
-                    skillFolderPath: folderPath,
-                    expectedRegistrationRevision: revision
-                )
-            },
-            showResearchSkillFolder: { [self] id, actionID in
-                let access = try await workspaceHandle(id: id).research
-                    .researchSkillFolderAccess(for: actionID)
-                NSWorkspace.shared.activateFileViewerSelecting([access.url])
-            },
-            recoverMachineLocalSkillFolderLocators: { [self] id in
-                try await workspaceHandle(id: id).research
-                    .preserveInvalidMachineLocalSkillFolderLocatorsAndReset()
-            },
-            citationMethodStatus: { [self] workspaceID in
-                try await workspaceHandle(id: workspaceID).research.citationMethodStatus()
-            },
-            activateCitationMethod: { [self] workspaceID, selection, revision in
-                try await workspaceHandle(id: workspaceID).research.activateCitationMethod(
-                    selection: selection,
-                    expectedConfigurationRevision: revision
-                )
-            },
-            clearCitationMethod: { [self] workspaceID, revision in
-                try await workspaceHandle(id: workspaceID).research.clearCitationMethod(
-                    expectedConfigurationRevision: revision
-                )
-            }
             )
         )
     }
@@ -869,11 +814,10 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
             libraryMutations: handle.documents,
             discovery: handle.discovery,
             research: WindowResearchCapabilities(
-                records: research,
-                actions: research,
-                sourceAccess: research,
+                research: research,
                 recoveryRecordsURL: research.recoveryRecordsURL
             ),
+            agentCollaboration: handle.agentCollaboration,
             zoteroBindings: handle.zoteroBindings,
             openingPresentationDidComplete: {
                 await handle.openingPresentationDidComplete()

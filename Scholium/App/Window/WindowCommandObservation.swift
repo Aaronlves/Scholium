@@ -17,8 +17,7 @@ final class WindowCommandObservation: ObservableObject {
         discoveryController: DiscoveryController,
         documentController: DocumentController,
         documentNavigationHistoryController: DocumentNavigationHistoryController,
-        workspaceProjectionController: WindowWorkspaceProjectionController,
-        researchActionController: ResearchActionController
+        workspaceProjectionController: WindowWorkspaceProjectionController
     ) {
         func changes<Value>(
             _ publisher: Published<Value>.Publisher
@@ -60,13 +59,6 @@ final class WindowCommandObservation: ObservableObject {
             changes(documentController.$chromeProjection),
             changes(documentController.$noteIdentityByPath),
             changes(workspaceProjectionController.$state),
-            changes(researchActionController.$availability),
-            changes(researchActionController.$availabilityTarget),
-            changes(researchActionController.$isRefreshingAvailability),
-            changes(researchActionController.$availabilityError),
-            changes(researchActionController.$phase),
-            changes(researchActionController.$cancellationRecoveries),
-            changes(researchActionController.$pendingCancellationBarrierCount),
         ]
 
         // `@Published` sends before storing its new value. Deliver command

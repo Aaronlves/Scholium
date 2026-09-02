@@ -88,13 +88,11 @@ struct DocumentPathAndCapabilitiesTests {
             isManagedCritique: false
         )
         #expect(!capabilities.canEditSource)
-        #expect(!capabilities.canComment)
-        #expect(!capabilities.canUseResearchActions)
         #expect(!capabilities.isManagedCritique)
         #expect(capabilities.fileActions.isEmpty)
     }
 
-    @Test("Managed Critique is commentable but not editable, reviewable, duplicable, or agent-writable")
+    @Test("Managed Critique is not editable or duplicable")
     func critiqueBoundary() {
         let capabilities = DocumentCapabilities(
             role: .draftProject,
@@ -102,8 +100,6 @@ struct DocumentPathAndCapabilitiesTests {
             isManagedCritique: true
         )
         #expect(!capabilities.canEditSource)
-        #expect(capabilities.canComment)
-        #expect(!capabilities.canUseResearchActions)
         #expect(capabilities.isManagedCritique)
         #expect(!capabilities.allows(.duplicate))
         #expect(capabilities.allows(.moveToSystemTrash))
@@ -121,7 +117,6 @@ struct DocumentPathAndCapabilitiesTests {
             .move,
             .moveToSystemTrash,
         ])
-        #expect(capabilities.canComment)
     }
 
     @Test("Workspace snapshots publish the Application capability projection")
@@ -141,8 +136,6 @@ struct DocumentPathAndCapabilitiesTests {
         )
 
         #expect(snapshot.capabilities.isManagedCritique)
-        #expect(snapshot.capabilities.canComment)
         #expect(!snapshot.capabilities.canEditSource)
-        #expect(!snapshot.capabilities.canUseResearchActions)
     }
 }

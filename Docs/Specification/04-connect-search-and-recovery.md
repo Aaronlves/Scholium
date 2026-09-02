@@ -186,11 +186,10 @@ source, valid neighbor records, settings, identity state, or the complete
 `.scholium` directory.
 
 System-Trash recovery is a separate forward plan showing source items, known
-Finder destinations, receipts, and affected temporary Comments. When every
-move is proven, Retry performs only pending temporary cleanup. An unknown
-native outcome permits **Resolve** after researcher inspection; that releases
-the gate and removes only the Scholium plan. It never restores or erases source,
-and neither route reads or changes Research Record bytes.
+Finder destinations, and receipts. An unknown native outcome permits
+**Resolve** after researcher inspection; that releases the gate and removes
+only the Scholium plan. It never restores or erases source, and neither route
+reads or changes Research Record bytes.
 
 Watchers and sync observations are refresh evidence only. External absence or
 restoration passes through ordinary identity and exact-byte reconciliation and

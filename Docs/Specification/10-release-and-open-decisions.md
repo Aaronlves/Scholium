@@ -28,7 +28,7 @@ state the accepted profile; an unaccepted optional profile is labelled
 - Bootstrap, registration/restoration, independent windows, and storage failure;
 - create/open/read/edit/autosave, Review/Edit/Source, Find/Replace, Search,
   Metadata/About, Settle, Library, tabs, and cross-vault navigation;
-- formatting, Comments, Callouts, Wikilinks, Analysis references, image
+- formatting, Callouts, Wikilinks, Analysis references, image
   Import/Index, statistics, spelling, and exact YAML/source fidelity;
 - native split behavior, focus, keyboard, light/dark, enlarged text, minimum
   supported width, and core VoiceOver; and
@@ -278,7 +278,7 @@ Only current questions that can still change the target belong here:
   §20's representative adaptation and human visual-acceptance set.
 - define the replacement Research Record storage, continuing-question/step
   structure, creation and editing authority, Search fields, and activation of
-  the retained Records window before enabling Record production.
+  its interface before enabling Record production.
 - define a lightweight, nonauthorizing Handoff and its complete-copy fallback
   before Scholium offers a route from a Note or selection into an external
   Agent conversation.

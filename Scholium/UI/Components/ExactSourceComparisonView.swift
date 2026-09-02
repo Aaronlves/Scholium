@@ -133,7 +133,7 @@ enum ExactSourceComparisonPresentation {
 }
 
 /// Pure unified-diff presentation shared by current editor conflicts and
-/// Research Record review. Input and consequential actions remain with their
+/// Source comparison review. Input and consequential actions remain with their
 /// respective owners.
 struct ExactSourceComparisonView: View {
     let comparison: ExactSourceComparison

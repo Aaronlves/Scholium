@@ -154,7 +154,7 @@ common_arguments=(
 
 if [[ "${profile}" == "smoke" ]]; then
   test_arguments=(
-    "-only-testing:ScholiumUITests/ScholiumUITests/testCanonicalAcceptanceJourney"
+    "-only-testing:ScholiumUITests/ScholiumUITests/testFixtureLaunchWithoutExplicitSessionIDUsesOneWindowSession"
     "${test_arguments[@]}"
   )
   DEVELOPER_DIR="${DEVELOPER_DIR}" xcodebuild "${common_arguments[@]}" test "${test_arguments[@]}"

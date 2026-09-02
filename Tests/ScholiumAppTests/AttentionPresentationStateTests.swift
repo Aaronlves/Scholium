@@ -71,7 +71,7 @@ struct AttentionPresentationStateTests {
         #expect(counts.count(for: .output) == nil)
     }
 
-    @Test("The three visual groups cover each existing derived kind exactly once")
+    @Test("The visual groups cover each existing derived kind exactly once")
     func groupsAreCompleteAndExclusive() {
         let grouped = AttentionIssueGroup.allCases.flatMap(\.kinds)
 
@@ -82,9 +82,6 @@ struct AttentionPresentationStateTests {
         ]))
         #expect(Set(AttentionIssueGroup.structureAndConnections.kinds) == Set([
             .possibleOrphan, .brokenConnection, .ambiguousConnection,
-        ]))
-        #expect(Set(AttentionIssueGroup.revisionAndResearch.kinds) == Set([
-            .synthesisMaterialChanged,
         ]))
     }
 
@@ -177,7 +174,7 @@ struct AttentionPresentationStateTests {
             AttentionNotificationCopy.emptyDescription(
                 noteScoped: false,
                 locale: locale
-            ) == "此范围内没有需要关注的 Action 活动、暂定提醒或可见派生问题。"
+            ) == "当前范围内没有需要关注的暂定提醒或可见派生问题。"
         )
         #expect(
             AttentionNotificationCopy.refreshing(locale: locale)
@@ -213,10 +210,6 @@ struct AttentionPresentationStateTests {
             ("Missing heading", "标题缺失"),
             ("Missing block", "块缺失"),
             ("Invalid relationship endpoint", "关联端点无效"),
-            (
-                "A selected Analysis changed after Synthesize",
-                "某篇已选分析在综合后发生了更改"
-            ),
         ]
         for (message, expected) in issueMessages {
             let item = AttentionQueueItem(
@@ -248,122 +241,6 @@ struct AttentionPresentationStateTests {
         state.reconcileVisibleItems([])
         #expect(state.selectedItemID == nil)
         #expect(state.filterFocusRequestGeneration == focusGeneration + 1)
-    }
-
-    @Test("Action activities obey exact Note scope, affected-note scope, kind, and query filters")
-    func activityNotificationScopeAndFilter() {
-        let triptychID = UUID()
-        let noteA = UUID()
-        let noteB = UUID()
-        let targetA = ResearchActivityNotification(
-            triptychID: triptychID,
-            runID: UUID(),
-            actionID: .analyze,
-            targetNoteID: noteA,
-            targetTitle: "Agency Analysis",
-            state: .running,
-            activity: nil,
-            result: nil,
-            affectedNotes: [],
-            updatedAt: Date(timeIntervalSince1970: 100)
-        )
-        let targetB = ResearchActivityNotification(
-            triptychID: triptychID,
-            runID: UUID(),
-            actionID: .critique,
-            targetNoteID: noteB,
-            targetTitle: "Value Draft",
-            state: .needsAttention,
-            activity: nil,
-            result: nil,
-            affectedNotes: [],
-            updatedAt: Date(timeIntervalSince1970: 200)
-        )
-        let affectsA = ResearchActivityNotification(
-            triptychID: triptychID,
-            runID: UUID(),
-            actionID: .synthesize,
-            targetNoteID: noteB,
-            targetTitle: "Cross-note Synthesis",
-            state: .resultReady,
-            activity: nil,
-            result: nil,
-            affectedNotes: [
-                WorkspaceResearchAffectedNote(noteID: noteA, title: "Agency Topic")
-            ],
-            updatedAt: Date(timeIntervalSince1970: 300)
-        )
-        let notifications = [targetA, targetB, affectsA]
-
-        #expect(ResearchActivityNotificationQuery.apply(
-            notifications: notifications,
-            noteID: nil,
-            filter: AttentionQueueFilter(query: "综合"),
-            locale: Locale(identifier: "zh-Hans")
-        ) == [affectsA])
-
-        #expect(ResearchActivityNotificationQuery.apply(
-            notifications: notifications,
-            noteID: nil,
-            filter: AttentionQueueFilter()
-        ).map(\.runID) == notifications.map(\.runID))
-        #expect(ResearchActivityNotificationQuery.apply(
-            notifications: notifications,
-            noteID: noteA,
-            filter: AttentionQueueFilter()
-        ).map(\.runID) == [targetA.runID, affectsA.runID])
-        #expect(ResearchActivityNotificationQuery.apply(
-            notifications: notifications,
-            noteID: noteB,
-            filter: AttentionQueueFilter(query: "needs attention")
-        ).map(\.runID) == [targetB.runID])
-        #expect(ResearchActivityNotificationQuery.apply(
-            notifications: notifications,
-            noteID: noteB,
-            filter: AttentionQueueFilter(query: "需要关注"),
-            locale: Locale(identifier: "zh-Hans")
-        ).map(\.runID) == [targetB.runID])
-        #expect(ResearchActivityNotificationQuery.apply(
-            notifications: notifications,
-            noteID: noteA,
-            filter: AttentionQueueFilter(query: "agency topic")
-        ).map(\.runID) == [affectsA.runID])
-        #expect(!AttentionNotificationFilter.issue(.possibleOrphan).showsActivities)
-        #expect(AttentionNotificationFilter.activities.showsActivities)
-    }
-
-    @Test("Inspector Note paths resolve only an exact stable catalog identity")
-    func activityNotificationStableNoteResolution() {
-        let stableNoteID = UUID()
-        let vaultID = UUID()
-        let scopedPath = VaultQualifiedNoteID(
-            vaultID: vaultID,
-            relativePath: "Topics/Agency.md"
-        )
-        let catalogNote = WorkspaceCatalogNote(
-            reference: VaultNoteReference(
-                vaultID: vaultID,
-                vaultName: "Topics",
-                vaultRole: .topicKnowledge,
-                relativePath: scopedPath.relativePath,
-                stableNoteID: stableNoteID.uuidString.lowercased()
-            ),
-            title: "Agency",
-            fingerprint: DocumentFingerprint(content: "agency"),
-            validationWarnings: []
-        )
-
-        #expect(ResearchActivityNotificationQuery.stableNoteID(
-            for: scopedPath,
-            in: [catalogNote]
-        ) == stableNoteID)
-        #expect(ResearchActivityNotificationQuery.stableNoteID(
-            for: VaultQualifiedNoteID(
-                vaultID: vaultID,
-                relativePath: "Topics/Other.md"
-            ),
-            in: [catalogNote]
-        ) == nil)
     }
 
     private func makeAssignment() -> TriptychAssignment {

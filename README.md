@@ -20,10 +20,10 @@ interface object. A field of inquiry takes shape as a **Triptych**:
 
 Markdown remains ordinary, inspectable text in folders selected by the
 researcher. Reading, writing, Search, Connections, review, and recovery do not
-depend on an agent. When an external agent is invited, Scholium records the
-Run, exact targets, revisions, operations, outcomes, and scholarly result so
-assistance remains attributable, reviewable, and recoverable without repeated
-permission prompts.
+depend on an Agent. When an external Agent is invited, the conversation remains
+in its MCP host. Scholium exposes current retrieval and exact Note mutations
+through the local MCP adapter, and records only machine-local Agent Change
+evidence for confirmed mutations.
 
 The Core App Beta verdict covers the local manual research environment. External
 Agent collaboration and the independently installed CLI remain a separate
@@ -33,26 +33,22 @@ Preview until their own acceptance profile passes.
 
 Scholium is a scholarly knowledge base and research workbench, not a chat
 wrapper or a standalone Agent-memory product. Across Agents and sessions,
-research continuity comes from the same inspectable documents, sources,
-Research Records, methods, and explicit researcher judgments—not from hidden
-model state or a parallel private database. This knowledge base can therefore
-serve as an Agent's external long-term research memory, but Agent inheritance
-is a way of using Scholium rather than a second product or content owner.
+research continuity comes from the same inspectable documents, sources, and
+explicit researcher judgments—not from hidden model state or a parallel
+private database.
 
 The researcher is a constitutive participant in the knowledge base, not merely
 the reviewer of memories chosen by a model. Exact writing, declared scope and
-limitations, Settle, attributed Discussion, Critique dispositions, Researcher
-Evaluation, and deliberate next steps retain their own narrow meanings. A
-later Agent may rely only on what the relevant owner, actor, revision, scope,
-and action semantics actually establish. Opening, dwelling, silence, or
-permission to write does not become acceptance, importance, or belief.
+limitations, Settle, Critique dispositions, and deliberate next steps retain
+their own narrow meanings. Opening, reading, silence, or permission to write
+does not become acceptance, importance, or belief.
 
 Source claims, interpretations, Agent reconstructions, researcher commitments,
 objections, and later revisions remain distinguishable rather than being
 flattened into unattributed facts or one confidence score. Derived Search
 indexes, graph snapshots, caches, rankings, and machine-generated summaries
 are disposable projections. They may improve discovery and context assembly,
-but they never replace exact Markdown, sources, Research Records, or explicit
+but they never replace exact Markdown, sources, or explicit
 researcher judgment as authority.
 
 The manual core works without Obsidian, Zotero, or Agents. Scholium is not
@@ -82,7 +78,7 @@ Task-specific operational references remain separate:
 
 - [Advanced CSS target boundary](Docs/Specification/07-document-and-research-interface.md#1841-advanced-css-boundary)
 - [First-party Zotero MCP transport](Docs/ZOTERO_MCP.md)
-- [Research method resources](ScholiumCore/Resources/Skills/README.md)
+- [Scholium Core Protocol](ScholiumCore/Resources/Skills/Scholium%20System%20Skills/scholium-core-protocol/SKILL.md)
 
 ## Current implementation
 
@@ -93,67 +89,29 @@ watchers, and filesystem I/O live in `ScholiumCore`; one headless
 delivery target imports Core.
 
 The current product supports independent Triptychs and windows, exact-source
-Markdown editing, Search and Connections, note/folder file operations, external-edit
-conflicts, transaction-only interrupted-save recovery, Settle, unified Discussion,
-Critique, and Research Actions with researcher-owned, externally editable
-Action Skill folders and academic Profiles. Search v9 gives the app, CLI, Research
-Records, and authenticated Research Context one typed retrieval owner for
-lexical, canonical structured Metadata, explicit direct-relation, authored-summary, and Record
-queries without turning the index into research authority.
+Markdown editing, Search and Connections, Note and Folder file operations,
+external-edit conflicts, interrupted-save recovery, Settle, Critique, Zotero,
+and a fixed local MCP collaboration surface. Search remains one disposable
+Note-only projection for the App, CLI, and MCP adapter.
 
-An invited external Agent can pair locally with one researcher-created Run,
-receive bounded research context, register additional relevant targets in the
-Run Activity Ledger without another approval, perform revision-checked direct
-edits, submit one result, leave a portable Research Record, and continue through
-a separate Run. Process-bound Sessions provide attribution; exact transaction
-leases, conflicts, recovery, and one Record-owned Researcher Evaluation preserve
-researcher control. For a new Analysis, the standalone CLI first asks Scholium for the
-current Analyses vault, applicable managed fields, optional Settings
-preferences, the fixed `summary`/`keywords` scaffold, root-managed destination,
-and path/identity/source recovery state; only
-a ready preflight can start consequential creation. Analyze Records may carry
-Literature Recommendations. Selected local or Zotero source material remains a
-separately validated evidence channel, and the optional first-party Zotero MCP
-transport remains available. Researcher-selected subfolders use a researcher-
-created existing Analysis target rather than an Agent path assertion.
-For a researcher-selected local source, authenticated Research Context delivers
-bounded exact binary pages against the Run-frozen source fingerprint without
-exposing its path, bookmark, or general filesystem access. After a confirmed
-Agent write, reload and the supplied exact reread advance to that committed
-revision while later external drift still fails closed.
+The installed `scholium` executable exposes `scholium mcp serve`. It connects
+an external MCP host only to the currently running Scholium App; it does not
+launch the App, open a headless workspace, or read Triptych files directly.
+The surface is exactly workspace status, Note search/read/link retrieval, and
+explicit create/update/system-Trash mutations. Stable Note identities,
+fingerprint compare-and-swap, editor flush, atomic write/readback, and derived
+coherence remain App-owned.
 
-These paths establish current engineering reachability, not that long-term
-Agent inheritance or philosophical research quality has already been accepted.
-Assistive-technology review, clean-account App/CLI acceptance, and external-
-Agent acceptance remain explicit evidence gates. The six bundled Method templates have
-bounded independent baselines; later review is triggered only by a new or
-materially changed template. Sustained research use and comparative Method
-evaluation remain nonblocking product research and never certify general
-philosophical adequacy.
+Every confirmed MCP mutation produces one machine-local Agent Change with exact
+revision evidence. Agent Changes support comparison and eligible direct Undo
+for updates; they are not chat, permission, review, acceptance, Settlement, or
+Research Records. Replacement Research Record and Handoff contracts remain
+unavailable until their separate specification decision.
 
-Library uses one native AppKit folder-and-note outline. It creates notes and
-folders and retains menu, keyboard, accessibility, and drag alternatives for
-organization. Note and Folder deletion use the macOS system Trash; Finder owns
-restoration, while finished Research Records remain as historical provenance
-until separately deleted from Research Records. A durably created, moved, or
-absent source is published immediately in its owning window while disposable
-Search, graph, and diagnostic projections refresh in the background.
-
-Each Note has a vault-qualified stable identity distinct from its exact source
-fingerprint. Renames and folder moves can therefore preserve editor, tab, and
-research identity while every mutation still revalidates the current source
-revision and destination before commit.
-
-The public app, CLI, delivery contracts, and records use Action identity.
-Protected Local Execution remains an internal containment, completion,
-conflict, and recovery mechanism. Its stable authority envelope is independent
-of the evolving private payload, so payload changes do not make unrelated Notes
-undeletable. Unsupported payloads remain unparsed and nonauthorizing. If an old
-file lacks a valid envelope, or a selected Note participates in a valid envelope
-whose payload is unreadable, an explicit confirmation can archive its exact
-bytes inside protected local storage and disable that old Run. Valid envelopes
-keep this recovery Note-scoped; opaque files remain store-scoped. There is no
-legacy decoder, migration, or compatibility command.
+The release bundles only the thin Scholium Core Protocol Skill. Researcher-owned
+method Skills live in the external Agent host; Scholium does not register,
+inspect, or execute them. These paths establish engineering reachability, not
+human acceptance or general philosophical adequacy.
 
 See [Implementation Status](Docs/IMPLEMENTATION_STATUS.md) for exact evidence
 and unresolved human, accessibility, performance, packaging, and release work.
@@ -316,86 +274,43 @@ Triptych** for a registered Triptych in a separate window, and **File → New
 Window** for another independent window on the focused Triptych. Two
 Triptychs may not share the same Works-side control directory.
 
-## Scholium CLI
+## Scholium MCP setup
 
-During first-launch Agent preparation, or later under **Settings → Research
-Guidance → External Tools & Citations → Scholium CLI**, choose **Copy CLI
-Installation Instructions** and give that prompt to the external Agent. The
-prompt authorizes only the official CLI release archive and only the executable
-and adjacent resource bundle under `~/.local/bin`; it forbids `sudo`, PATH or
-profile edits, alternative downloads, and quarantine mutation. The App does
-not inspect, execute, install, update, remove, or report status for the CLI.
-The copied instruction downloads only the
-[official independent CLI archive](https://github.com/Aaronlves/Scholium/releases/latest/download/Scholium-CLI-macos.zip).
+Open **Settings → Research Guidance → Agent Integration** to inspect App,
+bridge, and CLI availability, copy a host-specific setup command, or reveal the
+bundled Core Protocol Skill. Scholium copies commands but never edits host
+configuration or claims installation succeeded.
 
-For a source checkout:
+For a source checkout, build or install the CLI and register its absolute path:
 
 ```bash
 Tools/Scripts/install-cli.sh
-export PATH="$PWD/.build/cli-prefix/bin:$PATH"
-scholium version --format json
-scholium doctor --format json
-scholium help agent
-scholium help agent start
+codex mcp add scholium -- "$PWD/.build/cli-prefix/bin/scholium" mcp serve
+claude mcp add scholium --scope user -- "$PWD/.build/cli-prefix/bin/scholium" mcp serve
 ```
 
-The source-checkout installer keeps the development executable and its resource
-bundle under `.build/cli-prefix`. The verified `scholium update` commands are
-for the separately installed release pair under `~/.local/bin`.
+The App must already be running with the intended Triptych open. The stdio
+helper uses a current-user-authenticated local bridge and fails explicitly when
+the App, bridge, selected Triptych, or current state is unavailable. It never
+falls back to direct filesystem or headless workspace access.
 
-The CLI shares Application capabilities for registered Triptychs, Search,
-links and graph traces, workspace catalog and Attention, exact reads,
-Discussion replies, resumable Actions with structured Analyze recommendations,
-explicit `record list --note <stable-note-uuid>` and `record read <record-uuid>`
-retrieval, and revision-checked Note operations. Record retrieval returns the
-portable Record owner and its exact fingerprint without creating a Note
-dossier. Existing-note mutations require the current SHA-256 returned by
-`scholium read --format json`; text-mode `scholium read` emits the exact source
-bytes without adding a final newline.
-
-`Tools/Scripts/package-app.sh` emits the independent
-`Scholium-CLI-macos.zip`, whose provenance reports the verified architecture.
-Its `install.sh` performs the same
-user-local first installation used by the copied Agent instructions without
-changing shell or macOS security configuration. It resumes only an exact
-partial copy from the same package and refuses to replace a complete install;
-use `scholium update` for replacement. Installer and updater share one lock,
-so concurrent attempts cannot publish a mixed executable/resource pair.
-An installed CLI can explicitly check the official release with
-`scholium update --check` or install a newer verified release with
-`scholium update`; self-update does not run in the background or edit PATH and
-leaves the existing executable/bundle unchanged when verification fails.
-
-The installed `scholium agent` commands let an external Agent start a Run for a
-selected Triptych or pair with one researcher-created Run, obtain its typed
-context, record document activity, perform revision-checked mutations, submit
-one result, continue research, and end
-the Run through a mutually authenticated loopback bridge. `agent start` stores the protected
-Session credential locally and needs no Pairing Code. Pairing the GUI-created
-route still reads the one-time code through standard input;
-the App alone creates the bridge's process-generation secret and the Agent uses
-it through the installed CLI rather than minting a key. Scholium does not
-launch or supervise the Agent. Action Skill folders are researcher-owned:
-Settings assigns or reveals them, while Scholium never reads or edits their
-contents. The project-discovered
-[Core Protocol](ScholiumCore/Resources/Skills/Scholium%20System%20Skills/scholium-core-protocol/SKILL.md)
-governs entry and is identified again by authenticated context for the Agent
-Run workflow; installed command help owns current CLI syntax.
-See [Zotero MCP](Docs/ZOTERO_MCP.md) for the optional first-party Zotero
-transport.
+The first release publishes exactly seven tools:
+`scholium_workspace_status`, `scholium_search_notes`,
+`scholium_read_note`, `scholium_list_links`,
+`scholium_create_note`, `scholium_update_note`, and
+`scholium_trash_note`. MCP Resources, Prompts, Agent Sessions, Research
+Actions, Handoff, and Research Records are not exposed.
 
 ## Storage and safety
 
 Authoritative research remains in the selected Markdown folders. The small
-portable `.scholium/` control structure beside Works contains only the bounded
-Triptych manifest, portable settings and Skills, current researcher-owned
-state, active Discussion, and whitelisted Research Records defined by the
-specification.
+portable `.scholium/` control structure beside Works contains the bounded
+Triptych manifest, portable settings, stable identities, Metadata, Settlement,
+Critique, and recovery state defined by the specification.
 
-Bookmarks, absolute paths, window sessions, indexes, saved queries, protected
-execution, recovery, transport state, Agent Sessions, the local bridge
-namespace, assembled instructions, and unsupported pre-production bytes remain
-machine-local under:
+Bookmarks, absolute paths, window sessions, indexes, saved queries, recovery,
+local bridge authentication, exact Agent Change evidence, and unsupported
+pre-production bytes remain machine-local under:
 
 ```text
 ~/Library/Application Support/Scholium/State-v1/

@@ -395,20 +395,14 @@ handoff anchor, and delayed restoration requires the same document or Review-loa
 generation. It never depends only on throttle-prone animation frames.
 
 Markdown owns written annotation, including semantic Callouts; Scholium has no
-parallel store or margin widget. Review exposes the transient Comment field;
-Edit exposes Markdown formatting and its source-owned Comment wrapper; Source
-exposes neither. Return saves, Shift-Return inserts a line, and Escape cancels.
-`ScholiumSystemSymbol` is the icon catalog; `ScholiumWebSymbolAssets` injects
-its data-URI masks into the WebKit surfaces. Saving appends a Discussion
-statement with current-revision lines, the bounded rendered selection, and no
-surrounding context. `NoteContentView` emits matching-fingerprint anchors by
-Discussion and range. `review-comment-anchors` maps DOM; buttons open
-statements and return to their line. Updates are dynamic; mismatches emit no
-anchor. Finished Records use selected text and omit the unstable line locator.
+parallel comment store, margin widget, or passage-discussion anchor. Review is
+read-only. Edit exposes Markdown formatting and source-owned constructs;
+Source exposes exact text. `ScholiumSystemSymbol` is the icon catalog, and
+`ScholiumWebSymbolAssets` injects its data-URI masks into WebKit surfaces.
 
-Transient surfaces do no whole-Note work. Review extracts at most a 2,000-unit
-excerpt and two 80-unit contexts from native Range boundaries. Context serves
-only transient range resolution and is discarded before persistence. Edit caches document,
+Transient surfaces do no whole-Note work. Selection observation reports only
+the bounded information needed for current document statistics and navigation;
+it creates no separately persisted research object. Edit caches document,
 selection, and Text Style;
 equivalent updates write no DOM, while geometry changes still remeasure. One
 keyed CodeMirror measure replaces earlier requests; a 50 ms same-path watchdog

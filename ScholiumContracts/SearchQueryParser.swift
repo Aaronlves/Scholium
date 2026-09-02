@@ -2,7 +2,6 @@ import Foundation
 
 public enum SearchProvider: String, Codable, CaseIterable, Hashable, Sendable {
     case note
-    case record
 }
 
 public enum SearchLexicalField: String, Codable, CaseIterable, Hashable, Sendable {
@@ -21,14 +20,6 @@ public enum SearchLexicalField: String, Codable, CaseIterable, Hashable, Sendabl
 public enum SearchStructuredField: String, Codable, CaseIterable, Hashable, Sendable {
     case callout
     case has
-}
-
-public enum SearchRecordField: String, Codable, CaseIterable, Hashable, Sendable {
-    case note
-    case action
-    case skill
-    case participant
-    case date
 }
 
 public enum SearchRelationDirection: String, Codable, CaseIterable, Hashable, Sendable {
@@ -156,31 +147,11 @@ public struct SearchRelationQuery: Codable, Hashable, Sendable {
     }
 }
 
-public struct SearchRecordClause: Codable, Hashable, Sendable {
-    public let field: SearchRecordField?
-    public let value: SearchLexicalValue
-    public let excluded: Bool
-    public let sourceRange: Range<Int>
-
-    public init(
-        field: SearchRecordField?,
-        value: SearchLexicalValue,
-        excluded: Bool,
-        sourceRange: Range<Int>
-    ) {
-        self.field = field
-        self.value = value
-        self.excluded = excluded
-        self.sourceRange = sourceRange
-    }
-}
-
 public enum SearchClause: Codable, Hashable, Sendable {
     case lexical(SearchLexicalClause)
     case structured(SearchStructuredClause)
     case property(SearchPropertyClause)
     case relation(SearchRelationQuery)
-    case record(SearchRecordClause)
 }
 
 public enum SearchExplanationOperator: String, Codable, Hashable, Sendable {
@@ -196,7 +167,6 @@ public enum SearchExplanationNormalization: String, Codable, Hashable, Sendable 
 
 public enum SearchExplanationOrdering: String, Codable, Hashable, Sendable {
     case noteExactIdentityThenBM25ThenTitleRolePath = "note_exact_identity_then_bm25_then_title_role_path"
-    case recordFinishedAtThenUUID = "record_finished_at_then_uuid"
 }
 
 public enum SearchExplanationLimitation: String, Codable, Hashable, Sendable {
@@ -204,7 +174,6 @@ public enum SearchExplanationLimitation: String, Codable, Hashable, Sendable {
     case retrievalLeadNotEvidence = "retrieval_lead_not_evidence"
     case noCrossProviderRanking = "no_cross_provider_ranking"
     case noteRelationsDirectOnly = "note_relations_direct_only"
-    case recordNoCrossObjectRelevance = "record_no_cross_object_relevance"
 }
 
 public enum SearchExplanationClauseKind: Codable, Hashable, Sendable {
@@ -212,7 +181,6 @@ public enum SearchExplanationClauseKind: Codable, Hashable, Sendable {
     case structured(SearchStructuredField, String, Bool)
     case property(String, String?)
     case relation(SearchRelationDirection, String, SearchRelation, Bool)
-    case record(SearchRecordField?, String, SearchLexicalMatchKind, Bool)
 }
 
 public struct SearchExplanationClause: Codable, Hashable, Sendable {
@@ -248,33 +216,22 @@ public struct SearchExplanation: Codable, Hashable, Sendable {
         self.operator = `operator`
         self.clauses = clauses
         self.normalization = Self.normalization(for: provider)
-        self.ordering = switch provider {
-        case .note: .noteExactIdentityThenBM25ThenTitleRolePath
-        case .record: .recordFinishedAtThenUUID
-        }
-        self.limitations = switch provider {
-        case .note:
-            [.authorizedScopeOnly, .retrievalLeadNotEvidence, .noCrossProviderRanking,
-             .noteRelationsDirectOnly]
-        case .record:
-            [.authorizedScopeOnly, .retrievalLeadNotEvidence, .noCrossProviderRanking,
-             .recordNoCrossObjectRelevance]
-        }
+        self.ordering = .noteExactIdentityThenBM25ThenTitleRolePath
+        self.limitations = [
+            .authorizedScopeOnly,
+            .retrievalLeadNotEvidence,
+            .noCrossProviderRanking,
+            .noteRelationsDirectOnly,
+        ]
     }
 
     private static func normalization(
         for provider: SearchProvider
     ) -> [SearchExplanationNormalization] {
-        switch provider {
-        case .note:
-            [.canonicalUnicodeCaseWhitespace,
-             .lexicalUnicodeCaseDiacriticWhitespace,
-             .cjkCharacterAndOverlappingBigramProjection,
-             .caseSensitiveTopLevelPropertyKey]
-        case .record:
-            [.canonicalUnicodeCaseWhitespace,
-             .lexicalUnicodeCaseDiacriticWhitespace]
-        }
+        [.canonicalUnicodeCaseWhitespace,
+         .lexicalUnicodeCaseDiacriticWhitespace,
+         .cjkCharacterAndOverlappingBigramProjection,
+         .caseSensitiveTopLevelPropertyKey]
     }
 }
 
@@ -307,13 +264,6 @@ public struct SearchQueryAST: Codable, Hashable, Sendable {
         positiveLexicalClauses.first
     }
 
-    public var recordClauses: [SearchRecordClause] {
-        clauses.compactMap {
-            guard case .record(let clause) = $0 else { return nil }
-            return clause
-        }
-    }
-
     public var relationQuery: SearchRelationQuery? {
         clauses.compactMap {
             guard case .relation(let query) = $0 else { return nil }
@@ -332,12 +282,8 @@ public struct SearchQueryAST: Codable, Hashable, Sendable {
         guard !clauses.isEmpty else { return providerWasExplicit }
         return clauses.allSatisfy { clause in
             switch clause {
-            case .structured, .property, .relation:
-                true
-            case .record(let value):
-                value.field != nil
-            case .lexical:
-                false
+            case .structured, .property, .relation: true
+            case .lexical: false
             }
         }
     }
@@ -376,16 +322,6 @@ public struct SearchQueryAST: Codable, Hashable, Sendable {
                             value.noteIdentity,
                             value.relation,
                             value.relation.isSymmetric
-                        ),
-                        sourceRange: value.sourceRange
-                    )
-                case .record(let value):
-                    SearchExplanationClause(
-                        kind: .record(
-                            value.field,
-                            value.value.text,
-                            value.value.matchKind,
-                            value.excluded
                         ),
                         sourceRange: value.sourceRange
                     )
@@ -503,38 +439,28 @@ public enum SearchQueryParser {
         var relationAnchors: [RelationAnchor] = []
         var relationValues: [RelationValue] = []
         for token in tokenized.tokens where !isKindToken(token) {
-            switch providerResolution.provider {
-            case .note:
-                switch parseNote(token) {
-                case .clause(let clause): clauses.append(clause)
-                case .anchor(let anchor): relationAnchors.append(anchor)
-                case .relation(let relation): relationValues.append(relation)
-                case .diagnostic(let diagnostic): diagnostics.append(diagnostic)
-                }
-            case .record:
-                switch parseRecord(token) {
-                case .success(let clause): clauses.append(.record(clause))
-                case .failure(let diagnostic): diagnostics.append(diagnostic)
-                }
+            switch parseNote(token) {
+            case .clause(let clause): clauses.append(clause)
+            case .anchor(let anchor): relationAnchors.append(anchor)
+            case .relation(let relation): relationValues.append(relation)
+            case .diagnostic(let diagnostic): diagnostics.append(diagnostic)
             }
         }
 
-        if providerResolution.provider == .note {
-            diagnostics.append(contentsOf: relationDiagnostics(
-                anchors: relationAnchors,
-                relations: relationValues
-            ))
-            if diagnostics.isEmpty,
-               let anchor = relationAnchors.first,
-               let relation = relationValues.first {
-                clauses.append(.relation(SearchRelationQuery(
-                    direction: anchor.direction,
-                    noteIdentity: anchor.identity,
-                    relation: relation.relation,
-                    sourceRange: min(anchor.sourceRange.lowerBound, relation.sourceRange.lowerBound)
-                        ..< max(anchor.sourceRange.upperBound, relation.sourceRange.upperBound)
-                )))
-            }
+        diagnostics.append(contentsOf: relationDiagnostics(
+            anchors: relationAnchors,
+            relations: relationValues
+        ))
+        if diagnostics.isEmpty,
+           let anchor = relationAnchors.first,
+           let relation = relationValues.first {
+            clauses.append(.relation(SearchRelationQuery(
+                direction: anchor.direction,
+                noteIdentity: anchor.identity,
+                relation: relation.relation,
+                sourceRange: min(anchor.sourceRange.lowerBound, relation.sourceRange.lowerBound)
+                    ..< max(anchor.sourceRange.upperBound, relation.sourceRange.upperBound)
+            )))
         }
         guard diagnostics.isEmpty else {
             return SearchQueryParseResult(
@@ -548,14 +474,12 @@ public enum SearchQueryParser {
         let hasPositiveUnfielded = clauses.contains { clause in
             switch clause {
             case .lexical(let value): !value.excluded
-            case .record(let value): value.field == nil && !value.excluded
             case .structured, .property, .relation: false
             }
         }
         let hasFilter = clauses.contains { clause in
             switch clause {
             case .structured, .property, .relation: true
-            case .record(let value): value.field != nil
             case .lexical: false
             }
         }
@@ -563,7 +487,6 @@ public enum SearchQueryParser {
            clauses.allSatisfy({ clause in
                switch clause {
                case .lexical(let value): value.excluded
-               case .record(let value): value.field == nil && value.excluded
                case .structured, .property, .relation: false
                }
            }) {
@@ -618,7 +541,7 @@ public enum SearchQueryParser {
         guard !split.value.isEmpty else {
             return (.note, true, [diagnostic(
                 .missingFieldValue,
-                "The kind field requires note or record.",
+                "The kind field requires note.",
                 token
             )])
         }
@@ -631,7 +554,7 @@ public enum SearchQueryParser {
               let provider = SearchProvider(rawValue: decoded.text.lowercased()) else {
             return (.note, true, [diagnostic(
                 .unknownStructuredValue,
-                "kind: accepts only note or record.",
+                "kind: accepts only note.",
                 token
             )])
         }
@@ -676,9 +599,6 @@ public enum SearchQueryParser {
                 "The \(field): field is known but is not supported by the current Search contract.",
                 token
             ))
-        }
-        if SearchRecordField(rawValue: field) != nil {
-            return .diagnostic(providerMismatch(field: field, provider: .note, token: token))
         }
         if let lexicalField = SearchLexicalField(rawValue: field) {
             switch lexicalClause(
@@ -728,93 +648,6 @@ public enum SearchQueryParser {
         }
     }
 
-    private static func parseRecord(
-        _ token: Token
-    ) -> Result<SearchRecordClause, SearchQueryDiagnostic> {
-        var raw = token.raw
-        let excluded = raw.hasPrefix("-")
-        if excluded { raw.removeFirst() }
-        if let syntaxDiagnostic = unsupportedSyntaxDiagnostic(raw: raw, token: token) {
-            return .failure(syntaxDiagnostic)
-        }
-        let split = splitField(raw)
-        guard let fieldName = split.field else {
-            return recordLexicalClause(
-                field: nil,
-                rawValue: raw,
-                excluded: excluded,
-                permitsPrefix: true,
-                token: token
-            )
-        }
-        let fieldNameLower = fieldName.lowercased()
-        guard !split.value.isEmpty else {
-            return .failure(diagnostic(
-                .missingFieldValue,
-                "The \(fieldNameLower) field requires a value.",
-                token
-            ))
-        }
-        if scopeSelectors.contains(fieldNameLower) {
-            return .failure(scopeSelectorDiagnostic(token))
-        }
-        if knownUnsupportedFields.contains(fieldNameLower) {
-            return .failure(diagnostic(
-                .unsupportedField,
-                "The \(fieldNameLower): field is known but is not supported by the current Search contract.",
-                token
-            ))
-        }
-        let noteOnlyFields = Set(SearchLexicalField.allCases.map(\.rawValue))
-            .union(SearchStructuredField.allCases.map(\.rawValue))
-            .union(["property", "from-note", "to-note", "relation"])
-        if noteOnlyFields.contains(fieldNameLower) {
-            return .failure(providerMismatch(
-                field: fieldNameLower,
-                provider: .record,
-                token: token
-            ))
-        }
-        guard let field = SearchRecordField(rawValue: fieldNameLower) else {
-            return .failure(diagnostic(
-                .unknownField,
-                "Unknown Search field \(fieldNameLower):.",
-                token
-            ))
-        }
-        guard !excluded else {
-            return .failure(diagnostic(
-                .unsupportedSyntax,
-                "Record field clauses cannot be excluded.",
-                token
-            ))
-        }
-        switch field {
-        case .participant:
-            return canonicalRecordClause(
-                field: field,
-                rawValue: split.value,
-                allowed: ["researcher", "agent"],
-                token: token
-            )
-        case .date:
-            return canonicalRecordClause(
-                field: field,
-                rawValue: split.value,
-                allowed: ["today", "7d", "30d"],
-                token: token
-            )
-        case .note, .action, .skill:
-            return recordLexicalClause(
-                field: field,
-                rawValue: split.value,
-                excluded: false,
-                permitsPrefix: false,
-                token: token
-            )
-        }
-    }
-
     private static func lexicalClause(
         field: SearchLexicalField?,
         rawValue: String,
@@ -823,23 +656,6 @@ public enum SearchQueryParser {
     ) -> Result<SearchLexicalClause, SearchQueryDiagnostic> {
         lexicalValue(rawValue, token: token, permitsPrefix: true).map {
             SearchLexicalClause(
-                field: field,
-                value: $0,
-                excluded: excluded,
-                sourceRange: token.range
-            )
-        }
-    }
-
-    private static func recordLexicalClause(
-        field: SearchRecordField?,
-        rawValue: String,
-        excluded: Bool,
-        permitsPrefix: Bool,
-        token: Token
-    ) -> Result<SearchRecordClause, SearchQueryDiagnostic> {
-        lexicalValue(rawValue, token: token, permitsPrefix: permitsPrefix).map {
-            SearchRecordClause(
                 field: field,
                 value: $0,
                 excluded: excluded,
@@ -1056,40 +872,6 @@ public enum SearchQueryParser {
         return .success(RelationValue(relation: relation, sourceRange: token.range))
     }
 
-    private static func canonicalRecordClause(
-        field: SearchRecordField,
-        rawValue: String,
-        allowed: Set<String>,
-        token: Token
-    ) -> Result<SearchRecordClause, SearchQueryDiagnostic> {
-        let value: DecodedValue
-        switch decodeValue(rawValue, token: token) {
-        case .success(let decoded): value = decoded
-        case .failure(let error): return .failure(error)
-        }
-        guard !value.quoted, !value.hadTrailingAsterisk else {
-            return .failure(diagnostic(
-                .unsupportedSyntax,
-                "\(field.rawValue): uses one canonical value.",
-                token
-            ))
-        }
-        let normalized = value.text.lowercased()
-        guard allowed.contains(normalized) else {
-            return .failure(diagnostic(
-                .unknownStructuredValue,
-                "Unknown canonical \(field.rawValue) value \(value.text).",
-                token
-            ))
-        }
-        return .success(SearchRecordClause(
-            field: field,
-            value: .term(normalized),
-            excluded: false,
-            sourceRange: token.range
-        ))
-    }
-
     private static func relationDiagnostics(
         anchors: [RelationAnchor],
         relations: [RelationValue]
@@ -1300,18 +1082,6 @@ public enum SearchQueryParser {
         }
         guard fieldedIdentityValues.count == 1 else { return nil }
         return SearchTextNormalization.normalize(fieldedIdentityValues[0])
-    }
-
-    private static func providerMismatch(
-        field: String,
-        provider: SearchProvider,
-        token: Token
-    ) -> SearchQueryDiagnostic {
-        diagnostic(
-            .providerMismatch,
-            "The \(field): field is not available for kind:\(provider.rawValue).",
-            token
-        )
     }
 
     private static func scopeSelectorDiagnostic(_ token: Token) -> SearchQueryDiagnostic {

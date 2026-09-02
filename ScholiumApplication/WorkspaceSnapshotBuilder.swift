@@ -36,8 +36,7 @@ struct WorkspaceSnapshotBuilderDependencies: Sendable {
     let sourceCatalogs: [UUID: VaultSourceCatalog]
     let searchIndex: TriptychSearchIndex
     let controlStore: TriptychControlStore
-    let portableResearchRecordStore: PortableResearchRecordStore
-    let localResearchExecutionStore: LocalResearchExecutionStore
+    let settlementStore: SettlementStore
     let critiqueRegistry: CritiqueRegistry
     let transactionRecoveryStore: TriptychMutationRecoveryStore
     let identityRecoveryCoordinator: NoteIdentityRecoveryCoordinator
@@ -50,8 +49,7 @@ extension WorkspaceServices {
             sourceCatalogs: sourceCatalogs,
             searchIndex: searchIndex,
             controlStore: controlStore,
-            portableResearchRecordStore: portableResearchRecordStore,
-            localResearchExecutionStore: localResearchExecutionStore,
+            settlementStore: settlementStore,
             critiqueRegistry: critiqueRegistry,
             transactionRecoveryStore: transactionRecoveryStore,
             identityRecoveryCoordinator: identityRecoveryCoordinator
@@ -275,7 +273,6 @@ enum WorkspaceSnapshotBuilder {
                 searchGeneration: nil
             ),
             research: WorkspaceResearchSnapshot(
-                finishedResearchRecordProjectionIsComplete: false,
                 critiques: [],
                 healthIssues: identityHealthIssues
             )
@@ -528,15 +525,8 @@ enum WorkspaceSnapshotBuilder {
         })
 
         let researchStateStart = clock.now
-        let portableSettlementListing = try await dependencies
-            .portableResearchRecordStore.settlementListing()
-        let settlements = portableSettlementListing.settlements
-        let localExecutionListing = try await dependencies.localResearchExecutionStore
-            .listing()
-        let finishedResearchRecordListing = try await dependencies
-            .portableResearchRecordStore.listing()
-        let activeDiscussionListing = try await dependencies
-            .portableResearchRecordStore.activeDiscussions()
+        let settlementListing = try await dependencies.settlementStore.listing()
+        let settlements = settlementListing.settlements
         let researchStateDuration = researchStateStart.duration(to: clock.now)
         let searchDocumentProjectionStart = clock.now
         var searchDocuments: [SearchIndexDocument] = []
@@ -598,10 +588,6 @@ enum WorkspaceSnapshotBuilder {
                 ($0.vault.id, $0.activeDocuments)
             }
         )
-        let synthesisMaterialChangedAttention = Self.synthesisMaterialChangedAttention(
-            records: finishedResearchRecordListing.records,
-            loadedVaults: loadedVaults
-        )
         let zoteroBindingSnapshot = try await dependencies.controlStore.zoteroBindings()
         let zoteroBindingsByNoteID = Dictionary(
             uniqueKeysWithValues: zoteroBindingSnapshot.bindings.map { ($0.noteID, $0) }
@@ -623,7 +609,6 @@ enum WorkspaceSnapshotBuilder {
             vaults: loadedVaults.map(\.vault),
             documents: documentsByVault,
             semanticDocuments: semanticDocuments,
-            additionalAttention: synthesisMaterialChangedAttention,
             graph: graph,
             stableNoteIDs: stableNoteIDs,
             noteMetadataByID: noteMetadataByID,
@@ -633,14 +618,8 @@ enum WorkspaceSnapshotBuilder {
         var healthIssues: [String] = []
         healthIssues.append(contentsOf: loadedVaults.flatMap(\.identityHealthIssues))
         if let graphBuildIssue { healthIssues.append(graphBuildIssue) }
-        healthIssues.append(contentsOf: portableSettlementListing.issues.map {
-            "Portable Settlement \($0.fileName): \($0.reason)"
-        })
-        healthIssues.append(contentsOf: activeDiscussionListing.issues.map {
-            "Active Discussion \($0.fileName): \($0.reason)"
-        })
-        healthIssues.append(contentsOf: finishedResearchRecordListing.issues.map {
-            "Portable Research Record \($0.fileName): \($0.reason)"
+        healthIssues.append(contentsOf: settlementListing.issues.map {
+            "Settlement \($0.fileName): \($0.reason)"
         })
         if let issue = await dependencies.critiqueRegistry.healthError() {
             healthIssues.append(issue)
@@ -736,75 +715,19 @@ enum WorkspaceSnapshotBuilder {
                 identityRecovery: loaded.identityRecovery
             )
         }
-        healthIssues.append(contentsOf: localExecutionListing.issues.map {
-            "Local Research Execution \($0.fileName): \($0.reason)"
-        })
         let critiqueAssociations = critiquesByID.values.sorted {
             if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
             return $0.id.uuidString < $1.id.uuidString
         }
-        let activities = researchActivities(
-            executions: localExecutionListing.records,
-            records: finishedResearchRecordListing.records
-        )
         let settlementRequirements = settlementRequirements(
-            records: finishedResearchRecordListing.records,
             settlements: settlements,
             catalog: catalog
         )
-        let resultArrivals = finishedResearchRecordListing.records.compactMap {
-            record -> WorkspaceResearchResultArrival? in
-            guard record.kind == .action,
-                  let action = record.action,
-                  let originNoteID = record.primaryNoteID,
-                  let fingerprint = try? record.finalizedResultFingerprint() else {
-                return nil
-            }
-            return WorkspaceResearchResultArrival(
-                runID: record.id,
-                recordID: record.id,
-                actionID: action.actionID,
-                originNoteID: originNoteID,
-                targetTitle: record.participatingNotes.first(where: {
-                    $0.noteID == originNoteID
-                })?.title ?? record.title.value,
-                affectedNotes: record.confirmedChanges.compactMap { change in
-                    record.participatingNotes.first(where: {
-                        $0.noteID == change.noteID
-                    }).map {
-                        WorkspaceResearchAffectedNote(
-                            noteID: $0.noteID,
-                            title: $0.title
-                        )
-                    }
-                },
-                recordFingerprint: fingerprint,
-                finishedAt: record.finishedAt
-            )
-        }.sorted {
-            if $0.finishedAt != $1.finishedAt { return $0.finishedAt > $1.finishedAt }
-            return $0.recordID.uuidString < $1.recordID.uuidString
-        }
         let research = WorkspaceResearchSnapshot(
             settlements: settlements,
-            activeDiscussions: activeDiscussionListing.issues.isEmpty
-                ? activeDiscussionListing.discussions
-                : [],
-            finishedResearchRecords: finishedResearchRecordListing.records,
-            finishedResearchRecordFingerprints: Dictionary(
-                uniqueKeysWithValues: finishedResearchRecordListing.revisions.map {
-                    ($0.record.id, $0.fingerprint)
-                }
-            ),
-            finishedResearchRecordSourceManifestHash:
-                finishedResearchRecordListing.sourceManifestHash,
-            finishedResearchRecordProjectionIsComplete:
-                finishedResearchRecordListing.issues.isEmpty,
             critiques: critiqueAssociations,
             recoveryRecords: recoveryRecords,
-            activities: activities,
             settlementRequirements: settlementRequirements,
-            resultArrivals: resultArrivals,
             healthIssues: Array(Set(healthIssues)).sorted()
         )
         let snapshot = WorkspaceSnapshot(
@@ -862,207 +785,21 @@ enum WorkspaceSnapshotBuilder {
         )
     }
 
-    private struct CurrentAttentionNote {
-        let noteID: UUID
-        let reference: VaultNoteReference
-        let role: ResearchActionTargetRole
-        let fingerprint: DocumentFingerprint
-    }
-
-    private struct SynthesisMaterialKey: Hashable {
-        let topicNoteID: UUID
-        let materialNoteID: UUID
-    }
-
-    private struct RecordedSynthesisMaterial {
-        let record: PortableResearchRecord
-        let material: PortableResearchNoteRevision
-    }
-
-    /// Selects the latest explicit frozen Analysis Material for snapshot
-    /// derivation and click-time revalidation. Confirmed-change-only
-    /// participants, reading history, and inferred use never participate.
-    private static func latestSynthesisMaterials(
-        records: [PortableResearchRecord]
-    ) -> [SynthesisMaterialKey: RecordedSynthesisMaterial] {
-        let recordsByID = Dictionary(
-            uniqueKeysWithValues: records.map { ($0.id, $0) }
-        )
-        func descends(
-            _ record: PortableResearchRecord,
-            from ancestorID: UUID
-        ) -> Bool {
-            var current = record
-            var visited: Set<UUID> = []
-            while let lineage = current.continuationLineage,
-                  lineage.kind == .resynthesis,
-                  visited.insert(current.id).inserted {
-                if lineage.parentRunID == ancestorID { return true }
-                guard let parent = recordsByID[lineage.parentRunID] else {
-                    return false
-                }
-                current = parent
-            }
-            return false
-        }
-        var latestByMaterial: [SynthesisMaterialKey: RecordedSynthesisMaterial] = [:]
-        for record in records where record.kind == .action
-            && record.action?.actionID == .synthesize {
-            guard let action = record.action,
-                  let topicNoteID = record.primaryNoteID,
-                  record.participatingNotes.contains(where: {
-                      $0.noteID == topicNoteID
-                          && $0.role == .topic
-                  }) else { continue }
-            let materialNoteIDs = Set(action.materialNoteIDs)
-            for material in record.participatingNotes
-                where materialNoteIDs.contains(material.noteID)
-                    && material.role == .analysis {
-                let key = SynthesisMaterialKey(
-                    topicNoteID: topicNoteID,
-                    materialNoteID: material.noteID
-                )
-                if let existing = latestByMaterial[key] {
-                    let candidateSupersedesExisting = descends(
-                        record,
-                        from: existing.record.id
-                    )
-                    let existingSupersedesCandidate = descends(
-                        existing.record,
-                        from: record.id
-                    )
-                    if existingSupersedesCandidate
-                        || (!candidateSupersedesExisting
-                            && (existing.record.finishedAt > record.finishedAt
-                                || (existing.record.finishedAt == record.finishedAt
-                                    && existing.record.id.uuidString
-                                        < record.id.uuidString))) {
-                        continue
-                    }
-                }
-                latestByMaterial[key] = RecordedSynthesisMaterial(
-                    record: record,
-                    material: material
-                )
-            }
-        }
-        return latestByMaterial
-    }
-
-    static func isLatestSynthesisMaterial(
-        recordID: UUID,
-        topicNoteID: UUID,
-        materialNoteID: UUID,
-        records: [PortableResearchRecord]
-    ) -> Bool {
-        latestSynthesisMaterials(records: records)[SynthesisMaterialKey(
-            topicNoteID: topicNoteID,
-            materialNoteID: materialNoteID
-        )]?.record.id == recordID
-    }
-
-    private static func researchActivities(
-        executions: [LocalResearchExecutionRecord],
-        records: [PortableResearchRecord]
-    ) -> [WorkspaceResearchActivity] {
-        let recordsByID = Dictionary(uniqueKeysWithValues: records.map { ($0.id, $0) })
-        return executions.compactMap { execution in
-            let action = execution.snapshot.actionSnapshot
-            guard action.actionID != .discuss else { return nil }
-            let record = recordsByID[execution.id]
-            if record != nil { return nil }
-            let entryStates = execution.boundedWriteSet.entries.map(\.state)
-            let hasCommittedWrite = execution.documentWriteRecords.contains {
-                $0.state == .committed
-            } || execution.zoteroBindingWriteRecords.contains {
-                $0.state == .committed
-            }
-            let state: WorkspaceResearchActivityState
-            let repairReason: WorkspaceResearchActivityRepairReason?
-
-            if entryStates.contains(.recoveryRequired) {
-                state = .needsAttention
-                repairReason = .recoveryRequired
-            } else if entryStates.contains(.conflict) {
-                state = .needsAttention
-                repairReason = .sourceConflict
-            } else if entryStates.contains(.stale)
-                || execution.completion?.state == .stale {
-                state = .needsAttention
-                repairReason = .sourceChanged
-            } else if execution.completion.map({
-                [.complete, .unverified].contains($0.state)
-            }) == true {
-                state = .needsAttention
-                repairReason = .recordUnavailable
-            } else if execution.completion?.state == .cancelled {
-                return nil
-            } else if hasCommittedWrite {
-                state = .running
-                repairReason = .resultRequired
-            } else if !execution.documentWriteRecords.isEmpty
-                || !execution.zoteroBindingWriteRecords.isEmpty
-                || execution.resultPayload != nil {
-                state = .running
-                repairReason = nil
-            } else {
-                state = .waitingForAgent
-                repairReason = nil
-            }
-
-            let updatedAt = execution.documentWriteRecords.reduce(
-                execution.snapshot.preparedAt
-            ) { latest, write in
-                max(latest, write.finishedAt ?? write.startedAt)
-            }
-            return WorkspaceResearchActivity(
-                runID: execution.id,
-                actionID: action.actionID,
-                targetNoteID: action.target.noteID,
-                targetTitle: action.target.title,
-                state: state,
-                repairReason: repairReason,
-                updatedAt: max(updatedAt, execution.completion?.completedAt ?? updatedAt)
-            )
-        }.sorted {
-            if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
-            return $0.runID.uuidString < $1.runID.uuidString
-        }
-    }
-
     private static func settlementRequirements(
-        records: [PortableResearchRecord],
         settlements: [SettlementRecord],
         catalog: WorkspaceCatalogSnapshot
     ) -> [WorkspaceSettlementRequirement] {
         let settlementByNoteID = Dictionary(
             uniqueKeysWithValues: settlements.map { ($0.noteID, $0) }
         )
-        var activitiesByNoteID: [UUID: [SettlementActivityReference]] = [:]
-        for record in records {
-            for change in record.confirmedChanges {
-                activitiesByNoteID[change.noteID, default: []].append(
-                    SettlementActivityReference(
-                        recordID: record.id,
-                        noteID: change.noteID
-                    )
-                )
-            }
-        }
         return catalog.notes.compactMap { note -> WorkspaceSettlementRequirement? in
             guard let stableNoteID = note.reference.stableNoteID,
                   let noteID = UUID(uuidString: stableNoteID) else { return nil }
             let settlement = settlementByNoteID[noteID]
-            let covered = Set(settlement?.coveredActivities ?? [])
-            let pending = (activitiesByNoteID[noteID] ?? [])
-                .filter { !covered.contains($0) }
-                .sorted { $0.recordID.uuidString < $1.recordID.uuidString }
             let reason: WorkspaceSettlementRequirementReason
             if let settlement,
                settlement.fingerprint != note.fingerprint {
                 reason = .changedSinceSettlement
-            } else if !pending.isEmpty {
-                reason = .agentChanges
             } else {
                 return nil
             }
@@ -1075,77 +812,9 @@ enum WorkspaceSnapshotBuilder {
                 title: note.title,
                 currentRevision: note.fingerprint,
                 reason: reason,
-                pendingActivities: pending,
                 previousSettlement: settlement
             )
         }.sorted { $0.noteID.uuidString < $1.noteID.uuidString }
-    }
-
-    /// Rebuilds the latest completed Synthesize participation relationship for
-    /// each Topic/Analysis pair. Dynamically read, deleted, tombstoned, or
-    /// identity-unresolved Notes cannot create a condition.
-    private static func synthesisMaterialChangedAttention(
-        records: [PortableResearchRecord],
-        loadedVaults: [LoadedVault]
-    ) -> [AttentionQueueItem] {
-        var currentByNoteID: [UUID: CurrentAttentionNote] = [:]
-        for loaded in loadedVaults {
-            guard let functionRole = ResearchActionTargetRole(
-                vaultRole: loaded.vault.role
-            ) else {
-                continue
-            }
-            let role: ResearchActionTargetRole = switch functionRole {
-            case .analysis: .analysis
-            case .topic: .topic
-            case .work: .work
-            }
-            for document in loaded.activeDocuments {
-                guard case .resolved(let noteID) = loaded.identityStates[
-                    document.relativePath
-                ] else { continue }
-                currentByNoteID[noteID] = CurrentAttentionNote(
-                    noteID: noteID,
-                    reference: VaultNoteReference(
-                        vaultID: loaded.vault.id,
-                        vaultName: loaded.vault.name,
-                        vaultRole: loaded.vault.role,
-                        relativePath: document.relativePath,
-                        stableNoteID: noteID.uuidString.lowercased()
-                    ),
-                    role: role,
-                    fingerprint: document.fingerprint
-                )
-            }
-        }
-
-        let latestByMaterial = latestSynthesisMaterials(records: records)
-
-        return latestByMaterial.compactMap { key, recorded in
-            guard let topic = currentByNoteID[key.topicNoteID],
-                  topic.role == .topic,
-                  let material = currentByNoteID[key.materialNoteID],
-                  material.role == .analysis,
-                  material.fingerprint != recorded.material.startingRevision else {
-                return nil
-            }
-            let context = SynthesisMaterialChangedAttentionContext(
-                triptychID: recorded.record.triptychID,
-                recordID: recorded.record.id,
-                topicNoteID: topic.noteID,
-                materialNoteID: material.noteID,
-                material: material.reference,
-                recordedRevision: recorded.material.startingRevision,
-                currentRevision: material.fingerprint
-            )
-            return AttentionQueueItem(
-                kind: .synthesisMaterialChanged,
-                severity: .warning,
-                note: topic.reference,
-                message: "A selected Analysis changed after Synthesize",
-                synthesisMaterialChanged: context
-            )
-        }.sorted { $0.id < $1.id }
     }
 
 }

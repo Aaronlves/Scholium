@@ -107,10 +107,6 @@ struct AttentionQueueView: View {
         )
     }
 
-    private var visibleActivityNotifications: [ResearchActivityNotification] {
-        session.visibleActivityNotifications(for: presentation)
-    }
-
     private var visibleSettlementRequirements: [WorkspaceSettlementRequirement] {
         session.visibleSettlementRequirements(
             for: presentation,
@@ -119,8 +115,7 @@ struct AttentionQueueView: View {
     }
 
     private var visibleItemIDs: [String] {
-        visibleActivityNotifications.map(activityItemID)
-            + visibleSettlementRequirements.map(settlementItemID)
+        visibleSettlementRequirements.map(settlementItemID)
             + visibleItems.map(\.id)
     }
 
@@ -134,16 +129,13 @@ struct AttentionQueueView: View {
             controls
             Divider()
 
-            if visibleActivityNotifications.isEmpty,
-               visibleSettlementRequirements.isEmpty,
+            if visibleSettlementRequirements.isEmpty,
                !session.catalogIsAvailable, session.isRefreshing {
                 loadingState
-            } else if visibleActivityNotifications.isEmpty,
-                      visibleSettlementRequirements.isEmpty,
+            } else if visibleSettlementRequirements.isEmpty,
                       !session.catalogIsAvailable, let error = session.catalogError {
                 completeErrorState(error)
             } else if visibleItems.isEmpty
-                        && visibleActivityNotifications.isEmpty
                         && visibleSettlementRequirements.isEmpty {
                 emptyState
             } else {
@@ -236,7 +228,6 @@ struct AttentionQueueView: View {
     private var kindPicker: some View {
         Picker("Notification Type", selection: notificationFilter) {
             Text("All Notifications").tag(AttentionNotificationFilter.all)
-            Text("Action Activities").tag(AttentionNotificationFilter.activities)
             Text("Settlement Reminders").tag(AttentionNotificationFilter.settlements)
             Text("All Issues").tag(AttentionNotificationFilter.issues)
             ForEach(AttentionIssueGroup.allCases) { group in
@@ -267,35 +258,11 @@ struct AttentionQueueView: View {
 
     private var queueList: some View {
         List(selection: selectedItem) {
-            if !visibleActivityNotifications.isEmpty {
-                Section {
-                    ForEach(visibleActivityNotifications) { notification in
-                        ResearchActivityNotificationRow(
-                            notification: notification,
-                            openAction: { session.openAction(notification) },
-                            endAction: { session.endAction(notification) },
-                            reviewResult: {
-                                session.reviewResult(notification)
-                            },
-                            followUp: { session.followUp(notification) },
-                            dismiss: {
-                                session.dismissActivity(notification)
-                            }
-                        )
-                        .tag(activityItemID(notification))
-                    }
-                } header: {
-                    Text("ACTION ACTIVITIES")
-                }
-            }
             if !visibleSettlementRequirements.isEmpty {
                 Section {
                     ForEach(visibleSettlementRequirements) { requirement in
                         SettlementRequirementNotificationRow(
-                            requirement: requirement,
-                            reviewChanges: {
-                                session.reviewChanges(requirement)
-                            }
+                            requirement: requirement
                         )
                         .tag(settlementItemID(requirement))
                     }
@@ -315,9 +282,7 @@ struct AttentionQueueView: View {
                                 locator: locatorDescription(for: item),
                                 dismissalDays: normalizedDismissalDays,
                                 inspect: { inspect(item) },
-                                dismiss: { dismiss(item, forDays: $0) },
-                                resynthesize: { resynthesize(item) },
-                                leaveUnchanged: { leaveUnchanged(item) }
+                                dismiss: { dismiss(item, forDays: $0) }
                             )
                             .tag(item.id)
                         }
@@ -418,10 +383,6 @@ struct AttentionQueueView: View {
         session.dismissalDays
     }
 
-    private func activityItemID(_ notification: ResearchActivityNotification) -> String {
-        "action:\(notification.runID.uuidString.lowercased())"
-    }
-
     private func settlementItemID(
         _ requirement: WorkspaceSettlementRequirement
     ) -> String {
@@ -441,24 +402,11 @@ struct AttentionQueueView: View {
         session.inspect(item)
     }
 
-    private func resynthesize(_ item: AttentionQueueItem) {
-        presentation.select(item.id)
-        session.resynthesize(item)
-    }
-
     private func dismiss(_ item: AttentionQueueItem, forDays days: Int) {
         presentation.select(item.id)
         var ledger = AttentionPreferences.decodeLedger(dismissalLedgerData)
         ledger.removeExpired()
         ledger.dismiss(item, forDays: days)
-        dismissalLedgerData = AttentionPreferences.encodeLedger(ledger)
-    }
-
-    private func leaveUnchanged(_ item: AttentionQueueItem) {
-        presentation.select(item.id)
-        var ledger = AttentionPreferences.decodeLedger(dismissalLedgerData)
-        ledger.removeExpired()
-        ledger.leaveUnchanged(item)
         dismissalLedgerData = AttentionPreferences.encodeLedger(ledger)
     }
 
@@ -529,102 +477,11 @@ struct AttentionQueueView: View {
     }
 }
 
-/// Issue-first task row for the Notifications popover. It keeps the short derived
-/// condition ahead of Note context while preserving linear actions and source
-/// identity without promoting the row into a card.
-struct ResearchActivityNotificationRow: View {
-    let notification: ResearchActivityNotification
-    let openAction: () -> Void
-    let endAction: () -> Void
-    let reviewResult: () -> Void
-    let followUp: () -> Void
-    let dismiss: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            HStack(alignment: .firstTextBaseline) {
-                Label(stateTitle, systemImage: stateSymbol)
-                    .font(ScholiumTypography.interface(.rowTitle))
-                    .scholiumForeground(stateColor)
-                Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
-                Text(actionTitle)
-                    .font(ScholiumTypography.interface(.small, emphasis: .medium))
-                    .scholiumForeground(.secondaryText)
-            }
-
-            Text(notification.targetTitle.isEmpty
-                ? String(localized: "Research Action")
-                : notification.targetTitle)
-                .font(ScholiumTypography.interface(.body))
-                .lineLimit(1)
-                .truncationMode(.middle)
-
-            if !notification.affectedNotes.isEmpty {
-                DisclosureGroup("Affected Notes (\(notification.affectedNotes.count))") {
-                    VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                        ForEach(notification.affectedNotes) { note in
-                            Text(verbatim: note.title)
-                                .font(ScholiumTypography.interface(.small))
-                                .scholiumForeground(.secondaryText)
-                                .lineLimit(1)
-                        }
-                    }
-                    .padding(.top, ScholiumGrid.Spacing.labelAccessoryGap)
-                }
-                .font(ScholiumTypography.interface(.small, emphasis: .medium))
-            }
-
-            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                Spacer(minLength: 0)
-                ResearchActivityNotificationControls(
-                    notification: notification,
-                    openAction: openAction,
-                    endAction: endAction,
-                    reviewResult: reviewResult,
-                    followUp: followUp,
-                    dismiss: dismiss
-                )
-            }
-        }
-        .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier(
-            "scholium.notification.action.\(notification.runID.uuidString)"
-        )
-    }
-
-    private var stateTitle: String {
-        ResearchActivityNotificationCopy.stateTitle(notification.state)
-    }
-
-    private var stateSymbol: String {
-        switch notification.state {
-        case .waitingForAgent: "clock"
-        case .running: "arrow.triangle.2.circlepath"
-        case .needsAttention: "exclamationmark.triangle"
-        case .resultReady: "doc.text.magnifyingglass"
-        case .recoveryRequired: "wrench.and.screwdriver"
-        }
-    }
-
-    private var stateColor: ScholiumColorRole {
-        switch notification.state {
-        case .needsAttention, .recoveryRequired: .attention
-        case .waitingForAgent, .running, .resultReady: .secondaryText
-        }
-    }
-
-    private var actionTitle: String {
-        ResearchActivityNotificationCopy.actionTitle(notification.actionID)
-    }
-}
-
 /// Persistent Note-level reminder derived from current source, Research
-/// Records, and the one Settlement marker. It has no dismissal path: only a
+/// state and the one Settlement marker. It has no dismissal path: only a
 /// successful Settle of the exact current revision removes it.
 struct SettlementRequirementNotificationRow: View {
     let requirement: WorkspaceSettlementRequirement
-    let reviewChanges: () -> Void
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
@@ -633,17 +490,12 @@ struct SettlementRequirementNotificationRow: View {
                 spacing: ScholiumGrid.Spacing.nestedContentInset
             ) {
                 identity
-                controls
-                    .fixedSize(horizontal: true, vertical: false)
-                    .layoutPriority(1)
             }
             VStack(
                 alignment: .leading,
                 spacing: ScholiumGrid.Spacing.inlineControlGap
             ) {
                 identity
-                controls
-                    .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
         .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
@@ -665,29 +517,6 @@ struct SettlementRequirementNotificationRow: View {
             Text("Current Revision Not Settled")
                 .font(ScholiumTypography.interface(.rowTitle))
                 .fixedSize(horizontal: true, vertical: false)
-            if !requirement.pendingActivities.isEmpty {
-                Text("\(requirement.pendingActivities.count) Agent Changes")
-                    .font(
-                        ScholiumTypography.interface(
-                            .small,
-                            emphasis: .medium
-                        )
-                    )
-                    .scholiumForeground(.secondaryText)
-                    .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
-                    .padding(
-                        .vertical,
-                        ScholiumGrid.Spacing.opticalAlignmentAdjustment
-                    )
-                    .background(
-                        ScholiumColorRole.raisedSurfaceBackground.color,
-                        in: Capsule(style: .continuous)
-                    )
-                    .scholiumBoundary(
-                        .subtleBoundary,
-                        in: Capsule(style: .continuous)
-                    )
-            }
             Text("—")
                 .font(ScholiumTypography.interface(.small))
                 .scholiumForeground(.mutedText)
@@ -702,26 +531,10 @@ struct SettlementRequirementNotificationRow: View {
         .accessibilityLabel(accessibilitySummary)
     }
 
-    private var controls: some View {
-        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            if !requirement.pendingActivities.isEmpty {
-                Button("Review Changes", action: reviewChanges)
-            }
-        }
-        .controlSize(.small)
-    }
-
     private var accessibilitySummary: String {
-        if requirement.pendingActivities.isEmpty {
-            return String.localizedStringWithFormat(
-                String(localized: "Current Revision Not Settled, %@"),
-                requirement.title
-            )
-        }
         return String.localizedStringWithFormat(
-            String(localized: "Current Revision Not Settled, %@, %lld Agent Changes"),
-            requirement.title,
-            Int64(requirement.pendingActivities.count)
+            String(localized: "Current Revision Not Settled, %@"),
+            requirement.title
         )
     }
 }
@@ -735,8 +548,6 @@ struct AttentionQueueRow: View {
     let dismissalDays: Int
     let inspect: () -> Void
     let dismiss: (Int) -> Void
-    let resynthesize: () -> Void
-    let leaveUnchanged: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
@@ -803,15 +614,10 @@ struct AttentionQueueRow: View {
     @ViewBuilder
     private var actions: some View {
         Button("Inspect", action: inspect)
-        if item.synthesisMaterialChanged != nil {
-            Button("Resynthesize", action: resynthesize)
-            Button("Leave Unchanged", action: leaveUnchanged)
-        } else {
-            Menu("Dismiss…") {
-                ForEach(dismissalDurations, id: \.self) { days in
-                    Button(days == 1 ? "For 1 Day" : "For \(days) Days") {
-                        dismiss(days)
-                    }
+        Menu("Dismiss…") {
+            ForEach(dismissalDurations, id: \.self) { days in
+                Button(days == 1 ? "For 1 Day" : "For \(days) Days") {
+                    dismiss(days)
                 }
             }
         }

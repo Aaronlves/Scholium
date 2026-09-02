@@ -140,24 +140,10 @@ for packaged_core_bundle in \
   "${STAGING_APP}/Contents/Resources/Scholium_ScholiumCore.bundle" \
   "${CLI_STAGE}/Scholium_ScholiumCore.bundle"; do
   for relative_resource in \
-    "Skills/README.md" \
-    "Skills/Scholium Method Skills/scholium-analyze/SKILL.md" \
-    "Skills/Scholium System Skills/scholium-core-protocol/SKILL.md" \
-    "Skills/Scholium System Skills/scholium-core-protocol/references/runtime-kernel.md" \
-    "Skills/Scholium System Skills/scholium-core-protocol/references/project-entry.md" \
-    "Skills/Scholium System Skills/scholium-core-protocol/references/active-run.md" \
-    "Skills/Scholium System Skills/scholium-core-protocol/references/mutation-recovery.md" \
-    "Skills/Scholium System Skills/scholium-core-protocol/references/completion.md" \
-    "Skills/Scholium System Skills/scholium-core-protocol/references/workspace-bootstrap.md" \
-    "Skills/Scholium System Skills/scholium-core-protocol/references/analyze-result.md" \
-    "Skills/Scholium System Skills/scholium-core-protocol/references/synthesize-result.md" \
-    "Skills/Scholium System Skills/scholium-core-protocol/references/write-result.md" \
-    "Skills/Scholium System Skills/scholium-core-protocol/references/critique-result.md" \
-    "Skills/Scholium System Skills/scholium-core-protocol/references/check-fidelity-result.md" \
-    "Skills/Scholium System Skills/scholium-core-protocol/references/discuss-result.md"; do
+    "Skills/Scholium System Skills/scholium-core-protocol/SKILL.md"; do
     core_resource="${packaged_core_bundle}/Contents/Resources/${relative_resource}"
     [[ -s "${core_resource}" ]] || {
-      print -u2 "Missing packaged current research-method resource: ${core_resource}"
+      print -u2 "Missing packaged Core Protocol resource: ${core_resource}"
       exit 66
     }
   done

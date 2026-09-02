@@ -16,9 +16,9 @@ test results, or release evidence. Target authority is
 | Chapter | Owns |
 | --- | --- |
 | [Runtime and Ownership](Architecture/01-runtime-and-ownership.md) | Compiler/runtime composition, module dependencies, state owners, windows, refresh, Library mutations, tabs, and shell construction. |
-| [Research Actions and Execution](Architecture/02-research-actions-and-execution.md) | Action preparation, protected execution, activity attribution, Research Records, Agent coordination, and completion/recovery. |
+| [Agent Collaboration](Architecture/02-agent-collaboration.md) | Local MCP delivery, App bridge, guarded mutations, Agent Change evidence, and setup presentation. |
 | [Source Layout and Presentation](Architecture/03-source-layout-and-presentation.md) | Repository source layout, native presentation composition, window routes, Attention, Research Inspector, and localization. |
-| [Research Guidance](Architecture/04-research-guidance.md) | Action Skill registration and ordinary references, academic Profiles, citation configuration, Settings, and configuration recovery. |
+| [Research Guidance](Architecture/04-research-guidance.md) | Agent Integration, Zotero configuration, and Settings ownership. |
 | [Source Storage and Read Models](Architecture/05-source-storage-and-read-models.md) | Descriptor-relative source writes, macOS coordination, prewrite recovery, immutable Note snapshots, metadata, and targeted YAML edits. |
 | [Documents and Editor](Architecture/06-documents-and-editor.md) | Document sessions, CodeMirror/WebKit, exact-source mirroring, rendering, interaction, recovery, and performance boundaries. |
 | [Design System and Boundary Enforcement](Architecture/07-design-system-and-boundaries.md) | Semantic design-system implementation, component ownership, import guards, and executable architecture checks. |

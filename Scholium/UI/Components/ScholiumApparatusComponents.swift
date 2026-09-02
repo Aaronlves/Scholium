@@ -10,7 +10,7 @@ private struct ScholiumApparatusHeadingModifier: ViewModifier {
 }
 
 extension View {
-    /// The single visual token for every Inspector and Research Record section heading.
+    /// The single visual token for every Inspector and provenance section heading.
     func scholiumApparatusHeadingStyle() -> some View {
         modifier(ScholiumApparatusHeadingModifier())
     }

@@ -32,28 +32,15 @@ struct TransactionRecoveryPresentationTests {
         #expect(uncertain == present)
     }
 
-    @Test("Interrupted Agent save is evidence reconciliation, not candidate restore")
-    func saveActionDoesNotPromiseSourceReplacement() {
+    @Test("Save recovery uses generic researcher-confirmed completion")
+    func saveRecoveryUsesGenericCompletion() {
         let save = TransactionRecoveryActionPresentation(record: record(
             operation: .noteSave,
             role: .savedNote,
             state: .intendedBytesRemain
         ))
-        #expect(save.buttonTitle == "Reconcile Agent Save")
-        #expect(save.message.contains("will not replace Markdown source"))
-        #expect(!save.message.contains("Restore Candidate"))
-    }
-
-    @Test("Unlinked operation records do not claim Agent reconciliation")
-    func unlinkedRecordsUseGenericCompletion() {
-        let unlinked = TransactionRecoveryActionPresentation(record: record(
-            operation: .noteSave,
-            role: .savedNote,
-            state: .intendedBytesRemain,
-            isResearchLinked: false
-        ))
-        #expect(unlinked == .generic)
-        #expect(!unlinked.message.contains("Run"))
+        #expect(save == .generic)
+        #expect(!save.message.contains("Run"))
     }
 
     @Test("Researcher managed creation presents real reconciliation without claiming an Agent Run")
@@ -96,15 +83,15 @@ struct TransactionRecoveryPresentationTests {
     private func record(
         operation: TriptychMutationOperation,
         role: TriptychMutationFileRole,
-        state: TriptychMutationRecoveryState,
-        isResearchLinked: Bool = true
+        state: TriptychMutationRecoveryState
     ) -> TriptychMutationRecoveryRecord {
-        TriptychMutationRecoveryRecord(
+        let vaultID = UUID()
+        return TriptychMutationRecoveryRecord(
             triptychID: UUID(),
             operation: operation,
             failure: "Fixture",
             files: [TriptychMutationRecoveryFile(
-                vaultID: UUID(),
+                vaultID: vaultID,
                 path: "Fixture.md",
                 role: role,
                 beforeRevision: operation == .noteSave
@@ -115,14 +102,15 @@ struct TransactionRecoveryPresentationTests {
                 state: state,
                 detail: "Fixture"
             )],
-            researchWrite: isResearchLinked ? ResearchWriteRecoveryReference(
-                runID: UUID(),
-                operationID: UUID(),
-                target: ResearchWriteTargetHandle(
-                    runID: UUID(),
-                    noteID: UUID()
+            managedCreation: operation == .noteCreation
+                ? ManagedCreationRecoveryReference(
+                    target: VaultQualifiedNoteID(
+                        vaultID: vaultID,
+                        relativePath: "Fixture.md"
+                    ),
+                    reservedIdentityID: UUID()
                 )
-            ) : nil
+                : nil
         )
     }
 }

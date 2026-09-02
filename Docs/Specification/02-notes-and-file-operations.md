@@ -7,14 +7,13 @@
 Analysis, Topic, and ordinary Work Notes support Review, Edit, and Source over
 one exact Markdown buffer; autosave; create, duplicate, import, rename, move,
 Reveal in Finder, and system-Trash deletion; Search, Find/Replace, Connect,
-Comments, Metadata, Agent Changes, Records, conflicts, and recovery.
+Metadata, Agent Changes, conflicts, and recovery.
 Critique bodies are read-only in Scholium but remain ordinary externally
 editable Markdown.
 
 ### 5.1 Document modes and YAML
 
-- **Review** renders committed content for reading, navigation, selection, and
-  Comment.
+- **Review** renders committed content for reading, navigation, and selection.
 - **Edit** modifies the exact body through a reversible semantic projection. It
   shares Review typography and components, reveals syntax only for the active
   construct, and shows neither YAML nor line numbers.
@@ -79,7 +78,7 @@ Protected constructs follow these rules:
   source with a diagnostic and is never rewritten.
 - Mermaid is a static illustration, not evidence or a Connection. Authored
   `accTitle` and `accDescr` provide its nonvisual account; absent descriptions
-  are diagnosed. Generated diagram content is not a passage Comment target.
+  are diagnosed.
 - A Note embed is a bounded, read-only projection of the target's committed
   body with an explicit open route. It is not recursively transcluded, editable,
   or a relationship edge.
@@ -161,8 +160,8 @@ not invite duplicate creation.
 
 Paths are locations; Notes have stable app-owned identities. Duplicate creates
 a new identity and copies exact source plus current managed values, but not
-Settlement or Records. Rename and Move preserve identity, Records, and exact
-resolved incoming-link updates. Ambiguous external rename keeps source readable
+Settlement. Rename and Move preserve identity and exact resolved incoming-link
+updates. Ambiguous external rename keeps source readable
 but blocks identity-dependent mutation until resolved.
 
 Folders are vault-relative filesystem locations with no UUID, Metadata, Record,
@@ -179,23 +178,18 @@ available. Cross-vault moves, managed Critique placement, stale revisions,
 invalid descendants, and self/descendant folder targets fail without source
 change.
 
-## 6. System Trash deletion and temporary application cleanup
+## 6. System Trash deletion and recovery
 
 Scholium has no application Trash, erase command, or source restore command.
 **Move to Trash…** and **Move Folder and Notes to Trash…** use the macOS system
 Trash; Finder owns restoration and final deletion.
 
-Folder deletion confirmation discloses two ordered boundaries:
-
-1. move every listed source item to system Trash; then
-2. after all move receipts are durable, discard affected Comment groups
-   that cannot outlive the source.
-
-Preparation flushes dirty editors and freezes exact paths, identities,
-fingerprints, folder contents, separately located managed Critiques, and Comment
-groups. An in-flight or uncertain MCP mutation, unresolved write recovery,
-identity ambiguity, source or manifest drift, unsafe filesystem entries, or
-changing Comment participation blocks the move.
+Folder deletion confirmation lists every source item that will move to system
+Trash. Preparation flushes dirty editors and freezes exact paths, identities,
+fingerprints, folder contents, and separately located managed Critiques. An
+in-flight or uncertain MCP mutation, unresolved write recovery, identity
+ambiguity, source or manifest drift, or unsafe filesystem entry blocks the
+move.
 
 A Research Record, when present under its separately approved contract, is
 independent historical research content. Moving its participant source to
@@ -206,8 +200,7 @@ so Finder restoration can reconcile exact source.
 Before the first move Scholium installs a deletion gate and durable forward
 plan with one receipt per source item. It binds each native operation to the
 exact checked filesystem object, never a replacement that later appears at the
-same path. Partial success is representable; temporary Comment cleanup waits
-for every source receipt.
+same path. Partial success is representable.
 
 Recovery follows these rules:
 
@@ -215,19 +208,16 @@ Recovery follows these rules:
 | --- | --- |
 | Preflight or first-move failure | Preserve all source and application state. |
 | Proven native move | Resume from its receipt; never move the item again. |
-| Bound operation with unknown native outcome | Preserve Records and temporary state; require researcher inspection before releasing the plan. |
-| All source moved but cleanup failed | Resume only the temporary cleanup idempotently. |
-| External move or deletion without a Scholium plan | Refresh projections only; never cascade Record or Comment deletion. |
-| Finder restores source | Reconcile retained identity and bytes; preserve existing Records without fabricating another. |
+| Bound operation with unknown native outcome | Preserve recovery state; require researcher inspection before releasing the plan. |
+| External move or deletion without a Scholium plan | Refresh projections only; never invent a mutation or cascade. |
+| Finder restores source | Reconcile retained identity and bytes without fabricating another mutation. |
 
 Watchers report filesystem observations but cannot create deletion authority.
 Multiple windows converge through shared workspace coordination. A committed
 absence closes only affected pages and refreshes derived projections while
 preserving unrelated tabs and focus.
 
-## 7. Settlement and annotation
-
-### 7.1 Settle
+## 7. Settlement
 
 Settle binds an optional rationale, date, and researcher identity to the exact
 saved fingerprint of any Analysis, Topic, or Work. Save failure, conflict,
@@ -248,27 +238,5 @@ Each Note has one portable Settlement judgment and no separate reviewed
 marker. It is not a Record, verdict, source version, restore point, retention
 policy, or Agent requirement.
 
-### 7.2 Comment and written annotation
-
-Review exposes **Comment** for a nonempty commentable passage selection; Edit
-exposes formatting instead, and Source exposes neither contextual surface.
-Menu and keyboard routes remain equivalent. Protected generated Mermaid content
-is selectable and copyable but not commentable.
-
-A Comment field remains bound to the original stable Note, exact fingerprint,
-and one-based inclusive source-line range. It stores the researcher's bounded
-selected passage but no surrounding context or exact-offset reattachment
-promise. Return saves, Shift-Return inserts a newline, Escape cancels, and a
-failed portable write preserves the draft. A later source revision marks the
-locator **Earlier revision** rather than guessing a new anchor.
-
-Current-revision Comments project as keyboard-reachable line markers. Comments
-in the same researcher-owned Comment group and line range share one counted
-marker. The marker opens the group; its locator returns to Review. Comments
-survive sheet closure and never launch an Agent, grant MCP access, capture an
-external response, or create a Research Record. A future Handoff/Record
-contract must explicitly define any transition beyond this local annotation.
-
-Authoritative annotation remains Markdown, including semantic Callouts.
-Comment markers are portable research cues, not authored Markdown or evidence
-that the selected passage is accepted, important, or settled.
+Authoritative written annotation remains Markdown, including semantic
+Callouts. Selection creates no separate portable comment object.

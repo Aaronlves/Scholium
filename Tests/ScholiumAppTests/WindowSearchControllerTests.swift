@@ -264,71 +264,6 @@ struct WindowSearchControllerTests {
         #expect(discovery.search.executionIssue != nil)
     }
 
-    @Test("A stale Research Record result is never routed")
-    func staleRecordResult() async {
-        let discovery = DiscoveryController()
-        let generation = RecordSearchGenerationID(
-            triptychID: UUID(),
-            sourceManifestHash: "records"
-        )
-        let freshness = SearchFreshnessToken.record(generation)
-        let fingerprint = DocumentFingerprint(content: #"{"record":"current"}"#)
-        let hit = RecordSearchResult(
-            recordID: UUID(),
-            matchedField: .researcherStatement,
-            matchedReason: "researcher statement matches ‘objection’",
-            context: "Reasons and value",
-            finishedAt: Date(timeIntervalSince1970: 100),
-            participatingNotes: [],
-            snippet: "A narrower objection is needed.",
-            freshnessToken: freshness,
-            fingerprint: fingerprint
-        )
-        let request = discovery.beginSearch(SearchWorkspaceState(
-            query: "kind:record objection",
-            scope: .triptych
-        ))
-        discovery.receiveSearchResponse(SearchResponse(
-            requestID: request.id,
-            scope: .triptych,
-            explanation: explanation(provider: .record, explicit: true),
-            freshnessToken: freshness,
-            availability: .record(.current(generation)),
-            results: [.record(hit)],
-            hasMore: false
-        ), for: request)
-
-        let probe = WindowSearchPresentationProbe()
-        probe.isPresented = true
-        let controller = WindowSearchController(
-            discoveryController: discovery,
-            dependencies: dependencies(
-                resultEvidence: { _, _ in
-                    WindowSearchResultEvidence(
-                        freshness: freshness,
-                        fingerprint: DocumentFingerprint(
-                            content: #"{"record":"changed"}"#
-                        )
-                    )
-                },
-                open: { _, _ in probe.openCount += 1 },
-                isPresented: { probe.isPresented },
-                setPresented: { probe.isPresented = $0 },
-                reportInformation: { probe.informationMessages.append($0) }
-            )
-        )
-
-        await controller.open(.result(.record(hit)), disposition: .replaceCurrent)
-
-        #expect(probe.openCount == 0)
-        #expect(probe.informationMessages.count == 1)
-        #expect(
-            probe.informationMessages[0].contains("Research Record changed")
-        )
-        #expect(probe.isPresented)
-        #expect(discovery.search.executionIssue != nil)
-    }
-
     @Test("Saved Searches from another Search contract require editing")
     func savedSearchContractMismatch() {
         let saved = SavedSearch(
@@ -390,59 +325,32 @@ struct WindowSearchControllerTests {
         #expect(!discovery.search.isRunning)
         #expect(discovery.search.results.isEmpty)
 
-        discovery.updateSearchQuery("kind:record participant:agent")
+        discovery.updateSearchQuery("kind:note title:agency")
 
         #expect(discovery.search.diagnostics.isEmpty)
         #expect(discovery.search.isRunning)
         #expect(executionContextCallCount == 0)
     }
 
-    @Test("Search completion replaces only plain query text and follows provider capabilities")
+    @Test("Search completion replaces only plain query text and follows Note capabilities")
     func completionContract() throws {
         let capabilities = SearchCapabilities.current
-        let recordCompletion = try #require(
+        let titleCompletion = try #require(
             capabilities.completions(
-                for: "kind:record part",
+                for: "tit",
                 scope: .triptych
             ).first
         )
-        #expect(recordCompletion.replacementText == "kind:record participant:")
-        #expect(
-            capabilities.completions(
-                for: "kind:record prop",
-                scope: .triptych
-            ).isEmpty
-        )
-        #expect(
-            capabilities.capability(for: .record)?.fields.contains {
-                $0.name == "participant"
-            } == true
-        )
-        #expect(
-            capabilities.capability(for: .record)?.fields.contains {
-                $0.name == "property"
-            } == false
-        )
+        #expect(titleCompletion.replacementText == "title:")
         #expect(
             capabilities.capability(for: .note)?.fields.contains {
                 $0.name == "property"
             } == true
         )
-
-        let valueCompletion = try #require(
-            capabilities.completions(
-                for: "kind:record participant:r",
-                scope: .triptych
-            ).first
-        )
-        #expect(
-            valueCompletion.replacementText
-                == "kind:record participant:researcher"
-        )
-        let parsed = SearchQueryParser.parse(valueCompletion.replacementText)
-        #expect(parsed.diagnostics.isEmpty)
-        #expect(parsed.ast?.provider == .record)
-        #expect(parsed.ast?.providerWasExplicit == true)
+        #expect(capabilities.completions(
+            for: "kind:record part",
+            scope: .triptych
+        ).isEmpty)
     }
 
     private func dependencies(

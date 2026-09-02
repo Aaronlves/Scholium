@@ -305,9 +305,7 @@ struct TriptychControlTests {
             .output: VaultAboutConfiguration(
                 visibleFields: ["work_type", "coauthors"]
             ),
-        ], analysisAgentCreation: AnalysisAgentCreationConfiguration(
-            preferredFieldsBySourceType: [.journalArticle: ["title", "authors"]]
-        ))
+        ])
 
         let initial = try await store.settings()
         _ = try await store.saveSettings(expected, expectedRevision: initial.revision)
@@ -316,7 +314,6 @@ struct TriptychControlTests {
         #expect(loaded.settings.about == expected.about)
         #expect(loaded.settings.about[.paperAnalysis]?.visibleFields == ["authors", "publication_date", "type"])
         #expect(loaded.settings.about[.output]?.visibleFields == ["work_type", "coauthors"])
-        #expect(loaded.settings.analysisAgentCreation.preferredFields(for: .journalArticle) == ["title", "authors"])
     }
 
     @Test("Metadata field and controlled-choice order round-trip through portable settings")
@@ -402,7 +399,7 @@ struct TriptychControlTests {
         #expect(try await store.settings() == committed)
     }
 
-    @Test("Settings compiler rejects authored About fields and inapplicable Agent preferences before write")
+    @Test("Settings compiler rejects authored About fields before write")
     func settingsCompilerRejectsInvalidCandidates() async throws {
         let fixture = try Fixture(); defer { fixture.remove() }
         let store = TriptychControlStore(worksVaultURL: fixture.works)
@@ -413,9 +410,6 @@ struct TriptychControlTests {
         var invalid = initial.settings
         invalid.about[.paperAnalysis] = VaultAboutConfiguration(
             visibleFields: ["summary"]
-        )
-        invalid.analysisAgentCreation = AnalysisAgentCreationConfiguration(
-            preferredFieldsBySourceType: [.journalArticle: ["publisher"]]
         )
 
         do {
@@ -440,13 +434,6 @@ struct TriptychControlTests {
             try TriptychSettingsValidator.validate(settings)
         }
 
-        settings.about[.output] = TriptychSettings.defaultAbout[.output]
-        settings.analysisAgentCreation = AnalysisAgentCreationConfiguration(
-            preferredFieldsBySourceType: [.webpage: ["isbn"]]
-        )
-        #expect(throws: TriptychSettingsValidationError.self) {
-            try TriptychSettingsValidator.validate(settings)
-        }
     }
 
     @Test("Settings loader distinguishes old, future, corrupt, and current-schema review states")

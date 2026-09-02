@@ -19,16 +19,14 @@ enum AttentionQueuePopoverAnchor: Equatable, Sendable {
     }
 }
 
-/// One window-level Notifications request either opens the complete queue from
-/// a stable anchor or expands the Document's shared notification stack in
-/// place when Action activity requires attention.
+/// One window-level Notifications request opens the complete queue from a
+/// stable anchor.
 enum AttentionPresentationRequest: Equatable, Sendable {
     case queue(
         anchor: AttentionQueuePopoverAnchor,
         workspaceSlot: WorkspaceVaultSlot?,
         noteScope: VaultQualifiedNoteID?
     )
-    case actionStack
 }
 
 /// Exact-Workspace adapter for the transient Notifications popover. It observes
@@ -40,23 +38,13 @@ enum AttentionPresentationRequest: Equatable, Sendable {
 final class AttentionPopoverSession: ObservableObject {
     struct Dependencies {
         let dismissalDaysChanges: AnyPublisher<Int, Never>
-        let activityChanges: AnyPublisher<[ResearchActivityNotification], Never>
         let settlementRequirementChanges:
             AnyPublisher<[WorkspaceSettlementRequirement], Never>
         let refresh: @MainActor () async -> Void
-        let resynthesize: @MainActor (AttentionQueueItem) -> Void
-        let openAction: @MainActor (ResearchActivityNotification) -> Void
-        let endAction: @MainActor (ResearchActivityNotification) -> Void
-        let reviewResult: @MainActor (ResearchActivityNotification) -> Void
-        let followUp: @MainActor (ResearchActivityNotification) -> Void
-        let dismissActivity: @MainActor (ResearchActivityNotification) -> Void
-        let reviewChanges: @MainActor (WorkspaceSettlementRequirement) -> Void
     }
 
     @Published private(set) var presentedAnchor: AttentionPopoverAnchor?
     @Published private(set) var dismissalDays: Int
-    @Published private(set) var activityNotifications:
-        [ResearchActivityNotification] = []
     @Published private(set) var settlementRequirements:
         [WorkspaceSettlementRequirement] = []
 
@@ -98,13 +86,6 @@ final class AttentionPopoverSession: ObservableObject {
             .sink { [weak self] days in
                 guard self?.dismissalDays != days else { return }
                 self?.dismissalDays = days
-            }
-            .store(in: &observations)
-        dependencies.activityChanges
-            .removeDuplicates()
-            .sink { [weak self] notifications in
-                guard let self else { return }
-                activityNotifications = notifications
             }
             .store(in: &observations)
         dependencies.settlementRequirementChanges
@@ -176,27 +157,6 @@ final class AttentionPopoverSession: ObservableObject {
         }
     }
 
-    func visibleActivityNotifications(
-        for presentation: AttentionPresentationState
-    ) -> [ResearchActivityNotification] {
-        guard presentation.notificationFilter.showsActivities else { return [] }
-        let noteID: UUID?
-        if let noteScope = presentation.noteScope {
-            noteID = ResearchActivityNotificationQuery.stableNoteID(
-                for: noteScope,
-                in: projectionController.catalog?.notes ?? []
-            )
-            guard noteID != nil else { return [] }
-        } else {
-            noteID = nil
-        }
-        return ResearchActivityNotificationQuery.apply(
-            notifications: activityNotifications,
-            noteID: noteID,
-            filter: presentation.filter
-        )
-    }
-
     func visibleSettlementRequirements(
         for presentation: AttentionPresentationState,
         locale: Locale = .current
@@ -252,131 +212,10 @@ final class AttentionPopoverSession: ObservableObject {
 
     func inspect(_ item: AttentionQueueItem) {
         dismiss()
-        let reference = item.synthesisMaterialChanged?.material ?? item.note
         discoveryController.requestOpen(
-            reference,
-            sourceLocator: item.synthesisMaterialChanged == nil ? item.locator : nil
+            item.note,
+            sourceLocator: item.locator
         )
     }
 
-    func resynthesize(_ item: AttentionQueueItem) {
-        dismiss()
-        dependencies.resynthesize(item)
-    }
-
-    func openAction(_ notification: ResearchActivityNotification) {
-        dismiss()
-        dependencies.openAction(notification)
-    }
-
-    func endAction(_ notification: ResearchActivityNotification) {
-        dependencies.endAction(notification)
-    }
-
-    func reviewResult(_ notification: ResearchActivityNotification) {
-        dismiss()
-        dependencies.reviewResult(notification)
-    }
-
-    func followUp(_ notification: ResearchActivityNotification) {
-        dismiss()
-        dependencies.followUp(notification)
-    }
-
-    func dismissActivity(_ notification: ResearchActivityNotification) {
-        dependencies.dismissActivity(notification)
-    }
-
-    func reviewChanges(_ requirement: WorkspaceSettlementRequirement) {
-        dismiss()
-        dependencies.reviewChanges(requirement)
-    }
-
-}
-
-enum ResearchActivityNotificationQuery {
-    static func stableNoteID(
-        for noteScope: VaultQualifiedNoteID,
-        in notes: [WorkspaceCatalogNote]
-    ) -> UUID? {
-        notes.first(where: {
-            $0.reference.vaultID == noteScope.vaultID
-                && $0.reference.relativePath == noteScope.relativePath
-        })?.reference.stableNoteID.flatMap(UUID.init(uuidString:))
-    }
-
-    static func apply(
-        notifications: [ResearchActivityNotification],
-        noteID: UUID?,
-        filter: AttentionQueueFilter,
-        locale: Locale = .current
-    ) -> [ResearchActivityNotification] {
-        let query = normalized(filter.query, locale: locale)
-        return notifications.filter { notification in
-            if let noteID,
-               notification.targetNoteID != noteID,
-               !notification.affectedNotes.contains(where: { $0.noteID == noteID }) {
-                return false
-            }
-            guard !query.isEmpty else { return true }
-            let searchable = [
-                ResearchActivityNotificationCopy.stateTitle(
-                    notification.state,
-                    locale: locale
-                ),
-                ResearchActivityNotificationCopy.actionTitle(
-                    notification.actionID,
-                    locale: locale
-                ),
-                notification.targetTitle,
-                notification.affectedNotes.map(\.title).joined(separator: " "),
-            ].joined(separator: " ")
-            return normalized(searchable, locale: locale).contains(query)
-        }
-    }
-
-    private static func normalized(_ value: String, locale: Locale) -> String {
-        value.trimmingCharacters(in: .whitespacesAndNewlines)
-            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: locale)
-    }
-}
-
-enum ResearchActivityNotificationCopy {
-    static func actionTitle(
-        _ actionID: ResearchActionID,
-        locale: Locale = .current
-    ) -> String {
-        switch actionID {
-        case .discuss:
-            ScholiumL10n.string("Discuss", locale: locale)
-        case .analyze:
-            ScholiumL10n.string("Analyze", locale: locale)
-        case .synthesize:
-            ScholiumL10n.string("Synthesize", locale: locale)
-        case .write:
-            ScholiumL10n.string("Write", locale: locale)
-        case .critique:
-            ScholiumL10n.string("Critique", locale: locale)
-        case .checkFidelity:
-            ScholiumL10n.string("Check Fidelity", locale: locale)
-        }
-    }
-
-    static func stateTitle(
-        _ state: ResearchActivityNotificationState,
-        locale: Locale = .current
-    ) -> String {
-        switch state {
-        case .waitingForAgent:
-            ScholiumL10n.string("Waiting for Agent", locale: locale)
-        case .running:
-            ScholiumL10n.string("Running", locale: locale)
-        case .needsAttention:
-            ScholiumL10n.string("Needs Attention", locale: locale)
-        case .resultReady:
-            ScholiumL10n.string("Result Ready", locale: locale)
-        case .recoveryRequired:
-            ScholiumL10n.string("Recovery Required", locale: locale)
-        }
-    }
 }

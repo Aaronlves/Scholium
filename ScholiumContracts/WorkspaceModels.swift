@@ -349,38 +349,19 @@ public struct WorkspaceDiscoverySnapshot: Sendable {
     }
 }
 
-/// Research-record projection for one complete workspace generation. Durable
-/// mutations are performed only through `ResearchOperations`; this value is
-/// immutable delivery-neutral state for GUI, CLI, and future snapshot readers.
-public enum WorkspaceResearchActivityState: String, Hashable, Sendable {
-    case waitingForAgent
-    case running
-    case needsAttention
-}
-
-public enum WorkspaceResearchActivityRepairReason: String, Hashable, Sendable {
-    case sourceConflict
-    case sourceChanged
-    case recoveryRequired
-    case recordUnavailable
-    case resultRequired
-}
-
 public enum WorkspaceSettlementRequirementReason: String, Hashable, Sendable {
-    case agentChanges
     case changedSinceSettlement
 }
 
 /// A delivery-neutral reminder that the current saved Note revision is not
-/// covered by its latest Settlement. It is derived from source, Records, and
-/// the one Settlement marker and is never independently writable.
+/// covered by its latest Settlement. It is derived from current source and the
+/// one Settlement marker and is never independently writable.
 public struct WorkspaceSettlementRequirement: Hashable, Identifiable, Sendable {
     public let noteID: UUID
     public let note: VaultQualifiedNoteID
     public let title: String
     public let currentRevision: DocumentFingerprint
     public let reason: WorkspaceSettlementRequirementReason
-    public let pendingActivities: [SettlementActivityReference]
     public let previousSettlement: SettlementRecord?
 
     public var id: UUID { noteID }
@@ -391,7 +372,6 @@ public struct WorkspaceSettlementRequirement: Hashable, Identifiable, Sendable {
         title: String,
         currentRevision: DocumentFingerprint,
         reason: WorkspaceSettlementRequirementReason,
-        pendingActivities: [SettlementActivityReference] = [],
         previousSettlement: SettlementRecord? = nil
     ) {
         self.noteID = noteID
@@ -399,142 +379,28 @@ public struct WorkspaceSettlementRequirement: Hashable, Identifiable, Sendable {
         self.title = title
         self.currentRevision = currentRevision
         self.reason = reason
-        self.pendingActivities = pendingActivities
         self.previousSettlement = previousSettlement
-    }
-}
-
-public struct WorkspaceResearchAffectedNote: Hashable, Identifiable, Sendable {
-    public let noteID: UUID
-    public let title: String
-
-    public var id: UUID { noteID }
-
-    public init(noteID: UUID, title: String) {
-        self.noteID = noteID
-        self.title = title
-    }
-}
-
-public struct WorkspaceResearchResultArrival: Hashable, Identifiable, Sendable {
-    public let runID: UUID
-    public let recordID: UUID
-    public let actionID: ResearchActionID
-    public let originNoteID: UUID
-    public let targetTitle: String
-    public let affectedNotes: [WorkspaceResearchAffectedNote]
-    public let recordFingerprint: DocumentFingerprint
-    public let finishedAt: Date
-
-    public var id: UUID { recordID }
-
-    public init(
-        runID: UUID,
-        recordID: UUID,
-        actionID: ResearchActionID,
-        originNoteID: UUID,
-        targetTitle: String = "",
-        affectedNotes: [WorkspaceResearchAffectedNote] = [],
-        recordFingerprint: DocumentFingerprint,
-        finishedAt: Date
-    ) {
-        self.runID = runID
-        self.recordID = recordID
-        self.actionID = actionID
-        self.originNoteID = originNoteID
-        self.targetTitle = targetTitle
-        self.affectedNotes = affectedNotes
-        self.recordFingerprint = recordFingerprint
-        self.finishedAt = finishedAt
-    }
-}
-
-/// A privacy-bounded projection over machine-local execution and portable
-/// Record truth. It contains no handoff secret, change-evidence identity, source
-/// bytes, or tool trace and is never a durable workflow owner.
-public struct WorkspaceResearchActivity: Hashable, Identifiable, Sendable {
-    public let runID: UUID
-    public let actionID: ResearchActionID
-    public let targetNoteID: UUID
-    public let targetTitle: String
-    public let state: WorkspaceResearchActivityState
-    public let recordID: UUID?
-    public let recordFingerprint: DocumentFingerprint?
-    public let repairReason: WorkspaceResearchActivityRepairReason?
-    public let updatedAt: Date
-
-    public var id: UUID { runID }
-
-    public init(
-        runID: UUID,
-        actionID: ResearchActionID,
-        targetNoteID: UUID,
-        targetTitle: String = "",
-        state: WorkspaceResearchActivityState,
-        recordID: UUID? = nil,
-        recordFingerprint: DocumentFingerprint? = nil,
-        repairReason: WorkspaceResearchActivityRepairReason? = nil,
-        updatedAt: Date
-    ) {
-        self.runID = runID
-        self.actionID = actionID
-        self.targetNoteID = targetNoteID
-        self.targetTitle = targetTitle
-        self.state = state
-        self.recordID = recordID
-        self.recordFingerprint = recordFingerprint
-        self.repairReason = repairReason
-        self.updatedAt = updatedAt
     }
 }
 
 public struct WorkspaceResearchSnapshot: Sendable {
     public let settlements: [SettlementRecord]
-    public let activeDiscussions: [PortableResearchDiscussion]
-    public let finishedResearchRecords: [PortableResearchRecord]
-    /// Exact fingerprints of the authoritative portable JSON bytes read for
-    /// this snapshot. Missing entries are never reconstructed by re-encoding.
-    public let finishedResearchRecordFingerprints: [UUID: DocumentFingerprint]
-    /// Stable hash of the valid Record UUID + exact-byte fingerprint set.
-    public let finishedResearchRecordSourceManifestHash: String
-    /// False when any portable Record file failed exact reading or validation.
-    /// Read-only collection surfaces may present the valid subset only with an
-    /// explicit partial availability; completeness-sensitive operations must
-    /// continue to fail closed.
-    public let finishedResearchRecordProjectionIsComplete: Bool
     public let critiques: [CritiqueAssociation]
     public let recoveryRecords: [TriptychMutationRecoveryRecord]
-    public let activities: [WorkspaceResearchActivity]
     public let settlementRequirements: [WorkspaceSettlementRequirement]
-    public let resultArrivals: [WorkspaceResearchResultArrival]
     public let healthIssues: [String]
 
     public init(
         settlements: [SettlementRecord] = [],
-        activeDiscussions: [PortableResearchDiscussion] = [],
-        finishedResearchRecords: [PortableResearchRecord] = [],
-        finishedResearchRecordFingerprints: [UUID: DocumentFingerprint] = [:],
-        finishedResearchRecordSourceManifestHash: String = "",
-        finishedResearchRecordProjectionIsComplete: Bool = true,
         critiques: [CritiqueAssociation],
         recoveryRecords: [TriptychMutationRecoveryRecord] = [],
-        activities: [WorkspaceResearchActivity] = [],
         settlementRequirements: [WorkspaceSettlementRequirement] = [],
-        resultArrivals: [WorkspaceResearchResultArrival] = [],
         healthIssues: [String]
     ) {
         self.settlements = settlements
-        self.activeDiscussions = activeDiscussions
-        self.finishedResearchRecords = finishedResearchRecords
-        self.finishedResearchRecordFingerprints = finishedResearchRecordFingerprints
-        self.finishedResearchRecordSourceManifestHash = finishedResearchRecordSourceManifestHash
-        self.finishedResearchRecordProjectionIsComplete =
-            finishedResearchRecordProjectionIsComplete
         self.critiques = critiques
         self.recoveryRecords = recoveryRecords
-        self.activities = activities
         self.settlementRequirements = settlementRequirements
-        self.resultArrivals = resultArrivals
         self.healthIssues = healthIssues
     }
 }
@@ -757,7 +623,7 @@ public struct WorkspaceDerivedStateChangedEvent: Sendable {
     }
 }
 
-public struct WorkspaceResearchRecordsChangedEvent: Sendable {
+public struct WorkspaceResearchStateChangedEvent: Sendable {
     public let generation: UInt64
     public let research: WorkspaceResearchSnapshot
     public let snapshot: WorkspaceSnapshot
@@ -839,7 +705,7 @@ public enum WorkspaceEvent: Sendable {
     case sourceCommitted(WorkspaceSourceCommittedEvent)
     case inventoryChanged(WorkspaceInventoryChangedEvent)
     case derivedStateChanged(WorkspaceDerivedStateChangedEvent)
-    case researchRecordsChanged(WorkspaceResearchRecordsChangedEvent)
+    case researchStateChanged(WorkspaceResearchStateChangedEvent)
     case researchConfigurationInvalidated(
         WorkspaceResearchConfigurationInvalidatedEvent
     )
@@ -852,7 +718,7 @@ public enum WorkspaceEvent: Sendable {
         case .sourceCommitted(let event): event.generation
         case .inventoryChanged(let event): event.generation
         case .derivedStateChanged(let event): event.generation
-        case .researchRecordsChanged(let event): event.generation
+        case .researchStateChanged(let event): event.generation
         case .researchConfigurationInvalidated(let event): event.generation
         case .vaultAccessInvalidated(let event): event.generation
         case .runtimeReloaded(let event): event.generation
@@ -865,7 +731,7 @@ public enum WorkspaceEvent: Sendable {
         case .sourceCommitted(let event): event.snapshot
         case .inventoryChanged(let event): event.snapshot
         case .derivedStateChanged(let event): event.snapshot
-        case .researchRecordsChanged(let event): event.snapshot
+        case .researchStateChanged(let event): event.snapshot
         case .researchConfigurationInvalidated(let event): event.snapshot
         case .vaultAccessInvalidated(let event): event.snapshot
         case .runtimeReloaded(let event): event.snapshot
@@ -888,7 +754,7 @@ public enum WorkspaceEvent: Sendable {
         case .snapshot,
              .sourceCommitted,
              .inventoryChanged,
-             .researchRecordsChanged,
+             .researchStateChanged,
              .researchConfigurationInvalidated,
              .runtimeReloaded:
             snapshot.phase.isComplete
@@ -940,7 +806,7 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
     case operationCommittedButRefreshFailed(operation: String, reason: String)
     case operationCommitUncertain(operation: String, reason: String)
     case noWorkspaceConfigured
-    case researchStoreUnavailable(String)
+    case critiqueStoreUnavailable(String)
     case runtimeConfigurationUnavailable
 
     /// `true` means the authoritative mutation is already durable and the
@@ -998,7 +864,7 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
         case .vaultNotInWorkspace(let id):
             "Vault \(id.uuidString) is not part of this Scholium Triptych."
         case .workspaceStillLoading(let id):
-            "Scholium is still loading the complete Triptych \(id.uuidString). This Note and the currently open vault support bounded text Search; Triptych Search, Research Records, relationships, and Research Actions will become available when loading finishes."
+            "Scholium is still loading the complete Triptych \(id.uuidString). This Note and the currently open vault support bounded text Search; Triptych Search and relationships will become available when loading finishes."
         case .workspaceRegistrationInUse(let id):
             "Scholium cannot remove Triptych registration \(id.uuidString) while that Triptych is open. Close its other windows and try again."
         case .portableControlRecoveryRequired(let controlPath, let reason):
@@ -1013,8 +879,8 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
             "Scholium could not prove whether \(operation) committed. Reload the authoritative state before trying another mutation: \(reason)"
         case .noWorkspaceConfigured:
             "No Scholium Triptych is configured."
-        case .researchStoreUnavailable(let reason):
-            "Scholium research records are unavailable. \(reason)"
+        case .critiqueStoreUnavailable(let reason):
+            "Scholium Critique state is unavailable. \(reason)"
         case .runtimeConfigurationUnavailable:
             "This fixed workspace snapshot cannot change Triptych registration or access."
         }
@@ -1026,13 +892,9 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
 /// they already describe the violated invariant precisely.
 public enum ResearchOperationError: LocalizedError, Sendable {
     case noteUnavailable(VaultQualifiedNoteID)
-    case commentUnavailable(VaultRole)
+    case settlementUnavailable(VaultRole)
     case critiqueUnavailable(VaultRole)
     case critiqueTargetMustBeOrdinaryWork(String)
-    case staleCommentRevision
-    case discussionContextChanged
-    case dialogueContextChanged(String)
-    case invalidDialogueResponseContract([String])
     case critiqueRegistryUnavailable(String)
     case critiqueTargetChanged
     case critiqueRollbackFailed(requestError: String, rollbackError: String)
@@ -1041,20 +903,12 @@ public enum ResearchOperationError: LocalizedError, Sendable {
         switch self {
         case .noteUnavailable(let id):
             "The note at \(id.relativePath) is not available in this workspace generation."
-        case .commentUnavailable:
-            "Comments require a reliably identified Analysis, Topic, or Work."
+        case .settlementUnavailable:
+            "Settlement requires a reliably identified Analysis, Topic, or Work."
         case .critiqueUnavailable:
             "Request Critique is available only for ordinary notes in Works."
         case .critiqueTargetMustBeOrdinaryWork(let path):
             "Request Critique requires an ordinary Work, not the managed Critique at \(path)."
-        case .staleCommentRevision:
-            "The note changed before the Comment could be attached. Reload the current source and select the passage again."
-        case .discussionContextChanged:
-            "The active Discussion has a different focal-note boundary. Finish it before starting a Discussion with new focal notes."
-        case .dialogueContextChanged(let title):
-            "\(title) changed, moved, or lost its stable identity while Discuss was being prepared. Reload the current note list and review the source again."
-        case .invalidDialogueResponseContract(let issues):
-            "The selected Discuss response contract is unavailable. \(issues.joined(separator: " "))"
         case .critiqueRegistryUnavailable(let reason):
             reason
         case .critiqueTargetChanged:

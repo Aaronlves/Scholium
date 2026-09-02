@@ -74,7 +74,7 @@
       }
     },
     "settings.tab.researchGuidance" : {
-      "comment" : "Settings group for Skills, Action Profiles, Agent Access, and External Tools and Citations.",
+      "comment" : "Settings group for Agent Integration and read-only external research tools.",
       "extractionState" : "extracted_with_value",
       "localizations" : {
         "en" : {

@@ -26,7 +26,6 @@ struct InterfacePresentationOwnershipTests {
         "Scholium/Resources/Editor/editor.css": 2,
         "Scholium/Resources/Editor/previews.css": 1,
         "Scholium/UI/Foundation/ScholiumDesignSystem.swift": 3,
-        "Scholium/Views/Note/SafeMarkdownReadWebView.swift": 2,
       ],
       Comment(rawValue: diagnostic(for: webShadows))
     )
@@ -53,7 +52,7 @@ struct InterfacePresentationOwnershipTests {
       ) == 1
     )
     #expect(matchCount(pattern: #"box-shadow\s*:\s*inset"#, in: editor) == 2)
-    #expect(matchCount(pattern: #"box-shadow\s*:\s*inset"#, in: readWebView) == 2)
+    #expect(matchCount(pattern: #"box-shadow\s*:\s*inset"#, in: readWebView) == 0)
   }
 
   @Test("SwiftUI Button hover has one shared presentation owner")
@@ -88,7 +87,7 @@ struct InterfacePresentationOwnershipTests {
     )
     #expect(
       webPointerEvents == [
-        "WebEditor/reader.ts": 6
+        "WebEditor/reader.ts": 4
       ],
       Comment(rawValue: diagnostic(for: webPointerEvents))
     )

@@ -30,6 +30,11 @@ enum WorkspacePortableSettingsState: Equatable, Sendable {
     }
 }
 
+enum AgentBridgeAvailability: Equatable, Sendable {
+    case available
+    case unavailable(String)
+}
+
 /// Delivery-neutral values required by Settings. No document buffer, window
 /// route, presentation state, or editor session belongs in this snapshot.
 struct WorkspaceSettingsSnapshot: Equatable, Sendable {
@@ -141,42 +146,6 @@ struct WorkspaceSettingsZoteroCapabilities {
     let refreshZoteroLibraryInfo: () async throws -> ZoteroLibraryInfo
 }
 
-/// Research Guidance package and binding operations used by Settings.
-@MainActor
-struct WorkspaceSettingsResearchGuidanceCapabilities {
-    let researchSkillRegistrations: (
-        UUID
-    ) async throws -> ResearchSkillRegistrationSnapshot
-    let saveResearchSkillRegistrations: (
-        UUID, ResearchSkillRegistrationDocument, DocumentFingerprint
-    ) async throws -> ResearchSkillRegistrationSnapshot
-    let academicActionProfiles: (
-        UUID
-    ) async throws -> ResearchAcademicProfileSnapshot
-    let saveAcademicActionProfiles: (
-        UUID, ResearchAcademicProfileDocument, DocumentFingerprint
-    ) async throws -> ResearchAcademicProfileSnapshot
-    let researchSkillBinding: (
-        UUID, ResearchActionID
-    ) async throws -> ResearchSkillBindingSnapshot
-    let registerExternalResearchSkillFolder: (
-        UUID,
-        ResearchActionID,
-        String,
-        String,
-        DocumentFingerprint
-    ) async throws -> ResearchSkillBindingSnapshot
-    let showResearchSkillFolder: (UUID, ResearchActionID) async throws -> Void
-    let recoverMachineLocalSkillFolderLocators: (UUID) async throws -> URL?
-    let citationMethodStatus: (UUID) async throws -> ResearchCitationMethodStatus
-    let activateCitationMethod: (
-        UUID, ResearchCitationMethodSelection, DocumentFingerprint?
-    ) async throws -> ResearchCitationMethodStatus
-    let clearCitationMethod: (
-        UUID, DocumentFingerprint?
-    ) async throws -> ResearchCitationMethodStatus
-}
-
 /// Delivery-neutral operations assembled by the macOS composition root.
 /// Settings owns feature state but never receives an Application handle.
 @MainActor
@@ -184,7 +153,6 @@ struct WorkspaceSettingsCapabilities {
     let workspace: WorkspaceSettingsWorkspaceCapabilities
     let machine: WorkspaceSettingsMachineCapabilities
     let zotero: WorkspaceSettingsZoteroCapabilities
-    let researchGuidance: WorkspaceSettingsResearchGuidanceCapabilities
 }
 
 /// Application-lifetime Settings boundary. It receives delivery-neutral
@@ -211,6 +179,8 @@ final class WorkspaceSettingsModel: ObservableObject {
 
     let cssSnippetStore: CSSSnippetStore?
 
+    private let agentBridgeAvailabilityProvider: @MainActor () -> AgentBridgeAvailability
+
     private let capabilities: WorkspaceSettingsCapabilities?
     private let loadSnapshot: SnapshotLoader?
     private let activateSnapshot: TriptychActivator?
@@ -224,12 +194,16 @@ final class WorkspaceSettingsModel: ObservableObject {
     init(
         capabilities: WorkspaceSettingsCapabilities,
         cssSnippetStore: CSSSnippetStore,
+        agentBridgeAvailability: @escaping @MainActor () -> AgentBridgeAvailability = {
+            .unavailable("The App bridge is unavailable.")
+        },
         selectedPane: WorkspaceSettingsPane = .triptychs
     ) {
         self.selectedPane = selectedPane
         self.snapshot = WorkspaceSettingsSnapshot()
         self.capabilities = capabilities
         self.cssSnippetStore = cssSnippetStore
+        self.agentBridgeAvailabilityProvider = agentBridgeAvailability
         self.loadSnapshot = nil
         self.activateSnapshot = nil
         self.loadPortableSettingsSnapshot = nil
@@ -249,6 +223,9 @@ final class WorkspaceSettingsModel: ObservableObject {
         self.snapshot = snapshot
         self.capabilities = nil
         self.cssSnippetStore = nil
+        self.agentBridgeAvailabilityProvider = {
+            .unavailable("The App bridge is unavailable in this preview.")
+        }
         self.loadSnapshot = loadSnapshot
         self.activateSnapshot = activateTriptych
         self.loadPortableSettingsSnapshot = loadPortableSettings
@@ -269,6 +246,9 @@ final class WorkspaceSettingsModel: ObservableObject {
     var workspaceAssignment: TriptychAssignment? {
         guard let id = snapshot.activeTriptychID else { return nil }
         return snapshot.registeredTriptychs.first { $0.id == id }
+    }
+    var agentBridgeAvailability: AgentBridgeAvailability {
+        agentBridgeAvailabilityProvider()
     }
     func selectPane(_ pane: WorkspaceSettingsPane) {
         selectedPane = pane
@@ -497,131 +477,6 @@ final class WorkspaceSettingsModel: ObservableObject {
             return ZoteroLibraryInfo(status: .appUnavailable, lastSuccessfulConnection: nil)
         }
         return try await capabilities.zotero.refreshZoteroLibraryInfo()
-    }
-
-    func researchSkillRegistrations() async throws
-        -> ResearchSkillRegistrationSnapshot
-    {
-        guard let id = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await capabilities.researchGuidance.researchSkillRegistrations(id)
-    }
-
-    func saveResearchSkillRegistrations(
-        _ document: ResearchSkillRegistrationDocument,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchSkillRegistrationSnapshot {
-        guard let id = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await capabilities.researchGuidance.saveResearchSkillRegistrations(
-            id,
-            document,
-            expectedRevision
-        )
-    }
-
-    func academicActionProfiles() async throws -> ResearchAcademicProfileSnapshot {
-        guard let id = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await capabilities.researchGuidance.academicActionProfiles(id)
-    }
-
-    func saveAcademicActionProfiles(
-        _ document: ResearchAcademicProfileDocument,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchAcademicProfileSnapshot {
-        guard let id = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await capabilities.researchGuidance.saveAcademicActionProfiles(
-            id,
-            document,
-            expectedRevision
-        )
-    }
-
-    func researchSkillBinding(for actionID: ResearchActionID) async throws
-        -> ResearchSkillBindingSnapshot
-    {
-        guard let id = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await capabilities.researchGuidance.researchSkillBinding(id, actionID)
-    }
-
-    func registerExternalResearchSkillFolder(
-        actionID: ResearchActionID,
-        displayName: String,
-        skillFolderPath: String,
-        expectedRegistrationRevision: DocumentFingerprint
-    ) async throws -> ResearchSkillBindingSnapshot {
-        guard let id = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await capabilities.researchGuidance.registerExternalResearchSkillFolder(
-            id,
-            actionID,
-            displayName,
-            skillFolderPath,
-            expectedRegistrationRevision
-        )
-    }
-
-    func showResearchSkillFolder(for actionID: ResearchActionID) async throws {
-        guard let id = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        try await capabilities.researchGuidance.showResearchSkillFolder(
-            id,
-            actionID
-        )
-    }
-
-    func citationMethodStatus() async throws -> ResearchCitationMethodStatus {
-        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await capabilities.researchGuidance.citationMethodStatus(workspaceID)
-    }
-
-    func activateCitationMethod(
-        citationStyle: String,
-        expectedConfigurationRevision: DocumentFingerprint?
-    ) async throws -> ResearchCitationMethodStatus {
-        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await capabilities.researchGuidance.activateCitationMethod(
-            workspaceID,
-            ResearchCitationMethodSelection(
-                citationStyle: citationStyle
-            ),
-            expectedConfigurationRevision
-        )
-    }
-
-    func clearCitationMethod(
-        expectedConfigurationRevision: DocumentFingerprint?
-    ) async throws -> ResearchCitationMethodStatus {
-        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await capabilities.researchGuidance.clearCitationMethod(
-            workspaceID,
-            expectedConfigurationRevision
-        )
-    }
-
-    @discardableResult
-    func recoverMachineLocalSkillFolderLocators() async throws -> URL? {
-        guard let workspaceID = snapshot.activeTriptychID, let capabilities else {
-            throw WorkspaceRegistryError.incompleteWorkspace
-        }
-        return try await capabilities.researchGuidance
-            .recoverMachineLocalSkillFolderLocators(workspaceID)
     }
 
     func openExternal(_ url: URL) {

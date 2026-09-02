@@ -696,8 +696,6 @@ struct WorkspaceRuntimeTests {
         #expect(openingEvent.snapshot.vaults.map(\.slot) == [.paperAnalysis])
         #expect(openingEvent.snapshot.discovery.searchGeneration == nil)
         #expect(openingEvent.snapshot.discovery.catalog.graph == nil)
-        #expect(!openingEvent.snapshot.research.finishedResearchRecordProjectionIsComplete)
-        #expect(openingEvent.snapshot.research.activeDiscussions.isEmpty)
         #expect(await handle.ownedBackgroundTaskCount >= 2)
 
         let openedDocument = try await handle.documents.load(fixture.analysisNoteID)
@@ -723,7 +721,7 @@ struct WorkspaceRuntimeTests {
             executionScope: .currentVault(fixture.analysisNoteID.vaultID),
             limit: 20
         ))
-        guard case .note(.limited) = thisVaultResponse.availability else {
+        guard case .limited = thisVaultResponse.availability.noteAvailability else {
             Issue.record("Opening This Vault Search did not expose its limited state.")
             await runtime.shutdown()
             return
@@ -737,7 +735,7 @@ struct WorkspaceRuntimeTests {
             executionScope: .currentVault(fixture.analysisNoteID.vaultID),
             limit: 20
         ))
-        guard case .note(.limited) = trustedOpeningResponse.availability else {
+        guard case .limited = trustedOpeningResponse.availability.noteAvailability else {
             Issue.record("Trusted opening Search did not retain its limited state.")
             await runtime.shutdown()
             return
@@ -767,7 +765,7 @@ struct WorkspaceRuntimeTests {
             limit: 20
         ))
         #expect(notYetIndexed.results.isEmpty)
-        guard case .note(.limited) = notYetIndexed.availability else {
+        guard case .limited = notYetIndexed.availability.noteAvailability else {
             Issue.record("Opening-only source was not reported as outside the limited index.")
             await runtime.shutdown()
             return
@@ -782,22 +780,6 @@ struct WorkspaceRuntimeTests {
         #expect(structuredOpening.results.isEmpty)
         #expect(structuredOpening.diagnostics.map(\.code) == [.notApplicable])
 
-        do {
-            _ = try await handle.discovery.search(SearchRequest(
-                query: "kind:record freedom",
-                presentationScope: .currentVault,
-                executionScope: .currentVault(fixture.analysisNoteID.vaultID),
-                limit: 20
-            ))
-            Issue.record("Opening Search presented an incomplete Record corpus.")
-        } catch let error as ScholiumApplicationError {
-            guard case .workspaceStillLoading(let id) = error else {
-                Issue.record("Unexpected opening Record Search error: \(error)")
-                await runtime.shutdown()
-                return
-            }
-            #expect(id == fixture.assignment.id)
-        }
         do {
             _ = try await handle.discovery.search(SearchRequest(
                 query: "freedom",
@@ -899,71 +881,6 @@ struct WorkspaceRuntimeTests {
 
         await runtime.shutdown()
         #expect(await handle.ownedBackgroundTaskCount == 0)
-    }
-
-    @Test("Progressive opening defers orphan Discussion repair until completion")
-    func progressiveOpeningDefersOrphanDiscussionRepair() async throws {
-        let fixture = try await ApplicationFixture.make()
-        defer { fixture.remove() }
-
-        let seedRuntime = try await WorkspaceRuntime.snapshot(
-            applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL
-        )
-        let seedHandle = try await seedRuntime.openWorkspace(id: fixture.assignment.id)
-        let helpers = ResearchActionRunOperationsTests()
-        let target = try await researchActionTarget(
-            fixture.analysisNoteID,
-            role: .analysis,
-            handle: seedHandle
-        )
-        let preparation = try await seedHandle.research.prepareAction(
-            try await helpers.actionRequest(
-                handle: seedHandle,
-                actionID: .discuss,
-                target: target,
-                academicValues: [
-                    ResearchAcademicFieldID(rawValue: "research-request")!:
-                        .freeText("Defer this orphan repair until completion."),
-                ]
-            )
-        )
-        await seedRuntime.shutdown()
-
-        let activeURL = fixture.rootURL
-            .appendingPathComponent(".scholium/research-records/v1/active", isDirectory: true)
-            .appendingPathComponent(preparation.runID.uuidString.lowercased() + ".json")
-        try FileManager.default.removeItem(at: activeURL)
-
-        let runtime = WorkspaceRuntime(configuration: .live(.init(
-            applicationSupportURL: fixture.applicationSupportURL,
-            workspaceRegistryStorageURL: fixture.registryStorageURL
-        )))
-        let handle = try await runtime.openWorkspace(
-            id: fixture.assignment.id,
-            openingVault: .paperAnalysis
-        )
-        let opening = try await handle.snapshot()
-        #expect(opening.phase == .opening(availableVault: .paperAnalysis))
-        #expect(opening.research.activeDiscussions.isEmpty)
-        #expect(!FileManager.default.fileExists(atPath: activeURL.path))
-
-        await handle.openingPresentationDidComplete()
-        var completeSnapshot: WorkspaceSnapshot?
-        for _ in 0..<150 {
-            try await Task.sleep(for: .milliseconds(20))
-            let snapshot = try await handle.snapshot()
-            if snapshot.phase.isComplete {
-                completeSnapshot = snapshot
-                break
-            }
-        }
-        let complete = try #require(completeSnapshot)
-        #expect(complete.research.activeDiscussions.contains {
-            $0.id == preparation.runID
-        })
-        #expect(FileManager.default.fileExists(atPath: activeURL.path))
-        await runtime.shutdown()
     }
 
     @Test("Native live events publish one stable-identity move to every window")

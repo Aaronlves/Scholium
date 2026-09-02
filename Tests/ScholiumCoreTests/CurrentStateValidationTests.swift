@@ -30,41 +30,6 @@ struct CurrentStateValidationTests {
         }
     }
 
-    @Test("Incomplete Citation Method documents fail closed")
-    func incompleteCitationMethodDocument() {
-        let source = Data(#"{"schemaVersion":1,"activeCitationStyle":"apa-7"}"#.utf8)
-        #expect(throws: DecodingError.self) {
-            _ = try JSONDecoder().decode(
-                ResearchCitationMethodDocument.self,
-                from: source
-            )
-        }
-    }
-
-    @Test("Current Citation Method documents reject unknown fields")
-    func strictCitationMethodDocuments() {
-        let id = UUID().uuidString
-        let unknownCitation = Data(
-            #"{"schemaVersion":1,"triptychID":"\#(id)","activeCitationStyle":null,"future":true}"#.utf8
-        )
-        #expect(throws: ResearchCitationMethodContractError.self) {
-            _ = try JSONDecoder().decode(
-                ResearchCitationMethodDocument.self,
-                from: unknownCitation
-            )
-        }
-    }
-
-    @Test("Unsupported citation styles fail closed")
-    func unsupportedCitationStyle() {
-        #expect(throws: ResearchCitationMethodContractError.self) {
-            _ = try ResearchCitationMethodDocument(
-                triptychID: UUID(),
-                activeCitationStyle: "invented-style"
-            )
-        }
-    }
-
     private func temporaryDirectory(named name: String) -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("scholium-\(name)-\(UUID().uuidString)", isDirectory: true)

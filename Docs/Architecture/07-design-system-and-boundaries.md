@@ -156,71 +156,23 @@ font and body-medium SF Symbol scale that the original SwiftUI toolbar used;
 SwiftUI does not reconstruct a
 toolbar interaction surface or persistent active state.
 
-Research Records uses one continuous semantic Document surface, collection-
-first routing, native TextField/Menu/Toggle/sheet behavior, structural rules,
-and two independent detail scroll owners. Its toolbar View index consumes the
-shared compact segmented component and hides macOS shared background material,
-so the quiet track and raised selection plate receive no automatic Liquid Glass
-enclosure. Scope and Filters
-remain borderless native Menus. The View index and detail navigation are native-
-toolbar content; the adaptive
-collection header owns identity, search, Scope, Filters, and count. The selected
-Record allocates the remaining width to reading while its default-visible
-Evidence rail stays between 260pt and 304pt. One native toolbar control removes
-or restores the rail. One adaptive divider and the full-height
-`readingEvidenceBoundary`, never color or shadow alone, distinguish the visible
-planes; Increase Contrast removes the depth cue while retaining the divider and
-surface relationship.
-The Records scene applies `fullSizeContentView` once for the complete window
-lifetime. AppKit's safe area remains the content boundary for collection and
-detail scroll owners, while the selected Record's Document and Apparatus plane
-backgrounds and their structural boundary continue behind the transparent
-toolbar. The root hides the native toolbar background, and macOS 26+ toolbar
-content hides its automatic shared background, so those semantic planes remain
-continuous without Liquid Glass or a painted masking layer.
+`MCPAgentChangesView` uses one continuous semantic Document surface and a flat
+machine-local change list. Each row distinguishes operation, stable Note
+identity, source path, exact revision state, and available recovery without
+treating the entry as a research result. Exact comparison reuses the shared
+comparison components; Update Undo uses a native confirmation and remains
+visibly unavailable when Application reports revision drift. The view adds no
+second history, acceptance, or source-authority visual language.
 
-Every custom Records Button routes hover, keyboard focus, and press through
-the shared Button feedback owner; Scope and Filters use the bounded Menu
-adapter and plain presentation. Inspector ModeIndex and the toolbar View index
-both resolve selection, focus, and traversal through the same segmented owner;
-neither adds an Accent underline or fill. View items, menu labels, search clear,
-ordinary actions, evidence links, and continuity links use the editorial-
-control continuous shape; native toolbar Back and Evidence controls retain
-system interaction geometry. Collection destinations and their leading Handled
-control share one purpose-owned 8pt row surface with no icon well or
-detached background. Press changes ink/surface immediately without geometry
-animation; no leaf supplies a raw hover color or radius. Record groups and
-Reading Lead occurrences retain fixed scanning rhythm and flat textual
-hierarchy without elevation or nested card families. The provider-bounded
-Record ledger and rebuildable Reading Leads index publish exact totals and
-stable 100-row slices to flat native lazy containers; later slices append at
-the collection boundary without replacing loaded rows. Both
-ledgers align through one fixed shared header and row rhythm; their whole-row
-destination needs no trailing glyph. Triptych Record rows own an unlabeled 28pt
-Attention gutter, a flexible two-line frozen-title/focal-Note Record track, a
-fixed Action track, and a fixed Date track; This Note omits the focal-Note line. Attention
-projects only explicit frozen exceptions and otherwise stays empty. Completed
-adds no repeated status. Action is a centered text-only neutral capsule with no
-icon, category tint, or independent control semantics. The visually unlabeled
-32pt Handled track keeps an accessible label and independent native-control
-semantics.
-System confirmation actions remain native-owned.
-Evidence rows reuse one shared ledger component with an aligned
-symbol column and no trailing action button. Academic evidence remains visible
-when the rail is shown; the evaluation editor and technical identity use
-separate disclosure controls, and permanent Research Record deletion remains in the Record
-header.
-Bibliography and both Record and Reading Lead technical identity reuse
-`ScholiumApparatusFactGrid`, the same adaptive label/value owner as Inspector
-About. Consumers provide semantic values only; the grid alone chooses aligned
-or stacked structure and its value-style token distinguishes scholarly prose
-from exact revision identity.
-The window observes `WindowColorSchemeChoice.defaultsKey` and resolves it
-through the same `swiftUIColorScheme` mapping used by Workspace content and
-toolbar hosts; it owns no second appearance preference.
+Inspector and Agent Changes controls route hover, keyboard focus, and press
+through shared component owners. System confirmation actions remain
+native-owned. Technical fingerprints use `ScholiumApparatusFactGrid`, the same
+adaptive label/value owner as Inspector About. Consumers provide semantic
+values only; the grid chooses aligned or stacked structure and its exact-value
+style distinguishes scholarly prose from revision identity.
 `ScholiumTypography` is the sole native text resolver for Scholium-owned
 surfaces. It exposes only `InterfaceRole`, `ScholarlyRole`, and `ExactRole`;
-feature modules publish no Library, Apparatus, Research Records, or Chrome font
+feature modules publish no Library, Apparatus, Agent Changes, or Chrome font
 aliases. Every custom top-level view shares the 17pt Semibold Interface primary
 title, while research-object titles share the 20pt Bold Scholarly title.
 Emphasis and tabular figures are resolver inputs rather than cross-product
@@ -276,7 +228,7 @@ into `ScholiumHotkeyPreferences`, the versioned UserDefaults owner shared with
 `ScholiumCommands`; it owns no command execution, and Hotkeys never enter
 portable Triptych settings.
 
-Settings uses the same unified, title-free toolbar style as Research Records.
+Settings uses a unified, title-free toolbar style.
 `SettingsWindowAttachment` installs `fullSizeContentView` and retains the
 transparent native titlebar, traffic lights, and drag behavior. The Settings
 root is a two-column `NavigationSplitView`; its Navigation and detail columns
@@ -285,36 +237,19 @@ that chrome. No window-level two-color background or SwiftUI divider duplicates
 those planes.
 
 The This Triptych Metadata detail consumes one candidate
-`NoteMetadataCatalog` derived from its settings draft. Its field-definition,
-Agent-preference, and About always-shown sections mutate three separate
-subvalues and save only through the existing exact-revision Settings
-transaction. Present values remain visible in About independently of that
-empty-field preference. The inline Add
+`NoteMetadataCatalog` derived from its settings draft. Its field-definition and
+About always-shown sections mutate separate subvalues and save only through the
+existing exact-revision Settings transaction. Present values remain visible in
+About independently of that empty-field preference. The inline Add
 Field form owns only a key and supported simple value kind; it has no source,
-record, About, Agent, Zotero, or body mutation authority.
+About, Agent, Zotero, or body mutation authority.
 
-`ScholiumGrid.ResearchSheet` owns the common editorial rhythm for research-
-facing sheet content: a 4pt title/detail gap, 16pt body-section cadence, 8pt
-footer-control gap, and a bounded status inset. `ScholiumMetrics.ResearchSheet`
-maps those roles plus the existing purpose-specific Action, Reading Lead note,
-and Record evaluation size constraints. The three views retain separate Run,
-note-save, evaluation-draft, dismissal, focus, and recovery owners; the shared
-metrics do not create a generic sheet lifecycle or move native sheet chrome out
-of AppKit. Each sheet presents a fixed title region, independently scrolling
-body, and fixed action region separated by structural rules.
-
-Default Research Actions present their stable title without repeating an
-ordinary summary in hover help. Help and accessibility hints remain only when
-they supply otherwise missing action, exact value, disabled-state, consequence,
-or recovery context; errors and recovery instructions stay visible at their
-owning surface. Relationship rows likewise do not repeat their already visible
-section title as tooltip text.
-
-The populated Records and Reading Leads ledgers own
-`scholium.researchRecords.collection`; the Records empty-content leaf owns
-`scholium.researchRecords.empty`. Their common outer container owns neither, so
-an ancestor cannot replace the state-specific identity in the accessibility
-tree.
+Agent Integration is informational and operational: it presents host-specific
+MCP setup commands and the bundled Core Protocol path. It persists no Agent
+preference, credentials, sessions, or execution state. Help and accessibility
+hints appear only when they supply otherwise missing action, exact value,
+disabled-state, consequence, or recovery context; errors and recovery
+instructions stay visible at their owning surface.
 
 `ScholiumCornerRole` is the current shared responsibility vocabulary for custom
 corner geometry. `ScholiumShape` exposes Native aliases and generates the
@@ -373,7 +308,7 @@ Scholium-specific components or distinct research surfaces are appropriate.
 `ScholiumContentStateView` is the single presentation leaf for page- and
 pane-level state copy. It accepts only visible content, indicator treatment,
 region placement, density, and an action view; Document, Library, Search,
-Research Records, Attention, Recovery, and Settings owners continue
+Agent Changes, Attention, Recovery, and Settings owners continue
 to derive their own states and transitions. `ScholiumApparatusStateView`,
 inline field feedback, and `ScholiumRecoveryNotice` remain separate owners for
 their distinct compact, validation, and persistent-recovery responsibilities.

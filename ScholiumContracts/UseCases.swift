@@ -37,9 +37,6 @@ public protocol LibraryMutationUseCases: Sendable {
     func prepareSystemTrash(
         _ target: NoteMutationTarget
     ) async throws -> SystemTrashDeletionPreview
-    func archiveUnsupportedLocalResearchExecutions(
-        _ preview: LocalResearchExecutionRecoveryPreview
-    ) async throws -> LocalResearchExecutionArchiveCommit
     func moveToSystemTrash(
         _ preview: SystemTrashDeletionPreview
     ) async throws -> WorkspaceMutationOutcome<SystemTrashDeletionCommit>
@@ -177,64 +174,16 @@ public protocol DiscoveryUseCases: Sendable {
     ) async throws -> [RelationshipTrace]
 }
 
-public protocol ResearchRecordUseCases: Sendable {
+/// App-owned researcher judgments and recovery operations. External Agent
+/// conversation, task lifecycle, and philosophical result ownership are not
+/// represented by this capability.
+public protocol ResearchUseCases: Sendable {
     func snapshot() async throws -> WorkspaceResearchSnapshot
     func settle(
         _ note: VaultQualifiedNoteID,
         expectedRevision: DocumentFingerprint,
         rationale: String?
     ) async throws -> SettlementRecord
-    func activeDiscussions(noteID: UUID?) async throws -> [PortableResearchDiscussion]
-    func activeDiscussion(id: UUID) async throws -> PortableResearchDiscussion
-    func activeDiscussionIfPresent(id: UUID) async throws -> PortableResearchDiscussion?
-    func createDiscussion(
-        target: ResearchActionNoteSnapshot,
-        focalNotes: [ResearchActionNoteSnapshot],
-        passage: CommentAnchor?,
-        researcherMessage: String
-    ) async throws -> PortableResearchDiscussion
-    func createComment(
-        target: ResearchActionNoteSnapshot,
-        lineReference: ResearchLineReference,
-        researcherMessage: String
-    ) async throws -> PortableResearchDiscussion
-    func replyToDiscussionAndFinish(
-        discussionID: UUID,
-        statementID: UUID,
-        attribution: String,
-        text: String
-    ) async throws -> PortableResearchRecord
-    func finishDiscussion(discussionID: UUID) async throws -> PortableResearchRecord
-    func finishedResearchRecords(noteID: UUID?) async throws -> [PortableResearchRecord]
-    func saveMethodFeedback(
-        recordID: UUID,
-        draft: ResearchMethodFeedbackDraft?,
-        expectedMethodFeedbackRevision: UUID?,
-        expectedResultFingerprint: DocumentFingerprint
-    ) async throws -> PortableResearchRecord
-    func researchRecordChangeState(
-        recordID: UUID
-    ) async throws -> ResearchRecordChangeState
-    func undoResearchRecordChanges(
-        recordID: UUID,
-        selectedNoteIDs: Set<UUID>,
-        expectedResultFingerprint: DocumentFingerprint
-    ) async throws -> ResearchRecordChangesUndoResult
-    func setResearchRecordRecommendationDisposition(
-        recordID: UUID,
-        recommendationID: UUID,
-        status: ResearchLiteratureRecommendationDispositionStatus
-    ) async throws -> PortableResearchRecord
-    func setResearchRecordRecommendationNote(
-        recordID: UUID,
-        recommendationID: UUID,
-        note: String?
-    ) async throws -> PortableResearchRecord
-    func deleteResearchRecordPermanently(id: UUID) async throws
-    func researchRecordComparison(
-        recordID: UUID,
-        noteID: UUID
-    ) async throws -> ExactSourceComparison
     func critique(workNoteID: UUID) async throws -> CritiqueAssociation?
     func critique(critiqueRelativePath: String) async throws -> CritiqueAssociation?
     func setCritiqueFindingDisposition(
@@ -259,80 +208,6 @@ public protocol ResearchRecordUseCases: Sendable {
     ) async throws -> TriptychSettingsSnapshot
     func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord]
     func resolveRecoveryRecord(_ id: UUID) async throws
-}
-
-public extension ResearchRecordUseCases {
-    /// Test and preview adapters that only model valid current settings may
-    /// inherit this projection. Production owners implement the typed load
-    /// state so damaged or unsupported source is never flattened.
-    func settingsLoadState() async throws -> TriptychSettingsLoadState {
-        .current(try await settings())
-    }
-}
-
-public protocol ResearchConfigurationUseCases: Sendable {
-    func researchSkillRegistrations() async throws -> ResearchSkillRegistrationSnapshot
-    func saveResearchSkillRegistrations(
-        _ document: ResearchSkillRegistrationDocument,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchSkillRegistrationSnapshot
-    func academicActionProfiles() async throws -> ResearchAcademicProfileSnapshot
-    func saveAcademicActionProfiles(
-        _ document: ResearchAcademicProfileDocument,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> ResearchAcademicProfileSnapshot
-    func researchSkillBinding(
-        for actionID: ResearchActionID
-    ) async throws -> ResearchSkillBindingSnapshot
-}
-
-public protocol ResearchActionUseCases: Sendable {
-    func availableActions(
-        for target: ResearchActionNoteSnapshot
-    ) async throws -> [ResearchActionAvailability]
-
-    func prepareAction(
-        _ request: ResearchActionExecutionRequest
-    ) async throws -> ResearchActionPreparation
-
-    func prepareFollowUp(
-        _ request: ResearchFollowUpRequest
-    ) async throws -> ResearchActionPreparation
-
-    func followUpContext(
-        recordID: UUID,
-        expectedFinalizedResultFingerprint: DocumentFingerprint
-    ) async throws -> ResearchFollowUpContext
-
-    func materialCandidates(
-        for target: ResearchActionNoteSnapshot,
-        actionID: ResearchActionID
-    ) async throws -> [ResearchActionNoteSnapshot]
-
-    func actionRun(id: UUID) async throws -> ResearchActionPreparation
-
-    func cancelAction(runID: UUID) async throws
-
-    func issueAgentHandoff(
-        runID: UUID,
-        validity: TimeInterval
-    ) async throws -> ResearchAgentHandoff
-
-    func prepareResynthesis(
-        _ request: ResearchActionExecutionRequest,
-        context: SynthesisMaterialChangedAttentionContext
-    ) async throws -> ResearchActionPreparation
-}
-
-public protocol ResearchSourceAccessUseCases: Sendable {
-    func sourceAccess(
-        for target: ResearchActionNoteSnapshot
-    ) async throws -> ResearchSourceAccessStatus
-
-    func bindSourceAccess(
-        _ request: ResearchSourceBindingRequest
-    ) async throws -> ResearchSourceReference
-
 }
 
 public protocol StyleUseCases: Sendable {
@@ -414,79 +289,6 @@ public protocol ZoteroBindingUseCases: Sendable {
         noteID: UUID,
         expectedRevision: DocumentFingerprint
     ) async throws -> AnalysisZoteroBindingMutationResult
-}
-
-/// Delivery-neutral MCP request handling for the local Agent coordination
-/// bridge. The CLI owns stdio framing; Application owns bridge discovery,
-/// authentication, and request execution.
-public protocol AgentBridgeUseCases: Sendable {
-    func preflightAnalysisCreation(
-        triptychID: UUID,
-        request: ResearchAgentAnalysisCreationPreflightRequest
-    ) async throws -> ResearchAgentAnalysisCreationPreflight
-    func start(
-        triptychID: UUID,
-        request: ResearchAgentStartRequest
-    ) async throws -> ResearchAgentStartedSession
-    func pair(
-        run: ResearchRunLocator,
-        pairingCode: ResearchPairingCode
-    ) async throws -> ResearchConnectionCredential
-    func initialContext(
-        run: ResearchRunLocator,
-        credential: ResearchConnectionCredential
-    ) async throws -> ResearchAuthenticatedRunContext
-    func revokeSession(
-        _ credential: ResearchConnectionCredential
-    ) async throws -> ResearchAgentSessionRevocationReceipt
-    func context(
-        run: ResearchRunLocator,
-        credential: ResearchConnectionCredential
-    ) async throws -> ResearchAuthenticatedRunContext
-    func query(
-        run: ResearchRunLocator,
-        credential: ResearchConnectionCredential,
-        request: ResearchContextRequest
-    ) async throws -> ResearchContextResponse
-    func replyToDiscussion(
-        run: ResearchRunLocator,
-        credential: ResearchConnectionCredential,
-        request: ResearchAgentDiscussionReplyRequest
-    ) async throws -> ResearchAgentDiscussionReplyReceipt
-    func trackActivity(
-        run: ResearchRunLocator,
-        credential: ResearchConnectionCredential,
-        intent: ResearchWriteSetExtensionIntent
-    ) async throws -> ResearchWriteSetExtensionResult
-    func writeDocument(
-        run: ResearchRunLocator,
-        credential: ResearchConnectionCredential,
-        intent: ResearchDocumentWriteIntent
-    ) async throws -> ResearchDocumentWriteResult
-    func writeZoteroBinding(
-        run: ResearchRunLocator,
-        credential: ResearchConnectionCredential,
-        intent: ResearchZoteroBindingWriteIntent
-    ) async throws -> ResearchZoteroBindingWriteResult
-    func resolveWriteConflict(
-        run: ResearchRunLocator,
-        credential: ResearchConnectionCredential,
-        intent: ResearchWriteConflictResolutionIntent
-    ) async throws -> ResearchWriteConflictResolutionResult
-    func submitResult(
-        run: ResearchRunLocator,
-        credential: ResearchConnectionCredential,
-        submission: ResearchAgentResultSubmission
-    ) async throws -> ResearchAgentResultReceipt
-    func continueResearch(
-        run: ResearchRunLocator,
-        credential: ResearchConnectionCredential,
-        request: ResearchContinuationRequest
-    ) async throws -> ResearchContinuationResult
-    func end(
-        run: ResearchRunLocator,
-        credential: ResearchConnectionCredential
-    ) async throws -> ResearchRunEndReceipt
 }
 
 public struct StyleSnapshot: Codable, Hashable, Sendable {

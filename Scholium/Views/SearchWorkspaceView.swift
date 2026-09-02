@@ -148,67 +148,6 @@ enum SearchStatePresentation {
         }
     }
 
-    static func record(
-        _ availability: RecordSearchAvailability
-    ) -> SearchStateBannerPresentation? {
-        switch availability {
-        case .unavailable:
-            SearchStateBannerPresentation(
-                meaning: .unavailable,
-                title: String(localized: "Research Record Search Unavailable"),
-                message: String(localized: "No complete Research Record search projection is available."),
-                systemImage: "magnifyingglass.circle",
-                action: .refresh
-            )
-        case .building(let progress):
-            SearchStateBannerPresentation(
-                meaning: .loading,
-                title: String(localized: "Preparing Research Records"),
-                message: progress.total > 0
-                    ? String(localized: "Prepared \(progress.completed) of \(progress.total) records.")
-                    : String(localized: "Preparing the Research Record search projection."),
-                systemImage: "arrow.triangle.2.circlepath",
-                action: nil
-            )
-        case .current:
-            nil
-        case .partial(_, let reason):
-            SearchStateBannerPresentation(
-                meaning: .unavailable,
-                title: String(localized: "Some Research Records Are Unavailable"),
-                message: reason,
-                systemImage: "exclamationmark.triangle",
-                action: nil
-            )
-        case .refreshing:
-            SearchStateBannerPresentation(
-                meaning: .loading,
-                title: String(localized: "Refreshing Research Records"),
-                message: String(localized: "Showing results from the last complete Research Record search projection while the replacement is prepared."),
-                systemImage: "arrow.triangle.2.circlepath",
-                action: nil
-            )
-        case .stale(_, let reason):
-            SearchStateBannerPresentation(
-                meaning: .stale,
-                title: String(localized: "Research Record Search Is Stale"),
-                message: String(localized: "The last complete Research Record search projection remains available. Details: \(reason)"),
-                systemImage: "clock.badge.exclamationmark",
-                action: .refresh
-            )
-        case .failed(let lastGood, let reason):
-            SearchStateBannerPresentation(
-                meaning: .error,
-                title: String(localized: "Research Record Search Failed"),
-                message: lastGood == nil
-                    ? String(localized: "Scholium could not build a usable Research Record search projection. Details: \(reason)")
-                    : String(localized: "Scholium could not publish a replacement Research Record search projection. The last complete results remain available. Details: \(reason)"),
-                systemImage: "exclamationmark.triangle",
-                action: .retry
-            )
-        }
-    }
-
     static func suppressesNoMatchContent(
         for availability: SearchProviderAvailability,
         scope: SearchPresentationScope,
@@ -216,13 +155,11 @@ enum SearchStatePresentation {
     ) -> Bool {
         if hasExecutionIssue { return true }
         if scope == .thisNote { return false }
-        return switch availability {
-        case .note(.unavailable), .note(.building),
-             .note(.failed(lastGood: nil, reason: _)),
-             .record(.unavailable), .record(.building),
-             .record(.failed(lastGood: nil, reason: _)):
+        return switch availability.noteAvailability {
+        case .unavailable, .building, .failed(lastGood: nil, reason: _):
             true
-        case .note, .record:
+        case .current, .limited, .refreshing, .stale,
+             .failed(lastGood: .some, reason: _):
             false
         }
     }
@@ -592,27 +529,13 @@ struct SpotlightSearchPanelView: View {
         } else if controller.search.criteria.scope == .thisNote {
             EmptyView()
         } else {
-            switch controller.search.availability {
-            case .record(let availability):
-                recordAvailabilityBanner(availability)
-            case .note(let availability):
-                noteAvailabilityBanner(availability)
-            }
+            noteAvailabilityBanner(controller.search.availability.noteAvailability)
         }
     }
 
     @ViewBuilder
     private func noteAvailabilityBanner(_ availability: SearchAvailability) -> some View {
         if let presentation = SearchStatePresentation.note(availability) {
-            operationalBanner(presentation)
-        }
-    }
-
-    @ViewBuilder
-    private func recordAvailabilityBanner(
-        _ availability: RecordSearchAvailability
-    ) -> some View {
-        if let presentation = SearchStatePresentation.record(availability) {
             operationalBanner(presentation)
         }
     }
@@ -831,8 +754,6 @@ struct SpotlightSearchPanelView: View {
             "\(note.title), \(note.context ?? localizedMatchedField(note.matchedField)), \(note.vaultName), "
                 + String(localized: "Line \(note.sourceLine)")
                 + (note.searchStructuredReasonDescription.map { ", \($0)" } ?? "")
-        case .record(let record):
-            "Research Record, \(record.context), \(record.matchedReason)"
         }
         return Button {
             controller.selectSearchResult(resultID)
@@ -920,7 +841,7 @@ struct SpotlightSearchPanelView: View {
         guard controller.search.diagnostics.isEmpty,
               let explanation = controller.search.explanation else { return nil }
         let scope = localizedScopeTitle(explanation.scope)
-        let providerName = explanation.provider == .note ? "Notes" : "Research Records"
+        let providerName = "Notes"
         let providerSource = explanation.providerWasExplicit ? "explicit" : "default"
         let provider = "\(providerName) (\(providerSource) provider)"
         let clauses = explanation.clauses.map(explanationClause)
@@ -968,10 +889,6 @@ struct SpotlightSearchPanelView: View {
             case (_, .neutral), (_, .incompatible):
                 preconditionFailure("Symmetric relations are handled above.")
             }
-        case .record(let field, let value, let kind, let excluded):
-            let location = field.map { "\($0.rawValue) " } ?? "record text "
-            let operation = kind == .prefix ? "begins with" : "matches"
-            return (excluded ? "not " : "") + location + operation + " ‘\(value)’"
         }
     }
 
@@ -1079,12 +996,7 @@ struct SpotlightSearchPanelView: View {
     }
 
     private func localizedOrdering(_ ordering: SearchExplanationOrdering) -> String {
-        switch ordering {
-        case .noteExactIdentityThenBM25ThenTitleRolePath:
-            "exact Note identity, then one-corpus lexical relevance, then normalized title, vault role, and path"
-        case .recordFinishedAtThenUUID:
-            "finished time descending, then Record UUID"
-        }
+        "exact Note identity, then one-corpus lexical relevance, then normalized title, vault role, and path"
     }
 
     private func localizedLimitation(_ limitation: SearchExplanationLimitation) -> String {
@@ -1097,8 +1009,6 @@ struct SpotlightSearchPanelView: View {
             "providers are not cross-ranked"
         case .noteRelationsDirectOnly:
             "Note relations are direct and never transitive"
-        case .recordNoCrossObjectRelevance:
-            "Record lexical matching does not create cross-object relevance"
         }
     }
 
@@ -1197,10 +1107,7 @@ private struct WorkspaceSearchResultRow: View {
     @ViewBuilder
     var body: some View {
         switch result {
-        case .note(let note):
-            NoteSearchResultRow(note: note, scope: scope)
-        case .record(let record):
-            RecordSearchResultRow(record: record)
+        case .note(let note): NoteSearchResultRow(note: note, scope: scope)
         }
     }
 }
@@ -1297,41 +1204,5 @@ private struct NoteSearchResultRow: View {
         case .brokenLink: String(localized: "broken link")
         case .path: String(localized: "path")
         }
-    }
-}
-
-private struct RecordSearchResultRow: View {
-    let record: RecordSearchResult
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumMetrics.Search.savedSearchFieldSpacing) {
-            HStack {
-                Text(record.context)
-                    .font(ScholiumTypography.interface(.rowTitle))
-                    .lineLimit(1)
-                Spacer()
-                Text("Research Record")
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
-            }
-            Text(record.snippet)
-                .font(ScholiumTypography.scholarly(.body))
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
-            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                if let actionID = record.actionID { Text(actionID) }
-                if let methodName = record.methodName { Text(methodName) }
-                Text(record.matchedReason)
-                if let author = record.statementAuthor {
-                    Text(author == .researcher ? "Researcher" : "Agent")
-                }
-                Text("Retrieval lead")
-            }
-            .font(ScholiumTypography.interface(.small, emphasis: .medium))
-            .scholiumForeground(.secondaryText)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
-        .frame(minHeight: ScholiumMetrics.Search.resultRowHeight)
     }
 }

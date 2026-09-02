@@ -1,23 +1,19 @@
 import ScholiumContracts
-import ScholiumResearchRecordsFeature
 import SwiftUI
 
 enum WindowSheetRoute: Identifiable {
     case metadata(MetadataPanelRoute)
-    case researchAction(ResearchActionPanelRoute)
     case noteFileOperation(NoteFileRequest)
     case folderFileOperation(FolderFileRequest)
     case systemTrash(SystemTrashDeletionPreview)
     case transactionRecovery
     case identityResolution(NoteIdentityAmbiguity)
     case zoteroBinding(ZoteroBindingPanelRoute)
-    case agentChanges(AgentChangesPresentation)
+    case agentChanges
 
     var id: String {
         switch self {
         case .metadata(let route): route.id
-        case .researchAction(let route):
-            "research-action:\(route.presentationID.uuidString.lowercased())"
         case .noteFileOperation(let request): "note-file-operation:\(request.id)"
         case .folderFileOperation(let request): "folder-file-operation:\(request.id)"
         case .systemTrash(let preview):
@@ -25,8 +21,7 @@ enum WindowSheetRoute: Identifiable {
         case .transactionRecovery: "transaction-recovery"
         case .identityResolution(let ambiguity): "identity-resolution:\(ambiguity.id)"
         case .zoteroBinding(let route): route.id
-        case .agentChanges(let presentation):
-            "agent-changes:\(presentation.id.uuidString.lowercased())"
+        case .agentChanges: "agent-changes"
         }
     }
 }
@@ -65,21 +60,16 @@ struct WindowOverlayRoute: OptionSet, Sendable {
 
 enum WindowAlertRoute: Identifiable, Equatable {
     case actionFailure(message: String)
-    case localExecutionRecovery(LocalResearchExecutionRecoveryPreview)
 
     var id: String {
         switch self {
         case .actionFailure: "action-failure"
-        case .localExecutionRecovery(let preview):
-            "local-execution-recovery:\(preview.id.uuidString.lowercased())"
         }
     }
 
     var message: String {
         switch self {
         case .actionFailure(let message): message
-        case .localExecutionRecovery(let preview):
-            "System Trash requires recovery for unreadable local Research Action storage (file count: \(preview.items.count))."
         }
     }
 }
@@ -96,7 +86,6 @@ final class WindowPresentationRouter: ObservableObject {
     @Published private(set) var overlays: WindowOverlayRoute = []
     @Published var alert: WindowAlertRoute?
     @Published var fileImport: WindowFileImportRequest?
-    @Published var researchRecordsWindowRequest: ResearchRecordsWindowRequest?
 
     func present(_ route: WindowSheetRoute) {
         sheet = route
@@ -137,6 +126,5 @@ final class WindowPresentationRouter: ObservableObject {
         overlays = []
         alert = nil
         fileImport = nil
-        researchRecordsWindowRequest = nil
     }
 }

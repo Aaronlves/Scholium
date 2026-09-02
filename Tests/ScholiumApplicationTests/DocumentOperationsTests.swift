@@ -5,63 +5,6 @@ import Testing
 
 @Suite("Application document operations")
 struct DocumentOperationsTests {
-    @Test("Pre-rename Settle failure leaves the portable marker unchanged")
-    func preRenameSettleFailureLeavesMarkerUnchanged() async throws {
-        let fixture = try await LifecycleFixture.make()
-        defer { fixture.remove() }
-        let runtime = fixture.runtime()
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let document = try await handle.documents.load(fixture.targetID)
-        let projected = try #require(
-            try await handle.snapshot().document(id: fixture.targetID)
-        )
-        _ = try #require(projected.stableIdentity.resolvedID)
-        await handle.setResearchSettlementReplacementFaultForTesting(.beforeRename)
-
-        do {
-            _ = try await handle.research.settle(
-                fixture.targetID,
-                expectedRevision: document.fingerprint,
-                rationale: "Must not cross rename."
-            )
-            Issue.record("Expected typed Settle pre-commit failure.")
-        } catch {}
-        let portableProjection = try await handle.portableSettlementProjectionForTesting()
-        #expect(portableProjection.issueCount == 0)
-        #expect(portableProjection.settlements.isEmpty)
-        await handle.setResearchSettlementReplacementFaultForTesting(nil)
-        await runtime.shutdown()
-    }
-
-    @Test("Post-rename Settle uncertainty retains the portable marker")
-    func postRenameSettleUncertaintyRetainsMarker() async throws {
-        let fixture = try await LifecycleFixture.make()
-        defer { fixture.remove() }
-        let runtime = fixture.runtime()
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let document = try await handle.documents.load(fixture.targetID)
-        let projected = try #require(
-            try await handle.snapshot().document(id: fixture.targetID)
-        )
-        _ = try #require(projected.stableIdentity.resolvedID)
-        await handle.setResearchSettlementReplacementFaultForTesting(.afterRename)
-
-        do {
-            _ = try await handle.research.settle(
-                fixture.targetID,
-                expectedRevision: document.fingerprint,
-                rationale: "Crossed rename before the injected failure."
-            )
-            Issue.record("Expected typed Settle commit uncertainty.")
-        } catch {}
-        let portableProjection = try await handle.portableSettlementProjectionForTesting()
-        #expect(portableProjection.issueCount == 0)
-        #expect(portableProjection.settlements.map(\.fingerprint)
-            == [document.fingerprint])
-        await handle.setResearchSettlementReplacementFaultForTesting(nil)
-        await runtime.shutdown()
-    }
-
     @Test("An ordinary move rewrites resolved incoming links")
     func ordinaryMoveRewritesIncomingLinks() async throws {
         let fixture = try await LifecycleFixture.make()
@@ -534,19 +477,6 @@ struct DocumentOperationsTests {
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
         let analyses = try #require(fixture.assignment.vault(for: .paperAnalysis))
 
-        let saved = try await handle.research.settings()
-        var settings = saved.settings
-        settings.metadataFields[.paperAnalysis] = [
-            MetadataFieldDefinition(key: "argument_stage", valueKind: .text),
-        ]
-        settings.analysisAgentCreation.preferredFieldsBySourceType[.journalArticle] = [
-            "authors", "argument_stage",
-        ]
-        let configured = try await handle.research.saveSettings(
-            settings,
-            expectedRevision: saved.revision
-        )
-
         let title = try CanonicalPropertyInput(
             key: "title",
             value: .string("Reasons and Persons")
@@ -563,24 +493,20 @@ struct DocumentOperationsTests {
             fields: [
                 authors,
                 title,
-                try CanonicalPropertyInput(
-                    key: "argument_stage",
-                    value: .string("reconstruction")
-                ),
             ]
         )
         let reservedIdentity = UUID()
         let created = try await handle.documents.createManagedNote(
             try ManagedNoteCreationRequest(
                 vaultID: analyses.id,
-                destination: .exact(relativePath: "Agent/Created.md"),
+                destination: .exact(relativePath: "MCP/Created.md"),
                 body: "# Working body\n",
                 authoredYAML: try AuthoredNoteYAML(
                     summary: "A focused analysis",
                     keywords: ["reasons", "persons"]
                 ),
                 analysisMetadata: metadata,
-                authority: .authenticatedAgent(reservedIdentity: reservedIdentity)
+                authority: .mcp(reservedIdentity: reservedIdentity)
             )
         ).committedValue
 
@@ -595,17 +521,15 @@ struct DocumentOperationsTests {
         #expect(created.metadata?.record.fields["type"] == .string("journal_article"))
         #expect(created.metadata?.record.fields["title"] == .string("Reasons and Persons"))
         #expect(created.metadata?.record.fields["authors"] == authors.value)
-        #expect(created.metadata?.record.fields["argument_stage"]
-            == .string("reconstruction"))
         #expect(created.document.body == "# Working body\n")
         let optional = try await handle.documents.createManagedNote(
             try ManagedNoteCreationRequest(
                 vaultID: analyses.id,
-                destination: .exact(relativePath: "Agent/Optional.md"),
+                destination: .exact(relativePath: "MCP/Optional.md"),
                 analysisMetadata: try AnalysisCreationMetadata(
                     sourceType: .journalArticle
                 ),
-                authority: .authenticatedAgent(reservedIdentity: UUID())
+                authority: .mcp(reservedIdentity: UUID())
             )
         ).committedValue
         #expect(optional.document.rawContent
@@ -614,7 +538,7 @@ struct DocumentOperationsTests {
             "type": .string("journal_article"),
         ])
 
-        // Researcher and Agent creation share the same optional managed shape.
+        // Researcher and MCP creation share the same optional managed shape.
         let researcher = try await handle.documents.createManagedNote(
             try ManagedNoteCreationRequest(
                 vaultID: analyses.id,
@@ -630,9 +554,6 @@ struct DocumentOperationsTests {
             == .string("Reasons and Persons"))
         #expect(researcher.metadata?.record.fields["authors"] == nil)
 
-        #expect(configured.settings.analysisAgentCreation.preferredFields(
-            for: .journalArticle
-        ) == ["authors", "argument_stage"])
         await runtime.shutdown()
     }
 
@@ -807,7 +728,7 @@ struct DocumentOperationsTests {
         ).body.hasPrefix("# Body"))
     }
 
-    @Test("Optional Settings changes cannot invalidate Agent creation")
+    @Test("Optional Settings changes cannot invalidate MCP creation")
     func managedCreationSurvivesChangedSettingsBeforeClaim() async throws {
         let fixture = try await LifecycleFixture.make()
         defer { fixture.remove() }
@@ -820,7 +741,7 @@ struct DocumentOperationsTests {
             vaultID: topic.id,
             destination: .exact(relativePath: "Stale Settings.md"),
             body: "# Must not commit\n",
-            authority: .authenticatedAgent(reservedIdentity: reservedID)
+            authority: .mcp(reservedIdentity: reservedID)
         )
         let gate = ManagedCreationTestGate()
         await handle.setManagedCreationPreLeaseBarrierForTesting {
@@ -889,7 +810,6 @@ struct DocumentOperationsTests {
                 return
             }
             #expect(record.operation == .noteCreation)
-            #expect(record.researchWrite == nil)
             #expect(record.managedCreation?.reservedIdentityID != nil)
             #expect(record.files.first?.state == .missing)
             recoveryID = record.id
@@ -971,7 +891,6 @@ struct DocumentOperationsTests {
                     Issue.record("Unexpected managed-creation error for \(item.path): \(error)")
                     continue
                 }
-                #expect(record.researchWrite == nil)
                 #expect(record.managedCreation?.target.relativePath == item.path)
                 #expect(record.managedCreation?.reservedIdentityID != foreign.id)
                 #expect(record.files.first?.state
@@ -1288,162 +1207,6 @@ struct DocumentOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("System Trash discards an affected active Discussion and preserves stable identity")
-    func systemTrashCoordinatesOwnedState() async throws {
-        let fixture = try await LifecycleFixture.make()
-        defer { fixture.remove() }
-        let runtime = fixture.runtime()
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let source = try await handle.documents.load(fixture.targetID)
-        let projected = try #require(
-            try await handle.snapshot().document(id: fixture.targetID)
-        )
-        let stableID = try #require(projected.stableIdentity.resolvedID)
-        let finishedDiscussion = try await handle.research.createDiscussion(
-            target: ResearchActionNoteSnapshot(
-                noteID: stableID,
-                note: fixture.targetID,
-                role: .analysis,
-                fingerprint: source.fingerprint,
-                title: "Target",
-            ),
-            focalNotes: [],
-            passage: nil,
-            researcherMessage: "Retain this completed exchange as provenance."
-        )
-        let retainedRecord = try await handle.research.finishDiscussion(
-            discussionID: finishedDiscussion.id
-        )
-        let discussion = try await handle.research.createDiscussion(
-            target: ResearchActionNoteSnapshot(
-                noteID: stableID,
-                note: fixture.targetID,
-                role: .analysis,
-                fingerprint: source.fingerprint,
-                title: "Target",
-            ),
-            focalNotes: [],
-            passage: nil,
-            researcherMessage: "Discard only this unfinished exchange."
-        )
-        let preview = try await handle.documents.prepareSystemTrash(
-            NoteMutationTarget(
-                documentID: fixture.targetID,
-                stableNoteID: stableID,
-                revision: source.fingerprint
-            )
-        )
-        let commit = try await handle.documents.moveToSystemTrash(preview)
-            .committedValue
-        defer {
-            for path in commit.resultingTrashPaths {
-                try? FileManager.default.removeItem(atPath: path)
-            }
-        }
-
-        #expect(commit.noteIDs == [stableID])
-        #expect(commit.removedDiscussionIDs == [discussion.id])
-        #expect(try await handle.research.activeDiscussions(noteID: stableID).isEmpty)
-        #expect(try await handle.research.finishedResearchRecords(noteID: stableID)
-            .contains { $0.id == retainedRecord.id })
-        #expect(try await handle.snapshot().document(id: fixture.targetID) == nil)
-        #expect(!FileManager.default.fileExists(atPath: fixture.analysesURL
-            .appendingPathComponent("Target.md").path))
-        await runtime.shutdown()
-    }
-
-    @Test("System Trash preparation rejects a participating active Research Action")
-    func systemTrashRejectsActiveExecution() async throws {
-        let fixture = try await LifecycleFixture.make()
-        defer { fixture.remove() }
-        let runtime = fixture.runtime()
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let source = try await handle.documents.load(fixture.targetID)
-        let projected = try #require(
-            try await handle.snapshot().document(id: fixture.targetID)
-        )
-        let stableID = try #require(projected.stableIdentity.resolvedID)
-        let preparation = try await handle.research.prepareActionRun(
-            ResearchActionRunRequest(
-                actionID: .discuss,
-                target: ResearchActionNoteSnapshot(
-                    noteID: stableID,
-                    note: fixture.targetID,
-                    role: .analysis,
-                    fingerprint: source.fingerprint,
-                    title: "Target"
-                ),
-                instruction: "Keep this Run active during deletion preflight."
-            )
-        )
-
-        do {
-            _ = try await handle.documents.prepareSystemTrash(NoteMutationTarget(
-                documentID: fixture.targetID,
-                stableNoteID: stableID,
-                revision: source.fingerprint
-            ))
-            Issue.record("System Trash bypassed the active Research Action.")
-        } catch TriptychTransactionError.activeResearchActions(let runIDs) {
-            #expect(runIDs == [preparation.runID])
-            #expect(!TriptychTransactionError.activeResearchActions(runIDs)
-                .localizedDescription.contains(preparation.runID.uuidString))
-        } catch {
-            Issue.record("Unexpected active-Action Trash error: \(error)")
-        }
-
-        #expect(FileManager.default.fileExists(atPath: fixture.analysesURL
-            .appendingPathComponent("Target.md").path))
-        #expect(try await handle.research.activeDiscussion(id: preparation.runID).id
-            == preparation.runID)
-        try await handle.research.cancelActionRun(runID: preparation.runID)
-        await runtime.shutdown()
-    }
-
-    @Test("System Trash archives exact legacy execution bytes and retries preparation")
-    func systemTrashArchivesLegacyExecutionBeforeRetry() async throws {
-        let fixture = try await LifecycleFixture.make()
-        defer { fixture.remove() }
-        let runtime = fixture.runtime()
-        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
-        let source = try await handle.documents.load(fixture.targetID)
-        let projected = try #require(
-            try await handle.snapshot().document(id: fixture.targetID)
-        )
-        let stableID = try #require(projected.stableIdentity.resolvedID)
-        let fileName = UUID().uuidString.lowercased() + ".json"
-        let executionDirectory = await handle.services
-            .localResearchExecutionStore.storageURL
-        let legacyURL = executionDirectory.appendingPathComponent(fileName)
-        let legacyBytes = Data("{\"schema_version\":16}".utf8)
-        try legacyBytes.write(to: legacyURL)
-        let target = NoteMutationTarget(
-            documentID: fixture.targetID,
-            stableNoteID: stableID,
-            revision: source.fingerprint
-        )
-
-        let recovery: LocalResearchExecutionRecoveryPreview
-        do {
-            _ = try await handle.documents.prepareSystemTrash(target)
-            Issue.record("Expected local execution recovery.")
-            return
-        } catch SystemTrashPreparationError.localExecutionRecoveryRequired(let preview) {
-            recovery = preview
-        }
-        let commit = try await handle.documents
-            .archiveUnsupportedLocalResearchExecutions(recovery)
-        let trashPreview = try await handle.documents.prepareSystemTrash(target)
-
-        #expect(commit.archivedFileNames == [fileName])
-        #expect(trashPreview.affectedNoteIDs == [stableID])
-        let archivedURL = executionDirectory
-            .appendingPathComponent("unsupported-executions", isDirectory: true)
-            .appendingPathComponent(fileName)
-        #expect(try Data(contentsOf: archivedURL) == legacyBytes)
-        await runtime.shutdown()
-    }
-
     @Test("Settle stores one portable marker for the latest settled revision")
     func settleStoresLatestPortableMarker() async throws {
         let fixture = try await LifecycleFixture.make()
@@ -1470,12 +1233,11 @@ struct DocumentOperationsTests {
             rationale: "Current marker"
         )
 
-        let projection = try await handle.portableSettlementProjectionForTesting()
-        #expect(projection.issueCount == 0)
-        #expect(projection.settlements.count == 1)
-        #expect(projection.settlements.first?.noteID == stableID)
-        #expect(projection.settlements.first?.fingerprint == latest.fingerprint)
-        #expect(projection.settlements.first?.rationale == "Current marker")
+        let settlements = try await handle.snapshot().research.settlements
+        #expect(settlements.count == 1)
+        #expect(settlements.first?.noteID == stableID)
+        #expect(settlements.first?.fingerprint == latest.fingerprint)
+        #expect(settlements.first?.rationale == "Current marker")
         await runtime.shutdown()
     }
 

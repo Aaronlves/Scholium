@@ -159,22 +159,6 @@ struct WindowDocumentRoute: Hashable, Sendable {
     }
 }
 
-struct ResearchActionPanelRoute: Hashable, Sendable {
-    let target: VaultNoteReference
-    let actionID: ResearchActionID
-    let presentationID: UUID
-
-    init(
-        target: VaultNoteReference,
-        actionID: ResearchActionID,
-        presentationID: UUID
-    ) {
-        self.target = target
-        self.actionID = actionID
-        self.presentationID = presentationID
-    }
-}
-
 /// Typed Scholium Metadata presentation.
 struct MetadataPanelRoute: Hashable, Sendable {
     let presentationID: UUID
@@ -201,7 +185,6 @@ enum WindowIntent: Equatable, Sendable {
     case openSearchResult(SearchResultSelection, disposition: WindowOpenDisposition)
     case revealSourceLocator(vaultID: UUID, locator: SourceLocator)
     case switchVault(UUID)
-    case presentResearchAction(ResearchActionPanelRoute)
     case presentNoteFileOperation(NoteFileRequest)
 }
 

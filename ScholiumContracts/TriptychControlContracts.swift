@@ -93,23 +93,18 @@ public struct VaultAboutConfiguration: Codable, Hashable, Sendable {
 
 }
 
-public struct AnalysisAgentCreationConfiguration: Codable, Hashable, Sendable {
-    /// Optional Scholium-managed fields highlighted to an Agent for each
-    /// source type. This is guidance only and never authorizes or blocks Note
-    /// creation when a value is omitted.
-    public var preferredFieldsBySourceType: [AnalysisSourceType: [String]] {
-        didSet { preferredFieldsBySourceType = Self.normalized(preferredFieldsBySourceType) }
-    }
+private struct RetiredAnalysisCreationGuidance: Codable, Hashable, Sendable {
+    var preferredFieldsBySourceType: [AnalysisSourceType: [String]]
 
-    public init(preferredFieldsBySourceType: [AnalysisSourceType: [String]] = [:]) {
-        self.preferredFieldsBySourceType = Self.normalized(preferredFieldsBySourceType)
+    init(preferredFieldsBySourceType: [AnalysisSourceType: [String]] = [:]) {
+        self.preferredFieldsBySourceType = preferredFieldsBySourceType
     }
 
     private enum CodingKeys: String, CodingKey {
         case preferredFieldsBySourceType
     }
 
-    public init(from decoder: Decoder) throws {
+    init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         preferredFieldsBySourceType = try container.decode(
             [AnalysisSourceType: [String]].self,
@@ -117,28 +112,11 @@ public struct AnalysisAgentCreationConfiguration: Codable, Hashable, Sendable {
         )
     }
 
-    public func encode(to encoder: Encoder) throws {
+    func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(preferredFieldsBySourceType, forKey: .preferredFieldsBySourceType)
     }
 
-    public func preferredFields(for sourceType: AnalysisSourceType) -> [String] {
-        preferredFieldsBySourceType[sourceType] ?? []
-    }
-
-    private static func normalized(
-        _ fields: [AnalysisSourceType: [String]]
-    ) -> [AnalysisSourceType: [String]] {
-        fields.reduce(into: [:]) { result, entry in
-            var seen: Set<String> = []
-            let values = entry.value.compactMap { raw -> String? in
-                let key = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !key.isEmpty, seen.insert(key).inserted else { return nil }
-                return key
-            }
-            if !values.isEmpty { result[entry.key] = values }
-        }
-    }
 }
 
 public struct TriptychSettings: Codable, Hashable, Sendable {
@@ -154,19 +132,20 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
     public var about: [WorkspaceVaultSlot: VaultAboutConfiguration] {
         didSet { about = Self.completeAbout(about) }
     }
-    public var analysisAgentCreation: AnalysisAgentCreationConfiguration
+    /// Decoded and re-encoded only so a metadata edit does not discard the
+    /// retired v8 field. It has no public or runtime semantics.
+    private var retiredAnalysisCreationGuidance: RetiredAnalysisCreationGuidance
     public var attentionDismissalDays: Int
 
     public init(
         metadataFields: [WorkspaceVaultSlot: [MetadataFieldDefinition]] = Self.defaultMetadataFields,
         about: [WorkspaceVaultSlot: VaultAboutConfiguration] = Self.defaultAbout,
-        analysisAgentCreation: AnalysisAgentCreationConfiguration = .init(),
         attentionDismissalDays: Int = 7
     ) {
         schemaVersion = Self.currentSchemaVersion
         self.metadataFields = Self.completeMetadataFields(metadataFields)
         self.about = Self.completeAbout(about)
-        self.analysisAgentCreation = analysisAgentCreation
+        retiredAnalysisCreationGuidance = .init()
         self.attentionDismissalDays = max(1, attentionDismissalDays)
     }
 
@@ -207,10 +186,10 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
         self.schemaVersion = schemaVersion
         self.metadataFields = metadataFields
         self.about = about
-        analysisAgentCreation = try container.decode(
-            AnalysisAgentCreationConfiguration.self,
+        retiredAnalysisCreationGuidance = try container.decodeIfPresent(
+            RetiredAnalysisCreationGuidance.self,
             forKey: .analysisAgentCreation
-        )
+        ) ?? .init()
         attentionDismissalDays = try container.decode(
             Int.self,
             forKey: .attentionDismissalDays
@@ -222,7 +201,10 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
         try container.encode(schemaVersion, forKey: .schemaVersion)
         try container.encode(metadataFields, forKey: .metadataFields)
         try container.encode(about, forKey: .about)
-        try container.encode(analysisAgentCreation, forKey: .analysisAgentCreation)
+        try container.encode(
+            retiredAnalysisCreationGuidance,
+            forKey: .analysisAgentCreation
+        )
         try container.encode(attentionDismissalDays, forKey: .attentionDismissalDays)
     }
 

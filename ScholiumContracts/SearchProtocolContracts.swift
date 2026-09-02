@@ -9,7 +9,6 @@ public enum SearchContract {
     public static let tokenizerPolicyVersion = 2
     public static let rankingPolicyVersion = 2
     public static let maximumInterfaceResults = 100
-    public static let recordCollectionPageSize = 100
     public static let defaultCLIResults = 20
     public static let maximumCLIResults = 500
     public static let maximumQueryUTF16Count = 16_384
@@ -112,17 +111,6 @@ public enum SearchExecutionScope: Codable, Hashable, Sendable {
     case triptych
 }
 
-/// Provider-owned ordering for the dedicated Research Records collection.
-/// Ordinary cross-provider Search retains its canonical relevance/date order.
-public enum RecordSearchSortOrder: String, Codable, Hashable, Sendable {
-    case finishedAtDescending
-    case finishedAtAscending
-    case titleAscending
-    case titleDescending
-    case actionAscending
-    case actionDescending
-}
-
 public struct SearchRequest: Codable, Hashable, Sendable {
     public let id: UUID
     public let query: String
@@ -130,7 +118,10 @@ public struct SearchRequest: Codable, Hashable, Sendable {
     public let executionScope: SearchExecutionScope
     public let limit: Int
     public let offset: Int?
-    public let recordSort: RecordSearchSortOrder?
+    /// Optional App-authorized subset of the selected Triptych. This is used
+    /// by Scholium MCP's explicit three-role scope; query text never changes
+    /// it and the Search owner retains the one canonical ordering.
+    public let includedVaultIDs: [UUID]?
 
     public init(
         id: UUID = UUID(),
@@ -139,7 +130,7 @@ public struct SearchRequest: Codable, Hashable, Sendable {
         executionScope: SearchExecutionScope,
         limit: Int,
         offset: Int = 0,
-        recordSort: RecordSearchSortOrder? = nil
+        includedVaultIDs: Set<UUID>? = nil
     ) {
         self.id = id
         self.query = query
@@ -147,21 +138,22 @@ public struct SearchRequest: Codable, Hashable, Sendable {
         self.executionScope = executionScope
         self.limit = limit
         self.offset = offset > 0 ? offset : nil
-        self.recordSort = recordSort
+        self.includedVaultIDs = includedVaultIDs.map {
+            $0.sorted { $0.uuidString < $1.uuidString }
+        }
     }
 
     public var resultOffset: Int { max(0, offset ?? 0) }
-
-    public var resolvedRecordSort: RecordSearchSortOrder {
-        recordSort ?? .finishedAtDescending
-    }
 
     public var hasConsistentScopes: Bool {
         switch (presentationScope, executionScope) {
         case (.thisNote, .currentNote),
              (.currentVault, .currentVault),
              (.triptych, .triptych):
-            true
+            includedVaultIDs == nil || {
+                if case .triptych = executionScope { return true }
+                return false
+            }()
         default:
             false
         }
@@ -192,22 +184,6 @@ public struct SearchGenerationID: Codable, Hashable, Sendable {
         self.queryContractVersion = queryContractVersion
         self.tokenizerPolicyVersion = tokenizerPolicyVersion
         self.rankingPolicyVersion = rankingPolicyVersion
-        self.sourceManifestHash = sourceManifestHash
-    }
-}
-
-public struct RecordSearchGenerationID: Codable, Hashable, Sendable {
-    public let triptychID: UUID
-    public let queryContractVersion: Int
-    public let sourceManifestHash: String
-
-    public init(
-        triptychID: UUID,
-        queryContractVersion: Int = SearchContract.currentVersion,
-        sourceManifestHash: String
-    ) {
-        self.triptychID = triptychID
-        self.queryContractVersion = queryContractVersion
         self.sourceManifestHash = sourceManifestHash
     }
 }
@@ -246,11 +222,6 @@ public struct SearchFreshnessToken: Codable, Hashable, Sendable, CustomStringCon
         )
     }
 
-    public static func record(_ generation: RecordSearchGenerationID) -> Self {
-        Self(
-            "record:\(generation.triptychID.uuidString.lowercased()):\(generation.sourceManifestHash)"
-        )
-    }
 }
 
 public struct SearchBuildProgress: Codable, Hashable, Sendable {
@@ -291,54 +262,19 @@ public enum SearchAvailability: Codable, Hashable, Sendable {
     }
 }
 
-public enum RecordSearchAvailability: Codable, Hashable, Sendable {
-    case unavailable
-    case building(SearchBuildProgress)
-    case current(RecordSearchGenerationID)
-    case partial(current: RecordSearchGenerationID, reason: String)
-    case refreshing(lastGood: RecordSearchGenerationID)
-    case stale(lastGood: RecordSearchGenerationID, reason: String)
-    case failed(lastGood: RecordSearchGenerationID?, reason: String)
+public struct SearchProviderAvailability: Codable, Hashable, Sendable {
+    public let noteAvailability: SearchAvailability
 
-    public var lastGoodGeneration: RecordSearchGenerationID? {
-        switch self {
-        case .current(let generation): generation
-        case .partial(let generation, _): generation
-        case .refreshing(let generation): generation
-        case .stale(let generation, _): generation
-        case .failed(let generation, _): generation
-        case .unavailable, .building: nil
-        }
+    public init(_ noteAvailability: SearchAvailability) {
+        self.noteAvailability = noteAvailability
     }
 
-    public var presentsCurrentResults: Bool {
-        switch self {
-        case .current, .partial: true
-        case .unavailable, .building, .refreshing, .stale, .failed: false
-        }
-    }
-}
-
-public enum SearchProviderAvailability: Codable, Hashable, Sendable {
-    case note(SearchAvailability)
-    case record(RecordSearchAvailability)
-
-    public var provider: SearchProvider {
-        switch self {
-        case .note: .note
-        case .record: .record
-        }
+    public static func note(_ availability: SearchAvailability) -> Self {
+        Self(availability)
     }
 
-    public var noteAvailability: SearchAvailability? {
-        guard case .note(let availability) = self else { return nil }
-        return availability
-    }
+    public var provider: SearchProvider { .note }
 
-    public var recordAvailability: RecordSearchAvailability? {
-        guard case .record(let availability) = self else { return nil }
-        return availability
-    }
 }
 
 public enum SearchQueryDiagnosticCode: String, Codable, Hashable, Sendable {

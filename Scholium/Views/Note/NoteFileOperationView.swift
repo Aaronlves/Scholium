@@ -118,9 +118,9 @@ struct NoteFileOperationView: View {
         case .duplicate:
             "The duplicate preserves the exact source bytes and receives a new stable note identity."
         case .rename:
-            "Renaming preserves the note's folder, identity, Discussion, and Research Record."
+            "Renaming preserves the note's folder, stable identity, Metadata, and Critique association."
         case .move:
-            "Moving preserves the note identity, Discussion, and Research Record."
+            "Moving preserves the note's stable identity, Metadata, and Critique association."
         }
     }
 

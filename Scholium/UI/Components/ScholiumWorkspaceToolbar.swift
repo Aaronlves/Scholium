@@ -27,11 +27,11 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         static let documentMode = NSToolbarItem.Identifier(
             "scholium.toolbar.documentMode"
         )
+        static let agentChanges = NSToolbarItem.Identifier(
+            "scholium.toolbar.agentChanges"
+        )
         static let documentModeAccessibilityIdentifier =
             "scholium.documentModeButton"
-        static let researchRecords = NSToolbarItem.Identifier(
-            "scholium.toolbar.researchRecords"
-        )
         // Apparatus is an explicitly managed trailing split item rather than
         // AppKit's Inspector factory item. A private identifier keeps the
         // initializer's explicit dividerIndex authoritative instead of asking
@@ -92,7 +92,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             Item.headingOutline,
             Item.search,
             Item.documentMode,
-            Item.researchRecords,
+            Item.agentChanges,
             Item.apparatusDivider,
             Item.inspector,
         ]
@@ -108,7 +108,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             .flexibleSpace,
             Item.search,
             Item.documentMode,
-            Item.researchRecords,
+            Item.agentChanges,
             Item.apparatusDivider,
             .flexibleSpace,
             Item.inspector,
@@ -190,12 +190,12 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
                 action: #selector(toggleDocumentMode(_:)),
                 accessibilityIdentifier: Item.documentModeAccessibilityIdentifier
             )
-        case Item.researchRecords:
+        case Item.agentChanges:
             return actionItem(
                 identifier: itemIdentifier,
-                label: ScholiumL10n.string("Triptych Records"),
-                systemImage: "tray",
-                action: #selector(showResearchRecords(_:))
+                label: ScholiumL10n.string("Agent Changes"),
+                systemImage: "sparkles.rectangle.stack",
+                action: #selector(showAgentChanges(_:))
             )
         case Item.apparatusDivider:
             let splitView = splitViewController.splitView
@@ -315,7 +315,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             appState.commandObservation.$revision
                 .map { _ in () }
                 .eraseToAnyPublisher(),
-            appState.researchController.$records
+            appState.researchController.$researchSnapshot
                 .map { _ in () }
                 .eraseToAnyPublisher(),
         ]
@@ -397,17 +397,12 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             )
         }
 
-        if let item = toolbarItem(Item.researchRecords) {
-            let presentation = ScholiumWorkspaceResearchRecordsToolbarState.resolve(
-                hasTriptych: appState.workspaceAssignment != nil,
-                hasCurrentNote: appState.currentNote != nil,
-                currentNoteIsAvailable: currentNoteIsAvailable
-            )
+        if let item = toolbarItem(Item.agentChanges) {
             update(
                 item,
-                label: ScholiumL10n.dynamicString(presentation.title),
-                systemImage: hasRecords(in: presentation.scope) ? "tray.full" : "tray",
-                isEnabled: presentation.isEnabled
+                label: ScholiumL10n.dynamicString("Agent Changes"),
+                systemImage: "sparkles.rectangle.stack",
+                isEnabled: appState.windowWorkspaceController.activeCapabilities != nil
             )
         }
 
@@ -523,28 +518,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         )
     }
 
-    private var currentNoteIsAvailable: Bool {
-        guard let note = appState.currentNote else { return false }
-        return appState.currentDocumentIdentityByPath[note.relativePath] != nil
-    }
-
-    private func hasRecords(
-        in scope: ScholiumWorkspaceResearchRecordsToolbarState.Scope
-    ) -> Bool {
-        switch scope {
-        case .note:
-            guard let noteID = appState.currentNote?.workspaceSnapshot?
-                .stableIdentity.resolvedID else { return false }
-            return appState.researchController.records?.finishedResearchRecords.contains {
-                record in
-                record.participatingNotes.contains { $0.noteID == noteID }
-            } == true
-        case .triptych:
-            return appState.researchController.records?
-                .finishedResearchRecords.isEmpty == false
-        }
-    }
-
     @objc private func toggleSidebar(_ sender: Any?) {
         windowActions.setLibraryVisible(!appState.shellState.libraryVisible)
     }
@@ -582,18 +555,9 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         appState.requestDocumentMode(presentation.destination)
     }
 
-    @objc private func showResearchRecords(_ sender: Any?) {
-        let presentation = ScholiumWorkspaceResearchRecordsToolbarState.resolve(
-            hasTriptych: appState.workspaceAssignment != nil,
-            hasCurrentNote: appState.currentNote != nil,
-            currentNoteIsAvailable: currentNoteIsAvailable
-        )
-        switch presentation.scope {
-        case .note:
-            windowActions.showNoteResearchRecords()
-        case .triptych:
-            windowActions.showTriptychResearchRecords()
-        }
+    @objc private func showAgentChanges(_ sender: Any?) {
+        guard appState.windowWorkspaceController.activeCapabilities != nil else { return }
+        appState.presentationRouter.present(.agentChanges)
     }
 
     @objc private func toggleInspector(_ sender: Any?) {
@@ -760,34 +724,4 @@ struct ScholiumDocumentModeToolbarButtonPresentation: Equatable {
 
     var symbol: String { mode.symbol }
     var toolTip: String { mode.title }
-}
-
-struct ScholiumWorkspaceResearchRecordsToolbarState: Equatable {
-    enum Scope: Equatable {
-        case note
-        case triptych
-    }
-
-    let scope: Scope
-    let title: String
-    let isEnabled: Bool
-
-    static func resolve(
-        hasTriptych: Bool,
-        hasCurrentNote: Bool,
-        currentNoteIsAvailable: Bool
-    ) -> Self {
-        if !hasCurrentNote {
-            return Self(
-                scope: .triptych,
-                title: "Triptych Records",
-                isEnabled: hasTriptych
-            )
-        }
-        return Self(
-            scope: .note,
-            title: "This Note Records",
-            isEnabled: hasTriptych && currentNoteIsAvailable
-        )
-    }
 }

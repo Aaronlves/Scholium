@@ -24,8 +24,7 @@ enum MetadataSettingsCandidateBuilder {
     static func build(
         from base: TriptychSettings,
         metadataFields: [WorkspaceVaultSlot: [MetadataFieldDefinition]],
-        aboutConfigurations: [WorkspaceVaultSlot: VaultAboutConfiguration],
-        agentCreation: AnalysisAgentCreationConfiguration
+        aboutConfigurations: [WorkspaceVaultSlot: VaultAboutConfiguration]
     ) -> TriptychSettings {
         var settings = base
         settings.metadataFields = metadataFields
@@ -61,15 +60,6 @@ enum MetadataSettingsCandidateBuilder {
             candidates[slot] = configuration
         }
         settings.about = candidates
-        var activeAgentCreation = agentCreation
-        for sourceType in AnalysisSourceType.allCases {
-            let active = Set(
-                catalog.analysisContracts(for: sourceType).map(\.canonicalKey)
-            )
-            activeAgentCreation.preferredFieldsBySourceType[sourceType] =
-                agentCreation.preferredFields(for: sourceType).filter(active.contains)
-        }
-        settings.analysisAgentCreation = activeAgentCreation
         return settings
     }
 }

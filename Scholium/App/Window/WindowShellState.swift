@@ -64,16 +64,6 @@ final class WindowShellState: ObservableObject {
     }
     @Published private(set) var documentTextScale = ScholiumMetrics.Document.defaultTextScale
     @Published private(set) var feedbackItems: [WindowFeedback] = []
-    @Published private(set) var actionNotificationStackExpansionGeneration:
-        UInt64 = 0
-    @Published private(set) var researchActivityNotifications:
-        [ResearchActivityNotification] = []
-    #if DEBUG
-    private var qaResearchActivityNotifications:
-        [ResearchActivityNotification] = []
-    #endif
-    @Published private(set) var researchNotificationPermissionNotice:
-        ResearchNotificationPermissionNotice?
     @Published private(set) var refreshStatusText: String?
     @Published private(set) var windowSessionPersistenceError: String?
 
@@ -142,10 +132,6 @@ final class WindowShellState: ObservableObject {
         inspectorModesByWorkspace = resetInspectorModes
         inspector.mode = .overview
         feedbackItems.removeAll()
-        actionNotificationStackExpansionGeneration = 0
-        #if DEBUG
-        qaResearchActivityNotifications.removeAll()
-        #endif
     }
 
     func showResearchInspector(_ isVisible: Bool) {
@@ -203,55 +189,6 @@ final class WindowShellState: ObservableObject {
 
     var persistentFeedbackItems: [WindowFeedback] {
         feedbackItems.filter { !$0.kind.dismissesAutomatically }
-    }
-
-    func requestActionNotificationStackExpansion() {
-        actionNotificationStackExpansionGeneration &+= 1
-    }
-
-    func receiveResearchActivityNotifications(
-        _ notifications: [ResearchActivityNotification]
-    ) {
-        #if DEBUG
-        let qaRunIDs = Set(qaResearchActivityNotifications.map(\.runID))
-        researchActivityNotifications = qaResearchActivityNotifications
-            + notifications.filter { !qaRunIDs.contains($0.runID) }
-        #else
-        researchActivityNotifications = notifications
-        #endif
-    }
-
-    #if DEBUG
-    func presentQAResearchActivityNotifications(
-        _ notifications: [ResearchActivityNotification]
-    ) {
-        let previousQARunIDs = Set(qaResearchActivityNotifications.map(\.runID))
-        let production = researchActivityNotifications.filter {
-            !previousQARunIDs.contains($0.runID)
-        }
-        qaResearchActivityNotifications = notifications
-        receiveResearchActivityNotifications(production)
-    }
-
-    @discardableResult
-    func dismissQAResearchActivityNotification(runID: UUID) -> Bool {
-        guard qaResearchActivityNotifications.contains(where: {
-            $0.runID == runID
-        }) else { return false }
-        qaResearchActivityNotifications.removeAll { $0.runID == runID }
-        researchActivityNotifications.removeAll { $0.runID == runID }
-        return true
-    }
-    #endif
-
-    func presentResearchNotificationPermissionNotice(
-        _ notice: ResearchNotificationPermissionNotice
-    ) {
-        researchNotificationPermissionNotice = notice
-    }
-
-    func dismissResearchNotificationPermissionNotice() {
-        researchNotificationPermissionNotice = nil
     }
 
     func setRefreshStatus(_ status: String?) {

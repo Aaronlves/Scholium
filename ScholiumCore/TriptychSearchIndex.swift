@@ -601,7 +601,7 @@ public actor TriptychSearchIndex {
         }
     }
 
-    /// Retrieves explanatory Analysis/Topic reading leads from one ephemeral
+    /// Retrieves explanatory Analysis/Topic related Notes from one ephemeral
     /// source Note snapshot. This is not query parsing: it reuses the current
     /// Note FTS generation and its BM25 field weights without creating a Saved
     /// Search, second index, or durable seed.
@@ -785,7 +785,11 @@ public actor TriptychSearchIndex {
                 exactOffset += exact.count
                 for candidate in exact {
                     try Task.checkCancellation()
-                    guard Self.isEligible(candidate.document, in: eligibleDocuments),
+                    guard Self.isIncluded(
+                            candidate.document,
+                            in: request.includedVaultIDs
+                          ),
+                          Self.isEligible(candidate.document, in: eligibleDocuments),
                           seen.insert(candidate.document.rowID).inserted,
                           SearchMatcher.satisfies(
                             ast,
@@ -828,7 +832,11 @@ public actor TriptychSearchIndex {
                 offset += page.count
                 for candidate in page {
                     try Task.checkCancellation()
-                    guard Self.isEligible(candidate.document, in: eligibleDocuments),
+                    guard Self.isIncluded(
+                            candidate.document,
+                            in: request.includedVaultIDs
+                          ),
+                          Self.isEligible(candidate.document, in: eligibleDocuments),
                           seen.insert(candidate.document.rowID).inserted,
                           SearchMatcher.satisfies(
                             ast,
@@ -877,6 +885,14 @@ public actor TriptychSearchIndex {
             return false
         }
         return eligibility.resolvedStableNoteID == indexedStableNoteID
+    }
+
+    private nonisolated static func isIncluded(
+        _ document: StoredSearchDocument,
+        in includedVaultIDs: [UUID]?
+    ) -> Bool {
+        guard let includedVaultIDs else { return true }
+        return includedVaultIDs.contains(document.vaultID)
     }
 
     private func relatedIdentityCandidates(
@@ -1273,7 +1289,7 @@ public actor TriptychSearchIndex {
                 sql += structured.excluded
                     ? " AND NOT (\(condition))"
                     : " AND \(condition)"
-            case .lexical, .relation, .record:
+            case .lexical, .relation:
                 break
             }
         }
@@ -2533,8 +2549,6 @@ private enum SearchMatcher {
                 return propertyMatch(property, in: document) != nil
             case .relation:
                 return relationshipMatches[document.noteID] != nil
-            case .record:
-                return false
             }
         }
     }
@@ -2609,7 +2623,7 @@ private enum SearchMatcher {
                     }
                 case .property, .relation:
                     field = .title
-                case .lexical, .record:
+                case .lexical:
                     field = nil
                 }
                 if let field, !fields.contains(field) { fields.append(field) }
@@ -2887,7 +2901,7 @@ private enum NoteSearchResultBuilder {
                 if let relationshipMatch {
                     reasons.append(.relationship(relationshipMatch))
                 }
-            case .lexical, .record:
+            case .lexical:
                 continue
             }
         }

@@ -5,9 +5,7 @@ import {
   reviewContextBefore,
 } from "./review-selection-text";
 import {createReviewSelectionPresentation} from "./review-selection-presentation";
-import {createReviewCommentAnchorPresentation} from "./review-comment-anchors";
 import {
-  type ReadCommentAnchor,
   type ReadLinkPreview,
   validatedReaderConfiguration,
 } from "./reader-configuration";
@@ -39,11 +37,7 @@ type ReaderWindow = Window & {
   scholiumReviewSelection?: ReturnType<typeof createReviewSelectionPresentation>;
   scholiumMermaidReady?: Promise<void>;
   scholiumSetLinkPreviews?: (previews: ReadLinkPreview[]) => void;
-  scholiumSetCommentAnchors?: (anchors: ReadCommentAnchor[]) => boolean;
-  scholiumReviewComments?: ReturnType<typeof createReviewCommentAnchorPresentation>;
-  scholiumShowCommentComposer?: () => boolean;
   scholiumSetReviewSelectionSurfaceActive?: (active: boolean) => boolean;
-  scholiumResolveCommentSubmission?: (requestID: string, succeeded: boolean) => boolean;
   scholiumReadScroll?: {
     restoreCount: number;
     recordRestoreAttempt(): void;
@@ -65,9 +59,9 @@ async function initializeReader(value: unknown): Promise<void> {
   const config = validatedReaderConfiguration(value);
   if (!config) throw new Error("Invalid reader configuration.");
   const {
-    version, documentID, fingerprint, loadGeneration, commentEnabled,
+    version, documentID, fingerprint, loadGeneration,
     selectionEnabled, presentationCSS, userCSS, localization, linkPreviews,
-    commentAnchors, vectorSymbols, testingEnabled,
+    vectorSymbols, testingEnabled,
   } = config;
   const presentationStyle = requiredElement<HTMLStyleElement>('scholium-presentation-css');
   const userStyle = requiredElement<HTMLStyleElement>('scholium-user-css');
@@ -89,22 +83,6 @@ async function initializeReader(value: unknown): Promise<void> {
   const previewTitle = popover.querySelector<HTMLElement>('.scholium-preview-title')!;
   const previewMetadata = popover.querySelector<HTMLElement>('.scholium-preview-metadata')!;
   const previewBody = popover.querySelector<HTMLElement>('.scholium-preview-body')!;
-  const selectionActions = requiredElement('selection-actions');
-  const selectionToolbar = requiredElement('selection-toolbar');
-  const commentButton = requiredElement<HTMLButtonElement>('comment-selection');
-  const commentComposer = requiredElement('comment-composer');
-  const commentText = requiredElement<HTMLTextAreaElement>('comment-text');
-  const commentHelp = requiredElement('comment-help');
-  const qaCommentSubmit = document.getElementById('qa-submit-comment');
-  const defaultCommentHelpText = localized('Return saves · Shift-Return adds a line · Escape cancels');
-  selectionToolbar.setAttribute('aria-label', localized('Selection actions'));
-  const selectionLabel = commentButton.querySelector<HTMLElement>('.scholium-selection-label');
-  if (!selectionLabel) throw new Error("Missing reader selection label.");
-  selectionLabel.textContent = localized('Comment');
-  commentText.placeholder = localized('Comment');
-  commentText.setAttribute('aria-label', localized('Comment'));
-  commentHelp.textContent = defaultCommentHelpText;
-  if (qaCommentSubmit) qaCommentSubmit.textContent = localized('Submit Comment for QA');
   const viewportRoot = document.documentElement;
   const viewportResizeScrollBarClass = 'scholium-viewport-resize-suppresses-overlay-scrollbar';
   const viewportResizeSettleDelay = 80;
@@ -145,60 +123,14 @@ async function initializeReader(value: unknown): Promise<void> {
     }, viewportResizeSettleDelay);
   };
   window.addEventListener('resize', viewportDidResize);
-  const synchronizeSelectionKeyboardFocus = (target: EventTarget | null) => {
-    commentButton.classList.toggle(
-      'scholium-selection-keyboard-focus',
-      target === commentButton
-    );
-  };
-  selectionActions.addEventListener('focusin', event => {
-    synchronizeSelectionKeyboardFocus(event.target);
-  });
-  selectionActions.addEventListener('focusout', () => {
-    queueMicrotask(() => synchronizeSelectionKeyboardFocus(document.activeElement));
-  });
-  const resizeCommentText = () => {
-    commentText.style.height = 'auto';
-    commentText.style.height = Math.min(
-      Math.max(commentText.scrollHeight, 64),
-      132
-    ) + 'px';
-    if (!commentComposer.hidden && commentSelectionRange) {
-      positionSelectionActions(commentSelectionRange.getBoundingClientRect());
-    }
-  };
   readerWindow.scholiumReviewFind = installReviewFind();
   const reviewSelectionPresentation = createReviewSelectionPresentation(
     selectionEnabled,
     testingEnabled,
   );
   readerWindow.scholiumReviewSelection = reviewSelectionPresentation;
-  let pendingCommentRequestID: string | null = null;
-  let commentAnchorElement: HTMLElement | null = null;
-  let commentSelectionRange: Range | null = null;
   let reviewPointerSelectionActive = false;
   let reviewSelectionSurfaceActive = true;
-  let suspendedCommentComposer = false;
-  const positionSelectionActions = (anchorBounds: DOMRect) => {
-    selectionActions.hidden = false;
-    const bounds = selectionActions.getBoundingClientRect();
-    const viewportInset = 12;
-    const verticalInset = 8;
-    const gap = 6;
-    const centeredLeft = anchorBounds.left
-      + (anchorBounds.width - bounds.width) / 2;
-    const aboveTop = anchorBounds.top - bounds.height - gap;
-    const belowTop = anchorBounds.bottom + gap;
-    const preferredTop = aboveTop >= verticalInset ? aboveTop : belowTop;
-    selectionActions.style.left = window.scrollX + Math.max(
-      viewportInset,
-      Math.min(centeredLeft, window.innerWidth - bounds.width - viewportInset)
-    ) + 'px';
-    selectionActions.style.top = window.scrollY + Math.max(
-      verticalInset,
-      Math.min(preferredTop, window.innerHeight - bounds.height - verticalInset)
-    ) + 'px';
-  };
   let previewByRange = new Map(linkPreviews.map(preview => [
     preview.utf16LowerBound + ':' + preview.utf16UpperBound,
     preview
@@ -706,83 +638,8 @@ async function initializeReader(value: unknown): Promise<void> {
   document.addEventListener('keydown', event => {
     if (event.key === 'Escape') {
       hidePopover();
-      if (!commentComposer.hidden) return;
-      commentComposer.hidden = true;
-      selectionToolbar.hidden = false;
-      commentText.value = '';
-      selectionActions.hidden = true;
     }
   });
-
-  function showCommentComposer() {
-    if (!reviewSelectionSurfaceActive
-        || !commentEnabled
-        || selectionActions.hidden
-        || !commentButton.dataset.startLine) return false;
-    const startLine = Number(commentButton.dataset.startLine);
-    const endLine = Number(commentButton.dataset.endLine || commentButton.dataset.startLine);
-    commentText.setAttribute(
-      'aria-label',
-      startLine === endLine
-        ? localized('Comment for line {start}', {start: startLine})
-        : localized('Comment for lines {start} through {end}', {start: startLine, end: endLine})
-    );
-    selectionToolbar.hidden = true;
-    commentComposer.hidden = false;
-    suspendedCommentComposer = false;
-    selectionActions.classList.add('scholium-comment-composing');
-    commentComposer.removeAttribute('data-state');
-    commentComposer.setAttribute('aria-busy', 'false');
-    commentHelp.textContent = defaultCommentHelpText;
-    resizeCommentText();
-    const anchorBounds = commentSelectionRange?.getBoundingClientRect();
-    if (anchorBounds) positionSelectionActions(anchorBounds);
-    commentText.focus();
-    return true;
-  }
-  readerWindow.scholiumShowCommentComposer = showCommentComposer;
-
-  function restoreCommentFocus() {
-    const anchor = commentAnchorElement;
-    const range = commentSelectionRange?.cloneRange();
-    if (anchor instanceof HTMLElement) {
-      const previousTabIndex = anchor.getAttribute('tabindex');
-      anchor.tabIndex = -1;
-      anchor.focus({preventScroll: true});
-      if (previousTabIndex === null) anchor.removeAttribute('tabindex');
-      else anchor.setAttribute('tabindex', previousTabIndex);
-    }
-    if (range) {
-      const selection = window.getSelection();
-      if (!selection) return;
-      selection.removeAllRanges();
-      selection.addRange(range);
-    }
-  }
-
-  function cancelComment(restoreSelection: boolean, onlyWhenEmpty: boolean) {
-    if (pendingCommentRequestID
-        || (onlyWhenEmpty && commentText.value.trim())) return false;
-    commentText.value = '';
-    commentText.style.height = '';
-    commentText.readOnly = false;
-    commentComposer.removeAttribute('data-state');
-    commentComposer.setAttribute('aria-busy', 'false');
-    commentHelp.textContent = defaultCommentHelpText;
-    commentComposer.hidden = true;
-    suspendedCommentComposer = false;
-    selectionToolbar.hidden = false;
-    selectionActions.hidden = true;
-    selectionActions.classList.remove('scholium-comment-composing');
-    if (restoreSelection) {
-      restoreCommentFocus();
-    } else {
-      commentText.blur();
-      commentSelectionRange = null;
-      commentAnchorElement = null;
-    }
-    return true;
-  }
 
   readerWindow.scholiumSetReviewSelectionSurfaceActive = active => {
     const nextActive = Boolean(active);
@@ -790,55 +647,8 @@ async function initializeReader(value: unknown): Promise<void> {
     reviewSelectionSurfaceActive = nextActive;
     reviewPointerSelectionActive = false;
     if (!nextActive) {
-      const retainsDraft = !commentComposer.hidden
-        && (Boolean(pendingCommentRequestID) || Boolean(commentText.value.trim()));
-      suspendedCommentComposer = retainsDraft;
-      selectionActions.hidden = true;
       reviewSelectionPresentation.clear();
-      commentText.blur();
-      if (!retainsDraft) cancelComment(false, false);
-      return true;
-    }
-    if (suspendedCommentComposer && commentSelectionRange) {
-      suspendedCommentComposer = false;
-      selectionToolbar.hidden = true;
-      commentComposer.hidden = false;
-      selectionActions.hidden = false;
-      selectionActions.classList.add('scholium-comment-composing');
-      positionSelectionActions(commentSelectionRange.getBoundingClientRect());
-      if (!pendingCommentRequestID) commentText.focus();
-    } else {
-      suspendedCommentComposer = false;
-    }
-    return true;
-  };
-
-  readerWindow.scholiumResolveCommentSubmission = (requestID, succeeded) => {
-    if (!pendingCommentRequestID || requestID !== pendingCommentRequestID) return false;
-    pendingCommentRequestID = null;
-    commentText.readOnly = false;
-    commentComposer.setAttribute('aria-busy', 'false');
-    if (!succeeded) {
-      commentHelp.textContent = localized('Could not save. Your Comment is still here.');
-      commentComposer.dataset.state = 'error';
-      if (reviewSelectionSurfaceActive) commentText.focus();
-      return true;
-    }
-    commentText.value = '';
-    commentText.style.height = '';
-    commentComposer.removeAttribute('data-state');
-    commentHelp.textContent = defaultCommentHelpText;
-    commentComposer.hidden = true;
-    selectionToolbar.hidden = false;
-    selectionActions.hidden = true;
-    selectionActions.classList.remove('scholium-comment-composing');
-    suspendedCommentComposer = false;
-    if (reviewSelectionSurfaceActive) {
-      restoreCommentFocus();
-    } else {
-      commentText.blur();
-      commentSelectionRange = null;
-      commentAnchorElement = null;
+      post('selectionChanged');
     }
     return true;
   };
@@ -848,17 +658,7 @@ async function initializeReader(value: unknown): Promise<void> {
     const reviewMermaidElements = reviewDocument
       ? [...reviewDocument.querySelectorAll('[data-scholium-protected="mermaid"]')]
       : [];
-    const repositionReviewSelectionActions = () => {
-      if (!reviewSelectionSurfaceActive
-          || reviewPointerSelectionActive
-          || !commentSelectionRange
-          || selectionActions.hidden) return;
-      positionSelectionActions(commentSelectionRange.getBoundingClientRect());
-    };
     const clearReviewSelection = () => {
-      commentSelectionRange = null;
-      commentAnchorElement = null;
-      selectionActions.hidden = true;
       post('selectionChanged');
     };
     const nodeBelongsToMermaid = (node: Node) => {
@@ -879,23 +679,12 @@ async function initializeReader(value: unknown): Promise<void> {
         }
       });
     };
-    const updateSelectionActions = () => {
-      // Focusing the Comment textarea collapses the document
-      // selection. Keep the anchored composer stable until the
-      // researcher saves or cancels it; that focus transition is
-      // not a request to discard the marginal note.
-      if (!reviewSelectionSurfaceActive) {
-        selectionActions.hidden = true;
-        return;
-      }
-      if (!commentComposer.hidden) return;
+    const updateReviewSelection = () => {
+      if (!reviewSelectionSurfaceActive) return;
       const selection = window.getSelection();
       const main = reviewDocument;
       reviewSelectionPresentation.update(selection, main);
-      if (reviewPointerSelectionActive) {
-        selectionActions.hidden = true;
-        return;
-      }
+      if (reviewPointerSelectionActive) return;
       if (!selection || selection.rangeCount !== 1 || selection.isCollapsed || !main) {
         clearReviewSelection();
         return;
@@ -914,8 +703,6 @@ async function initializeReader(value: unknown): Promise<void> {
         clearReviewSelection();
         return;
       }
-      const rect = range.getBoundingClientRect();
-      commentSelectionRange = range.cloneRange();
       const sourceElement = (range.startContainer instanceof Element
         ? range.startContainer
         : range.startContainer.parentElement)?.closest<HTMLElement>('[data-source-line]') ?? null;
@@ -934,159 +721,24 @@ async function initializeReader(value: unknown): Promise<void> {
         endLine: Math.max(startLine, endLine)
       };
       post('selectionChanged', payload);
-      if (!commentEnabled) {
-        selectionActions.hidden = true;
-        return;
-      }
-      commentButton.dataset.startLine = String(payload.startLine);
-      commentButton.dataset.endLine = String(payload.endLine);
-      commentButton.dataset.selection = payload.text;
-      commentButton.dataset.contextBefore = payload.contextBefore;
-      commentButton.dataset.contextAfter = payload.contextAfter;
-      commentAnchorElement = sourceElement;
-      commentButton.hidden = !commentEnabled;
-      positionSelectionActions(rect);
     };
-    document.addEventListener('selectionchange', updateSelectionActions);
+    document.addEventListener('selectionchange', updateReviewSelection);
     reviewDocument?.addEventListener('pointerdown', event => {
       if (!reviewSelectionSurfaceActive || event.button !== 0) return;
-      if (!commentComposer.hidden && !cancelComment(false, true)) {
-        event.preventDefault();
-        commentText.focus();
-        return;
-      }
-      if (commentAnchorElement instanceof HTMLElement
-          && document.activeElement === commentAnchorElement) {
-        commentAnchorElement.blur();
-      }
-      commentSelectionRange = null;
-      commentAnchorElement = null;
       reviewPointerSelectionActive = true;
-      selectionActions.hidden = true;
     }, true);
     window.addEventListener('pointerup', event => {
       if (!reviewPointerSelectionActive || event.button !== 0) return;
       reviewPointerSelectionActive = false;
-      queueMicrotask(updateSelectionActions);
+      queueMicrotask(updateReviewSelection);
     }, true);
     window.addEventListener('pointercancel', () => {
       reviewPointerSelectionActive = false;
-      selectionActions.hidden = true;
     }, true);
-    window.addEventListener('resize', repositionReviewSelectionActions);
     window.addEventListener('blur', () => {
       reviewPointerSelectionActive = false;
-      if (commentComposer.hidden) selectionActions.hidden = true;
     });
   }
-  if (commentEnabled) {
-    // Keep the document selection alive through the button's
-    // pointer-down. The subsequent click owns the deliberate
-    // transition from the compact bar to the anchored field.
-    commentButton.addEventListener('mousedown', event => event.preventDefault());
-    commentButton.addEventListener('click', showCommentComposer);
-    let preservesNextInsertedLineBreak = false;
-    const makeRequestID = () => {
-      if (globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') {
-        return globalThis.crypto.randomUUID();
-      }
-      const bytes = new Uint8Array(16);
-      if (globalThis.crypto && typeof globalThis.crypto.getRandomValues === 'function') {
-        globalThis.crypto.getRandomValues(bytes);
-      } else {
-        for (let index = 0; index < bytes.length; index += 1) {
-          bytes[index] = Math.floor(Math.random() * 256);
-        }
-      }
-      bytes[6] = (bytes[6] & 0x0f) | 0x40;
-      bytes[8] = (bytes[8] & 0x3f) | 0x80;
-      const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0'));
-      return hex.slice(0, 4).join('') + '-' + hex.slice(4, 6).join('') + '-'
-        + hex.slice(6, 8).join('') + '-' + hex.slice(8, 10).join('') + '-'
-        + hex.slice(10, 16).join('');
-    };
-    const submitComment = () => {
-      const comment = commentText.value.trim();
-      if (!comment || pendingCommentRequestID) return;
-      if (new TextEncoder().encode(comment).byteLength > 16384) {
-        commentHelp.textContent = localized('This Comment is too long to save here.');
-        commentComposer.dataset.state = 'error';
-        return;
-      }
-      pendingCommentRequestID = makeRequestID();
-      commentText.readOnly = true;
-      commentComposer.setAttribute('aria-busy', 'true');
-      commentHelp.textContent = localized('Saving…');
-      commentComposer.dataset.state = 'saving';
-      post('commentSubmitted', {
-        requestID: pendingCommentRequestID,
-        comment,
-        text: commentButton.dataset.selection || '',
-        contextBefore: commentButton.dataset.contextBefore || '',
-        contextAfter: commentButton.dataset.contextAfter || '',
-        startLine: Number(commentButton.dataset.startLine || '1'),
-        endLine: Number(commentButton.dataset.endLine || commentButton.dataset.startLine || '1')
-      });
-    };
-    qaCommentSubmit && qaCommentSubmit.addEventListener('click', submitComment);
-    commentText.addEventListener('input', () => {
-      resizeCommentText();
-      if (commentComposer.dataset.state === 'error') {
-        commentComposer.removeAttribute('data-state');
-        commentHelp.textContent = defaultCommentHelpText;
-      }
-    });
-    commentText.addEventListener('keydown', event => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        event.stopPropagation();
-        cancelComment(true, false);
-        return;
-      }
-      const isReturn = event.key === 'Enter'
-        || event.key === 'Return'
-        || event.code === 'Enter'
-        || event.code === 'NumpadEnter';
-      if (!isReturn || event.isComposing) return;
-      if (event.shiftKey) {
-        preservesNextInsertedLineBreak = true;
-        setTimeout(() => { preservesNextInsertedLineBreak = false; }, 0);
-        return;
-      }
-      event.preventDefault();
-      submitComment();
-    });
-    // Accessibility text insertion can bypass DOM keydown while
-    // still producing an InputEvent whose type is insertText.
-    // Treat only an actually inserted line break as Return-to-save;
-    // a real Shift-Return marks exactly its following input as prose.
-    commentText.addEventListener('input', event => {
-      const input = event as InputEvent;
-      const insertedLineBreak = input.inputType === 'insertLineBreak'
-        || input.inputType === 'insertParagraph'
-        || (input.inputType === 'insertText'
-          && ((typeof input.data === 'string' && /[\r\n]/.test(input.data))
-            || /[\r\n]$/.test(commentText.value)));
-      if (!insertedLineBreak) return;
-      if (preservesNextInsertedLineBreak) {
-        preservesNextInsertedLineBreak = false;
-        return;
-      }
-      submitComment();
-    });
-  }
-
-  const reviewDocument = requiredElement("scholium-document");
-  const commentAnchorPresentation = createReviewCommentAnchorPresentation(
-    reviewDocument,
-    localized,
-    vectorSymbols.comment ?? "",
-    anchorID => post("commentAnchorActivated", {anchorID}),
-  );
-  readerWindow.scholiumReviewComments = commentAnchorPresentation;
-  readerWindow.scholiumSetCommentAnchors = anchors =>
-    commentAnchorPresentation.setAnchors(anchors);
-  commentAnchorPresentation.setAnchors(commentAnchors);
 
   const scrollBlockRegistry = (() => {
     const root = document.getElementById('scholium-document');

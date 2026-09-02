@@ -63,99 +63,57 @@ evidence and remaining acceptance belong to
 small manifest plus exact expected and candidate bytes. A proven committed or
 not-written operation deletes the directory immediately; only commit-uncertain
 or startup-interrupted transactions survive. Unsupported pre-use bytes remain
-unchanged and nonauthorizing. It exposes no versions or history API. Its one
-bounded `InterruptedSaveRecovery` projection includes only exact
-startup-retained candidates and remains distinct from Run-bound Agent change
-evidence. `DocumentOperations` vault-qualifies listing, read-only content,
-Finder location, and restore; `ResearchController` owns that listing beside the
-existing durable-recovery list, while `WindowModel` owns the cross-window editor
-flush and presentation effects. Startup reads pending canonical source through
-the descriptor boundary. A canonical
-candidate proves the interrupted save committed and completes its mutation
-journal; a still-canonical expected revision retains the distinct candidate
-bytes and publishes a health diagnostic instead of deleting the only
-structured copy of interrupted editor work. Current mutation manifests require
-their exact schema version. Unsupported pre-use machine data remains
-byte-unchanged and nonauthorizing; no legacy save schema is migrated or
-interpreted.
+unchanged and nonauthorizing. The ledger exposes no versions or history API.
+`DocumentOperations` vault-qualifies listing, read-only content, Finder
+location, and restore; `ResearchController` owns that listing beside durable
+recovery state, while `WindowModel` owns cross-window editor flush and
+presentation effects.
 
-`AgentChangeEvidenceStore` is a separate Core actor under Triptych-keyed
-Application Support. Each JSON record is keyed by `(Run ID, Note ID)` and binds
-that pair to the Triptych, exact starting bytes/fingerprint, and optional final Agent
-bytes/fingerprint. It enforces the Run Activity Ledger source-size limit,
-descriptor-safe storage, atomic replacement, and cross-process locking. It is
-not queried as history, cannot reconstruct source authority, and is consumed
-only by exact Record comparison, direct Undo, and explicit permanent Record
-cleanup.
+`AgentChangeStore` is a separate Core actor under
+`Triptychs/<triptych-id>/agent-changes-v1/`. One descriptor-contained JSON file
+records one MCP create, update, or trash transaction and binds stable Note
+identity, role, paths, exact before/after fingerprints, optional bounded source
+bytes, and recovery state. It is machine-local evidence, not a task, result,
+permission, research history, or source authority. Prepared entries are
+confirmed only after the ordinary source owner proves readback. Outcome-uncertain
+entries require exact reconciliation. Direct Undo exists only for a confirmed
+update whose current authoritative fingerprint still equals the recorded after
+fingerprint.
 
 `SecureRecordDirectory` is the Core-only descriptor-relative primitive for
 bounded machine-local JSON state. It owns no-follow containment, byte limits,
 atomic replacement, readback, staging/deletion recovery, and the companion
-`AdvisoryFileLock` for cooperating-process serialization. Portable Records,
-enveloped local execution payloads, Agent change evidence, and the prewrite
-ledger each retain their
-own schema, path, transaction, recovery, and error semantics, and translate
-primitive failures at that owner boundary. The primitive neither interprets a
-Record nor becomes a writable research-source authority.
+`AdvisoryFileLock` for cooperating-process serialization. Agent Changes, the
+prewrite ledger, and other bounded machine-local stores retain their own schema,
+path, transaction, recovery, and error semantics. The primitive interprets no
+research object and never becomes a writable source authority.
 
-## System Trash and temporary cleanup boundary
+## System Trash and coordinated source boundary
 
-`NoteSystemTrashDeletionCoordinator` is the Core owner for one confirmed
-source-and-temporary-state cutover. `prepareNote` and `prepareFolder` bind exact
-source, stable identities, revisions, complete directory manifests, managed
-Critiques, and active Discussions into one immutable preview. Finished Records
-and their Agent-change evidence are outside this plan. `WorkspaceHandle` holds
-the source-mutation lease and flushes every Triptych editor before both
-preparation and execution. System Trash reads the
-stable Local Execution envelope rather than its private payload: relevant live
-or recovery-required entries fail preflight, terminal entries remain eligible
-for cleanup, and an unsupported payload cannot block unrelated Notes. A file
-without a valid envelope yields a store-wide fingerprint-bound recovery
-preview. A valid live envelope with an unreadable payload yields a preview only
-when the selected Note set intersects its stable participation set.
-
-`LocalResearchExecutionStore.archiveUnsupportedExecutions` is the sole recovery
-mutation for either preview. Under the store lock it recomputes the complete
-store-wide or Note-scoped set and rechecks each exact fingerprint, creates or
-verifies a byte-identical file in the
-descriptor-contained `unsupported-executions` directory, then removes only the
-matching original. It performs no legacy decode or migration. Application owns
-the standard cancel/destructive alert and retries the original preparation only
-after archival succeeds.
+`NoteSystemTrashDeletionCoordinator` is the Core owner for one
+researcher-confirmed source cutover. `prepareNote` and `prepareFolder` bind
+exact source revisions, stable identities, complete directory manifests, and
+any managed Critique that must move with its Work into one immutable preview.
+`WorkspaceHandle` holds the source-mutation lease and flushes every Triptych
+editor before preparation and execution.
 
 `TriptychMutationRecoveryStore` persists the `SystemTrashDeletionPlan` before
-the first filesystem call. Each source owns an independent receipt and a stable
-binding identity; duplicate source, Note, Discussion, or receipt
-identities fail before the deletion gate or another side effect.
-`VaultRepository` repeats descriptor-relative containment and revision or
-manifest checks. `VaultMutationCoordinator` atomically renames the checked
+the first filesystem call. Each source owns an independent receipt and stable
+binding identity; duplicates fail before the deletion gate or another side
+effect. `VaultRepository` repeats descriptor-relative containment and revision
+or manifest checks. `VaultMutationCoordinator` atomically renames the checked
 directory entry into the plan-owned hidden sibling, verifies the bound inode
 and exact bytes or complete manifest, and only then calls Foundation's native
-system-Trash API inside an `NSFileCoordinator` deleting accessor. A late path
+system-Trash API inside a coordinated deleting accessor. A late path
 replacement is restored or retained without entering Trash. A pending plan
-resumes an interrupted binding, while absence of both the original entry and a
-valid binding cannot prove Foundation success and becomes `outcomeUnknown`.
-The returned URL remains machine-local recovery evidence only.
+resumes an interrupted binding; absence of both original entry and a valid
+binding becomes `outcomeUnknown`. Returned URLs remain machine-local recovery
+evidence only.
 
-After every source receipt is `movedToSystemTrash`,
-`PortableResearchRecordStore` discards affected active Discussions and the plan
-releases its short-lived Note gate. Finished Records, Record-bound Local
-Executions, and Agent-change evidence remain unchanged; their explicit
-permanent deletion use case is the sole cleanup owner. Settlement,
-stable identity, source-access records, Zotero bindings, and Critique
-associations are not cleanup targets. The Note-deletion marker shares the
-portable-store lock with active Discussion, Settlement, and finished Record
-creation, so no new participating state can appear during the filesystem
-cutover. Portable Record schema 18 already retains historical participant
-identity, location, title, and revisions; source presence is read separately.
-Every unsupported schema remains byte-unchanged, unread, and nonauthorizing.
-
-Watcher reconciliation, Finder actions, and sync tools cannot construct this
-plan or call its temporary cleanup. They publish source inventory changes
-through the ordinary refresh and stable-identity diagnostics only. Finder
-restoration therefore re-enters as source and may reconcile retained identity;
-the existing finished Record remains independently available throughout.
-
+Settlement, stable identity records, Zotero bindings, and Agent Changes are not
+portable cleanup targets of source deletion. Watcher reconciliation, Finder
+actions, and sync tools cannot construct or execute the plan; they publish
+ordinary source inventory changes and stable-identity diagnostics only.
 ## Shared read models and metadata
 
 `WorkspaceNoteSnapshot` is the shared immutable read model for a workspace

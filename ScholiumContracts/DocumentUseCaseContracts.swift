@@ -207,7 +207,10 @@ public enum ManagedCreationDestination: Hashable, Sendable {
 
 public enum ManagedCreationAuthority: Hashable, Sendable {
     case researcher
-    case authenticatedAgent(reservedIdentity: UUID)
+    /// One exact creation requested through the fixed Scholium MCP tool. The
+    /// value reserves only the stable Note identity for this transaction; it
+    /// is not an Agent identity or continuing permission.
+    case mcp(reservedIdentity: UUID)
 }
 
 public struct ManagedNoteCreationRequest: Hashable, Sendable {
@@ -226,9 +229,7 @@ public struct ManagedNoteCreationRequest: Hashable, Sendable {
         analysisMetadata: AnalysisCreationMetadata? = nil,
         authority: ManagedCreationAuthority = .researcher
     ) throws {
-        guard body.utf8.count <= ResearchBoundedWriteSet.maximumDocumentUTF8ByteCount,
-              !body.hasPrefix("\u{FEFF}"),
-              !body.contains("\r"),
+        guard body.utf8.count <= ScholiumMCPContract.maximumDocumentUTF8ByteCount,
               !body.unicodeScalars.contains(where: { $0.value == 0 }),
               NoteDocument(
                   relativePath: "Managed Body.md",
@@ -242,6 +243,57 @@ public struct ManagedNoteCreationRequest: Hashable, Sendable {
         self.authoredYAML = authoredYAML
         self.analysisMetadata = analysisMetadata
         self.authority = authority
+    }
+}
+
+/// Sole exact-source builder shared by GUI and MCP managed creation. Delivery
+/// adapters supply typed values, never YAML fragments.
+public enum ManagedNoteSourceBuilder {
+    public static func source(
+        for request: ManagedNoteCreationRequest,
+        vaultRole: VaultRole
+    ) throws -> String {
+        let authored = try request.authoredYAML ?? AuthoredNoteYAML()
+        let summarySource: String
+        if let summary = authored.summary {
+            summarySource = try FrontmatterPatchPlanner.serializeTopLevelMapping([
+                (key: "summary", value: .string(summary)),
+            ])
+        } else {
+            summarySource = "summary: null\n"
+        }
+        let keywordsSource = try FrontmatterPatchPlanner.serializeTopLevelMapping([
+            (key: "keywords", value: .array(authored.keywords)),
+        ])
+        let source = "---\n" + summarySource + keywordsSource + "---\n" + request.body
+        let document = NoteDocument(
+            relativePath: "Managed Creation.md",
+            rawContent: source
+        )
+        let profile = WorkflowProfileResolver.resolve(vaultRole: vaultRole)
+        guard document.frontmatterState != .malformed else {
+            throw DocumentCreationError.invalidMetadata(
+                PropertyContractCatalog.validate(document, profile: profile)
+            )
+        }
+        let nonemptyAuthoredValues = document.parsedFrontmatter.filter { _, value in
+            switch value {
+            case .null: false
+            case .array(let values): !values.isEmpty
+            case .string(let value):
+                !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            case .object(let values): !values.isEmpty
+            case .integer, .double, .boolean: true
+            }
+        }
+        let issues = PropertyContractCatalog.validate(
+            frontmatter: nonemptyAuthoredValues,
+            profile: profile
+        )
+        guard issues.isEmpty else {
+            throw DocumentCreationError.invalidMetadata(issues)
+        }
+        return source
     }
 }
 
@@ -265,7 +317,7 @@ public enum DocumentCreationError: LocalizedError, Equatable, Sendable {
         case .invalidPropertyKey(let key):
             return "The managed creation Metadata key is invalid: \(key)"
         case .invalidBody:
-            return "Managed creation accepts UTF-8 LF body text without a BOM, carriage returns, NUL bytes, or a top-level YAML envelope. Use Import for complete authored Markdown source."
+            return "Managed creation accepts bounded UTF-8 body text without NUL bytes or a top-level YAML envelope. Use Import for complete authored Markdown source."
         case .invalidAuthoredYAML:
             return "Managed creation accepts only a bounded nonempty Summary and unique nonempty Keywords; omit either value to keep its fixed empty scaffold."
         case .analysisMetadataRoleMismatch:

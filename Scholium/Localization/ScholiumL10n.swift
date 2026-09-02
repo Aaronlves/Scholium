@@ -89,7 +89,7 @@ enum ScholiumL10n {
                 defaultValue: "Research Guidance",
                 table: "Interface",
                 bundle: .module,
-                comment: "Settings group for Skills, Action Profiles, Agent Access, and External Tools and Citations."
+                comment: "Settings group for Agent Integration and read-only external research tools."
             )
         }
 

@@ -798,7 +798,7 @@ struct TriptychSearchIndexTests {
         ))
         #expect(duringRefresh.noteResults.count == 1)
         #expect(duringRefresh.freshnessToken == .triptych(first.generation))
-        guard case .note(.refreshing(let readGeneration)) = duringRefresh.availability else {
+        guard case .refreshing(let readGeneration) = duringRefresh.availability.noteAvailability else {
             Issue.record("The old WAL read should remain explicitly refreshing")
             refresh.cancel()
             _ = try? await refresh.value

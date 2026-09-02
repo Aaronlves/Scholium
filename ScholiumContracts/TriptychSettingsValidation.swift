@@ -11,8 +11,6 @@ public enum TriptychSettingsValidationError: LocalizedError, Equatable, Sendable
     case metadataFieldIdentityChanged(WorkspaceVaultSlot, String)
     case metadataFieldChoicesRemoved(WorkspaceVaultSlot, String)
     case noncanonicalConfigurationField(WorkspaceVaultSlot, String)
-    case invalidPreferredField(AnalysisSourceType, String)
-    case preferredFieldNotApplicable(AnalysisSourceType, String)
     case invalidAttentionDismissalDays
 
     public var errorDescription: String? {
@@ -37,10 +35,6 @@ public enum TriptychSettingsValidationError: LocalizedError, Equatable, Sendable
             "Existing controlled choices for \(role.rawValue) Metadata definition \(field) cannot be removed."
         case .noncanonicalConfigurationField(let role, let field):
             "The \(role.rawValue) Metadata Profile contains a blank, duplicate, or unnormalized field: \(field)."
-        case .invalidPreferredField(let type, let key):
-            "\(key) is not a shape-known Agent-creatable field for \(type.rawValue)."
-        case .preferredFieldNotApplicable(let type, let key):
-            "\(key) does not apply to \(type.rawValue)."
         case .invalidAttentionDismissalDays:
             "Attention dismissal days must be positive."
         }
@@ -70,14 +64,6 @@ public enum TriptychSettingsValidator {
             )
         }
 
-        for sourceType in AnalysisSourceType.allCases {
-            let preferred = settings.analysisAgentCreation.preferredFields(for: sourceType)
-            try validatePreferredFields(
-                preferred,
-                sourceType: sourceType,
-                catalog: catalog
-            )
-        }
     }
 
     public static func validateMetadataFieldDefinitions(
@@ -195,30 +181,6 @@ public enum TriptychSettingsValidator {
                     role,
                     field
                 )
-            }
-        }
-    }
-
-    private static func validatePreferredFields(
-        _ fields: [String],
-        sourceType: AnalysisSourceType,
-        catalog: NoteMetadataCatalog
-    ) throws {
-        var seen: Set<String> = []
-        let applicable = Set(
-            catalog.analysisContracts(for: sourceType).map(\.canonicalKey)
-        )
-        for key in fields {
-            let normalized = key.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard normalized == key,
-                  !key.isEmpty,
-                  key != "type",
-                  seen.insert(key).inserted,
-                  catalog.contract(for: key, profile: .analysis) != nil else {
-                throw TriptychSettingsValidationError.invalidPreferredField(sourceType, key)
-            }
-            guard applicable.contains(key) else {
-                throw TriptychSettingsValidationError.preferredFieldNotApplicable(sourceType, key)
             }
         }
     }

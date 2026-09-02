@@ -1,29 +1,14 @@
 import ScholiumContracts
 import SwiftUI
 
-enum DiscussionPresentationError: LocalizedError {
-    case unavailable
-
-    var errorDescription: String? {
-        "Discussion is unavailable until Scholium can identify the selected Analysis, Topic, or Work reliably."
-    }
-}
-
-private struct ResearchActionAvailabilityRefreshIdentity: Equatable {
-    let target: ResearchActionNoteSnapshot?
-    let snapshotPhase: WorkspaceSnapshotPhase?
-}
-
 // MARK: - Content View
 
 struct ContentView: View {
-    @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
     @ObservedObject var appState: WindowModel
     @ObservedObject private var presentationRouter: WindowPresentationRouter
     @ObservedObject private var discoveryController: DiscoveryController
     @ObservedObject private var searchController: WindowSearchController
     @ObservedObject private var researchController: ResearchController
-    @ObservedObject private var researchActionController: ResearchActionController
     @ObservedObject private var shellState: WindowShellState
     @ObservedObject private var documentController: DocumentController
     @ObservedObject private var documentTabController: DocumentTabController
@@ -36,12 +21,6 @@ struct ContentView: View {
     @Environment(\.openSettings) private var openSettings
     @AppStorage(AttentionPreferences.dismissalLedgerKey)
     private var attentionDismissalLedgerData = Data()
-    @State private var pendingResearchActionFocusID: ResearchActionID?
-    @State private var researchActionFocusRequest: ResearchActionFocusRequest?
-    @State private var researchActionDismissalFocusDisposition:
-        ResearchActionDismissalFocusDisposition = .preserveInputModality
-    @State private var announcedResearchNotificationPermissionNotice:
-        ResearchNotificationPermissionNotice?
 
     init(
         appState: WindowModel,
@@ -53,9 +32,6 @@ struct ContentView: View {
         _discoveryController = ObservedObject(wrappedValue: appState.discoveryController)
         _searchController = ObservedObject(wrappedValue: appState.searchController)
         _researchController = ObservedObject(wrappedValue: appState.researchController)
-        _researchActionController = ObservedObject(
-            wrappedValue: appState.researchController.actions
-        )
         _shellState = ObservedObject(wrappedValue: appState.shellState)
         _documentController = ObservedObject(wrappedValue: appState.documentController)
         _documentTabController = ObservedObject(wrappedValue: appState.documentTabController)
@@ -115,16 +91,6 @@ struct ContentView: View {
                     detailRegion
                 }
             }
-            .overlay(alignment: .trailing) {
-                Group {
-                    if shellState.hasCompletedInitialRestore,
-                       appState.currentNote != nil {
-                        documentResearchActionRail
-                            .padding(.trailing, ScholiumGrid.Spacing.sectionSeparation)
-                    }
-                }
-                .zIndex(5)
-            }
             .scholiumSurface(.document)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         } apparatus: {
@@ -150,12 +116,6 @@ struct ContentView: View {
                     .animation(
                         ScholiumMotion.transientStatus(reduceMotion: reduceMotion),
                         value: shellState.feedbackItems
-                    )
-                    .animation(
-                        ScholiumMotion.activityNotificationStackExpansion(
-                            reduceMotion: reduceMotion
-                        ),
-                        value: documentActivityNotifications.map(\.runID)
                     )
             }
         }
@@ -206,36 +166,7 @@ struct ContentView: View {
             ScholiumMotion.searchPresentation(reduceMotion: reduceMotion),
             value: appState.showSearchSurface
         )
-        .onChange(
-            of: shellState.researchActivityNotifications
-        ) { previous, current in
-            let previousReady = Set(previous.compactMap {
-                $0.state == .resultReady ? $0.runID : nil
-            })
-            guard current.contains(where: {
-                $0.state == .resultReady && !previousReady.contains($0.runID)
-            }) else { return }
-            AccessibilityNotification.Announcement(
-                String(
-                    localized: "An Agent result is ready to review.",
-                    table: "Localizable",
-                    bundle: .module
-                )
-            ).post()
-        }
-        .sheet(item: presentedSheet, onDismiss: {
-            if researchActionController.isPresented {
-                let actionID = researchActionController.activeActionID
-                let focusDisposition = researchActionDismissalFocusDisposition
-                appState.presentationRouter.dismissSheet()
-                researchActionController.dismiss()
-                completeResearchActionDismissalFocus(
-                    ifOwnedBy: actionID,
-                    disposition: focusDisposition
-                )
-                researchActionDismissalFocusDisposition = .preserveInputModality
-            }
-        }) { route in
+        .sheet(item: presentedSheet) { route in
             sheetContent(for: route)
         }
         .alert(item: presentedAlert) { alert in
@@ -248,36 +179,8 @@ struct ContentView: View {
                         appState.presentationRouter.alert = nil
                     }
                 )
-            case .localExecutionRecovery(let preview):
-                Alert(
-                    title: Text("Archive Unreadable Research Actions?"),
-                    message: Text(
-                        "Scholium cannot determine which Notes are covered by older or damaged local Research Action storage (file count: \(preview.items.count)). Archive the exact files inside Scholium and continue preparing Move to Trash? This disables those old Runs but does not change research Notes or portable Research Records."
-                    ),
-                    primaryButton: .cancel(Text("Cancel")) {
-                        appState.libraryMutationController.cancelLocalExecutionRecovery(preview)
-                    },
-                    secondaryButton: .destructive(Text("Archive and Continue")) {
-                        Task { @MainActor in
-                            await appState.libraryMutationController.archiveLocalExecutionsAndRetrySystemTrash(
-                                preview
-                            )
-                        }
-                    }
-                )
             }
         }
-        .task(id: researchActionAvailabilityRefreshIdentity) {
-            await appState.refreshResearchActionAvailability()
-        }
-    }
-
-    private var researchActionAvailabilityRefreshIdentity:
-        ResearchActionAvailabilityRefreshIdentity {
-        ResearchActionAvailabilityRefreshIdentity(
-            target: appState.currentResearchActionTarget,
-            snapshotPhase: workspaceProjectionController.snapshotPhase
-        )
     }
 
     @ViewBuilder
@@ -353,20 +256,6 @@ struct ContentView: View {
         )
     }
 
-    private func completeResearchActionDismissalFocus(
-        ifOwnedBy actionID: ResearchActionID?,
-        disposition: ResearchActionDismissalFocusDisposition
-    ) {
-        let pendingActionID = pendingResearchActionFocusID
-        pendingResearchActionFocusID = nil
-        guard disposition == .restoreOriginatingAction,
-              let actionID,
-              pendingActionID == actionID else {
-            return
-        }
-        researchActionFocusRequest = ResearchActionFocusRequest(actionID: actionID)
-    }
-
     private var spotlightSearchContext: SpotlightSearchContext {
         SpotlightSearchContext(
             completionContext: searchCompletionContext,
@@ -419,8 +308,7 @@ struct ContentView: View {
         ResearchInspectorContentContext(
             presentation: ResearchOverviewPresentation(
                 visibleAttentionItems: visibleCurrentDocumentAttentionItems,
-                activityNotificationCount:
-                    currentDocumentActivityNotificationCount,
+                activityNotificationCount: 0,
                 freshness: researchProjectionFreshness,
                 aboutConfiguration: appState.currentDocumentAboutConfiguration,
                 metadataCatalog: workspaceProjectionController.metadataCatalog,
@@ -494,7 +382,7 @@ struct ContentView: View {
 
     private var currentSettlementRequirement: WorkspaceSettlementRequirement? {
         guard let noteID = currentNoteStableID else { return nil }
-        return researchController.records?.settlementRequirements.first {
+        return researchController.researchSnapshot?.settlementRequirements.first {
             $0.noteID == noteID
         }
     }
@@ -504,25 +392,8 @@ struct ContentView: View {
             noteID: currentNoteStableID,
             currentRevision: appState.currentNote?.document.fingerprint,
             requirement: currentSettlementRequirement,
-            settlements: researchController.records?.settlements ?? []
+            settlements: researchController.researchSnapshot?.settlements ?? []
         )
-    }
-
-    private func presentAgentChanges(
-        for requirement: WorkspaceSettlementRequirement
-    ) {
-        guard let records = researchController.records?.finishedResearchRecords,
-              let presentation = AgentChangesPresentation(
-                  requirement: requirement,
-                  records: records
-              ) else {
-            appState.presentFeedback(
-                String(localized: "Agent Changes are unavailable because their exact Research Records could not be resolved."),
-                kind: .warning
-            )
-            return
-        }
-        presentationRouter.present(.agentChanges(presentation))
     }
 
     private var currentNoteDocumentSession: DocumentSessionModel? {
@@ -558,22 +429,6 @@ struct ContentView: View {
             $0.note.vaultID == vaultID && $0.note.relativePath == note.relativePath
         }
         return AttentionPreferences.decodeLedger(attentionDismissalLedgerData).visible(matching)
-    }
-
-    private var currentDocumentActivityNotificationCount: Int {
-        guard let noteID = currentNoteStableID else { return 0 }
-        let actionCount = shellState.researchActivityNotifications.count {
-            notification in
-            notification.targetNoteID == noteID
-                || notification.affectedNotes.contains { $0.noteID == noteID }
-        }
-        return actionCount + (currentSettlementRequirement == nil ? 0 : 1)
-    }
-
-    private var documentActivityNotifications: [ResearchActivityNotification] {
-        shellState.researchActivityNotifications.filter {
-            $0.state.requiresResearcherAttention
-        }
     }
 
     private var researchProjectionFreshness: ResearchProjectionFreshness {
@@ -626,9 +481,6 @@ struct ContentView: View {
             noteIdentityByPath: appState.currentDocumentIdentityByPath,
             documentRevisions: appState.currentDocumentRevisions,
             workspaceCatalog: appState.workspaceCatalog,
-            activeDiscussions: appState.researchController.records?.activeDiscussions ?? [],
-            requestedDiscussionID: appState.requestedDiscussionID,
-            canComment: appState.canCommentCurrentNote,
             canEdit: appState.canEditCurrentNote,
             isManagedCritique: appState.currentDocumentCapabilities.isManagedCritique,
             documentTextScale: appState.documentTextScale,
@@ -658,63 +510,6 @@ struct ContentView: View {
             clearRequestedPresentationMode: { appState.requestPresentationMode = nil },
             clearPendingSourceLine: { appState.pendingSourceLine = nil },
             clearPendingSourceRange: { appState.pendingSourceRange = nil },
-            createDiscussion: { anchor, message in
-                guard let target = appState.currentResearchActionTarget else {
-                    throw DiscussionPresentationError.unavailable
-                }
-                let discussion = try await appState.researchController.createDiscussion(
-                    target: target,
-                    passage: anchor,
-                    researcherMessage: message
-                )
-                try await appState.researchController.refreshResearchProjection()
-                appState.requestDiscussionPresentation(discussion.id)
-                return discussion
-            },
-            createComment: { expectedNoteID, expectedPath, lineReference, message in
-                guard let target = appState.currentResearchActionTarget,
-                      target.noteID == expectedNoteID,
-                      target.note.relativePath == expectedPath,
-                      target.fingerprint == lineReference.fingerprint else {
-                    throw DiscussionPresentationError.unavailable
-                }
-                let discussion = try await appState.researchController.createComment(
-                    target: target,
-                    lineReference: lineReference,
-                    researcherMessage: message
-                )
-                do {
-                    try await appState.researchController.refreshResearchProjection()
-                } catch {
-                    throw ScholiumApplicationError.operationCommittedButRefreshFailed(
-                        operation: "The Comment",
-                        reason: error.localizedDescription
-                    )
-                }
-                return discussion
-            },
-            reloadDiscussion: { discussionID in
-                try await appState.researchController.activeDiscussionIfPresent(
-                    id: discussionID
-                )
-            },
-            loadDiscussionAgentInstructions: { discussionID in
-                try await appState.researchController.discussionAgentInstructions(
-                    id: discussionID
-                )
-            },
-            refreshDiscussionProjection: {
-                try await appState.researchController.refreshResearchProjection()
-            },
-            endDiscussion: { discussionID in
-                try await appState.researchController.endDiscussion(id: discussionID)
-            },
-            clearRequestedDiscussion: {
-                appState.clearRequestedDiscussionPresentation()
-            },
-            copyDiscussionRequest: { instructions in
-                try appState.copyTextToClipboard(instructions)
-            },
             rememberScrollPosition: {
                 guard let path = documentPath else { return }
                 appState.rememberScrollPosition($0, for: path)
@@ -734,9 +529,6 @@ struct ContentView: View {
                 guard let path = documentPath else { return }
                 appState.editingNotePath = path
                 appState.showMetadataEditor = true
-            },
-            openResearchAction: { actionID, selection in
-                appState.openResearchAction(actionID, selection: selection)
             },
             setResearchInspectorVisible: {
                 windowCoordinator.actions.setResearchInspectorVisible($0)
@@ -834,8 +626,8 @@ struct ContentView: View {
             requestFolderSystemTrash: {
                 do {
                     try await appState.libraryMutationController.prepareFolderSystemTrash($0)
-                } catch TriptychTransactionError.activeResearchActions(let runIDs) {
-                    appState.openResearchActionRecovery(runIDs: runIDs)
+                } catch {
+                    appState.presentFeedback(error.localizedDescription, kind: .error)
                 }
             },
             copyRelativePath: { path in
@@ -856,8 +648,8 @@ struct ContentView: View {
             requestSystemTrash: {
                 do {
                     try await appState.libraryMutationController.prepareNoteSystemTrash($0)
-                } catch TriptychTransactionError.activeResearchActions(let runIDs) {
-                    appState.openResearchActionRecovery(runIDs: runIDs)
+                } catch {
+                    appState.presentFeedback(error.localizedDescription, kind: .error)
                 }
             },
             revealCurrentVault: { appState.revealVaultInFinder() },
@@ -868,16 +660,15 @@ struct ContentView: View {
     }
 
     private var sidebarAttentionTotal: Int? {
-        let activityCount = shellState.researchActivityNotifications.count
-        let settlementCount = researchController.records?
+        let settlementCount = researchController.researchSnapshot?
             .settlementRequirements.count ?? 0
         let issueCount = AttentionPreferences.visibleTotalCount(
             catalog: appState.workspaceCatalog,
             assignment: appState.workspaceAssignment,
             dismissalLedgerData: attentionDismissalLedgerData
         )
-        if let issueCount { return issueCount + activityCount + settlementCount }
-        let persistentCount = activityCount + settlementCount
+        if let issueCount { return issueCount + settlementCount }
+        let persistentCount = settlementCount
         return persistentCount > 0 ? persistentCount : nil
     }
 
@@ -926,70 +717,6 @@ struct ContentView: View {
                     )
                 }
                     .frame(minWidth: 520, minHeight: 560)
-            }
-        case .researchAction(let route):
-            if note(at: route.target.relativePath) != nil {
-                ResearchActionPanelView(
-                    controller: researchActionController,
-                    context: ResearchActionPanelContext(
-                        chooseLocalSource: {
-                            try await fileSelectionPresenter
-                                .requiredForFileSelection()
-                                .selectURL(ScholiumFileSelectionRequest(
-                                    title: String(
-                                        localized: "Choose Source",
-                                        table: "Localizable",
-                                        bundle: .module
-                                    ),
-                                    prompt: String(
-                                        localized: "Choose",
-                                        table: "Localizable",
-                                        bundle: .module
-                                    ),
-                                    kind: .files(
-                                        allowedContentTypes: [.item],
-                                        resolvesAliases: false
-                                    )
-                                ))
-                        },
-                        copyInstructions: { instructions in
-                            try appState.copyTextToClipboard(instructions)
-                        },
-                        didCopyHandoff: { runID in
-                            windowCoordinator.recordSuccessfulResearchHandoff(
-                                runID: runID
-                            )
-                        },
-                        retryRefresh: {
-                            Task { await appState.retryDerivedRefresh() }
-                        },
-                        openRecovery: {
-                            appState.presentationRouter.dismissSheet()
-                            Task { @MainActor in
-                                await Task.yield()
-                                appState.showTransactionRecovery = true
-                            }
-                        },
-                        dismiss: { focusDisposition in
-                            researchActionDismissalFocusDisposition = focusDisposition
-                            appState.presentationRouter.dismissSheet()
-                        }
-                    )
-                )
-                .onDisappear {
-                    if let currentSheet = appState.presentationRouter.sheet {
-                        if case .researchAction(let currentRoute) = currentSheet,
-                           currentRoute.presentationID == route.presentationID {
-                            // Native dismissal is still in flight. The root
-                            // `onDismiss` finalizes the draft and restores
-                            // focus only after AppKit has closed the sheet.
-                            return
-                        }
-                        researchActionController.dismiss(
-                            presentationID: route.presentationID
-                        )
-                    }
-                }
             }
         case .noteFileOperation(let request):
             NoteFileOperationView(
@@ -1100,25 +827,28 @@ struct ContentView: View {
                 },
                 dismiss: { appState.presentationRouter.dismissSheet() }
             )
-        case .agentChanges(let presentation):
+        case .agentChanges:
             AgentChangesView(
-                presentation: presentation,
-                loadComparison: { recordID, noteID in
-                    try await researchController.researchRecordComparison(
-                        recordID: recordID,
-                        noteID: noteID
+                load: {
+                    guard let operations = appState.windowWorkspaceController
+                        .activeCapabilities?.agentCollaboration else {
+                        throw ScholiumApplicationError.critiqueStoreUnavailable(
+                            "No workspace is active."
+                        )
+                    }
+                    return try await operations.agentChanges()
+                },
+                undo: { change in
+                    guard let operations = appState.windowWorkspaceController
+                        .activeCapabilities?.agentCollaboration,
+                          let fingerprint = change.afterFingerprint else {
+                        throw AgentChangeError.undoUnavailable(change.id)
+                    }
+                    _ = try await operations.undoAgentChange(
+                        id: change.id,
+                        expectedAfterFingerprint: fingerprint
                     )
-                },
-                loadChangeState: { recordID in
-                    try await researchController.researchRecordChangeState(
-                        recordID: recordID
-                    )
-                },
-                loadDocument: { note in
-                    try await researchController.researchNoteDocument(note)
-                },
-                openNote: { noteID, note in
-                    appState.requestOpenNote(note, stableNoteID: noteID)
+                    await appState.refreshWorkspaceCatalog()
                 }
             )
         }
@@ -1166,134 +896,17 @@ struct ContentView: View {
 
     @ViewBuilder
     private var windowTopNotificationSurface: some View {
-        let permission = shellState.researchNotificationPermissionNotice
-        switch DocumentTopSurfacePresentation.resolve(
-            hasPersistentFeedback: !shellState.persistentFeedbackItems.isEmpty,
-            hasActionNotifications: !documentActivityNotifications.isEmpty,
-            hasSettlementReminder: currentSettlementRequirement != nil,
-            hasNotificationPermissionNotice: permission != nil
-        ) {
-        case .none:
-            EmptyView()
-        case .persistentFeedback:
-            if let feedback = shellState.persistentFeedbackItems.first {
-                WindowFeedbackItem(
-                    feedback: feedback,
-                    dismiss: { shellState.dismissFeedback(id: feedback.id) }
-                )
-                .transition(
-                    ScholiumMotion.transientStatusTransition(
-                        reduceMotion: reduceMotion,
-                        edge: .top
-                    )
-                )
-            }
-        case .researchNotifications:
-            ResearchActivityNotificationStack(
-                notifications: documentActivityNotifications,
-                settlementRequirement: currentSettlementRequirement,
-                expansionRequestGeneration:
-                    shellState.actionNotificationStackExpansionGeneration,
-                reviewSettlementChanges: { requirement in
-                    presentAgentChanges(for: requirement)
-                },
-                openAction: {
-                    appState.attentionPopoverSession.openAction($0)
-                },
-                endAction: {
-                    appState.attentionPopoverSession.endAction($0)
-                },
-                reviewResult: {
-                    appState.attentionPopoverSession.reviewResult($0)
-                },
-                followUp: {
-                    appState.attentionPopoverSession.followUp($0)
-                },
-                dismiss: {
-                    appState.attentionPopoverSession.dismissActivity($0)
-                }
+        if let feedback = shellState.persistentFeedbackItems.first {
+            WindowFeedbackItem(
+                feedback: feedback,
+                dismiss: { shellState.dismissFeedback(id: feedback.id) }
             )
-        case .notificationPermissionNotice:
-            if let permission {
-                ResearchNotificationPermissionView(
-                    kind: permission == .enable
-                        ? .enableNotifications
-                        : .openNotificationSettings,
-                    review: {
-                        switch permission {
-                        case .enable:
-                            windowCoordinator.requestResearchNotificationAuthorization()
-                        case .openSettings:
-                            windowCoordinator.openResearchNotificationSettings()
-                        }
-                    },
-                    dismiss: {
-                        shellState.dismissResearchNotificationPermissionNotice()
-                    }
+            .transition(
+                ScholiumMotion.transientStatusTransition(
+                    reduceMotion: reduceMotion,
+                    edge: .top
                 )
-                .padding(ScholiumMetrics.Workspace.refreshStatusOuterInset)
-                .task(id: permission == .enable) {
-                    announceResearchNotificationPermissionNotice(permission)
-                }
-            }
-        }
-    }
-
-    private func announceResearchNotificationPermissionNotice(
-        _ permission: ResearchNotificationPermissionNotice
-    ) {
-        guard announcedResearchNotificationPermissionNotice != permission else { return }
-        announcedResearchNotificationPermissionNotice = permission
-        let message = switch permission {
-        case .enable:
-            String(
-                localized: "Get Notified When Results Are Ready",
-                table: "Localizable",
-                bundle: .module
             )
-        case .openSettings:
-            String(
-                localized: "Notifications Are Off",
-                table: "Localizable",
-                bundle: .module
-            )
-        }
-        AccessibilityNotification.Announcement(message).post()
-    }
-
-    private var documentResearchActionRail: some View {
-        DocumentResearchActionRail(
-            presentation: appState.researchActionsPresentation(),
-            freshness: researchProjectionFreshness,
-            settlementIsRequired: currentSettlementRequirement != nil,
-            focusRequest: researchActionFocusRequest,
-            registerFocusOwner: {
-                pendingResearchActionFocusID = $0
-                researchActionDismissalFocusDisposition = .preserveInputModality
-            },
-            select: openResearchAction,
-            retryRefresh: {
-                Task { await appState.retryDerivedRefresh() }
-            },
-            retryCancellationRecovery: { runID in
-                researchActionController.retryCancellationRecovery(runID: runID)
-            },
-            settle: { rationale in
-                guard let target = appState.currentResearchActionTarget else { return }
-                _ = try await appState.researchController.settle(
-                    target.note,
-                    expectedRevision: target.fingerprint,
-                    rationale: rationale
-                )
-            }
-        )
-    }
-
-    private func openResearchAction(_ item: ResearchActionItemPresentation) {
-        if let activity = item.activity {
-            appState.openResearchActionStatus(activity.primary)
-        } else {
-            appState.openResearchAction(item.id)
         }
     }
 
@@ -1342,6 +955,22 @@ struct ContentView: View {
                     )
                 )
                 .zIndex(0)
+                .overlay(alignment: .bottomTrailing) {
+                    if let settlementTarget {
+                        DocumentSettlementControl(
+                            presentation: currentAboutSettlementPresentation,
+                            settle: { rationale in
+                                _ = try await researchController.settle(
+                                    settlementTarget.note,
+                                    expectedRevision: settlementTarget.fingerprint,
+                                    rationale: rationale
+                                )
+                                try await researchController.refreshResearchProjection()
+                            }
+                        )
+                        .padding(ScholiumGrid.Spacing.sectionSeparation)
+                    }
+                }
         } else {
             ScholiumNoDocumentDetailView()
                 .transition(
@@ -1353,6 +982,18 @@ struct ContentView: View {
         }
     }
 
+    private var settlementTarget: (note: VaultQualifiedNoteID, fingerprint: DocumentFingerprint)? {
+        guard let note = appState.currentNote,
+              let vaultID = appState.currentDocumentVaultID,
+              currentNoteStableID != nil else { return nil }
+        return (
+            VaultQualifiedNoteID(
+                vaultID: vaultID,
+                relativePath: note.relativePath
+            ),
+            note.document.fingerprint
+        )
+    }
 }
 
 private struct LibrarySurface<Content: View>: View {
@@ -1492,71 +1133,72 @@ private struct WindowFeedbackItem: View {
     }
 }
 
-private struct ResearchNotificationPermissionView: View {
-    enum Kind {
-        case enableNotifications
-        case openNotificationSettings
-    }
+private struct DocumentSettlementControl: View {
+    let presentation: AboutSettlementPresentation
+    let settle: (String?) async throws -> Void
 
-    let kind: Kind
-    let review: () -> Void
-    let dismiss: () -> Void
+    @State private var isPresented = false
+    @State private var rationale = ""
+    @State private var errorMessage: String?
+    @State private var isSettling = false
 
     var body: some View {
-        ScholiumNotificationBanner(
-            systemImage: "bell",
-            colorRole: .secondaryText,
-            title: title,
-            detail: detail,
-            maximumWidth: ScholiumMetrics.ActivityNotificationStack.maximumWidth,
-            accessibilityIdentifier: identifier
-        ) {
-            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                actionButton
-                Button(action: dismiss) {
-                    Image(systemName: "xmark")
-                        .accessibilityLabel("Dismiss")
+        Button {
+            isPresented = true
+        } label: {
+            Image(systemName: presentation.state == .settled
+                ? "checkmark.circle.fill"
+                : "checkmark.circle")
+                .frame(width: 24, height: 24)
+        }
+        .buttonStyle(.bordered)
+        .help(presentation.state == .settled ? "Settle this note again" : "Settle this note")
+        .accessibilityLabel(presentation.state == .settled ? "Settled" : "Settle")
+        .accessibilityIdentifier("scholium.document.settle")
+        .popover(isPresented: $isPresented) {
+            VStack(alignment: .leading, spacing: ScholiumMetrics.Apparatus.sectionContentSpacing) {
+                Text(presentation.state == .notYetSettled ? "Settle" : "Settle Again")
+                    .font(ScholiumTypography.interface(.sectionTitle))
+                Text("Record this saved revision as sufficiently stable for current research.")
+                    .font(ScholiumTypography.interface(.body))
+                    .scholiumForeground(.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                TextField("Optional rationale", text: $rationale, axis: .vertical)
+                    .lineLimit(2...4)
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.attention)
                 }
-                .buttonStyle(.borderless)
-                .controlSize(.small)
+                HStack {
+                    Button("Cancel") {
+                        rationale = ""
+                        errorMessage = nil
+                        isPresented = false
+                    }
+                    Spacer()
+                    Button("Settle") {
+                        isSettling = true
+                        errorMessage = nil
+                        Task {
+                            do {
+                                try await settle(rationale)
+                                rationale = ""
+                                isSettling = false
+                                isPresented = false
+                            } catch {
+                                errorMessage = error.localizedDescription
+                                isSettling = false
+                            }
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isSettling)
+                }
             }
+            .padding(ScholiumGrid.Spacing.sectionSeparation)
+            .frame(width: 300)
         }
-    }
-
-    @ViewBuilder
-    private var actionButton: some View {
-        Button(actionTitle, action: review)
-            .controlSize(.small)
-            .buttonStyle(.bordered)
-    }
-
-    private var title: String {
-        switch kind {
-        case .enableNotifications:
-            String(localized: "Get Notified When Results Are Ready")
-        case .openNotificationSettings:
-            String(localized: "Notifications Are Off")
-        }
-    }
-
-    private var detail: String {
-        switch kind {
-        case .enableNotifications:
-            String(localized: "Scholium can notify you when the app is in the background.")
-        case .openNotificationSettings:
-            String(localized: "Turn on Scholium notifications in System Settings if you want background alerts.")
-        }
-    }
-
-    private var actionTitle: LocalizedStringResource {
-        switch kind {
-        case .enableNotifications: "Enable Notifications"
-        case .openNotificationSettings: "Open Settings"
-        }
-    }
-
-    private var identifier: String {
-        "scholium.researchNotificationPermission"
     }
 }
 

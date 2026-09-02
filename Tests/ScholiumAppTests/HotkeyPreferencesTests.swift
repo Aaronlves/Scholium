@@ -16,10 +16,6 @@ struct HotkeyPreferencesTests {
             ScholiumHotkeyPreferences.binding(for: .toggleLibrary, data: data)
                 == ScholiumHotkeyBinding(key: "s", modifiers: [.control, .command])
         )
-        #expect(
-            ScholiumHotkeyPreferences.binding(for: .commentOnSelection, data: data)
-                == nil
-        )
     }
 
     @Test("One command can be changed, cleared, and restored without changing peers")

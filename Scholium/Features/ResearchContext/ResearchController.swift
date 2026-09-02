@@ -34,30 +34,26 @@ struct ResearchInspectorState: Equatable, Sendable {
 /// dedicated controllers and never enter this bundle.
 struct ResearchControllerCapabilities: Sendable {
     let documents: any DocumentUseCases
-    let records: any ResearchRecordUseCases
-    let actions: any ResearchActionUseCases
+    let research: any ResearchUseCases
     let recoveryRecordsURL: URL
 }
 
-/// Per-window owner for research-context data and capability access. Action
-/// presentation remains independently observable and is never republished
-/// through this controller.
+/// Per-window owner for researcher-authored research context and capability
+/// access. External Agent conversation lifecycle is outside the App.
 /// Inspector visibility and mode belong to the surrounding workspace window,
 /// so changing the selected document tab doesn't change the shell.
-/// Research records remain borrowed from Application.
+/// Research state remains borrowed from Application.
 @MainActor
 final class ResearchController: ObservableObject {
     typealias IntentHandler = @MainActor (WindowIntent) -> Void
 
     @Published private(set) var activeDocument: VaultNoteReference?
-    @Published private(set) var records: WorkspaceResearchSnapshot?
+    @Published private(set) var researchSnapshot: WorkspaceResearchSnapshot?
     @Published private(set) var errorMessage: String?
     @Published var transactionRecoveryRecords: [TriptychMutationRecoveryRecord] = []
     @Published var transactionRecoveryError: String?
     @Published var interruptedSaveRecoveries: [InterruptedSaveRecovery] = []
     @Published var interruptedSaveRecoveryError: String?
-
-    let actions = ResearchActionController()
 
     private let intentHandler: IntentHandler
     private let shellState: WindowShellState
@@ -76,7 +72,7 @@ final class ResearchController: ObservableObject {
     }
 
     /// Borrows the capabilities selected by WorkspaceStore while retaining
-    /// this window's independent Inspector and Action presentation state.
+    /// this window's independent Inspector presentation state.
     func bind(
         to capabilities: ResearchControllerCapabilities,
         snapshot: WorkspaceSnapshot? = nil
@@ -88,8 +84,7 @@ final class ResearchController: ObservableObject {
 
     func unbind() {
         capabilities = nil
-        actions.unbind()
-        records = nil
+        researchSnapshot = nil
         errorMessage = nil
         transactionRecoveryRecords = []
         transactionRecoveryError = nil
@@ -98,31 +93,11 @@ final class ResearchController: ObservableObject {
     }
 
     func researchSnapshot() async throws -> WorkspaceResearchSnapshot {
-        try await requireRecords().snapshot()
+        try await requireResearch().snapshot()
     }
 
     func refreshResearchProjection() async throws {
-        let operations = try requireRecords()
-        let current = try await operations.snapshot()
-        let active = try await operations.activeDiscussions(noteID: nil)
-        let finished = try await operations.finishedResearchRecords(noteID: nil)
-        records = WorkspaceResearchSnapshot(
-            settlements: current.settlements,
-            activeDiscussions: active,
-            finishedResearchRecords: finished,
-            finishedResearchRecordFingerprints:
-                current.finishedResearchRecordFingerprints,
-            finishedResearchRecordSourceManifestHash:
-                current.finishedResearchRecordSourceManifestHash,
-            finishedResearchRecordProjectionIsComplete:
-                current.finishedResearchRecordProjectionIsComplete,
-            critiques: current.critiques,
-            recoveryRecords: current.recoveryRecords,
-            activities: current.activities,
-            settlementRequirements: current.settlementRequirements,
-            resultArrivals: current.resultArrivals,
-            healthIssues: current.healthIssues
-        )
+        researchSnapshot = try await requireResearch().snapshot()
         errorMessage = nil
     }
 
@@ -132,7 +107,7 @@ final class ResearchController: ObservableObject {
         expectedRevision: DocumentFingerprint,
         rationale: String?
     ) async throws -> SettlementRecord {
-        try await requireRecords().settle(
+        try await requireResearch().settle(
             note,
             expectedRevision: expectedRevision,
             rationale: rationale
@@ -140,118 +115,12 @@ final class ResearchController: ObservableObject {
     }
 
     func critique(workNoteID: UUID) async throws -> CritiqueAssociation? {
-        try await requireRecords().critique(workNoteID: workNoteID)
-    }
-
-    func activeDiscussions(noteID: UUID?) async throws -> [PortableResearchDiscussion] {
-        try await requireRecords().activeDiscussions(noteID: noteID)
-    }
-
-    func activeDiscussion(id: UUID) async throws -> PortableResearchDiscussion {
-        try await requireRecords().activeDiscussion(id: id)
-    }
-
-    func deleteResearchRecordPermanently(id: UUID) async throws {
-        let operations = try requireRecords()
-        do {
-            try await operations.deleteResearchRecordPermanently(id: id)
-            try await refreshRecordProjection(
-                after: "The permanent Research Record deletion"
-            )
-        } catch let committed as ScholiumApplicationError
-            where committed.durableMutationWasCommitted {
-            do { try await refreshResearchProjection() } catch { throw committed }
-            let remains = records?.finishedResearchRecords.contains { $0.id == id } == true
-            guard !remains else { throw committed }
-        }
-    }
-
-    func researchRecordComparison(
-        recordID: UUID,
-        noteID: UUID
-    ) async throws -> ExactSourceComparison {
-        try await requireRecords().researchRecordComparison(
-            recordID: recordID,
-            noteID: noteID
-        )
-    }
-
-    func researchRecordChangeState(
-        recordID: UUID
-    ) async throws -> ResearchRecordChangeState {
-        try await requireRecords().researchRecordChangeState(recordID: recordID)
-    }
-
-    func researchNoteDocument(
-        _ note: VaultQualifiedNoteID
-    ) async throws -> NoteDocument {
-        try await requireDocuments().load(note)
-    }
-
-    private func refreshRecordProjection(after operation: String) async throws {
-        do {
-            try await refreshResearchProjection()
-        } catch {
-            throw ScholiumApplicationError.operationCommittedButRefreshFailed(
-                operation: operation,
-                reason: error.localizedDescription
-            )
-        }
-    }
-
-    func activeDiscussionIfPresent(id: UUID) async throws -> PortableResearchDiscussion? {
-        try await requireRecords().activeDiscussionIfPresent(id: id)
-    }
-
-    @discardableResult
-    func createDiscussion(
-        target: ResearchActionNoteSnapshot,
-        focalNotes: [ResearchActionNoteSnapshot] = [],
-        passage: CommentAnchor?,
-        researcherMessage: String
-    ) async throws -> PortableResearchDiscussion {
-        try await requireRecords().createDiscussion(
-            target: target,
-            focalNotes: focalNotes,
-            passage: passage,
-            researcherMessage: researcherMessage
-        )
-    }
-
-    @discardableResult
-    func createComment(
-        target: ResearchActionNoteSnapshot,
-        lineReference: ResearchLineReference,
-        researcherMessage: String
-    ) async throws -> PortableResearchDiscussion {
-        try await requireRecords().createComment(
-            target: target,
-            lineReference: lineReference,
-            researcherMessage: researcherMessage
-        )
-    }
-
-    func discussionAgentInstructions(id: UUID) async throws -> String {
-        let handoff = try await requireActions().issueAgentHandoff(
-            runID: id,
-            validity: 10 * 60
-        )
-        return handoff.agentInstructions
-    }
-
-    @discardableResult
-    func finishDiscussion(discussionID: UUID) async throws -> PortableResearchRecord {
-        try await requireRecords().finishDiscussion(discussionID: discussionID)
-    }
-
-    func endDiscussion(id: UUID) async throws {
-        try await requireActions().cancelAction(runID: id)
-        try await refreshRecordProjection(after: "The Discussion cancellation")
+        try await requireResearch().critique(workNoteID: workNoteID)
     }
 
     @discardableResult
     func critique(critiqueRelativePath: String) async throws -> CritiqueAssociation? {
-        try await requireRecords().critique(critiqueRelativePath: critiqueRelativePath)
+        try await requireResearch().critique(critiqueRelativePath: critiqueRelativePath)
     }
 
     @discardableResult
@@ -264,7 +133,7 @@ final class ResearchController: ObservableObject {
         noTextChangeRationale: String?,
         expectedRevision: DocumentFingerprint
     ) async throws -> CritiqueAssociation {
-        try await requireRecords().setCritiqueFindingDisposition(
+        try await requireResearch().setCritiqueFindingDisposition(
             workNote: workNote,
             roundID: roundID,
             findingID: findingID,
@@ -281,7 +150,7 @@ final class ResearchController: ObservableObject {
         roundID: UUID,
         expectedRevision: DocumentFingerprint
     ) async throws -> CritiqueAssociation {
-        try await requireRecords().completeCritiqueRound(
+        try await requireResearch().completeCritiqueRound(
             workNote: workNote,
             roundID: roundID,
             expectedRevision: expectedRevision
@@ -289,29 +158,29 @@ final class ResearchController: ObservableObject {
     }
 
     func settings() async throws -> TriptychSettingsSnapshot {
-        try await requireRecords().settings()
+        try await requireResearch().settings()
     }
 
     func settingsLoadState() async throws -> TriptychSettingsLoadState {
-        try await requireRecords().settingsLoadState()
+        try await requireResearch().settingsLoadState()
     }
 
     func saveSettings(
         _ settings: TriptychSettings,
         expectedRevision: SettingsRevision
     ) async throws -> TriptychSettingsSnapshot {
-        try await requireRecords().saveSettings(
+        try await requireResearch().saveSettings(
             settings,
             expectedRevision: expectedRevision
         )
     }
 
     func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord] {
-        try await requireRecords().recoveryRecords()
+        try await requireResearch().recoveryRecords()
     }
 
     func resolveRecoveryRecord(_ id: UUID) async throws {
-        try await requireRecords().resolveRecoveryRecord(id)
+        try await requireResearch().resolveRecoveryRecord(id)
     }
 
     func loadInterruptedSaveRecoveries() async throws -> [InterruptedSaveRecovery] {
@@ -363,18 +232,6 @@ final class ResearchController: ObservableObject {
         )
     }
 
-    func requestPresentAction(
-        _ actionID: ResearchActionID,
-        target: VaultNoteReference,
-        presentationID: UUID
-    ) {
-        intentHandler(.presentResearchAction(ResearchActionPanelRoute(
-            target: target,
-            actionID: actionID,
-            presentationID: presentationID
-        )))
-    }
-
     func requestOpen(
         _ reference: VaultNoteReference,
         sourceLine: Int? = nil
@@ -397,41 +254,29 @@ final class ResearchController: ObservableObject {
         transactionRecoveryError = nil
         interruptedSaveRecoveries = []
         interruptedSaveRecoveryError = nil
-        actions.dismiss()
     }
 
     func receive(_ snapshot: WorkspaceSnapshot) {
-        records = snapshot.research
-        actions.receive(records: snapshot.research.finishedResearchRecords)
-        actions.receive(activities: snapshot.research.activities)
+        researchSnapshot = snapshot.research
         errorMessage = nil
     }
 
-    private func requireRecords() throws -> any ResearchRecordUseCases {
-        guard let records = capabilities?.records else {
-            throw ScholiumApplicationError.researchStoreUnavailable(
+    private func requireResearch() throws -> any ResearchUseCases {
+        guard let research = capabilities?.research else {
+            throw ScholiumApplicationError.critiqueStoreUnavailable(
                 "No workspace is active."
             )
         }
-        return records
+        return research
     }
 
     private func requireDocuments() throws -> any DocumentUseCases {
         guard let documents = capabilities?.documents else {
-            throw ScholiumApplicationError.researchStoreUnavailable(
+            throw ScholiumApplicationError.critiqueStoreUnavailable(
                 "No workspace is active."
             )
         }
         return documents
-    }
-
-    private func requireActions() throws -> any ResearchActionUseCases {
-        guard let actions = capabilities?.actions else {
-            throw ScholiumApplicationError.researchStoreUnavailable(
-                "No workspace is active."
-            )
-        }
-        return actions
     }
 
 }

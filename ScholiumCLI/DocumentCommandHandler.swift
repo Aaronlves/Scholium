@@ -243,7 +243,7 @@ extension ScholiumCLI {
             )
             let outcome = try await handle.documents.moveToSystemTrash(preview)
             write(
-                "Moved \(vault.name):\(path) to the macOS Trash. Finished Research Records remain unchanged; Finder owns file restoration.\n"
+                "Moved \(vault.name):\(path) to the macOS Trash. Finder owns file restoration.\n"
             )
             writeMutationWarnings(outcome)
         default:

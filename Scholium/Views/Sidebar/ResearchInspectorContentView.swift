@@ -553,7 +553,6 @@ struct ResearchOverviewView: View {
     private func attentionTitle(for kind: AttentionQueueKind) -> LocalizedStringResource {
         switch kind {
         case .possibleOrphan: "Possible Orphan"
-        case .synthesisMaterialChanged: "Synthesis Material Changed"
         case .malformedMetadata: "Malformed Metadata"
         case .brokenConnection: "Broken Connection"
         case .ambiguousConnection: "Ambiguous Connection"

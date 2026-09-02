@@ -262,10 +262,10 @@ final class ScholiumRecordDetailSplitViewController<Reading: View, Evidence: Vie
         evidenceItem = NSSplitViewItem(
             inspectorWithViewController: evidenceContainer
         )
-        evidenceItem.minimumThickness = ScholiumMetrics.ResearchRecords.evidenceMinimumWidth
-        evidenceItem.maximumThickness = ScholiumMetrics.ResearchRecords.evidenceMaximumWidth
+        evidenceItem.minimumThickness = ScholiumMetrics.EvidencePane.minimumWidth
+        evidenceItem.maximumThickness = ScholiumMetrics.EvidencePane.maximumWidth
         evidenceItem.preferredThicknessFraction =
-            ScholiumMetrics.ResearchRecords.evidenceWidthFraction
+            ScholiumMetrics.EvidencePane.widthFraction
         evidenceItem.canCollapse = true
         evidenceItem.canCollapseFromWindowResize = false
         evidenceItem.allowsFullHeightLayout = true

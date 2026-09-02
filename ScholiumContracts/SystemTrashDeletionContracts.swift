@@ -53,20 +53,17 @@ public struct SystemTrashDeletionPreview: Codable, Hashable, Identifiable, Senda
     public let id: UUID
     public let triptychID: UUID
     public let sources: [SystemTrashDeletionSourceTarget]
-    public let activeDiscussionIDs: [UUID]
     public let preparedAt: Date
 
     public init(
         id: UUID = UUID(),
         triptychID: UUID,
         sources: [SystemTrashDeletionSourceTarget],
-        activeDiscussionIDs: [UUID],
         preparedAt: Date = Date()
     ) {
         self.id = id
         self.triptychID = triptychID
         self.sources = sources
-        self.activeDiscussionIDs = activeDiscussionIDs.sorted { $0.uuidString < $1.uuidString }
         self.preparedAt = preparedAt
     }
 
@@ -78,85 +75,20 @@ public struct SystemTrashDeletionPreview: Codable, Hashable, Identifiable, Senda
 public struct SystemTrashDeletionCommit: Hashable, Sendable {
     public let planID: UUID
     public let noteIDs: [UUID]
-    public let removedDiscussionIDs: [UUID]
     public let originalRelativePaths: [String]
     /// Machine-local Finder locations returned by the native Trash operation.
-    /// They never enter Markdown or a portable Research Record.
+    /// They never enter Markdown or portable research state.
     public let resultingTrashPaths: [String]
 
     public init(
         planID: UUID,
         noteIDs: [UUID],
-        removedDiscussionIDs: [UUID],
         originalRelativePaths: [String],
         resultingTrashPaths: [String]
     ) {
         self.planID = planID
         self.noteIDs = noteIDs.sorted { $0.uuidString < $1.uuidString }
-        self.removedDiscussionIDs = removedDiscussionIDs.sorted { $0.uuidString < $1.uuidString }
         self.originalRelativePaths = originalRelativePaths.sorted()
         self.resultingTrashPaths = resultingTrashPaths.sorted()
-    }
-}
-
-/// One opaque machine-local execution file that System Trash cannot safely
-/// scope because it lacks a valid stable authority envelope. The fingerprint
-/// binds explicit recovery to the exact bytes the researcher reviewed.
-public struct LocalResearchExecutionRecoveryItem: Codable, Hashable, Identifiable, Sendable {
-    public let fileName: String
-    public let fingerprint: DocumentFingerprint
-
-    public var id: String { fileName }
-
-    public init(fileName: String, fingerprint: DocumentFingerprint) {
-        self.fileName = fileName
-        self.fingerprint = fingerprint
-    }
-}
-
-/// Exact recovery preview shown before opaque local execution bytes are moved
-/// into Scholium's protected unsupported-data archive.
-public struct LocalResearchExecutionRecoveryPreview: Codable, Hashable, Identifiable, Sendable {
-    public let id: UUID
-    public let triptychID: UUID
-    /// `nil` means the envelope itself is unreadable, so the preview covers the
-    /// complete store-wide opaque set. A nonempty value binds recovery to the
-    /// selected Notes whose valid envelopes contain unreadable live payloads.
-    public let affectedNoteIDs: [UUID]?
-    public let items: [LocalResearchExecutionRecoveryItem]
-
-    public init(
-        id: UUID = UUID(),
-        triptychID: UUID,
-        affectedNoteIDs: Set<UUID>? = nil,
-        items: [LocalResearchExecutionRecoveryItem]
-    ) {
-        self.id = id
-        self.triptychID = triptychID
-        self.affectedNoteIDs = affectedNoteIDs?.sorted {
-            $0.uuidString < $1.uuidString
-        }
-        self.items = items.sorted { $0.fileName < $1.fileName }
-    }
-}
-
-public struct LocalResearchExecutionArchiveCommit: Hashable, Sendable {
-    public let previewID: UUID
-    public let archivedFileNames: [String]
-
-    public init(previewID: UUID, archivedFileNames: [String]) {
-        self.previewID = previewID
-        self.archivedFileNames = archivedFileNames.sorted()
-    }
-}
-
-public enum SystemTrashPreparationError: LocalizedError, Sendable {
-    case localExecutionRecoveryRequired(LocalResearchExecutionRecoveryPreview)
-
-    public var errorDescription: String? {
-        switch self {
-        case .localExecutionRecoveryRequired(let preview):
-            "System Trash requires recovery for unreadable local Research Action storage (file count: \(preview.items.count))."
-        }
     }
 }

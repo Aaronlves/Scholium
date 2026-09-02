@@ -15,7 +15,6 @@ struct WorkspaceSetupSelection {
 /// only; it never constructs a workspace.
 struct WorkspaceSetupContext {
     let isCreatingNewTriptych: Bool
-    let offersAgentPreparation: Bool
     let targetTriptychID: UUID?
     let workspaceAssignment: TriptychAssignment?
     let registeredTriptychs: [TriptychAssignment]
@@ -55,14 +54,7 @@ private enum BootstrapStep: Hashable {
     case existingWorks
     case authorizeParent
     case reviewTriptych
-    case agent
     case ready
-}
-
-private enum BootstrapAgentOutcome: Equatable {
-    case notOffered
-    case deferred
-    case confirmedByResearcher
 }
 
 private struct BootstrapFlowView: View {
@@ -80,11 +72,8 @@ private struct BootstrapFlowView: View {
     @State private var outputURL: URL?
     @State private var portableContainerURL: URL?
     @State private var triptychName = ""
-    @State private var agentOutcome: BootstrapAgentOutcome = .notOffered
     @State private var errorMessage: String?
     @State private var isSaving = false
-    @State private var isRegisteringTriptych = false
-    @State private var pendingAgentOutcome: BootstrapAgentOutcome?
     @State private var pendingPortableControlRecovery: WorkspaceSetupSelection?
     @State private var loadedCurrentValues = false
 
@@ -95,22 +84,7 @@ private struct BootstrapFlowView: View {
             BootstrapStageArtwork(stage: artworkStage)
                 .frame(width: artRailWidth)
 
-            if step == .agent, let rootURL = triptychRootURL {
-                BootstrapAgentPreparationView(
-                    triptychRootURL: rootURL,
-                    allowsBack: !isRegisteringTriptych,
-                    isCompletingBootstrap: pendingAgentOutcome != nil,
-                    goBack: moveBack,
-                    setUpLater: {
-                        finishAgentPreparation(.deferred)
-                    },
-                    confirmSetup: {
-                        finishAgentPreparation(.confirmedByResearcher)
-                    }
-                )
-                .transition(stepTransition)
-            } else {
-                ZStack(alignment: .bottom) {
+            ZStack(alignment: .bottom) {
                     stepContent
                         .id(step)
                         .transition(stepTransition)
@@ -134,7 +108,6 @@ private struct BootstrapFlowView: View {
                         onBack: moveBack,
                         onPrimary: performPrimary
                     )
-                }
             }
         }
         .scholiumForeground(.primaryText)
@@ -186,8 +159,6 @@ private struct BootstrapFlowView: View {
              .existingTopics, .existingWorks, .authorizeParent,
              .reviewTriptych:
             .triptych
-        case .agent:
-            .agent
         case .ready:
             .ready
         }
@@ -213,7 +184,6 @@ private struct BootstrapFlowView: View {
         case .authorizeParent: "Authorize This Folder"
         case .reviewTriptych:
             setupPath == .createNew ? "Create Triptych" : "Use This Triptych"
-        case .agent: "I’ve Set Up My Agent"
         case .ready: "Open Workspace"
         }
     }
@@ -234,8 +204,6 @@ private struct BootstrapFlowView: View {
             setupPath == .createNew
                 ? baseLocationURL == nil || sanitizedTriptychName == nil
                 : !existingSelectionIsReady
-        case .agent:
-            true
         }
     }
 
@@ -356,13 +324,10 @@ private struct BootstrapFlowView: View {
                 topicsURL: effectiveTopicsURL,
                 worksURL: effectiveWorksURL
             )
-        case .agent:
-            EmptyView()
         case .ready:
             BootstrapReadyStep(
                 triptychName: triptychName,
-                rootURL: triptychRootURL,
-                agentOutcome: agentOutcome
+                rootURL: triptychRootURL
             )
         }
     }
@@ -386,8 +351,6 @@ private struct BootstrapFlowView: View {
             authorizeDetectedParent()
         case .reviewTriptych:
             save()
-        case .agent:
-            break
         case .ready:
             context.completeBootstrap()
             context.dismiss()
@@ -395,7 +358,6 @@ private struct BootstrapFlowView: View {
     }
 
     private func moveBack() {
-        guard !(step == .agent && isRegisteringTriptych) else { return }
         let destination: BootstrapStep?
         switch step {
         case .welcome: destination = nil
@@ -406,7 +368,6 @@ private struct BootstrapFlowView: View {
         case .authorizeParent: destination = .existingWorks
         case .reviewTriptych:
             destination = setupPath == .createNew ? .createStructure : .authorizeParent
-        case .agent: destination = .reviewTriptych
         case .ready: destination = nil
         }
         guard let destination else { return }
@@ -418,15 +379,6 @@ private struct BootstrapFlowView: View {
         withAnimation(ScholiumMotion.bootstrapStep(reduceMotion: reduceMotion)) {
             step = destination
         }
-    }
-
-    private func finishAgentPreparation(_ outcome: BootstrapAgentOutcome) {
-        agentOutcome = outcome
-        guard isRegisteringTriptych else {
-            move(to: .ready)
-            return
-        }
-        pendingAgentOutcome = outcome
     }
 
     private func chooseParentLocation() {
@@ -495,7 +447,7 @@ private struct BootstrapFlowView: View {
     }
 
     private func save() {
-        guard !isSaving, !isRegisteringTriptych else { return }
+        guard !isSaving else { return }
         isSaving = true
         errorMessage = nil
         Task {
@@ -535,31 +487,11 @@ private struct BootstrapFlowView: View {
                 }
                 attemptedSelection = selection
 
-                let preparesAgent = context.offersAgentPreparation
-                if preparesAgent {
-                    isSaving = false
-                    isRegisteringTriptych = true
-                    move(to: .agent)
-                }
-
                 try await context.configure(selection)
                 isSaving = false
-                isRegisteringTriptych = false
-                if preparesAgent {
-                    if let pendingAgentOutcome {
-                        agentOutcome = pendingAgentOutcome
-                        self.pendingAgentOutcome = nil
-                        move(to: .ready)
-                    }
-                } else {
-                    agentOutcome = .notOffered
-                    move(to: .ready)
-                }
+                move(to: .ready)
             } catch {
                 isSaving = false
-                isRegisteringTriptych = false
-                pendingAgentOutcome = nil
-                agentOutcome = .notOffered
                 if setupPath == .existingFolders,
                    let attemptedSelection,
                    let applicationError = error as? ScholiumApplicationError,
@@ -568,9 +500,6 @@ private struct BootstrapFlowView: View {
                     errorMessage = nil
                 } else {
                     errorMessage = error.localizedDescription
-                }
-                if step == .agent {
-                    move(to: .reviewTriptych, movingForward: false)
                 }
             }
         }
@@ -590,16 +519,9 @@ private struct BootstrapFlowView: View {
                 )
                 try await context.configure(selection)
                 isSaving = false
-                isRegisteringTriptych = false
-                if context.offersAgentPreparation {
-                    move(to: .agent)
-                } else {
-                    agentOutcome = .notOffered
-                    move(to: .ready)
-                }
+                move(to: .ready)
             } catch {
                 isSaving = false
-                isRegisteringTriptych = false
                 errorMessage = error.localizedDescription
             }
         }
@@ -1110,7 +1032,7 @@ private struct BootstrapReviewTriptychStep: View {
                     }
                 }
                 Label {
-                    Text("Agent setup comes next and remains optional. The copied prompt asks your Agent to inspect and create only the applicable instruction file.")
+                    Text("You can connect an external Agent later from Research Guidance → Agent Integration.")
                         .font(ScholiumTypography.interface(.body))
                         .scholiumForeground(.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1118,7 +1040,7 @@ private struct BootstrapReviewTriptychStep: View {
                     Image(systemName: "person.badge.key")
                         .scholiumForeground(.accent)
                 }
-                Text("Agent activity is attributed to its Run and recorded with exact document changes; relevant Notes do not require separate approval.")
+                Text("Scholium keeps source documents authoritative and records each successful Agent mutation with exact before-and-after evidence.")
                     .font(ScholiumTypography.interface(.small))
                     .scholiumForeground(.mutedText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1199,14 +1121,13 @@ private struct BootstrapFolderSummaryRow: View {
 private struct BootstrapReadyStep: View {
     let triptychName: String
     let rootURL: URL?
-    let agentOutcome: BootstrapAgentOutcome
 
     var body: some View {
         BootstrapStepCanvas {
             VStack(spacing: ScholiumMetrics.Onboarding.readySectionSpacing) {
                 BootstrapStepHeading(
                     title: "Your Triptych Is Ready",
-                    subtitle: completionSubtitle,
+                    subtitle: "Your research structure is configured.",
                     alignment: .center
                 )
                 VStack(spacing: 0) {
@@ -1215,22 +1136,6 @@ private struct BootstrapReadyStep: View {
                         title: triptychName.isEmpty ? "Triptych Ready" : triptychName,
                         detail: rootURL?.path(percentEncoded: false) ?? "Configured"
                     )
-                    if agentOutcome != .notOffered {
-                        Rectangle()
-                            .fill(ScholiumColorRole.separator.color)
-                            .frame(height: 1)
-                        BootstrapCompletionStatusRow(
-                            symbol: agentOutcome == .confirmedByResearcher
-                                ? "person.crop.circle.badge.checkmark"
-                                : "clock",
-                            title: agentOutcome == .confirmedByResearcher
-                                ? "Agent Ready — Confirmed by You"
-                                : "Agent Setup Deferred",
-                            detail: agentOutcome == .confirmedByResearcher
-                                ? "External Agent project and instructions reported ready"
-                                : "Workspace opens without an Agent and does not nag"
-                        )
-                    }
                 }
             }
             .frame(maxHeight: .infinity, alignment: .center)
@@ -1238,16 +1143,6 @@ private struct BootstrapReadyStep: View {
         .accessibilityIdentifier("scholium.bootstrap.ready")
     }
 
-    private var completionSubtitle: LocalizedStringResource {
-        switch agentOutcome {
-        case .confirmedByResearcher:
-            "Your research structure is configured and Agent setup is researcher-confirmed."
-        case .deferred:
-            "Your research structure is configured. You can prepare an Agent later when needed."
-        case .notOffered:
-            "Your research structure is configured."
-        }
-    }
 }
 
 private struct BootstrapCompletionStatusRow: View {

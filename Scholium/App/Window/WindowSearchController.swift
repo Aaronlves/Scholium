@@ -282,7 +282,7 @@ final class WindowSearchController: ObservableObject {
         if let applicationError = error as? ScholiumApplicationError,
            case .workspaceStillLoading(_) = applicationError {
             return .unavailable(String(
-                localized: "This Note and the currently open vault support bounded text Search while the Triptych opens. Triptych Search, Research Records, relationships, and Research Actions remain unavailable until loading finishes.",
+                localized: "This Note and the currently open vault support bounded text Search while the Triptych opens. Triptych Search and relationships remain unavailable until loading finishes.",
                 table: "Localizable",
                 bundle: .module
             ))
@@ -291,20 +291,11 @@ final class WindowSearchController: ObservableObject {
     }
 
     private func refreshAfterStaleResult(_ result: SearchResult) async {
-        let message = switch result {
-        case .note:
-            String(
-                localized: "The note changed. Search results were refreshed.",
-                table: "Localizable",
-                bundle: .module
-            )
-        case .record:
-            String(
-                localized: "The Research Record changed. Search results were refreshed.",
-                table: "Localizable",
-                bundle: .module
-            )
-        }
+        let message = String(
+            localized: "The note changed. Search results were refreshed.",
+            table: "Localizable",
+            bundle: .module
+        )
         dependencies.reportInformation(
             message
         )

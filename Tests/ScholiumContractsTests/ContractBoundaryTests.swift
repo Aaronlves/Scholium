@@ -44,47 +44,6 @@ struct ContractBoundaryTests {
         ) == recoveryID)
     }
 
-    @Test("Agent recovery links preserve the Run, target, and source transaction")
-    func researchRecoveryLinkRoundTrip() throws {
-        let runID = UUID()
-        let noteID = UUID()
-        let vaultID = UUID()
-        let sourceRecoveryID = InterruptedSaveRecoveryID(
-            vaultID: vaultID,
-            transactionID: UUID()
-        )
-        let link = ResearchWriteRecoveryReference(
-            runID: runID,
-            operationID: UUID(),
-            target: ResearchWriteTargetHandle(runID: runID, noteID: noteID),
-            sourceRecoveryID: sourceRecoveryID
-        )
-        let record = TriptychMutationRecoveryRecord(
-            triptychID: UUID(),
-            operation: .noteSave,
-            failure: "Unknown exact save result",
-            files: [TriptychMutationRecoveryFile(
-                vaultID: vaultID,
-                path: "topics/Note.md",
-                role: .savedNote,
-                beforeRevision: DocumentFingerprint(content: "before"),
-                intendedRevision: DocumentFingerprint(content: "after"),
-                observedRevision: nil,
-                state: .unreadable,
-                detail: "Fixture"
-            )],
-            researchWrite: link
-        )
-
-        let decoded = try JSONDecoder().decode(
-            TriptychMutationRecoveryRecord.self,
-            from: JSONEncoder().encode(record)
-        )
-        #expect(decoded == record)
-        #expect(decoded.researchWrite == link)
-        #expect(decoded.researchWrite?.sourceRecoveryID == sourceRecoveryID)
-    }
-
     @Test("Managed creation recovery freezes one reserved identity without Agent authority")
     func managedCreationRecoveryRoundTrip() throws {
         let target = VaultQualifiedNoteID(
@@ -118,7 +77,6 @@ struct ContractBoundaryTests {
         )
         #expect(decoded == record)
         #expect(decoded.managedCreation == reference)
-        #expect(decoded.researchWrite == nil)
     }
 
     @Test("Committed source outcomes remain distinct from derived recovery warnings")

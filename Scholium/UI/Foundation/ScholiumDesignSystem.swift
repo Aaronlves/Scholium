@@ -1270,7 +1270,6 @@ enum ScholiumGrid {
         static let libraryHierarchyRowHeight = foundationUnit * 7
         static let accessibilityHierarchyRowHeight = foundationUnit * 11
         static let documentTabStripHeight = foundationUnit * 10
-        static let researchActionTargetHeight = foundationUnit * 11
         static let regionHeaderHeight = foundationUnit * 12
         static let iconTrackWidth = foundationUnit * 4
     }
@@ -1333,33 +1332,10 @@ enum ScholiumGrid {
         static let compactHorizontalInset = Spacing.inlineControlGap
     }
 
-    enum ResearchRecords {
-        static let viewIndexWidth = foundationUnit * 60
-        static let pageEdge = foundationUnit * 7
-        static let collectionSearchMinimumWidth = foundationUnit * 48
-        static let collectionColumnHeaderHeight = foundationUnit * 7
-        static let collectionRowHeight = foundationUnit * 12
-        static let collectionColumnGap = foundationUnit * 3
-        static let recordAttentionColumnWidth = foundationUnit * 7
-        static let recordActionColumnWidth = foundationUnit * 24
-        static let recordDateColumnWidth = foundationUnit * 26
-        static let recordActionCapsuleHeight = foundationUnit * 5
-        static let readingLeadHandledColumnWidth = foundationUnit * 8
-        static let readingLeadSelectionGap = foundationUnit * 2
-        static let readingLeadAuthorColumnWidth = foundationUnit * 29
-        static let readingLeadYearColumnWidth = foundationUnit * 12
-        static let readingLeadPublicationColumnWidth = foundationUnit * 46
+    enum EvidencePane {
         static let evidenceMinimumWidth = foundationUnit * 65
         static let evidenceMaximumWidth = foundationUnit * 76
         static let evidenceWidthFraction: CGFloat = 0.36
-        static let readingMeasure = foundationUnit * 170
-        static let evidencePreviewLimit = 3
-        static let evidenceCollectionPopoverWidth = foundationUnit * 82
-        static let evidenceCollectionPopoverHeight = foundationUnit * 96
-        static let statementAttributionWidth = foundationUnit * 23
-        static let statementColumnGap = foundationUnit * 5
-        static let evidenceSectionHeaderHeight = foundationUnit * 7
-        static let evidenceIconColumnWidth = foundationUnit * 5
     }
 
     /// Page- and pane-level state copy shares one readable measure. Placement
@@ -1511,13 +1487,6 @@ enum ScholiumMetrics {
             static let documentStateMinimumHeight = ScholiumGrid.foundationUnit * 40
         }
 
-        enum MethodImprovementHandoff {
-            static let minimumWidth: CGFloat = 600
-            static let idealWidth: CGFloat = 680
-            static let minimumHeight: CGFloat = 440
-            static let idealHeight: CGFloat = 540
-        }
-
         enum SystemTrash {
             static let minimumWidth: CGFloat = 560
             static let idealWidth: CGFloat = 620
@@ -1587,13 +1556,6 @@ enum ScholiumMetrics {
         static let sheetContentInset = ScholiumGrid.foundationUnit * 5.5
         static let identityContentInset = ScholiumGrid.foundationUnit * 6
         static let compactFieldSpacing = ScholiumGrid.foundationUnit * 1.5
-        static let discussionHeaderDetailSpacing = ScholiumGrid.foundationUnit * 0.75
-        static let discussionHeaderInset = ScholiumGrid.foundationUnit * 4.5
-        static let discussionActionMinimumSpacing = ScholiumGrid.Spacing.sectionSeparation
-        static let discussionTurnDetailSpacing = ScholiumGrid.foundationUnit * 0.75
-        static let discussionTurnLineSpacing = ScholiumGrid.Spacing.opticalAlignmentAdjustment
-        static let discussionTurnVerticalInset = ScholiumGrid.foundationUnit * 0.75
-        static let discussionControlSpacing = ScholiumGrid.foundationUnit * 1.75
         static let conflictHeaderDetailSpacing = ScholiumGrid.foundationUnit * 0.5
         static let conflictHeaderInset = ScholiumGrid.foundationUnit * 4.5
         static let conflictRevisionSpacing = ScholiumGrid.foundationUnit * 6
@@ -1734,50 +1696,10 @@ enum ScholiumMetrics {
         static let bottomInset = ScholiumGrid.Apparatus.bottomInset
     }
 
-    enum ResearchRecords {
-        static let viewIndexWidth = ScholiumGrid.ResearchRecords.viewIndexWidth
-        static let pageEdge = ScholiumGrid.ResearchRecords.pageEdge
-        static let collectionSearchMinimumWidth =
-            ScholiumGrid.ResearchRecords.collectionSearchMinimumWidth
-        static let collectionColumnHeaderHeight =
-            ScholiumGrid.ResearchRecords.collectionColumnHeaderHeight
-        static let collectionRowHeight = ScholiumGrid.ResearchRecords.collectionRowHeight
-        static let collectionColumnGap = ScholiumGrid.ResearchRecords.collectionColumnGap
-        static let recordAttentionColumnWidth =
-            ScholiumGrid.ResearchRecords.recordAttentionColumnWidth
-        static let recordActionColumnWidth =
-            ScholiumGrid.ResearchRecords.recordActionColumnWidth
-        static let recordDateColumnWidth =
-            ScholiumGrid.ResearchRecords.recordDateColumnWidth
-        static let recordActionCapsuleHeight =
-            ScholiumGrid.ResearchRecords.recordActionCapsuleHeight
-        static let readingLeadHandledColumnWidth =
-            ScholiumGrid.ResearchRecords.readingLeadHandledColumnWidth
-        static let readingLeadSelectionGap =
-            ScholiumGrid.ResearchRecords.readingLeadSelectionGap
-        static let readingLeadAuthorColumnWidth =
-            ScholiumGrid.ResearchRecords.readingLeadAuthorColumnWidth
-        static let readingLeadYearColumnWidth =
-            ScholiumGrid.ResearchRecords.readingLeadYearColumnWidth
-        static let readingLeadPublicationColumnWidth =
-            ScholiumGrid.ResearchRecords.readingLeadPublicationColumnWidth
-        static let evidenceMinimumWidth = ScholiumGrid.ResearchRecords.evidenceMinimumWidth
-        static let evidenceMaximumWidth = ScholiumGrid.ResearchRecords.evidenceMaximumWidth
-        static let evidenceWidthFraction = ScholiumGrid.ResearchRecords.evidenceWidthFraction
-        static let readingMeasure = ScholiumGrid.ResearchRecords.readingMeasure
-        static let evidencePreviewLimit = ScholiumGrid.ResearchRecords.evidencePreviewLimit
-        static let evidenceCollectionPopoverWidth =
-            ScholiumGrid.ResearchRecords.evidenceCollectionPopoverWidth
-        static let evidenceCollectionPopoverHeight =
-            ScholiumGrid.ResearchRecords.evidenceCollectionPopoverHeight
-        static let statementAttributionWidth =
-            ScholiumGrid.ResearchRecords.statementAttributionWidth
-        static let statementColumnGap = ScholiumGrid.ResearchRecords.statementColumnGap
-        static let evidenceSectionHeaderHeight =
-            ScholiumGrid.ResearchRecords.evidenceSectionHeaderHeight
-        static let evidenceIconColumnWidth =
-            ScholiumGrid.ResearchRecords.evidenceIconColumnWidth
-        static let detailBottomInset = ScholiumGrid.Spacing.regionContentInset * 2
+    enum EvidencePane {
+        static let minimumWidth = ScholiumGrid.EvidencePane.evidenceMinimumWidth
+        static let maximumWidth = ScholiumGrid.EvidencePane.evidenceMaximumWidth
+        static let widthFraction = ScholiumGrid.EvidencePane.evidenceWidthFraction
     }
 
     enum ContentState {
@@ -1885,7 +1807,6 @@ enum ScholiumCornerRole: CaseIterable, Hashable, Sendable {
     case loadingSurface
     case editorialTextEditor
     case searchOverlay
-    case researchRecordCollectionRow
     case boundedPanel
     case documentCodeBlock
     case documentCalloutSurface
@@ -1900,7 +1821,7 @@ enum ScholiumCornerRole: CaseIterable, Hashable, Sendable {
     var radius: CGFloat {
         switch self {
         case .inlineStatus, .editorialControl, .workspaceNavigation,
-             .researchRecordCollectionRow, .boundedPanel,
+             .boundedPanel,
              .documentCalloutSurface, .documentEmbeddedNote:
             8
         case .editorialPanel, .segmentedControl, .loadingSurface, .documentCodeBlock:
@@ -1947,7 +1868,7 @@ enum ScholiumCornerRole: CaseIterable, Hashable, Sendable {
         case .calloutDisclosureFocus:
             "--scholium-corner-callout-disclosure-focus"
         case .editorialControl, .segmentedControl, .workspaceNavigation, .editorialPanel, .loadingSurface,
-             .searchOverlay, .researchRecordCollectionRow:
+             .searchOverlay:
             nil
         }
     }
@@ -1962,8 +1883,6 @@ enum ScholiumShape {
     static let loadingSurfaceCornerRadius = ScholiumCornerRole.loadingSurface.radius
     static let editorialTextEditorCornerRadius = ScholiumCornerRole.editorialTextEditor.radius
     static let searchOverlayCornerRadius = ScholiumCornerRole.searchOverlay.radius
-    static let researchRecordCollectionRowCornerRadius =
-        ScholiumCornerRole.researchRecordCollectionRow.radius
 
     static let webCSSDeclarations = ScholiumCornerRole.allCases.compactMap { role in
         guard let name = role.cssVariableName else { return nil }

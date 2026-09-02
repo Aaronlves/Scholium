@@ -5,7 +5,6 @@ enum SystemTrashDeletionFaultPoint: Hashable, Sendable {
     case afterPlanPersistence
     case afterSystemTrashMoveBeforeReceipt
     case afterSourceReceipts
-    case afterDiscussionRemoval
 }
 
 struct SystemTrashDeletionFaultPlan: Sendable {
@@ -34,16 +33,13 @@ private struct InjectedSystemTrashDeletionFailure: LocalizedError, Sendable {
 }
 
 /// Coordinates one researcher-confirmed system-Trash operation and the
-/// temporary application state that cannot outlive the moved source. Finished
-/// Research Records remain under their independent explicit deletion owner.
+/// temporary critique/control state that cannot outlive the moved source.
 public actor NoteSystemTrashDeletionCoordinator {
     private let triptychID: UUID
     private let repository: VaultRepository
     private let critiqueRegistry: CritiqueRegistry
     private let controlStore: TriptychControlStore
     private let recoveryStore: TriptychMutationRecoveryStore
-    private let portableRecordStore: PortableResearchRecordStore
-    private let localExecutionStore: LocalResearchExecutionStore?
     private let faultPlan: SystemTrashDeletionFaultPlan
 
     public init(
@@ -51,17 +47,13 @@ public actor NoteSystemTrashDeletionCoordinator {
         repository: VaultRepository,
         critiqueRegistry: CritiqueRegistry,
         controlStore: TriptychControlStore,
-        recoveryStore: TriptychMutationRecoveryStore,
-        portableRecordStore: PortableResearchRecordStore,
-        localExecutionStore: LocalResearchExecutionStore? = nil
+        recoveryStore: TriptychMutationRecoveryStore
     ) {
         self.triptychID = triptychID
         self.repository = repository
         self.critiqueRegistry = critiqueRegistry
         self.controlStore = controlStore
         self.recoveryStore = recoveryStore
-        self.portableRecordStore = portableRecordStore
-        self.localExecutionStore = localExecutionStore
         faultPlan = .none
     }
 
@@ -71,8 +63,6 @@ public actor NoteSystemTrashDeletionCoordinator {
         critiqueRegistry: CritiqueRegistry,
         controlStore: TriptychControlStore,
         recoveryStore: TriptychMutationRecoveryStore,
-        portableRecordStore: PortableResearchRecordStore,
-        localExecutionStore: LocalResearchExecutionStore? = nil,
         faultPlan: SystemTrashDeletionFaultPlan
     ) {
         self.triptychID = triptychID
@@ -80,8 +70,6 @@ public actor NoteSystemTrashDeletionCoordinator {
         self.critiqueRegistry = critiqueRegistry
         self.controlStore = controlStore
         self.recoveryStore = recoveryStore
-        self.portableRecordStore = portableRecordStore
-        self.localExecutionStore = localExecutionStore
         self.faultPlan = faultPlan
     }
 
@@ -288,45 +276,25 @@ public actor NoteSystemTrashDeletionCoordinator {
             )
         }
         try validatePlanShape(plan, recoveryRecord: record)
-        guard plan.sourceReceipts.contains(where: { $0.progress == .outcomeUnknown }),
-              plan.removedDiscussionIDs.isEmpty else {
+        guard plan.sourceReceipts.contains(where: { $0.progress == .outcomeUnknown }) else {
             throw TriptychTransactionError.invalidPlan(
-                "An unknown native Trash outcome can be resolved only before temporary Discussion cleanup commits."
+                "The selected recovery record has no unknown native Trash outcome."
             )
         }
-        try await portableRecordStore.clearNoteDeletionGate(
-            noteIDs: plan.affectedNoteIDs
-        )
         try await recoveryStore.resolve(record)
     }
 
     private func makePreview(
         sources: [SystemTrashDeletionSourceTarget]
     ) async throws -> SystemTrashDeletionPreview {
-        let noteIDs = Set(sources.flatMap(\.notes).map(\.noteID))
-        try await requireNoActiveExecutions(noteIDs: noteIDs)
-        let discussions = try await portableRecordStore.activeDiscussions()
-        guard discussions.issues.isEmpty else {
-            throw ResearchRecordStoreError.unreadableStore(
-                kind: "Portable Research Discussion",
-                reason: discussions.issues
-                    .map { "\($0.id): \($0.reason)" }
-                    .joined(separator: "; ")
-            )
-        }
-        let activeDiscussionIDs = discussions.discussions.filter {
-            !Set($0.participatingNotes.map(\.noteID)).isDisjoint(with: noteIDs)
-        }.map(\.id)
         return SystemTrashDeletionPreview(
             triptychID: triptychID,
-            sources: sources,
-            activeDiscussionIDs: activeDiscussionIDs
+            sources: sources
         )
     }
 
     private func validate(_ preview: SystemTrashDeletionPreview) async throws {
         try validatePreviewShape(preview)
-        try await requireNoActiveExecutions(noteIDs: preview.affectedNoteIDs)
         for source in preview.sources {
             switch source.kind {
             case .note:
@@ -363,23 +331,6 @@ public actor NoteSystemTrashDeletionCoordinator {
                 }
             }
         }
-        let discussions = try await portableRecordStore.activeDiscussions()
-        guard discussions.issues.isEmpty else {
-            throw ResearchRecordStoreError.unreadableStore(
-                kind: "Portable Research Discussion",
-                reason: discussions.issues.map(\.reason).joined(separator: "; ")
-            )
-        }
-        let currentDiscussionIDs = Set(discussions.discussions.filter {
-            !Set($0.participatingNotes.map(\.noteID))
-                .isDisjoint(with: preview.affectedNoteIDs)
-        }.map(\.id))
-        guard currentDiscussionIDs == Set(preview.activeDiscussionIDs) else {
-            throw TriptychTransactionError.preflightFailed(
-                note: nil,
-                detail: "Active Discussion participation changed after confirmation."
-            )
-        }
     }
 
     private func perform(
@@ -392,15 +343,7 @@ public actor NoteSystemTrashDeletionCoordinator {
         }
         try validatePlanShape(plan, recoveryRecord: record)
         do {
-            try await portableRecordStore.markNoteDeletionStarted(
-                noteIDs: plan.affectedNoteIDs
-            )
-            if plan.sourceReceipts.allSatisfy({ $0.progress == .pending }),
-               plan.removedDiscussionIDs.isEmpty {
-                // The durable plan precedes the gate so a crash cannot strand
-                // an unowned gate. Revalidate after installing the gate to
-                // close the Discussion race before the first native
-                // filesystem move.
+            if plan.sourceReceipts.allSatisfy({ $0.progress == .pending }) {
                 try await validate(plan.preview)
             }
             for source in plan.preview.sources {
@@ -494,28 +437,15 @@ public actor NoteSystemTrashDeletionCoordinator {
             }
             try faultPlan.trigger(.afterSourceReceipts)
 
-            let removedDiscussions = try await portableRecordStore
-                .discardActiveDiscussions(noteIDs: plan.affectedNoteIDs)
-            plan = SystemTrashDeletionPlan(
-                preview: plan.preview,
-                sourceReceipts: plan.sourceReceipts,
-                removedDiscussionIDs: Array(Set(plan.removedDiscussionIDs + removedDiscussions))
-            )
-            try await persist(plan, replacing: record, failure: "Temporary application cleanup is pending.")
-            try faultPlan.trigger(.afterDiscussionRemoval)
-
-            try await portableRecordStore.clearNoteDeletionGate(noteIDs: plan.affectedNoteIDs)
-
             let completedRecord = await makeRecord(
                 plan: plan,
-                failure: "System Trash and temporary application cleanup completed."
+                failure: "System Trash completed."
             )
             try await recoveryStore.record(completedRecord)
             try await recoveryStore.resolve(completedRecord)
             return SystemTrashDeletionCommit(
                 planID: plan.id,
                 noteIDs: Array(plan.affectedNoteIDs),
-                removedDiscussionIDs: plan.removedDiscussionIDs,
                 originalRelativePaths: plan.preview.sources.map(\.relativePath),
                 resultingTrashPaths: plan.sourceReceipts.compactMap(\.resultingTrashPath)
             )
@@ -551,8 +481,7 @@ public actor NoteSystemTrashDeletionCoordinator {
                     progress: progress,
                     resultingTrashPath: resultingTrashPath
                 )
-            },
-            removedDiscussionIDs: plan.removedDiscussionIDs
+            }
         )
     }
 
@@ -575,15 +504,13 @@ public actor NoteSystemTrashDeletionCoordinator {
         let noteTargets = preview.sources.flatMap(\.notes)
         let noteIDs = noteTargets.map(\.noteID)
         let notePaths = noteTargets.map(\.relativePath)
-        let discussionIDs = preview.activeDiscussionIDs
         guard !preview.sources.isEmpty,
               Set(sourceIDs).count == sourceIDs.count,
               Set(sourcePaths).count == sourcePaths.count,
               Set(noteIDs).count == noteIDs.count,
-              Set(notePaths).count == notePaths.count,
-              Set(discussionIDs).count == discussionIDs.count else {
+              Set(notePaths).count == notePaths.count else {
             throw TriptychTransactionError.invalidPlan(
-                "System-Trash source, Note, and Discussion identities must be unique."
+                "System-Trash source and Note identities must be unique."
             )
         }
         for source in preview.sources {
@@ -618,17 +545,13 @@ public actor NoteSystemTrashDeletionCoordinator {
         try validatePreviewShape(plan.preview)
         let sourceIDs = plan.preview.sources.map(\.id)
         let receiptIDs = plan.sourceReceipts.map(\.targetID)
-        let discussionIDs = plan.preview.activeDiscussionIDs
-        let removedDiscussionIDs = plan.removedDiscussionIDs
         guard recoveryRecord.id == plan.id,
               recoveryRecord.triptychID == triptychID,
               recoveryRecord.operation == .systemTrashDeletion,
               plan.preview.triptychID == triptychID,
               receiptIDs.count == sourceIDs.count,
               Set(receiptIDs).count == receiptIDs.count,
-              Set(receiptIDs) == Set(sourceIDs),
-              Set(removedDiscussionIDs).count == removedDiscussionIDs.count,
-              Set(removedDiscussionIDs).isSubset(of: Set(discussionIDs)) else {
+              Set(receiptIDs) == Set(sourceIDs) else {
             throw TriptychTransactionError.invalidPlan(
                 "System-Trash recovery identities or progress receipts are inconsistent."
             )
@@ -695,24 +618,7 @@ public actor NoteSystemTrashDeletionCoordinator {
 
     private func requireHealthyStores() async throws {
         if let error = await critiqueRegistry.healthError() {
-            throw ResearchRecordStoreError.unreadableStore(kind: "Critique", reason: error)
-        }
-        try await localExecutionStore?.validateDeletionAuthority()
-        let discussions = try await portableRecordStore.activeDiscussions()
-        guard discussions.issues.isEmpty else {
-            throw ResearchRecordStoreError.unreadableStore(
-                kind: "Portable Research Discussion",
-                reason: discussions.issues.map { "\($0.id): \($0.reason)" }
-                    .joined(separator: "; ")
-            )
-        }
-    }
-
-    private func requireNoActiveExecutions(noteIDs: Set<UUID>) async throws {
-        guard let localExecutionStore else { return }
-        let runIDs = try await localExecutionStore.activeExecutionIDs(containing: noteIDs)
-        guard runIDs.isEmpty else {
-            throw TriptychTransactionError.activeResearchActions(runIDs)
+            throw CritiqueStoreError.unreadableStore(kind: "Critique", reason: error)
         }
     }
 }

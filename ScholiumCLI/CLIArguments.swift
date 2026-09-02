@@ -81,11 +81,6 @@ extension ScholiumCLI {
                 )
             }
         }
-        if key == "discuss reply",
-           counts["--text", default: 0] > 0,
-           counts["--from", default: 0] > 0 {
-            throw CLIError.usage("Choose either --text or --from for a reply, not both.")
-        }
     }
 
 }

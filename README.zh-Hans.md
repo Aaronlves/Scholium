@@ -15,8 +15,9 @@ Scholium 是一款面向持续哲学与人文研究的原生 macOS 研究环境�
 来源研究，**议题**汇集概念与争论，**写作**承载研究者自己的论证。
 
 Markdown 始终是研究者所选文件夹中普通、可检查的文本。阅读、写作、搜索、关联、
-评审与恢复不依赖 Agent。研究者邀请外部 Agent 时，Scholium 会冻结准确的目标、
-材料、修订、方法与权限，使协助保持有边界、可归属、可审查、可恢复。
+评审与恢复不依赖 Agent。研究者邀请外部 Agent 时，对话留在 MCP host；Scholium
+只通过本机 MCP adapter 提供当前检索与准确 Note 变更，并为已确认变更保存本机
+Agent Change 证据。
 
 Core App Beta 的验收结论只覆盖本地人工研究环境。外部 Agent 协作与独立安装的
 CLI 保持为单独的 Preview，直到它们通过自己的验收 profile。
@@ -24,21 +25,17 @@ CLI 保持为单独的 Preview，直到它们通过自己的验收 profile。
 ## 产品定位
 
 Scholium 是学术研究知识库与研究工作台，不是聊天外壳或独立的 Agent 记忆产品。
-不同 Agent、不同会话之间的研究连续性来自同一套可检查的文档、来源、研究记录、
-方法与研究者明确判断，而不是隐藏的模型状态或平行的私有数据库。因此，这套知识库
-可以为 Agent 提供外部长期研究记忆，但 Agent 继承只是使用 Scholium 的一种能力，
-不是第二个产品或内容权威。
+不同 Agent、不同会话之间的研究连续性来自同一套可检查的文档、来源与研究者明确
+判断，而不是隐藏的模型状态或平行的私有数据库。
 
 研究者是知识库的构成性参与者，而不只是审核模型选择保存哪些“记忆”的人。准确
-书写、声明范围与限制、Settle、可归属 Discussion、Critique disposition、研究者
-评价与主动安排的下一步，各自保留狭窄而明确的语义。后续 Agent 只能依赖相应 owner、
-actor、修订、范围和动作语义实际建立的内容。打开、停留、沉默或允许写入不等于
-接受、重要性或 belief。
+书写、声明范围与限制、Settle、Critique disposition 与主动安排的下一步，各自
+保留狭窄而明确的语义。打开、阅读、沉默或允许写入不等于接受、重要性或 belief。
 
 来源主张、解释、Agent 重构、研究者承诺、异议和后续修订保持可区分，不被压成没有
 出处的事实或一个统一置信分数。派生搜索索引、关系图快照、缓存、排名与机器摘要是
 可删除、可重建的投影；它们可以改善发现与上下文装配，却不能取代准确 Markdown、
-来源、研究记录或研究者明确判断的权威。
+来源或研究者明确判断的权威。
 
 Scholium 的人工核心不依赖 Obsidian、Zotero 或 Agent。它不是项目管理、文献管理、
 永久 AI 聊天工具或完整的 Obsidian 替代品。
@@ -62,7 +59,7 @@ Git 历史中，不再作为平行权威。
 
 - [高级 CSS 目标边界](Docs/Specification/07-document-and-research-interface.md#1841-advanced-css-boundary)
 - [第一方 Zotero MCP 传输](Docs/ZOTERO_MCP.md)
-- [研究方法资源](ScholiumCore/Resources/Skills/README.md)
+- [Scholium Core Protocol](ScholiumCore/Resources/Skills/Scholium%20System%20Skills/scholium-core-protocol/SKILL.md)
 
 ## 当前实现
 
@@ -71,43 +68,23 @@ Scholium 是一个由编译器强制边界的模块化单体。不可变值与�
 `ScholiumCore`；原生应用与 CLI 共享无界面的 `ScholiumApplication` 层。两个
 交付目标都不导入 Core。
 
-当前产品支持独立脉络与窗口、准确来源 Markdown 编辑、搜索与关联、笔记和文件夹
-生命周期、外部编辑冲突、恢复点和逐笔记恢复、Settle、统一 Discussion、Critique，
-以及带可编辑当前 Skill、包内普通 references 和 philosophical lenses、学术 Profile
-的 Research Actions。Search v9 为应用、CLI、研究记录与通过认证的 Research Context 提供同一个
-类型明确的检索 owner，支持词法、规范元数据、明确直接关系、YAML summary 与
-Record 查询，而不让索引取得研究内容权威。
+当前产品支持独立脉络与窗口、准确来源 Markdown 编辑、搜索与关联、Note 与文件夹
+操作、外部编辑冲突、中断保存恢复、Settle、Critique、Zotero，以及固定的本机 MCP
+协作面。Search 始终是供应用、CLI 与 MCP adapter 共用的可丢弃 Note-only 投影。
 
-获得邀请的外部 Agent 可以在本地与一个由研究者创建的 Run 配对，取得有界研究
-上下文，在 Run Activity Ledger 中登记其他相关目标而无需再次批准，执行按修订核验的
-直接编辑，提交一个结果，留下便携式研究记录，并通过独立的新 Run 继续研究。进程绑定
-的 Session、不可复用的准确事务租约、冲突、恢复，以及由一条 Record 拥有的研究者
-评价共同保持研究者控制。新建 Analysis 前，独立 CLI 会先向 Scholium 取得当前 Analyses vault、
-适用的受管字段、可选的 Settings 偏好、固定的 `summary`／`keywords` scaffold、根目录
-受管目的地，以及路径／身份／来源恢复状态；只有 ready 的预检才能开始有后果的创建。
-Analyze Record 可携带推荐文献。
-研究者选择的本地或 Zotero 来源材料继续通过单独验证的证据通道交付；可选的第一方
-Zotero MCP 传输继续可用。研究者选择子目录时，先由研究者创建或选择现有 Analysis，
-而不是让 Agent 在创建请求中声明路径。
+已安装的 `scholium` 可执行文件通过 `scholium mcp serve` 启动 stdio server。它只把
+外部 MCP host 连接到当前正在运行的 Scholium App；不会启动应用、打开无界面
+workspace，或直接读取脉络文件。首版只提供 workspace status、Note 搜索／读取／链接，
+以及明确的创建／更新／移至系统纸篓操作。稳定 Note 身份、fingerprint compare-and-swap、
+编辑器 flush、原子写入与 readback、派生一致性仍由应用拥有。
 
-这些路径证明的是当前工程可达性，不表示长期 Agent 继承或哲学研究质量已经通过
-产品验收。辅助技术审查、干净账户 App／CLI 与外部 Agent 验收仍是明确的证据门。
-六个内置 Method 模板已有有界的独立基线；此后只复审新增或实质变更的模板。持续真实
-研究与 Method 比较仍是非阻塞的产品研究，并不认证普遍的哲学充分性。
+每个已确认 MCP 变更只生成一条本机 Agent Change 准确修订证据。Agent Changes 支持
+比较与满足条件的更新直接 Undo；它们不是聊天、权限、审查、接受、Settlement 或
+Research Records。Research Record 与 Handoff 的替代合同在另行决策前保持不可用。
 
-研究文档使用一棵原生 AppKit 文件夹／笔记大纲，并保留菜单、键盘、辅助功能与拖动
-等组织路径。笔记和文件夹删除使用 macOS 系统纸篓；Finder 负责恢复，而已完成的
-研究记录作为历史 provenance 保留，只有在“研究记录”中单独确认后才会永久删除。
-新建、移动或已确认缺失的来源会立即发布到所属窗口；可丢弃的搜索、图与诊断投影
-继续在后台刷新。
-
-每篇笔记的研究库限定稳定身份与准确来源指纹分别承担身份和版本职责。因此，重命名
-与文件夹移动可以保留编辑器、标签页和研究身份，而每次变更仍会在提交前重新核验
-当前来源修订与目标位置。
-
-应用、CLI、交付合同与记录全部使用 Action 身份。受保护的 Local Execution v3
-仅作为内部的容纳、修订、完成、冲突与恢复机制。未知的预发布数据保持原字节、
-不可见、不解析且不产生授权；产品中没有旧数据入口或兼容命令。
+发行版只捆绑精简的 Scholium Core Protocol Skill。研究者自己的 method Skills 位于
+外部 Agent host；Scholium 不注册、检查或执行它们。这些路径只证明工程可达性，不
+证明人类验收或普遍的哲学充分性。
 
 准确证据以及尚未完成的人类、辅助功能、性能、打包和发布工作，请参阅
 [实现状态](Docs/IMPLEMENTATION_STATUS.md)。
@@ -250,58 +227,38 @@ VoiceOver 服务自动化仍为条件性跳过。§20 所定义的有界真人 V
 窗口打开已注册脉络，使用**文件 → 新建窗口**为当前脉络打开另一个独立窗口。
 两个脉络不能共享同一个“写作”侧控制目录。
 
-## Scholium CLI
+## Scholium MCP 设置
 
-首次启动准备 Agent 时，或之后打开**设置 → 研究指导 → 来源与集成 → Scholium
-CLI**，选择**复制 CLI 安装说明**并交给外部 Agent。该说明只授权下载
-[官方独立 CLI](https://github.com/Aaronlves/Scholium/releases/latest/download/Scholium-CLI-macos.zip)，
-并且只允许在 `~/.local/bin` 下安装可执行文件与相邻资源 bundle；它禁止 `sudo`、
-PATH／profile 编辑、替代下载来源和 quarantine 修改。应用不会检查、执行、安装、
-更新、移除 CLI，也不会报告 CLI 状态。
+打开**设置 → 研究指导 → Agent 集成**，可检查应用、bridge 与 CLI 的可用状态，
+复制对应 host 的设置命令，或在 Finder 中显示捆绑的 Core Protocol Skill。Scholium
+只复制命令，不修改 host 配置，也不宣称安装成功。
 
-源码 checkout 的安装与检查方式：
+源码 checkout 可先构建或安装 CLI，再用其绝对路径注册：
 
 ```bash
 Tools/Scripts/install-cli.sh
-export PATH="$PWD/.build/cli-prefix/bin:$PATH"
-scholium version --format json
-scholium doctor --format json
-scholium help action
-scholium help agent start
+codex mcp add scholium -- "$PWD/.build/cli-prefix/bin/scholium" mcp serve
+claude mcp add scholium --scope user -- "$PWD/.build/cli-prefix/bin/scholium" mcp serve
 ```
 
-源码 checkout 的安装器会把开发版可执行文件及其资源 bundle 收束在
-`.build/cli-prefix` 下。经验证的 `scholium update` 只适用于单独安装在
-`~/.local/bin` 下的发行版 CLI。
+应用必须已经运行，并打开预期脉络。stdio helper 通过只限当前用户且经过认证的本机
+bridge 工作；当应用、bridge、所选脉络或当前状态不可用时明确失败，绝不回退到直接
+文件系统或无界面 workspace 访问。
 
-CLI 与应用共享脉络、搜索、链接和图路径、工作区目录与关注、准确读取、Discussion
-回复、可恢复 Actions、推荐文献、按稳定 Note UUID 执行的 `record list`、按 Record
-UUID 执行的 `record read`，以及带修订检查的笔记操作。Record 读取返回便携式
-Record owner 及其准确指纹，不创建 Note dossier。修改已有笔记时必须提供
-`scholium read --format json` 返回的当前 SHA-256。
-
-`Tools/Scripts/package-app.sh` 会生成独立的 `Scholium-CLI-macos.zip`；其中的
-`install.sh` 执行与 Agent 说明一致的用户级安装，不修改 shell 或 macOS 安全配置。
-安装后的 CLI 可显式使用 `scholium update --check` 检查官方发行版，或使用
-`scholium update` 安装经验证的更新；自更新不在后台运行、不修改 PATH，校验失败时保留现有的
-可执行文件与 bundle。
-
-安装后的 `scholium agent` 命令让外部 Agent 通过仅限回环地址的本机桥，与一个由研究者
-创建的 Run 配对、获取结构化上下文、申请有界写入、提交一个结果、继续研究并结束
-Run。配对码只通过标准输入读取；Scholium 不会启动或监管 Agent。通过项目级发现加载的
-[Core Protocol](ScholiumCore/Resources/Skills/Scholium%20System%20Skills/scholium-core-protocol/SKILL.md)
-治理进入流程，并由认证上下文再次识别以统一拥有 Agent Run 流程；当前 CLI 语法由安装版本的
-命令帮助拥有。可选 Zotero 传输见
-[Zotero MCP](Docs/ZOTERO_MCP.md)。
+首版恰好发布七个 tools：`scholium_workspace_status`、
+`scholium_search_notes`、`scholium_read_note`、`scholium_list_links`、
+`scholium_create_note`、`scholium_update_note` 与
+`scholium_trash_note`。不暴露 MCP Resources、Prompts、Agent Sessions、
+Research Actions、Handoff 或 Research Records。
 
 ## 存储与安全
 
 权威研究内容始终保存在研究者选择的 Markdown 文件夹。位于“写作”旁边的小型
-便携式 `.scholium/` 控制结构，只保存规格允许的脉络 manifest、便携式设置与
-Skills、当前研究者状态、活跃 Discussion 和白名单 Research Records。
+便携式 `.scholium/` 控制结构只保存规格允许的脉络 manifest、便携式设置、稳定
+身份、Metadata、Settlement、Critique 与恢复状态。
 
-Bookmark、绝对路径、窗口 session、索引、保存的查询、受保护执行、恢复、传输
-状态、Agent Session、本机桥命名空间、组装后的指令与未知预发布字节保存在本机：
+Bookmark、绝对路径、窗口 session、索引、保存的查询、恢复、本机 bridge 认证、
+准确 Agent Change 证据与未知预发布字节保存在本机：
 
 ```text
 ~/Library/Application Support/Scholium/State-v1/

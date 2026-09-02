@@ -5,7 +5,6 @@ import SwiftUI
 enum ScholiumHotkeyCategory: String, CaseIterable, Identifiable, Sendable {
     case workspace
     case document
-    case research
 
     var id: String { rawValue }
 
@@ -13,7 +12,6 @@ enum ScholiumHotkeyCategory: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .workspace: "Workspace"
         case .document: "Document"
-        case .research: "Research"
         }
     }
 }
@@ -24,9 +22,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
     case toggleResearchInspector
     case toggleReviewEdit
     case showSource
-    case commentOnSelection
     case showAttention
-    case showTriptychRecords
 
     var id: String { rawValue }
 
@@ -35,10 +31,8 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
         case .searchResearch, .toggleLibrary, .toggleResearchInspector,
              .showAttention:
             .workspace
-        case .toggleReviewEdit, .showSource, .commentOnSelection:
+        case .toggleReviewEdit, .showSource:
             .document
-        case .showTriptychRecords:
-            .research
         }
     }
 
@@ -49,9 +43,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
         case .toggleResearchInspector: "Show or Hide Research Inspector"
         case .toggleReviewEdit: "Switch Review and Edit"
         case .showSource: "Show Source"
-        case .commentOnSelection: "Comment on Selection"
         case .showAttention: "Show Attention"
-        case .showTriptychRecords: "Show Triptych Records"
         }
     }
 
@@ -62,9 +54,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
         case .toggleResearchInspector: "View → Research Inspector"
         case .toggleReviewEdit: "View → Document Mode"
         case .showSource: "View → Document Mode → Source"
-        case .commentOnSelection: "Insert → Comment on Selection"
         case .showAttention: "Window → Notifications"
-        case .showTriptychRecords: "Research → Triptych Records"
         }
     }
 
@@ -78,8 +68,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
             ScholiumHotkeyBinding(key: "b", modifiers: [.option, .command])
         case .toggleReviewEdit:
             ScholiumHotkeyBinding(key: "r", modifiers: [.command])
-        case .showSource, .commentOnSelection, .showAttention,
-             .showTriptychRecords:
+        case .showSource, .showAttention:
             nil
         }
     }

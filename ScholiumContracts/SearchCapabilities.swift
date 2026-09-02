@@ -91,15 +91,6 @@ public struct SearchCapabilities: Codable, Hashable, Sendable {
                     #"from-note:"Groundwork" relation:supports duty"#,
                 ]
             ),
-            SearchProviderCapability(
-                provider: .record,
-                fields: recordFields,
-                scopes: SearchPresentationScope.visibleModes,
-                examples: [
-                    #"kind:record action:"Analyze Note""#,
-                    "kind:record participant:researcher date:30d",
-                ]
-            ),
         ]
     )
 
@@ -162,54 +153,6 @@ public struct SearchCapabilities: Codable, Hashable, Sendable {
             name: "relation",
             valueKind: .canonical,
             allowedValues: SearchRelation.allCases.map(\.rawValue),
-            allowsPhrase: false,
-            allowsPrefix: false,
-            allowsExclusion: false
-        ),
-    ]
-
-    private static let recordFields: [SearchFieldCapability] = [
-        SearchFieldCapability(
-            name: "kind",
-            valueKind: .canonical,
-            allowedValues: SearchProvider.allCases.map(\.rawValue),
-            allowsPhrase: false,
-            allowsPrefix: false,
-            allowsExclusion: false
-        ),
-        SearchFieldCapability(
-            name: "note",
-            valueKind: .noteIdentity,
-            allowsPhrase: true,
-            allowsPrefix: false,
-            allowsExclusion: false
-        ),
-        SearchFieldCapability(
-            name: "action",
-            valueKind: .lexical,
-            allowsPhrase: true,
-            allowsPrefix: false,
-            allowsExclusion: false
-        ),
-        SearchFieldCapability(
-            name: "skill",
-            valueKind: .lexical,
-            allowsPhrase: true,
-            allowsPrefix: false,
-            allowsExclusion: false
-        ),
-        SearchFieldCapability(
-            name: "participant",
-            valueKind: .canonical,
-            allowedValues: ["researcher", "agent"],
-            allowsPhrase: false,
-            allowsPrefix: false,
-            allowsExclusion: false
-        ),
-        SearchFieldCapability(
-            name: "date",
-            valueKind: .canonical,
-            allowedValues: ["today", "7d", "30d"],
             allowsPhrase: false,
             allowsPrefix: false,
             allowsExclusion: false

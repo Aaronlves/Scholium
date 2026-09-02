@@ -31,11 +31,6 @@ private enum WindowLibraryMutationError: LocalizedError {
     }
 }
 
-private enum WindowSystemTrashRecoveryTarget {
-    case note(NoteMutationTarget)
-    case folder(FolderMutationTarget)
-}
-
 struct WindowLibraryMutationContext {
     let assignmentID: UUID
     let vault: RegisteredVault
@@ -79,7 +74,6 @@ struct WindowLibraryMutationDependencies {
     let importedDocumentsCommitted: @MainActor (RegisteredVault) async throws -> Void
     let presentImportOutcome: @MainActor (WindowMarkdownImportBatchOutcome) -> Void
     let presentSystemTrash: @MainActor (SystemTrashDeletionPreview) -> Void
-    let presentLocalExecutionRecovery: @MainActor (LocalResearchExecutionRecoveryPreview) -> Void
     let clearPresentedAlert: @MainActor () -> Void
     let reportError: @MainActor (String) -> Void
     let reportInformation: @MainActor (String) -> Void
@@ -99,8 +93,6 @@ final class WindowLibraryMutationController: ObservableObject {
     private var markdownImportTask: Task<Void, Never>?
     private var folderMutationTask: Task<Void, Never>?
     private var mutationTaskCancellations: [UUID: @MainActor () -> Void] = [:]
-    private var systemTrashRecoveryTarget: WindowSystemTrashRecoveryTarget?
-    private var systemTrashRecoveryPreviewID: UUID?
 
     init(dependencies: WindowLibraryMutationDependencies) {
         self.dependencies = dependencies
@@ -245,18 +237,12 @@ final class WindowLibraryMutationController: ObservableObject {
         isMutatingFolder = true
         defer { isMutatingFolder = false }
         try await dependencies.flushEditors(context.assignmentID)
-        do {
-            dependencies.presentSystemTrash(
-                try await requireOperations().prepareFolderSystemTrash(
-                    inVault: target.vaultID,
-                    relativePath: target.relativePath
-                )
+        dependencies.presentSystemTrash(
+            try await requireOperations().prepareFolderSystemTrash(
+                inVault: target.vaultID,
+                relativePath: target.relativePath
             )
-        } catch SystemTrashPreparationError.localExecutionRecoveryRequired(let recovery) {
-            systemTrashRecoveryTarget = .folder(target)
-            systemTrashRecoveryPreviewID = recovery.id
-            dependencies.presentLocalExecutionRecovery(recovery)
-        }
+        )
     }
 
     @discardableResult
@@ -331,59 +317,9 @@ final class WindowLibraryMutationController: ObservableObject {
         }
         try await dependencies.flushEditors(context.assignmentID)
         let authorizedTarget = try currentTarget(target)
-        do {
-            dependencies.presentSystemTrash(
-                try await requireOperations().prepareSystemTrash(authorizedTarget)
-            )
-        } catch SystemTrashPreparationError.localExecutionRecoveryRequired(let recovery) {
-            systemTrashRecoveryTarget = .note(target)
-            systemTrashRecoveryPreviewID = recovery.id
-            dependencies.presentLocalExecutionRecovery(recovery)
-        }
-    }
-
-    func cancelLocalExecutionRecovery(
-        _ preview: LocalResearchExecutionRecoveryPreview
-    ) {
-        guard systemTrashRecoveryPreviewID == preview.id else { return }
-        systemTrashRecoveryTarget = nil
-        systemTrashRecoveryPreviewID = nil
-        dependencies.clearPresentedAlert()
-    }
-
-    func archiveLocalExecutionsAndRetrySystemTrash(
-        _ preview: LocalResearchExecutionRecoveryPreview
-    ) async {
-        do {
-            try await withOwnedMutation { [self] in
-                await performArchiveLocalExecutionsAndRetrySystemTrash(preview)
-            }
-        } catch is CancellationError {
-            return
-        } catch {
-            dependencies.reportError(error.localizedDescription)
-        }
-    }
-
-    private func performArchiveLocalExecutionsAndRetrySystemTrash(
-        _ preview: LocalResearchExecutionRecoveryPreview
-    ) async {
-        guard systemTrashRecoveryPreviewID == preview.id,
-              let retryTarget = systemTrashRecoveryTarget else { return }
-        dependencies.clearPresentedAlert()
-        systemTrashRecoveryTarget = nil
-        systemTrashRecoveryPreviewID = nil
-        do {
-            _ = try await requireOperations().archiveUnsupportedLocalResearchExecutions(preview)
-            switch retryTarget {
-            case .note(let target): try await prepareNoteSystemTrash(target)
-            case .folder(let target): try await prepareFolderSystemTrash(target)
-            }
-        } catch is CancellationError {
-            return
-        } catch {
-            dependencies.reportError(error.localizedDescription)
-        }
+        dependencies.presentSystemTrash(
+            try await requireOperations().prepareSystemTrash(authorizedTarget)
+        )
     }
 
     func executeSystemTrash(_ preview: SystemTrashDeletionPreview) async throws {

@@ -175,19 +175,7 @@ public actor TriptychControlStore {
         }
         do {
             try await store.validateExistingSupportedControlState()
-            let researchConfiguration = ResearchConfigurationStore(
-                controlURL: controlURL,
-                triptychID: manifest.id
-            )
-            _ = try await researchConfiguration.registrationSnapshot()
-            _ = try await researchConfiguration.profileSnapshot()
-            _ = try await researchConfiguration.citationMethodSnapshot()
             return false
-        } catch is ResearchCitationMethodContractError {
-            return true
-        } catch let error as ResearchConfigurationStoreError {
-            if case .invalidDocument = error { return true }
-            throw error
         } catch let error as TriptychControlError {
             switch error {
             case .invalidManifest, .settingsMissing, .settingsOldSchema,

@@ -51,10 +51,7 @@ public extension SearchCapabilities {
         let token = String(rawQuery[tokenRange])
         guard !token.isEmpty else { return [] }
         let prefix = String(rawQuery[..<tokenRange.lowerBound])
-        let provider: SearchProvider = Self.completedTokens(in: prefix).contains {
-            $0.caseInsensitiveCompare("kind:record") == .orderedSame
-        } ? .record : .note
-        let fields = fields(for: provider, scope: scope)
+        let fields = fields(for: .note, scope: scope)
         guard !fields.isEmpty else { return [] }
 
         let candidates: [(replacement: String, display: String, detail: String)]

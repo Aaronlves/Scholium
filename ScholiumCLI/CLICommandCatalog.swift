@@ -29,16 +29,13 @@ extension ScholiumCLI {
     struct CLICommandSpecification {
         let rule: CLICommandRule
         let help: String
-        let agentCommand: AgentCLICommandHelp?
 
         init(
             rule: CLICommandRule,
-            help: String,
-            agentCommand: AgentCLICommandHelp? = nil
+            help: String
         ) {
             self.rule = rule
             self.help = help
-            self.agentCommand = agentCommand
         }
 
         var usage: String {
@@ -52,17 +49,7 @@ extension ScholiumCLI {
     /// The sole syntax-and-help registry for executable command paths. Handler
     /// dispatch remains explicit in CLIEntry; it does not restate option or
     /// positional grammar.
-    static let commandSpecifications: [String: CLICommandSpecification] = {
-        var specifications = ordinaryCommandSpecifications
-        for (key, help) in agentCommandHelp {
-            specifications[key] = CLICommandSpecification(
-                rule: help.rule,
-                help: help.text,
-                agentCommand: help
-            )
-        }
-        return specifications
-    }()
+    static let commandSpecifications = ordinaryCommandSpecifications
 
     static let rootCommandUsage: String = {
         let meta = [
@@ -104,6 +91,10 @@ extension ScholiumCLI {
             "--format": .value,
         ]
         return [
+            "mcp serve": .init(
+                rule: .init(pathLength: 2),
+                help: "Usage: scholium mcp serve\n\nRuns the local stdio MCP adapter for the currently running Scholium App. The adapter does not open a Triptych or read its filesystem directly."
+            ),
             "doctor": .init(
                 rule: .init(pathLength: 1, options: format),
                 help: "Usage: scholium doctor [--format text|json]"
@@ -166,26 +157,12 @@ extension ScholiumCLI {
                 rule: .init(pathLength: 2, options: selected),
                 help: "Usage: scholium workspace catalog [--triptych <selector>] --format json"
             ),
-            "workspace skill-sources": .init(
-                rule: .init(pathLength: 2, options: selected),
-                help: "Usage: scholium workspace skill-sources [--triptych <selector>] --format json\n\nReports every release-managed System Skill and exact enabled Method folder that an authorized setup Agent may register through its host's project-level Skill mechanism. It creates no link and scans no arbitrary folder."
-            ),
             "workspace attention": .init(
                 rule: .init(
                     pathLength: 2,
                     options: ["--triptych": .value, "--kind": .value, "--format": .value]
                 ),
                 help: "Usage: scholium workspace attention [--triptych <selector>] [--kind <queue>] --format json"
-            ),
-            "workspace bootstrap": .init(
-                rule: .init(
-                    pathLength: 2,
-                    options: [
-                        "--triptych": .value, "--target": .value,
-                        "--conventions-file": .value, "--format": .value,
-                    ]
-                ),
-                help: "Usage: scholium workspace bootstrap --triptych <selector> --target <directory> [--conventions-file <file>] [--format markdown|json]"
             ),
             "read": .init(
                 rule: .init(pathLength: 1, positionalCount: 1 ... 1, options: format),
@@ -248,37 +225,7 @@ extension ScholiumCLI {
                     positionalCount: 1 ... 1,
                     options: ["--expected": .value]
                 ),
-                help: "Usage: scholium note move-to-trash <vault>:<path> --expected <sha256>\n\nMoves the exact Note to the macOS system Trash. Finished Research Records remain unchanged and retain their historical participants. Finder owns file restoration."
-            ),
-            "record list": .init(
-                rule: .init(
-                    pathLength: 2,
-                    options: ["--note": .value, "--triptych": .value, "--format": .value]
-                ),
-                help: "Usage: scholium record list --note <stable-note-uuid> [--triptych <selector>] [--format text|jsonl]\n\nLists every complete finished Research Record in which the exact stable Note identity participates. JSONL begins with one manifest-bound summary and returns one fingerprinted Record summary per following line. It never infers relevance, acceptance, or a primary owner."
-            ),
-            "record read": .init(
-                rule: .init(pathLength: 2, positionalCount: 1 ... 1, options: selected),
-                help: "Usage: scholium record read <record-uuid> [--triptych <selector>] [--format json]\n\nReads one complete decoded portable Research Record together with its exact persisted-byte fingerprint. It fails closed when the complete Record projection or exact identity is unavailable and grants no mutation authority."
-            ),
-            "discuss list": .init(
-                rule: .init(pathLength: 2, options: ["--triptych": .value, "--format": .value]),
-                help: "Usage: scholium discuss list [--triptych <selector>] [--format text|json]"
-            ),
-            "discuss show": .init(
-                rule: .init(pathLength: 2, positionalCount: 1 ... 1, options: selected),
-                help: "Usage: scholium discuss show <discussion-id> [--triptych <selector>] [--format text|json]"
-            ),
-            "discuss reply": .init(
-                rule: .init(
-                    pathLength: 2,
-                    positionalCount: 1 ... 1,
-                    options: [
-                        "--triptych": .value, "--agent": .value,
-                        "--text": .value, "--from": .value,
-                    ]
-                ),
-                help: "Usage: scholium discuss reply <discussion-id> --agent <name> (--text <reply> | --from <file|->) [--triptych <selector>]\n\nThis researcher-operated attribution route records one Agent reply and atomically forms the Discussion's Research Record. External Agents must use the authenticated scholium agent discuss-reply command."
+                help: "Usage: scholium note move-to-trash <vault>:<path> --expected <sha256>\n\nMoves the exact Note to the macOS system Trash. Finder owns file restoration."
             ),
             "zotero mcp": .init(
                 rule: .init(pathLength: 2, options: ["--probe": .flag, "--format": .value]),

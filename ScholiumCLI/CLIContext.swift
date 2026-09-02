@@ -16,11 +16,10 @@ struct CLIContext: Sendable {
         if ProcessInfo.processInfo.environment["SCHOLIUM_HOME"] != nil {
             // `doctor` and other read-only commands may be the first process
             // to touch an isolated Home. Establish the same private parent
-            // boundary used by the bearer-Session store before the runtime
+            // boundary used by protected machine-local stores before runtime
             // creates any descendants with FileManager's default mode.
-            // Otherwise the recommended `doctor` -> `agent start` sequence
-            // leaves ApplicationSupport at 0755 and correctly makes the
-            // credential store fail closed on the later start.
+            // Otherwise the shared support root may be created with an
+            // inappropriately broad default mode.
             try ScholiumPaths.ensurePrivateDirectory(at: homeURL)
             let support = homeURL.appendingPathComponent(
                 "ApplicationSupport",
@@ -39,21 +38,14 @@ struct CLIContext: Sendable {
         return CLIContext(runtime: runtime)
     }
 
-    /// Creates only the local Agent bridge adapter. It deliberately does not
-    /// construct the ordinary snapshot runtime or touch vault state.
-    static func makeAgentBridge() throws -> AgentBridgeOperations {
-        let environment = ProcessInfo.processInfo.environment
-        let bridgeContainerURL = try ScholiumPaths.agentBridgeContainerURL(
-            environment: environment
+    /// Creates only the stdio MCP-to-App adapter. It deliberately does not
+    /// construct a snapshot runtime, read the registry, or open a vault.
+    static func makeMCPBridge() throws -> MCPBridgeOperations {
+        let bridgeContainerURL = try ScholiumPaths.appBridgeContainerURL(
+            environment: ProcessInfo.processInfo.environment
         )
-        return try AgentBridgeOperations(
+        return try MCPBridgeOperations(
             applicationSupportURL: bridgeContainerURL
-        )
-    }
-
-    static func makeAgentCredentialStore() throws -> AgentSessionCredentialStore {
-        AgentSessionCredentialStore(
-            directoryURL: try ScholiumPaths.agentSessionCredentialDirectoryURL()
         )
     }
 

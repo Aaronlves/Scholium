@@ -89,81 +89,6 @@ enum DocumentIntegrityPresentation: Hashable {
     }
 }
 
-struct PassageCommentSubmission: Equatable, Sendable {
-    let requestID: String
-    let documentID: String
-    let fingerprint: DocumentFingerprint
-    let startLine: Int
-    let endLine: Int
-    let commentedText: String
-    let text: String
-}
-
-struct PassageCommentResolution: Equatable, Sendable {
-    let requestID: String
-    let succeeded: Bool
-}
-
-struct ReviewCommentAnchor: Equatable, Hashable, Identifiable, Sendable {
-    let id: String
-    let discussionID: UUID
-    let statementID: UUID
-    let startLine: Int
-    let endLine: Int
-    let commentCount: Int
-}
-
-enum ReviewCommentAnchorProjection {
-    static func anchors(
-        for noteID: UUID,
-        fingerprint: DocumentFingerprint,
-        in discussions: [PortableResearchDiscussion]
-    ) -> [ReviewCommentAnchor] {
-        var groups: [ReviewCommentAnchorKey: ReviewCommentAnchorGroup] = [:]
-        for discussion in discussions where discussion.primaryNoteID == noteID {
-            for statement in discussion.statements {
-                guard statement.author == .researcher,
-                      statement.kind == .discussionTurn,
-                      let reference = statement.lineReference,
-                      reference.fingerprint == fingerprint else { continue }
-                let key = ReviewCommentAnchorKey(
-                    discussionID: discussion.id,
-                    startLine: reference.line,
-                    endLine: reference.endLine
-                )
-                if var group = groups[key] {
-                    group.count += 1
-                    if statement.createdAt >= group.latestCreatedAt {
-                        group.latestStatementID = statement.id
-                        group.latestCreatedAt = statement.createdAt
-                    }
-                    groups[key] = group
-                } else {
-                    groups[key] = ReviewCommentAnchorGroup(
-                        latestStatementID: statement.id,
-                        latestCreatedAt: statement.createdAt,
-                        count: 1
-                    )
-                }
-            }
-        }
-        return groups.map { key, group in
-            ReviewCommentAnchor(
-                id: "\(key.discussionID.uuidString.lowercased())-\(key.startLine)-\(key.endLine)",
-                discussionID: key.discussionID,
-                statementID: group.latestStatementID,
-                startLine: key.startLine,
-                endLine: key.endLine,
-                commentCount: group.count
-            )
-        }.sorted {
-            if $0.startLine != $1.startLine { return $0.startLine < $1.startLine }
-            if $0.endLine != $1.endLine { return $0.endLine < $1.endLine }
-            return $0.id < $1.id
-        }
-    }
-}
-
 struct DocumentFeatureState {
     let notes: [WindowDocumentLocation]
     let selectedDocumentPath: String?
@@ -173,9 +98,6 @@ struct DocumentFeatureState {
     let noteIdentityByPath: [String: UUID]
     let documentRevisions: [String: DocumentFingerprint]
     let workspaceCatalog: WorkspaceCatalogSnapshot?
-    let activeDiscussions: [PortableResearchDiscussion]
-    let requestedDiscussionID: UUID?
-    let canComment: Bool
     let canEdit: Bool
     let isManagedCritique: Bool
     let documentTextScale: Double
@@ -199,23 +121,6 @@ struct DocumentFeatureActions {
     let clearRequestedPresentationMode: @MainActor () -> Void
     let clearPendingSourceLine: @MainActor () -> Void
     let clearPendingSourceRange: @MainActor () -> Void
-    /// A passage Comment starts the same Discussion used by whole-note work.
-    let createDiscussion: @MainActor (
-        CommentAnchor,
-        String
-    ) async throws -> PortableResearchDiscussion
-    let createComment: @MainActor (
-        UUID,
-        String,
-        ResearchLineReference,
-        String
-    ) async throws -> PortableResearchDiscussion
-    let reloadDiscussion: @MainActor (UUID) async throws -> PortableResearchDiscussion?
-    let loadDiscussionAgentInstructions: @MainActor (UUID) async throws -> String
-    let refreshDiscussionProjection: @MainActor () async throws -> Void
-    let endDiscussion: @MainActor (UUID) async throws -> Void
-    let clearRequestedDiscussion: @MainActor () -> Void
-    let copyDiscussionRequest: @MainActor (String) throws -> Void
     let rememberScrollPosition: @MainActor (Double) -> Void
     let openInternalLink: @MainActor (String) -> Void
     let openExternalURL: @MainActor (URL) -> Void
@@ -224,71 +129,9 @@ struct DocumentFeatureActions {
     let setPendingSourceLine: @MainActor (Int?) -> Void
     let setSidebarVisible: @MainActor (Bool) -> Void
     let editProperties: @MainActor () -> Void
-    let openResearchAction: @MainActor (
-        ResearchActionID,
-        CommentAnchor?
-    ) -> Void
     let setResearchInspectorVisible: @MainActor (Bool) -> Void
     let openingDocumentPresentationDidComplete: @MainActor () -> Void
     let notify: @MainActor (String, DocumentNotificationKind) -> Void
-}
-
-enum ResearchActionSelectionCapture {
-    static func anchor(
-        for selection: MarkdownReviewSelection?,
-        in source: String,
-        relativePath: String
-    ) -> CommentAnchor? {
-        guard let selection else { return nil }
-        let document = NoteDocument(relativePath: relativePath, rawContent: source)
-        if let exactRange = selection.exactUTF16Range {
-            return CommentAnchorBuilder.anchor(
-                in: source,
-                fingerprint: document.fingerprint,
-                utf16Range: exactRange,
-                selectedText: selection.excerpt
-            )
-        }
-        return CommentAnchorBuilder.anchor(
-            forRenderedQuotation: selection.excerpt,
-            contextBefore: selection.contextBefore,
-            contextAfter: selection.contextAfter,
-            in: document
-        )
-    }
-
-    /// Comments persist a fingerprint-bound line reference, not a passage
-    /// anchor. Prefer the precise rendered-to-source match, but retain the
-    /// safe renderer's source-block range when identical visible passages make
-    /// exact quotation matching intentionally ambiguous. Research Actions
-    /// continue to use `anchor` and therefore keep their stricter policy.
-    static func commentLineRange(
-        for selection: MarkdownReviewSelection?,
-        in source: String,
-        relativePath: String
-    ) -> ClosedRange<Int>? {
-        guard let selection,
-              !selection.excerpt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return nil
-        }
-        if let anchor = anchor(
-            for: selection,
-            in: source,
-            relativePath: relativePath
-        ) {
-            return anchor.line ... anchor.endLine
-        }
-
-        let lowerBound = min(selection.startLine, selection.endLine)
-        let upperBound = max(selection.startLine, selection.endLine)
-        let lineCount = source.reduce(into: 1) { count, character in
-            if character.isNewline { count += 1 }
-        }
-        guard lowerBound >= 1,
-              upperBound >= lowerBound,
-              upperBound <= lineCount else { return nil }
-        return lowerBound ... upperBound
-    }
 }
 
 // MARK: - Note Content Container
@@ -442,325 +285,6 @@ struct ResearchInspectorView: View {
         )
     }
 }
-// MARK: - Note Content View
-
-/// Opens one already-active Discussion. Lightweight Comments are created in
-/// place; a current-revision Review anchor can reopen this route at its turn.
-private struct DiscussionRoute: Identifiable {
-    let id: UUID
-    let discussion: PortableResearchDiscussion
-    let focusedStatementID: UUID?
-
-    init(
-        discussion: PortableResearchDiscussion,
-        focusedStatementID: UUID? = nil
-    ) {
-        id = discussion.id
-        self.discussion = discussion
-        self.focusedStatementID = focusedStatementID
-    }
-}
-
-private struct ReviewCommentAnchorKey: Hashable {
-    let discussionID: UUID
-    let startLine: Int
-    let endLine: Int
-}
-
-private struct ReviewCommentAnchorGroup {
-    var latestStatementID: UUID
-    var latestCreatedAt: Date
-    var count: Int
-}
-
-private struct DiscussionPanel: View {
-    @Environment(\.dismiss) private var dismiss
-
-    let noteTitle: String
-    let reload: (UUID) async throws -> PortableResearchDiscussion?
-    let loadAgentInstructions: (UUID) async throws -> String
-    let end: (UUID) async throws -> Void
-    let copyHandoff: (String) throws -> Void
-    let currentNoteFingerprint: DocumentFingerprint
-    let revealCommentLine: (Int) -> Void
-    let onClosed: () -> Void
-    let onFinished: () -> Void
-
-    @State private var discussion: PortableResearchDiscussion?
-    @State private var isWorking = false
-    @State private var errorMessage: String?
-    @State private var confirmsEndDiscussion = false
-    private let focusedStatementID: UUID?
-
-    init(
-        noteTitle: String,
-        route: DiscussionRoute,
-        reload: @escaping (UUID) async throws -> PortableResearchDiscussion?,
-        loadAgentInstructions: @escaping (UUID) async throws -> String,
-        end: @escaping (UUID) async throws -> Void,
-        copyHandoff: @escaping (String) throws -> Void,
-        currentNoteFingerprint: DocumentFingerprint,
-        revealCommentLine: @escaping (Int) -> Void,
-        onClosed: @escaping () -> Void,
-        onFinished: @escaping () -> Void
-    ) {
-        self.noteTitle = noteTitle
-        self.reload = reload
-        self.loadAgentInstructions = loadAgentInstructions
-        self.end = end
-        self.copyHandoff = copyHandoff
-        self.currentNoteFingerprint = currentNoteFingerprint
-        self.revealCommentLine = revealCommentLine
-        self.onClosed = onClosed
-        self.onFinished = onFinished
-        focusedStatementID = route.focusedStatementID
-        _discussion = State(initialValue: route.discussion)
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: ScholiumMetrics.DocumentWorkflow.discussionHeaderDetailSpacing) {
-                    Text("Discussion")
-                        .font(ScholiumTypography.interface(.primaryTitle))
-                    Text(noteTitle)
-                        .font(ScholiumTypography.interface(.body))
-                        .scholiumForeground(.secondaryText)
-                }
-                Spacer()
-                Button("End Discussion…", role: .destructive) {
-                    confirmsEndDiscussion = true
-                }
-                .disabled(isWorking)
-                .accessibilityIdentifier("scholium.discussion.end")
-                Button("Close") {
-                    onClosed()
-                    dismiss()
-                }
-                    .keyboardShortcut(.cancelAction)
-                    .accessibilityIdentifier("scholium.discussion.close")
-            }
-            .padding(ScholiumMetrics.DocumentWorkflow.discussionHeaderInset)
-
-            Divider()
-
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.regionContentInset) {
-                        if let discussion {
-                            transcript(discussion)
-                        }
-
-                        agentHandoffControls
-
-                        if let errorMessage {
-                            Text(errorMessage)
-                                .font(ScholiumTypography.interface(.small))
-                                .scholiumForeground(.attention)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .accessibilityIdentifier("scholium.discussion.error")
-                        }
-                    }
-                    .padding(ScholiumGrid.Spacing.regionContentInset)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .task(id: focusedStatementID) {
-                    guard let focusedStatementID else { return }
-                    await Task.yield()
-                    proxy.scrollTo(focusedStatementID, anchor: .center)
-                }
-            }
-        }
-        .frame(minWidth: 520, idealWidth: 600, minHeight: 520, idealHeight: 640)
-        .accessibilityIdentifier("scholium.discussion")
-        .task(id: discussion?.updatedAt) {
-            await refreshExternalDiscussionState()
-        }
-        .confirmationDialog(
-            "End this Discussion?",
-            isPresented: $confirmsEndDiscussion,
-            titleVisibility: .visible
-        ) {
-            Button("Keep Discussion", role: .cancel) {}
-            Button("End Discussion", role: .destructive, action: endExchange)
-        } message: {
-            Text("Scholium will revoke Agent access and preserve the current exchange as a finished Research Record.")
-        }
-    }
-
-    private func transcript(_ discussion: PortableResearchDiscussion) -> some View {
-        return VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            Text("EXCHANGE")
-                .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                .tracking(0.7)
-                .scholiumForeground(.secondaryText)
-            ForEach(discussion.statements) { statement in
-                VStack(alignment: .leading, spacing: ScholiumMetrics.DocumentWorkflow.discussionTurnDetailSpacing) {
-                    Text(statement.attribution)
-                        .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                        .scholiumForeground(.secondaryText)
-                    if let reference = statement.lineReference {
-                        commentLocator(reference)
-                    } else if let passage = statement.passage {
-                        VStack(alignment: .leading, spacing: ScholiumMetrics.DocumentWorkflow.discussionTurnDetailSpacing) {
-                            Text(
-                                passage.line == passage.endLine
-                                    ? "PASSAGE AT LINE \(passage.line)"
-                                    : "PASSAGE AT LINES \(passage.line)–\(passage.endLine)"
-                            )
-                            .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                            .tracking(0.6)
-                            .scholiumForeground(.secondaryText)
-                            if passage.state == .needsReattachment {
-                                Label(
-                                    "This passage no longer has one reliable location.",
-                                    systemImage: "exclamationmark.triangle"
-                                )
-                                .font(ScholiumTypography.interface(.small))
-                                .scholiumForeground(.attention)
-                                .accessibilityIdentifier(
-                                    "scholium.discussion.statementPassage.needsReattachment"
-                                )
-                            }
-                        }
-                        .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
-                    }
-                    Text(statement.text)
-                        .font(ScholiumTypography.scholarly(.body))
-                        .lineSpacing(ScholiumMetrics.DocumentWorkflow.discussionTurnLineSpacing)
-                        .textSelection(.enabled)
-                }
-                .padding(.vertical, ScholiumMetrics.DocumentWorkflow.discussionTurnVerticalInset)
-                .padding(.leading, focusedStatementID == statement.id ? 8 : 0)
-                .overlay(alignment: .leading) {
-                    if focusedStatementID == statement.id {
-                        Rectangle()
-                            .fill(ScholiumColorRole.accent.color)
-                            .frame(width: 2)
-                            .accessibilityHidden(true)
-                    }
-                }
-                .id(statement.id)
-                if statement.id != discussion.statements.last?.id {
-                    Divider()
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func commentLocator(_ reference: ResearchLineReference) -> some View {
-        let lines = reference.line == reference.endLine
-            ? String(localized: "Comment at line \(reference.line)")
-            : String(localized: "Comment at lines \(reference.line)–\(reference.endLine)")
-        if reference.fingerprint == currentNoteFingerprint {
-            Button {
-                revealCommentLine(reference.line)
-                onClosed()
-                dismiss()
-            } label: {
-                Label(lines, systemImage: "text.bubble")
-            }
-            .buttonStyle(.borderless)
-            .font(ScholiumTypography.interface(.small, emphasis: .strong))
-            .accessibilityHint("Returns to the comment's current Note location")
-            .accessibilityIdentifier("scholium.discussion.commentLocator.current")
-            .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
-        } else {
-            Label {
-                Text("Earlier revision · \(lines)")
-            } icon: {
-                Image(systemName: "clock.arrow.circlepath")
-            }
-            .font(ScholiumTypography.interface(.small, emphasis: .strong))
-            .scholiumForeground(.secondaryText)
-            .help("The Note changed after this Comment. Scholium does not guess a new location.")
-            .accessibilityHint("The current Note changed, so this location cannot be opened")
-            .accessibilityIdentifier("scholium.discussion.commentLocator.stale")
-            .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
-        }
-    }
-
-    private var agentHandoffControls: some View {
-        VStack(alignment: .leading, spacing: ScholiumMetrics.DocumentWorkflow.discussionControlSpacing) {
-            Button("Copy Handoff") {
-                prepareAgentHandoff()
-            }
-            .buttonStyle(.bordered)
-            .disabled(isWorking || discussion == nil)
-            .accessibilityIdentifier("scholium.discussion.copyHandoff")
-            Text("The Discussion is waiting for one Agent reply. A successful reply forms its Research Record automatically and clears these Comments from Review. Closing this sheet leaves it active.")
-                .font(ScholiumTypography.interface(.small))
-                .scholiumForeground(.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private func prepareAgentHandoff() {
-        guard let discussion else { return }
-        isWorking = true
-        errorMessage = nil
-        Task { @MainActor in
-            let instructions: String
-            do {
-                instructions = try await loadAgentInstructions(discussion.id)
-            } catch {
-                errorMessage = "Scholium could not create a new Agent handoff. \(error.localizedDescription)"
-                isWorking = false
-                return
-            }
-            do {
-                try copyHandoff(instructions)
-            } catch {
-                errorMessage = "Scholium could not copy the Agent handoff. \(error.localizedDescription)"
-            }
-            isWorking = false
-        }
-    }
-
-    private func endExchange() {
-        guard let discussion else { return }
-        isWorking = true
-        errorMessage = nil
-        Task { @MainActor in
-            do {
-                try await end(discussion.id)
-                isWorking = false
-                onFinished()
-                dismiss()
-            } catch {
-                errorMessage = error.localizedDescription
-                isWorking = false
-            }
-        }
-    }
-
-    @MainActor
-    private func refreshExternalDiscussionState() async {
-        guard var current = discussion else { return }
-        while !Task.isCancelled {
-            do {
-                try await Task.sleep(for: .seconds(1))
-                guard let refreshed = try await reload(current.id) else {
-                    onFinished()
-                    dismiss()
-                    return
-                }
-                guard refreshed != current else { continue }
-                discussion = refreshed
-                current = refreshed
-            } catch is CancellationError {
-                return
-            } catch {
-                // A cooperating external process may be between its atomic
-                // replace and coordinated readback. Keep the visible durable
-                // state and retry quietly while this sheet remains active.
-            }
-        }
-    }
-
-}
-
 struct NoteContentView: View {
     @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
     @ObservedObject private var controller: DocumentController
@@ -770,9 +294,6 @@ struct NoteContentView: View {
     let state: DocumentFeatureState
     let actions: DocumentFeatureActions
     let critiqueProvenanceContext: CritiqueProvenanceContext
-    @State private var discussionRoute: DiscussionRoute?
-    @State private var commentComposerRequestID: UUID?
-    @State private var commentResolution: PassageCommentResolution?
     @StateObject private var documentFind = DocumentFindPresentationModel()
     @StateObject private var reviewDocumentStatistics = ReviewDocumentStatisticsModel()
     @State private var isInsertingImage = false
@@ -906,10 +427,6 @@ struct NoteContentView: View {
             actions.beginSearch(invocation)
         })
         .focusedSceneValue(
-            \.scholiumResearchActionActions,
-            ScholiumFocusedResearchActionActions(open: openResearchAction)
-        )
-        .focusedSceneValue(
             \.scholiumEditorActions,
             ScholiumFocusedEditorActions(
                 documentID: isEditing ? editorSession.documentID : note.relativePath,
@@ -917,9 +434,6 @@ struct NoteContentView: View {
                 allowsReplace: isEditing,
                 isAvailable: { command in
                     isEditing && editorSession.context?.availableCommands.contains(command) == true
-                },
-                canCommentOnSelectedPassage: {
-                    presentationMode == .read && documentSession.readSelection != nil
                 },
                 perform: { command in
                     Task { @MainActor in
@@ -939,7 +453,6 @@ struct NoteContentView: View {
                         }
                     }
                 },
-                startComment: requestCommentFromDocument,
                 presentFind: documentFind.present,
                 findNext: documentFind.next,
                 findPrevious: documentFind.previous,
@@ -967,26 +480,6 @@ struct NoteContentView: View {
                 )
             }
         }
-        .sheet(item: $discussionRoute, onDismiss: {
-            actions.clearRequestedDiscussion()
-            Task { @MainActor in
-                await Task.yield()
-                if isEditing { editorSession.focus() }
-            }
-        }) { route in
-            DiscussionPanel(
-                noteTitle: note.title ?? note.displayName,
-                route: route,
-                reload: actions.reloadDiscussion,
-                loadAgentInstructions: actions.loadDiscussionAgentInstructions,
-                end: actions.endDiscussion,
-                copyHandoff: actions.copyDiscussionRequest,
-                currentNoteFingerprint: noteFingerprint,
-                revealCommentLine: revealDiscussionComment,
-                onClosed: actions.clearRequestedDiscussion,
-                onFinished: actions.clearRequestedDiscussion
-            )
-        }
         .task(id: documentIntegrityPresentation) {
             guard let presentation = documentIntegrityPresentation else { return }
             AccessibilityNotification.Announcement(presentation.announcement).post()
@@ -1000,14 +493,10 @@ struct NoteContentView: View {
         .onChange(of: state.pendingSourceRange) { _, range in
             if range != nil { consumePendingSourceLocation() }
         }
-        .onChange(of: state.requestedDiscussionID) { _, discussionID in
-            openRequestedDiscussion(discussionID)
-        }
         .onAppear {
             controller.observe(documentSession)
             applyPreparedPresentationModeIfAvailable()
             consumePendingPresentationRequest()
-            openRequestedDiscussion(state.requestedDiscussionID)
             updateReviewDocumentStatistics(selection: nil)
         }
         .onChange(of: editingIsAvailable) { _, available in
@@ -1097,9 +586,6 @@ struct NoteContentView: View {
         .task(id: indexedImageAvailabilityTaskIdentity) {
             await checkIndexedImageAvailability()
         }
-        .task(id: discussionProjectionPollIdentity) {
-            await pollPortableDiscussionProjection()
-        }
         .task(id: previewTaskIdentity) {
             await rebuildPreviewCatalog()
         }
@@ -1144,44 +630,6 @@ struct NoteContentView: View {
         "\(note.relativePath):\(noteFingerprint.sha256)"
     }
 
-    private var discussionProjectionPollIdentity: String {
-        state.activeDiscussions.map {
-            "\($0.id.uuidString.lowercased()):\($0.updatedAt.timeIntervalSinceReferenceDate)"
-        }.sorted().joined(separator: "|")
-    }
-
-    private var reviewCommentAnchors: [ReviewCommentAnchor] {
-        guard let noteID = state.noteIdentityByPath[note.relativePath] else { return [] }
-        return ReviewCommentAnchorProjection.anchors(
-            for: noteID,
-            fingerprint: noteFingerprint,
-            in: state.activeDiscussions
-        )
-    }
-
-    private var reviewCommentAnchorRevision: String {
-        reviewCommentAnchors.map {
-            "\($0.id):\($0.statementID.uuidString.lowercased()):\($0.commentCount)"
-        }.joined(separator: "|")
-    }
-
-    @MainActor
-    private func pollPortableDiscussionProjection() async {
-        guard !state.activeDiscussions.isEmpty else { return }
-        while !Task.isCancelled {
-            do {
-                try await Task.sleep(for: .seconds(1))
-                try await actions.refreshDiscussionProjection()
-            } catch is CancellationError {
-                return
-            } catch {
-                // Keep the last verified projection. A later workspace event
-                // or explicit reopen retries without inventing Discussion state.
-                return
-            }
-        }
-    }
-
     private var previewTaskIdentity: String {
         let generation = state.workspaceCatalog?.graph?.generation ?? -1
         return "\(state.currentVaultID?.uuidString ?? "unavailable"):\(noteFingerprint.sha256):\(generation):\(presentationMode.rawValue):\(hasUnsavedChanges)"
@@ -1215,10 +663,6 @@ struct NoteContentView: View {
             guard !Task.isCancelled else { return }
             documentSession.previewCatalog = nil
         }
-    }
-
-    private var commentingIsAvailable: Bool {
-        state.selectedDocumentPath == note.relativePath && state.canComment
     }
 
     private var editingIsAvailable: Bool {
@@ -1430,14 +874,6 @@ struct NoteContentView: View {
                 actions.openInternalLink($0)
             },
             onOpenExternalURL: actions.openExternalURL,
-            onCommentSelection: commentingIsAvailable ? { selection in
-                saveComment(selection)
-            } : nil,
-            commentComposerRequestID: commentComposerRequestID,
-            commentResolution: commentResolution,
-            commentAnchors: reviewCommentAnchors,
-            commentAnchorRevision: reviewCommentAnchorRevision,
-            onOpenCommentAnchor: openCommentAnchor,
             onSelectionChange: { selection in
                 guard !isEditing else { return }
                 documentSession.readSelection = selection
@@ -1995,223 +1431,8 @@ struct NoteContentView: View {
         }
     }
 
-    private func requestCommentFromDocument() {
-        guard commentingIsAvailable, presentationMode == .read else { return }
-        guard documentSession.readSelection != nil else {
-            actions.notify(
-                String(
-                    localized: "Select a passage before commenting.",
-                    table: "Localizable",
-                    bundle: .module
-                ),
-                .information
-            )
-            return
-        }
-        commentComposerRequestID = UUID()
-    }
-
-    private func saveComment(_ submission: PassageCommentSubmission) {
-        let text = submission.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty,
-              presentationMode == .read,
-              submission.documentID == note.relativePath,
-              let noteID = state.noteIdentityByPath[note.relativePath] else {
-            commentResolution = PassageCommentResolution(
-                requestID: submission.requestID,
-                succeeded: false
-            )
-            return
-        }
-        Task { @MainActor in
-            do {
-                guard noteFingerprint == submission.fingerprint else {
-                    throw ResearchOperationError.staleCommentRevision
-                }
-                let reference = try ResearchLineReference(
-                    fingerprint: submission.fingerprint,
-                    line: submission.startLine,
-                    endLine: submission.endLine,
-                    commentedText: submission.commentedText
-                )
-                _ = try await actions.createComment(
-                    noteID,
-                    submission.documentID,
-                    reference,
-                    text
-                )
-                commentResolution = PassageCommentResolution(
-                    requestID: submission.requestID,
-                    succeeded: true
-                )
-            } catch ScholiumApplicationError.operationCommittedButRefreshFailed {
-                commentResolution = PassageCommentResolution(
-                    requestID: submission.requestID,
-                    succeeded: true
-                )
-                actions.notify(
-                    String(
-                        localized: "The Comment was saved. Research views will refresh when the workspace is available.",
-                        table: "Localizable",
-                        bundle: .module
-                    ),
-                    .information
-                )
-            } catch {
-                commentResolution = PassageCommentResolution(
-                    requestID: submission.requestID,
-                    succeeded: false
-                )
-                actions.notify(
-                    String(
-                        localized: "Scholium could not save this Comment. \(error.localizedDescription)",
-                        table: "Localizable",
-                        bundle: .module
-                    ),
-                    .error
-                )
-            }
-        }
-    }
-
-    private func openRequestedDiscussion(_ discussionID: UUID?) {
-        guard let discussionID else { return }
-        Task { @MainActor in
-            do {
-                guard let discussion = try await actions.reloadDiscussion(discussionID) else {
-                    actions.notify(
-                        String(
-                            localized: "The requested Discussion is no longer active.",
-                            table: "Localizable",
-                            bundle: .module
-                        ),
-                        .information
-                    )
-                    actions.clearRequestedDiscussion()
-                    return
-                }
-                guard state.requestedDiscussionID == discussionID else { return }
-                discussionRoute = DiscussionRoute(discussion: discussion)
-            } catch {
-                guard state.requestedDiscussionID == discussionID else { return }
-                actions.notify(
-                    String(
-                        localized: "Scholium could not open this Discussion. \(error.localizedDescription)",
-                        table: "Localizable",
-                        bundle: .module
-                    ),
-                    .error
-                )
-                actions.clearRequestedDiscussion()
-            }
-        }
-    }
-
-    private func openCommentAnchor(_ anchor: ReviewCommentAnchor) {
-        Task { @MainActor in
-            do {
-                guard let discussion = try await actions.reloadDiscussion(anchor.discussionID),
-                      discussion.statements.contains(where: { $0.id == anchor.statementID }) else {
-                    actions.notify(
-                        String(
-                            localized: "This Comment is no longer in an active Discussion.",
-                            table: "Localizable",
-                            bundle: .module
-                        ),
-                        .information
-                    )
-                    return
-                }
-                discussionRoute = DiscussionRoute(
-                    discussion: discussion,
-                    focusedStatementID: anchor.statementID
-                )
-            } catch {
-                actions.notify(
-                    String(
-                        localized: "Scholium could not open this Comment. \(error.localizedDescription)",
-                        table: "Localizable",
-                        bundle: .module
-                    ),
-                    .error
-                )
-            }
-        }
-    }
-
-    private func revealDiscussionComment(_ line: Int) {
-        guard line > 0 else { return }
-        actions.setPendingSourceLine(line)
-        if presentationMode != .read {
-            selectPresentationMode(.read)
-        }
-    }
-
-    private func openResearchAction(_ actionID: ResearchActionID) {
-        guard !editorIsComposing else {
-            actions.notify(
-                String(
-                    localized: "Finish text composition to open a Research Action.",
-                    table: "Localizable",
-                    bundle: .module
-                ),
-                .information
-            )
-            return
-        }
-        guard isEditing else {
-            let selection = documentSession.readSelection
-            let anchor = ResearchActionSelectionCapture.anchor(
-                for: selection,
-                in: note.rawContent,
-                relativePath: note.relativePath
-            )
-            if selection != nil, anchor == nil {
-                actions.notify(
-                    String(
-                        localized: "Scholium could not match the selected passage reliably. The Action will open for the whole note.",
-                        table: "Localizable",
-                        bundle: .module
-                    ),
-                    .information
-                )
-            }
-            actions.openResearchAction(actionID, anchor)
-            return
-        }
-
-        Task { @MainActor in
-            do {
-                let currentSource = try await editorSession.currentText(
-                    for: editorSession.bridgeDocumentID
-                )
-                let selection = try await editorSession.currentSelection(
-                    for: editorSession.bridgeDocumentID,
-                    in: currentSource
-                )
-                let anchor = ResearchActionSelectionCapture.anchor(
-                    for: selection,
-                    in: currentSource,
-                    relativePath: note.relativePath
-                )
-                actions.openResearchAction(actionID, anchor)
-            } catch {
-                actions.notify(
-                    String(
-                        localized: "Scholium could not capture the current selection. The Action will open for the whole note. \(error.localizedDescription)",
-                        table: "Localizable",
-                        bundle: .module
-                    ),
-                    .information
-                )
-                actions.openResearchAction(actionID, nil)
-            }
-        }
-    }
-
 }
-
-// MARK: - Research Record
+// MARK: - Source comparison and Critique decisions
 
 private struct ConflictComparisonSheet: View {
     let conflict: DocumentConflictSnapshot
@@ -2476,9 +1697,6 @@ private extension CritiqueFindingDispositionDecision {
         ].compactMapValues { $0 },
         documentRevisions: [note.relativePath: note.document.fingerprint],
         workspaceCatalog: nil,
-        activeDiscussions: [],
-        requestedDiscussionID: nil,
-        canComment: false,
         canEdit: false,
         isManagedCritique: false,
         documentTextScale: 1,
@@ -2501,14 +1719,6 @@ private extension CritiqueFindingDispositionDecision {
         clearRequestedPresentationMode: {},
         clearPendingSourceLine: {},
         clearPendingSourceRange: {},
-        createDiscussion: { _, _ in throw CancellationError() },
-        createComment: { _, _, _, _ in throw CancellationError() },
-        reloadDiscussion: { _ in nil },
-        loadDiscussionAgentInstructions: { _ in throw CancellationError() },
-        refreshDiscussionProjection: {},
-        endDiscussion: { _ in throw CancellationError() },
-        clearRequestedDiscussion: {},
-        copyDiscussionRequest: { _ in },
         rememberScrollPosition: { _ in },
         openInternalLink: { _ in },
         openExternalURL: { _ in },
@@ -2517,7 +1727,6 @@ private extension CritiqueFindingDispositionDecision {
         setPendingSourceLine: { _ in },
         setSidebarVisible: { _ in },
         editProperties: {},
-        openResearchAction: { _, _ in },
         setResearchInspectorVisible: { _ in },
         openingDocumentPresentationDidComplete: {},
         notify: { _, _ in }

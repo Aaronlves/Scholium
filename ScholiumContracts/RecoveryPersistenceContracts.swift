@@ -25,22 +25,19 @@ public struct SystemTrashDeletionSourceReceipt: Codable, Hashable, Sendable {
 }
 
 /// Durable forward-only evidence for native system-Trash moves followed by
-/// cleanup of temporary application state that cannot outlive the source.
+/// cleanup of portable application state that cannot outlive the source.
 public struct SystemTrashDeletionPlan: Codable, Hashable, Sendable {
     public let preview: SystemTrashDeletionPreview
     public let sourceReceipts: [SystemTrashDeletionSourceReceipt]
-    public let removedDiscussionIDs: [UUID]
 
     public init(
         preview: SystemTrashDeletionPreview,
-        sourceReceipts: [SystemTrashDeletionSourceReceipt]? = nil,
-        removedDiscussionIDs: [UUID] = []
+        sourceReceipts: [SystemTrashDeletionSourceReceipt]? = nil
     ) {
         self.preview = preview
         self.sourceReceipts = sourceReceipts ?? preview.sources.map {
             SystemTrashDeletionSourceReceipt(targetID: $0.id, progress: .pending)
         }
-        self.removedDiscussionIDs = removedDiscussionIDs.sorted { $0.uuidString < $1.uuidString }
     }
 
     public var id: UUID { preview.id }

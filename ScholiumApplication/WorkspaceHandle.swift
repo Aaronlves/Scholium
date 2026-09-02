@@ -14,15 +14,10 @@ struct WorkspaceServices: Sendable {
     let sourceCatalogs: [UUID: VaultSourceCatalog]
     let searchIndex: TriptychSearchIndex
     let controlStore: TriptychControlStore
-    let researchConfigurationStore: ResearchConfigurationStore
-    let researchAgentSessions: ResearchAgentSessionAuthority?
-    let researchSourceAccessStore: ResearchSourceAccessStore
     let indexedAttachmentAccessStore: IndexedAttachmentAccessStore
     let zotero: ZoteroOperations
-    let portableResearchRecordStore: PortableResearchRecordStore
-    let localResearchExecutionStore: LocalResearchExecutionStore
-    let agentAnalysisCreationReservationStore: AgentAnalysisCreationReservationStore
-    let agentChangeEvidenceStore: AgentChangeEvidenceStore
+    let settlementStore: SettlementStore
+    let agentChangeStore: AgentChangeStore
     let critiqueRegistry: CritiqueRegistry
     let transactionRecoveryStore: TriptychMutationRecoveryStore
     let identityRecoveryCoordinator: NoteIdentityRecoveryCoordinator
@@ -91,20 +86,6 @@ private enum DocumentSaveCompletion: Equatable {
     case sourceOnly
 }
 
-struct ResearchDocumentSaveTransaction: Sendable {
-    let runID: UUID
-    let operationID: UUID
-    let target: ResearchWriteTargetHandle
-    let noteID: UUID
-    let role: ResearchActionTargetRole
-}
-
-enum ResearchDocumentSaveOutcome: Sendable {
-    case committed(WorkspaceMutationOutcome<SaveResult>)
-    case notWritten(VaultSaveNotWrittenReason)
-    case recoveryRequired(TriptychMutationRecoveryRecord)
-}
-
 private enum DocumentSaveOperationOutcome: Sendable {
     case committed(WorkspaceMutationOutcome<SaveResult>)
     case notWritten(VaultSaveNotWrittenReason)
@@ -115,7 +96,7 @@ enum RefreshPublication: Sendable {
     case sourceCommitted(VaultQualifiedNoteID, WorkspaceSourceCommitKind)
     case explicit
     case liveInventory
-    case researchRecords
+    case researchState
     case runtimeReloaded
 }
 
@@ -174,7 +155,7 @@ enum SourceCatalogPreparation: Sendable {
             .delta([id.vaultID: VaultSourceCatalogDelta(
                 upserts: [id.relativePath]
             )])
-        case .liveInventory, .researchRecords:
+        case .liveInventory, .researchState:
             .none
         case .explicit, .runtimeReloaded:
             .fullReconcile
@@ -275,8 +256,8 @@ private struct WorkspaceRefreshPayload: Sendable {
         _ publications: [RefreshPublication]
     ) -> RefreshPublication {
         if publications.allSatisfy({
-            if case .researchRecords = $0 { true } else { false }
-        }) { return .researchRecords }
+            if case .researchState = $0 { true } else { false }
+        }) { return .researchState }
         if publications.allSatisfy({
             if case .liveInventory = $0 { true } else { false }
         }) { return .liveInventory }
@@ -380,15 +361,6 @@ func sourceAuthorizedFolderNoteMoves(
 /// Per-Triptych application boundary shared by every consumer of a runtime.
 /// The actor borrows the runtime's identity-pooled vault authorities and owns
 /// only the Triptych-level composition, snapshots, and publication lifetime.
-struct AgentAnalysisStartInFlight: Sendable {
-    let token: UUID
-    let startRequestFingerprint: DocumentFingerprint
-    let task: Task<(
-        preparation: ResearchActionPreparation,
-        target: ResearchActionNoteSnapshot
-    ), Error>
-}
-
 public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     private nonisolated static let refreshLogger = Logger(
         subsystem: "com.scholium.app",
@@ -407,23 +379,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     public nonisolated let discovery: DiscoveryOperations
     public nonisolated let research: ResearchOperations
     public nonisolated let zoteroBindings: ZoteroBindingOperations
+    public nonisolated let agentCollaboration: AgentCollaborationOperations
 
     let services: WorkspaceServices
-    let researchContinuationDependencies:
-        WorkspaceResearchContinuationDependencies
-    let researchWorkspaceDependencies:
-        WorkspaceResearchOperationsDependencies
-    let researchBoundedWriteDependencies:
-        WorkspaceResearchBoundedWriteDependencies
-    let researchAgentDiscussionDependencies:
-        WorkspaceResearchAgentDiscussionDependencies
-    let researchAgentConnectionDependencies:
-        WorkspaceResearchAgentConnectionDependencies
-    let researchAgentResultDependencies:
-        WorkspaceResearchAgentResultDependencies
-    let researchActionResolverDependencies:
-        WorkspaceResearchActionResolverDependencies
-    let researchActionRunCoordinator: ResearchActionRunCoordinator
     private let leases: [SecurityScopeLease]
     var currentSnapshot: WorkspaceSnapshot
     private(set) var latestRefreshMeasurement: WorkspaceRefreshMeasurement
@@ -451,24 +409,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     private var sourceAheadIdentityRecords: [VaultQualifiedNoteID: NoteIdentityRecord] = [:]
     private var pendingLiveEvents: [UUID: VaultWatchEventJournal] = [:]
     var sourceOperationGate = WorkspaceSourceOperationGate()
-    var agentAnalysisStartsInFlight: [UUID: AgentAnalysisStartInFlight] = [:]
     private var managedCreationPreLeaseBarrierForTesting:
         (@Sendable () async -> Void)?
     private var managedCreationPostSourceBarrierForTesting:
         (@Sendable () async -> Void)?
-    var researchCreationRecoveryObservationBarrierForTesting:
-        (@Sendable () async -> Void)?
-    private var researchDocumentSavePreflightBarrierForTesting:
-        (@Sendable () async -> Void)?
-    var researchActionControlledObservationBarrierForTesting:
-        (@Sendable () async -> Void)?
     private var progressiveActivationReconciliationBarrierForTesting:
-        (@Sendable () async -> Void)?
-    private var researchStateRepairBarrierForTesting:
-        (@Sendable () async throws -> Void)?
-    var agentStartPostBindingBarrierForTesting:
-        (@Sendable () async throws -> Void)?
-    var researchActivityPostInstallBarrierForTesting:
         (@Sendable () async -> Void)?
     private var didCompleteActivationReconciliation = false
 
@@ -484,47 +429,12 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         managedCreationPostSourceBarrierForTesting = barrier
     }
 
-    func setResearchCreationRecoveryObservationBarrierForTesting(
-        _ barrier: (@Sendable () async -> Void)?
-    ) {
-        researchCreationRecoveryObservationBarrierForTesting = barrier
-    }
-
-    func setResearchDocumentSavePreflightBarrierForTesting(
-        _ barrier: (@Sendable () async -> Void)?
-    ) {
-        researchDocumentSavePreflightBarrierForTesting = barrier
-    }
-
-    func setResearchActionControlledObservationBarrierForTesting(
-        _ barrier: (@Sendable () async -> Void)?
-    ) {
-        researchActionControlledObservationBarrierForTesting = barrier
-    }
-
     func setProgressiveActivationReconciliationBarrierForTesting(
         _ barrier: (@Sendable () async -> Void)?
     ) {
         progressiveActivationReconciliationBarrierForTesting = barrier
     }
 
-    func setResearchStateRepairBarrierForTesting(
-        _ barrier: (@Sendable () async throws -> Void)?
-    ) {
-        researchStateRepairBarrierForTesting = barrier
-    }
-
-    func setAgentStartPostBindingBarrierForTesting(
-        _ barrier: (@Sendable () async throws -> Void)?
-    ) {
-        agentStartPostBindingBarrierForTesting = barrier
-    }
-
-    func setResearchActivityPostInstallBarrierForTesting(
-        _ barrier: (@Sendable () async -> Void)?
-    ) {
-        researchActivityPostInstallBarrierForTesting = barrier
-    }
     private init(
         assignment: TriptychAssignment,
         mode: WorkspaceConfigurationMode,
@@ -534,11 +444,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         initialRefreshMeasurement: WorkspaceRefreshMeasurement,
         initialWorkspaceGeneration: UInt64,
         reference: WorkspaceHandleReference,
-        researchActionRunCoordinator: ResearchActionRunCoordinator,
         documents: DocumentOperations,
         discovery: DiscoveryOperations,
         research: ResearchOperations,
-        zoteroBindings: ZoteroBindingOperations
+        zoteroBindings: ZoteroBindingOperations,
+        agentCollaboration: AgentCollaborationOperations
     ) {
         id = assignment.id
         runtimeIdentity = TriptychRuntimeIdentity(
@@ -548,14 +458,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         self.assignment = assignment
         self.mode = mode
         self.services = services
-        self.researchContinuationDependencies = services.researchContinuationDependencies
-        self.researchWorkspaceDependencies = services.researchWorkspaceDependencies
-        self.researchBoundedWriteDependencies = services.researchBoundedWriteDependencies
-        self.researchAgentDiscussionDependencies = services.researchAgentDiscussionDependencies
-        self.researchAgentConnectionDependencies = services.researchAgentConnectionDependencies
-        self.researchAgentResultDependencies = services.researchAgentResultDependencies
-        self.researchActionResolverDependencies = services.researchActionResolverDependencies
-        self.researchActionRunCoordinator = researchActionRunCoordinator
         self.leases = leases
         currentSnapshot = initialSnapshot
         latestRefreshMeasurement = initialRefreshMeasurement
@@ -563,6 +465,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         self.discovery = discovery
         self.research = research
         self.zoteroBindings = zoteroBindings
+        self.agentCollaboration = agentCollaboration
         events = WorkspaceEventSource(initialSnapshot: initialSnapshot)
         refreshCoordinator = WorkspaceRefreshCoordinator(
             startingAfter: initialWorkspaceGeneration
@@ -583,7 +486,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         windowSessionStore: WindowSessionSnapshotStore,
         vaultPool: WorkspaceVaultPool,
         zotero: ZoteroOperations,
-        researchAgentSessions: ResearchAgentSessionAuthority?,
         access: WorkspaceAccessConfiguration,
         openingVault: WorkspaceVaultSlot? = nil
     ) async throws -> WorkspaceHandle {
@@ -655,26 +557,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 }
             }
 
-            let researchConfigurationStore = ResearchConfigurationStore(
-                controlURL: controlURL,
-                triptychID: assignment.id,
-                machineStorageURL: triptychStorage
-                    .appendingPathComponent("research-guidance", isDirectory: true)
-            )
-            do {
-                try await researchConfigurationStore.bootstrapDefaults()
-            } catch let error as ResearchConfigurationStoreError {
-                switch error {
-                case .invalidDocument:
-                    throw ScholiumApplicationError.portableControlRecoveryRequired(
-                        controlPath: controlURL.path,
-                        reason: error.localizedDescription
-                    )
-                default:
-                    throw error
-                }
-            }
-
             let vaultIDs = Dictionary(uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map {
                 ($0, assignment.triptych.vaultID(for: $0))
             })
@@ -732,21 +614,12 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             }
             let initialWorkspaceGeneration = priorWorkspaceGeneration + 1
 
-            let portableResearchRecordStore = try PortableResearchRecordStore(
+            let settlementStore = try SettlementStore(
                 controlURL: controlURL,
                 applicationSupportURL: applicationSupportURL,
                 triptychID: manifest.id
             )
-            let localResearchExecutionStore = try LocalResearchExecutionStore(
-                applicationSupportURL: applicationSupportURL,
-                triptychID: manifest.id
-            )
-            let agentAnalysisCreationReservationStore = try
-                AgentAnalysisCreationReservationStore(
-                    applicationSupportURL: applicationSupportURL,
-                    triptychID: manifest.id
-                )
-            let agentChangeEvidenceStore = try AgentChangeEvidenceStore(
+            let agentChangeStore = try AgentChangeStore(
                 applicationSupportURL: applicationSupportURL,
                 triptychID: manifest.id
             )
@@ -765,22 +638,13 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 }),
                 searchIndex: openedSearchIndex.index,
                 controlStore: controlStore,
-                researchConfigurationStore: researchConfigurationStore,
-                researchAgentSessions: researchAgentSessions,
-                researchSourceAccessStore: ResearchSourceAccessStore(
-                    applicationSupportURL: applicationSupportURL,
-                    triptychID: manifest.id
-                ),
                 indexedAttachmentAccessStore: try IndexedAttachmentAccessStore(
                     applicationSupportURL: applicationSupportURL,
                     triptychID: manifest.id
                 ),
                 zotero: zotero,
-                portableResearchRecordStore: portableResearchRecordStore,
-                localResearchExecutionStore: localResearchExecutionStore,
-                agentAnalysisCreationReservationStore:
-                    agentAnalysisCreationReservationStore,
-                agentChangeEvidenceStore: agentChangeEvidenceStore,
+                settlementStore: settlementStore,
+                agentChangeStore: agentChangeStore,
                 critiqueRegistry: critiqueRegistry,
                 transactionRecoveryStore: transactionRecoveryStore,
                 identityRecoveryCoordinator: NoteIdentityRecoveryCoordinator(
@@ -827,41 +691,21 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     workspaceGeneration: initialWorkspaceGeneration
                 )
             }
-            let repairedInitialBuild = try await WorkspaceResearchStateReconciler
-                .repairBeforePublication(
-                    build: initialBuild,
-                    triptychID: assignment.id,
-                    dependencies: services.researchStateReconcilerDependencies
-                )
             let snapshotReady = clock.now
-            let initialSnapshot = repairedInitialBuild.snapshot
-            logRefresh(repairedInitialBuild.measurement, publicationDuration: nil)
+            let initialSnapshot = initialBuild.snapshot
+            logRefresh(initialBuild.measurement, publicationDuration: nil)
             try Task.checkCancellation()
             let reference = WorkspaceHandleReference(workspaceID: assignment.id)
             let documentOperations = DocumentOperations(reference: reference)
             let discoveryOperations = DiscoveryOperations(reference: reference)
-            let researchActionRunCoordinator = ResearchActionRunCoordinator(
-                workspaceID: assignment.id,
-                dependencies: ResearchActionRunCoordinatorDependencies(
-                    repositories: services.repositories,
-                    vaults: Dictionary(uniqueKeysWithValues: assignment.vaults.values.map {
-                        ($0.id, $0)
-                    }),
-                    controlStore: services.controlStore,
-                    researchConfigurationStore: services.researchConfigurationStore,
-                    sourceAccessStore: services.researchSourceAccessStore,
-                    portableResearchRecordStore: services.portableResearchRecordStore,
-                    localExecutionStore: services.localResearchExecutionStore,
-                    agentChangeEvidenceStore: services.agentChangeEvidenceStore,
-                    zotero: services.zotero
-                )
-            )
             let researchOperations = ResearchOperations(
                 reference: reference,
-                actionRunCoordinator: researchActionRunCoordinator,
                 recoveryRecordsURL: services.transactionRecoveryStore.storageURL
             )
             let zoteroBindingOperations = ZoteroBindingOperations(
+                reference: reference
+            )
+            let agentCollaborationOperations = AgentCollaborationOperations(
                 reference: reference
             )
             let handle = WorkspaceHandle(
@@ -870,14 +714,14 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 services: services,
                 leases: leases,
                 initialSnapshot: initialSnapshot,
-                initialRefreshMeasurement: repairedInitialBuild.measurement,
+                initialRefreshMeasurement: initialBuild.measurement,
                 initialWorkspaceGeneration: initialWorkspaceGeneration,
                 reference: reference,
-                researchActionRunCoordinator: researchActionRunCoordinator,
                 documents: documentOperations,
                 discovery: discoveryOperations,
                 research: researchOperations,
-                zoteroBindings: zoteroBindingOperations
+                zoteroBindings: zoteroBindingOperations,
+                agentCollaboration: agentCollaborationOperations
             )
             await reference.bind(handle)
             if case .live = access {
@@ -973,9 +817,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     public func shutdown() async {
         guard !isShutDown else { return }
         isShutDown = true
-        let agentAnalysisStarts = agentAnalysisStartsInFlight.values.map(\.task)
-        agentAnalysisStartsInFlight.removeAll()
-        agentAnalysisStarts.forEach { $0.cancel() }
         let sourceCommitRefresh = sourceCommitRefreshTask
         sourceCommitRefreshTask = nil
         pendingSourceCommitRefreshes.removeAll()
@@ -997,7 +838,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         await openingCompletion?.value
         await refresh?.value
         await sourceCommitRefresh?.value
-        for task in agentAnalysisStarts { _ = await task.result }
         await events.finish(finalSnapshot: currentSnapshot)
         for lease in leases.reversed() where lease.started {
             lease.url.stopAccessingSecurityScopedResource()
@@ -1385,8 +1225,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         )
     }
 
-    /// The sole managed creator for GUI, researcher CLI, and authenticated
-    /// Agent delivery. It composes one fixed authored-YAML scaffold and one
+    /// The sole managed creator for GUI, researcher CLI, and MCP delivery. It
+    /// composes one fixed authored-YAML scaffold and one
     /// complete candidate, atomically claims the path, and then commits the
     /// portable stable identity before publishing a source-ahead result.
     func createManagedNote(
@@ -1410,12 +1250,13 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         switch request.authority {
         case .researcher:
             reservedIdentity = UUID()
-        case .authenticatedAgent(let identity):
+        case .mcp(let identity):
             reservedIdentity = identity
         }
-        let initialSource = try managedCreationSource(
-            request: request,
-            slot: slot
+        let registeredVault = try vault(id: request.vaultID)
+        let initialSource = try ManagedNoteSourceBuilder.source(
+            for: request,
+            vaultRole: registeredVault.role
         )
         let metadataCatalog = try await services.controlStore.metadataCatalog()
         let initialMetadataFields = try managedCreationMetadataFields(
@@ -1424,7 +1265,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             catalog: metadataCatalog
         )
         let repository = try repository(vaultID: request.vaultID)
-        let registeredVault = try vault(id: request.vaultID)
 
         var ordinal = 1
         while true {
@@ -1621,56 +1461,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         }
     }
 
-    func managedCreationSource(
-        request: ManagedNoteCreationRequest,
-        slot: WorkspaceVaultSlot
-    ) throws -> String {
-        let authored: AuthoredNoteYAML
-        if let supplied = request.authoredYAML {
-            authored = supplied
-        } else {
-            authored = try AuthoredNoteYAML()
-        }
-        let summarySource: String
-        if let summary = authored.summary {
-            summarySource = try FrontmatterPatchPlanner.serializeTopLevelMapping([
-                (key: "summary", value: .string(summary)),
-            ])
-        } else {
-            summarySource = "summary: null\n"
-        }
-        let keywordsSource = try FrontmatterPatchPlanner.serializeTopLevelMapping([
-            (key: "keywords", value: .array(authored.keywords)),
-        ])
-        let source = "---\n" + summarySource + keywordsSource + "---\n" + request.body
-        let document = NoteDocument(relativePath: "Managed Creation.md", rawContent: source)
-        guard document.frontmatterState != .malformed else {
-            throw DocumentCreationError.invalidMetadata(
-                PropertyContractCatalog.validate(
-                    document,
-                    profile: Self.schemaProfile(for: slot)
-                )
-            )
-        }
-        let nonemptyAuthoredValues = document.parsedFrontmatter.filter { _, value in
-            switch value {
-            case .null: false
-            case .array(let values): !values.isEmpty
-            case .string(let value): !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            case .object(let values): !values.isEmpty
-            case .integer, .double, .boolean: true
-            }
-        }
-        let issues = PropertyContractCatalog.validate(
-            frontmatter: nonemptyAuthoredValues,
-            profile: Self.schemaProfile(for: slot)
-        )
-        guard issues.isEmpty else {
-            throw DocumentCreationError.invalidMetadata(issues)
-        }
-        return source
-    }
-
     func managedCreationMetadataFields(
         request: ManagedNoteCreationRequest,
         slot: WorkspaceVaultSlot,
@@ -1707,10 +1497,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             }
             return values
         } else {
-            if slot == .paperAnalysis,
-               case .authenticatedAgent = request.authority {
-                throw DocumentCreationError.missingAgentAnalysisMetadata
-            }
             return nil
         }
     }
@@ -1814,7 +1600,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     }
 
     /// Claims one default directory name. The returned path is a location, not
-    /// a new portable identity or research record.
+    /// a new portable identity or source mutation.
     func createUntitledFolder(
         inVault vaultID: UUID,
         parentRelativePath: String?
@@ -2077,8 +1863,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             id,
             changeSet: changeSet,
             expectedRevision: expectedRevision,
-            completion: .sourceAndDerived,
-            researchWrite: nil
+            completion: .sourceAndDerived
         ) {
         case .committed(let outcome):
             return outcome
@@ -2178,8 +1963,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             id,
             changeSet: changeSet,
             expectedRevision: expectedRevision,
-            completion: .sourceOnly,
-            researchWrite: nil
+            completion: .sourceOnly
         ) {
         case .committed(let outcome):
             return outcome.committedValue
@@ -2190,31 +1974,11 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         }
     }
 
-    func saveResearchDocument(
-        _ id: VaultQualifiedNoteID,
-        changeSet: NoteChangeSet,
-        expectedRevision: DocumentFingerprint,
-        transaction: ResearchDocumentSaveTransaction
-    ) async throws -> ResearchDocumentSaveOutcome {
-        switch try await performDocumentSave(
-            id,
-            changeSet: changeSet,
-            expectedRevision: expectedRevision,
-            completion: .sourceAndDerived,
-            researchWrite: transaction
-        ) {
-        case .committed(let outcome): .committed(outcome)
-        case .notWritten(let reason): .notWritten(reason)
-        case .recoveryRequired(let record): .recoveryRequired(record)
-        }
-    }
-
     private func performDocumentSave(
         _ id: VaultQualifiedNoteID,
         changeSet: NoteChangeSet,
         expectedRevision: DocumentFingerprint,
-        completion: DocumentSaveCompletion,
-        researchWrite: ResearchDocumentSaveTransaction?
+        completion: DocumentSaveCompletion
     ) async throws -> DocumentSaveOperationOutcome {
         try requireActive()
         let mutationLease = try await beginSourceMutation()
@@ -2223,19 +1987,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             if ownsMutation { endSourceMutation(mutationLease) }
         }
         let repository = try repository(vaultID: id.vaultID)
-        if let researchWrite {
-            if let barrier = researchDocumentSavePreflightBarrierForTesting {
-                await barrier()
-            }
-            guard Self.vaultRole(for: researchWrite.role)
-                    == (try vault(id: id.vaultID).role),
-                  let identity = try await services.controlStore.identityRecord(
-                    vaultID: id.vaultID,
-                    relativePath: id.relativePath
-                  ), identity.id == researchWrite.noteID else {
-                return .notWritten(.targetIdentityChanged)
-            }
-        }
         let save = try await repository.saveOutcome(
             relativePath: id.relativePath,
             changeSet: changeSet,
@@ -2250,8 +2001,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 expectedRevision: expectedRevision,
                 intendedRevision: sourceRecovery.candidateRevision,
                 repository: repository,
-                sourceRecovery: sourceRecovery,
-                researchWrite: researchWrite,
                 failure: sourceRecovery.retainedReason,
                 detail: "The coordinated save could not prove the canonical result. The exact source transaction remains machine-local for reconciliation."
             )
@@ -2290,16 +2039,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         expectedRevision: DocumentFingerprint,
         intendedRevision: DocumentFingerprint?,
         repository: VaultRepository,
-        sourceRecovery: InterruptedSaveRecovery? = nil,
-        researchWrite: ResearchDocumentSaveTransaction? = nil,
         failure: String,
         detail: String
     ) async throws -> TriptychMutationRecoveryRecord {
-        guard researchWrite == nil || sourceRecovery != nil else {
-            throw TriptychTransactionError.invalidPlan(
-                "An Agent write recovery record requires its exact source transaction."
-            )
-        }
         let observed = try? await repository.load(relativePath: id.relativePath).fingerprint
         let state: TriptychMutationRecoveryState
         if let observed {
@@ -2326,15 +2068,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 observedRevision: observed,
                 state: state,
                 detail: detail
-            )],
-            researchWrite: researchWrite.map {
-                ResearchWriteRecoveryReference(
-                    runID: $0.runID,
-                    operationID: $0.operationID,
-                    target: $0.target,
-                    sourceRecoveryID: sourceRecovery!.id
-                )
-            }
+            )]
         )
         do {
             try await services.transactionRecoveryStore.record(record)
@@ -2360,16 +2094,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             .invalidFrontmatter(message)
         case .atomicCommitUnsupported(let message):
             .atomicCommitUnsupported(message)
-        }
-    }
-
-    private static func vaultRole(
-        for role: ResearchActionTargetRole
-    ) -> VaultRole {
-        switch role {
-        case .analysis: .sourceCorpus
-        case .topic: .topicKnowledge
-        case .work: .draftProject
         }
     }
 
@@ -2436,21 +2160,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         )
     }
 
-    func archiveUnsupportedLocalResearchExecutions(
-        _ preview: LocalResearchExecutionRecoveryPreview
-    ) async throws -> LocalResearchExecutionArchiveCommit {
-        try requireActive()
-        guard preview.triptychID == services.manifest.id else {
-            throw LocalResearchExecutionStoreError.unsafeStore(
-                "The local execution recovery preview belongs to another Triptych."
-            )
-        }
-        let mutationLease = try await beginSourceMutation()
-        defer { endSourceMutation(mutationLease) }
-        return try await services.localResearchExecutionStore
-            .archiveUnsupportedExecutions(preview)
-    }
-
     func moveToSystemTrash(
         _ preview: SystemTrashDeletionPreview
     ) async throws -> WorkspaceMutationOutcome<SystemTrashDeletionCommit> {
@@ -2515,9 +2224,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             repository: repository,
             critiqueRegistry: services.critiqueRegistry,
             controlStore: services.controlStore,
-            recoveryStore: services.transactionRecoveryStore,
-            portableRecordStore: services.portableResearchRecordStore,
-            localExecutionStore: services.localResearchExecutionStore
+            recoveryStore: services.transactionRecoveryStore
         )
     }
 
@@ -2587,7 +2294,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 expectedRevision: sourceRecovery.expectedRevision,
                 intendedRevision: sourceRecovery.candidateRevision,
                 repository: repository,
-                sourceRecovery: sourceRecovery,
                 failure: failure,
                 detail: "Interrupted-save recovery could not prove both canonical and displaced bytes. The candidate and every available source revision remain machine-local for inspection."
             )
@@ -2641,9 +2347,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 repository: repository,
                 critiqueRegistry: services.critiqueRegistry,
                 controlStore: services.controlStore,
-                recoveryStore: services.transactionRecoveryStore,
-                portableRecordStore: services.portableResearchRecordStore,
-                localExecutionStore: services.localResearchExecutionStore
+                recoveryStore: services.transactionRecoveryStore
             )
             do {
                 try await coordinator.recoverInterruptedTransactions()
@@ -2782,15 +2486,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 workspaceGeneration: workspaceGeneration,
                 noteMetadataByID: metadataByID
             )
-            try await researchStateRepairBarrierForTesting?()
-            let repairedBuild = try await WorkspaceResearchStateReconciler
-                .repairBeforePublication(
-                    build: build,
-                    triptychID: assignment.id,
-                    dependencies: services.researchStateReconcilerDependencies
-                )
-            snapshot = repairedBuild.snapshot
-            measurement = repairedBuild.measurement
+            snapshot = build.snapshot
+            measurement = build.measurement
             latestRefreshMeasurement = measurement
         } catch {
             for catalog in services.sourceCatalogs.values {
@@ -2943,8 +2640,8 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 changed: changes.changed,
                 moved: changes.moved
             )
-        case .researchRecords:
-            await events.publishResearchRecordsChanged(snapshot: snapshot)
+        case .researchState:
+            await events.publishResearchStateChanged(snapshot: snapshot)
         case .runtimeReloaded:
             await events.publishRuntimeReloaded(
                 runtimeIdentity: runtimeIdentity,
@@ -3571,96 +3268,52 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 throw ScholiumApplicationError.workspaceStillLoading(id)
             }
         }
-        switch ast.provider {
-        case .note:
-            if case .currentNote = request.executionScope,
-               ast.clauses.contains(where: { clause in
-                   switch clause {
-                   case .structured, .property, .relation: true
-                   case .lexical, .record: false
-                   }
-               }) {
-                return await searchDiagnosticResponse(
-                    request: request,
-                    parsed: SearchQueryParseResult(
-                        provider: .note,
-                        providerWasExplicit: ast.providerWasExplicit,
-                        ast: ast,
-                        diagnostics: [SearchQueryDiagnostic(
-                            code: .notApplicable,
-                            message: "Structured fields, Metadata, and direct relation clauses are not applicable to This Note occurrence Search.",
-                            utf16LowerBound: 0,
-                            utf16UpperBound: request.query.utf16.count
-                        )]
-                    )
+        if case .currentNote = request.executionScope,
+           ast.clauses.contains(where: { clause in
+               switch clause {
+               case .structured, .property, .relation: true
+               case .lexical: false
+               }
+           }) {
+            return await searchDiagnosticResponse(
+                request: request,
+                parsed: SearchQueryParseResult(
+                    provider: .note,
+                    providerWasExplicit: ast.providerWasExplicit,
+                    ast: ast,
+                    diagnostics: [SearchQueryDiagnostic(
+                        code: .notApplicable,
+                        message: "Structured fields, Metadata, and direct relation clauses are not applicable to This Note occurrence Search.",
+                        utf16LowerBound: 0,
+                        utf16UpperBound: request.query.utf16.count
+                    )]
                 )
-            }
-            let relation = NoteRelationSearchResolver.resolve(
-                ast: ast,
-                scope: request.executionScope,
-                catalog: currentSnapshot.discovery.catalog,
-                searchGeneration: currentSnapshot.discovery.searchGeneration
             )
-            if let diagnostic = relation.diagnostic {
-                return await searchDiagnosticResponse(
-                    request: request,
-                    parsed: SearchQueryParseResult(
-                        provider: .note,
-                        providerWasExplicit: ast.providerWasExplicit,
-                        ast: ast,
-                        diagnostics: [diagnostic]
-                    )
-                )
-            }
-            let response = try await services.searchIndex.search(
-                request,
-                ast: ast,
-                relationshipMatches: relation.matches,
-                eligibleDocuments: openingSearchEligibility(for: request)
-            )
-            return openingVaultSearchResponse(response, request: request)
-
-        case .record:
-            return try searchRecords(request, ast: ast)
         }
-    }
-
-    /// Rebuilds the Record query projection from the current immutable
-    /// snapshot. `search(_:)` has already validated the resolved scope before
-    /// parsing or dispatching to this provider.
-    func searchRecords(
-        _ request: SearchRequest,
-        ast: SearchQueryAST
-    ) throws -> SearchResponse {
-        try requireActive()
-        guard currentSnapshot.phase.isComplete else {
-            throw ScholiumApplicationError.workspaceStillLoading(id)
-        }
-        precondition(ast.provider == .record)
-        let index = ResearchRecordSearchIndex(
-            triptychID: assignment.id,
-            research: currentSnapshot.research,
-            catalog: currentSnapshot.discovery.catalog
-        )
-        let execution = try index.search(
+        let relation = NoteRelationSearchResolver.resolve(
             ast: ast,
             scope: request.executionScope,
-            limit: request.limit,
-            offset: request.resultOffset,
-            sort: request.resolvedRecordSort,
-            topLevelOnly: request.recordSort != nil
+            catalog: currentSnapshot.discovery.catalog,
+            searchGeneration: currentSnapshot.discovery.searchGeneration
         )
-        return SearchResponse(
-            requestID: request.id,
-            scope: request.presentationScope,
-            explanation: ast.explanation(scope: request.presentationScope),
-            freshnessToken: .record(execution.generation),
-            availability: .record(execution.availability),
-            results: execution.results.map(SearchResult.record),
-            hasMore: execution.hasMore,
-            totalResultCount: execution.totalResultCount,
-            diagnostics: execution.diagnostics
+        if let diagnostic = relation.diagnostic {
+            return await searchDiagnosticResponse(
+                request: request,
+                parsed: SearchQueryParseResult(
+                    provider: .note,
+                    providerWasExplicit: ast.providerWasExplicit,
+                    ast: ast,
+                    diagnostics: [diagnostic]
+                )
+            )
+        }
+        let response = try await services.searchIndex.search(
+            request,
+            ast: ast,
+            relationshipMatches: relation.matches,
+            eligibleDocuments: openingSearchEligibility(for: request)
         )
+        return openingVaultSearchResponse(response, request: request)
     }
 
     private func searchScopeDiagnostic(
@@ -3675,6 +3328,16 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             )
         }
         let authorizedVaultIDs = Set(assignment.vaults.values.map(\.id))
+        if let includedVaultIDs = request.includedVaultIDs,
+           includedVaultIDs.isEmpty
+                || !Set(includedVaultIDs).isSubset(of: authorizedVaultIDs) {
+            return SearchQueryDiagnostic(
+                code: .notApplicable,
+                message: "The selected Search vault subset is empty or outside this Triptych.",
+                utf16LowerBound: 0,
+                utf16UpperBound: 0
+            )
+        }
         switch request.executionScope {
         case .triptych:
             return nil
@@ -3717,46 +3380,20 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         request: SearchRequest,
         parsed: SearchQueryParseResult
     ) async -> SearchResponse {
-        let availability: SearchProviderAvailability
+        let noteAvailability = await services.searchIndex.availability()
+        let availability = SearchProviderAvailability.note(noteAvailability)
         let freshness: SearchFreshnessToken
-        switch parsed.provider {
-        case .note:
-            let noteAvailability = await services.searchIndex.availability()
-            availability = .note(noteAvailability)
-            switch request.executionScope {
-            case .currentNote(let source):
-                freshness = .currentNote(source)
-            case .currentVault, .triptych:
-                if let generation = noteAvailability.lastGoodGeneration {
-                    freshness = .triptych(generation)
-                } else {
-                    freshness = SearchFreshnessToken(
-                        "triptych:\(id.uuidString.lowercased()):unavailable"
-                    )
-                }
-            }
-        case .record:
-            guard currentSnapshot.phase.isComplete else {
-                availability = .record(.unavailable)
-                freshness = SearchFreshnessToken(
-                    "record:\(id.uuidString.lowercased()):unavailable"
-                )
-                break
-            }
-            let generation = RecordSearchGenerationID(
-                triptychID: id,
-                sourceManifestHash:
-                    currentSnapshot.research.finishedResearchRecordSourceManifestHash
-            )
-            if currentSnapshot.research.finishedResearchRecordProjectionIsComplete {
-                availability = .record(.current(generation))
+        switch request.executionScope {
+        case .currentNote(let source):
+            freshness = .currentNote(source)
+        case .currentVault, .triptych:
+            if let generation = noteAvailability.lastGoodGeneration {
+                freshness = .triptych(generation)
             } else {
-                availability = .record(.partial(
-                    current: generation,
-                    reason: "Some portable Research Records could not be read or validated. Showing readable Records only."
-                ))
+                freshness = SearchFreshnessToken(
+                    "triptych:\(id.uuidString.lowercased()):unavailable"
+                )
             }
-            freshness = .record(generation)
         }
         let response = SearchResponse(
             requestID: request.id,
@@ -3803,10 +3440,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         request: SearchRequest
     ) -> SearchResponse {
         guard case .opening = currentSnapshot.phase,
-              case .currentVault = request.executionScope,
-              case .note(let availability) = response.availability else {
+              case .currentVault = request.executionScope else {
             return response
         }
+        let availability = response.availability.noteAvailability
         let openingAvailability: SearchAvailability = switch availability {
         case .current(let generation), .refreshing(let generation):
             .limited(lastGood: generation)
@@ -3909,7 +3546,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         do {
             try await refreshAfterCommittedOperation(
                 "The Triptych settings",
-                publication: .researchRecords
+                publication: .researchState
             )
             return WorkspaceMutationOutcome(committedValue: snapshot)
         } catch let error as ScholiumApplicationError

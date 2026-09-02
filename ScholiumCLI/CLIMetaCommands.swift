@@ -224,7 +224,6 @@ extension ScholiumCLI {
                     }.map(\.rawValue)
                 )
             },
-            platformActionCount: PlatformActionCatalog.definitions.count,
             zoteroState: context.runtime.zotero.report().state.rawValue
         )
         if format == .json {
@@ -239,7 +238,6 @@ extension ScholiumCLI {
             for triptych in report.triptychs {
                 write("  \(triptych.id.uuidString.lowercased())  \(triptych.name)  [\(triptych.roles.joined(separator: ", "))]\n")
             }
-            write("Platform Actions: \(report.platformActionCount)\n")
             write("Zotero transport: \(report.zoteroState)\n")
             if report.triptychCount == 0 {
                 write("Repair: configure Analyses, Topics, and Works in Scholium, then run doctor again.\n")
@@ -268,9 +266,8 @@ extension ScholiumCLI {
                 ? arguments[index + 1]
                 : nil
         }.first
-        let isAgentCommand = arguments.first == "agent"
         guard requestedFormat == "json" || requestedFormat == "jsonl"
-                || isAgentCommand else {
+        else {
             writeError("scholium: \(error.localizedDescription)\n")
             return
         }
@@ -282,9 +279,7 @@ extension ScholiumCLI {
             message: error.localizedDescription,
             command: commandPath.joined(separator: " "),
             help: "scholium help " + commandPath.joined(separator: " "),
-            diagnostic: searchDiagnostic(for: error),
-            recovery: (error as? any AgentCommandErrorCodeProviding)?
-                .agentCommandRecovery
+            diagnostic: searchDiagnostic(for: error)
         )
         let encoder = JSONEncoder()
         encoder.keyEncodingStrategy = .convertToSnakeCase
@@ -299,15 +294,11 @@ extension ScholiumCLI {
     }
 
     private static func errorCode(for error: Error) -> String {
-        if let structured = error as? any AgentCommandErrorCodeProviding {
-            return structured.agentCommandErrorCode
-        }
         if let cli = error as? CLIError {
             switch cli {
             case .usage: return "usage_error"
             case .invalidUTF8: return "invalid_utf8"
             case .noteNotFound: return "note_not_found"
-            case .recordNotFound: return "record_not_found"
             case .unavailable: return "unavailable"
             case .searchDiagnostic: return "search_query_diagnostic"
             }
@@ -332,7 +323,6 @@ private struct CLIDoctorReport: Encodable {
     let isolatedHome: Bool
     let triptychCount: Int
     let triptychs: [CLIDoctorTriptych]
-    let platformActionCount: Int
     let zoteroState: String
 
     private enum CodingKeys: String, CodingKey {
@@ -343,7 +333,6 @@ private struct CLIDoctorReport: Encodable {
         case isolatedHome = "isolated_home"
         case triptychCount = "triptych_count"
         case triptychs
-        case platformActionCount = "platform_action_count"
         case zoteroState = "zotero_state"
     }
 }
@@ -362,10 +351,9 @@ private struct CLIErrorReport: Encodable {
     let command: String
     let help: String
     let diagnostic: SearchQueryDiagnostic?
-    let recovery: AgentOperationRecovery?
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion = "schema_version"
-        case error, code, message, command, help, diagnostic, recovery
+        case error, code, message, command, help, diagnostic
     }
 }

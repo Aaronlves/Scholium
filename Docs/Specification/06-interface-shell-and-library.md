@@ -19,7 +19,7 @@ and Library presentation without restating those workflows.
 - Derive reading and research projections reversibly from authoritative
   Markdown. Managed Metadata remains a separate portable authority.
 - Distinguish source, researcher prose, external Agent content, Agent Changes,
-  Research Records, Settle, Critique, Connect, and diagnostics through text and
+  Settle, Critique, Connect, and diagnostics through text and
   structure, not color alone.
 - Apply §20's route applicability. Menus remain comprehensive; the toolbar stays
   bounded to frequent or high-value commands, and no toolbar command exists only
@@ -59,8 +59,7 @@ actual pane, not duplicate controls or persistent custom selection styling.
 
 The Inspector remains hideable whenever visible and showable only with a
 Target. If an already-visible Inspector loses its Document, it presents **No
-Document Selected** without stale content or automatic collapse. Research
-Records is a separate Triptych-bound window.
+Document Selected** without stale content or automatic collapse.
 
 With two or more open documents in the selected workspace, a Document-owned tab
 strip appears only in the middle plane. One window-local controller partitions
@@ -86,7 +85,7 @@ Menus follow task ownership:
 - **Edit**: editing, Find, formatting, and Edit Metadata.
 - **View**: Back/Forward, Heading Outline, Search, Document mode/text size,
   Sidebar, and Inspector.
-- **Research**: Settle, Agent Changes when present, and Triptych Records.
+- **Research**: Settle and Agent Changes when present.
 - **Window**: standard windows plus Notifications.
 - **Settings**: one searchable native list/detail window with **Application**,
   **This Triptych**, and **Research Guidance** groups.
@@ -115,7 +114,7 @@ disabled; one persistent progress status names remaining work. Search follows
 §13's explicit opening grades: current-buffer This Note Search is exact, and
 source-fingerprint-validated This Vault lexical results may remain usable under
 a nonblocking **Limited** notice. Triptych Search, Graph, Attention totals,
-Records, relations, and cross-Triptych Search remain unavailable until their complete
+relations, and cross-Triptych Search remain unavailable until their complete
 authoritative generation exists. Completion must not replace usable Library
 content or move focus.
 
@@ -160,8 +159,8 @@ disclosure names the exact count but never inserts a synthetic summary row. Each
 notification keeps at most one primary action beside one bounded More menu;
 copy is limited to its key state and Note and truncates before displacing
 operations. A Changed Since Settle reminder with Agent Changes may show
-**Review Changes**, which opens the exact temporary comparison without routing
-through Records. A non-Agent save never invents an Agent Change. Dismiss hides
+**Review Changes**, which opens the exact temporary comparison directly. A
+non-Agent save never invents an Agent Change. Dismiss hides
 only the reminder; Settle Again and Mark Unsettled remain explicit researcher
 choices in the Document Rail. The stack excludes structural Attention and
 never becomes the complete queue.
@@ -205,5 +204,5 @@ Shared Search follows §13: one compact centered surface, visible scope, bounded
 provider-specific results, typed completion, Explain Query, exact freshness,
 and distinct invalid, ambiguous, unavailable, partial, stale, and empty states.
 Completion edits visible query text only and shares one keyboard selection with
-results. A partial Record corpus keeps validated Records usable beneath a
-nonblocking limitation.
+results. The reserved Record provider remains explicitly unavailable until
+§22 defines it.

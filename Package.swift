@@ -41,11 +41,6 @@ let package = Package(
             path: "ScholiumApplication"
         ),
         .target(
-            name: "ScholiumResearchRecordsFeature",
-            dependencies: ["ScholiumContracts"],
-            path: "ScholiumResearchRecordsFeature"
-        ),
-        .target(
             name: "ScholiumCLIUpdate",
             dependencies: ["ScholiumContracts"],
             path: "ScholiumCLIUpdate"
@@ -55,7 +50,6 @@ let package = Package(
             dependencies: [
                 "ScholiumContracts",
                 "ScholiumApplication",
-                "ScholiumResearchRecordsFeature",
             ],
             path: "Scholium",
             resources: [.process("Resources")]
@@ -96,7 +90,6 @@ let package = Package(
                 "ScholiumApp",
                 "ScholiumContracts",
                 "ScholiumApplication",
-                "ScholiumResearchRecordsFeature",
             ],
             path: "Tests/ScholiumAppTests"
         ),

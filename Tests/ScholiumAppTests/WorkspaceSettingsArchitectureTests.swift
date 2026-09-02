@@ -97,8 +97,7 @@ struct WorkspaceSettingsArchitectureTests {
             "case hotkeys",
             "case metadata",
             "case attention",
-            "case skills",
-            "case actionProfiles",
+            "case agentIntegration",
             "case externalToolsCitations",
         ]
         let indices = try orderedDestinations.map { destination in
@@ -160,27 +159,22 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(source.contains("Reminder Timing for This Triptych"))
         #expect(source.contains("Dismissed Items on This Mac"))
         #expect(source.contains("Restore All Dismissed Items on This Mac"))
-        #expect(source.contains("SCHOLIUM CLI ON THIS MAC"))
         #expect(source.contains("READ-ONLY ZOTERO ON THIS MAC"))
-        #expect(source.contains("TRIPTYCH CITATION STYLE"))
+        #expect(source.contains("case agentIntegration"))
         #expect(source.contains("settingsTriptychLabel("))
         #expect(source.contains(
             ".onChange(of: settingsModel.snapshot.activeTriptychID)"
         ))
 
-        let machineIntegrationStart = try #require(
-            source.range(of: "struct AgentCLISettingsView: View")
+        let integration = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/AgentIntegrationSettingsView.swift"
+            ),
+            encoding: .utf8
         )
-        let triptychListStart = try #require(
-            source.range(
-                of: "struct WorkspaceSettingsView: View",
-                range: machineIntegrationStart.upperBound..<source.endIndex
-            )
-        )
-        let machineIntegrationSource = source[
-            machineIntegrationStart.lowerBound..<triptychListStart.lowerBound
-        ]
-        #expect(!machineIntegrationSource.contains("GroupBox"))
+        #expect(integration.contains("Copy Codex Setup Command"))
+        #expect(integration.contains("Copy Claude Setup Command"))
+        #expect(integration.contains("Show Core Protocol in Finder…"))
     }
 
     @Test("Explicit Settings save keeps the draft's frozen revision")
@@ -482,8 +476,7 @@ struct WorkspaceSettingsArchitectureTests {
         let candidate = MetadataSettingsCandidateBuilder.build(
             from: saved,
             metadataFields: saved.metadataFields,
-            aboutConfigurations: saved.about,
-            agentCreation: saved.analysisAgentCreation
+            aboutConfigurations: saved.about
         )
 
         #expect(candidate != saved)
@@ -491,38 +484,31 @@ struct WorkspaceSettingsArchitectureTests {
         try TriptychSettingsValidator.validate(candidate)
     }
 
-    @Test("Archiving a custom field prunes only its About and Agent discovery selections")
+    @Test("Archiving a custom field prunes its About selection")
     func archivedFieldPrunesDiscoverySelections() throws {
         var saved = TriptychSettings()
         saved.metadataFields[.paperAnalysis] = [
             MetadataFieldDefinition(key: "argument_stage", valueKind: .text),
         ]
         saved.about[.paperAnalysis]?.visibleFields.append("argument_stage")
-        saved.analysisAgentCreation.preferredFieldsBySourceType[.journalArticle] = [
-            "argument_stage",
-        ]
         var archivedFields = saved.metadataFields
         archivedFields[.paperAnalysis]?[0].lifecycle = .archived
 
         let candidate = MetadataSettingsCandidateBuilder.build(
             from: saved,
             metadataFields: archivedFields,
-            aboutConfigurations: saved.about,
-            agentCreation: saved.analysisAgentCreation
+            aboutConfigurations: saved.about
         )
 
         #expect(candidate.metadataFields[.paperAnalysis]?[0].lifecycle == .archived)
         #expect(candidate.about[.paperAnalysis]?.visibleFields.contains(
             "argument_stage"
         ) == false)
-        #expect(candidate.analysisAgentCreation.preferredFields(
-            for: .journalArticle
-        ).contains("argument_stage") == false)
         try TriptychSettingsValidator.validate(candidate)
         try TriptychSettingsValidator.validateTransition(from: saved, to: candidate)
     }
 
-    @Test("Metadata Settings separates definitions, Agent preferences, and About always-shown order")
+    @Test("Metadata Settings separates definitions and About always-shown order")
     func propertiesSettingsSurface() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -536,19 +522,17 @@ struct WorkspaceSettingsArchitectureTests {
         )
         let start = try #require(source.range(of: "private struct MetadataSettingsView"))
         let end = try #require(source.range(
-            of: "struct AgentCLISettingsView",
+            of: "struct WorkspaceSettingsView: View",
             range: start.upperBound..<source.endIndex
         ))
         let properties = String(source[start.lowerBound..<end.lowerBound])
 
         for section in [
             "Managed Fields",
-            "Agent-Created Analyses",
             "settingsSectionTitle(\"Always Shown in About\")",
         ] {
             #expect(properties.contains(section))
         }
-        #expect(properties.contains("Every field is optional"))
         #expect(properties.contains("Archive Field"))
         #expect(properties.contains("Restore Field"))
         #expect(properties.contains("Used in "))
@@ -558,7 +542,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(properties.contains("Move Down"))
         #expect(properties.contains("description: normalizedOptionalText"))
         #expect(properties.contains("allowedValues:"))
-        #expect(properties.contains("preferredFieldsBySourceType"))
+        #expect(!properties.contains("Agent-Created Analyses"))
         #expect(properties.contains("Existing values always appear"))
         #expect(properties.contains("Restore Always-Shown Defaults"))
         #expect(!properties.contains("Structured Editing"))
@@ -570,7 +554,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(properties.contains("hasWritableTriptychSettings"))
         #expect(properties.contains("Retry Metadata Settings"))
         #expect(properties.contains("savedSettingsRevision"))
-        #expect(properties.contains("currentAgentDiagnostic"))
+        #expect(!properties.contains("currentAgentDiagnostic"))
         #expect(properties.contains("ViewThatFits(in: .horizontal)"))
         #expect(properties.contains(".disabled(isSaving)"))
         #expect(properties.contains("candidateSettings != savedTriptychSettings"))
@@ -818,121 +802,6 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!appearanceSource.contains("SafeMarkdownReadWebView"))
     }
 
-    @Test("Research Guidance shares the one Settings sidebar")
-    func researchGuidanceUsesFrozenCategories() throws {
-        let repositoryRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let guidanceFiles = [
-            "ResearchGuidanceSettingsView.swift",
-            "ResearchMethodsSettingsView.swift",
-            "ActionProfilesSettingsView.swift",
-            "ResearchSourcesSettingsView.swift",
-        ]
-        let source = try guidanceFiles.map { fileName in
-            try String(
-                contentsOf: repositoryRoot.appendingPathComponent(
-                    "Scholium/Views/\(fileName)"
-                ),
-                encoding: .utf8
-            )
-        }.joined(separator: "\n")
-        let rootSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/ResearchGuidanceSettingsView.swift"
-            ),
-            encoding: .utf8
-        )
-        let settingsSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/WorkspaceSettingsView.swift"
-            ),
-            encoding: .utf8
-        )
-
-        #expect(!source.contains("NavigationSplitView {"))
-        #expect(!source.contains("HSplitView"))
-        for category in [
-            "Skills",
-            "Action Profiles",
-            "External Tools & Citations",
-        ] {
-            #expect(source.contains(category))
-        }
-        #expect(!source.contains("scholium.researchGuidance.categoryList"))
-        #expect(settingsSource.contains("scholium.settings.sidebarList"))
-        #expect(settingsSource.contains("ScholiumSettingsDestination.researchGuidance"))
-        #expect(settingsSource.contains("ResearchGuidanceSettingsView(category: .skills)"))
-        #expect(settingsSource.contains("ResearchGuidanceSettingsView(category: .externalToolsCitations)"))
-        #expect(!source.contains("Prompt Templates"))
-        #expect(!source.contains("card grid"))
-        #expect(rootSource.contains("ResearchMethodsSettingsView()"))
-        #expect(rootSource.contains("ActionProfilesSettingsView()"))
-        #expect(!rootSource.contains("private struct WorkingMethodEditorContext"))
-        #expect(!rootSource.contains("private struct ResearchActionProfileEditorView"))
-    }
-
-    @Test("Research Guidance collection rows share one presentation owner")
-    func researchGuidanceCollectionRowOwnership() throws {
-        let repositoryRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let rootSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/ResearchGuidanceSettingsView.swift"
-            ),
-            encoding: .utf8
-        )
-        let componentSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/UI/Foundation/ScholiumSettingsPresentation.swift"
-            ),
-            encoding: .utf8
-        )
-        let methodsSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/ResearchMethodsSettingsView.swift"
-            ),
-            encoding: .utf8
-        )
-        let profilesSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/ActionProfilesSettingsView.swift"
-            ),
-            encoding: .utf8
-        )
-        #expect(componentSource.contains("func researchSettingsCollectionRow<"))
-        #expect(
-            componentSource.contains(
-                "ScholiumMetrics.ResearchGuidance.collectionRowColumnSpacing"
-            )
-        )
-        #expect(
-            componentSource.contains(
-                "ScholiumMetrics.ResearchGuidance.collectionRowVerticalInset"
-            )
-        )
-        #expect(rootSource.contains("let category: ResearchGuidanceCategory"))
-        #expect(
-            methodsSource.components(
-                separatedBy: "researchSettingsCollectionRow {"
-            ).count == 2
-        )
-        #expect(
-            profilesSource.components(
-                separatedBy: "researchSettingsCollectionRow {"
-            ).count == 2
-        )
-        #expect(!methodsSource.contains("HStack(alignment: .top, spacing: 14)"))
-        #expect(!profilesSource.contains("HStack(alignment: .top, spacing: 14)"))
-        #expect(!methodsSource.contains(".padding(.vertical, 10)"))
-        #expect(!profilesSource.contains(".padding(.vertical, 10)"))
-        #expect(ScholiumMetrics.ResearchGuidance.collectionRowColumnSpacing == 14)
-        #expect(ScholiumMetrics.ResearchGuidance.collectionRowVerticalInset == 10)
-    }
-
     @Test("Settings shares one continuous editorial presentation over native controls")
     func settingsPresentationOwnership() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
@@ -1032,126 +901,6 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!settingsRootSource.contains(".frame(width: 700, height: 560"))
     }
 
-    @Test("Skills has no in-App Markdown editing surface")
-    func researchGuidanceHasNoMarkdownEditor() throws {
-        let repositoryRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let methodsSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/ResearchMethodsSettingsView.swift"
-            ),
-            encoding: .utf8
-        )
-        #expect(!FileManager.default.fileExists(atPath: repositoryRoot
-            .appendingPathComponent("Scholium/Views/ResearchGuidanceMarkdownSheet.swift")
-            .path))
-        for forbiddenEditor in [
-            "ResearchGuidanceMarkdownEditSheet",
-            "ResearchGuidanceMarkdownCreationSheet",
-            "ResearchGuidanceMarkdownEditDraft",
-            "ResearchGuidanceMarkdownCreationDraft",
-            "Edit Primary Markdown",
-            "Restore Scholium Default",
-        ] {
-            #expect(!methodsSource.contains(forbiddenEditor))
-        }
-        #expect(methodsSource.contains("Assign Skill Folder…"))
-        #expect(methodsSource.contains("Show Skill Folder in Finder…"))
-        #expect(methodsSource.contains("Scholium does not inspect or edit Skill contents"))
-    }
-
-    @Test("Research Guidance exposes the current owner surfaces without package semantics")
-    func researchGuidanceOwnsCurrentSkillConfiguration() throws {
-        let repositoryRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let source = try [
-            "ResearchGuidanceSettingsView.swift",
-            "ResearchMethodsSettingsView.swift",
-            "ActionProfilesSettingsView.swift",
-            "ResearchSourcesSettingsView.swift",
-        ].map { fileName in
-            try String(
-                contentsOf: repositoryRoot.appendingPathComponent(
-                    "Scholium/Views/\(fileName)"
-                ),
-                encoding: .utf8
-            )
-        }.joined(separator: "\n")
-        let settingsRootSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/WorkspaceSettingsView.swift"
-            ),
-            encoding: .utf8
-        )
-        #expect(!source.contains("Edit Primary Markdown"))
-        #expect(!source.contains("Restore Previous Edit"))
-        #expect(!source.contains("Restore Scholium Default"))
-        #expect(source.contains("Assign Skill Folder…"))
-        #expect(source.contains("Show Skill Folder in Finder…"))
-        #expect(source.contains("Skills"))
-        #expect(source.contains("Action Profiles"))
-        #expect(source.contains("does not inspect or edit Skill contents"))
-        #expect(source.contains("Academic Inputs"))
-        #expect(source.contains("Academic Results"))
-        #expect(source.contains("Edit Academic Profile"))
-        #expect(source.contains("Field Type"))
-        #expect(source.contains("Single Choice"))
-        #expect(source.contains("Multiple Choice"))
-        #expect(source.contains("Not Included"))
-        #expect(source.contains("saveAcademicActionProfiles"))
-        #expect(source.contains("Assign one researcher-owned Skill folder to each Action"))
-        #expect(!source.contains("ResearchGuidanceMarkdown"))
-        #expect(!source.contains("ResearchGuidanceDraftStore"))
-        #expect(!source.contains("ResearcherSkillDraftKey"))
-        #expect(!source.contains("ResearchActionProfileDraftKey"))
-        #expect(!source.contains("Install from Local Directory…"))
-        #expect(!settingsRootSource.contains("researchGuidanceDraftStore"))
-        #expect(settingsRootSource.contains("ResearchGuidanceSettingsView(category: .skills)"))
-        #expect(settingsRootSource.contains("ResearchGuidanceSettingsView(category: .externalToolsCitations)"))
-        #expect(source.contains("AgentCLISettingsView()"))
-        #expect(source.contains("ResearchCitationMethodSettingsView"))
-        #expect(!source.contains("ResearchPermissionSettingsView()"))
-        #expect(!source.contains("saveCollaborationPolicy"))
-        #expect(!source.contains("CONFIGURE MY AGENT"))
-        #expect(!source.contains("agentConfigurationPrompt"))
-        #expect(!source.contains("Copy Agent Configuration Prompt"))
-        #expect(!source.contains("saveSkillPermissionOverride"))
-        #expect(!source.contains("removeSkillPermissionOverride"))
-        #expect(!source.contains("Choose when an Agent may extend a Run’s bounded write set"))
-        for forbidden in [
-            ".regularMaterial",
-            ".ultraThinMaterial",
-            "glassEffect(",
-            "GroupBox(",
-            " · ",
-        ] {
-            #expect(!source.contains(forbidden))
-        }
-    }
-
-    @Test("Bootstrap states the quiet default and later customization route")
-    func bootstrapExplainsStandingPermissionDefault() throws {
-        let repositoryRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let source = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/WorkspaceSetupView.swift"
-            ),
-            encoding: .utf8
-        )
-        #expect(source.contains(
-            "Agent activity is attributed to its Run and recorded with exact document changes; relevant Notes do not require separate approval."
-        ))
-        #expect(source.contains("scholium.bootstrap.activityTracking"))
-        #expect(!source.contains("Choose a permission policy"))
-    }
-
     @Test("Settings model retains only delivery-neutral capabilities")
     func noCompatibilityStoreDependencies() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
@@ -1190,10 +939,9 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(boundary.contains("let workspace: WorkspaceSettingsWorkspaceCapabilities"))
         #expect(boundary.contains("let machine: WorkspaceSettingsMachineCapabilities"))
         #expect(boundary.contains("let zotero: WorkspaceSettingsZoteroCapabilities"))
-        #expect(boundary.contains("let researchGuidance: WorkspaceSettingsResearchGuidanceCapabilities"))
         #expect(boundary.components(separatedBy: "\n").filter {
             $0.trimmingCharacters(in: .whitespaces).hasPrefix("let ")
-        }.count == 4)
+        }.count == 3)
     }
 
     @Test("Concurrent Settings restoration does not drop the visible Triptychs refresh")

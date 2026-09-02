@@ -33,8 +33,7 @@ struct InterfaceUtilityOwnershipTests {
 
         for path in [
             "Scholium/App/ScholiumApp.swift",
-            "Scholium/Views/BootstrapAgentPreparationView.swift",
-            "Scholium/Views/WorkspaceSettingsView.swift",
+            "Scholium/Views/AgentIntegrationSettingsView.swift",
             "Scholium/Views/Note/TransactionRecoveryView.swift",
         ] {
             let consumer = try source(path)
@@ -43,64 +42,11 @@ struct InterfaceUtilityOwnershipTests {
         }
     }
 
-    @Test("Evidence preview disclosure has one presentation owner")
-    func evidencePreviewOwnership() throws {
-        let browser = try source(
-            "Scholium/Views/ResearchRecord/ResearchRecordBrowserView.swift"
-        )
-        let shared = try slice(
-            browser,
-            from: "private struct ResearchRecordPreviewedEvidenceSection<",
-            until: "private struct ResearchRecordParticipantSection: View {"
-        )
-        let participants = try slice(
-            browser,
-            from: "private struct ResearchRecordParticipantSection: View {",
-            until: "private struct ResearchRecordStatementSection: View {"
-        )
-
-        #expect(shared.contains("@State private var isShowingAll = false"))
-        #expect(shared.contains("@FocusState private var isHeaderFocused: Bool"))
-        #expect(shared.contains("ScholiumMetrics.ResearchRecords.evidencePreviewLimit"))
-        #expect(shared.contains("ResearchRecordEvidenceSectionHeader("))
-        #expect(shared.contains(".popover("))
-        #expect(shared.contains("completeContent { isShowingAll = false }"))
-        #expect(shared.contains("if wasShowingAll && !isShowingAll"))
-
-        for consumer in [participants] {
-            #expect(consumer.contains("ResearchRecordPreviewedEvidenceSection("))
-            #expect(consumer.contains("dismissPopover: dismissPopover"))
-            #expect(!consumer.contains("@State private var isShowingAll"))
-            #expect(!consumer.contains(".popover("))
-        }
-
-        #expect(
-            browser.components(
-                separatedBy: "@State private var isShowingAll = false"
-            ).count == 2
-        )
-    }
-
     private func source(_ relativePath: String) throws -> String {
         try String(
             contentsOf: repositoryRoot.appendingPathComponent(relativePath),
             encoding: .utf8
         )
-    }
-
-    private func slice(
-        _ source: String,
-        from startMarker: String,
-        until endMarker: String
-    ) throws -> Substring {
-        let start = try #require(source.range(of: startMarker))
-        let end = try #require(
-            source.range(
-                of: endMarker,
-                range: start.upperBound..<source.endIndex
-            )
-        )
-        return source[start.lowerBound..<end.lowerBound]
     }
 
     private var repositoryRoot: URL {

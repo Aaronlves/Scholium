@@ -392,36 +392,6 @@ struct WindowLifecycleTests {
         #expect(expectedDelegate.didReceiveWindowWillClose)
     }
 
-    @Test("Changing a window Triptych clears transient notification prompts")
-    func triptychReassignmentClearsResearchNotificationState() throws {
-        let windowID = UUID()
-        let firstTriptychID = UUID()
-        let secondTriptychID = UUID()
-        let model = WindowModel(
-            workspaceStore: makeTestWorkspaceStore(),
-            nativeWindowID: windowID
-        )
-        let notificationCoordinator = ResearchResultNotificationCoordinator(
-            systemNotifications: WindowLifecycleNotificationSystem(),
-            userDefaults: UserDefaults(
-                suiteName: "WindowLifecycleTests.\(UUID())"
-            )!,
-            applicationIsActive: { true }
-        )
-        let coordinator = WorkspaceWindowCoordinator(
-            windowID: windowID,
-            appState: model,
-            lifecycleRegistry: ScholiumWindowLifecycleRegistry(),
-            researchResultNotificationCoordinator: notificationCoordinator
-        )
-        coordinator.updateResearchRecordsRouting(triptychID: firstTriptychID)
-        model.shellState.presentResearchNotificationPermissionNotice(.enable)
-
-        coordinator.updateResearchRecordsRouting(triptychID: secondTriptychID)
-
-        #expect(model.shellState.researchNotificationPermissionNotice == nil)
-    }
-
     @Test("Workspace readiness requires the exact attached window and split")
     func coordinatorMarksExactNativeBoundaryReady() async {
         let id = UUID()
@@ -655,39 +625,6 @@ struct WindowLifecycleTests {
         window.close()
     }
 
-    @Test("Research Records navigation preserves the native window frame")
-    func researchRecordsNavigationPreservesWindowFrame() {
-        let triptychID = UUID()
-        let window = testWindow()
-        window.setFrame(
-            NSRect(x: 180, y: 180, width: 760, height: 680),
-            display: false
-        )
-        window.toolbar = NSToolbar(identifier: "research-records-frame-regression")
-        window.toolbarStyle = .unified
-        defer {
-            window.toolbar = nil
-            window.close()
-        }
-
-        let attachment = ResearchRecordsWindowAttachment(
-            triptychID: triptychID,
-            colorScheme: .light
-        )
-        attachment.configure(window)
-        let collectionFrame = window.frame
-        #expect(window.appearance?.name == .aqua)
-
-        attachment.configure(window)
-        let detailFrame = window.frame
-
-        attachment.configure(window)
-        let returnedCollectionFrame = window.frame
-
-        #expect(detailFrame == collectionFrame)
-        #expect(returnedCollectionFrame == collectionFrame)
-    }
-
     @Test("Document tab updates preserve page hosts and selector identities")
     func documentTabAdapterUpdatesIncrementally() {
         let firstID = UUID()
@@ -801,25 +738,6 @@ private final class ManualLifecycleSuspension {
         self.continuation = nil
         continuation?.resume()
     }
-}
-
-@MainActor
-private final class WindowLifecycleNotificationSystem:
-    ResearchResultSystemNotificationServing
-{
-    var responseHandler: (@MainActor (ResearchResultReviewDestination) -> Void)?
-
-    func authorizationState() async -> ResearchResultNotificationAuthorizationState {
-        .denied
-    }
-
-    func requestAuthorization() async throws -> Bool { false }
-
-    func deliver(_ request: ResearchResultSystemNotificationRequest) async throws {}
-
-    func removeNotification(identifier: String) {}
-
-    func openNotificationSettings() {}
 }
 
 @MainActor

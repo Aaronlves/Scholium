@@ -15,7 +15,7 @@ struct SystemTrashConfirmationView: View {
                 .font(ScholiumTypography.interface(.primaryTitle, emphasis: .strong))
                 .accessibilityAddTraits(.isHeader)
 
-            Text("Finder owns file restoration. Finished Research Records remain available as historical provenance and can be deleted only from Research Records.")
+            Text("Finder owns file restoration. Scholium will remove only the listed sources and their portable identity and Critique associations.")
                 .font(ScholiumTypography.interface(.body))
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -41,19 +41,7 @@ struct SystemTrashConfirmationView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
-                    if !preview.activeDiscussionIDs.isEmpty {
-                        GroupBox("Temporary Application State") {
-                            VStack(
-                                alignment: .leading,
-                                spacing: ScholiumGrid.Spacing.inlineControlGap
-                            ) {
-                                Text("\(preview.activeDiscussionIDs.count) active Discussion(s) will be discarded without becoming Records.")
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    }
-
-                    Text("If temporary cleanup fails after Finder accepts the items, Scholium keeps a recovery plan. External file deletion only refreshes the workspace and never deletes Research Records or Discussions.")
+                    Text("If portable cleanup fails after Finder accepts the items, Scholium keeps a recovery plan. External file deletion only refreshes the workspace.")
                         .font(ScholiumTypography.interface(.small))
                         .scholiumForeground(.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)

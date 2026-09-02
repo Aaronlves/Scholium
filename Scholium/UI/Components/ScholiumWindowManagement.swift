@@ -1,5 +1,4 @@
 import ScholiumContracts
-import ScholiumResearchRecordsFeature
 import AppKit
 import notify
 import SwiftUI
@@ -342,8 +341,6 @@ final class ScholiumWindowLifecycleRegistry {
 struct WorkspaceWindowActions {
     let setLibraryVisible: @MainActor (Bool) -> Void
     let setResearchInspectorVisible: @MainActor (Bool) -> Void
-    let showNoteResearchRecords: @MainActor () -> Void
-    let showTriptychResearchRecords: @MainActor () -> Void
     let showAttention: @MainActor (AttentionPresentationRequest) -> Void
     let showPreferredAttention: @MainActor () -> Void
     let canShowAttention: @MainActor () -> Bool
@@ -381,9 +378,6 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
 
     private let appState: WindowModel
     private let lifecycleRegistry: ScholiumWindowLifecycleRegistry
-    private let researchRecordsWindowCoordinator: ResearchRecordsWindowCoordinator?
-    private let researchResultNotificationCoordinator:
-        ResearchResultNotificationCoordinator?
     private weak var window: NSWindow?
     private weak var splitController: (any ScholiumWorkspaceSplitControlling)?
     // `NSWindow.delegate` is not an ownership boundary. Keep SwiftUI's
@@ -402,14 +396,6 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     private var didFinalizeWindowAttachments = false
     private var pendingLibraryVisibility: Bool?
     private var pendingInspectorVisibility: Bool?
-    private var noteResearchRecordsPresenter: @MainActor () -> Void = {}
-    private var triptychResearchRecordsPresenter: @MainActor () -> Void = {}
-    private var researchRecordsWindowPresenter: @MainActor () -> Void = {}
-    private var researchResultReviewer:
-        @MainActor (ResearchResultReviewDestination) -> Void = { _ in }
-    private var researchRecordsWorkspaceToken: UUID?
-    private var researchRecordsTriptychID: UUID?
-    private var researchNotificationWindowToken: UUID?
     private var attentionPresenter:
         @MainActor (AttentionPresentationRequest) -> Void = { _ in }
     #if DEBUG
@@ -419,17 +405,11 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     init(
         windowID: UUID,
         appState: WindowModel,
-        lifecycleRegistry: ScholiumWindowLifecycleRegistry,
-        researchRecordsWindowCoordinator: ResearchRecordsWindowCoordinator? = nil,
-        researchResultNotificationCoordinator:
-            ResearchResultNotificationCoordinator? = nil
+        lifecycleRegistry: ScholiumWindowLifecycleRegistry
     ) {
         self.windowID = windowID
         self.appState = appState
         self.lifecycleRegistry = lifecycleRegistry
-        self.researchRecordsWindowCoordinator = researchRecordsWindowCoordinator
-        self.researchResultNotificationCoordinator =
-            researchResultNotificationCoordinator
         let loadingToolbar = NSToolbar(
             identifier: NSToolbar.Identifier("scholium.workspaceToolbar.loading")
         )
@@ -439,9 +419,6 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         loadingToolbar.itemIdentifiers = [.flexibleSpace]
         self.loadingToolbar = loadingToolbar
         super.init()
-        appState.bindResearchRecordSearchPresentation { [weak self] result in
-            self?.presentResearchRecordSearchResult(result)
-        }
         registerLifecycle()
         registerQAFocusRequest()
     }
@@ -461,12 +438,6 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             },
             setResearchInspectorVisible: { [weak self] visible in
                 self?.setResearchInspectorVisible(visible)
-            },
-            showNoteResearchRecords: { [weak self] in
-                self?.noteResearchRecordsPresenter()
-            },
-            showTriptychResearchRecords: { [weak self] in
-                self?.triptychResearchRecordsPresenter()
             },
             showAttention: { [weak self] request in
                 self?.attentionPresenter(request)
@@ -493,112 +464,10 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     }
 
     func activate(
-        showNoteResearchRecords: @escaping @MainActor () -> Void,
-        showTriptychResearchRecords: @escaping @MainActor () -> Void,
-        showResearchRecordsWindow: @escaping @MainActor () -> Void,
-        reviewResearchResult: @escaping @MainActor (
-            ResearchResultReviewDestination
-        ) -> Void,
         showAttention: @escaping @MainActor (AttentionPresentationRequest) -> Void
     ) {
         registerLifecycle()
-        noteResearchRecordsPresenter = showNoteResearchRecords
-        triptychResearchRecordsPresenter = showTriptychResearchRecords
-        researchRecordsWindowPresenter = showResearchRecordsWindow
-        researchResultReviewer = reviewResearchResult
-        if let triptychID = researchRecordsTriptychID {
-            researchResultNotificationCoordinator?.registerReviewRouter(
-                triptychID: triptychID,
-                openReview: reviewResearchResult
-            )
-        }
         attentionPresenter = showAttention
-    }
-
-    func updateResearchRecordsRouting(triptychID: UUID?) {
-        if researchRecordsTriptychID == triptychID,
-           (researchRecordsWorkspaceToken != nil
-               || researchRecordsWindowCoordinator == nil),
-           (researchNotificationWindowToken != nil
-               || researchResultNotificationCoordinator == nil)
-               || triptychID == nil {
-            return
-        }
-        unregisterResearchRecordsWorkspace()
-        unregisterResearchNotificationWindow()
-        guard let triptychID else { return }
-        researchRecordsTriptychID = triptychID
-        researchResultNotificationCoordinator?.registerReviewRouter(
-            triptychID: triptychID,
-            openReview: researchResultReviewer
-        )
-        if let researchRecordsWindowCoordinator {
-            researchRecordsWorkspaceToken =
-                researchRecordsWindowCoordinator.registerWorkspace(
-                    triptychID: triptychID,
-                    windowID: windowID
-                ) { [weak self] noteID, note, sourceLine in
-                    guard let self else { return }
-                    NSApp.activate(ignoringOtherApps: true)
-                    self.window?.makeKeyAndOrderFront(nil)
-                    self.appState.requestOpenNote(
-                        note,
-                        stableNoteID: noteID,
-                        sourceLine: sourceLine
-                    )
-                }
-        }
-        registerResearchNotificationWindow(triptychID: triptychID)
-    }
-
-    func recordSuccessfulResearchHandoff(runID: UUID) {
-        guard let triptychID = researchRecordsTriptychID else { return }
-        researchResultNotificationCoordinator?.recordSuccessfulHandoff(
-            runID: runID,
-            triptychID: triptychID,
-            sourceWindowID: windowID
-        )
-        Task { [weak self] in
-            guard let self,
-                  let snapshot = await self.appState.refreshAfterResearchHandoff(),
-                  snapshot.triptych.id == triptychID,
-                  self.researchRecordsTriptychID == triptychID else { return }
-            self.researchResultNotificationCoordinator?.receive(
-                activities: snapshot.research.activities,
-                arrivals: snapshot.research.resultArrivals,
-                triptychID: triptychID
-            )
-        }
-    }
-
-    func reviewResearchResult(_ destination: ResearchResultReviewDestination) {
-        guard destination.triptychID == researchRecordsTriptychID else { return }
-        researchResultReviewer(destination)
-    }
-
-    func requestResearchNotificationAuthorization() {
-        researchResultNotificationCoordinator?.requestNotificationAuthorization(
-            windowID: windowID
-        )
-    }
-
-    func openResearchNotificationSettings() {
-        researchResultNotificationCoordinator?.openNotificationSettings()
-    }
-
-    private func presentResearchRecordSearchResult(
-        _ result: RecordSearchResult
-    ) {
-        guard let triptychID = researchRecordsTriptychID,
-              let researchRecordsWindowCoordinator else { return }
-        researchRecordsWindowCoordinator.submit(ResearchRecordsWindowRequest(
-            triptychID: triptychID,
-            initialView: .records,
-            recordID: result.recordID,
-            expectedRecordFingerprint: result.fingerprint,
-            statementID: result.statementID
-        ))
-        researchRecordsWindowPresenter()
     }
 
     func attach(to window: NSWindow) {
@@ -657,10 +526,6 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         closeIsAuthorized = false
         removeToolbar()
         splitController = nil
-        noteResearchRecordsPresenter = {}
-        triptychResearchRecordsPresenter = {}
-        researchRecordsWindowPresenter = {}
-        researchResultReviewer = { _ in }
         attentionPresenter = { _ in }
     }
 
@@ -673,8 +538,6 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         terminatesApplicationAfterClose = false
         let forwardedDelegate = previousDelegate
         detach()
-        unregisterResearchRecordsWorkspace()
-        unregisterResearchNotificationWindow()
         if isRegistered {
             lifecycleRegistry.unregister(id: windowID)
             isRegistered = false
@@ -700,86 +563,9 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         isRegistered = true
     }
 
-    private func unregisterResearchRecordsWorkspace() {
-        guard let researchRecordsTriptychID,
-              let researchRecordsWorkspaceToken,
-              let researchRecordsWindowCoordinator else {
-            self.researchRecordsTriptychID = nil
-            self.researchRecordsWorkspaceToken = nil
-            return
-        }
-        researchRecordsWindowCoordinator.unregisterWorkspace(
-            triptychID: researchRecordsTriptychID,
-            token: researchRecordsWorkspaceToken
-        )
-        self.researchRecordsTriptychID = nil
-        self.researchRecordsWorkspaceToken = nil
-    }
-
-    private func registerResearchNotificationWindow(triptychID: UUID) {
-        guard researchNotificationWindowToken == nil,
-              let researchResultNotificationCoordinator else { return }
-        researchNotificationWindowToken =
-            researchResultNotificationCoordinator.registerWindow(
-                windowID: windowID,
-                triptychID: triptychID,
-                receiveActivities: { [weak appState] notifications in
-                    appState?.shellState.receiveResearchActivityNotifications(
-                        notifications
-                    )
-                },
-                presentPermission: { [weak appState] notice in
-                    appState?.shellState
-                        .presentResearchNotificationPermissionNotice(notice)
-                },
-                dismissPermission: { [weak appState] in
-                    appState?.shellState
-                        .dismissResearchNotificationPermissionNotice()
-                },
-                openReview: { [weak self] destination in
-                    self?.reviewResearchResult(destination)
-                }
-            )
-        appState.researchResultNotificationDismissal = {
-            [weak self] destination in
-            guard let self else { return }
-            self.researchResultNotificationCoordinator?.dismiss(
-                destination,
-                from: self.windowID
-            )
-        }
-    }
-
-    private func unregisterResearchNotificationWindow() {
-        // These notices belong to this exact window-to-Triptych binding. Do
-        // not let an old activity projection or permission prompt survive when the same
-        // native window is reassigned or detached.
-        appState.shellState.receiveResearchActivityNotifications([])
-        appState.shellState.dismissResearchNotificationPermissionNotice()
-        appState.researchResultNotificationDismissal = nil
-        guard let token = researchNotificationWindowToken else { return }
-        researchResultNotificationCoordinator?.unregisterWindow(
-            windowID: windowID,
-            token: token
-        )
-        researchNotificationWindowToken = nil
-    }
-
     func windowDidBecomeKey(_ notification: Notification) {
         if lifecycleRegistry.noteWorkspaceWindowActivated(windowID) {
             appState.attentionPopoverSession.resetForWorkspaceSwitch()
-        }
-        if let researchRecordsTriptychID, let researchRecordsWorkspaceToken {
-            researchRecordsWindowCoordinator?.workspaceDidActivate(
-                triptychID: researchRecordsTriptychID,
-                token: researchRecordsWorkspaceToken
-            )
-        }
-        if let researchNotificationWindowToken {
-            researchResultNotificationCoordinator?.windowDidActivate(
-                windowID: windowID,
-                token: researchNotificationWindowToken
-            )
         }
         previousDelegate?.windowDidBecomeKey?(notification)
     }
@@ -824,12 +610,6 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
                 workspaceSlot: nil,
                 noteScope: nil
             )
-        }
-
-        if appState.shellState.researchActivityNotifications.contains(where: {
-            $0.state.requiresResearcherAttention
-        }) {
-            return .actionStack
         }
 
         guard appState.researchInspectorVisible,
@@ -1068,34 +848,6 @@ struct WorkspaceWindowAttachment: NSViewRepresentable {
         _ nsView: WindowAttachmentView,
         coordinator: Void
     ) {}
-}
-
-struct ResearchRecordsWindowAttachment: NSViewRepresentable {
-    let triptychID: UUID
-    let colorScheme: WindowColorSchemeChoice
-
-    func makeNSView(context: Context) -> WindowAttachmentView {
-        let view = WindowAttachmentView()
-        view.onWindowAttachment = configure
-        return view
-    }
-
-    func updateNSView(_ nsView: WindowAttachmentView, context: Context) {
-        if let window = nsView.window { configure(window) }
-    }
-
-    func configure(_ window: NSWindow) {
-        window.identifier = NSUserInterfaceItemIdentifier(
-            "scholium-research-records-\(triptychID.uuidString.lowercased())"
-        )
-        ScholiumWindowAppearance.apply(colorScheme, to: window)
-        window.styleMask.insert(.fullSizeContentView)
-        window.titlebarAppearsTransparent = true
-        window.titlebarSeparatorStyle = .none
-        window.backgroundColor = ScholiumColorRole.documentBackground.nsColor
-        window.isMovableByWindowBackground = true
-        window.tabbingMode = .disallowed
-    }
 }
 
 struct SettingsWindowAttachment: NSViewRepresentable {

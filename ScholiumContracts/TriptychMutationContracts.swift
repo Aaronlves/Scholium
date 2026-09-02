@@ -66,34 +66,10 @@ public struct TriptychMutationRecoveryFile: Codable, Hashable, Sendable, Identif
     }
 }
 
-/// Links one machine-local source recovery transaction to the authenticated
-/// Run operation that caused it. This is evidence linkage, not authority.
-public struct ResearchWriteRecoveryReference: Codable, Hashable, Sendable {
-    public let runID: UUID
-    public let operationID: UUID
-    public let target: ResearchWriteTargetHandle
-    public let sourceRecoveryID: InterruptedSaveRecoveryID?
-    public let metadataFields: [String: YAMLValue]?
-
-    public init(
-        runID: UUID,
-        operationID: UUID,
-        target: ResearchWriteTargetHandle,
-        sourceRecoveryID: InterruptedSaveRecoveryID? = nil,
-        metadataFields: [String: YAMLValue]? = nil
-    ) {
-        self.runID = runID
-        self.operationID = operationID
-        self.target = target
-        self.sourceRecoveryID = sourceRecoveryID
-        self.metadataFields = metadataFields
-    }
-}
-
 /// Binds an interrupted researcher-managed creation to the exact path and
 /// reserved portable identity that the shared creator had already claimed.
 /// It authorizes only confirmation-time reconciliation of that one pair; it
-/// carries no Agent Run or integration authority.
+/// carries no Agent or integration authority.
 public struct ManagedCreationRecoveryReference: Codable, Hashable, Sendable {
     public let target: VaultQualifiedNoteID
     public let reservedIdentityID: UUID
@@ -120,7 +96,6 @@ public struct TriptychMutationRecoveryRecord: Codable, Hashable, Sendable, Ident
     public let failure: String
     public let files: [TriptychMutationRecoveryFile]
     public let systemTrashDeletionPlan: SystemTrashDeletionPlan?
-    public let researchWrite: ResearchWriteRecoveryReference?
     public let managedCreation: ManagedCreationRecoveryReference?
 
     public init(
@@ -130,10 +105,8 @@ public struct TriptychMutationRecoveryRecord: Codable, Hashable, Sendable, Ident
         createdAt: Date = Date(),
         failure: String,
         files: [TriptychMutationRecoveryFile],
-        researchWrite: ResearchWriteRecoveryReference? = nil,
         managedCreation: ManagedCreationRecoveryReference? = nil
     ) {
-        precondition(researchWrite == nil || managedCreation == nil)
         self.id = id
         self.triptychID = triptychID
         self.operation = operation
@@ -141,7 +114,6 @@ public struct TriptychMutationRecoveryRecord: Codable, Hashable, Sendable, Ident
         self.failure = failure
         self.files = files
         self.systemTrashDeletionPlan = nil
-        self.researchWrite = researchWrite
         self.managedCreation = managedCreation
     }
 
@@ -151,8 +123,7 @@ public struct TriptychMutationRecoveryRecord: Codable, Hashable, Sendable, Ident
         createdAt: Date,
         failure: String,
         files: [TriptychMutationRecoveryFile],
-        systemTrashDeletionPlan: SystemTrashDeletionPlan,
-        researchWrite: ResearchWriteRecoveryReference? = nil
+        systemTrashDeletionPlan: SystemTrashDeletionPlan
     ) {
         self.id = id
         self.triptychID = triptychID
@@ -161,7 +132,6 @@ public struct TriptychMutationRecoveryRecord: Codable, Hashable, Sendable, Ident
         self.failure = failure
         self.files = files
         self.systemTrashDeletionPlan = systemTrashDeletionPlan
-        self.researchWrite = researchWrite
         self.managedCreation = nil
     }
 }
@@ -213,7 +183,6 @@ public struct TriptychMoveCommit: Hashable, Sendable {
 public enum TriptychTransactionError: LocalizedError, Sendable {
     case invalidPlan(String)
     case preflightFailed(note: VaultQualifiedNoteID?, detail: String)
-    case activeResearchActions([UUID])
     case transactionRolledBack(String)
     case recoveryRequired(TriptychMutationRecoveryRecord)
     case recoveryPersistenceFailed(TriptychMutationRecoveryRecord, String)
@@ -227,8 +196,6 @@ public enum TriptychTransactionError: LocalizedError, Sendable {
                 return "Scholium did not change any files because \(note.relativePath) failed preflight: \(detail)"
             }
             return "Scholium did not change any files because preflight failed: \(detail)"
-        case .activeResearchActions:
-            return "Finish or recover the active Research Action before moving its participating Note to the system Trash. Scholium did not change any files."
         case .transactionRolledBack(let detail):
             return "The operation failed and Scholium restored the affected files: \(detail)"
         case .recoveryRequired(let record):

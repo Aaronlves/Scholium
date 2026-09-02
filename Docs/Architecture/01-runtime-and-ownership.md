@@ -37,94 +37,32 @@ translation boundary.
 ## Ownership
 
 `ScholiumContracts` owns immutable boundary values, capability protocols,
-structured errors, and deterministic exact-source parsing and projection.
-`ScholiumCore` is an internal implementation target for repositories,
-registries, SQLite indexes, watchers, coordinated mutations, durable stores,
-exact Skill entries and ordinary references, and Zotero transport. The headless `ScholiumApplication`
-target composes Core into delivery-neutral workspace lifetimes and use cases.
-The macOS app and CLI depend only on Contracts and Application; Core is not a
-library product and cannot be imported by either delivery target.
+closed MCP schemas, structured errors, and deterministic exact-source parsing.
+`ScholiumCore` owns repositories, registries, SQLite indexes, watchers,
+coordinated mutations, portable stores, Agent Change evidence, the bundled Core
+Protocol, and Zotero transport. `ScholiumApplication` composes those owners
+into delivery-neutral workspace lifetimes and use cases. App and CLI depend only
+on Contracts and Application; Core is not a library product.
 
 ```text
 ScholiumApp → ScholiumApplication → ScholiumCore → ScholiumContracts
-ScholiumApp → ScholiumResearchRecordsFeature → ScholiumContracts
 ScholiumCLI → ScholiumApplication → ScholiumCore → ScholiumContracts
 ScholiumCLI → ScholiumCLIUpdate → ScholiumContracts
 
-ApplicationBootstrapController (one app-owned storage gate)
-├── Registry Recovery (preserve the damaged owning registry, then relink)
-└── Ready (explicit validated Application Support URL)
-    └── WorkspaceStore (macOS adapter and sole event-stream subscriber)
-        ├── WorkspaceRuntime (one live runtime for the app delivery)
-        ├── ResearchConnectionCoordinator (one process generation)
-        ├── LocalAgentBridge (mutually authenticated loopback frames only)
-        │   └── LocalAgentBridgeRequestRouter (wire-operation translation only)
-        ├── SwiftUI WindowGroup (one Codable route per scene)
-            ├── WindowModel (one per complete workspace window)
-            │   ├── WindowShellState
-            │   ├── WindowWorkspaceController (assignment, capability session,
-            │   │   access recovery, and recovery cancellation)
-            │   ├── WindowLibraryMutationController
-            │   ├── WindowZoteroCoordinator
-            │   ├── WindowCommandObservation (focused-command invalidation only)
-            │   ├── WindowEditorFlushCoordinator
-            │   ├── WindowCloseCoordinator
-            │   ├── WindowSessionPersistenceCoordinator
-            │   ├── DocumentTransitionCoordinator
-            │   ├── WindowWorkspaceProjectionController
-            │   ├── DiscoveryController
-            │   ├── WindowSearchController
-            │   ├── AttentionPresentationState
-            │   ├── AttentionPopoverSession (exact Workspace adapter)
-            │   ├── DocumentTabController
-            │   ├── DocumentController
-            │   │   └── DocumentSessionStore
-            │   ├── ResearchController
-            │   │   └── ResearchActionController
-            │   ├── WindowPresentationRouter
-            │   └── typed WindowIntent routing
-            └── WorkspaceWindowCoordinator (one exact NSWindow/split boundary)
-
-ScholiumApplicationDelegate
-├── ScholiumWindowLifecycleRegistry (injected route readiness and flushers)
-└── ResearchRecordsWindowCoordinator (transient Triptych routing only)
-
-Research Records WindowGroup (one UUID value per Triptych)
-└── ScholiumResearchRecordsRoot
-    ├── direct WindowWorkspaceCapabilities for that Triptych
-    ├── ResearchRecordBrowserModel (feature-owned Record query, collection
-    │   route, filters, and rebuildable Reading Leads projection)
-    └── ResearchRecordBrowserView (App-owned macOS presentation and Design
-        System consumption)
+ApplicationBootstrapController
+└── WorkspaceStore
+    ├── WorkspaceRuntime and shared WorkspaceHandle instances
+    ├── ScholiumAppBridge (current-user local endpoint)
+    └── one WindowModel per configured scene
+        ├── shell, workspace, presentation, and close coordinators
+        ├── Library, Search, Discovery, Zotero, and Research controllers
+        ├── DocumentTabController
+        └── DocumentController → DocumentSessionStore
 ```
 
-`ScholiumResearchRecordsFeature` is a package-internal target that depends
-only on `ScholiumContracts`. It owns the transient route, collection/filter
-model, conservative Reading Leads index, continuation folding, and comparison-
-task cancellation. Its collection index stores a lightweight scanning
-projection without scholarly result or statement bodies rather than every
-complete portable Record. Confirmed Research Record deletion first publishes a
-reversible in-memory projection, then serializes the authoritative Application
-mutation; success reconciles the removal, while failure restores the prior
-projection. It imports neither
-SwiftUI nor App delivery state.
-`ScholiumApp` adapts those values to the semantic Design System and Application
-capabilities; `ResearchRecordsWindowCoordinator` remains an App shell route
-owner under `Scholium/App/Window` and retains no Record data. A typed
-`.reviewResult` route carries one exact Record identifier and finalized-result
-fingerprint; the feature model validates both and owns the resulting
-window-lifetime direct-Undo grant. Multiple exact review requests may retain
-independent per-Record grants through navigation in that same window. They are
-neither persisted nor treated as source authority, and closing the window
-destroys all of them.
-The application-owned `ResearchResultNotificationCoordinator` observes
-activities and Result arrivals, keeps one local activity per Run, deduplicates
-Results, replays windows, and routes Review/Follow-up. Its system adapter
-receives private body and route IDs only. Delivery never opens, retargets,
-focuses, or reviews before activation. Closing presentation removes nothing;
-only completed Dismiss does. Document presents exact Action operations inline;
-only Sidebar/Inspector own complete-queue popovers. Execution, Records, Review,
-and source evidence stay separate.
+The App bridge is process-global but operates only on currently open workspace
+capabilities. It is not an Agent lifecycle or workspace owner. The CLI stdio
+server is a delivery adapter and cannot import Core or construct services.
 
 ### Runtime bootstrap, refresh, and Search
 
@@ -152,8 +90,8 @@ and portable identities. Document load and exact current-buffer Search are
 usable. Current-Vault lexical Search reuses the last complete index. The index
 filters candidates by opening fingerprints and resolved stable identities
 before limits and `hasMore`, then returns Limited. No partial generation or
-second index exists. Triptych, Record,
-structured, property, relation, and Research Action resolution fail closed with
+second index exists. Triptych-wide structured, property, and relation
+resolution fails closed with
 `workspaceStillLoading`; absent complete projections are not complete evidence.
 One utility-priority opening-completion task owns convergence. Watcher events
 enter existing journals; complete reconcile, Graph, Search, research, and
@@ -270,8 +208,8 @@ same generation's reconciled portable-identity state for Critique association;
 only `.resolved` identities participate, so ambiguous, pending, unresolved, or
 failed recovery remains closed without one storage lookup per Work.
 
-`ScholiumContracts` owns contract-v9 parsing and typed clauses, the closed
-Note/Record provider and capability tables, provider-mismatch diagnostics,
+`ScholiumContracts` owns current parsing and typed clauses, the closed Note
+provider and capability table, provider-mismatch diagnostics,
 completion and Explain Query descriptions, discriminated results, visible
 semantic `SearchDocumentProjection`, exact source mappings, CJK query
 projection, requests, responses, availability, and generation/freshness
@@ -400,14 +338,13 @@ Direct `WorkspaceStore` use in `WindowModel` is limited to composition,
 subscription, and exact-window external delivery. An
 executable allowlist requires a fresh ownership audit for every new call family.
 `WindowCommandObservation` owns no product state: it advances
-one window-local revision only for the shell, assignment, Library source,
-document/projection, and Research Action facts that affect focused command
+one window-local revision only for the shell, assignment, Library source, and
+document/projection facts that affect focused command
 labels or availability. Commands still read and mutate the existing owners.
 `DocumentController` alone owns
-selection and document workflow state; `ResearchController` owns the current
-research-record projection and durable-recovery listing. Shell and Research
-Action state remain independently observable
-owners; `ResearchController` neither republishes nor duplicates them.
+selection and document workflow state; `ResearchController` owns Settlement,
+Critique, and durable-recovery projection. It neither republishes nor duplicates
+document or shell state.
 `DocumentTransitionCoordinator` serializes workspace and document replacement,
 flushes the exact active editor before mutation, coalesces rapid workspace input
 to the last requested destination, and commits only after the destination
@@ -416,17 +353,6 @@ changes the Shell selection, Document mode owner, active tab group, selected
 Document, and Inspector projection in one main-actor commit. A preparation,
 save, conflict, or destination-validation failure leaves the originating
 workspace session selected and unchanged.
-Research Records windows bypass focused `WindowModel` state and read only the
-capabilities and immutable snapshot for their keyed Triptych. Their coordinator
-retains pending presentation requests and same-Triptych navigation endpoints,
-never Record data or authorization. `ContentView`, Inspector, Actions, and
-Research Records leaves observe only the owner whose state they render.
-The feature model begins at `.collection`; selecting one Record or Reading
-Lead replaces the collection through a typed transient route. Closing the
-window drops that route and every presentation filter without altering the
-portable store. A Continue Research child remains available by exact ID and
-Search, but the feature folds it beneath its direct parent instead of
-projecting a peer collection row.
 `WindowWorkspaceProjectionController` is the exact-window owner of the
 immutable research catalog, resolved Metadata catalog, per-vault snapshots, selected Library's
 Notes/tags/authors/revisions and property-filter options, graph, Note
@@ -455,7 +381,7 @@ atomically advances through occupied default paths; the view never scans or
 writes the vault. After the source and identity commit, the exact window
 installs one `sourceAhead` `WorkspaceNoteSnapshot` for presentation and marks
 derived state stale; its graph-count values are nonauthorizing placeholders and
-Research Actions remain closed. The matching complete generation replaces this
+Agent Change review remains unavailable. The matching complete generation replaces this
 overlay through the ordinary event gate. The window therefore activates the
 new stable identity without blocking on Triptych-wide identity reconciliation
 or graph construction and without creating a second source authority. The
@@ -696,43 +622,33 @@ width.
 
 ### Inspector ownership
 
-The Inspector has Overview, Connect, and Actions.
-Overview presents Notifications routed to the Workspace popover, then grouped
-About. Empty core and all present values show. Saves delegate to Metadata or,
-after editor flush, exact source. File and Settlement facts are read-only; Add
-Field opens the Metadata sheet.
+The Inspector has Overview and Connect. Overview presents Notifications routed
+to the Workspace popover, then grouped About. Empty core and all present values
+show. Saves delegate to Metadata or, after editor flush, exact source. File and
+Settlement facts are read-only; Add Field opens the Metadata sheet.
+
 For Analysis, `WorkspaceSnapshotBuilder` joins portable Zotero binding by Note
 UUID; the window supplies exact library/key and `ZoteroBridge`. About exposes
 link/manage and bound open/refresh actions without inline machine data.
 `ZoteroBindingPanelView` searches local items or prepares exact binding,
 rendering an immutable plan. Complete keys never fall back to collection
-search; refresh directly addresses bound user/group item.
+search; refresh directly addresses the bound user or group item.
 `ZoteroBindingOperations` revalidates source, exact server/library/item,
 binding/Metadata revisions; writes absent fields for Link and Fill or previewed
-differences for Refresh; reports partial commit; refreshes derived state after
-mutation. UI owns no mapping/writes; frontmatter is excluded. Connect
-projects direct and
-derived relations as single full-row targets, pins the original collapsible
-group header within its sole vertical scroll, and retains the distinct source
-anchor as a named secondary action without a trailing glyph. Actions resolves
-the public role-valid closed Platform Action matrix and keeps Settle under
-Judgment. Every launcher remains the same direct full-row operation and invokes
-its exact Inspector-supplied window route; focused routing belongs to menu
-commands rather than row activation. Pointer activation does not write keyboard
-focus, while keyboard traversal and deliberate restoration retain it.
-Availability is bound to the exact current Note,
-clears while it is being rechecked, and rejects a late result from a previous
-Target. Completed work remains in the separate Research Records window, while
-Agent handoff is presented by the selected Action. A quiet row for each
-portable active Discussion that includes the current Note resumes passage-anchored, whole-note,
-and focal-note exchange, while Settle remains a separate researcher-owned
-current-state operation. Active Discussions never appear in Research Records;
-finished Discussions and completed Actions do, while removed Records have no
-projection. The
-Inspector may navigate or open another
-note in the owning workspace's Document tabs, but it never owns a document buffer, editing,
-autosave, undo, or conflict state. Those remain exclusively in the Document
-surface and its existing controllers.
+differences for Refresh; reports partial commit; and refreshes derived state
+after mutation. UI owns no mapping or writes; frontmatter is excluded.
+
+Connect projects direct and derived relations as single full-row targets, pins
+the original collapsible group header within its sole vertical scroll, and
+retains the distinct source anchor as a named secondary action without a
+trailing glyph. Settle and Critique remain researcher-owned current-state
+operations at their specified surfaces. Agent conversation, tool selection,
+and lifecycle state belong to the external Agent host, not the Inspector.
+
+The Inspector may navigate or open another note in the owning workspace's
+Document tabs, but it never owns a document buffer, editing, autosave, undo, or
+conflict state. Those remain exclusively in the Document surface and its
+existing controllers.
 
 ### Container decision rule
 

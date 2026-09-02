@@ -91,8 +91,8 @@ public actor WorkspaceEventSource {
         )), snapshot: snapshot)
     }
 
-    func publishResearchRecordsChanged(snapshot: WorkspaceSnapshot) {
-        publish(.researchRecordsChanged(WorkspaceResearchRecordsChangedEvent(
+    func publishResearchStateChanged(snapshot: WorkspaceSnapshot) {
+        publish(.researchStateChanged(WorkspaceResearchStateChangedEvent(
             generation: nextGeneration(),
             research: snapshot.research,
             snapshot: snapshot

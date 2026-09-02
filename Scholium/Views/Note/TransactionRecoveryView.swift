@@ -324,8 +324,8 @@ struct TransactionRecoveryView: View {
     }
 }
 
-/// Linked Agent recovery and shared managed-creation recovery are consequential
-/// reconciliation, not generic record dismissal. This presentation keeps the
+/// Managed-creation and system-trash recovery are consequential reconciliation,
+/// not generic record dismissal. This presentation keeps the
 /// confirmation aligned with the exact operation and durable source evidence;
 /// reconciliation rechecks both source and portable identity before applying
 /// the described control-state repair.
@@ -347,15 +347,15 @@ struct TransactionRecoveryActionPresentation: Equatable {
             }) {
                 alertTitle = String(localized: "Resolve Unknown Trash Outcome?", table: "Localizable", bundle: .module)
                 buttonTitle = String(localized: "Resolve", table: "Localizable", bundle: .module)
-                message = String(localized: "Scholium cannot prove whether the native Trash move completed. After you inspect Finder and the listed paths, Resolve releases the temporary deletion gate without restoring or removing a file. Finished Research Records remain unchanged.", table: "Localizable", bundle: .module)
+                message = String(localized: "Scholium cannot prove whether the native Trash move completed. After you inspect Finder and the listed paths, Resolve releases the deletion gate without restoring or removing a file.", table: "Localizable", bundle: .module)
             } else {
                 alertTitle = String(localized: "Continue Trash Cleanup?", table: "Localizable", bundle: .module)
                 buttonTitle = String(localized: "Continue Cleanup", table: "Localizable", bundle: .module)
-                message = String(localized: "Scholium will resume only the persisted forward plan. Items already moved to the macOS Trash remain under Finder control. Affected temporary Discussions are discarded; finished Research Records and their machine evidence remain unchanged.", table: "Localizable", bundle: .module)
+                message = String(localized: "Scholium will resume only the persisted forward plan. Items already moved to the macOS Trash remain under Finder control; Scholium only completes portable identity and Critique cleanup.", table: "Localizable", bundle: .module)
             }
             return
         }
-        guard record.researchWrite != nil || record.managedCreation != nil else {
+        guard record.managedCreation != nil else {
             self = .generic
             return
         }
@@ -364,11 +364,7 @@ struct TransactionRecoveryActionPresentation: Equatable {
             alertTitle = String(localized: "Reconcile Created Note?")
             buttonTitle = String(localized: "Reconcile Created Note")
             message = String(localized: "Scholium will recheck the exact Markdown source and portable identity. It may add the reserved identity to the exact created source, or remove that same reserved identity when the source is absent. Any other identity at the path, any Zotero binding on an identity that would be removed, or changed or unreadable state stops for separate researcher resolution. Markdown source is never created, replaced, or removed, and no other portable identity is changed.")
-        case .noteSave:
-            alertTitle = String(localized: "Reconcile Interrupted Agent Save?")
-            buttonTitle = String(localized: "Reconcile Agent Save")
-            message = String(localized: "Scholium will recheck the exact current source, reconcile the Run with the interrupted save evidence, and clear completed machine-local recovery records. It will not replace Markdown source.")
-        case .noteMove, .folderMove, .systemTrashDeletion:
+        case .noteSave, .noteMove, .folderMove, .systemTrashDeletion:
             self = .generic
         }
     }

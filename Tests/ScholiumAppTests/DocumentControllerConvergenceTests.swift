@@ -471,7 +471,7 @@ struct DocumentControllerConvergenceTests {
             (
                 name: "NoteContentView",
                 start: "struct NoteContentView: View {",
-                end: "// MARK: - Research Record"
+                end: "// MARK: - Source comparison and Critique decisions"
             ),
         ]
 

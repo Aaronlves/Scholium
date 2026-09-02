@@ -10,8 +10,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
     case hotkeys
     case metadata
     case attention
-    case skills
-    case actionProfiles
+    case agentIntegration
     case externalToolsCitations
 
     var id: String { rawValue }
@@ -28,8 +27,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
     ]
 
     static let researchGuidance: [Self] = [
-        .skills,
-        .actionProfiles,
+        .agentIntegration,
         .externalToolsCitations,
     ]
 
@@ -40,10 +38,8 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
         case .hotkeys: ScholiumL10n.Settings.hotkeys
         case .metadata: ScholiumL10n.Settings.metadata
         case .attention: ScholiumL10n.Settings.attention
-        case .skills:
-            ResearchGuidanceCategory.skills.localizedTitle
-        case .actionProfiles:
-            ResearchGuidanceCategory.actionProfiles.localizedTitle
+        case .agentIntegration:
+            ResearchGuidanceCategory.agentIntegration.localizedTitle
         case .externalToolsCitations:
             ResearchGuidanceCategory.externalToolsCitations.localizedTitle
         }
@@ -56,8 +52,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
         case .hotkeys: "keyboard"
         case .metadata: "list.bullet.rectangle"
         case .attention: "bell"
-        case .skills: ResearchGuidanceCategory.skills.symbol
-        case .actionProfiles: ResearchGuidanceCategory.actionProfiles.symbol
+        case .agentIntegration: ResearchGuidanceCategory.agentIntegration.symbol
         case .externalToolsCitations:
             ResearchGuidanceCategory.externalToolsCitations.symbol
         }
@@ -70,7 +65,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
         case .appearance: .appearance
         case .hotkeys: .hotkeys
         case .attention: .attention
-        case .skills, .actionProfiles,
+        case .agentIntegration,
              .externalToolsCitations:
             .researchGuidance
         }
@@ -78,8 +73,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
 
     var researchGuidanceCategory: ResearchGuidanceCategory? {
         switch self {
-        case .skills: .skills
-        case .actionProfiles: .actionProfiles
+        case .agentIntegration: .agentIntegration
         case .externalToolsCitations: .externalToolsCitations
         case .triptychs, .metadata, .appearance, .hotkeys,
              .attention: nil
@@ -101,10 +95,8 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
             ["Metadata", "fields", "About", "Agent preferences", "optional fields"]
         case .attention:
             ["Notifications", "activities", "reminders", "dismissed items", "timing", "This Mac"]
-        case .skills:
-            ["Skills", "Research Skills", "SKILL.md", "references", "philosophical lenses", "recovery"]
-        case .actionProfiles:
-            ["Action Profiles", "academic inputs", "academic results", "roles", "fields"]
+        case .agentIntegration:
+            ["Agent Integration", "MCP", "Codex", "Claude", "Core Protocol", "CLI", "bridge"]
         case .externalToolsCitations:
             ["External Tools & Citations", "CLI", "Zotero", "citation style", "integrations"]
         }
@@ -128,8 +120,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
         case .attention: .attention
         case .researchGuidance:
             switch researchCategory {
-            case .skills: .skills
-            case .actionProfiles: .actionProfiles
+            case .agentIntegration: .agentIntegration
             case .externalToolsCitations: .externalToolsCitations
             }
         }
@@ -141,7 +132,7 @@ struct ScholiumSettingsView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("scholium.settings.selectedPane") private var persistedPane = "triptychs"
     @AppStorage("scholium.settings.researchGuidanceCategory")
-    private var persistedResearchCategory = ResearchGuidanceCategory.skills.rawValue
+    private var persistedResearchCategory = ResearchGuidanceCategory.agentIntegration.rawValue
     @State private var destination = ScholiumSettingsDestination.triptychs
     @State private var searchQuery = ""
     @State private var didPresentQAFeedbackProof = false
@@ -201,7 +192,7 @@ struct ScholiumSettingsView: View {
             let pane = WorkspaceSettingsPane(rawValue: persistedPane) ?? .triptychs
             let category = ResearchGuidanceCategory(
                 rawValue: persistedResearchCategory
-            ) ?? .skills
+            ) ?? .agentIntegration
             destination = ScholiumSettingsDestination.restored(
                 pane: pane,
                 researchCategory: category
@@ -363,10 +354,8 @@ struct ScholiumSettingsView: View {
             HotkeySettingsView(searchQuery: searchQuery)
         case .attention:
             AttentionSettingsView()
-        case .skills:
-            ResearchGuidanceSettingsView(category: .skills)
-        case .actionProfiles:
-            ResearchGuidanceSettingsView(category: .actionProfiles)
+        case .agentIntegration:
+            ResearchGuidanceSettingsView(category: .agentIntegration)
         case .externalToolsCitations:
             ResearchGuidanceSettingsView(category: .externalToolsCitations)
         }
@@ -375,8 +364,6 @@ struct ScholiumSettingsView: View {
 
 private struct AttentionSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
-    @EnvironmentObject private var researchResultNotificationCoordinator: ResearchResultNotificationCoordinator
-    @Environment(\.scenePhase) private var scenePhase
     @State private var dismissalDays = TriptychSettings().attentionDismissalDays
     @State private var isSaving = false
     @State private var errorMessage: String?
@@ -404,17 +391,6 @@ private struct AttentionSettingsView: View {
                     alignment: .leading,
                     spacing: ScholiumGrid.Spacing.sectionSeparation
                 ) {
-                    settingsEditorSection("System Result Notifications") {
-                        systemNotificationAuthorizationControl
-
-                        Text("System notifications use a private summary and never include Note, Result, Record, or research-content text.")
-                            .font(ScholiumTypography.interface(.body))
-                            .scholiumForeground(.secondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    Divider()
-
                     settingsEditorSection("Reminder Timing for This Triptych") {
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
@@ -431,7 +407,7 @@ private struct AttentionSettingsView: View {
                         }
                     }
 
-                    Text("These durations apply only to derived issue reminders. Dismiss on a completed Action removes that activity immediately; neither operation reviews, accepts, adopts, undoes, or changes Notes or Records.")
+                    Text("These durations apply only to derived issue reminders. Dismissing a reminder does not change any Note or researcher-authored judgment.")
                         .font(ScholiumTypography.interface(.body))
                         .scholiumForeground(.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -479,15 +455,6 @@ private struct AttentionSettingsView: View {
             dismissalDays = durations.contains(stored)
                 ? stored
                 : TriptychSettings().attentionDismissalDays
-            await researchResultNotificationCoordinator
-                .refreshSystemNotificationAuthorization()
-        }
-        .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
-            Task {
-                await researchResultNotificationCoordinator
-                    .refreshSystemNotificationAuthorization()
-            }
         }
         .alert("Could Not Save Notification Settings", isPresented: Binding(
             get: { errorMessage != nil },
@@ -502,76 +469,6 @@ private struct AttentionSettingsView: View {
     private var hasDismissedAttention: Bool {
         let ledger = AttentionPreferences.decodeLedger(dismissalLedgerData)
         return !ledger.dismissedUntilByItemID.isEmpty
-            || !ledger.revisionBoundItemIDs.isEmpty
-    }
-
-    @ViewBuilder
-    private var systemNotificationAuthorizationControl: some View {
-        let coordinator = researchResultNotificationCoordinator
-        HStack(alignment: .center, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            Label(systemNotificationStatusTitle, systemImage: systemNotificationStatusSymbol)
-                .font(ScholiumTypography.interface(.body, emphasis: .strong))
-                .scholiumForeground(systemNotificationStatusColor)
-            Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
-            switch coordinator.systemNotificationAuthorizationState {
-            case .notDetermined:
-                Button("Enable System Notifications") {
-                    Task {
-                        await coordinator
-                            .requestSystemNotificationAuthorizationFromSettings()
-                    }
-                }
-                .disabled(coordinator.isRequestingSystemNotificationAuthorization)
-            case .authorized, .denied:
-                Button("Open System Notification Settings…") {
-                    coordinator.openNotificationSettings()
-                }
-            case nil:
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityLabel("Checking notification permission")
-            }
-        }
-
-        if let error = coordinator.systemNotificationAuthorizationError {
-            Text(error)
-                .font(ScholiumTypography.interface(.small))
-                .scholiumForeground(.destructive)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private var systemNotificationStatusTitle: String {
-        switch researchResultNotificationCoordinator
-            .systemNotificationAuthorizationState {
-        case .notDetermined:
-            String(localized: "Not Enabled", table: "Localizable", bundle: .module)
-        case .authorized:
-            String(localized: "Enabled", table: "Localizable", bundle: .module)
-        case .denied:
-            String(localized: "Off in System Settings", table: "Localizable", bundle: .module)
-        case nil:
-            String(localized: "Checking…", table: "Localizable", bundle: .module)
-        }
-    }
-
-    private var systemNotificationStatusSymbol: String {
-        switch researchResultNotificationCoordinator
-            .systemNotificationAuthorizationState {
-        case .authorized: "checkmark.circle"
-        case .notDetermined, .denied: "bell.slash"
-        case nil: "bell"
-        }
-    }
-
-    private var systemNotificationStatusColor: ScholiumColorRole {
-        switch researchResultNotificationCoordinator
-            .systemNotificationAuthorizationState {
-        case .authorized: .confirmed
-        case .denied: .attention
-        case .notDetermined, nil: .secondaryText
-        }
     }
 
     private var reminderTimingPicker: some View {
@@ -622,12 +519,9 @@ private struct MetadataSettingsView: View {
     @State private var savedMetadataFields = TriptychSettings.defaultMetadataFields
     @State private var aboutConfigurations = TriptychSettings.defaultAbout
     @State private var savedAboutConfigurations = TriptychSettings.defaultAbout
-    @State private var agentCreation = AnalysisAgentCreationConfiguration()
-    @State private var savedAgentCreation = AnalysisAgentCreationConfiguration()
     @State private var savedTriptychSettings = TriptychSettings()
     @State private var savedSettingsRevision: SettingsRevision?
     @State private var savedTriptychID: UUID?
-    @State private var selectedSourceType: AnalysisSourceType = .journalArticle
     @State private var isSaving = false
     @State private var hasLoaded = false
     @State private var revisionConflict = false
@@ -694,8 +588,7 @@ private struct MetadataSettingsView: View {
         MetadataSettingsCandidateBuilder.build(
             from: savedTriptychSettings,
             metadataFields: metadataFields,
-            aboutConfigurations: aboutConfigurations,
-            agentCreation: agentCreation
+            aboutConfigurations: aboutConfigurations
         )
     }
 
@@ -706,7 +599,6 @@ private struct MetadataSettingsView: View {
     private struct SettingsDiagnostic {
         enum Section {
             case fieldDefinitions
-            case agentPreferences
             case configuration
             case other
         }
@@ -757,14 +649,6 @@ private struct MetadataSettingsView: View {
                 repair: String(localized: "Review the complete Metadata settings candidate before saving.", table: "Localizable", bundle: .module)
             )
         }
-    }
-
-    private var currentAgentDiagnostic: SettingsDiagnostic? {
-        guard let diagnostic = validationDiagnostic,
-              diagnostic.section == .agentPreferences,
-              diagnostic.role == .paperAnalysis,
-              diagnostic.sourceType == selectedSourceType else { return nil }
-        return diagnostic
     }
 
     private var isDirty: Bool {
@@ -849,10 +733,6 @@ private struct MetadataSettingsView: View {
                 ) {
                     fieldDefinitionsSection
                     Divider()
-                    if selectedSlot == .paperAnalysis {
-                        agentPreferencesSection
-                        Divider()
-                    }
                     displayOrderColumn
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1283,114 +1163,6 @@ private struct MetadataSettingsView: View {
         choiceDrafts[key] = ""
     }
 
-    private var agentPreferencesSection: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            Text("Agent-Created Analyses")
-                .font(ScholiumTypography.interface(.sectionTitle))
-            Text("Choose Scholium-managed fields to highlight for this source type. Every field is optional; an Agent may create the Analysis without supplying any of them.")
-                .font(ScholiumTypography.interface(.small))
-                .scholiumForeground(.secondaryText)
-            Picker("Source Type", selection: $selectedSourceType) {
-                ForEach(AnalysisSourceType.allCases, id: \.self) { sourceType in
-                    Text(sourceType.propertyDisplayName).tag(sourceType)
-                }
-            }
-            .frame(maxWidth: 320)
-
-            ForEach(agentPreferenceGroups, id: \.group) { group in
-                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                    Text(group.group.label)
-                        .font(ScholiumTypography.interface(.compact, emphasis: .strong))
-                        .scholiumForeground(.secondaryText)
-                        .accessibilityHeading(.h3)
-                    ForEach(group.fields, id: \.key) { field in
-                        agentPreferenceRow(field)
-                    }
-                }
-            }
-
-            Button("Clear Preferred Fields for This Source Type") {
-                agentCreation.preferredFieldsBySourceType.removeValue(forKey: selectedSourceType)
-            }
-            .disabled(agentCreation.preferredFields(for: selectedSourceType).isEmpty)
-
-            if let diagnostic = currentAgentDiagnostic {
-                Label(diagnostic.displayMessage, systemImage: "exclamationmark.circle")
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.destructive)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
-    private var agentPreferenceGroups: [(
-        group: PropertyPresentationGroup,
-        fields: [PropertyPresentation]
-    )] {
-        let sourceProfile = AnalysisSourceTypeProfileCatalog.profile(for: selectedSourceType)
-        let applicable = Set(
-            candidateCatalog.analysisContracts(for: selectedSourceType)
-                .map(\.canonicalKey)
-        ).subtracting(["type"])
-        let recommended = Set(sourceProfile.recommendedFieldOrder)
-        let fields = PropertyPresentationCatalog.presentations(
-            for: .analysis,
-            catalog: candidateCatalog
-        )
-            .filter { applicable.contains($0.key) }
-        let grouped = Dictionary(grouping: fields, by: \.group)
-        return PropertyPresentationCatalog.orderedGroups(for: .analysis).compactMap { group in
-            guard let values = grouped[group], !values.isEmpty else { return nil }
-            return (
-                group,
-                values.sorted {
-                    (recommended.contains($0.key) ? 0 : 1, $0.order)
-                        < (recommended.contains($1.key) ? 0 : 1, $1.order)
-                }
-            )
-        }
-    }
-
-    private func agentPreferenceRow(_ field: PropertyPresentation) -> some View {
-        let preferred = agentCreation.preferredFields(for: selectedSourceType).contains(field.key)
-        return Toggle(isOn: Binding(
-            get: { preferred },
-            set: { enabled in
-                var fields = agentCreation.preferredFields(for: selectedSourceType)
-                if enabled {
-                    if !fields.contains(field.key) { fields.append(field.key) }
-                } else {
-                    fields.removeAll { $0 == field.key }
-                }
-                agentCreation.preferredFieldsBySourceType[selectedSourceType] = fields
-            }
-        )) {
-            VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.headerDetailSpacing) {
-                HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                    Text(field.label)
-                    if AnalysisSourceTypeProfileCatalog.profile(
-                        for: selectedSourceType
-                    ).recommendedFieldOrder.contains(field.key) {
-                        Text("Recommended")
-                            .font(ScholiumTypography.interface(.small))
-                            .scholiumForeground(.secondaryText)
-                    }
-                }
-                Text(field.key)
-                    .font(ScholiumTypography.exact(.small))
-                    .scholiumForeground(.mutedText)
-                if let help = field.help {
-                    Text(help)
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.secondaryText)
-                }
-            }
-        }
-        .toggleStyle(.checkbox)
-        .accessibilityLabel("\(selectedSourceType.propertyDisplayName), \(field.label), \(field.key), preferred for Agent")
-        .accessibilityValue(preferred ? "Preferred" : "Optional")
-    }
-
     private var displayOrderColumn: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             settingsSectionTitle("Always Shown in About")
@@ -1662,8 +1434,6 @@ private struct MetadataSettingsView: View {
         savedMetadataFields = settings.metadataFields
         aboutConfigurations = settings.about
         savedAboutConfigurations = settings.about
-        agentCreation = settings.analysisAgentCreation
-        savedAgentCreation = settings.analysisAgentCreation
         savedTriptychSettings = settings
         savedTriptychID = snapshot.activeTriptychID
         savedSettingsRevision = snapshot.portableSettingsState.editableRevision
@@ -1675,7 +1445,6 @@ private struct MetadataSettingsView: View {
     private func revertToSaved() {
         metadataFields = savedMetadataFields
         aboutConfigurations = savedAboutConfigurations
-        agentCreation = savedAgentCreation
         cancelAddingField()
         revisionConflict = settingsModel.snapshot.activeTriptychID != savedTriptychID
             || settingsModel.settingsRevision != savedSettingsRevision
@@ -1750,16 +1519,6 @@ private struct MetadataSettingsView: View {
             section = .configuration
             diagnosticReason = String(localized: "This configuration field is blank, duplicated, or unnormalized.", table: "Localizable", bundle: .module)
             repair = String(localized: "Remove the blank or duplicate field entry.", table: "Localizable", bundle: .module)
-        case .invalidPreferredField(let type, let field):
-            role = .paperAnalysis; sourceType = type; key = field
-            section = .agentPreferences
-            diagnosticReason = String(localized: "This is not a shape-known field that an Agent may create.", table: "Localizable", bundle: .module)
-            repair = String(localized: "Clear this preferred Agent field.", table: "Localizable", bundle: .module)
-        case .preferredFieldNotApplicable(let type, let field):
-            role = .paperAnalysis; sourceType = type; key = field
-            section = .agentPreferences
-            diagnosticReason = String(localized: "This preferred field does not apply to the selected Source Type.", table: "Localizable", bundle: .module)
-            repair = String(localized: "Clear it or choose a source type where it applies.", table: "Localizable", bundle: .module)
         case .invalidAttentionDismissalDays:
             role = nil; sourceType = nil; key = nil
             section = .other
@@ -1780,53 +1539,8 @@ private struct MetadataSettingsView: View {
 
     private func reveal(_ diagnostic: SettingsDiagnostic) {
         if let role = diagnostic.role { selectedSlot = role }
-        if let sourceType = diagnostic.sourceType {
-            selectedSlot = .paperAnalysis
-            selectedSourceType = sourceType
-        }
     }
 
-}
-
-struct AgentCLISettingsView: View {
-    @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
-
-    var body: some View {
-        researchSettingsSection(LocalizedStringResource(
-            "SCHOLIUM CLI ON THIS MAC",
-            table: "Localizable",
-            bundle: .module
-        )) {
-            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                Text("Scholium does not manage this Mac’s CLI. Copy the official instructions for your Agent.")
-                    .font(ScholiumTypography.interface(.body))
-                    .scholiumForeground(.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                Button("Copy CLI Installation Instructions") {
-                    let copied = ScholiumPasteboardWriter.general.writeText(
-                        ScholiumCLIInstallationInstructions.text
-                    )
-                    let message = copied
-                        ? String(
-                            localized: "CLI installation instructions copied",
-                            table: "Localizable",
-                            bundle: .module
-                        )
-                        : String(
-                            localized: "CLI installation instructions could not be copied.",
-                            table: "Localizable",
-                            bundle: .module
-                        )
-                    settingsModel.presentFeedback(
-                        message,
-                        kind: copied ? .confirmation : .error
-                    )
-                }
-                .accessibilityIdentifier("scholium.agentCLI.copyInstructions")
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
 }
 
 private struct WorkspaceSettingsFeedbackItem: View {
@@ -1844,135 +1558,6 @@ private struct WorkspaceSettingsFeedbackItem: View {
         )
         .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
         .frame(maxWidth: .infinity, alignment: .top)
-    }
-}
-
-/// Citation style is a protected Platform integration setting. It does not
-/// select, install, or grant authority to a Skill package.
-struct ResearchCitationMethodSettingsView: View {
-    @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
-    let onStatusChange: (ResearchCitationMethodStatus) -> Void
-    @State private var status: ResearchCitationMethodStatus?
-    @State private var isWorking = false
-    @State private var errorMessage: String?
-
-    var body: some View {
-        researchSettingsSection(LocalizedStringResource(
-            "TRIPTYCH CITATION STYLE",
-            table: "Localizable",
-            bundle: .module
-        )) {
-            HStack(alignment: .top, spacing: ScholiumGrid.Spacing.nestedContentInset) {
-                VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.fieldSpacing) {
-                    if let status {
-                        if status.availableStyles.isEmpty {
-                            Text("No citation styles are available in this build.")
-                                .font(ScholiumTypography.interface(.body))
-                                .scholiumForeground(.secondaryText)
-                        } else {
-                            Picker("Citation style", selection: activeStyleSelection) {
-                                Text("None").tag(String?.none)
-                                ForEach(status.availableStyles) { option in
-                                    Text(option.displayName)
-                                        .tag(Optional(option.citationStyle))
-                                }
-                            }
-                            .frame(maxWidth: 420)
-                            .accessibilityIdentifier(
-                                "scholium.researchGuidance.citationMethod"
-                            )
-                        }
-                        if let active = status.availableStyles.first(where: {
-                            $0.citationStyle == status.activeCitationStyle
-                        }) {
-                            Text(active.description)
-                                .font(ScholiumTypography.interface(.small))
-                                .scholiumForeground(.secondaryText)
-                                .fixedSize(horizontal: false, vertical: true)
-                        } else {
-                            Text("Citation checking remains unavailable until a style is selected.")
-                                .font(ScholiumTypography.interface(.small))
-                                .scholiumForeground(.secondaryText)
-                        }
-                    } else {
-                        ProgressView("Loading citation styles…")
-                    }
-                }
-                Spacer()
-                if isWorking { ProgressView().controlSize(.small) }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .task(id: settingsModel.activeTriptychServicesID) { await reload() }
-        .alert("Could Not Update Citation Style", isPresented: Binding(
-            get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
-        )) {
-            Button("Dismiss", role: .cancel) { errorMessage = nil }
-        } message: {
-            Text(errorMessage ?? "")
-        }
-        .accessibilityIdentifier("scholium.researchGuidance.citationMethodSection")
-    }
-
-    private var activeStyleSelection: Binding<String?> {
-        Binding(
-            get: { status?.activeCitationStyle },
-            set: { newValue in
-                guard newValue != status?.activeCitationStyle else { return }
-                if let newValue {
-                    activate(newValue)
-                } else {
-                    clear()
-                }
-            }
-        )
-    }
-
-    private func reload() async {
-        guard settingsModel.activeTriptychServicesID != nil else {
-            status = nil
-            errorMessage = nil
-            return
-        }
-        do {
-            status = try await settingsModel.citationMethodStatus()
-            if let status { onStatusChange(status) }
-            errorMessage = nil
-        } catch {
-            status = nil
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    private func activate(_ citationStyle: String) {
-        perform {
-            status = try await settingsModel.activateCitationMethod(
-                citationStyle: citationStyle,
-                expectedConfigurationRevision: status?.configurationRevision
-            )
-        }
-    }
-
-    private func clear() {
-        perform {
-            status = try await settingsModel.clearCitationMethod(
-                expectedConfigurationRevision: status?.configurationRevision
-            )
-        }
-    }
-
-    private func perform(_ operation: @escaping @MainActor () async throws -> Void) {
-        isWorking = true
-        Task { @MainActor in
-            defer { isWorking = false }
-            do {
-                try await operation()
-                if let status { onStatusChange(status) }
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
     }
 }
 

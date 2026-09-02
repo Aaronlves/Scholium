@@ -149,18 +149,6 @@ final class WindowEditorFlushCoordinator {
         try await fallback(capturingEditorState)
     }
 
-    func flushCurrentEditorForResearchAction(
-        selectedDocumentPath: String?,
-        fallback: @MainActor () async throws -> Void
-    ) async throws {
-        if let registration = currentRegistration {
-            try validate(registration, selectedDocumentPath: selectedDocumentPath)
-            try await registration.flush()
-            return
-        }
-        try await fallback()
-    }
-
     func flushAllEditors(in triptychID: UUID) async throws {
         try await registry.flushEditors(in: triptychID)
     }

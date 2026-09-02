@@ -10,16 +10,9 @@ Triptych workspace session owns one current mode, starting in Edit and retained
 across its Note/tab changes. Switching workspace restores that workspace's
 selection. Mode state never becomes a Note, vault, or Markdown fact.
 
-Review owns the passage Comment surface; Edit owns formatting; Source owns
-neither. Contextual surfaces appear only after selection completes, remain
-anchored to the source location while scrolling, and disappear when their
-selection, focus, task, or mode ends. Cancelling Comment must not erase the
-visible selection.
-
-Current-revision Comments use one quiet source-line treatment and counted
-margin marker per Comment group/range. Activation opens the matching group; its
-locator returns to Review. Revision mismatch removes the current marker and
-labels the locator **Earlier revision**.
+Review owns read selection; Edit owns formatting. Selection remains available
+to document statistics without creating a separate annotation or collaboration
+object.
 
 Managed New Note opens Edit at the exact body start after durable commit.
 Editor failure retains the Note and offers **Retry Edit** and **Source**. An
@@ -64,13 +57,13 @@ using bounded visual declarations.
 
 Sanitization rejects imports, executable content, external URLs, escaping
 selectors, `!important`, and declarations that hide, reposition, or cover
-protected information. Callouts, footnotes, Comments, provenance, diagnostics,
+protected information. Callouts, footnotes, provenance, diagnostics,
 conflicts, recovery, and chrome remain app-owned. Invalid snippets stay disabled
 with errors. Rendering failure enters persistent CSS Safe Mode until the
 researcher disables or selectively re-enables managed copies.
 
 The Document toolbar keeps Sidebar and Back/Forward leading, identity and
-outline in the Document region, then Search, Document Mode, Records, and
+outline in the Document region, then Search, Document Mode, Agent Changes, and
 trailing Inspector. Source remains available through the Document Mode menu;
 the toolbar button prioritizes Review/Edit and reports its current value.
 Document Text Size is per-window and source-neutral.
@@ -87,16 +80,10 @@ creating another one.
 
 ## 18.5 Contextual research and Agent Changes
 
-Apparatus contains Research Inspector only. A researcher-owned Comment group
-uses a local sheet and never becomes Agent chat. Research Records remains a
-separate, resizable, nonrestored native auxiliary window bound to one Triptych;
-it never follows unrelated window focus or appears inside Inspector.
-
-Until §22's replacement Record contract is resolved, the Records window shows
-one explicit unavailable state and produces, imports, mutates, searches, or
-deletes no Record. The window boundary is retained so the later contract does
-not force a shell redesign; current implementation bytes cannot silently define
-the new Record format or presentation.
+Apparatus contains Research Inspector only. Until §22's replacement Record
+contract is resolved, Scholium exposes no Research Records route, window,
+provider, mutation, or presentation. Current implementation bytes cannot
+silently define the future format or interface.
 
 **Agent Changes** is a temporary read-only comparison presentation, not a
 fourth Document mode, Records collection state, durable review state, or
@@ -215,7 +202,6 @@ paths, source, researcher prose, and Skill names remain verbatim.
 | Incoming Links / Outgoing Links | 传入连接 / 传出连接 |
 | Summary / Source Basis / Limitations | 摘要 / 来源依据 / 局限 |
 | Review / Edit / Source | 审阅 / 编辑 / 源文本 |
-| Comment / Comment Group | 评论 / 评论组 |
 | Research Record | 研究记录 |
 | No Document Selected | 未选择文档 |
 | Expand / Collapse All Folders | 展开 / 折叠所有文件夹 |

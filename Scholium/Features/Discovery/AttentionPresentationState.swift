@@ -5,7 +5,6 @@ import Foundation
 enum AttentionIssueGroup: String, CaseIterable, Identifiable, Sendable {
     case identityAndMetadata
     case structureAndConnections
-    case revisionAndResearch
 
     var id: String { rawValue }
 
@@ -13,7 +12,6 @@ enum AttentionIssueGroup: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .identityAndMetadata: "Identity & Metadata"
         case .structureAndConnections: "Structure & Connections"
-        case .revisionAndResearch: "Revision & Research"
         }
     }
 
@@ -23,8 +21,6 @@ enum AttentionIssueGroup: String, CaseIterable, Identifiable, Sendable {
             [.malformedMetadata, .unresolvedIdentity]
         case .structureAndConnections:
             [.possibleOrphan, .brokenConnection, .ambiguousConnection]
-        case .revisionAndResearch:
-            [.synthesisMaterialChanged]
         }
     }
 
@@ -35,36 +31,28 @@ enum AttentionIssueGroup: String, CaseIterable, Identifiable, Sendable {
 
 enum AttentionNotificationFilter: Hashable, Sendable {
     case all
-    case activities
     case settlements
     case issues
     case issue(AttentionQueueKind)
 
-    var showsActivities: Bool {
-        switch self {
-        case .all, .activities: true
-        case .settlements, .issues, .issue: false
-        }
-    }
-
     var issueKind: AttentionQueueKind? {
         switch self {
         case .issue(let kind): kind
-        case .all, .activities, .settlements, .issues: nil
+        case .all, .settlements, .issues: nil
         }
     }
 
     var showsIssues: Bool {
         switch self {
         case .all, .issues, .issue: true
-        case .activities, .settlements: false
+        case .settlements: false
         }
     }
 
     var showsSettlements: Bool {
         switch self {
         case .all, .settlements: true
-        case .activities, .issues, .issue: false
+        case .issues, .issue: false
         }
     }
 }
@@ -73,7 +61,6 @@ extension AttentionQueueKind {
     var localizedDisplayNameResource: LocalizedStringResource {
         switch self {
         case .possibleOrphan: "Possible Orphan"
-        case .synthesisMaterialChanged: "Synthesis Material Changed"
         case .malformedMetadata: "Malformed Metadata"
         case .brokenConnection: "Broken Connection"
         case .ambiguousConnection: "Ambiguous Connection"
@@ -85,8 +72,6 @@ extension AttentionQueueKind {
         switch self {
         case .possibleOrphan:
             ScholiumL10n.string("Possible Orphan", locale: locale)
-        case .synthesisMaterialChanged:
-            ScholiumL10n.string("Synthesis Material Changed", locale: locale)
         case .malformedMetadata:
             ScholiumL10n.string("Malformed Metadata", locale: locale)
         case .brokenConnection:
@@ -162,11 +147,6 @@ enum AttentionIssueCopy {
                 "Invalid relationship endpoint",
                 locale: locale
             )
-        case "A selected Analysis changed after Synthesize":
-            ScholiumL10n.string(
-                "A selected Analysis changed after Synthesize",
-                locale: locale
-            )
         default:
             // Unknown projection copy remains visible rather than being
             // replaced with a misleading generic condition.
@@ -182,11 +162,11 @@ enum AttentionNotificationCopy {
     ) -> String {
         noteScoped
             ? ScholiumL10n.string(
-                "No Action activity, Settlement reminder, or visible derived issue needs attention for this Note.",
+                "No Settlement reminder or visible derived issue needs attention for this Note.",
                 locale: locale
             )
             : ScholiumL10n.string(
-                "No Action activity, Settlement reminder, or visible derived issue needs attention in this Scope.",
+                "No Settlement reminder or visible derived issue needs attention in this Scope.",
                 locale: locale
             )
     }

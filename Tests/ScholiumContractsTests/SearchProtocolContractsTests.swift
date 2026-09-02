@@ -22,55 +22,26 @@ struct SearchProtocolContractsTests {
         #expect(decoded.lastGoodGeneration == generation)
     }
 
-    @Test("Partial Record availability is current, explicit, and codable")
-    func partialRecordAvailabilityContract() throws {
-        let generation = RecordSearchGenerationID(
-            triptychID: UUID(),
-            sourceManifestHash: "readable-records"
-        )
-        let availability = RecordSearchAvailability.partial(
-            current: generation,
-            reason: "One Record is unreadable."
-        )
-        let encoded = try JSONEncoder().encode(availability)
-        let decoded = try JSONDecoder().decode(
-            RecordSearchAvailability.self,
-            from: encoded
-        )
-
-        #expect(decoded == availability)
-        #expect(decoded.lastGoodGeneration == generation)
-        #expect(decoded.presentsCurrentResults)
-        #expect(!RecordSearchAvailability.failed(
-            lastGood: nil,
-            reason: "broken"
-        ).presentsCurrentResults)
-    }
-
-    @Test("Record collection paging remains additive to existing Search requests")
-    func recordCollectionPagingContract() throws {
+    @Test("Result paging remains additive to existing Search requests")
+    func resultPagingContract() throws {
         let request = SearchRequest(
-            query: "kind:record",
+            query: "kind:note",
             presentationScope: .triptych,
             executionScope: .triptych,
-            limit: SearchContract.recordCollectionPageSize,
-            offset: 200,
-            recordSort: .titleDescending
+            limit: 25,
+            offset: 200
         )
         let encoded = try JSONEncoder().encode(request)
         let decoded = try JSONDecoder().decode(SearchRequest.self, from: encoded)
         #expect(decoded.resultOffset == 200)
-        #expect(decoded.resolvedRecordSort == .titleDescending)
 
         var legacyObject = try #require(
             JSONSerialization.jsonObject(with: encoded) as? [String: Any]
         )
         legacyObject["offset"] = nil
-        legacyObject["recordSort"] = nil
         let legacyData = try JSONSerialization.data(withJSONObject: legacyObject)
         let legacy = try JSONDecoder().decode(SearchRequest.self, from: legacyData)
         #expect(legacy.resultOffset == 0)
-        #expect(legacy.resolvedRecordSort == .finishedAtDescending)
     }
 
     @Test("Note provider remains the default and preserves finite lexical syntax")
@@ -110,25 +81,15 @@ struct SearchProtocolContractsTests {
 
     @Test("Provider selection is closed, order independent, and appears at most once")
     func closedProviderSelection() throws {
-        let record = SearchQueryParser.parse(#"action:"Analyze Note" kind:record agency"#)
-        let ast = try #require(record.ast)
-        #expect(ast.provider == .record)
-        #expect(ast.providerWasExplicit)
-        #expect(ast.clauses.count == 2)
-
         let noteOnly = try #require(SearchQueryParser.parse("kind:note").ast)
         #expect(noteOnly.provider == .note)
         #expect(noteOnly.clauses.isEmpty)
         #expect(noteOnly.isFilterOnly)
 
-        let recordOnly = try #require(SearchQueryParser.parse("kind:record").ast)
-        #expect(recordOnly.provider == .record)
-        #expect(recordOnly.clauses.isEmpty)
-        #expect(recordOnly.isFilterOnly)
-
+        #expect(SearchQueryParser.parse("kind:record").diagnostics.first?.code == .unknownStructuredValue)
         #expect(SearchQueryParser.parse("kind:any").diagnostics.first?.code == .unknownStructuredValue)
         #expect(
-            SearchQueryParser.parse("kind:note kind:record").diagnostics.first?.code
+            SearchQueryParser.parse("kind:note kind:note").diagnostics.first?.code
                 == .duplicateClause
         )
     }
@@ -206,26 +167,6 @@ struct SearchProtocolContractsTests {
         #expect(SearchQueryParser.parse("-from-note:A relation:supports").diagnostics.first?.code == .unsupportedSyntax)
     }
 
-    @Test("Record provider has its own closed fields and rejects Note-only clauses")
-    func recordProvider() throws {
-        let result = SearchQueryParser.parse(
-            #"kind:record note:"Groundwork" action:"Analyze Note" skill:close-reading participant:researcher date:7d agency -obsolete"#
-        )
-        let ast = try #require(result.ast)
-        #expect(ast.provider == .record)
-        #expect(ast.clauses.count == 7)
-        #expect(ast.recordClauses.count == 7)
-
-        #expect(SearchQueryParser.parse("kind:record title:duty").diagnostics.first?.code == .providerMismatch)
-        #expect(SearchQueryParser.parse("kind:record property:author").diagnostics.first?.code == .providerMismatch)
-        #expect(SearchQueryParser.parse("kind:record from-note:A relation:supports").diagnostics.first?.code == .providerMismatch)
-        #expect(SearchQueryParser.parse("kind:note action:analyze").diagnostics.first?.code == .providerMismatch)
-        #expect(SearchQueryParser.parse("kind:record action:analy*").diagnostics.first?.code == .unsupportedSyntax)
-        #expect(SearchQueryParser.parse("kind:record -skill:test").diagnostics.first?.code == .unsupportedSyntax)
-        #expect(SearchQueryParser.parse("kind:record participant:model").diagnostics.first?.code == .unknownStructuredValue)
-        #expect(SearchQueryParser.parse(#"kind:record date:"7d""#).diagnostics.first?.code == .unsupportedSyntax)
-    }
-
     @Test("Explanation and capabilities are deterministic products of the current contract")
     func explanationAndCapabilities() throws {
         let ast = try #require(SearchQueryParser.parse(
@@ -244,17 +185,6 @@ struct SearchProtocolContractsTests {
         ])
         #expect(explanation.ordering == .noteExactIdentityThenBM25ThenTitleRolePath)
         #expect(explanation.limitations.contains(.noteRelationsDirectOnly))
-        let recordExplanation = try #require(
-            SearchQueryParser.parse("kind:record participant:researcher")
-                .ast
-        ).explanation(scope: .triptych)
-        #expect(recordExplanation.scope == .triptych)
-        #expect(recordExplanation.normalization == [
-            .canonicalUnicodeCaseWhitespace,
-            .lexicalUnicodeCaseDiacriticWhitespace,
-        ])
-        #expect(recordExplanation.ordering == .recordFinishedAtThenUUID)
-        #expect(recordExplanation.limitations.contains(.recordNoCrossObjectRelevance))
         #expect(explanation.clauses.contains {
             if case .property(let key, let value) = $0.kind {
                 return key == "author" && value == "arendt"
@@ -270,12 +200,9 @@ struct SearchProtocolContractsTests {
         })
 
         #expect(SearchCapabilities.current.contractVersion == SearchContract.currentVersion)
-        #expect(SearchCapabilities.current.providers.map(\.provider) == [.note, .record])
+        #expect(SearchCapabilities.current.providers.map(\.provider) == [.note])
         #expect(SearchCapabilities.current.capability(for: .note)?.fields.contains {
             $0.name == "property"
-        } == true)
-        #expect(SearchCapabilities.current.capability(for: .record)?.fields.contains {
-            $0.name == "participant" && $0.allowedValues == ["researcher", "agent"]
         } == true)
 
         let scoped = SearchCompletionContext(
@@ -304,13 +231,6 @@ struct SearchProtocolContractsTests {
                 scope: .triptych,
                 context: scoped
             ).first?.replacementText == "property:language=Greek"
-        )
-        #expect(
-            SearchCapabilities.current.completions(
-                for: "kind:record prop",
-                scope: .triptych,
-                context: scoped
-            ).isEmpty
         )
     }
 

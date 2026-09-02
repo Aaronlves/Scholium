@@ -509,8 +509,8 @@ struct AppCompositionRootTests {
         }
     }
 
-    @Test("Agent bridge startup failure is retained without disabling the App runtime")
-    func agentBridgeStartupFailureIsRetained() async throws {
+    @Test("App bridge startup failure is retained without disabling the App runtime")
+    func appBridgeStartupFailureIsRetained() async throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -522,16 +522,16 @@ struct AppCompositionRootTests {
         defer { try? FileManager.default.removeItem(at: root) }
 
         let occupiedNamespace = support.appendingPathComponent(
-            "AgentBridge",
+            "AppBridge",
             isDirectory: true
         )
-        let existing = try LocalAgentBridgeServer(
+        let existing = try ScholiumAppBridgeServer(
             applicationSupportURL: occupiedNamespace
-        ) { _ in throw LocalAgentBridgeError.permissionDenied }
+        ) { _ in throw ScholiumAppBridgeError.permissionDenied }
         defer { existing.stop() }
         let store = try WorkspaceStore(applicationSupportURL: support)
-        #expect(store.localAgentBridge == nil)
-        #expect(store.localAgentBridgeStartupFailure == .alreadyRunning)
+        #expect(store.appBridge == nil)
+        #expect(store.appBridgeStartupFailure == .alreadyRunning)
         #expect(try await store.applicationRuntime.availableWorkspaces().isEmpty)
         await store.shutdownApplicationRuntime()
     }

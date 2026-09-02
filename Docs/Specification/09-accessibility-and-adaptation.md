@@ -83,9 +83,7 @@
 - Review, Edit, and Source expose current mode, content state, and one coherent
   focus order. Mode, window, external-change, conflict, and recovery transitions
   preserve dirty buffer, composition, selection, Undo, scroll, and recovery.
-- Review Comment and Edit formatting remain attached to the finalized
-  selection and keyboard reachable. Comment markers state line range and count;
-  stale locators state **Earlier revision** without false navigation.
+- Review selection and Edit formatting remain exact and keyboard reachable.
 - Suggestion lists retain document focus and one listbox selection. They do not
   open during marked-text composition.
 - Document Find exposes query, options, count, navigation, replacement
@@ -99,7 +97,7 @@
   regions are directionally isolated without changing surrounding prose.
 - Tables, footnotes, mathematics, Callouts, links, Mermaid, previews, and embeds
   expose semantic names, source/fallback, navigation, and bounded scrolling.
-  Generated Mermaid is not a Comment target; exact source remains its fallback.
+  Exact source remains the fallback for generated Mermaid.
 - Autosave Failed and Conflict state the retained-buffer consequence and
   applicable recovery. Proven Saved state is silent. Agent Undo reports each
   outcome without moving Document focus.
@@ -154,9 +152,8 @@
 
 ### Research Records
 
-- The separate Records window's unresolved state is a named, nonempty read-only
-  group explaining that the replacement Record contract is not yet available.
-  It exposes no inert collection controls or fabricated empty result.
+- No Records window or collection route is exposed until the replacement
+  contract is approved.
 - Agent Changes names Note, operation, exact change position and revisions,
   `change_id`, and Earlier Revision, Created by External Agent, or system-Trash
   state as applicable. Before/After and inserted, removed, or changed structure

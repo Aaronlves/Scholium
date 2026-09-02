@@ -28,11 +28,6 @@ struct WindowControllerArchitectureTests {
         #expect(ownerSource.contains("func prepareNoteSystemTrash("))
         #expect(ownerSource.contains("dependencies.flushEditors"))
         #expect(ownerSource.contains("dependencies.presentSystemTrash("))
-        #expect(ownerSource.contains(
-            "catch SystemTrashPreparationError.localExecutionRecoveryRequired"
-        ))
-        #expect(ownerSource.contains("archiveLocalExecutionsAndRetrySystemTrash"))
-        #expect(ownerSource.contains("archiveUnsupportedLocalResearchExecutions"))
         #expect(ownerSource.contains("func executeSystemTrash("))
         #expect(ownerSource.contains("requireOperations().moveToSystemTrash(preview)"))
         #expect(!ownerSource.contains("DocumentController"))
@@ -99,19 +94,10 @@ struct WindowControllerArchitectureTests {
             dismissalDays: 7,
             dependencies: .init(
                 dismissalDaysChanges: dismissalDays.eraseToAnyPublisher(),
-                activityChanges: Just<[ResearchActivityNotification]>([])
-                    .eraseToAnyPublisher(),
                 settlementRequirementChanges:
                     Just<[WorkspaceSettlementRequirement]>([])
                     .eraseToAnyPublisher(),
-                refresh: {},
-                resynthesize: { _ in },
-                openAction: { _ in },
-                endAction: { _ in },
-                reviewResult: { _ in },
-                followUp: { _ in },
-                dismissActivity: { _ in },
-                reviewChanges: { _ in }
+                refresh: {}
             )
         )
         var invalidations = 0
@@ -154,21 +140,6 @@ struct WindowControllerArchitectureTests {
         #expect(sessionSource.contains("projectionController.$state"))
     }
 
-    @Test("Document activity stack expansion stays in the exact window shell")
-    func activityStackExpansionIsWindowLocal() {
-        let first = WindowShellState(userDefaults: UserDefaults(suiteName: UUID().uuidString)!)
-        let second = WindowShellState(userDefaults: UserDefaults(suiteName: UUID().uuidString)!)
-
-        #expect(first.actionNotificationStackExpansionGeneration == 0)
-        #expect(second.actionNotificationStackExpansionGeneration == 0)
-        first.requestActionNotificationStackExpansion()
-        first.requestActionNotificationStackExpansion()
-        #expect(first.actionNotificationStackExpansionGeneration == 2)
-        #expect(second.actionNotificationStackExpansionGeneration == 0)
-        first.resetWorkspaceSessions()
-        #expect(first.actionNotificationStackExpansionGeneration == 0)
-    }
-
     @Test("Visible Sidebar always owns the stable Triptych Attention route")
     func stableTriptychAttentionRoute() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
@@ -191,7 +162,7 @@ struct WindowControllerArchitectureTests {
         #expect(route.contains("if appState.sidebarVisible"))
         #expect(route.contains("anchor: .sidebar"))
         #expect(route.contains("workspaceSlot: nil"))
-        #expect(route.contains("return .actionStack"))
+        #expect(route.contains("anchor: .inspector"))
         #expect(!route.contains("visibleTotalCount"))
         #expect(!route.contains("count > 0"))
     }
@@ -331,16 +302,13 @@ struct WindowControllerArchitectureTests {
         #expect(registry.noteWorkspaceWindowActivated(first))
     }
 
-    @Test("Feature controllers emit closed intents without mutating peers")
+    @Test("Feature controllers emit closed navigation intents without mutating peers")
     func closedIntentRouting() {
         let reference = fixtureReference(path: "Topics/Agency.md")
         var discoveryIntents: [WindowIntent] = []
         var documentIntents: [WindowIntent] = []
-        var researchIntents: [WindowIntent] = []
         let discovery = DiscoveryController { discoveryIntents.append($0) }
         let document = DocumentController { documentIntents.append($0) }
-        let research = ResearchController { researchIntents.append($0) }
-        let presentationID = UUID()
         let mutationTarget = NoteMutationTarget(
             documentID: VaultQualifiedNoteID(
                 vaultID: reference.vaultID,
@@ -352,12 +320,6 @@ struct WindowControllerArchitectureTests {
 
         discovery.requestOpen(reference, disposition: .newTab)
         document.requestFileOperation(.move(mutationTarget))
-        research.setActiveDocument(reference)
-        research.requestPresentAction(
-            .discuss,
-            target: reference,
-            presentationID: presentationID
-        )
 
         #expect(discoveryIntents == [
             .openDocument(WindowDocumentRoute(
@@ -366,13 +328,6 @@ struct WindowControllerArchitectureTests {
             )),
         ])
         #expect(documentIntents == [.presentNoteFileOperation(.move(mutationTarget))])
-        #expect(researchIntents == [
-            .presentResearchAction(ResearchActionPanelRoute(
-                target: reference,
-                actionID: .discuss,
-                presentationID: presentationID
-            )),
-        ])
         #expect(document.selectedDocument == nil)
         #expect(discovery.library.sourceScope == .library)
     }
@@ -1320,69 +1275,13 @@ struct WindowControllerArchitectureTests {
         #expect(contentView.contains("context: sidebarContext"))
     }
 
-    @Test("Research controller owns Inspector independently from Research Record")
+    @Test("Research controller owns Inspector presentation")
     func researchPresentationIsolation() {
         let controller = ResearchController()
         #expect(controller.inspector.mode == .overview)
         #expect(!controller.inspector.isVisible)
         controller.showResearchInspector(true)
         #expect(controller.inspector.isVisible)
-
-        #expect(controller.actions.presentationID == nil)
-    }
-
-    @Test("Research child owners do not invalidate the records owner")
-    func researchObservationOwnership() throws {
-        let shellState = WindowShellState()
-        let controller = ResearchController(shellState: shellState)
-        var invalidations = 0
-        let observation = controller.objectWillChange.sink { invalidations += 1 }
-
-        shellState.selectInspectorMode(.connect)
-        controller.actions.textValues = ["prompt": "Fixture"]
-        #expect(invalidations == 0)
-
-        controller.setActiveDocument(fixtureReference(path: "Topics/Owned.md"))
-        #expect(invalidations == 1)
-        observation.cancel()
-
-        let repositoryRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let controllerSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Features/ResearchContext/ResearchController.swift"
-            ),
-            encoding: .utf8
-        )
-        let contentSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/ContentView.swift"
-            ),
-            encoding: .utf8
-        )
-        let noteSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Views/Note/NoteContentView.swift"
-            ),
-            encoding: .utf8
-        )
-
-        #expect(!controllerSource.contains("shellState.objectWillChange"))
-        #expect(!controllerSource.contains("actions.objectWillChange"))
-        #expect(contentSource.contains(
-            "@ObservedObject private var researchActionController: ResearchActionController"
-        ))
-        #expect(contentSource.contains(
-            "@ObservedObject private var shellState: WindowShellState"
-        ))
-        #expect(noteSource.contains(
-            "@ObservedObject private var shellState: WindowShellState"
-        ))
-        #expect(!noteSource.contains(
-            "@ObservedObject private var controller: ResearchController"
-        ))
     }
 
     @Test("Library disclosure does not invalidate the Discovery owner")
@@ -1413,62 +1312,6 @@ struct WindowControllerArchitectureTests {
             encoding: .utf8
         )
         #expect(!source.contains("shellState.objectWillChange"))
-    }
-
-    @Test("Research destinations receive narrow contexts instead of the window model")
-    func researchDestinationsAreLeafBoundaries() throws {
-        let repositoryRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let relativePaths = [
-            "Scholium/Views/ResearchActions/ResearchActionPanelView.swift",
-            "Scholium/Views/ResearchActions/ResearchActionsInspectorView.swift",
-            "Scholium/Views/Note/NoteContentView.swift",
-            "Scholium/Views/Note/SafeMarkdownReadWebView.swift",
-        ]
-
-        for relativePath in relativePaths {
-            let source = try String(
-                contentsOf: repositoryRoot.appendingPathComponent(relativePath),
-                encoding: .utf8
-            )
-            #expect(!source.contains("WindowModel"))
-            #expect(!source.contains("@EnvironmentObject"))
-        }
-    }
-
-    @Test("The typed Research Action route is the only judgment and agent entry panel")
-    func legacyResearchPanelsStayRetired() throws {
-        let repositoryRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let router = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/App/Window/WindowPresentationRouter.swift"
-            ),
-            encoding: .utf8
-        )
-        let app = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/App/ScholiumApp.swift"
-            ),
-            encoding: .utf8
-        )
-
-        #expect(router.contains("case researchAction(ResearchActionPanelRoute)"))
-        #expect(!router.contains("case critique(path:"))
-        #expect(!router.contains("case qualityReview"))
-        #expect(!router.contains("case researcherComments"))
-        #expect(!app.contains("pendingCritiquePath"))
-        #expect(!app.contains("qualityReviewPath"))
-        #expect(!app.contains("researcherCommentsPath"))
-        #expect(!app.contains("copyCritiqueInstructions"))
-        #expect(!FileManager.default.fileExists(atPath: repositoryRoot
-            .appendingPathComponent("Scholium/Views/CritiqueRequestView.swift").path))
-        #expect(!FileManager.default.fileExists(atPath: repositoryRoot
-            .appendingPathComponent("Scholium/Views/DialogueView.swift").path))
     }
 
     @Test("Only the view composition root receives the complete window model")
@@ -1592,7 +1435,6 @@ struct WindowControllerArchitectureTests {
         #expect(!libraryMutationSource.contains("DocumentController"))
         #expect(libraryMutationSource.contains("enqueueDocumentTransition"))
         #expect(libraryMutationSource.contains("try Task.checkCancellation()"))
-        #expect(libraryMutationSource.contains("systemTrashRecoveryTarget"))
         #expect(libraryMutationSource.contains("mutationTaskCancellations"))
         #expect(libraryMutationSource.contains("withOwnedMutation"))
         #expect(libraryMutationSource.contains(
@@ -1669,7 +1511,6 @@ struct WindowControllerArchitectureTests {
         ))
         #expect(windowModelSource.contains("searchController.open("))
         #expect(searchControllerSource.contains("discoveryController.executeSearch("))
-        #expect(windowModelSource.contains("researchController.actions"))
     }
 
     @Test("Partial Markdown import never presents committed files as retryable")
@@ -1712,67 +1553,6 @@ struct WindowControllerArchitectureTests {
 
         #expect(window.vaultError?.contains("No Markdown files were imported") == true)
         #expect(window.vaultError?.contains("Broken.md") == true)
-    }
-
-    @Test("Window composition consumes research capabilities without a mega-port")
-    func researchCapabilityCompositionIsNarrow() throws {
-        let repositoryRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let contracts = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "ScholiumContracts/UseCases.swift"
-            ),
-            encoding: .utf8
-        )
-        let windowSession = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Services/WindowSession.swift"
-            ),
-            encoding: .utf8
-        )
-        let researchController = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/Features/ResearchContext/ResearchController.swift"
-            ),
-            encoding: .utf8
-        )
-        let researchActivityContracts = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "ScholiumContracts/ResearchActivityContracts.swift"
-            ),
-            encoding: .utf8
-        )
-        let workspaceModels = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "ScholiumContracts/WorkspaceModels.swift"
-            ),
-            encoding: .utf8
-        )
-
-        #expect(!contracts.contains("protocol ResearchUseCases"))
-        for unconsumedPort in [
-            "protocol ResearchSkillInstallationUseCases",
-            "protocol ResearchPermissionUseCases",
-            "protocol SettingsUseCases",
-            "protocol WorkspaceEventStreaming",
-        ] {
-            #expect(!contracts.contains(unconsumedPort))
-        }
-        #expect(!researchActivityContracts.contains("PendingResearchState"))
-        #expect(!researchActivityContracts.contains("PendingResearchRoute"))
-        #expect(!workspaceModels.contains("pendingResearchStates"))
-        #expect(windowSession.contains("struct WindowResearchCapabilities: Sendable"))
-        for capability in [
-            "let records: any ResearchRecordUseCases",
-            "let actions: any ResearchActionUseCases",
-            "let sourceAccess: any ResearchSourceAccessUseCases",
-        ] {
-            #expect(windowSession.contains(capability))
-        }
-        #expect(!researchController.contains("ResearchUseCases"))
-        #expect(researchController.contains("struct ResearchControllerCapabilities: Sendable"))
     }
 
     @Test("Window and document ownership boundaries cannot regress")
@@ -2157,8 +1937,6 @@ struct WindowControllerArchitectureTests {
             terminalStart.lowerBound..<terminalEnd.lowerBound
         ]
         #expect(terminalSource.contains("guard !didFinalizeWindowAttachments"))
-        #expect(terminalSource.contains("unregisterResearchRecordsWorkspace()"))
-        #expect(terminalSource.contains("unregisterResearchNotificationWindow()"))
         #expect(terminalSource.contains("lifecycleRegistry.unregister("))
         #expect(terminalSource.contains(
             "detachWindow(restoringPreviousDelegate: true)"
@@ -2319,16 +2097,12 @@ struct WindowControllerArchitectureTests {
         #expect(commandObservationSource.contains(
             "changes(shellState.$libraryVisible)"
         ))
-        #expect(commandObservationSource.contains(
-            "changes(researchActionController.$availability)"
-        ))
         #expect(!contentSource.contains("@EnvironmentObject var appState: WindowModel"))
         for boundedOwner in [
             "@ObservedObject private var presentationRouter: WindowPresentationRouter",
             "@ObservedObject private var discoveryController: DiscoveryController",
             "@ObservedObject private var searchController: WindowSearchController",
             "@ObservedObject private var researchController: ResearchController",
-            "@ObservedObject private var researchActionController: ResearchActionController",
             "@ObservedObject private var shellState: WindowShellState",
             "@ObservedObject private var documentController: DocumentController",
             "@ObservedObject private var workspaceProjectionController: WindowWorkspaceProjectionController",
@@ -2340,204 +2114,12 @@ struct WindowControllerArchitectureTests {
         #expect(!toolbarSource.contains("visibilityObservation"))
         #expect(toolbarSource.contains("static var itemIdentifiers:"))
         #expect(toolbarSource.contains("appState.commandObservation.$revision"))
-        #expect(toolbarSource.contains("appState.researchController.$records"))
+        #expect(toolbarSource.contains("appState.researchController.$researchSnapshot"))
         #expect(!toolbarSource.contains("ScholiumWorkspaceSidebarToolbarView"))
         #expect(!toolbarSource.contains("ScholiumWorkspaceInspectorToolbarView"))
         #expect(!toolbarSource.contains("@ObservedObject var shellState"))
     }
 
-    @Test("Records, Notifications, and Document keep Changes and Settlement distinct")
-    func researchRecordProcessingSurface() throws {
-        let repositoryRoot = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        func source(_ path: String) throws -> String {
-            try String(
-                contentsOf: repositoryRoot.appendingPathComponent(path),
-                encoding: .utf8
-            )
-        }
-        let actionPanel = try source(
-            "Scholium/Views/ResearchActions/ResearchActionPanelView.swift"
-        )
-        let recordBrowser = try source(
-            "Scholium/Views/ResearchRecord/ResearchRecordBrowserView.swift"
-        )
-        let processing = try source(
-            "Scholium/Views/ResearchRecord/ResearchRecordProcessingViews.swift"
-        )
-        let agentChanges = try source(
-            "Scholium/Views/ResearchRecord/AgentChangesView.swift"
-        )
-        let followUp = try source(
-            "Scholium/Views/ResearchRecord/ResearchRecordFollowUpViews.swift"
-        )
-        let notifications = try source(
-            "Scholium/Views/AttentionQueueView.swift"
-        )
-        let sharedComponents = try source(
-            "Scholium/UI/Components/ScholiumComponents.swift"
-        )
-        let comparison = try source(
-            "Scholium/UI/Components/ExactSourceComparisonView.swift"
-        )
-        let noteContent = try source(
-            "Scholium/Views/Note/NoteContentView.swift"
-        )
-        let inspector = try source(
-            "Scholium/Views/Sidebar/ResearchInspectorContentView.swift"
-        )
-        let actionRail = try source(
-            "Scholium/Views/ResearchActions/ResearchActionsInspectorView.swift"
-        )
-        let researchOperations = try source(
-            "ScholiumApplication/ResearchWorkspaceOperations.swift"
-        )
-
-        for removedActionSurface in [
-            "ResearchFinalizedResultView(",
-            "ResearcherEvaluationView(",
-            "ResearchMethodFeedbackView(",
-        ] {
-            #expect(!actionPanel.contains(removedActionSurface))
-        }
-        #expect(
-            recordBrowser.contains(
-                "ResearchFinalizedResultView(record: record, context: context)"
-            )
-        )
-        #expect(recordBrowser.contains("ResearchRecordFollowUpSection("))
-        #expect(recordBrowser.contains("ResearchRecordChangesSection("))
-        #expect(!recordBrowser.contains("ResearchRecordChangeDecisionSection("))
-
-        let fixedOrder = [
-            "ResearchRecordFollowUpSection(",
-            "ResearchRecordChangesSection(",
-            "ResearchRecordEvidenceSection(",
-            "ResearchRecordParticipantSection(",
-            "ResearchRecordTechnicalDetails(record: record)",
-        ].compactMap { recordBrowser.range(of: $0)?.lowerBound }
-        #expect(fixedOrder.count == 5)
-        #expect(zip(fixedOrder, fixedOrder.dropFirst()).allSatisfy {
-            $0.0 < $0.1
-        })
-        #expect(!recordBrowser.contains("ResearchRecordContextUseSection"))
-
-        let overviewOrder = [
-            "                attentionSection",
-            "                aboutSection",
-        ].compactMap { inspector.range(of: $0)?.lowerBound }
-        #expect(overviewOrder.count == 2)
-        #expect(zip(overviewOrder, overviewOrder.dropFirst()).allSatisfy {
-            $0.0 < $0.1
-        })
-        #expect(actionRail.contains("settlementIsRequired"))
-        #expect(actionRail.contains("&& !settlementIsRequired"))
-        #expect(notifications.contains("SettlementRequirementNotificationRow"))
-        #expect(notifications.contains("Button(\"Review Changes\""))
-        #expect(processing.contains("require Settlement"))
-        #expect(!recordBrowser.contains("scholium.researchRecord.effects.changes"))
-        #expect(!processing.contains("restoreEditorFocus"))
-        #expect(!processing.contains("restoreComparisonFocus"))
-
-        for followUpBoundary in [
-            "ResearchRecordFollowUpSheet(",
-            "Button(\"Follow Up…\")",
-            "scholium.researchFollowUp.sheet",
-            "@Environment(\\.scholiumFileSelectionPresenter)",
-        ] {
-            #expect(followUp.contains(followUpBoundary))
-        }
-        #expect(!followUp.contains("Improve Current Method"))
-        for followUpInputBoundary in [
-            "Picker(\"Bridge Type\"",
-            "controller.followUpStatement",
-            "Feedback on Previous Result",
-        ] {
-            #expect(actionPanel.contains(followUpInputBoundary))
-        }
-        for removedResponseBoundary in [
-            "Add Response",
-            "Researcher Response",
-            "Researcher Evaluation",
-            "Save Response",
-        ] {
-            #expect(!(recordBrowser + processing + followUp + actionPanel)
-                .contains(removedResponseBoundary))
-        }
-        for notificationBoundary in [
-            "Button(\"Review Result\"",
-            "Button(\"Follow Up…\"",
-            "Button(\"Dismiss\"",
-            "Button(\"End Action…\"",
-            "DisclosureGroup(\"Affected Notes",
-        ] {
-            #expect((notifications + sharedComponents).contains(notificationBoundary))
-        }
-
-        for changeRecoveryBoundary in [
-            "Button(\"View Agent Changes…\")",
-            "Button(\"Direct Undo…\")",
-            "Button(\"Undo Selected Documents…\")",
-            "Return to Record",
-            "canDirectlyUndo",
-            "ResearchRecordDirectUndoGrantState",
-            "directUndoGrant.finalizedResultFingerprint",
-            "Reload Changes",
-        ] {
-            #expect(processing.contains(changeRecoveryBoundary))
-        }
-        for removedRecordReviewBoundary in [
-            "Finish Review",
-            "Keep Agent Changes",
-            "Finish Review with Current State",
-            "ResearchRecordChangeDecisionSection",
-        ] {
-            #expect(!processing.contains(removedRecordReviewBoundary))
-        }
-        #expect(processing.contains("String(localized: \"Expanded\")"))
-        #expect(processing.contains("String(localized: \"Collapsed\")"))
-        for temporaryAgentChangesBoundary in [
-            "title: \"Agent Changes\"",
-            "Text(\"\\(selectedIndex + 1) of \\(presentation.activities.count)\")",
-            ".help(\"Previous Activity\")",
-            ".help(\"Next Activity\")",
-            "activitySummary",
-            "activityDetails",
-            "Other Notes",
-            "Created by this Run",
-            "Earlier revision",
-            "ExactSourceComparisonView(",
-        ] {
-            #expect(agentChanges.contains(temporaryAgentChangesBoundary))
-        }
-        #expect(!agentChanges.contains("private var activityIdentity"))
-        #expect(agentChanges.contains("private var shortRunID"))
-        #expect(agentChanges.contains("scholium.agentChanges.details"))
-        #expect(!agentChanges.contains("Button(\"Settle\""))
-        #expect(!agentChanges.contains("Button(\"Dismiss\""))
-        #expect(noteContent.contains(".accessibilityLabel(conflict.relativePath)"))
-        #expect(noteContent.contains(
-            "isDocumentExpanded ? \"Expanded\" : \"Collapsed\""
-        ))
-        for sharedComparisonBoundary in [
-            "ExactSourceComparisonSheetLayout",
-            "ExactSourceComparisonView",
-            ".accessibilityElement(children: .contain)",
-            "\\(count) unchanged lines",
-            "contextLineCount = 3",
-        ] {
-            #expect(comparison.contains(sharedComparisonBoundary))
-        }
-        #expect(researchOperations.contains(
-            "case .replacementCommitUncertain(let reason)"
-        ))
-        #expect(researchOperations.contains(
-            "ScholiumApplicationError.operationCommitUncertain("
-        ))
-
-    }
     private func fixtureReference(
         vaultID: UUID = UUID(),
         path: String

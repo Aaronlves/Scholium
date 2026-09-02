@@ -83,60 +83,39 @@ struct ScholiumPathsTests {
             .standardizedFileURL)
     }
 
-    @Test("The production Agent bridge namespace selects one local authentication file")
-    func productionAgentBridgeRoot() throws {
+    @Test("The production App bridge namespace selects one authentication file")
+    func productionAppBridgeRoot() throws {
         let home = URL(fileURLWithPath: "/Users/researcher", isDirectory: true)
-        let root = try ScholiumPaths.agentBridgeContainerURL(
+        let root = try ScholiumPaths.appBridgeContainerURL(
             environment: [:],
             homeURL: home
         )
-        let authentication = LocalAgentBridgeLocation.authenticationURL(
+        let authentication = ScholiumAppBridgeLocation.authenticationURL(
             applicationSupportURL: root
         )
-        let port = LocalAgentBridgeLocation.port(applicationSupportURL: root)
+        let port = ScholiumAppBridgeLocation.port(applicationSupportURL: root)
 
-        #expect(root.path == "/Users/researcher/Library/Application Support/Scholium/State-v1/AgentBridge")
-        #expect(authentication.path == root.appendingPathComponent("bridge-auth-v1").path)
-        #expect(LocalAgentBridgeLocation.host == "127.0.0.1")
+        #expect(root.path == "/Users/researcher/Library/Application Support/Scholium/State-v1/AppBridge")
+        #expect(authentication.path == root.appendingPathComponent("app-bridge-auth-v1").path)
         #expect(port >= 49_152)
-    }
-
-    @Test("Production Agent credentials use the machine-state root")
-    func productionAgentSessionDirectory() throws {
-        let home = URL(fileURLWithPath: "/Users/researcher", isDirectory: true)
-        let root = try ScholiumPaths.agentSessionCredentialDirectoryURL(
-            environment: [:],
-            homeURL: home
-        )
-
-        #expect(root.path == "/Users/researcher/Library/Application Support/Scholium/State-v1/Agent Sessions")
     }
 
     @Test("An explicit isolated home never falls through to the production bridge")
     func isolatedAgentBridgeRoot() throws {
-        let root = try ScholiumPaths.agentBridgeContainerURL(
+        let root = try ScholiumPaths.appBridgeContainerURL(
             environment: ["SCHOLIUM_HOME": "/fixture/home"]
         )
 
-        #expect(root.path == "/fixture/home/ApplicationSupport/AgentBridge")
-    }
-
-    @Test("An explicit isolated home keeps Agent credentials inside its test state")
-    func isolatedAgentSessionDirectory() throws {
-        let root = try ScholiumPaths.agentSessionCredentialDirectoryURL(
-            environment: ["SCHOLIUM_HOME": "/fixture/home"]
-        )
-
-        #expect(root.path == "/fixture/home/ApplicationSupport/Agent Sessions")
+        #expect(root.path == "/fixture/home/ApplicationSupport/AppBridge")
     }
 
     @Test("A Debug App keeps its bridge inside the supplied isolated app state")
     func debugAgentBridgeFallback() throws {
-        let root = try ScholiumPaths.agentBridgeContainerURL(
+        let root = try ScholiumPaths.appBridgeContainerURL(
             environment: [:],
             debugFallbackURL: URL(fileURLWithPath: "/fixture/app-support")
         )
 
-        #expect(root.path == "/fixture/app-support/AgentBridge")
+        #expect(root.path == "/fixture/app-support/AppBridge")
     }
 }

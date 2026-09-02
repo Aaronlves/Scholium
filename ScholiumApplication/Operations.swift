@@ -280,13 +280,6 @@ public actor DocumentOperations: DocumentUseCases {
         return try await handle.prepareSystemTrash(target)
     }
 
-    public func archiveUnsupportedLocalResearchExecutions(
-        _ preview: LocalResearchExecutionRecoveryPreview
-    ) async throws -> LocalResearchExecutionArchiveCommit {
-        let handle = try await reference.requireHandle()
-        return try await handle.archiveUnsupportedLocalResearchExecutions(preview)
-    }
-
     public func moveToSystemTrash(
         _ preview: SystemTrashDeletionPreview
     ) async throws -> WorkspaceMutationOutcome<SystemTrashDeletionCommit> {
@@ -411,118 +404,16 @@ public actor DiscoveryOperations: DiscoveryUseCases {
     }
 }
 
-public actor ResearchOperations:
-    ResearchRecordUseCases,
-    ResearchConfigurationUseCases,
-    ResearchActionUseCases,
-    ResearchSourceAccessUseCases
-{
+
+/// Researcher-owned judgments and recovery operations that remain inside the
+/// App after external conversation and workflow ownership moved to the host.
+public actor ResearchOperations: ResearchUseCases {
     public nonisolated let recoveryRecordsURL: URL
     let reference: WorkspaceHandleReference
-    private let actionRunCoordinator: ResearchActionRunCoordinator
 
-    init(
-        reference: WorkspaceHandleReference,
-        actionRunCoordinator: ResearchActionRunCoordinator,
-        recoveryRecordsURL: URL,
-    ) {
+    init(reference: WorkspaceHandleReference, recoveryRecordsURL: URL) {
         self.reference = reference
-        self.actionRunCoordinator = actionRunCoordinator
         self.recoveryRecordsURL = recoveryRecordsURL
-    }
-
-    // Protected execution seams remain internal so owning tests can exercise
-    // containment, exact revisions, recovery, and Fidelity without restoring a
-    // These internal seams let owning tests exercise Action Run containment,
-    // exact revisions, recovery, and Fidelity without adding a public low-level route.
-    func availableActionOperations(
-        for target: ResearchActionNoteSnapshot
-    ) async throws -> [ResearchActionRunAvailability] {
-        let handle = try await reference.requireHandle()
-        return try await actionRunCoordinator.researchActionRunAvailability(
-            for: target,
-            host: handle
-        )
-    }
-
-    func protectedMaterialCandidates(
-        for target: ResearchActionNoteSnapshot,
-        actionID: ResearchActionID
-    ) async throws -> [ResearchActionMaterialCandidate] {
-        let handle = try await reference.requireHandle()
-        return try await actionRunCoordinator.researchActionMaterialCandidates(
-            for: target,
-            actionID: actionID,
-            host: handle
-        )
-    }
-
-    func prepareActionRun(
-        _ request: ResearchActionRunRequest
-    ) async throws -> ResearchActionRunPreparation {
-        let handle = try await reference.requireHandle()
-        let preparation = try await actionRunCoordinator.prepareResearchActionRun(
-            request,
-            host: handle
-        )
-        return try actionRunCoordinator.attachingAgentActions(to: preparation)
-    }
-
-    func actionRunDetails(id: UUID) async throws -> ResearchActionRunPreparation {
-        let handle = try await reference.requireHandle()
-        let preparation = try await actionRunCoordinator.researchActionRun(
-            id: id,
-            host: handle
-        )
-        return try actionRunCoordinator.attachingAgentActions(to: preparation)
-    }
-
-    func completeActionRun(
-        _ submission: ResearchActionRunCompletionSubmission
-    ) async throws -> ResearchActionRunCompletion {
-        let handle = try await reference.requireHandle()
-        let completion = try await actionRunCoordinator.completeActionRun(
-            submission,
-            host: handle
-        )
-        return actionRunCoordinator.attachingAgentActions(to: completion)
-    }
-
-    func cancelActionRun(runID: UUID) async throws {
-        let handle = try await reference.requireHandle()
-        try await actionRunCoordinator.cancelActionRun(
-            runID: runID,
-            host: handle
-        )
-    }
-
-    func finishProtectedDiscussion(runID: UUID) async throws -> PortableResearchRecord {
-        let handle = try await reference.requireHandle()
-        return try await actionRunCoordinator.finishProtectedDiscussion(
-            runID: runID,
-            host: handle
-        )
-    }
-
-    public func sourceAccess(
-        for target: ResearchActionNoteSnapshot
-    ) async throws -> ResearchSourceAccessStatus {
-        let handle = try await reference.requireHandle()
-        return try await handle.researchSourceAccessStatus(for: target)
-    }
-
-    public func bindSourceAccess(
-        _ request: ResearchSourceBindingRequest
-    ) async throws -> ResearchSourceReference {
-        let handle = try await reference.requireHandle()
-        return try await handle.bindResearchSourceAccess(request)
-    }
-
-    public func removeSourceAccess(
-        for target: ResearchActionNoteSnapshot
-    ) async throws {
-        let handle = try await reference.requireHandle()
-        try await handle.removeResearchSourceAccess(for: target)
     }
 
     public func snapshot() async throws -> WorkspaceResearchSnapshot {
@@ -537,167 +428,7 @@ public actor ResearchOperations:
         rationale: String?
     ) async throws -> SettlementRecord {
         let handle = try await reference.requireHandle()
-        return try await handle.settle(
-            note,
-            expectedRevision: expectedRevision,
-            rationale: rationale
-        )
-    }
-
-    public func activeDiscussions(
-        noteID: UUID?
-    ) async throws -> [PortableResearchDiscussion] {
-        let handle = try await reference.requireHandle()
-        return try await handle.activeDiscussions(noteID: noteID)
-    }
-
-    public func activeDiscussion(id: UUID) async throws -> PortableResearchDiscussion {
-        let handle = try await reference.requireHandle()
-        return try await handle.activeDiscussion(id: id)
-    }
-
-    public func activeDiscussionIfPresent(
-        id: UUID
-    ) async throws -> PortableResearchDiscussion? {
-        let handle = try await reference.requireHandle()
-        return try await handle.activeDiscussionIfPresent(id: id)
-    }
-
-    @discardableResult
-    public func createDiscussion(
-        target: ResearchActionNoteSnapshot,
-        focalNotes: [ResearchActionNoteSnapshot],
-        passage: CommentAnchor?,
-        researcherMessage: String
-    ) async throws -> PortableResearchDiscussion {
-        let handle = try await reference.requireHandle()
-        return try await handle.createDiscussion(
-            target: target,
-            focalNotes: focalNotes,
-            passage: passage,
-            researcherMessage: researcherMessage
-        )
-    }
-
-    @discardableResult
-    public func createComment(
-        target: ResearchActionNoteSnapshot,
-        lineReference: ResearchLineReference,
-        researcherMessage: String
-    ) async throws -> PortableResearchDiscussion {
-        let handle = try await reference.requireHandle()
-        return try await handle.createComment(
-            target: target,
-            lineReference: lineReference,
-            researcherMessage: researcherMessage
-        )
-    }
-
-    public func replyToDiscussionAndFinish(
-        discussionID: UUID,
-        statementID: UUID,
-        attribution: String,
-        text: String
-    ) async throws -> PortableResearchRecord {
-        let handle = try await reference.requireHandle()
-        return try await handle.replyToDiscussionAndFinish(
-            discussionID: discussionID,
-            statementID: statementID,
-            attribution: attribution,
-            text: text
-        )
-    }
-
-    @discardableResult
-    public func finishDiscussion(
-        discussionID: UUID
-    ) async throws -> PortableResearchRecord {
-        let handle = try await reference.requireHandle()
-        return try await handle.finishDiscussion(discussionID: discussionID)
-    }
-
-    public func finishedResearchRecords(
-        noteID: UUID?
-    ) async throws -> [PortableResearchRecord] {
-        let handle = try await reference.requireHandle()
-        return try await handle.finishedResearchRecords(noteID: noteID)
-    }
-
-    public func saveMethodFeedback(
-        recordID: UUID,
-        draft: ResearchMethodFeedbackDraft?,
-        expectedMethodFeedbackRevision: UUID?,
-        expectedResultFingerprint: DocumentFingerprint
-    ) async throws -> PortableResearchRecord {
-        let handle = try await reference.requireHandle()
-        return try await handle.saveMethodFeedback(
-            recordID: recordID,
-            draft: draft,
-            expectedMethodFeedbackRevision: expectedMethodFeedbackRevision,
-            expectedResultFingerprint: expectedResultFingerprint
-        )
-    }
-
-    public func researchRecordChangeState(
-        recordID: UUID
-    ) async throws -> ResearchRecordChangeState {
-        let handle = try await reference.requireHandle()
-        return try await handle.researchRecordChangeState(recordID: recordID)
-    }
-
-    public func undoResearchRecordChanges(
-        recordID: UUID,
-        selectedNoteIDs: Set<UUID>,
-        expectedResultFingerprint: DocumentFingerprint
-    ) async throws -> ResearchRecordChangesUndoResult {
-        let handle = try await reference.requireHandle()
-        return try await handle.undoResearchRecordChanges(
-            recordID: recordID,
-            selectedNoteIDs: selectedNoteIDs,
-            expectedResultFingerprint: expectedResultFingerprint
-        )
-    }
-
-    public func setResearchRecordRecommendationDisposition(
-        recordID: UUID,
-        recommendationID: UUID,
-        status: ResearchLiteratureRecommendationDispositionStatus
-    ) async throws -> PortableResearchRecord {
-        let handle = try await reference.requireHandle()
-        return try await handle.setResearchRecordRecommendationDisposition(
-            recordID: recordID,
-            recommendationID: recommendationID,
-            status: status
-        )
-    }
-
-    public func setResearchRecordRecommendationNote(
-        recordID: UUID,
-        recommendationID: UUID,
-        note: String?
-    ) async throws -> PortableResearchRecord {
-        let handle = try await reference.requireHandle()
-        return try await handle.setResearchRecordRecommendationNote(
-            recordID: recordID,
-            recommendationID: recommendationID,
-            note: note
-        )
-    }
-
-    public func deleteResearchRecordPermanently(id: UUID) async throws {
-        let handle = try await reference.requireHandle()
-        try await handle.deleteResearchRecordPermanently(id: id)
-    }
-
-    public func researchRecordComparison(
-        recordID: UUID,
-        noteID: UUID
-    ) async throws -> ExactSourceComparison {
-        let handle = try await reference.requireHandle()
-        return try await handle.researchRecordComparison(
-            recordID: recordID,
-            noteID: noteID
-        )
+        return try await handle.settle(note, expectedRevision: expectedRevision, rationale: rationale)
     }
 
     public func critique(workNoteID: UUID) async throws -> CritiqueAssociation? {
@@ -705,9 +436,7 @@ public actor ResearchOperations:
         return try await handle.critique(workNoteID: workNoteID)
     }
 
-    public func critique(
-        critiqueRelativePath: String
-    ) async throws -> CritiqueAssociation? {
+    public func critique(critiqueRelativePath: String) async throws -> CritiqueAssociation? {
         let handle = try await reference.requireHandle()
         return try await handle.critique(critiqueRelativePath: critiqueRelativePath)
     }
@@ -761,21 +490,7 @@ public actor ResearchOperations:
         expectedRevision: SettingsRevision
     ) async throws -> TriptychSettingsSnapshot {
         let handle = try await reference.requireHandle()
-        return try await handle.saveTriptychSettings(
-            settings,
-            expectedRevision: expectedRevision
-        )
-    }
-
-    public func saveSettingsOutcome(
-        _ settings: TriptychSettings,
-        expectedRevision: SettingsRevision
-    ) async throws -> WorkspaceMutationOutcome<TriptychSettingsSnapshot> {
-        let handle = try await reference.requireHandle()
-        return try await handle.saveTriptychSettingsOutcome(
-            settings,
-            expectedRevision: expectedRevision
-        )
+        return try await handle.saveTriptychSettings(settings, expectedRevision: expectedRevision)
     }
 
     public func recoveryRecords() async throws -> [TriptychMutationRecoveryRecord] {
@@ -787,95 +502,4 @@ public actor ResearchOperations:
         let handle = try await reference.requireHandle()
         try await handle.resolveRecoveryRecord(id)
     }
-
-    public func availableActions(
-        for target: ResearchActionNoteSnapshot
-    ) async throws -> [ResearchActionAvailability] {
-        let handle = try await reference.requireHandle()
-        return try await handle.researchActionAvailability(for: target)
-    }
-
-    public func prepareAction(
-        _ request: ResearchActionExecutionRequest
-    ) async throws -> ResearchActionPreparation {
-        let handle = try await reference.requireHandle()
-        return try await handle.prepareResearchAction(request)
-    }
-
-    public func prepareFollowUp(
-        _ request: ResearchFollowUpRequest
-    ) async throws -> ResearchActionPreparation {
-        let handle = try await reference.requireHandle()
-        return try await handle.prepareResearchFollowUp(request)
-    }
-
-    public func followUpContext(
-        recordID: UUID,
-        expectedFinalizedResultFingerprint: DocumentFingerprint
-    ) async throws -> ResearchFollowUpContext {
-        let handle = try await reference.requireHandle()
-        return try await handle.researchFollowUpContext(
-            recordID: recordID,
-            expectedFinalizedResultFingerprint:
-                expectedFinalizedResultFingerprint
-        )
-    }
-
-    public func materialCandidates(
-        for target: ResearchActionNoteSnapshot,
-        actionID: ResearchActionID
-    ) async throws -> [ResearchActionNoteSnapshot] {
-        let handle = try await reference.requireHandle()
-        return try await handle.researchActionMaterialCandidates(
-            for: target,
-            actionID: actionID
-        )
-    }
-
-    public func actionRun(id: UUID) async throws -> ResearchActionPreparation {
-        let handle = try await reference.requireHandle()
-        return try await handle.researchActionRun(id: id)
-    }
-
-    public func cancelAction(runID: UUID) async throws {
-        let handle = try await reference.requireHandle()
-        try await actionRunCoordinator.cancelAction(runID: runID, host: handle)
-    }
-
-    public func prepareResynthesis(
-        _ request: ResearchActionExecutionRequest,
-        context: SynthesisMaterialChangedAttentionContext
-    ) async throws -> ResearchActionPreparation {
-        let handle = try await reference.requireHandle()
-        return try await handle.prepareResearchResynthesis(
-            request,
-            context: context
-        )
-    }
-
-    public func citationMethodStatus() async throws -> ResearchCitationMethodStatus {
-        let handle = try await reference.requireHandle()
-        return try await handle.researchCitationMethodStatus()
-    }
-
-    public func activateCitationMethod(
-        selection: ResearchCitationMethodSelection,
-        expectedConfigurationRevision: DocumentFingerprint?
-    ) async throws -> ResearchCitationMethodStatus {
-        let handle = try await reference.requireHandle()
-        return try await handle.activateResearchCitationMethod(
-            selection,
-            expectedConfigurationRevision: expectedConfigurationRevision
-        )
-    }
-
-    public func clearCitationMethod(
-        expectedConfigurationRevision: DocumentFingerprint?
-    ) async throws -> ResearchCitationMethodStatus {
-        let handle = try await reference.requireHandle()
-        return try await handle.clearResearchCitationMethod(
-            expectedConfigurationRevision: expectedConfigurationRevision
-        )
-    }
-
 }

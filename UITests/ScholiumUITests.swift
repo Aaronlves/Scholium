@@ -80,38 +80,20 @@ final class ScholiumUITests: XCTestCase {
     var testDirectory: URL!
     var homeDirectory: URL!
     var triptychDirectory: URL!
-    var secondTriptychDirectory: URL?
-    var synthesisAttentionFixture: QAResearchRecordFixture?
-    var didPrepareCurrentResearchRecordFixtures = false
-
-    struct QAResearchRecordFixture {
-        let recordID: UUID
-        let researcherStatementID: UUID
-        let agentStatementID: UUID
-        let recommendationID: UUID?
-        let analysisNoteID: UUID
-        let topicNoteID: UUID
-        let overflowParticipantNoteIDs: [UUID]
-    }
-
     /// `defaultSize` is a first-presentation input. Tests that need a specific
     /// starting width must request it before their first scene appears; a
     /// relaunch is intentionally not a frame-reset API.
     private var initialWorkspaceWidthForCurrentTest: Int {
-        if name.contains("testResearchActionPanelFitsCompactEditor")
-            || name.contains("testTwoHundredPercentDocumentTextPersistsAcrossEveryMode") {
+        if name.contains("testTwoHundredPercentDocumentTextPersistsAcrossEveryMode") {
             return 900
         }
         if name.contains("testWorkspaceInitialDefaultPreservesNativeReachability")
-            || name.contains("testNativeToolbarVisualProofAtDefaultWindowSize")
-            || name.contains("testNoDocumentKeepsTriptychRecordsAvailableAndInspectorDisabled")
             || name.contains("testInspectorToolbarItemOpensAndClosesInspector")
             || name.contains("testInspectorDividerResizesWithoutInteractiveCollapse")
             || name.contains("testPeripheralToolbarVisibilityControlsToggleWithPointerCoordinates")
             || name.contains("testAppearanceLineWidthVisualMatrixAndKeyboardControl")
             || name.contains("testDocumentHeadingStudyWrapsLongMixedTitleUsingAcceptedBodyRhythm")
-            || name.contains("testLibraryRemainsReadableAtItsNativeMinimum")
-            || name.contains("testSidebarWorkspaceLibraryAndTriptychAttentionWindowJourney") {
+            || name.contains("testLibraryRemainsReadableAtItsNativeMinimum") {
             return Int(QAWorkspaceMetricContract.preferredWidth)
         }
         return 1_380
@@ -131,8 +113,7 @@ final class ScholiumUITests: XCTestCase {
     }
 
     private var initialWorkspaceReadyTimeout: TimeInterval {
-        if name.contains("testManagedNewNoteKeepsFixedYAMLAfterAddingCustomMetadataField")
-            || name.contains("testFolderContextMenuCreatesInsideFolderAndExposesLifecycleActions") {
+        if name.contains("testManagedNewNoteKeepsFixedYAMLAfterAddingCustomMetadataField") {
             return 90
         }
         return 45
@@ -143,21 +124,6 @@ final class ScholiumUITests: XCTestCase {
         continueAfterFailure = false
         sessionID = UUID()
         try createIsolatedTriptych()
-        if name.contains(
-            "testActionNotificationProofPresentationKeepsTheStackExact"
-        ) {
-            try seedSettlementReminderFixture()
-        }
-        if name.contains(
-            "testAmbiguousExternalRenameRequiresExplicitIdentityConfirmation"
-        ) {
-            try seedAmbiguousIdentityFixture()
-        }
-        if name.contains(
-            "testResearchRecordActionDeepLinkAndCrossTriptychFocus"
-        ) {
-            secondTriptychDirectory = try createSecondTriptychFixture()
-        }
         if name.contains("testStorageUnavailableRetriesWithoutConstructingWorkspace") {
             try FileManager.default.createDirectory(
                 at: homeDirectory,
@@ -176,9 +142,7 @@ final class ScholiumUITests: XCTestCase {
             autosaveDelayMS: name.contains(
                 "testDirtyLivePreviewSearchesThisNoteWithoutSaving"
             ) ? 300_000 : 5_000,
-            appearance: name.contains(
-                "testSidebarWorkspaceLibraryAndTriptychAttentionWindowJourney"
-            ) ? .light : nil,
+            appearance: nil,
             openNote: initialOpenNoteForCurrentTest
         )
         // A runner killed by XCTest cannot execute tearDown, so its QA app can
@@ -207,11 +171,6 @@ final class ScholiumUITests: XCTestCase {
                 },
                 "The isolated QA window appeared without exposing the initial document in its current mode."
             )
-        }
-        if name.contains(
-            "testSystemTrashArchivesUnreadableLocalExecutionBeforeConfirmation"
-        ) {
-            try seedUnreadableLocalExecutionForSystemTrash()
         }
     }
 
@@ -251,8 +210,6 @@ final class ScholiumUITests: XCTestCase {
         testDirectory = nil
         homeDirectory = nil
         triptychDirectory = nil
-        synthesisAttentionFixture = nil
-        didPrepareCurrentResearchRecordFixtures = false
     }
 
 }

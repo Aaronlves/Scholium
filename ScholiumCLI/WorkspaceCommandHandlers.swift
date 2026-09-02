@@ -144,17 +144,6 @@ extension ScholiumCLI {
                             + "fingerprint=\(hit.fingerprint.sha256):\(hit.fingerprint.byteCount) "
                             + "freshness=\(hit.freshnessToken.rawValue)\n  \(hit.snippet)\n"
                     )
-                case .record(let hit):
-                    let statement = hit.statementID?.uuidString.lowercased() ?? "none"
-                    let author = hit.statementAuthor?.rawValue ?? "none"
-                    let fields = hit.matchedFields.map(\.rawValue).joined(separator: ",")
-                    write(
-                        "record \(hit.recordID.uuidString.lowercased()) "
-                            + "statement=\(statement) author=\(author) "
-                            + "[\(hit.classification.rawValue); \(hit.matchedReason); fields=\(fields)] "
-                            + "fingerprint=\(hit.fingerprint.sha256):\(hit.fingerprint.byteCount) "
-                            + "freshness=\(hit.freshnessToken.rawValue)\n  \(hit.snippet)\n"
-                    )
                 }
             }
         default:
@@ -191,16 +180,12 @@ extension ScholiumCLI {
         let provider: SearchProvider
         let status: String
         let noteGeneration: SearchGenerationID?
-        let recordGeneration: RecordSearchGenerationID?
         let progress: SearchBuildProgress?
         let reason: String?
 
         init(_ availability: SearchProviderAvailability) {
-            switch availability {
-            case .note(let value):
-                provider = .note
-                recordGeneration = nil
-                switch value {
+            provider = .note
+            switch availability.noteAvailability {
                 case .unavailable:
                     status = "unavailable"
                     noteGeneration = nil
@@ -236,47 +221,6 @@ extension ScholiumCLI {
                     noteGeneration = generation
                     progress = nil
                     reason = value
-                }
-            case .record(let value):
-                provider = .record
-                noteGeneration = nil
-                switch value {
-                case .unavailable:
-                    status = "unavailable"
-                    recordGeneration = nil
-                    progress = nil
-                    reason = nil
-                case .building(let value):
-                    status = "building"
-                    recordGeneration = nil
-                    progress = value
-                    reason = nil
-                case .current(let generation):
-                    status = "current"
-                    recordGeneration = generation
-                    progress = nil
-                    reason = nil
-                case .partial(let generation, let value):
-                    status = "partial"
-                    recordGeneration = generation
-                    progress = nil
-                    reason = value
-                case .refreshing(let generation):
-                    status = "refreshing"
-                    recordGeneration = generation
-                    progress = nil
-                    reason = nil
-                case .stale(let generation, let value):
-                    status = "stale"
-                    recordGeneration = generation
-                    progress = nil
-                    reason = value
-                case .failed(let generation, let value):
-                    status = "failed"
-                    recordGeneration = generation
-                    progress = nil
-                    reason = value
-                }
             }
         }
 
@@ -351,16 +295,6 @@ extension ScholiumCLI {
                 relation = relationValue
                 relationDirection = direction
                 symmetric = isSymmetric
-            case .record(let recordField, let recordValue, let lexicalKind, let isExcluded):
-                kind = "record"
-                field = recordField?.rawValue
-                value = recordValue
-                propertyKey = nil
-                matchKind = lexicalKind
-                excluded = isExcluded
-                relation = nil
-                relationDirection = nil
-                symmetric = nil
             }
         }
 
@@ -427,20 +361,6 @@ extension ScholiumCLI {
             sourceRange = result.sourceRange
             fallbackLine = result.sourceLine
             fallbackColumn = 1
-        }
-    }
-
-    private struct RecordSearchLocatorRecord: Encodable {
-        let recordID: UUID
-        let statementID: UUID?
-        let statementAuthor: PortableResearchStatementAuthor?
-        let sourceRange: SearchSourceRange?
-
-        init(_ result: RecordSearchResult) {
-            recordID = result.recordID
-            statementID = result.statementID
-            statementAuthor = result.statementAuthor
-            sourceRange = result.sourceRange
         }
     }
 
@@ -554,59 +474,8 @@ extension ScholiumCLI {
         }
     }
 
-    private struct RecordSearchResultJSONRecord: Encodable {
-        let type = "search_result"
-        let contractVersion: Int
-        let provider = SearchProvider.record
-        let scope: SearchPresentationScope
-        let resultID: String
-        let recordID: UUID
-        let statementID: UUID?
-        let statementAuthor: PortableResearchStatementAuthor?
-        let matchedField: RecordSearchMatchedField
-        let matchedFields: [RecordSearchMatchedField]
-        let matchedReason: String
-        let context: String
-        let actionID: String?
-        let methodName: String?
-        let sourceDisplayName: String?
-        let finishedAt: Date
-        let participatingNotes: [VaultQualifiedNoteID]
-        let snippet: String
-        let highlights: [SearchHighlight]
-        let locator: RecordSearchLocatorRecord
-        let fingerprint: DocumentFingerprint
-        let freshnessToken: SearchFreshnessToken
-        let classification: SearchResultClassification
-
-        init(hit: RecordSearchResult, contractVersion: Int, scope: SearchPresentationScope) {
-            self.contractVersion = contractVersion
-            self.scope = scope
-            resultID = hit.resultID
-            recordID = hit.recordID
-            statementID = hit.statementID
-            statementAuthor = hit.statementAuthor
-            matchedField = hit.matchedField
-            matchedFields = hit.matchedFields
-            matchedReason = hit.matchedReason
-            context = hit.context
-            actionID = hit.actionID
-            methodName = hit.methodName
-            sourceDisplayName = hit.sourceDisplayName
-            finishedAt = hit.finishedAt
-            participatingNotes = hit.participatingNotes
-            snippet = hit.snippet
-            highlights = hit.highlights
-            locator = RecordSearchLocatorRecord(hit)
-            fingerprint = hit.fingerprint
-            freshnessToken = hit.freshnessToken
-            classification = hit.classification
-        }
-    }
-
     private enum SearchResultJSONRecord: Encodable {
         case note(NoteSearchResultJSONRecord)
-        case record(RecordSearchResultJSONRecord)
 
         init(
             result: SearchResult,
@@ -620,19 +489,12 @@ extension ScholiumCLI {
                     contractVersion: contractVersion,
                     scope: scope
                 ))
-            case .record(let hit):
-                self = .record(RecordSearchResultJSONRecord(
-                    hit: hit,
-                    contractVersion: contractVersion,
-                    scope: scope
-                ))
             }
         }
 
         func encode(to encoder: Encoder) throws {
             switch self {
             case .note(let record): try record.encode(to: encoder)
-            case .record(let record): try record.encode(to: encoder)
             }
         }
     }
@@ -735,25 +597,9 @@ extension ScholiumCLI {
         guard let subcommand = arguments.first else {
             throw commandUsageError("workspace")
         }
-        if subcommand == "bootstrap" {
-            try await runWorkspaceBootstrap(Array(arguments.dropFirst()), context: context)
-            return
-        }
         let assignment = try await context.selectedTriptych(
             selector: option("--triptych", in: arguments)
         )
-        if subcommand == "skill-sources" {
-            guard (option("--format", in: arguments) ?? "json") == "json" else {
-                throw CLIError.usage("Workspace Skill sources supports --format json.")
-            }
-            let manifest = try await context.runtime.skillDiscoverySourceManifest(
-                workspaceID: assignment.id
-            )
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-            write(String(decoding: try encoder.encode(manifest), as: UTF8.self) + "\n")
-            return
-        }
         let handle = try await context.handle(for: assignment)
         let snapshot = try await handle.discovery.snapshot().catalog
         guard (option("--format", in: arguments) ?? "json") == "json" else {
@@ -778,152 +624,6 @@ extension ScholiumCLI {
             write(String(decoding: try encoder.encode(items), as: UTF8.self) + "\n")
         default:
             throw CLIError.usage("Unknown workspace command '\(subcommand)'.")
-        }
-    }
-
-    private static func runWorkspaceBootstrap(
-        _ arguments: [String],
-        context: CLIContext
-    ) async throws {
-        guard let selector = option("--triptych", in: arguments),
-              let targetPath = option("--target", in: arguments) else {
-            throw commandUsageError("workspace bootstrap")
-        }
-        let assignment = try await context.triptych(selector: selector)
-        let targetURL = URL(
-            fileURLWithPath: (targetPath as NSString).expandingTildeInPath,
-            isDirectory: true
-        )
-        let conventions: String
-        if let conventionsPath = option("--conventions-file", in: arguments) {
-            let url = URL(
-                fileURLWithPath: (conventionsPath as NSString).expandingTildeInPath,
-                isDirectory: false
-            )
-            guard let content = try? String(contentsOf: url, encoding: .utf8) else {
-                throw CLIError.invalidUTF8(url.path)
-            }
-            conventions = content
-        } else {
-            conventions = "None recorded."
-        }
-        let request = WorkspaceBootstrapRequest(
-            triptychSelector: assignment.workspace.id.uuidString,
-            triptychName: assignment.triptych.name,
-            targetURL: targetURL,
-            researcherConventions: conventions
-        )
-        let candidate = try context.runtime.bootstrapCandidate(for: request)
-        let format = option("--format", in: arguments) ?? "markdown"
-        switch format {
-        case "markdown":
-            // This command is deliberately candidate-only. An external agent
-            // must promote the output after its own final target verification.
-            write(candidate.content)
-        case "json":
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            write(String(decoding: try encoder.encode(candidate), as: UTF8.self) + "\n")
-        default:
-            throw CLIError.usage("--format must be markdown or json.")
-        }
-    }
-
-
-    static func runDiscuss(
-        _ arguments: [String],
-        context: CLIContext
-    ) async throws {
-        guard let subcommand = arguments.first else {
-            throw commandUsageError("discuss")
-        }
-        let assignment = try await context.selectedTriptych(
-            selector: option("--triptych", in: arguments)
-        )
-        let handle = try await context.handle(for: assignment)
-        let research = handle.research
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        switch subcommand {
-        case "list":
-            let format = option("--format", in: arguments) ?? "text"
-            guard format == "text" || format == "json" else {
-                throw CLIError.usage("Discuss list supports --format text or json.")
-            }
-            let entries = try await research.activeDiscussions(noteID: nil)
-            if format == "json" {
-                write(String(decoding: try encoder.encode(entries), as: UTF8.self) + "\n")
-            } else if entries.isEmpty {
-                write("No active Discussions.\n")
-            } else {
-                for entry in entries {
-                    let noteNames = entry.participatingNotes.map(\.title).joined(separator: ", ")
-                    write("\(entry.id.uuidString)  \(entry.createdAt.formatted(.iso8601))\n")
-                    write("  Notes: \(noteNames)\n")
-                    write("  Latest: \(entry.statements.last?.text ?? "")\n")
-                }
-            }
-        case "show":
-            guard arguments.count >= 2, let id = UUID(uuidString: arguments[1]) else {
-                throw commandUsageError("discuss show")
-            }
-            let entry = try await research.activeDiscussion(id: id)
-            let format = option("--format", in: arguments) ?? "text"
-            guard format == "text" || format == "json" else {
-                throw CLIError.usage("Discuss show supports --format text or json.")
-            }
-            if format == "json" {
-                write(String(decoding: try encoder.encode(entry), as: UTF8.self) + "\n")
-            } else {
-                write("Discussion: \(entry.id.uuidString)\n")
-                write("Notes: \(entry.participatingNotes.map(\.title).joined(separator: ", "))\n\n")
-                for statement in entry.statements {
-                    write("- \(statement.attribution): \(statement.text)\n")
-                }
-            }
-        case "reply":
-            guard arguments.count >= 2, let id = UUID(uuidString: arguments[1]) else {
-                throw commandUsageError("discuss reply")
-            }
-            let agentName = option("--agent", in: arguments)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard let agentName, !agentName.isEmpty else {
-                throw CLIError.usage("Discuss replies require --agent <name>. External Agents must use authenticated scholium agent discuss-reply.")
-            }
-            let replyText: String
-            if let text = option("--text", in: arguments) {
-                replyText = text
-            } else if let file = option("--from", in: arguments) {
-                let data = file == "-"
-                    ? FileHandle.standardInput.readDataToEndOfFile()
-                    : try Data(contentsOf: URL(
-                        fileURLWithPath: (file as NSString).expandingTildeInPath
-                    ))
-                guard let decoded = String(data: data, encoding: .utf8) else {
-                    throw CLIError.invalidUTF8(file)
-                }
-                replyText = decoded
-            } else {
-                throw CLIError.usage("Discuss replies require --text <reply> or --from <file|->.")
-            }
-            guard !replyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw CLIError.usage("Discuss reply text cannot be empty.")
-            }
-            let statementID = UUID()
-            let record = try await research.replyToDiscussionAndFinish(
-                discussionID: id,
-                statementID: statementID,
-                attribution: agentName,
-                text: replyText
-            )
-            guard record.statements.contains(where: {
-                $0.id == statementID && $0.author == .agent
-            }) else {
-                throw CLIError.unavailable("The Discuss reply was not available after persistence.")
-            }
-            write("Recorded reply \(statementID.uuidString) and formed Research Record \(id.uuidString).\n")
-        default:
-            throw CLIError.usage("Unknown Discuss command '\(subcommand)'.")
         }
     }
 

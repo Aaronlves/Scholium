@@ -98,7 +98,6 @@ public actor WorkspaceRuntime {
     private let windowSessionStore: WindowSessionSnapshotStore
     public nonisolated let zotero: ZoteroOperations
     public nonisolated let styles: StyleOperations
-    nonisolated let researchAgentSessions: ResearchAgentSessionAuthority?
     private var handles: [UUID: WorkspaceHandle] = [:]
     private var openings: [UUID: Opening] = [:]
     /// A failed replacement must not destroy the activation already borrowed
@@ -111,7 +110,6 @@ public actor WorkspaceRuntime {
         configuration: Configuration,
         zotero injectedZotero: ZoteroOperations? = nil
     ) {
-        researchAgentSessions = try? ResearchAgentSessionAuthority()
         switch configuration {
         case .live(let configuration):
             let registry = WorkspaceRegistry(
@@ -280,48 +278,6 @@ public actor WorkspaceRuntime {
         return try await store.archiveInvalidNoteMetadataRecord(issue)
     }
 
-    /// Builds a deterministic, source-only workspace bootstrap candidate.
-    /// Delivery targets never construct vault or Application Support paths.
-    public nonisolated func bootstrapCandidate(
-        for request: WorkspaceBootstrapRequest
-    ) throws -> WorkspaceBootstrapCandidate {
-        try WorkspaceBootstrap.candidate(for: request)
-    }
-
-    /// Reads only the selected Triptych's portable Research Guidance and the
-    /// installed Core resource. It does not construct a WorkspaceHandle,
-    /// inventory research vaults, open Search, or start watchers.
-    public func skillDiscoverySourceManifest(
-        workspaceID: UUID
-    ) async throws -> WorkspaceSkillSourceManifest {
-        try requireActive()
-        let assignment = try await assignment(id: workspaceID)
-        guard let works = assignment.vault(for: .output) else {
-            throw ScholiumApplicationError.incompleteTriptych(assignment.id)
-        }
-        let worksURL = URL(
-            fileURLWithPath: works.canonicalPath,
-            isDirectory: true
-        ).standardizedFileURL
-        let controlStore = TriptychControlStore(worksVaultURL: worksURL)
-        let manifest = try await controlStore.manifest()
-        guard manifest.id == assignment.id else {
-            throw ScholiumApplicationError.manifestIdentityMismatch(
-                expected: assignment.id,
-                actual: manifest.id
-            )
-        }
-        let controlURL = await controlStore.controlURL
-        let configuration = ResearchConfigurationStore(
-            controlURL: controlURL,
-            triptychID: assignment.id
-        )
-        return try await configuration.skillDiscoverySourceManifest(
-            workspaceRootURL: worksURL.deletingLastPathComponent(),
-            triptychName: assignment.triptych.name
-        )
-    }
-
     public func registeredVaults() async throws -> [RegisteredVault] {
         try requireActive()
         switch membership {
@@ -394,10 +350,9 @@ public actor WorkspaceRuntime {
         guard case .live(let registry, _) = membership else {
             throw ScholiumApplicationError.runtimeConfigurationUnavailable
         }
-        guard let current = handles[currentID] else {
+        guard handles[currentID] != nil else {
             throw ScholiumApplicationError.workspaceNotFound(currentID)
         }
-        try await current.validatePortableIdentityForReidentification(stableID)
         let assignment = try await registry.reidentifyTriptych(id: currentID, as: stableID)
         let prepared = await prepareChangedReplacements(
             registry: registry,
@@ -722,13 +677,6 @@ public actor WorkspaceRuntime {
         let controlURL = await controlStore.controlURL
         do {
             try await controlStore.validateExistingSupportedControlState()
-            let researchConfiguration = ResearchConfigurationStore(
-                controlURL: controlURL,
-                triptychID: manifest.id
-            )
-            _ = try await researchConfiguration.registrationSnapshot()
-            _ = try await researchConfiguration.profileSnapshot()
-            _ = try await researchConfiguration.citationMethodSnapshot()
         } catch let error as NoteMetadataError {
             if case .recoveryRequired(let issue) = error {
                 throw ScholiumApplicationError.noteMetadataRecoveryRequired(
@@ -745,16 +693,6 @@ public actor WorkspaceRuntime {
                 controlPath: controlURL.path,
                 reason: error.localizedDescription
             )
-        } catch let error as ResearchConfigurationStoreError {
-            switch error {
-            case .invalidDocument:
-                throw ScholiumApplicationError.portableControlRecoveryRequired(
-                    controlPath: controlURL.path,
-                    reason: error.localizedDescription
-                )
-            default:
-                throw error
-            }
         }
     }
 
@@ -777,7 +715,10 @@ public actor WorkspaceRuntime {
             return
         }
         guard values.isDirectory == true, values.isSymbolicLink != true else {
-            throw ResearchConfigurationStoreError.unsafeStorage
+            throw ScholiumApplicationError.portableControlRecoveryRequired(
+                controlPath: controlURL.path,
+                reason: "The portable control owner is linked or is not a directory."
+            )
         }
         guard try !FileManager.default.contentsOfDirectory(atPath: controlURL.path).isEmpty
         else { return }
@@ -830,7 +771,6 @@ public actor WorkspaceRuntime {
                     windowSessionStore: windowSessionStore,
                     vaultPool: vaultPool,
                     zotero: zotero,
-                    researchAgentSessions: researchAgentSessions,
                     access: .live,
                     openingVault: openingVault
                 )
@@ -844,7 +784,6 @@ public actor WorkspaceRuntime {
                     windowSessionStore: windowSessionStore,
                     vaultPool: vaultPool,
                     zotero: zotero,
-                    researchAgentSessions: researchAgentSessions,
                     access: .snapshot
                 )
             }
