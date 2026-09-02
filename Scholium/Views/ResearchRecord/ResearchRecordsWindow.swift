@@ -53,7 +53,7 @@ final class ResearchRecordsWindowCoordinator {
 }
 
 @MainActor
-final class ResearchRecordsWindowModel: ObservableObject {
+final class ResearchRecordsModel: ObservableObject {
     struct NoteEvidence: Identifiable {
         enum RevisionState {
             case current(VaultNoteReference)
@@ -77,16 +77,18 @@ final class ResearchRecordsWindowModel: ObservableObject {
     @Published private(set) var errorMessage: String?
 
     let triptychID: UUID
-    private let workspaceStore: WorkspaceStore
-    private var capabilities: WindowWorkspaceCapabilities?
+    private let loadCapabilities: @MainActor () async throws
+        -> ResearchRecordsWindowCapabilities
+    private var capabilities: ResearchRecordsWindowCapabilities?
     private var noteSnapshots: [WorkspaceNoteSnapshot] = []
 
     init(
         triptychID: UUID,
-        workspaceStore: WorkspaceStore
+        loadCapabilities: @escaping @MainActor () async throws
+            -> ResearchRecordsWindowCapabilities
     ) {
         self.triptychID = triptychID
-        self.workspaceStore = workspaceStore
+        self.loadCapabilities = loadCapabilities
     }
 
     var visibleRecords: [ResearchRecordRevision] {
@@ -108,9 +110,7 @@ final class ResearchRecordsWindowModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         do {
-            let capabilities = try await workspaceStore.workspaceCapabilities(
-                id: triptychID
-            )
+            let capabilities = try await loadCapabilities()
             self.capabilities = capabilities
             noteSnapshots = try await capabilities.documents.snapshot()
                 .flatMap(\.documents)
@@ -124,7 +124,7 @@ final class ResearchRecordsWindowModel: ObservableObject {
     func refreshIfChanged() async {
         guard let capabilities else { return }
         do {
-            let listing = try await capabilities.agentCollaboration.researchRecords()
+            let listing = try await capabilities.records.researchRecords()
             let old = Dictionary(uniqueKeysWithValues: records.map { ($0.id, $0.fingerprint) })
             let new = Dictionary(uniqueKeysWithValues: listing.records.map { ($0.id, $0.fingerprint) })
             guard old != new || issues != listing.issues else { return }
@@ -208,9 +208,9 @@ final class ResearchRecordsWindowModel: ObservableObject {
     }
 
     private func reloadRecords(
-        using capabilities: WindowWorkspaceCapabilities
+        using capabilities: ResearchRecordsWindowCapabilities
     ) async throws {
-        let listing = try await capabilities.agentCollaboration.researchRecords()
+        let listing = try await capabilities.records.researchRecords()
         records = listing.records
         issues = listing.issues
         await search()
@@ -231,14 +231,18 @@ final class ResearchRecordsWindowModel: ObservableObject {
 
 struct ResearchRecordsWindowView: View {
     @Environment(\.openWindow) private var openWindow
-    @StateObject private var model: ResearchRecordsWindowModel
+    @StateObject private var model: ResearchRecordsModel
     @State private var searchTask: Task<Void, Never>?
     @State private var routeToken: UUID?
 
-    init(route: ResearchRecordsWindowRoute, workspaceStore: WorkspaceStore) {
-        _model = StateObject(wrappedValue: ResearchRecordsWindowModel(
+    init(
+        route: ResearchRecordsWindowRoute,
+        loadCapabilities: @escaping @MainActor () async throws
+            -> ResearchRecordsWindowCapabilities
+    ) {
+        _model = StateObject(wrappedValue: ResearchRecordsModel(
             triptychID: route.triptychID,
-            workspaceStore: workspaceStore
+            loadCapabilities: loadCapabilities
         ))
     }
 
@@ -489,7 +493,7 @@ struct ResearchRecordsWindowView: View {
         .padding(.top, 6)
     }
 
-    private func openEvidence(_ evidence: ResearchRecordsWindowModel.NoteEvidence) {
+    private func openEvidence(_ evidence: ResearchRecordsModel.NoteEvidence) {
         let route: VaultNoteReference
         switch evidence.state {
         case .current(let value), .earlier(let value): route = value
@@ -504,14 +508,14 @@ struct ResearchRecordsWindowView: View {
         )
     }
 
-    private func evidenceTitle(_ evidence: ResearchRecordsWindowModel.NoteEvidence) -> String {
+    private func evidenceTitle(_ evidence: ResearchRecordsModel.NoteEvidence) -> String {
         switch evidence.state {
         case .current(let route), .earlier(let route): route.relativePath
         case .unavailable: evidence.reference.noteID.uuidString.lowercased()
         }
     }
 
-    private func evidenceState(_ evidence: ResearchRecordsWindowModel.NoteEvidence) -> String {
+    private func evidenceState(_ evidence: ResearchRecordsModel.NoteEvidence) -> String {
         switch evidence.state {
         case .current: String(localized: "Current revision")
         case .earlier: String(localized: "Earlier revision")
@@ -596,17 +600,30 @@ struct ResearchRecordMarkdownProjection: Hashable {
     init(_ source: String) {
         var result: [Block] = []
         var paragraph: [String] = []
+        var fence: String?
         func flushParagraph() {
             guard !paragraph.isEmpty else { return }
             result.append(Block(kind: .paragraph, text: paragraph.joined(separator: "\n")))
             paragraph.removeAll()
         }
         for line in source.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if let activeFence = fence {
+                flushParagraph()
+                result.append(Block(kind: .literal, text: line))
+                if trimmed.hasPrefix(activeFence) { fence = nil }
+                continue
+            }
+            if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") {
+                flushParagraph()
+                fence = String(trimmed.prefix(3))
+                result.append(Block(kind: .literal, text: line))
+                continue
+            }
             if line.trimmingCharacters(in: .whitespaces).isEmpty {
                 flushParagraph()
                 continue
             }
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
             if Self.isLiteral(trimmed) {
                 flushParagraph()
                 result.append(Block(kind: .literal, text: line))
@@ -629,10 +646,8 @@ struct ResearchRecordMarkdownProjection: Hashable {
 
     private static func isLiteral(_ line: String) -> Bool {
         line.range(of: #"^#{1,6}\s"#, options: .regularExpression) != nil
-            || line.hasPrefix("```")
-            || line.hasPrefix("~~~")
             || line.hasPrefix("<")
-            || line.hasPrefix("![")
+            || line.contains("![")
             || line == "---" || line == "***" || line == "___"
             || (line.hasPrefix("|") && line.hasSuffix("|"))
     }

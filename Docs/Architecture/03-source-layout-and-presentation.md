@@ -80,9 +80,19 @@ The composition root passes the complete `WindowModel` explicitly;
 projection, CSS, and workspace-session owners it actually
 reads, while reusable feature leaves remain on narrow values/controllers.
 `WorkspaceWindowCoordinator` receives the exact window and split,
-installs toolbar/delegate state, and registers readiness/flushing. No singleton,
-window search, notification, polling, delayed correction, or width calculation
-participates.
+installs toolbar/delegate state, and registers readiness/flushing. Search,
+notification, polling, delayed correction, and width calculation do not
+participate in constructing that workspace split.
+
+Research Records use a separate value-keyed `WindowGroup`, one scene identity
+per Triptych. `ResearchRecordsWindowCoordinator` routes an exact Record/step
+selection to the existing scene but retains no research data. The window uses
+an AppKit-owned resizable split: a quiet scanning collection, centered
+scholarly reading plane, and optional evidence rail. Its only text input is the
+Record-provider Search field; step content is a read-only bounded Markdown
+projection. Paragraphs, emphasis, strong text, inline code, lists, blockquotes,
+and ordinary links render semantically. Headings and unsupported constructs
+remain visible literal source.
 
 Bootstrap, configured Workspace, and Settings scene roots each own one
 `ScholiumFileSelectionPresenter`. A bounded native attachment supplies that

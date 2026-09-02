@@ -80,11 +80,27 @@ entries require exact reconciliation. Direct Undo exists only for a confirmed
 update whose current authoritative fingerprint still equals the recorded after
 fingerprint.
 
+`ResearchRecordStore` is the portable, Triptych-bound Core actor under
+`.scholium/inquiry-records/v1/`. Each lowercase UUID-named file contains one
+strict schema-1 continuing inquiry Record. The complete file is the
+fingerprint/CAS unit. Creation, substantive append, and clerical correction use
+the same descriptor-relative containment, coordination lock, atomic
+replacement, and decoded-readback boundary; a correction appends provenance
+and never overwrites the original step. Listing isolates invalid or unsupported
+files and reports them alongside valid Records. The store never reads the
+legacy Research Action/Run/Result contracts or the Settlement namespace.
+
+`ResearchRecordSearchIndex` is a separate disposable in-memory read model. It
+rebuilds from validated Record revisions, advances its provider-local
+generation when the exact manifest changes, and indexes only current question
+and current projected step text. Note references filter authorized scope but do
+not become query text or inferred evidence relations.
+
 `SecureRecordDirectory` is the Core-only descriptor-relative primitive for
-bounded machine-local JSON state. It owns no-follow containment, byte limits,
+bounded JSON state. It owns no-follow containment, byte limits,
 atomic replacement, readback, staging/deletion recovery, and the companion
 `AdvisoryFileLock` for cooperating-process serialization. Agent Changes, the
-prewrite ledger, and other bounded machine-local stores retain their own schema,
+prewrite ledger, Research Records, and other bounded stores retain their own schema,
 path, transaction, recovery, and error semantics. The primitive interprets no
 research object and never becomes a writable source authority.
 

@@ -208,8 +208,8 @@ same generation's reconciled portable-identity state for Critique association;
 only `.resolved` identities participate, so ambiguous, pending, unresolved, or
 failed recovery remains closed without one storage lookup per Work.
 
-`ScholiumContracts` owns current parsing and typed clauses, the closed Note
-provider and capability table, provider-mismatch diagnostics,
+`ScholiumContracts` owns current parsing and typed Note/Record clauses, the
+closed provider capability table, provider-mismatch diagnostics,
 completion and Explain Query descriptions, discriminated results, visible
 semantic `SearchDocumentProjection`, exact source mappings, CJK query
 projection, requests, responses, availability, and generation/freshness
@@ -218,15 +218,15 @@ identities. Structured projection joins validated Metadata with authored YAML
 and unknown YAML is not queryable. Core owns the Note
 provider's disposable SQLite schema, staging/validation/recovery, read
 transactions, cancellation, deterministic ranking, and in-memory **This Note**
-matcher. The portable Record store supplies exact decoded schema-18 Records and
-their source-byte fingerprints plus schema-2 Settlements with covered
-Agent-change activity references; Application owns the rebuildable Record query
-projection and provider routing, authorizes visible scope before query, and is
-the only Search capability exposed to GUI and CLI. No adapter, window model, or
-Agent route owns another parser, resolver, Record corpus, or ranking rule.
+matcher. Core separately owns strict schema-1 Research Record storage and its
+disposable Record provider projection over current question/current-step text.
+Application authorizes visible scope, validates stable Note references before
+Record writes, and exposes the unified provider-separated Search capability to
+the GUI and App bridge. No adapter, window model, or Agent route owns another
+parser, resolver, Record corpus, ranking rule, or writable Record authority.
 
-Saved Searches persist only raw query, visible presentation scope, and Search
-contract version. `WindowSearchController` owns execution cancellation,
+Saved Searches persist only raw query, visible presentation scope, visible
+provider selection, and Search contract version. `WindowSearchController` owns execution cancellation,
 freshness, serialized persistence, and load failure. Explicit recovery uses the
 same-directory exact-state preserver before clearing that failure;
 `DiscoveryController` owns the visible completion/result selection. Search
@@ -238,11 +238,10 @@ enters the persisted definition.
 ### Application capabilities and delivery
 
 Application composes a private `WorkspaceHandle`; the macOS adapter exposes
-`DocumentUseCases`, `DiscoveryUseCases`, and one app-owned
-`WindowResearchCapabilities` value composed from the narrow Record,
-Skill/Profile, Action/Run, Research
-Context, evaluation, and source-access ports plus immutable
-identity/assignment values. Contracts declares no aggregate Research mega-port.
+`DocumentUseCases`, `DiscoveryUseCases`, `AgentCollaborationUseCases`, and one
+app-owned `WindowResearchCapabilities` value composed from the current
+research-state ports plus immutable identity/assignment values. Contracts
+declares no aggregate Research mega-port.
 Configuration preflights roots and reads the portable manifest before
 registration. `WorkspaceRegistry` is the single machine-local owner of
 Triptych membership, role Vault UUID/path/bookmark bindings, default selection,
@@ -308,21 +307,14 @@ SwiftUI disappearance only detaches presentation. `DocumentTransitionCoordinator
 owns and cancels serialized transition tasks. `WindowEditorFlushCoordinator`
 owns ordered current-editor and aggregate-window registrations. They survive
 preparation so cancelled application termination remains retryable, and end
-only after AppKit commits the close. `ResearchActionController` owns the
-read-only projection of direct Continue Research children beneath the current
-parent Action. It owns no
-finalized-result or researcher-response presentation. The Records-only
-`ResearcherResponseEditorSheet` owns one local Evaluation-plus-Method-Feedback
-draft for the exact rendered Record, its dirty state, operation lifetime,
-discard confirmation, and stale recovery. Explicit and implicit dismissal
-remain blocked until save or authoritative reload resolves. The comparison
-sheet separately owns only its current document-fold, equal-range-fold,
-selection, loading, and per-document operation presentation. These transient
-values are keyed to one Record and current sheet lifetime; none owns durable
-authorization, source bytes, Record, Response, or Settlement state.
+only after AppKit commits the close. `ResearchRecordsWindowModel` owns only the
+read-only collection selection, Record-provider query, selected step, evidence
+disclosure, and refresh presentation for its Triptych-bound scene. Its
+Triptych-keyed coordinator retains only pending navigation requests. Neither
+object owns durable authorization, source bytes, or writable Record state.
 `WindowSearchController` owns Search/temporary Find execution and
-cancellation, provider-aware exact result-freshness validation, generation or
-Record-manifest reruns, and serialized Saved Search loading and persistence. It
+cancellation, provider-aware result routing, generation reruns, and serialized
+Saved Search loading and persistence. It
 coordinates the `DiscoveryController` completion/result projection while
 borrowing only a checked current document snapshot and navigation/presentation
 effects from the window root;

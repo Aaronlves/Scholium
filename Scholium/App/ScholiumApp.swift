@@ -303,7 +303,14 @@ private struct ScholiumResearchRecordsWindowReadyContent: View {
     let route: ResearchRecordsWindowRoute
 
     var body: some View {
-        ResearchRecordsWindowView(route: route, workspaceStore: workspaceStore)
+        ResearchRecordsWindowView(
+            route: route,
+            loadCapabilities: {
+                try await workspaceStore.researchRecordsWindowCapabilities(
+                    id: route.triptychID
+                )
+            }
+        )
     }
 }
 

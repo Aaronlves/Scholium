@@ -68,6 +68,13 @@ struct WindowResearchCapabilities: Sendable {
     let recoveryRecordsURL: URL
 }
 
+/// Narrow delivery value consumed by the separate read-only Records scene.
+struct ResearchRecordsWindowCapabilities: Sendable {
+    let documents: any DocumentUseCases
+    let discovery: any DiscoveryUseCases
+    let records: any AgentCollaborationUseCases
+}
+
 /// The macOS delivery adapter over one live Application runtime.
 ///
 /// WorkspaceRuntime owns every repository, index, watcher, research store,
@@ -401,6 +408,17 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
             id: id,
             openingVault: openingVault
         ))
+    }
+
+    func researchRecordsWindowCapabilities(
+        id: UUID
+    ) async throws -> ResearchRecordsWindowCapabilities {
+        let capabilities = try await workspaceCapabilities(id: id)
+        return ResearchRecordsWindowCapabilities(
+            documents: capabilities.documents,
+            discovery: capabilities.discovery,
+            records: capabilities.agentCollaboration
+        )
     }
 
     private func configureTriptych(

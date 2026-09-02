@@ -988,7 +988,7 @@ struct FrontendArchitectureTests {
 
         #expect(appSource.contains("id: \"scholium-bootstrap\""))
         #expect(appSource.contains("for: BootstrapWindowRoute.self"))
-        #expect(appSource.components(separatedBy: "WindowGroup(").count == 3)
+        #expect(appSource.components(separatedBy: "WindowGroup(").count == 4)
         #expect(!appSource.contains("id: \"scholium-stage4-design-proofs\""))
         #expect(!appSource.contains("id: \"scholium-editor\""))
         #expect(!appSource.contains("Window(\"Editor\""))
@@ -1182,6 +1182,7 @@ struct FrontendArchitectureTests {
             .flexibleSpace,
             ScholiumWorkspaceToolbarController.Item.search,
             ScholiumWorkspaceToolbarController.Item.documentMode,
+            ScholiumWorkspaceToolbarController.Item.researchRecords,
             ScholiumWorkspaceToolbarController.Item.agentChanges,
             ScholiumWorkspaceToolbarController.Item.apparatusDivider,
             .flexibleSpace,

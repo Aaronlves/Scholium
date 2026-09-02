@@ -6,9 +6,10 @@
 
 - Run a clean-account artifact smoke with the signed App already running:
   register `scholium mcp serve` independently in Codex and Claude Code, confirm
-  fixed seven-tool discovery, exercise search/read/links and one create/update/
-  trash sequence, verify stale-fingerprint rejection, and inspect the resulting
-  Agent Changes and eligible Update Undo.
+  fixed ten-tool discovery, exercise both Search providers, Note/Record reads,
+  links, one create/update/trash sequence, and one Record create/append/correct
+  sequence; verify both Note and Record stale-fingerprint rejection, then
+  inspect Agent Changes, Update Undo, and the read-only Records window.
 - Verify running-App absence, multiple-open-Triptych selection, reconnect, App
   relaunch, sandbox boundary, and packaged absolute CLI-path behavior on the
   actual release artifacts. These are external-host and packaging claims, not
@@ -35,16 +36,19 @@
   Library navigation, Document mode transitions, Inspector Overview/Connect,
   system Trash, conflict, and recovery where they exercise distinct human
   failure modes.
+- Add a human Records-window journey covering All/Notes/Records Search,
+  collection-to-reading navigation, selected-step evidence, external Agent
+  refresh without focus movement, keyboard traversal, enlarged text, narrow
+  layout, and Simplified Chinese presentation.
 - Retain the current distinction between deterministic build/test evidence and
   human acceptance. Automated accessibility structure checks do not constitute
   VoiceOver, keyboard, IME, or visual acceptance.
 
 ## Remaining product work
 
-- Research Records and Handoff are future §22 work. Their data model,
-  authority, migration, interface, search participation, and acceptance must be
-  specified and implemented as new work; deleted legacy implementations do not
-  count as progress toward that target.
+- Research Record deletion, merge/split, and write suspension plus Handoff are
+  future §22 work. Deleted legacy implementations do not supply any of those
+  contracts or acceptance evidence.
 - Continue performance, File Provider/sync, Finder restoration, and Zotero
   system-integration acceptance where the current specification requires
   artifact or environment evidence.

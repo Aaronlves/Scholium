@@ -53,8 +53,8 @@ if rg -n --glob '*.swift' '[\p{Han}]' \
   exit 1
 fi
 
-# Agent collaboration has one fixed MCP surface. Legacy in-App lifecycle,
-# portable result, discussion, and local bridge owners must not return.
+# Agent collaboration has one fixed MCP surface. Legacy action/run/result,
+# discussion, browser, and local bridge owners must not return.
 LEGACY_AGENT_ROOTS=(
   "${ROOT}/Scholium"
   "${ROOT}/ScholiumCLI"
@@ -63,7 +63,7 @@ LEGACY_AGENT_ROOTS=(
   "${ROOT}/ScholiumCore"
 )
 if rg -n --glob '*.swift' \
-  '\b(ResearchAction[A-Za-z0-9_]*|PortableResearchRecord[A-Za-z0-9_]*|ResearchAgentSession[A-Za-z0-9_]*|ResearchDiscussion[A-Za-z0-9_]*|LocalAgentBridge[A-Za-z0-9_]*|ResearchRecordBrowser[A-Za-z0-9_]*|ResearchRecordsWindow[A-Za-z0-9_]*)\b' \
+  '\b(ResearchAction[A-Za-z0-9_]*|PortableResearchRecord[A-Za-z0-9_]*|ResearchAgentSession[A-Za-z0-9_]*|ResearchDiscussion[A-Za-z0-9_]*|LocalAgentBridge[A-Za-z0-9_]*|ResearchRecordBrowser[A-Za-z0-9_]*)\b' \
   "${LEGACY_AGENT_ROOTS[@]}"; then
   echo "Agent collaboration clean-cutover guard failed: a retired production owner returned." >&2
   exit 1
@@ -73,7 +73,6 @@ for retired_path in \
   "${ROOT}/ScholiumResearchRecordsFeature" \
   "${ROOT}/Scholium/Features/ResearchActions" \
   "${ROOT}/Scholium/Views/ResearchActions" \
-  "${ROOT}/Scholium/Views/ResearchRecord" \
   "${ROOT}/ScholiumCore/Resources/Skills/Scholium Method Skills"; do
   if [[ -d "${retired_path}" ]] \
     && [[ -n "$(find "${retired_path}" -type f -print -quit)" ]]; then

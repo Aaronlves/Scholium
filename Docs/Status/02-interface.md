@@ -28,8 +28,11 @@
   Connect presents exact incoming or outgoing link occurrences, their local
   context, and any source-owned Markdown annotation. Incoming annotations are
   read-only and route editing to the source Note. It has no Actions mode.
-- Search presents Note results only and never mixes removed research-object
-  results into its scope or completion vocabulary.
+- Search defaults to **All** and presents separate Notes and Research Records
+  sections without cross-provider ranking. Notes and Records are directly
+  selectable provider paths; scope remains This Note, This Vault, or Triptych.
+  A Record hit opens the same Triptych-bound Records window at the matched
+  Record and step.
 - System-Trash confirmation describes the exact source and any managed Critique
   moved with it. Recovery stays with the existing bounded transaction owner.
 - The Document Rail presents **Settle Again** for both Settled and Changed since
@@ -42,8 +45,14 @@
   MCP registration commands, live App/bridge/CLI availability, and a Finder
   route to the bundled Core Protocol Skill.
 - Agent conversation remains in the external host. Scholium shows no chat,
-  Agent picker, session, task, activity stack, result review, or Research
-  Records window.
+  Agent picker, session, task, activity stack, or result-review workflow.
+- **Research Records** opens a separate read-only window. Its left collection
+  scans current questions and last substantive times with Record Search; the
+  centered reading plane shows chronological attributed steps; the optional
+  evidence rail groups basis/modified Note references and distinguishes current,
+  earlier, and unavailable revisions. Step prose renders bounded basic Markdown;
+  headings and unsupported constructs remain literal. There is no Record
+  content editor.
 - **Agent Changes** presents one machine-local MCP mutation at a time in
   confirmation order, with Previous/Next controls and an exact position. Every
   retained update is bound to one `(change ID, Note ID)` and presents its own

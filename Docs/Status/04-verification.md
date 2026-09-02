@@ -4,28 +4,31 @@
 
 ## Current verification snapshot
 
-**Environment:** 2026-09-02 complete integration snapshot with 2026-09-03
-focused Agent Changes evidence, Xcode 27 beta toolchain
+**Environment:** 2026-09-03 complete Research Records integration snapshot,
+Xcode 27 beta toolchain
 (`DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer`).
 
-The 2026-09-02 Agent Changes integration established automated evidence for the
-fixed MCP contract, exact machine-local Before/After payloads,
-current-versus-earlier revision classification, byte-identical direct Update
-Undo, and the Changed-since-settlement rail action. The 2026-09-03 presentation
-change has focused evidence for its unified line model and semantic
-removal/insertion palettes; the complete integration gate was not rerun for
-that single-owner interface change.
+The complete repository gate was rerun after the clean Research Record
+cutover. It established automated evidence for strict portable storage,
+reference/currentness validation, provider-separated Search, the ten-tool MCP
+surface, bounded Record read/write/correction routes, read-only interface
+composition, and the retained Agent Change exact-source behavior.
 
 Completed automated checks in this worktree:
 
 - Web editor TypeScript checking and 208 tests in 38 files passed. Reader, editor,
   mathematics, and Mermaid bundles were rebuilt through the repository
   toolchain, and bundle reproducibility passed.
-- Swift package tests passed: Core 341 tests in 35 suites, Core performance 3
-  tests in 1 suite, Contracts 62 tests in 11 suites, Application 121 tests in
-  16 suites, and the Application architecture measurement 1 test in 1 suite.
-- The complete App suite passed after final localization cleanup: 544 tests in
-  42 suites. Focused coverage also proved that exact Agent Change evidence
+- Swift package tests passed: Core 344 tests in 36 suites, Core performance 3
+  tests in 1 suite, Contracts 65 tests in 12 suites, Application 125 tests in
+  17 suites, and the Application architecture measurement 1 test in 1 suite.
+- The complete App suite passed after final localization cleanup: 547 tests in
+  43 suites. Research Record coverage proves strict JSON round trips, append
+  and correction history, damaged-file isolation, stale Note/Record rejection,
+  restart persistence, independent provider results/generations, all ten MCP
+  schemas and routes, no Agent Change for Record writes, bounded Markdown
+  projection, and a Record surface with no content editor. Retained coverage
+  also proved that exact Agent Change evidence
   survives store reopening, that sequential updates remain independent rather
   than cumulative, that a body update exposes the removed blank line and
   inserted text, that direct Undo restores each byte-identical Before source,
@@ -33,7 +36,7 @@ Completed automated checks in this worktree:
 - The public-symbol graph boundary, documentation authority and local-link
   validator, interface localization validator, bundled-Skill validator,
   resource and retired-surface residue guards, and `git diff --check` passed.
-- The Release product build passed in 123.96 seconds.
+- The Release product build passed in 131.81 seconds.
 - On 2026-09-03 the two exact-comparison presentation tests and the focused
   palette snapshot/contrast and semantic-role architecture tests passed.
   `build-qa-app.sh` syntax validation and `git diff --check` passed. A fresh
@@ -50,8 +53,8 @@ Completed automated checks in this worktree:
 
 ## Evidence boundary
 
-No clean-account Codex or Claude Code smoke, packaged-artifact bridge smoke,
-successful Agent Changes UI journey, VoiceOver, Full Keyboard Access,
-Simplified Chinese IME, Finder, notarization, distribution, or other human
-acceptance has run for this cutover. Passing local automated tests does not
-establish those claims.
+No clean-account Codex or Claude Code ten-tool smoke, packaged-artifact bridge
+smoke, successful Records/Agent Changes UI journey, VoiceOver, Full Keyboard
+Access, Simplified Chinese IME, Finder, notarization, distribution, or other
+human acceptance has run for this cutover. Passing local automated tests does
+not establish those claims.

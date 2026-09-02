@@ -15,6 +15,9 @@ struct ResearchRecordsWindowTests {
         > Quoted
         # Literal heading
         ![Literal image](image.png)
+        ```
+        **literal code**
+        ```
         """)
 
         #expect(projection.blocks.map(\.kind) == [
@@ -24,10 +27,14 @@ struct ResearchRecordsWindowTests {
             .quote,
             .literal,
             .literal,
+            .literal,
+            .literal,
+            .literal,
         ])
         #expect(projection.blocks[0].text.contains("**strong**"))
         #expect(projection.blocks[4].text == "# Literal heading")
         #expect(projection.blocks[5].text == "![Literal image](image.png)")
+        #expect(projection.blocks[7].text == "**literal code**")
     }
 
     @Test("Record route identity is one window per Triptych")

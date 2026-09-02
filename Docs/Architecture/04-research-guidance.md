@@ -29,7 +29,7 @@ Zotero remains an optional integration with one Application-owned capability.
 Its settings, exact library/item identity, attachment containment, and
 revision-checked Metadata plans remain separate from MCP Agent collaboration.
 The optional first-party Zotero MCP transport has its own operator guide and
-does not expand Scholium's seven-tool MCP surface.
+does not expand Scholium's ten-tool MCP surface.
 
 ## Settings authority
 
