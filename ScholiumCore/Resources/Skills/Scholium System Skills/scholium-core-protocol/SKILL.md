@@ -23,9 +23,12 @@ unavailable-state recovery, or uncertain mutation outcome. Do not retry an
 ## Retrieve before judging
 
 Form a multilingual conceptual neighborhood from the question. Issue several
-bounded `scholium_search_notes` queries, read the passages that bear on the
-question with `scholium_read_note`, revise retrieval when needed, and follow
-direct authored occurrences with `scholium_list_links` when warranted.
+bounded `scholium_search` queries, read the Note passages that bear on the
+question with `scholium_read_note`, inspect relevant continuing inquiry history
+with `scholium_read_record`, revise retrieval when needed, and follow direct
+authored occurrences with `scholium_list_links` when warranted. Omitted
+providers search Notes and Records as separately ranked groups; use an explicit
+provider only when the task needs a dedicated path.
 
 Treat each listed row as one occurrence owned by its source Note. Its optional
 annotation and local context are authored material to read, not a stored
@@ -76,6 +79,26 @@ After any mutation, report:
 Do not represent an Agent Change as researcher acceptance, a research result,
 or a completed task. Direct Undo is an application recovery affordance for an
 eligible update, not permission to make another change.
+
+## Maintain attributed research history
+
+After each substantive research step, decide whether it continues an existing
+question or begins a question that can develop independently. Call
+`scholium_record_progress` to append the complete step to the existing Record
+with its current Record fingerprint, or to create a new Record. A substantive
+step minimally states what was done, the outcome or present conclusion, and the
+next relevant direction or explicit stopping reason. Include exact `basis` and
+`modified` Note references when the step relied on or changed those Notes.
+
+Do not create a separate Record merely because a new chat, tool call, method,
+or Agent task began. Do not use a Research Record as permission, truth,
+researcher acceptance, Review, Settle, or task completion. Record maintenance
+is attributed history and does not authorize a Note mutation.
+
+Use `scholium_correct_record_step` only for a clerical correction to an already
+recorded step, with the current Record fingerprint. Preserve the original in
+history. New evidence, a changed argument, or a revised conclusion is a new
+substantive step, not a correction.
 
 ## Philosophical method
 

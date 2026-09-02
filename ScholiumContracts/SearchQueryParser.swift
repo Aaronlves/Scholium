@@ -2,6 +2,7 @@ import Foundation
 
 public enum SearchProvider: String, Codable, CaseIterable, Hashable, Sendable {
     case note
+    case record
 }
 
 public enum SearchLexicalField: String, Codable, CaseIterable, Hashable, Sendable {
@@ -154,6 +155,7 @@ public enum SearchExplanationNormalization: String, Codable, Hashable, Sendable 
 
 public enum SearchExplanationOrdering: String, Codable, Hashable, Sendable {
     case noteExactIdentityThenBM25ThenTitleRolePath = "note_exact_identity_then_bm25_then_title_role_path"
+    case recordQuestionThenStepThenTimeQuestionID = "record_question_then_step_then_time_question_id"
 }
 
 public enum SearchExplanationLimitation: String, Codable, Hashable, Sendable {
@@ -203,22 +205,28 @@ public struct SearchExplanation: Codable, Hashable, Sendable {
         self.operator = `operator`
         self.clauses = clauses
         self.normalization = Self.normalization(for: provider)
-        self.ordering = .noteExactIdentityThenBM25ThenTitleRolePath
-        self.limitations = [
-            .authorizedScopeOnly,
-            .retrievalLeadNotEvidence,
-            .noCrossProviderRanking,
-            .noteLinksDirectOnly,
-        ]
+        self.ordering = provider == .note
+            ? .noteExactIdentityThenBM25ThenTitleRolePath
+            : .recordQuestionThenStepThenTimeQuestionID
+        self.limitations = provider == .note
+            ? [.authorizedScopeOnly, .retrievalLeadNotEvidence,
+               .noCrossProviderRanking, .noteLinksDirectOnly]
+            : [.authorizedScopeOnly, .retrievalLeadNotEvidence,
+               .noCrossProviderRanking]
     }
 
     private static func normalization(
         for provider: SearchProvider
     ) -> [SearchExplanationNormalization] {
-        [.canonicalUnicodeCaseWhitespace,
-         .lexicalUnicodeCaseDiacriticWhitespace,
-         .cjkCharacterAndOverlappingBigramProjection,
-         .caseSensitiveTopLevelPropertyKey]
+        if provider == .note {
+            return [.canonicalUnicodeCaseWhitespace,
+                    .lexicalUnicodeCaseDiacriticWhitespace,
+                    .cjkCharacterAndOverlappingBigramProjection,
+                    .caseSensitiveTopLevelPropertyKey]
+        }
+        return [.canonicalUnicodeCaseWhitespace,
+                .lexicalUnicodeCaseDiacriticWhitespace,
+                .cjkCharacterAndOverlappingBigramProjection]
     }
 }
 
@@ -483,6 +491,140 @@ public enum SearchQueryParser {
         )
     }
 
+    /// Parses the Record provider with the same tokenizer, normalization,
+    /// bounded grammar, and `kind:` resolution used by Note Search.
+    public static func parseRecord(_ raw: String) -> RecordSearchQueryParseResult {
+        guard raw.utf16.count <= SearchContract.maximumQueryUTF16Count else {
+            return RecordSearchQueryParseResult(
+                providerWasExplicit: false,
+                ast: nil,
+                diagnostics: [SearchQueryDiagnostic(
+                    code: .unsupportedSyntax,
+                    message: "Search queries are limited to \(SearchContract.maximumQueryUTF16Count) UTF-16 code units.",
+                    utf16LowerBound: 0,
+                    utf16UpperBound: SearchContract.maximumQueryUTF16Count
+                )]
+            )
+        }
+        let tokenized = tokenize(raw)
+        guard tokenized.diagnostics.isEmpty else {
+            return RecordSearchQueryParseResult(
+                providerWasExplicit: false,
+                ast: nil,
+                diagnostics: tokenized.diagnostics
+            )
+        }
+        guard tokenized.tokens.count <= SearchContract.maximumQueryTokenCount else {
+            let overflow = tokenized.tokens[SearchContract.maximumQueryTokenCount]
+            return RecordSearchQueryParseResult(
+                providerWasExplicit: false,
+                ast: nil,
+                diagnostics: [SearchQueryDiagnostic(
+                    code: .unsupportedSyntax,
+                    message: "Search queries are limited to \(SearchContract.maximumQueryTokenCount) tokens.",
+                    utf16LowerBound: overflow.range.lowerBound,
+                    utf16UpperBound: overflow.range.upperBound
+                )]
+            )
+        }
+        let providerResolution = resolveProvider(in: tokenized.tokens)
+        guard providerResolution.diagnostics.isEmpty else {
+            return RecordSearchQueryParseResult(
+                providerWasExplicit: providerResolution.explicit,
+                ast: nil,
+                diagnostics: providerResolution.diagnostics
+            )
+        }
+        if providerResolution.explicit, providerResolution.provider != .record {
+            return RecordSearchQueryParseResult(
+                providerWasExplicit: true,
+                ast: nil,
+                diagnostics: [SearchQueryDiagnostic(
+                    code: .providerMismatch,
+                    message: "The Record provider cannot execute kind:note.",
+                    utf16LowerBound: 0,
+                    utf16UpperBound: raw.utf16.count
+                )]
+            )
+        }
+
+        var clauses: [RecordSearchClause] = []
+        var diagnostics: [SearchQueryDiagnostic] = []
+        for token in tokenized.tokens where !isKindToken(token) {
+            var tokenRaw = token.raw
+            let excluded = tokenRaw.hasPrefix("-")
+            if excluded { tokenRaw.removeFirst() }
+            if let syntaxDiagnostic = unsupportedSyntaxDiagnostic(
+                raw: tokenRaw,
+                token: token
+            ) {
+                diagnostics.append(syntaxDiagnostic)
+                continue
+            }
+            let split = splitField(tokenRaw)
+            let field: RecordSearchField?
+            if let fieldName = split.field {
+                let normalizedField = fieldName.lowercased()
+                guard !split.value.isEmpty else {
+                    diagnostics.append(diagnostic(
+                        .missingFieldValue,
+                        "The \(normalizedField) field requires a value.",
+                        token
+                    ))
+                    continue
+                }
+                guard let resolved = RecordSearchField(rawValue: normalizedField) else {
+                    diagnostics.append(diagnostic(
+                        .unknownField,
+                        "Unknown Record Search field \(normalizedField):.",
+                        token
+                    ))
+                    continue
+                }
+                field = resolved
+            } else {
+                field = nil
+            }
+            switch lexicalValue(split.value, token: token, permitsPrefix: true) {
+            case .success(let value):
+                clauses.append(RecordSearchClause(
+                    field: field,
+                    value: value,
+                    excluded: excluded,
+                    sourceRange: token.range
+                ))
+            case .failure(let error):
+                diagnostics.append(error)
+            }
+        }
+        if diagnostics.isEmpty,
+           !clauses.isEmpty,
+           clauses.allSatisfy(\.excluded) {
+            let range = tokenized.tokens.first?.range ?? 0..<max(0, raw.utf16.count)
+            diagnostics.append(SearchQueryDiagnostic(
+                code: .onlyExcludedFreeText,
+                message: "Add a positive term to Record Search.",
+                utf16LowerBound: range.lowerBound,
+                utf16UpperBound: range.upperBound
+            ))
+        }
+        guard diagnostics.isEmpty else {
+            return RecordSearchQueryParseResult(
+                providerWasExplicit: providerResolution.explicit,
+                ast: nil,
+                diagnostics: diagnostics
+            )
+        }
+        return RecordSearchQueryParseResult(
+            providerWasExplicit: providerResolution.explicit,
+            ast: RecordSearchQueryAST(
+                providerWasExplicit: providerResolution.explicit,
+                clauses: clauses
+            ),
+            diagnostics: []
+        )
+    }
+
     private static func resolveProvider(
         in tokens: [Token]
     ) -> (provider: SearchProvider, explicit: Bool, diagnostics: [SearchQueryDiagnostic]) {
@@ -509,7 +651,7 @@ public enum SearchQueryParser {
         guard !split.value.isEmpty else {
             return (.note, true, [diagnostic(
                 .missingFieldValue,
-                "The kind field requires note.",
+                "The kind field requires note or record.",
                 token
             )])
         }
@@ -522,7 +664,7 @@ public enum SearchQueryParser {
               let provider = SearchProvider(rawValue: decoded.text.lowercased()) else {
             return (.note, true, [diagnostic(
                 .unknownStructuredValue,
-                "kind: accepts only note.",
+                "kind: accepts only note or record.",
                 token
             )])
         }

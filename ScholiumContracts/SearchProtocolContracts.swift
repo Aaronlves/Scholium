@@ -4,7 +4,7 @@ import Foundation
 /// Stable versions that make a Search generation reproducible and prevent a
 /// saved query or derived database from silently acquiring new semantics.
 public enum SearchContract {
-    public static let currentVersion = 12
+    public static let currentVersion = 13
     public static let schemaVersion = 12
     public static let tokenizerPolicyVersion = 2
     public static let rankingPolicyVersion = 2
@@ -59,15 +59,39 @@ public struct SearchDefinition: Codable, Hashable, Sendable {
     public let contractVersion: Int
     public var query: String
     public var presentationScope: SearchPresentationScope
+    public var providerSelection: SearchProviderSelection
 
     public init(
         contractVersion: Int = SearchContract.currentVersion,
         query: String,
-        presentationScope: SearchPresentationScope
+        presentationScope: SearchPresentationScope,
+        providerSelection: SearchProviderSelection = .all
     ) {
         self.contractVersion = contractVersion
         self.query = query
         self.presentationScope = presentationScope
+        self.providerSelection = providerSelection
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case contractVersion
+        case query
+        case presentationScope
+        case providerSelection
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        contractVersion = try container.decode(Int.self, forKey: .contractVersion)
+        query = try container.decode(String.self, forKey: .query)
+        presentationScope = try container.decode(
+            SearchPresentationScope.self,
+            forKey: .presentationScope
+        )
+        providerSelection = try container.decodeIfPresent(
+            SearchProviderSelection.self,
+            forKey: .providerSelection
+        ) ?? .all
     }
 }
 

@@ -29,7 +29,7 @@ struct ScholiumMCPServerTests {
         let tools = try #require(listResult["tools"] as? [[String: Any]])
         #expect(tools.compactMap { $0["name"] as? String } ==
             ScholiumMCPToolName.allCases.map(\.rawValue))
-        #expect(tools.count == 7)
+        #expect(tools.count == 10)
         for tool in tools {
             let schema = try object(tool["inputSchema"])
             #expect(schema["additionalProperties"] as? Bool == false)

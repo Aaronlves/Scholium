@@ -29,12 +29,16 @@ struct DiscoverySearchState: Equatable, Sendable {
     var invocation: SearchInvocation = .general
     var explanation: SearchExplanation?
     var results: [SearchResult] = []
+    var recordResults: [RecordSearchResult] = []
+    var recordGeneration: RecordSearchGenerationID?
     var selectedResultID: String?
     var responseRequestID: UUID?
     var freshnessToken: SearchFreshnessToken?
     var availability: SearchProviderAvailability = .note(.unavailable)
     var diagnostics: [SearchQueryDiagnostic] = []
     var hasMore = false
+    var noteHasMore = false
+    var recordHasMore = false
     var executionIssue: SearchExecutionIssue?
     var isRunning = false
 }
@@ -188,6 +192,11 @@ final class DiscoveryController: ObservableObject {
         try await requireOperations().search(request)
     }
 
+    func unifiedSearch(_ request: UnifiedSearchRequest) async throws
+        -> UnifiedSearchResponse {
+        try await requireOperations().unifiedSearch(request)
+    }
+
     /// Owns the complete Search use case for one window. The window shell
     /// supplies only current navigation identities and handles presentation
     /// of a reported failure.
@@ -239,15 +248,17 @@ final class DiscoveryController: ObservableObject {
         let limit = SearchContract.maximumInterfaceResults
 
         do {
-            let response = try await search(SearchRequest(
+            let response = try await unifiedSearch(UnifiedSearchRequest(
                 id: request.id,
                 query: query,
+                providerSelection: request.criteria.providerSelection,
                 presentationScope: scope,
                 executionScope: applicationScope,
-                limit: limit
+                noteLimit: limit,
+                recordLimit: limit
             ))
             guard isCurrentSearch(request) else { return }
-            receiveSearchResponse(response, for: request)
+            receiveUnifiedSearchResponse(response, for: request)
         } catch is CancellationError {
             return
         } catch {
@@ -392,7 +403,8 @@ final class DiscoveryController: ObservableObject {
         updateSearchState { search in
             search.criteria = SearchWorkspaceState(
                 query: criteria.query,
-                scope: scope
+                scope: scope,
+                providerSelection: criteria.providerSelection
             )
             search.ordinaryScope = scope
             search.invocation = .general
@@ -411,8 +423,12 @@ final class DiscoveryController: ObservableObject {
         search.responseRequestID = nil
         search.freshnessToken = nil
         search.results = []
+        search.recordResults = []
+        search.recordGeneration = nil
         search.diagnostics = []
         search.hasMore = false
+        search.noteHasMore = false
+        search.recordHasMore = false
         search.executionIssue = nil
         search.isRunning = false
         switch invocation {
@@ -435,16 +451,21 @@ final class DiscoveryController: ObservableObject {
         search.invocation = .general
         search.criteria = SearchWorkspaceState(
             query: definition.query,
-            scope: definition.presentationScope
+            scope: definition.presentationScope,
+            providerSelection: definition.providerSelection
         )
         search.ordinaryScope = definition.presentationScope
         search.explanation = nil
         search.results = []
+        search.recordResults = []
+        search.recordGeneration = nil
         search.selectedResultID = nil
         search.responseRequestID = nil
         search.freshnessToken = nil
         search.diagnostics = [diagnostic]
         search.hasMore = false
+        search.noteHasMore = false
+        search.recordHasMore = false
         search.executionIssue = nil
         search.isRunning = false
     }
@@ -453,6 +474,7 @@ final class DiscoveryController: ObservableObject {
     /// errors, and the active generation are deliberately transient.
     func dismissSearch() {
         activeSearchRequestID = nil
+        let providerSelection = search.criteria.providerSelection
         let ordinaryScope: SearchPresentationScope = switch search.invocation {
         case .general:
             search.ordinaryScope
@@ -460,7 +482,10 @@ final class DiscoveryController: ObservableObject {
             previousScope
         }
         search = DiscoverySearchState(
-            criteria: SearchWorkspaceState(scope: ordinaryScope),
+            criteria: SearchWorkspaceState(
+                scope: ordinaryScope,
+                providerSelection: providerSelection
+            ),
             ordinaryScope: ordinaryScope,
             invocation: .general
         )
@@ -494,6 +519,14 @@ final class DiscoveryController: ObservableObject {
         }
     }
 
+    func selectSearchProvider(_ selection: SearchProviderSelection) {
+        activeSearchRequestID = nil
+        updateSearchState { search in
+            search.criteria.providerSelection = selection
+            invalidateSearchProjection(&search)
+        }
+    }
+
     /// A Search projection is meaningful only for the exact query and scope
     /// that produced it. Remove it synchronously before the replacement
     /// cancellable request so a visible row can never route through stale criteria.
@@ -505,8 +538,12 @@ final class DiscoveryController: ObservableObject {
         search.freshnessToken = nil
         search.explanation = nil
         search.results = []
+        search.recordResults = []
+        search.recordGeneration = nil
         search.diagnostics = []
         search.hasMore = false
+        search.noteHasMore = false
+        search.recordHasMore = false
         search.executionIssue = nil
         search.isRunning = !search.criteria.query
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -517,7 +554,8 @@ final class DiscoveryController: ObservableObject {
     func beginSearch(_ criteria: SearchWorkspaceState) -> DiscoverySearchRequest {
         let canonicalCriteria = SearchWorkspaceState(
             query: criteria.query,
-            scope: criteria.scope
+            scope: criteria.scope,
+            providerSelection: criteria.providerSelection
         )
         let request = DiscoverySearchRequest(id: UUID(), criteria: canonicalCriteria)
         activeSearchRequestID = request.id
@@ -534,6 +572,7 @@ final class DiscoveryController: ObservableObject {
                 .isEmpty
             if !search.isRunning {
                 search.results = []
+                search.recordResults = []
             }
         }
         return request
@@ -553,6 +592,32 @@ final class DiscoveryController: ObservableObject {
             search.availability = response.availability
             search.diagnostics = response.diagnostics
             search.hasMore = response.hasMore
+            search.noteHasMore = response.hasMore
+            search.recordHasMore = false
+            search.executionIssue = nil
+            search.isRunning = false
+        }
+    }
+
+    func receiveUnifiedSearchResponse(
+        _ response: UnifiedSearchResponse,
+        for request: DiscoverySearchRequest
+    ) {
+        guard isCurrent(request), response.requestID == request.id else { return }
+        updateSearchState { search in
+            search.results = response.notes?.results ?? []
+            search.recordResults = response.records?.results ?? []
+            search.recordGeneration = response.records?.generation
+            search.selectedResultID = nil
+            search.responseRequestID = response.requestID
+            search.freshnessToken = response.notes?.freshnessToken
+            search.explanation = response.notes?.explanation
+            search.availability = response.notes?.availability ?? .note(.unavailable)
+            search.diagnostics = (response.notes?.diagnostics ?? [])
+                + (response.records?.diagnostics ?? [])
+            search.noteHasMore = response.notes?.hasMore ?? false
+            search.recordHasMore = response.records?.hasMore ?? false
+            search.hasMore = search.noteHasMore || search.recordHasMore
             search.executionIssue = nil
             search.isRunning = false
         }
@@ -581,12 +646,16 @@ final class DiscoveryController: ObservableObject {
     private func completeSearchFailure(_ issue: SearchExecutionIssue) {
         updateSearchState { search in
             search.results = []
+            search.recordResults = []
+            search.recordGeneration = nil
             search.selectedResultID = nil
             search.responseRequestID = nil
             search.freshnessToken = nil
             search.explanation = nil
             search.diagnostics = []
             search.hasMore = false
+            search.noteHasMore = false
+            search.recordHasMore = false
             search.executionIssue = issue
             search.isRunning = false
         }
@@ -624,8 +693,12 @@ final class DiscoveryController: ObservableObject {
             }
         )
         let ordinaryScope = search.ordinaryScope
+        let providerSelection = search.criteria.providerSelection
         search = DiscoverySearchState(
-            criteria: SearchWorkspaceState(scope: ordinaryScope),
+            criteria: SearchWorkspaceState(
+                scope: ordinaryScope,
+                providerSelection: providerSelection
+            ),
             ordinaryScope: ordinaryScope
         )
     }

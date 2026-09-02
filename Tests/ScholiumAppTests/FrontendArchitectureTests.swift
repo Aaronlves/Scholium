@@ -2336,7 +2336,7 @@ struct FrontendArchitectureTests {
             ScholiumWorkspaceToolbarController.Item.search.rawValue
                 == "scholium.toolbar.search"
         )
-        #expect(!toolbar.contains("scholium.toolbar.researchRecords"))
+        #expect(toolbar.contains("scholium.toolbar.researchRecords"))
         #expect(!toolbar.contains("showNoteResearchRecords"))
         #expect(!toolbar.contains("showTriptychResearchRecords"))
         #expect(!toolbar.contains("clock.arrow.circlepath"))

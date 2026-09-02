@@ -36,14 +36,15 @@ struct MCPAppBridgeRequestRouterTests {
             graphGeneration["manifest_sha256"]?.stringValue)
 
         let search = try result(await router.handle(ScholiumMCPBridgeRequest(
-            tool: .searchNotes,
+            tool: .search,
             arguments: [
                 "triptych_id": .string(fixture.assignment.id.uuidString),
                 "query": .string("agency"),
                 "roles": .array([.string("topics")]),
             ]
         )))
-        let hits = try array(search["results"])
+        let noteGroup = try object(search["notes"])
+        let hits = try array(noteGroup["results"])
         #expect(hits.count == 1)
         let hit = try object(hits[0])
         #expect(hit["note_id"]?.stringValue == fixture.topicNoteID.uuidString.lowercased())
@@ -272,6 +273,81 @@ struct MCPAppBridgeRequestRouterTests {
         )
         #expect(createReview.comparison == nil)
         #expect(createReview.currentCreatedSource == initialSource)
+    }
+
+    @Test("Research Record tools preserve attribution, paging, correction, and provider separation")
+    func researchRecordToolsUseRecordAuthority() async throws {
+        let fixture = try await Fixture.make()
+        defer { fixture.dispose() }
+        let router = MCPAppBridgeRequestRouter(
+            runtime: fixture.runtime,
+            flushEditors: { _ in },
+            openTriptychs: { [fixture] in [fixture.assignment] }
+        )
+        let triptychID = fixture.assignment.id.uuidString
+        let created = try result(await router.handle(ScholiumMCPBridgeRequest(
+            tool: .recordProgress,
+            arguments: [
+                "triptych_id": .string(triptychID),
+                "target": .object([
+                    "kind": .string("new"),
+                    "question": .string("What grounds agency?"),
+                ]),
+                "agent_label": .string("Research Agent"),
+                "body_markdown": .string("The first step uses **Alpha**."),
+                "note_references": .array([.object([
+                    "note_id": .string(fixture.analysisNoteID.uuidString),
+                    "relation": .string("basis"),
+                    "revision": fingerprintJSON(fixture.analysisFingerprint),
+                ])]),
+            ]
+        )))
+        #expect(created["branch"]?.stringValue == "created")
+        let recordID = try #require(created["record_id"]?.stringValue)
+        let stepID = try #require(created["step_id"]?.stringValue)
+        let createdFingerprint = try decodedFingerprint(created["fingerprint"])
+
+        let search = try result(await router.handle(ScholiumMCPBridgeRequest(
+            tool: .search,
+            arguments: [
+                "triptych_id": .string(triptychID),
+                "query": .string("kind:record question:agency"),
+            ]
+        )))
+        #expect(search["notes"] == .null)
+        let recordGroup = try object(search["records"])
+        let recordHits = try array(recordGroup["results"])
+        #expect(recordHits.count == 1)
+        #expect(try object(recordHits[0])["record_id"]?.stringValue == recordID)
+
+        let read = try result(await router.handle(ScholiumMCPBridgeRequest(
+            tool: .readRecord,
+            arguments: [
+                "triptych_id": .string(triptychID),
+                "record_id": .string(recordID),
+                "step_limit": .integer(1),
+            ]
+        )))
+        #expect(read["total_steps"]?.intValue == 1)
+        let steps = try array(read["steps"])
+        #expect(try object(steps[0])["submitted_by"]?.stringValue == "Research Agent")
+
+        let corrected = try result(await router.handle(ScholiumMCPBridgeRequest(
+            tool: .correctRecordStep,
+            arguments: [
+                "triptych_id": .string(triptychID),
+                "record_id": .string(recordID),
+                "step_id": .string(stepID),
+                "expected_fingerprint": fingerprintJSON(createdFingerprint),
+                "agent_label": .string("Research Agent"),
+                "body_markdown": .string("The corrected step uses **Alpha**."),
+            ]
+        )))
+        #expect(corrected["body_markdown"]?.stringValue ==
+            "The corrected step uses **Alpha**.")
+
+        let handle = try await fixture.runtime.openWorkspace(id: fixture.assignment.id)
+        #expect(try await handle.agentCollaboration.agentChanges().isEmpty)
     }
 
     private func result(_ response: ScholiumMCPBridgeResponse) throws

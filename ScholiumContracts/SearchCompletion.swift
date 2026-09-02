@@ -41,6 +41,7 @@ public extension SearchCapabilities {
     func completions(
         for rawQuery: String,
         scope: SearchPresentationScope,
+        provider: SearchProvider = .note,
         context: SearchCompletionContext = .empty,
         limit: Int = 8
     ) -> [SearchCompletion] {
@@ -51,7 +52,7 @@ public extension SearchCapabilities {
         let token = String(rawQuery[tokenRange])
         guard !token.isEmpty else { return [] }
         let prefix = String(rawQuery[..<tokenRange.lowerBound])
-        let fields = fields(for: .note, scope: scope)
+        let fields = fields(for: provider, scope: scope)
         guard !fields.isEmpty else { return [] }
 
         let candidates: [(replacement: String, display: String, detail: String)]

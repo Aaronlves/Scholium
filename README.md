@@ -297,12 +297,14 @@ helper uses a current-user-authenticated local bridge and fails explicitly when
 the App, bridge, selected Triptych, or current state is unavailable. It never
 falls back to direct filesystem or headless workspace access.
 
-The first release publishes exactly seven tools:
-`scholium_workspace_status`, `scholium_search_notes`,
-`scholium_read_note`, `scholium_list_links`,
-`scholium_create_note`, `scholium_update_note`, and
-`scholium_trash_note`. MCP Resources, Prompts, Agent Sessions, Research
-Actions, Handoff, and Research Records are not exposed.
+The current collaboration surface publishes exactly ten tools:
+`scholium_workspace_status`, `scholium_search`, `scholium_read_note`,
+`scholium_read_record`, `scholium_list_links`, `scholium_create_note`,
+`scholium_update_note`, `scholium_trash_note`,
+`scholium_record_progress`, and `scholium_correct_record_step`. MCP Resources,
+Prompts, Agent Sessions, Research Actions, and Handoff are not exposed.
+Research Records are attributed history maintained by the Agent, not
+researcher acceptance or writable Note authority.
 
 An ordinary Wikilink may carry multiline, source-owned Markdown annotation as
 `[[Target]]{{annotation}}`. Connect, Search, and `scholium_list_links` preserve

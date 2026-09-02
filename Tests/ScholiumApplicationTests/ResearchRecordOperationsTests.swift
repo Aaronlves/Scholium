@@ -5,6 +5,47 @@ import Testing
 
 @Suite("Application Research Record operations")
 struct ResearchRecordOperationsTests {
+    @Test("Unified Search keeps Note and Record results in separate provider groups")
+    func unifiedSearchKeepsProviderGroupsSeparate() async throws {
+        let fixture = try await ApplicationFixture.make()
+        defer { fixture.remove() }
+        let runtime = WorkspaceRuntime(configuration: .live(.init(
+            applicationSupportURL: fixture.applicationSupportURL,
+            workspaceRegistryStorageURL: fixture.registryStorageURL
+        )))
+        defer { Task { await runtime.shutdown() } }
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let created = try await handle.agentCollaboration.recordProgress(.init(
+            target: .new(question: "How does freedom enable agency?"),
+            submittedBy: try ResearchRecordSubmitter(displayName: "Research Agent"),
+            bodyMarkdown: "Agency depends on freedom."
+        ))
+
+        let response = try await handle.discovery.unifiedSearch(.init(
+            query: "agency",
+            presentationScope: .triptych,
+            executionScope: .triptych,
+            noteLimit: 20,
+            recordLimit: 20
+        ))
+
+        #expect(response.notes?.results.count == 2)
+        #expect(response.records?.results.map(\.recordID) == [created.revision.id])
+        #expect(response.records?.totalResultCount == 1)
+        #expect(response.records?.generation.recordCount == 1)
+
+        let recordsOnly = try await handle.discovery.unifiedSearch(.init(
+            query: "kind:record question:freedom",
+            providerSelection: .all,
+            presentationScope: .triptych,
+            executionScope: .triptych,
+            noteLimit: 20,
+            recordLimit: 20
+        ))
+        #expect(recordsOnly.notes == nil)
+        #expect(recordsOnly.records?.results.map(\.recordID) == [created.revision.id])
+    }
+
     @Test("Agent progress preserves validated Note references across restart")
     func progressPreservesValidatedReferencesAcrossRestart() async throws {
         let fixture = try await ApplicationFixture.make()

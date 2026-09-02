@@ -94,12 +94,20 @@ public actor AgentCollaborationOperations: AgentCollaborationUseCases {
 extension WorkspaceHandle {
     func researchRecords() async throws -> ResearchRecordListing {
         try requireActive()
-        return try await services.researchRecordStore.listing()
+        do {
+            return try await services.researchRecordStore.listing()
+        } catch {
+            throw Self.agentRecordError(error)
+        }
     }
 
     func researchRecord(id: UUID) async throws -> ResearchRecordRevision {
         try requireActive()
-        return try await services.researchRecordStore.record(id: id)
+        do {
+            return try await services.researchRecordStore.record(id: id)
+        } catch {
+            throw Self.agentRecordError(error)
+        }
     }
 
     func recordProgress(
@@ -134,6 +142,8 @@ extension WorkspaceHandle {
             }
         } catch let error as ResearchRecordContractError {
             throw AgentCollaborationError.invalidRequest(error.localizedDescription)
+        } catch {
+            throw Self.agentRecordError(error)
         }
     }
 
@@ -154,6 +164,8 @@ extension WorkspaceHandle {
             )
         } catch let error as ResearchRecordContractError {
             throw AgentCollaborationError.invalidRequest(error.localizedDescription)
+        } catch {
+            throw Self.agentRecordError(error)
         }
     }
 
@@ -533,6 +545,31 @@ extension WorkspaceHandle {
             )
         } else {
             try? await services.agentChangeStore.discardPrepared(id: changeID)
+        }
+    }
+
+    private static func agentRecordError(_ error: Error) -> Error {
+        guard let error = error as? ResearchRecordStoreError else { return error }
+        switch error {
+        case .missing(let id):
+            return AgentCollaborationError.recordNotFound(id)
+        case .stepMissing(let recordID, let stepID):
+            return AgentCollaborationError.recordStepNotFound(
+                recordID: recordID,
+                stepID: stepID
+            )
+        case .staleRevision(let recordID, let expected, let current):
+            return AgentCollaborationError.staleRecordRevision(
+                recordID: recordID,
+                expected: expected,
+                current: current
+            )
+        case .operationUncertain(let id):
+            return AgentCollaborationError.recordOperationUncertain(id)
+        case .alreadyExists, .invalid, .unsafeStore, .coordinationFailed:
+            return AgentCollaborationError.recordUnavailable(
+                error.localizedDescription
+            )
         }
     }
 

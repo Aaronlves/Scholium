@@ -90,9 +90,9 @@ if rg -n --glob '*.swift' --glob '*.sh' \
   exit 1
 fi
 
-# The current server surface is closed and has exactly seven tool identities.
-if [[ "$(rg -c 'case [A-Za-z]+ = "scholium_' "${ROOT}/ScholiumContracts/ScholiumMCPContracts.swift")" != "7" ]]; then
-  echo "MCP surface guard failed: expected exactly seven Scholium tool identities." >&2
+# The current server surface is closed and has exactly ten tool identities.
+if [[ "$(rg -c 'case [A-Za-z]+ = "scholium_' "${ROOT}/ScholiumContracts/ScholiumMCPContracts.swift")" != "10" ]]; then
+  echo "MCP surface guard failed: expected exactly ten Scholium tool identities." >&2
   exit 1
 fi
 

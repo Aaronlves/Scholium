@@ -33,14 +33,15 @@ extension ScholiumUITests {
         let status = try callQAMCP(tool: "scholium_workspace_status")
         let triptychID = try XCTUnwrap(status["triptych_id"] as? String)
         let search = try callQAMCP(
-            tool: "scholium_search_notes",
+            tool: "scholium_search",
             arguments: [
                 "triptych_id": triptychID,
                 "query": "Reasons",
                 "roles": ["topics"],
             ]
         )
-        let results = try XCTUnwrap(search["results"] as? [[String: Any]])
+        let notes = try XCTUnwrap(search["notes"] as? [String: Any])
+        let results = try XCTUnwrap(notes["results"] as? [[String: Any]])
         let result = try XCTUnwrap(results.first(where: {
             $0["relative_path"] as? String == "Agent Review.md"
         }))

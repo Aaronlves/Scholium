@@ -53,10 +53,12 @@ final class MCPAppBridgeRequestRouter {
         switch request.tool {
         case .workspaceStatus:
             return try await workspaceStatus(request.arguments)
-        case .searchNotes:
-            return try await searchNotes(request.arguments)
+        case .search:
+            return try await search(request.arguments)
         case .readNote:
             return try await readNote(request.arguments)
+        case .readRecord:
+            return try await readRecord(request.arguments)
         case .listLinks:
             return try await listLinks(request.arguments)
         case .createNote:
@@ -65,6 +67,10 @@ final class MCPAppBridgeRequestRouter {
             return try await updateNote(request.arguments)
         case .trashNote:
             return try await trashNote(request.arguments)
+        case .recordProgress:
+            return try await recordProgress(request.arguments)
+        case .correctRecordStep:
+            return try await correctRecordStep(request.arguments)
         }
     }
 
@@ -103,15 +109,18 @@ final class MCPAppBridgeRequestRouter {
             )
         }
         let snapshot = try await currentSnapshot(triptychID: selectedID)
-        return statusValue(snapshot)
+        return try await statusValue(snapshot)
     }
 
-    private func searchNotes(
+    private func search(
         _ arguments: [String: MCPJSONValue]
     ) async throws -> MCPJSONValue {
         try requireOnly(
             arguments,
-            keys: ["triptych_id", "query", "roles", "limit", "offset"]
+            keys: [
+                "triptych_id", "query", "providers", "roles", "note_limit",
+                "note_offset", "record_limit", "record_offset",
+            ]
         )
         let triptychID = try requiredUUID(arguments["triptych_id"], name: "triptych_id")
         let query = try requiredString(arguments["query"], name: "query")
@@ -120,42 +129,54 @@ final class MCPAppBridgeRequestRouter {
               query.utf16.count <= SearchContract.maximumQueryUTF16Count else {
             throw invalid("query", "Provide one nonempty bounded Search query.")
         }
-        let limit = try boundedInteger(
-            arguments["limit"],
-            name: "limit",
+        let noteLimit = try boundedInteger(
+            arguments["note_limit"],
+            name: "note_limit",
             default: 20,
             range: 1 ... 100
         )
-        let offset = try boundedInteger(
-            arguments["offset"],
-            name: "offset",
+        let noteOffset = try boundedInteger(
+            arguments["note_offset"],
+            name: "note_offset",
             default: 0,
             range: 0 ... Int.max
         )
+        let recordLimit = try boundedInteger(
+            arguments["record_limit"],
+            name: "record_limit",
+            default: 20,
+            range: 1 ... 100
+        )
+        let recordOffset = try boundedInteger(
+            arguments["record_offset"],
+            name: "record_offset",
+            default: 0,
+            range: 0 ... Int.max
+        )
+        let providerSelection = try searchProviderSelection(arguments["providers"])
         let snapshot = try await currentSnapshot(triptychID: triptychID)
         let includedVaultIDs = try roleVaultIDs(
             arguments["roles"],
             snapshot: snapshot
         )
         let handle = try await runtime.openWorkspace(id: triptychID)
-        let response = try await handle.discovery.search(SearchRequest(
+        let response = try await handle.discovery.unifiedSearch(UnifiedSearchRequest(
             query: query,
+            providerSelection: providerSelection,
             presentationScope: .triptych,
             executionScope: .triptych,
-            limit: limit,
-            offset: offset,
+            noteLimit: noteLimit,
+            noteOffset: noteOffset,
+            recordLimit: recordLimit,
+            recordOffset: recordOffset,
             includedVaultIDs: includedVaultIDs
         ))
-        guard response.provider == .note else {
-            throw invalid(
-                "query",
-                "scholium_search_notes accepts only the Note provider."
-            )
-        }
-        if let diagnostic = response.diagnostics.first {
+        if let diagnostic = response.notes?.diagnostics.first
+            ?? response.records?.diagnostics.first {
             throw invalid("query", diagnostic.message)
         }
-        let results = response.results.compactMap { result -> MCPJSONValue? in
+        let noteGroup = response.notes.map { noteResponse -> MCPJSONValue in
+            let results = noteResponse.results.compactMap { result -> MCPJSONValue? in
             guard case .note(let note) = result else { return nil }
             var value: [String: MCPJSONValue] = [
                 "note_id": note.stableNoteID.map(MCPJSONValue.string) ?? .null,
@@ -178,15 +199,45 @@ final class MCPAppBridgeRequestRouter {
                 value["source_locator"] = .null
             }
             return .object(value)
-        }
+            }
+            return .object([
+                "freshness": .string(noteResponse.freshnessToken.rawValue),
+                "offset": .integer(noteOffset),
+                "limit": .integer(noteLimit),
+                "total": noteResponse.totalResultCount.map(MCPJSONValue.integer) ?? .null,
+                "has_more": .bool(noteResponse.hasMore),
+                "results": .array(results),
+            ])
+        } ?? .null
+        let recordGroup = response.records.map { recordResponse -> MCPJSONValue in
+            .object([
+                "generation": recordGenerationValue(recordResponse.generation),
+                "offset": .integer(recordResponse.offset),
+                "limit": .integer(recordResponse.limit),
+                "total": .integer(recordResponse.totalResultCount),
+                "has_more": .bool(recordResponse.hasMore),
+                "isolated_issue_count": .integer(recordResponse.isolatedIssues.count),
+                "results": .array(recordResponse.results.map { result in
+                    .object([
+                        "record_id": .string(result.recordID.uuidString.lowercased()),
+                        "question": .string(result.question),
+                        "last_substantive_at": .string(Self.timestamp(result.lastSubstantiveAt)),
+                        "fingerprint": fingerprintValue(result.fingerprint),
+                        "matched_field": .string(result.matchedField.rawValue),
+                        "matched_step_id": result.matchedStepID.map {
+                            .string($0.uuidString.lowercased())
+                        } ?? .null,
+                        "rank_reason": .string(result.rankReason.rawValue),
+                        "snippet": .string(result.snippet),
+                    ])
+                }),
+            ])
+        } ?? .null
         return ok([
             "triptych_id": .string(triptychID.uuidString.lowercased()),
             "query": .string(query),
-            "freshness": .string(response.freshnessToken.rawValue),
-            "offset": .integer(offset),
-            "limit": .integer(limit),
-            "has_more": .bool(response.hasMore),
-            "results": .array(results),
+            "notes": noteGroup,
+            "records": recordGroup,
         ])
     }
 
@@ -231,6 +282,44 @@ final class MCPAppBridgeRequestRouter {
             "source": .string(slice.source),
             "complete": .bool(slice.nextLine == nil),
             "next_line": slice.nextLine.map(MCPJSONValue.integer) ?? .null,
+        ])
+    }
+
+    private func readRecord(
+        _ arguments: [String: MCPJSONValue]
+    ) async throws -> MCPJSONValue {
+        try requireOnly(
+            arguments,
+            keys: ["triptych_id", "record_id", "step_offset", "step_limit"]
+        )
+        let triptychID = try requiredUUID(arguments["triptych_id"], name: "triptych_id")
+        let recordID = try requiredUUID(arguments["record_id"], name: "record_id")
+        let offset = try boundedInteger(
+            arguments["step_offset"],
+            name: "step_offset",
+            default: 0,
+            range: 0 ... Int.max
+        )
+        let limit = try boundedInteger(
+            arguments["step_limit"],
+            name: "step_limit",
+            default: 20,
+            range: 1 ... 100
+        )
+        _ = try await currentSnapshot(triptychID: triptychID)
+        let handle = try await runtime.openWorkspace(id: triptychID)
+        let revision = try await handle.agentCollaboration.researchRecord(id: recordID)
+        let steps = Array(revision.record.steps.dropFirst(offset).prefix(limit))
+        return ok([
+            "triptych_id": .string(triptychID.uuidString.lowercased()),
+            "record_id": .string(recordID.uuidString.lowercased()),
+            "question": .string(revision.record.question),
+            "fingerprint": fingerprintValue(revision.fingerprint),
+            "step_offset": .integer(offset),
+            "step_limit": .integer(limit),
+            "total_steps": .integer(revision.record.steps.count),
+            "has_more": .bool(offset + steps.count < revision.record.steps.count),
+            "steps": .array(steps.map(recordStepValue)),
         ])
     }
 
@@ -485,6 +574,106 @@ final class MCPAppBridgeRequestRouter {
         ])
     }
 
+    private func recordProgress(
+        _ arguments: [String: MCPJSONValue]
+    ) async throws -> MCPJSONValue {
+        try requireOnly(
+            arguments,
+            keys: [
+                "triptych_id", "target", "agent_label", "body_markdown",
+                "revises_step_ids", "note_references",
+            ]
+        )
+        let triptychID = try requiredUUID(arguments["triptych_id"], name: "triptych_id")
+        let target = try recordProgressTarget(arguments["target"])
+        let submitter: ResearchRecordSubmitter
+        do {
+            submitter = try ResearchRecordSubmitter(displayName: requiredString(
+                arguments["agent_label"],
+                name: "agent_label"
+            ))
+        } catch {
+            throw invalid("agent_label", error.localizedDescription)
+        }
+        let body = try requiredString(arguments["body_markdown"], name: "body_markdown")
+        let revises = try uuidArray(arguments["revises_step_ids"], name: "revises_step_ids")
+        let references = try noteReferences(arguments["note_references"])
+        _ = try await currentSnapshot(triptychID: triptychID)
+        let handle = try await runtime.openWorkspace(id: triptychID)
+        let result = try await handle.agentCollaboration.recordProgress(.init(
+            target: target,
+            submittedBy: submitter,
+            bodyMarkdown: body,
+            revisesStepIDs: revises,
+            noteReferences: references
+        ))
+        return ok([
+            "triptych_id": .string(triptychID.uuidString.lowercased()),
+            "branch": .string(result.kind.rawValue),
+            "record_id": .string(result.revision.id.uuidString.lowercased()),
+            "step_id": .string(result.stepID.uuidString.lowercased()),
+            "question": .string(result.revision.record.question),
+            "fingerprint": fingerprintValue(result.revision.fingerprint),
+        ])
+    }
+
+    private func correctRecordStep(
+        _ arguments: [String: MCPJSONValue]
+    ) async throws -> MCPJSONValue {
+        try requireOnly(
+            arguments,
+            keys: [
+                "triptych_id", "record_id", "step_id", "expected_fingerprint",
+                "agent_label", "body_markdown", "revises_step_ids",
+                "note_references",
+            ]
+        )
+        let triptychID = try requiredUUID(arguments["triptych_id"], name: "triptych_id")
+        let recordID = try requiredUUID(arguments["record_id"], name: "record_id")
+        let stepID = try requiredUUID(arguments["step_id"], name: "step_id")
+        let expected = try requiredFingerprint(arguments["expected_fingerprint"])
+        let submitter: ResearchRecordSubmitter
+        do {
+            submitter = try ResearchRecordSubmitter(displayName: requiredString(
+                arguments["agent_label"],
+                name: "agent_label"
+            ))
+        } catch {
+            throw invalid("agent_label", error.localizedDescription)
+        }
+        let body = try requiredString(arguments["body_markdown"], name: "body_markdown")
+        let revises = try uuidArray(arguments["revises_step_ids"], name: "revises_step_ids")
+        let references = try noteReferences(arguments["note_references"])
+        _ = try await currentSnapshot(triptychID: triptychID)
+        let handle = try await runtime.openWorkspace(id: triptychID)
+        let revision = try await handle.agentCollaboration.correctRecordStep(.init(
+            recordID: recordID,
+            stepID: stepID,
+            expectedFingerprint: expected,
+            submittedBy: submitter,
+            bodyMarkdown: body,
+            revisesStepIDs: revises,
+            noteReferences: references
+        ))
+        guard let step = revision.record.steps.first(where: { $0.id == stepID }),
+              let correction = step.corrections.last else {
+            throw ScholiumMCPFailure(
+                code: .internalError,
+                message: "The stored correction could not be confirmed.",
+                recovery: "Read the Record again before any further correction."
+            )
+        }
+        return ok([
+            "triptych_id": .string(triptychID.uuidString.lowercased()),
+            "record_id": .string(recordID.uuidString.lowercased()),
+            "step_id": .string(stepID.uuidString.lowercased()),
+            "correction_id": .string(correction.id.uuidString.lowercased()),
+            "corrected_at": .string(Self.timestamp(correction.correctedAt)),
+            "body_markdown": .string(step.currentBodyMarkdown),
+            "fingerprint": fingerprintValue(revision.fingerprint),
+        ])
+    }
+
     private func currentSnapshot(triptychID: UUID) async throws
         -> WorkspaceSnapshot
     {
@@ -518,8 +707,17 @@ final class MCPAppBridgeRequestRouter {
         return snapshot
     }
 
-    private func statusValue(_ snapshot: WorkspaceSnapshot) -> MCPJSONValue {
+    private func statusValue(_ snapshot: WorkspaceSnapshot) async throws -> MCPJSONValue {
         let sourceHash = Self.sourceManifestHash(snapshot)
+        let handle = try await runtime.openWorkspace(id: snapshot.triptych.id)
+        let recordGeneration = try await handle.discovery.unifiedSearch(.init(
+            query: "",
+            providerSelection: .records,
+            presentationScope: .triptych,
+            executionScope: .triptych,
+            noteLimit: 1,
+            recordLimit: 1
+        )).records?.generation
         return ok([
             "current": .bool(true),
             "selection_required": .bool(false),
@@ -535,6 +733,8 @@ final class MCPAppBridgeRequestRouter {
                     "manifest_sha256": .string($0.sourceManifestHash),
                 ])
             } ?? .null,
+            "record_search_generation": recordGeneration.map(recordGenerationValue)
+                ?? .null,
             "graph_generation": snapshot.discovery.catalog.graph.map {
                 .object([
                     "sequence": .integer($0.generation),
@@ -576,6 +776,118 @@ final class MCPAppBridgeRequestRouter {
                 Self.externalRole($0.vault.role) == role
             }?.vault.id
         })
+    }
+
+    private func searchProviderSelection(
+        _ value: MCPJSONValue?
+    ) throws -> SearchProviderSelection {
+        guard let value else { return .all }
+        guard let values = value.arrayValue, !values.isEmpty else {
+            throw invalid("providers", "Provide note, record, or both.")
+        }
+        let providers = try values.map { item -> String in
+            guard let provider = item.stringValue,
+                  provider == "note" || provider == "record" else {
+                throw invalid("providers", "Use only note and record.")
+            }
+            return provider
+        }
+        guard Set(providers).count == providers.count else {
+            throw invalid("providers", "Do not repeat a provider.")
+        }
+        if providers.count == 2 { return .all }
+        return providers[0] == "note" ? .notes : .records
+    }
+
+    private func recordProgressTarget(
+        _ value: MCPJSONValue?
+    ) throws -> ResearchRecordProgressTarget {
+        guard let object = value?.objectValue,
+              let kind = object["kind"]?.stringValue else {
+            throw invalid("target", "Provide one new or existing target object.")
+        }
+        switch kind {
+        case "new":
+            guard Set(object.keys) == ["kind", "question"] else {
+                throw invalid("target", "A new target requires only kind and question.")
+            }
+            return .new(question: try requiredString(
+                object["question"],
+                name: "target.question"
+            ))
+        case "existing":
+            guard Set(object.keys).isSubset(of: [
+                "kind", "record_id", "expected_fingerprint",
+                "replacement_question",
+            ]), object["record_id"] != nil,
+               object["expected_fingerprint"] != nil else {
+                throw invalid(
+                    "target",
+                    "An existing target requires record_id and expected_fingerprint."
+                )
+            }
+            return .existing(
+                recordID: try requiredUUID(
+                    object["record_id"],
+                    name: "target.record_id"
+                ),
+                expectedFingerprint: try requiredFingerprint(
+                    object["expected_fingerprint"]
+                ),
+                replacementQuestion: try optionalNullableString(
+                    object["replacement_question"],
+                    name: "target.replacement_question"
+                )
+            )
+        default:
+            throw invalid("target.kind", "Use new or existing.")
+        }
+    }
+
+    private func uuidArray(
+        _ value: MCPJSONValue?,
+        name: String
+    ) throws -> [UUID] {
+        guard let value else { return [] }
+        guard let values = value.arrayValue else {
+            throw invalid(name, "Provide an array of UUID strings.")
+        }
+        let result = try values.map { try requiredUUID($0, name: name) }
+        guard Set(result).count == result.count else {
+            throw invalid(name, "Do not repeat a UUID.")
+        }
+        return result
+    }
+
+    private func noteReferences(
+        _ value: MCPJSONValue?
+    ) throws -> [ResearchRecordNoteReference] {
+        guard let value else { return [] }
+        guard let values = value.arrayValue else {
+            throw invalid("note_references", "Provide an array of Note reference objects.")
+        }
+        return try values.map { item in
+            guard let object = item.objectValue,
+                  Set(object.keys) == ["note_id", "relation", "revision"],
+                  let rawRelation = object["relation"]?.stringValue,
+                  let relation = ResearchRecordNoteRelation(rawValue: rawRelation) else {
+                throw invalid(
+                    "note_references",
+                    "Each reference requires note_id, basis or modified relation, and revision."
+                )
+            }
+            do {
+                return try ResearchRecordNoteReference(
+                    noteID: requiredUUID(object["note_id"], name: "note_id"),
+                    relation: relation,
+                    revision: requiredFingerprint(object["revision"])
+                )
+            } catch let failure as ScholiumMCPFailure {
+                throw failure
+            } catch {
+                throw invalid("note_references", error.localizedDescription)
+            }
+        }
     }
 
     private func resolveNote(
@@ -655,6 +967,18 @@ final class MCPAppBridgeRequestRouter {
         guard let value else { return nil }
         guard let string = value.stringValue else {
             throw invalid(name, "Provide a string or omit this field.")
+        }
+        return string
+    }
+
+    private func optionalNullableString(
+        _ value: MCPJSONValue?,
+        name: String
+    ) throws -> String? {
+        guard let value else { return nil }
+        if case .null = value { return nil }
+        guard let string = value.stringValue else {
+            throw invalid(name, "Provide a string, null, or omit this field.")
         }
         return string
     }
@@ -764,6 +1088,60 @@ final class MCPAppBridgeRequestRouter {
             "sha256": .string(fingerprint.sha256),
             "byte_count": .integer(fingerprint.byteCount),
         ])
+    }
+
+    private func recordGenerationValue(
+        _ generation: RecordSearchGenerationID
+    ) -> MCPJSONValue {
+        .object([
+            "sequence": .integer(generation.sequence),
+            "manifest_sha256": .string(generation.sourceManifestHash),
+            "record_count": .integer(generation.recordCount),
+        ])
+    }
+
+    private func recordStepValue(_ step: ResearchRecordStep) -> MCPJSONValue {
+        .object([
+            "step_id": .string(step.id.uuidString.lowercased()),
+            "recorded_at": .string(Self.timestamp(step.recordedAt)),
+            "submitted_by": .string(step.submittedBy.displayName),
+            "original_body_markdown": .string(step.bodyMarkdown),
+            "body_markdown": .string(step.currentBodyMarkdown),
+            "revises_step_ids": .array(step.currentRevisesStepIDs.map {
+                .string($0.uuidString.lowercased())
+            }),
+            "note_references": .array(step.currentNoteReferences.map(
+                noteReferenceValue
+            )),
+            "corrections": .array(step.corrections.map { correction in
+                .object([
+                    "correction_id": .string(correction.id.uuidString.lowercased()),
+                    "corrected_at": .string(Self.timestamp(correction.correctedAt)),
+                    "submitted_by": .string(correction.submittedBy.displayName),
+                    "body_markdown": .string(correction.bodyMarkdown),
+                    "revises_step_ids": .array(correction.revisesStepIDs.map {
+                        .string($0.uuidString.lowercased())
+                    }),
+                    "note_references": .array(correction.noteReferences.map(
+                        noteReferenceValue
+                    )),
+                ])
+            }),
+        ])
+    }
+
+    private func noteReferenceValue(
+        _ reference: ResearchRecordNoteReference
+    ) -> MCPJSONValue {
+        .object([
+            "note_id": .string(reference.noteID.uuidString.lowercased()),
+            "relation": .string(reference.relation.rawValue),
+            "revision": fingerprintValue(reference.revision),
+        ])
+    }
+
+    private static func timestamp(_ date: Date) -> String {
+        date.formatted(.iso8601)
     }
 
     private static func sourceManifestHash(_ snapshot: WorkspaceSnapshot)
@@ -974,6 +1352,30 @@ final class MCPAppBridgeRequestRouter {
                     code: .operationUncertain,
                     message: "Scholium could not confirm the final mutation evidence.",
                     recovery: "Do not retry automatically. Recheck status and the target identity, path, and fingerprint."
+                )
+            case .recordNotFound, .recordStepNotFound:
+                return ScholiumMCPFailure(
+                    code: .notFound,
+                    message: error.localizedDescription,
+                    recovery: "Search or read current Research Records again and use the returned identities."
+                )
+            case .staleRecordRevision:
+                return ScholiumMCPFailure(
+                    code: .staleRevision,
+                    message: "The supplied Research Record fingerprint is no longer current.",
+                    recovery: "Read the Record again, reconsider the step, and retry only if still authorized."
+                )
+            case .recordUnavailable(let reason):
+                return ScholiumMCPFailure(
+                    code: .workspaceNotReady,
+                    message: reason,
+                    recovery: "Inspect Research Records in Scholium before retrying."
+                )
+            case .recordOperationUncertain:
+                return ScholiumMCPFailure(
+                    code: .operationUncertain,
+                    message: "Scholium could not confirm the Research Record write.",
+                    recovery: "Do not retry automatically. Read the Record and compare its current fingerprint and steps."
                 )
             }
         }

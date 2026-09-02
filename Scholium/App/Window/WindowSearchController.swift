@@ -191,7 +191,8 @@ final class WindowSearchController: ObservableObject {
                 name: name,
                 definition: SearchDefinition(
                     query: state.query,
-                    presentationScope: state.scope
+                    presentationScope: state.scope,
+                    providerSelection: state.providerSelection
                 )
             ), at: 0)
             return searches
@@ -211,7 +212,8 @@ final class WindowSearchController: ObservableObject {
         }
         criteria = SearchWorkspaceState(
             query: search.definition.query,
-            scope: search.definition.presentationScope
+            scope: search.definition.presentationScope,
+            providerSelection: search.definition.providerSelection
         )
         dependencies.setPresented(true)
         Task { [weak self] in await self?.refresh() }

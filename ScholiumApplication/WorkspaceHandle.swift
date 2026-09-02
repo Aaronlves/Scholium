@@ -13,6 +13,7 @@ struct WorkspaceServices: Sendable {
     let repositories: [UUID: VaultRepository]
     let sourceCatalogs: [UUID: VaultSourceCatalog]
     let searchIndex: TriptychSearchIndex
+    let researchRecordSearchIndex: ResearchRecordSearchIndex
     let controlStore: TriptychControlStore
     let indexedAttachmentAccessStore: IndexedAttachmentAccessStore
     let zotero: ZoteroOperations
@@ -625,6 +626,10 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 applicationSupportURL: applicationSupportURL,
                 triptychID: manifest.id
             )
+            let researchRecordSearchIndex = ResearchRecordSearchIndex(
+                triptychID: manifest.id,
+                store: researchRecordStore
+            )
             let agentChangeStore = try AgentChangeStore(
                 applicationSupportURL: applicationSupportURL,
                 triptychID: manifest.id
@@ -643,6 +648,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                     ($0.key, $0.value.sourceCatalog)
                 }),
                 searchIndex: openedSearchIndex.index,
+                researchRecordSearchIndex: researchRecordSearchIndex,
                 controlStore: controlStore,
                 indexedAttachmentAccessStore: try IndexedAttachmentAccessStore(
                     applicationSupportURL: applicationSupportURL,
@@ -3321,6 +3327,78 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             eligibleDocuments: openingSearchEligibility(for: request)
         )
         return openingVaultSearchResponse(response, request: request)
+    }
+
+    func unifiedSearch(
+        _ request: UnifiedSearchRequest
+    ) async throws -> UnifiedSearchResponse {
+        try requireActive()
+        let parsed = SearchQueryParser.parse(request.query)
+        var providers = request.providerSelection.providers
+        if parsed.providerWasExplicit, request.providerSelection == .all {
+            providers = [parsed.provider]
+        }
+
+        let notes: SearchResponse?
+        if providers.contains(.note) {
+            notes = try await search(SearchRequest(
+                id: request.id,
+                query: request.query,
+                presentationScope: request.presentationScope,
+                executionScope: request.executionScope,
+                limit: request.noteLimit,
+                offset: request.noteOffset,
+                includedVaultIDs: request.includedVaultIDs
+            ))
+        } else {
+            notes = nil
+        }
+
+        let records: RecordSearchResponse?
+        if providers.contains(.record) {
+            if !currentSnapshot.phase.isComplete {
+                throw ScholiumApplicationError.workspaceStillLoading(id)
+            }
+            records = try await services.researchRecordSearchIndex.search(
+                requestID: request.id,
+                query: request.query,
+                scope: request.presentationScope,
+                limit: request.recordLimit,
+                offset: request.recordOffset,
+                eligibleNoteIDs: recordSearchEligibleNoteIDs(for: request)
+            )
+        } else {
+            records = nil
+        }
+        return UnifiedSearchResponse(
+            requestID: request.id,
+            providerSelection: request.providerSelection,
+            notes: notes,
+            records: records
+        )
+    }
+
+    private func recordSearchEligibleNoteIDs(
+        for request: UnifiedSearchRequest
+    ) -> Set<UUID>? {
+        let documents = currentSnapshot.vaults.flatMap(\.documents)
+        switch request.executionScope {
+        case .currentNote(let source):
+            if let stableID = source.stableNoteID { return [stableID] }
+            return currentSnapshot.document(id: source.noteID)?
+                .stableIdentity.resolvedID.map { [$0] } ?? []
+        case .currentVault(let vaultID):
+            return Set(documents.compactMap {
+                $0.id.vaultID == vaultID ? $0.stableIdentity.resolvedID : nil
+            })
+        case .triptych:
+            guard let includedVaultIDs = request.includedVaultIDs else { return nil }
+            return Set(documents.compactMap {
+                includedVaultIDs.contains($0.id.vaultID)
+                    ? $0.stableIdentity.resolvedID
+                    : nil
+            })
+        }
     }
 
     private func searchScopeDiagnostic(

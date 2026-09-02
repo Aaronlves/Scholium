@@ -30,6 +30,9 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         static let agentChanges = NSToolbarItem.Identifier(
             "scholium.toolbar.agentChanges"
         )
+        static let researchRecords = NSToolbarItem.Identifier(
+            "scholium.toolbar.researchRecords"
+        )
         static let documentModeAccessibilityIdentifier =
             "scholium.documentModeButton"
         // Apparatus is an explicitly managed trailing split item rather than
@@ -92,6 +95,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             Item.headingOutline,
             Item.search,
             Item.documentMode,
+            Item.researchRecords,
             Item.agentChanges,
             Item.apparatusDivider,
             Item.inspector,
@@ -108,6 +112,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             .flexibleSpace,
             Item.search,
             Item.documentMode,
+            Item.researchRecords,
             Item.agentChanges,
             Item.apparatusDivider,
             .flexibleSpace,
@@ -196,6 +201,13 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
                 label: ScholiumL10n.string("Agent Changes"),
                 systemImage: "sparkles.rectangle.stack",
                 action: #selector(showAgentChanges(_:))
+            )
+        case Item.researchRecords:
+            return actionItem(
+                identifier: itemIdentifier,
+                label: ScholiumL10n.string("Research Records"),
+                systemImage: "text.book.closed",
+                action: #selector(showResearchRecords(_:))
             )
         case Item.apparatusDivider:
             let splitView = splitViewController.splitView
@@ -558,6 +570,10 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
     @objc private func showAgentChanges(_ sender: Any?) {
         guard appState.windowWorkspaceController.activeCapabilities != nil else { return }
         appState.presentationRouter.present(.agentChanges)
+    }
+
+    @objc private func showResearchRecords(_ sender: Any?) {
+        windowActions.showResearchRecords()
     }
 
     @objc private func toggleInspector(_ sender: Any?) {

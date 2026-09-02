@@ -341,6 +341,7 @@ final class ScholiumWindowLifecycleRegistry {
 struct WorkspaceWindowActions {
     let setLibraryVisible: @MainActor (Bool) -> Void
     let setResearchInspectorVisible: @MainActor (Bool) -> Void
+    let showResearchRecords: @MainActor () -> Void
     let showAttention: @MainActor (AttentionPresentationRequest) -> Void
     let showPreferredAttention: @MainActor () -> Void
     let canShowAttention: @MainActor () -> Bool
@@ -398,6 +399,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     private var pendingInspectorVisibility: Bool?
     private var attentionPresenter:
         @MainActor (AttentionPresentationRequest) -> Void = { _ in }
+    private var researchRecordsPresenter: @MainActor (UUID) -> Void = { _ in }
     #if DEBUG
     private var qaFocusNotificationToken: Int32?
     #endif
@@ -439,6 +441,9 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             setResearchInspectorVisible: { [weak self] visible in
                 self?.setResearchInspectorVisible(visible)
             },
+            showResearchRecords: { [weak self] in
+                self?.showResearchRecords()
+            },
             showAttention: { [weak self] request in
                 self?.attentionPresenter(request)
             },
@@ -464,10 +469,12 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     }
 
     func activate(
-        showAttention: @escaping @MainActor (AttentionPresentationRequest) -> Void
+        showAttention: @escaping @MainActor (AttentionPresentationRequest) -> Void,
+        showResearchRecords: @escaping @MainActor (UUID) -> Void
     ) {
         registerLifecycle()
         attentionPresenter = showAttention
+        researchRecordsPresenter = showResearchRecords
     }
 
     func attach(to window: NSWindow) {
@@ -527,6 +534,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         removeToolbar()
         splitController = nil
         attentionPresenter = { _ in }
+        researchRecordsPresenter = { _ in }
     }
 
     private func finalizeWindowAttachments(
@@ -665,6 +673,12 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             return
         }
         splitController.setResearchInspectorVisible(visible, animated: !reduceMotion)
+    }
+
+    private func showResearchRecords() {
+        guard let triptychID = appState.windowWorkspaceController
+            .activeCapabilities?.id else { return }
+        researchRecordsPresenter(triptychID)
     }
 
     private func recordNativeVisibility(

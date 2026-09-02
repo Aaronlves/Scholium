@@ -86,7 +86,12 @@ struct SearchProtocolContractsTests {
         #expect(noteOnly.clauses.isEmpty)
         #expect(noteOnly.isFilterOnly)
 
-        #expect(SearchQueryParser.parse("kind:record").diagnostics.first?.code == .unknownStructuredValue)
+        let recordOnly = try #require(SearchQueryParser.parse("kind:record").ast)
+        #expect(recordOnly.provider == .record)
+        let recordQuery = try #require(
+            SearchQueryParser.parseRecord("kind:record question:agency").ast
+        )
+        #expect(recordQuery.clauses.first?.field == .question)
         #expect(SearchQueryParser.parse("kind:any").diagnostics.first?.code == .unknownStructuredValue)
         #expect(
             SearchQueryParser.parse("kind:note kind:note").diagnostics.first?.code
@@ -193,10 +198,12 @@ struct SearchProtocolContractsTests {
         })
 
         #expect(SearchCapabilities.current.contractVersion == SearchContract.currentVersion)
-        #expect(SearchCapabilities.current.providers.map(\.provider) == [.note])
+        #expect(SearchCapabilities.current.providers.map(\.provider) == [.note, .record])
         #expect(SearchCapabilities.current.capability(for: .note)?.fields.contains {
             $0.name == "property"
         } == true)
+        #expect(SearchCapabilities.current.capability(for: .record)?.fields.map(\.name)
+            == ["kind", "question", "step"])
 
         let scoped = SearchCompletionContext(
             propertyKeys: ["language", "limitations"],

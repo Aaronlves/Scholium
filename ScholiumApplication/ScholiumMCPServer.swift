@@ -90,7 +90,7 @@ public actor ScholiumMCPServer {
                 throw ScholiumMCPFailure(
                     code: .invalidRequest,
                     message: "The requested Scholium MCP tool is unknown.",
-                    recovery: "Call tools/list and use one of the seven published tool names."
+                    recovery: "Call tools/list and use one of the ten published tool names."
                 )
             }
             let arguments: [String: MCPJSONValue]
@@ -229,11 +229,21 @@ public actor ScholiumMCPServer {
             idempotent: true
         ),
         tool(
-            .searchNotes,
-            description: "Search current Notes through Scholium's sole Search parser and ordering.",
+            .search,
+            description: "Search current Notes and Research Records through Scholium's provider-separated Search.",
             properties: [
                 "triptych_id": uuidSchema("Open Triptych UUID."),
                 "query": stringSchema("Canonical Scholium Search query."),
+                "providers": .object([
+                    "type": .string("array"),
+                    "items": .object([
+                        "type": .string("string"),
+                        "enum": .array([.string("note"), .string("record")]),
+                    ]),
+                    "uniqueItems": .bool(true),
+                    "minItems": .integer(1),
+                    "maxItems": .integer(2),
+                ]),
                 "roles": .object([
                     "type": .string("array"),
                     "items": .object([
@@ -244,8 +254,10 @@ public actor ScholiumMCPServer {
                     "minItems": .integer(1),
                     "maxItems": .integer(3),
                 ]),
-                "limit": integerSchema(minimum: 1, maximum: 100, default: 20),
-                "offset": integerSchema(minimum: 0, maximum: nil, default: 0),
+                "note_limit": integerSchema(minimum: 1, maximum: 100, default: 20),
+                "note_offset": integerSchema(minimum: 0, maximum: nil, default: 0),
+                "record_limit": integerSchema(minimum: 1, maximum: 100, default: 20),
+                "record_offset": integerSchema(minimum: 0, maximum: nil, default: 0),
             ],
             required: ["triptych_id", "query"],
             readOnly: true,
@@ -262,6 +274,20 @@ public actor ScholiumMCPServer {
                 "line_count": integerSchema(minimum: 1, maximum: 1_000, default: 200),
             ],
             required: ["triptych_id", "note_id"],
+            readOnly: true,
+            destructive: false,
+            idempotent: true
+        ),
+        tool(
+            .readRecord,
+            description: "Read one strict attributed Research Record with bounded step pagination.",
+            properties: [
+                "triptych_id": uuidSchema("Open Triptych UUID."),
+                "record_id": uuidSchema("Research Record UUID."),
+                "step_offset": integerSchema(minimum: 0, maximum: nil, default: 0),
+                "step_limit": integerSchema(minimum: 1, maximum: 100, default: 20),
+            ],
+            required: ["triptych_id", "record_id"],
             readOnly: true,
             destructive: false,
             idempotent: true
@@ -335,6 +361,43 @@ public actor ScholiumMCPServer {
             required: ["triptych_id", "note_id", "expected_fingerprint"],
             readOnly: false,
             destructive: true,
+            idempotent: false
+        ),
+        tool(
+            .recordProgress,
+            description: "Create a continuing inquiry Record or append one attributed substantive step.",
+            properties: [
+                "triptych_id": uuidSchema("Open Triptych UUID."),
+                "target": recordProgressTargetSchema,
+                "agent_label": stringSchema("External Agent display label."),
+                "body_markdown": stringSchema("Complete substantive step Markdown."),
+                "revises_step_ids": uuidArraySchema,
+                "note_references": noteReferenceArraySchema,
+            ],
+            required: ["triptych_id", "target", "agent_label", "body_markdown"],
+            readOnly: false,
+            destructive: false,
+            idempotent: false
+        ),
+        tool(
+            .correctRecordStep,
+            description: "Append one attributed clerical correction without rewriting Record history.",
+            properties: [
+                "triptych_id": uuidSchema("Open Triptych UUID."),
+                "record_id": uuidSchema("Research Record UUID."),
+                "step_id": uuidSchema("Step UUID."),
+                "expected_fingerprint": fingerprintSchema,
+                "agent_label": stringSchema("External Agent display label."),
+                "body_markdown": stringSchema("Complete corrected step Markdown."),
+                "revises_step_ids": uuidArraySchema,
+                "note_references": noteReferenceArraySchema,
+            ],
+            required: [
+                "triptych_id", "record_id", "step_id", "expected_fingerprint",
+                "agent_label", "body_markdown",
+            ],
+            readOnly: false,
+            destructive: false,
             idempotent: false
         ),
     ]
@@ -417,6 +480,156 @@ public actor ScholiumMCPServer {
         "additionalProperties": .bool(false),
     ])
 
+    private static let uuidArraySchema: MCPJSONValue = .object([
+        "type": .string("array"),
+        "items": uuidSchema("UUID."),
+        "uniqueItems": .bool(true),
+    ])
+
+    private static let noteReferenceSchema = closedObject(
+        properties: [
+            "note_id": uuidSchema("Stable Note UUID."),
+            "relation": .object([
+                "type": .string("string"),
+                "enum": .array([.string("basis"), .string("modified")]),
+            ]),
+            "revision": fingerprintSchema,
+        ],
+        required: ["note_id", "relation", "revision"]
+    )
+
+    private static let noteReferenceArraySchema = arraySchema(noteReferenceSchema)
+
+    private static let recordProgressTargetSchema: MCPJSONValue = .object([
+        "oneOf": .array([
+            closedObject(
+                properties: [
+                    "kind": .object([
+                        "type": .string("string"),
+                        "const": .string("new"),
+                    ]),
+                    "question": simpleSchema("string"),
+                ],
+                required: ["kind", "question"]
+            ),
+            closedObject(
+                properties: [
+                    "kind": .object([
+                        "type": .string("string"),
+                        "const": .string("existing"),
+                    ]),
+                    "record_id": uuidSchema("Research Record UUID."),
+                    "expected_fingerprint": fingerprintSchema,
+                    "replacement_question": nullable(simpleSchema("string")),
+                ],
+                required: [
+                    "kind", "record_id", "expected_fingerprint",
+                ]
+            ),
+        ]),
+    ])
+
+    private static let noteSearchGroupSchema = closedObject(
+        properties: [
+            "freshness": simpleSchema("string"),
+            "offset": nonnegativeIntegerSchema,
+            "limit": nonnegativeIntegerSchema,
+            "total": nullable(nonnegativeIntegerSchema),
+            "has_more": booleanSchema,
+            "results": arraySchema(closedObject(
+                properties: [
+                    "note_id": nullable(uuidSchema("Stable Note UUID.")),
+                    "role": roleSchema,
+                    "relative_path": simpleSchema("string"),
+                    "title": simpleSchema("string"),
+                    "fingerprint": fingerprintSchema,
+                    "match_reason": simpleSchema("string"),
+                    "rank_reason": simpleSchema("string"),
+                    "snippet": simpleSchema("string"),
+                    "source_locator": nullable(locatorSchema),
+                ],
+                required: [
+                    "note_id", "role", "relative_path", "title",
+                    "fingerprint", "match_reason", "rank_reason",
+                    "snippet", "source_locator",
+                ]
+            )),
+        ],
+        required: [
+            "freshness", "offset", "limit", "total", "has_more", "results",
+        ]
+    )
+
+    private static let recordSearchGroupSchema = closedObject(
+        properties: [
+            "generation": closedObject(
+                properties: [
+                    "sequence": nonnegativeIntegerSchema,
+                    "manifest_sha256": simpleSchema("string"),
+                    "record_count": nonnegativeIntegerSchema,
+                ],
+                required: ["sequence", "manifest_sha256", "record_count"]
+            ),
+            "offset": nonnegativeIntegerSchema,
+            "limit": nonnegativeIntegerSchema,
+            "total": nonnegativeIntegerSchema,
+            "has_more": booleanSchema,
+            "isolated_issue_count": nonnegativeIntegerSchema,
+            "results": arraySchema(closedObject(
+                properties: [
+                    "record_id": uuidSchema("Research Record UUID."),
+                    "question": simpleSchema("string"),
+                    "last_substantive_at": simpleSchema("string"),
+                    "fingerprint": fingerprintSchema,
+                    "matched_field": simpleSchema("string"),
+                    "matched_step_id": nullable(uuidSchema("Matched step UUID.")),
+                    "rank_reason": simpleSchema("string"),
+                    "snippet": simpleSchema("string"),
+                ],
+                required: [
+                    "record_id", "question", "last_substantive_at",
+                    "fingerprint", "matched_field", "matched_step_id",
+                    "rank_reason", "snippet",
+                ]
+            )),
+        ],
+        required: [
+            "generation", "offset", "limit", "total", "has_more",
+            "isolated_issue_count", "results",
+        ]
+    )
+
+    private static let recordStepSchema = closedObject(
+        properties: [
+            "step_id": uuidSchema("Step UUID."),
+            "recorded_at": simpleSchema("string"),
+            "submitted_by": simpleSchema("string"),
+            "original_body_markdown": simpleSchema("string"),
+            "body_markdown": simpleSchema("string"),
+            "revises_step_ids": uuidArraySchema,
+            "note_references": noteReferenceArraySchema,
+            "corrections": arraySchema(closedObject(
+                properties: [
+                    "correction_id": uuidSchema("Correction UUID."),
+                    "corrected_at": simpleSchema("string"),
+                    "submitted_by": simpleSchema("string"),
+                    "body_markdown": simpleSchema("string"),
+                    "revises_step_ids": uuidArraySchema,
+                    "note_references": noteReferenceArraySchema,
+                ],
+                required: [
+                    "correction_id", "corrected_at", "submitted_by",
+                    "body_markdown", "revises_step_ids", "note_references",
+                ]
+            )),
+        ],
+        required: [
+            "step_id", "recorded_at", "submitted_by",
+            "original_body_markdown", "body_markdown", "revises_step_ids",
+            "note_references", "corrections",
+        ]
+    )
+
     private static func outputSchema(
         for tool: ScholiumMCPToolName
     ) -> MCPJSONValue {
@@ -449,6 +662,16 @@ public actor ScholiumMCPServer {
                         "search_generation": generationSchema(
                             includesCount: false
                         ),
+                        "record_search_generation": closedObject(
+                            properties: [
+                                "sequence": nonnegativeIntegerSchema,
+                                "manifest_sha256": simpleSchema("string"),
+                                "record_count": nonnegativeIntegerSchema,
+                            ],
+                            required: [
+                                "sequence", "manifest_sha256", "record_count",
+                            ]
+                        ),
                         "graph_generation": generationSchema(
                             includesCount: false
                         ),
@@ -464,42 +687,19 @@ public actor ScholiumMCPServer {
                     required: [
                         "current", "selection_required", "triptych_id", "name",
                         "source_generation", "search_generation",
-                        "graph_generation", "vaults",
+                        "record_search_generation", "graph_generation", "vaults",
                     ]
                 ),
             ]
-        case .searchNotes:
+        case .search:
             [successSchema(
                 properties: [
                     "triptych_id": uuidSchema("Open Triptych UUID."),
                     "query": simpleSchema("string"),
-                    "freshness": simpleSchema("string"),
-                    "offset": nonnegativeIntegerSchema,
-                    "limit": nonnegativeIntegerSchema,
-                    "has_more": booleanSchema,
-                    "results": arraySchema(closedObject(
-                        properties: [
-                            "note_id": nullable(uuidSchema("Stable Note UUID.")),
-                            "role": roleSchema,
-                            "relative_path": simpleSchema("string"),
-                            "title": simpleSchema("string"),
-                            "fingerprint": fingerprintSchema,
-                            "match_reason": simpleSchema("string"),
-                            "rank_reason": simpleSchema("string"),
-                            "snippet": simpleSchema("string"),
-                            "source_locator": nullable(locatorSchema),
-                        ],
-                        required: [
-                            "note_id", "role", "relative_path", "title",
-                            "fingerprint", "match_reason", "rank_reason",
-                            "snippet", "source_locator",
-                        ]
-                    )),
+                    "notes": nullable(noteSearchGroupSchema),
+                    "records": nullable(recordSearchGroupSchema),
                 ],
-                required: [
-                    "triptych_id", "query", "freshness", "offset", "limit",
-                    "has_more", "results",
-                ]
+                required: ["triptych_id", "query", "notes", "records"]
             )]
         case .readNote:
             [successSchema(
@@ -519,6 +719,25 @@ public actor ScholiumMCPServer {
                     "triptych_id", "note_id", "role", "relative_path",
                     "fingerprint", "start_line", "line_count", "source",
                     "complete", "next_line",
+                ]
+            )]
+        case .readRecord:
+            [successSchema(
+                properties: [
+                    "triptych_id": uuidSchema("Open Triptych UUID."),
+                    "record_id": uuidSchema("Research Record UUID."),
+                    "question": simpleSchema("string"),
+                    "fingerprint": fingerprintSchema,
+                    "step_offset": nonnegativeIntegerSchema,
+                    "step_limit": nonnegativeIntegerSchema,
+                    "total_steps": nonnegativeIntegerSchema,
+                    "has_more": booleanSchema,
+                    "steps": arraySchema(recordStepSchema),
+                ],
+                required: [
+                    "triptych_id", "record_id", "question", "fingerprint",
+                    "step_offset", "step_limit", "total_steps", "has_more",
+                    "steps",
                 ]
             )]
         case .listLinks:
@@ -628,6 +847,37 @@ public actor ScholiumMCPServer {
                 required: [
                     "triptych_id", "change_id", "note_id",
                     "original_location", "moved_to_system_trash",
+                ]
+            )]
+        case .recordProgress:
+            [successSchema(
+                properties: [
+                    "triptych_id": uuidSchema("Open Triptych UUID."),
+                    "branch": simpleSchema("string"),
+                    "record_id": uuidSchema("Research Record UUID."),
+                    "step_id": uuidSchema("Stored step UUID."),
+                    "question": simpleSchema("string"),
+                    "fingerprint": fingerprintSchema,
+                ],
+                required: [
+                    "triptych_id", "branch", "record_id", "step_id",
+                    "question", "fingerprint",
+                ]
+            )]
+        case .correctRecordStep:
+            [successSchema(
+                properties: [
+                    "triptych_id": uuidSchema("Open Triptych UUID."),
+                    "record_id": uuidSchema("Research Record UUID."),
+                    "step_id": uuidSchema("Corrected step UUID."),
+                    "correction_id": uuidSchema("Appended correction UUID."),
+                    "corrected_at": simpleSchema("string"),
+                    "body_markdown": simpleSchema("string"),
+                    "fingerprint": fingerprintSchema,
+                ],
+                required: [
+                    "triptych_id", "record_id", "step_id", "correction_id",
+                    "corrected_at", "body_markdown", "fingerprint",
                 ]
             )]
         }

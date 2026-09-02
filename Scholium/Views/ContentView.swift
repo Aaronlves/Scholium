@@ -19,6 +19,7 @@ struct ContentView: View {
     let windowCoordinator: WorkspaceWindowCoordinator
     @Environment(\.scholiumReduceMotion) private var reduceMotion
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
     @AppStorage(AttentionPreferences.dismissalLedgerKey)
     private var attentionDismissalLedgerData = Data()
 
@@ -270,7 +271,21 @@ struct ContentView: View {
             run: { appState.searchController.run($0) },
             rename: { appState.searchController.rename($0, to: $1) },
             move: { appState.searchController.move($0, by: $1) },
-            delete: { appState.searchController.delete($0) }
+            delete: { appState.searchController.delete($0) },
+            openRecord: { recordID, stepID in
+                guard let triptychID = windowWorkspaceController.activeCapabilities?.id else {
+                    return
+                }
+                ResearchRecordsWindowCoordinator.shared.submit(.init(
+                    triptychID: triptychID,
+                    recordID: recordID,
+                    stepID: stepID
+                ))
+                openWindow(
+                    id: "scholium-records",
+                    value: ResearchRecordsWindowRoute(triptychID: triptychID)
+                )
+            }
         )
     }
 

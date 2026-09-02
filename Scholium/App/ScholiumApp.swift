@@ -129,6 +129,21 @@ struct ScholiumApp: App {
             ScholiumCommands()
         }
 
+        WindowGroup(
+            "Research Records",
+            id: "scholium-records",
+            for: ResearchRecordsWindowRoute.self,
+            content: makeResearchRecordsWindowContent,
+            defaultValue: { ResearchRecordsWindowRoute(triptychID: UUID()) }
+        )
+        .defaultSize(width: 1_080, height: 760)
+        .windowResizability(.automatic)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
+        .windowToolbarStyle(.unified(showsTitle: true))
+        .environmentObject(applicationBootstrap)
+        .environmentObject(applicationDelegate)
+
         Settings {
             ScholiumSettingsWindowContent()
             .frame(width: 700, height: 560, alignment: .topLeading)
@@ -154,6 +169,12 @@ private func makeMainWindowContent(
     _ route: Binding<TriptychWindowRoute>
 ) -> ScholiumMainWindowContent {
     ScholiumMainWindowContent(route: route)
+}
+
+private func makeResearchRecordsWindowContent(
+    _ route: Binding<ResearchRecordsWindowRoute>
+) -> ScholiumResearchRecordsWindowContent {
+    ScholiumResearchRecordsWindowContent(route: route)
 }
 
 private struct ScholiumBootstrapWindowContent: View {
@@ -245,6 +266,44 @@ private struct ScholiumMainWindowReadyContent: View {
 private struct ScholiumSettingsWindowContent: View {
     var body: some View {
         ScholiumSettingsWindowEnvironmentContent()
+    }
+}
+
+private struct ScholiumResearchRecordsWindowContent: View {
+    @Binding var route: ResearchRecordsWindowRoute
+
+    nonisolated init(route: Binding<ResearchRecordsWindowRoute>) {
+        self._route = route
+    }
+
+    var body: some View {
+        ScholiumResearchRecordsWindowEnvironmentContent(route: $route)
+    }
+}
+
+@MainActor
+private struct ScholiumResearchRecordsWindowEnvironmentContent: View {
+    @EnvironmentObject private var applicationBootstrap: ApplicationBootstrapController
+    @Binding var route: ResearchRecordsWindowRoute
+
+    var body: some View {
+        ApplicationBootstrapGate(controller: applicationBootstrap) {
+            ScholiumResearchRecordsWindowReadyContent(route: route)
+        }
+        .focusedSceneValue(
+            \.scholiumApplicationBootstrapStatus,
+            ScholiumApplicationBootstrapStatus(isReady: applicationBootstrap.isReady)
+        )
+    }
+}
+
+@MainActor
+private struct ScholiumResearchRecordsWindowReadyContent: View {
+    @EnvironmentObject private var workspaceStore: WorkspaceStore
+    let route: ResearchRecordsWindowRoute
+
+    var body: some View {
+        ResearchRecordsWindowView(route: route, workspaceStore: workspaceStore)
     }
 }
 
@@ -699,6 +758,12 @@ private struct ScholiumWindowObservedRoot: View {
                                 noteScope: noteScope
                             )
                         }
+                    },
+                    showResearchRecords: { triptychID in
+                        openWindow(
+                            id: "scholium-records",
+                            value: ResearchRecordsWindowRoute(triptychID: triptychID)
+                        )
                     }
                 )
                 windowCoordinator.update(reduceMotion: reduceMotion)
@@ -1228,6 +1293,10 @@ private struct ScholiumSidebarCommandContent: View {
         }
         .scholiumKeyboardShortcut(shortcut(for: .searchResearch))
         .disabled(searchActions == nil)
+        Button("Research Records…") {
+            workspaceWindowActions?.showResearchRecords()
+        }
+        .disabled(workspaceWindowActions == nil)
         Menu("Heading Outline") {
             let headings = appState?.currentNote?.workspaceSnapshot?.headings ?? []
             if headings.isEmpty {

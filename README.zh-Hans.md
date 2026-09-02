@@ -245,11 +245,13 @@ claude mcp add scholium --scope user -- "$PWD/.build/cli-prefix/bin/scholium" mc
 bridge 工作；当应用、bridge、所选脉络或当前状态不可用时明确失败，绝不回退到直接
 文件系统或无界面 workspace 访问。
 
-首版恰好发布七个 tools：`scholium_workspace_status`、
-`scholium_search_notes`、`scholium_read_note`、`scholium_list_links`、
-`scholium_create_note`、`scholium_update_note` 与
-`scholium_trash_note`。不暴露 MCP Resources、Prompts、Agent Sessions、
-Research Actions、Handoff 或 Research Records。
+当前协作界面恰好发布十个 tools：`scholium_workspace_status`、
+`scholium_search`、`scholium_read_note`、`scholium_read_record`、
+`scholium_list_links`、`scholium_create_note`、`scholium_update_note`、
+`scholium_trash_note`、`scholium_record_progress` 与
+`scholium_correct_record_step`。不暴露 MCP Resources、Prompts、Agent
+Sessions、Research Actions 或 Handoff。Research Record 是由 Agent 维护的
+署名研究历史，不代表研究者接受，也不是 Note 写入权威。
 
 普通双链可携带由源 Note 拥有的多行 Markdown 注释：
 `[[目标]]{{注释}}`。Connect、Search 与 `scholium_list_links` 都保留每次

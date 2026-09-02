@@ -186,6 +186,7 @@ struct WorkspaceToolbarTests {
         WorkspaceWindowActions(
             setLibraryVisible: { _ in },
             setResearchInspectorVisible: { _ in },
+            showResearchRecords: {},
             showAttention: { _ in },
             showPreferredAttention: {},
             canShowAttention: { false }

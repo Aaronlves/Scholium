@@ -36,6 +36,14 @@ struct ScholiumLocalizationTests {
             ScholiumL10n.string("No Agent Changes", locale: simplifiedChinese)
                 == "没有智能体更改"
         )
+        #expect(
+            ScholiumL10n.string("Research Records", locale: simplifiedChinese)
+                == "研究记录"
+        )
+        #expect(
+            ScholiumL10n.string("Search provider", locale: simplifiedChinese)
+                == "搜索对象"
+        )
         #expect(ScholiumL10n.string("Undo", locale: simplifiedChinese) == "撤销")
         #expect(
             ScholiumL10n.string(
@@ -117,7 +125,6 @@ struct ScholiumLocalizationTests {
         #expect(!catalog.contains("废纸篓"))
         for retiredKey in [
             "\"Research Action\" :",
-            "\"Research Records\" :",
             "\"Discussion\" :",
             "\"Copy Handoff\" :",
             "\"Academic Profile\" :",

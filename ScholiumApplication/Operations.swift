@@ -357,6 +357,13 @@ public actor DiscoveryOperations: DiscoveryUseCases {
         return try await handle.search(request)
     }
 
+    public func unifiedSearch(
+        _ request: UnifiedSearchRequest
+    ) async throws -> UnifiedSearchResponse {
+        let handle = try await reference.requireHandle()
+        return try await handle.unifiedSearch(request)
+    }
+
     public func links(
         for note: VaultQualifiedNoteID,
         direction: WorkspaceLinkDirection
