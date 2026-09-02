@@ -36,9 +36,15 @@ rather than cards, tiles, badges, avatars, chat bubbles, or nested decorative
 containers. Small capsules are reserved for finite semantic values, never
 general decoration or status walls.
 
-Until §22 defines the replacement Record contract, the retained Records window
-uses one ordinary Content State rather than preserving the superseded ledger,
-detail, evidence-rail, or bibliographic-lead presentation.
+The separate Records window uses a quiet collection-to-reading transition. Its
+detail retains the proven centered scholarly reading measure and optional
+trailing evidence rail, but the new question/step/Note-reference contract alone
+supplies content: no superseded Action ledger, Result, participant workflow, or
+bibliographic lead survives as presentation semantics. The question is the one
+primary title; step time and Agent attribution use compact Interface type,
+step prose uses Scholarly type, and identifiers or fingerprints use Exact type.
+Continuous document/evidence planes, structural rules, and whitespace carry
+hierarchy without a card timeline.
 
 ### 19.2 Typography and color
 
@@ -298,7 +304,7 @@ feature-local composition.
 | `Notifications` | Complete queue in Sidebar/Inspector; Agent Change/Settlement subset in Document. | §§8.4, 13, 18.2–18.3 |
 | `Agent Integration` | Present verifiable local status and copy user-scope host setup without editing external configuration. | §§8.2, 16, 18.2 |
 | `Conflict / Recovery` | Retain bytes, compare exact revisions, and expose safe repair. | §§14, 18.4–18.6 |
-| `Research Records` | Retain the dedicated window boundary and explicit unavailable state until §22 defines Record content. | §§18.2, 18.5, 22 |
+| `Research Records` | Present the dedicated read-only collection, centered question/step reading plane, and optional Note-evidence rail without inheriting chat or superseded workflow semantics. | §§8.6, 13, 18.5 |
 | `Settlement Reminder` | Invite explicit Settle Again, Mark Unsettled, or no status change; dismissal changes no judgment, and exact Agent Changes open one comparison at a time. | §§7.1, 8.4, 18.3–18.5 |
 
 ### 19.9 Cross-functional state language

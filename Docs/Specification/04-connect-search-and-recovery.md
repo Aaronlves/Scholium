@@ -35,11 +35,20 @@ edge, or expands a multi-hop path.
 
 ## 13. Search and Attention
 
-Search has three visible Note scopes:
+Search has three visible scopes:
 
-- **This Note** searches the open Note's unsaved buffer;
-- **This Vault** searches present Notes in the selected role vault; and
-- **Triptych** searches all present Notes.
+- **This Note** searches the open Note's unsaved buffer and Records that
+  reference its stable identity;
+- **This Vault** searches present Notes in the selected role vault and Records
+  that reference at least one present Note in that vault; and
+- **Triptych** searches all present Notes and all valid Records.
+
+The provider control is **All**, **Notes**, or **Records**. All is the default
+and issues the same visible query to both providers, but the providers retain
+separate result groups, rankings, totals, continuations, generations, and
+freshness. Notes appear before Records; no cross-provider score interleaves
+them. Notes or Records supplies the dedicated provider path without changing
+the query or visible scope.
 
 Search owns known-Note navigation but not Recents, Quick Open, or navigation
 history. It is one compact command surface with visible scope and a bounded
@@ -47,15 +56,17 @@ result list. Opening it retains the workspace; dismissal cancels work and
 clears query/results while retaining ordinary scope and Saved Searches.
 
 During live workspace opening, **This Note** performs exact lexical Search over
-the current unsaved buffer. **This Vault** may reuse only lexical matches from
-the last complete compatible index whose source fingerprint still equals the
-authoritative opening snapshot and whose indexed stable identity, when present,
-still resolves there; it reports **Limited**, excludes new, changed, deleted,
-retargeted, or unverifiable Notes, and never publishes a partial generation.
-Triptych scope, the Record provider, managed-property and structured clauses,
-direct links, and operations requiring complete Search remain unavailable
-until the complete generation publishes. Completion replaces the limitation
-without moving focus or invalidating already usable Library content.
+the current unsaved buffer. **This Vault** may reuse only lexical Note matches
+from the last complete compatible index whose source fingerprint still equals
+the authoritative opening snapshot and whose indexed stable identity, when
+present, still resolves there; it reports **Limited**, excludes new, changed,
+deleted, retargeted, or unverifiable Notes, and never publishes a partial
+generation. Triptych Note scope, managed-property and structured clauses,
+direct links, and operations requiring complete Note Search remain unavailable
+until that complete generation publishes. The Record provider independently
+requires one complete validated Record generation; All may therefore present
+one provider while naming the other's unavailable or stale state. Completion
+replaces the limitation without moving focus or invalidating usable results.
 
 Document Find is a separate inline editor operation over the current unsaved
 buffer. It supports literal text, case and whole-word options, count,
@@ -63,11 +74,10 @@ Previous/Next, and standard keyboard routes. Edit and Source add Replace
 Current/All as single Undo transactions. Find creates no Search provider,
 index, saved query, or navigation history.
 
-Search currently has one available **Note** provider. Omitted `kind:` means
-`kind:note`; the reserved `kind:record` clause returns **Unavailable** until
-§22 defines and activates the replacement Record contract. Query text never
-changes the visible scope, and App, CLI, and Scholium MCP share one parser and
-ordered response.
+Search has **Note** and **Record** providers. Omitted `kind:` means both;
+`kind:note` and `kind:record` select one provider and agree with the visible
+provider control. Query text never changes visible scope, and App, CLI, and
+Scholium MCP share one parser and provider-separated response.
 
 The Note provider uses one deterministic present-source corpus. It returns each
 occurrence for This Note and one row per Note for broader scopes. Its finite
@@ -87,10 +97,15 @@ resolved destinations of occurrences authored in A; `to-note:B` returns Notes
 whose authored occurrences resolve to B. These queries preserve occurrence
 direction, remain direct, and require a current complete graph.
 
-The Record provider remains unavailable until §22's replacement Research
-Record contract defines its canonical fields, pagination, and ordering. Search
-must not preserve superseded workflow fields or infer a new Record schema from
-existing implementation bytes.
+The Record provider reads only strict §8.6 files and returns one row per Record.
+Unqualified text searches current `question` and current projected
+`body_markdown`; provider-specific `question:` and `step:` fields select those
+two corpora. Original bodies replaced by clerical corrections remain
+provenance, not Search text. Exact or prefix question matches outrank question
+lexical matches, which outrank step matches. Last substantive step time,
+normalized question, and Record UUID provide deterministic ties without a
+cross-provider score. Legacy action, method, Run, Result, participant, status,
+or completion fields never participate.
 
 Unknown fields or values, malformed syntax, provider mismatch, unsupported
 grouping/OR/regex/fuzzy/range syntax, CJK prefix use, and unsafe structured
@@ -98,8 +113,11 @@ exclusion produce an inline diagnostic and never broaden retrieval. Queries
 are bounded before execution.
 
 Every Note result identifies its provider object, stable identity, exact source
-fingerprint, matched field/reason, and available locator/range. No current
-result or stored index entry masquerades as a Research Record.
+fingerprint, matched field/reason, and available locator/range. Every Record
+result identifies Record ID, current question, exact Record-file fingerprint,
+last substantive step time, matched question or step, matched step ID when
+applicable, reason, and bounded snippet. Neither result type masquerades as the
+other or changes its evidential role.
 
 Search indexes visible semantic text, valid link-annotation content, and
 canonical fields, not raw delimiters or link destinations. Annotation hits use
@@ -110,6 +128,12 @@ body matches; normalized title, role order, and path provide stable ties.
 Results explain matched field and rank reason without exposing internal scores.
 CJK uses deterministic projection and substring verification.
 
+The Record index is a separate rebuildable provider projection over validated
+portable files. It stores no writable Record authority and never joins Note and
+Record rankings or generations. A Record Note reference filters scope and
+supports navigation but contributes no unqualified lexical text or inferred
+evidential relation.
+
 The versioned **Related-Content Retrieval** contract is an internal,
 nonpersistent discovery operation over exact current Notes and optional passage
 or request focus. It returns bounded Analysis/Topic candidates through separate
@@ -118,28 +142,30 @@ reasons and source fingerprints. It never synthesizes a relation, score,
 summary, or evidence claim. Search and Graph must share one complete source
 manifest before direct-link candidates are executable.
 
-Ordinary Search returns bounded slices. If the replacement Research Record
-contract later activates a provider, it must define its own fields, identity,
-pagination, exact filtered totals, and ordering while reusing this parser.
+Ordinary Search returns bounded slices. All returns independent Note and Record
+slices, exact filtered totals, and continuations; the dedicated provider path
+continues only its own result set. The Record provider has its own identity,
+generation, fields, and ordering while reusing this parser.
 
-Every response binds contract version, provider, authorized scope, source
-generation, and freshness. **Building**, **Limited**, **Partial**, **Stale**,
-**Unavailable**, **Invalid**, and **Cancelled** remain distinct. A failed
-refresh may retain only a last complete compatible generation. Derived indexes
-remain disposable and never writable authority.
+Every provider response binds contract version, provider, authorized scope,
+its own generation, and freshness. **Building**, **Limited**, **Partial**,
+**Stale**, **Unavailable**, **Invalid**, and **Cancelled** remain distinct. A
+failed refresh may retain only that provider's last complete compatible
+generation. Derived indexes remain disposable and never writable authority.
 
 The parser exposes one typed capability description used by completion,
 **Explain Query**, CLI help, and the MCP tool schema. Completion edits only
 visible query text.
-Saved Searches store only raw query, visible scope, and contract version; they
-store no AST, resolved identity, result, or generation. Changed semantics
-require **Needs Editing** rather than silent rewrite or execution. Invalid saved
-bytes remain unchanged and nonexecuting; a damaged Saved Search store has a
-confirmed archive-and-reset route that never changes vault content.
+Saved Searches store only raw query, visible scope, visible provider selection,
+and contract version; they store no AST, resolved identity, result, or
+generation. Changed semantics require **Needs Editing** rather than silent
+rewrite or execution. Invalid saved bytes remain unchanged and nonexecuting; a
+damaged Saved Search store has a confirmed archive-and-reset route that never
+changes vault or Record content.
 
-App, CLI, and Scholium MCP consume the same ordered result identity, reasons,
-provenance, availability, and freshness. Presentation may reword but never
-reparse, reorder, broaden, or change link direction.
+App, CLI, and Scholium MCP consume the same provider-separated result identity,
+reasons, provenance, availability, and freshness. Presentation may reword but
+never reparse, reorder, broaden, combine rankings, or change link direction.
 
 Authored YAML `summary` participates as an explainable Note field with its exact
 scalar range. A hit opens the complete current Note and is only a discovery

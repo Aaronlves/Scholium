@@ -85,7 +85,7 @@ Menus follow task ownership:
 - **Edit**: editing, Find, formatting, and Edit Metadata.
 - **View**: Back/Forward, Heading Outline, Search, Document mode/text size,
   Sidebar, and Inspector.
-- **Research**: Settle and Agent Changes when present.
+- **Research**: Research Records, Settle, and Agent Changes when present.
 - **Window**: standard windows plus Notifications.
 - **Settings**: one searchable native list/detail window with **Application**,
   **This Triptych**, and **Research Guidance** groups.
@@ -203,6 +203,7 @@ close. Finder owns restoration.
 Shared Search follows §13: one compact centered surface, visible scope, bounded
 provider-specific results, typed completion, Explain Query, exact freshness,
 and distinct invalid, ambiguous, unavailable, partial, stale, and empty states.
-Completion edits visible query text only and shares one keyboard selection with
-results. The reserved Record provider remains explicitly unavailable until
-§22 defines it.
+All is the default provider selection and shows separate Notes and Research
+Records groups without interleaving rank; Notes and Records remain directly
+selectable dedicated paths. Completion edits visible query text only and shares
+one keyboard selection with results.

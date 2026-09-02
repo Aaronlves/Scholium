@@ -29,8 +29,9 @@ Scholium creates no application task type, academic profile, method
 registration, per-task credential, write ledger, result schema, or completion
 state for Agent work. MCP tool availability is not permission. Scholium neither
 reconstructs nor independently validates the external conversation; the Core
-Protocol requires the Agent to act only on the researcher's explicit
-instruction.
+Protocol requires explicit researcher authority for Note mutation and permits
+only §8.6's bounded, attributed Research Record maintenance without a separate
+per-step request.
 
 The authority stack is:
 
@@ -86,13 +87,16 @@ The first release exposes exactly these tools:
 
 | Tool | Input | Result |
 | --- | --- | --- |
-| `scholium_workspace_status` | optional `triptych_id` | open Triptych candidates or one reconciled current Triptych with three-vault, source, and Search generations |
-| `scholium_search_notes` | `triptych_id`, `query`; optional `roles`, `limit`, `offset` | ordered candidate passages with Note identity, role, path, fingerprint, match reason, snippet, and source locator |
+| `scholium_workspace_status` | optional `triptych_id` | open Triptych candidates or one reconciled current Triptych with three-vault, source, Note-Search, and Record-Search generations |
+| `scholium_search` | `triptych_id`, `query`; optional `providers`, `roles`, and independent Note/Record limits and offsets | separately ordered Note and Record candidates with independent totals, continuations, generations, identities, match reasons, snippets, and exact source fingerprints |
 | `scholium_read_note` | `triptych_id`, `note_id`; optional `start_line`, `line_count` | an exact current Markdown slice, complete/continuation state, and full Note fingerprint |
+| `scholium_read_record` | `triptych_id`, `record_id`; optional `step_offset`, `step_limit` | current question, an ordered step slice, exact total and continuation, attribution, revisions, Note references, and complete Record-file fingerprint |
 | `scholium_list_links` | `triptych_id`, `note_id`, `direction`; optional `limit`, `offset` | raw incoming/outgoing authored occurrences with source/destination identities, exact link and optional annotation markup/text, local context, fingerprints, and whole/link/annotation source locators |
 | `scholium_create_note` | `triptych_id`, `role`, `relative_path`, `body`; optional `summary`, `keywords` | created stable Note identity, path, fingerprint, and `change_id` |
 | `scholium_update_note` | `triptych_id`, `note_id`, `expected_fingerprint`, `mode`, `content` | before/after fingerprints, path, readback state, and `change_id` |
 | `scholium_trash_note` | `triptych_id`, `note_id`, `expected_fingerprint` | the exact Note moved to macOS system Trash, original location, and `change_id` |
+| `scholium_record_progress` | `triptych_id`, discriminated target, Agent label, and complete step content; existing target also requires expected fingerprint | created/appended branch, stored Record and step, and complete Record-file fingerprint |
+| `scholium_correct_record_step` | `triptych_id`, `record_id`, `step_id`, expected Record fingerprint, attributed Agent label, and complete corrected step content | appended correction identity and time, current projected step, and complete Record-file fingerprint |
 
 External role values are only `analyses`, `topics`, and `works`. A Note is
 addressed by stable UUID; path is location and presentation, never mutation
@@ -104,15 +108,22 @@ Triptych is open. With several open Triptychs it returns the candidates and
 requires an explicit `triptych_id`; foreground or recent-window state never
 chooses research scope.
 
-Search reuses §13's sole parser, ordering, match reasons, and current source
-generation. Query text never changes scope; `roles` selects the three-vault
-subset. The default is 20 results and the maximum is 100. Results are discovery
-leads, not philosophical relevance, evidential support, confidence, consensus,
-or truth scores.
+Search reuses §13's sole parser and provider-specific ordering, match reasons,
+and generations. Omitted `providers` searches Notes and Records but returns two
+independently ranked groups; an explicit provider supplies the dedicated path.
+Query text never changes scope; `roles` selects the three-vault Note subset.
+Each provider defaults to 20 results and permits at most 100. Results are
+discovery leads, not philosophical relevance, evidential support, confidence,
+consensus, or truth scores.
 
 Read defaults to 200 logical source lines and permits at most 1,000 per call,
 subject to a bounded response size. It preserves exact source bytes and reports
 the next line when more remains. Repeated reads can retrieve the complete Note.
+
+Record read defaults to the earliest 50 steps and permits at most 200 per call.
+It reports the exact total and next offset so repeated reads can retrieve the
+complete history. Search snippets and a partial read never authorize a Record
+mutation; append and correction require the complete current file fingerprint.
 
 Link results expose one row per authored occurrence. Each row states requested
 and occurrence direction, source and destination identity/role/path when
@@ -141,6 +152,14 @@ destination Notes, Metadata, links, Records, or Settlement. Editing a link
 annotation is an ordinary source-Note update guarded by that Note's current
 fingerprint.
 
+Record progress has one explicit discriminated target. The Agent supplies
+either a new research question or one existing `record_id` plus its expected
+file fingerprint after Search and read. The App never matches by similar title,
+body text, Note overlap, or embedding. An optional replacement question on an
+append is valid only when the same step explains the substantive reframing.
+Step correction appends a complete clerical correction revision; it never
+rewrites the original version or changes the step's substantive time.
+
 Trash accepts one current Note and uses only macOS system Trash. It has no
 permanent-delete, recursive-folder, or application-Trash variant.
 
@@ -157,9 +176,10 @@ failures return `isError: true` with
 - `operation_uncertain` and `internal_error`.
 
 Protocol parsing and unknown-method failures remain JSON-RPC errors. Tool
-annotations identify the four retrieval tools as read-only, local, and
-idempotent; create is non-idempotent, and update/trash are destructive and
-non-idempotent. An annotation is a host hint, never authorization.
+annotations identify the five retrieval tools as read-only, local, and
+idempotent; Note create and Record progress are non-idempotent, while Note
+update/trash and Record correction are destructive and non-idempotent. An
+annotation is a host hint, never authorization.
 
 The first release exposes no MCP Resources, Prompts, Sampling, Roots,
 Elicitation, long-running Tasks, dynamic tool list, or provider-specific tool
@@ -171,9 +191,10 @@ under another name.
 Before the first knowledge-base operation in one external research task, the
 Core Protocol calls `scholium_workspace_status`. The App completes already
 pending editor saves, reconciles observed external changes, and requires the
-Search generation to correspond to the same complete source manifest before
-returning `current: true`. Mechanical reconciliation creates no research
-history and grants no mutation permission.
+Note-Search generation to correspond to the same complete source manifest and
+the Record-Search generation to correspond to the same complete validated
+Record listing before returning `current: true`. Mechanical reconciliation
+creates no research history and grants no mutation permission.
 
 Status is not a frozen task snapshot. Search, read, and link calls recheck their
 own currentness and return the generation/fingerprint actually used. A later
@@ -186,13 +207,20 @@ write lock. The App retains its ordinary dirty-editor, external-change,
 multiwindow, containment, atomic replacement, exact readback, and conflict
 owners.
 
-Every successful MCP mutation creates one machine-local **Agent Change** with a
-stable `change_id`, operation, Note identity and location, exact before/after
-evidence where applicable, and recovery state. It exists only to support
-accurate comparison, Earlier Revision presentation, and eligible direct Undo;
-it is not a research task, Record, review state, completion marker,
-philosophical summary, or researcher acceptance. Created Notes have no
-fabricated empty preimage.
+Record append and correction similarly compare-and-swap one complete portable
+Record file against its exact expected fingerprint. A stale writer rereads and
+decides again; Scholium never performs field-, step-, or prose-level automatic
+merge. Record creation atomically claims one unused UUID file.
+
+Every successful MCP **Note** mutation creates one machine-local **Agent
+Change** with a stable `change_id`, operation, Note identity and location, exact
+before/after evidence where applicable, and recovery state. It exists only to
+support accurate comparison, Earlier Revision presentation, and eligible
+direct Undo; it is not a research task, Record, review state, completion
+marker, philosophical summary, or researcher acceptance. Created Notes have
+no fabricated empty preimage. Record mutation creates no Agent Change; an
+optional machine-local `(record_id, step_id, change_id)` association never
+enters portable Record bytes or supplies their meaning.
 
 Direct Undo restores one eligible updated Note only while current source still
 equals that Agent Change's final fingerprint. Separate calls remain separate
@@ -223,22 +251,113 @@ universal philosophical method. It requires an Agent to:
 5. never infer philosophical identity, irrelevance, invalidity, support, or
    truth merely from shared vocabulary, conceptual difference, conflict,
    popularity, Search rank, or an authored link;
-6. default to read-only discussion and mutate only the exact target and scope
-   named by an explicit researcher request;
+6. default to read-only discussion, mutate Notes only within the exact target
+   and scope named by an explicit researcher request, and use only §8.6's
+   bounded exception for Research Record maintenance;
 7. preserve unrelated source and avoid automatic maintenance of related Notes,
-   Metadata, links, Records, or Settle;
+   Metadata, links, or Settle;
 8. return to an accessible primary source when Topic and Analysis materially
    conflict about a paper's attribution or argument, and otherwise state the
    unresolved evidential limit;
 9. re-read after stale/conflict and verify uncertain mutation outcomes before
    any retry; and
-10. after mutation, report the affected file and location, the academic change
-    as the Agent understands it, and any unresolved risk.
+10. after Note mutation, report the affected file and location, the academic
+    change as the Agent understands it, and any unresolved risk; and
+11. after a new judgment, important correction, research decision, or
+    academically substantive Note change, apply §8.6 and report the exact
+    Record question, created/appended branch, stored step, and Note references.
 
 The Core Protocol does not prescribe one philosophical genre, fixed sequence,
 output template, number of sources, or preferred conclusion. A researcher-owned
 method Skill may guide those judgments without changing the application or
 permission contract.
+
+### 8.6 Research Record contract
+
+One Research Record owns one continuing inquiry, not a broad theme or immutable
+question sentence. Rephrasing or narrowing the same core uncertainty retains
+the Record when later steps need its earlier argumentative history; questions
+that can form and change answers independently use separate Records even when
+they reference the same Notes.
+
+A **substantive step** records what changed in the research understanding and
+why. It may record a new judgment, material correction or objection, research
+decision, or the academic meaning of a Note change. A Run, chat turn, search,
+read, tool call, file diff, or formatting-only change never constitutes a step
+by itself. Substantive revision appends a new step pointing to the earlier
+steps it revises. Only a typo, formatting defect, or unambiguous recording
+error may add a clerical correction to an existing step.
+
+The participating Agent searches and reads candidate Records, then chooses the
+explicit new or append branch without asking the researcher when the boundary
+is clear. It asks when several Records plausibly own the progress or whether a
+question is independent cannot be determined. Scholium and MCP validate only
+identity, shape, currentness, and storage; they never infer research meaning
+from chat, Search, Agent Changes, Note fingerprints, or diffs. Record creation
+or append never changes a Note, Metadata, link, Review, Settlement, or
+researcher-authored position.
+
+Each stored step has a stable ID, App-recorded UTC time, self-reported external
+Agent display name, nonempty Markdown body, ordered earlier-step revision
+links, ordered Note references, and optional clerical corrections. The Agent
+label attributes submission but proves neither personal identity nor ownership
+or acceptance of every view described in the body. The body must state the
+research development and its reason; it explicitly distinguishes an Agent
+proposal, researcher agreement, unresolved disagreement, and uncertainty when
+applicable. A mere activity description such as "updated Note" is invalid.
+
+Step bodies support paragraphs, strong and emphasized text, inline code,
+ordered and unordered lists, block quotations, and ordinary links. ATX/Setext
+headings, tables, images, task lists, footnotes, raw HTML, fenced code,
+mathematics, Mermaid, and other extensions retain literal text rather than
+acquiring rendered meaning or being discarded. The Record question is one
+nonempty single-line plain-text value; the window and step sequence own visual
+hierarchy. Record prose is not Note Markdown and authored `[[...]]` has no
+Note-link meaning.
+
+A Note reference belongs to one step and contains stable Note ID, relation, and
+exact revision fingerprint. `basis` identifies the revision used in forming the
+step; `modified` identifies the confirmed revision produced by the described
+Note change. These relations are provenance, not claims of support, criticism,
+truth, or adoption. The Agent includes only Notes materially used or changed,
+not every retrieved candidate. At write time the referenced identity and
+revision must be current; later source change, move, or absence retains the
+historical reference and may present it as an earlier or unavailable revision.
+
+Portable files live at
+`.scholium/inquiry-records/v1/<record_id>.json`, one strict file per Record.
+Each file contains exactly `schema_version`, `record_id`, `triptych_id`,
+`question`, and chronological nonempty `steps`. A step contains `step_id`,
+`recorded_at`, `submitted_by`, `body_markdown`, `revises_step_ids`,
+`note_references`, and `corrections`. Each correction retains a complete
+replacement step projection plus correction time and Agent attribution; the
+original step stays encoded, and ordinary presentation uses the last valid
+correction. Creation time and last substantive activity derive from the first
+and last steps. The Record-file fingerprint is derived from exact bytes and is
+never encoded into those bytes.
+
+`schema_version` is exactly `1`; UUIDs use canonical lowercase spelling and
+times use RFC 3339 UTC. `submitted_by` contains exactly
+`kind: "external_agent"` and a nonempty `display_name`. A Note reference
+contains exactly `note_id`, `relation`, and `revision`; the revision contains
+canonical `sha256` and `byte_count`. A correction contains exactly
+`correction_id`, `corrected_at`, `submitted_by`, `body_markdown`,
+`revises_step_ids`, and `note_references`. Ordered arrays remain present when
+empty so one semantic value has one canonical encoding shape.
+
+The decoder rejects unknown fields and versions, filename/Record/Triptych
+identity mismatch, duplicate IDs, empty questions or bodies, invalid times or
+fingerprints, forward/self revision links, and invalid Note-reference
+relations. One invalid file is isolated and reported without blocking valid
+neighbors. Old Research Action, Run, Result, Discussion, settlement, or legacy
+Record files are neither searched nor migrated into this namespace.
+
+The App exposes Records as read-only research history. It provides no rich,
+Markdown, or plain-text Record editor. The Agent maintains question wording,
+steps, and clerical corrections through MCP and, after every write, tells the
+researcher what Record was created or extended, the exact stored prose, and
+which Notes were referenced. Researcher-controlled deletion, merge, split, or
+write suspension remains unavailable until separately specified under §22.
 
 ## 9. Analyses workflow
 

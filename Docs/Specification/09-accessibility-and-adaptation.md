@@ -158,8 +158,22 @@
 
 ### Research Records
 
-- No Records window or collection route is exposed until the replacement
-  contract is approved.
+- The Records window exposes its Triptych, collection/result count, selected
+  Record, current question, chronological step count and position, step time,
+  Agent attribution, revision relation, and current/earlier/unavailable Note
+  references in one predictable reading order.
+- Collection, reading plane, and optional evidence rail remain independently
+  named regions. Evidence collapse has keyboard, pointer, focus, and
+  accessibility equivalents; at narrow width or enlarged text it moves below
+  reading content rather than compressing prose into an unusable column.
+- Rendered Record paragraphs, emphasis, lists, block quotations, inline code,
+  and links retain semantic accessibility. Unsupported syntax remains
+  selectable literal text. The current question is the sole page heading;
+  step prose cannot create an authored heading hierarchy.
+- Search-opened Records expose the matched step without discarding the complete
+  question/step context. Empty, loading, stale, invalid-file, and unavailable
+  states name scope, consequence, and applicable Retry without synthesizing
+  content or hiding valid neighbor Records.
 - Agent Changes names Note, operation, exact change position and revisions,
   `change_id`, and Earlier Revision, Created by External Agent, or system-Trash
   state as applicable. Before/After and inserted, removed, or changed structure

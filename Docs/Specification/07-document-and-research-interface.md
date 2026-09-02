@@ -63,10 +63,10 @@ with errors. Rendering failure enters persistent CSS Safe Mode until the
 researcher disables or selectively re-enables managed copies.
 
 The Document toolbar keeps Sidebar and Back/Forward leading, identity and
-outline in the Document region, then Search, Document Mode, Agent Changes, and
-trailing Inspector. Source remains available through the Document Mode menu;
-the toolbar button prioritizes Review/Edit and reports its current value.
-Document Text Size is per-window and source-neutral.
+outline in the Document region, then Search, Document Mode, Research Records,
+Agent Changes, and trailing Inspector. Source remains available through the
+Document Mode menu; the toolbar button prioritizes Review/Edit and reports its
+current value. Document Text Size is per-window and source-neutral.
 
 About directly edits one current-Note field at a time. Plain values activate an
 inline control; structured contributors retain their ordered structured editor.
@@ -78,12 +78,39 @@ multi-field editing; definitions come from Settings and archived present fields
 remain editable/removable. About coordinates these existing owners without
 creating another one.
 
-## 18.5 Contextual research and Agent Changes
+## 18.5 Research Records, contextual research, and Agent Changes
 
-Apparatus contains Research Inspector only. Until §22's replacement Record
-contract is resolved, Scholium exposes no Research Records route, window,
-provider, mutation, or presentation. Current implementation bytes cannot
-silently define the future format or interface.
+Apparatus contains Research Inspector only. **Research Records** opens one
+separate, resizable native auxiliary window bound to the initiating Triptych;
+it is not an Inspector mode, Document mode, chat, or application task surface,
+and it never follows unrelated window focus. Research menu/toolbar activation
+opens the collection, while a Search result opens the same window at the exact
+Record and matched step.
+
+The collection is a quiet scanning list of current questions and last
+substantive-step times with one Record-local Search field that reuses §13's
+Record provider rather than creating a second parser or index. Selecting one
+Record opens a centered scholarly reading plane and an optional trailing
+evidence rail. The reading plane presents the current question as its sole
+title and then the complete chronological step sequence. Each step shows time and Agent
+attribution followed by its rendered §8.6 Markdown; revision relationships are
+stated without turning them into acceptance or completion. The evidence rail
+groups that step's `basis` and `modified` Note references, current/earlier/
+unavailable revision state, and progressively disclosed Record identifiers and
+fingerprints. A Note reference navigates to the current Note when available but
+never substitutes current prose for the historical revision.
+
+The window is read-only. It has no rich, Markdown, or plain-text editor and no
+Action, Run, Method, Result, Reading Lead, participant ledger, chat, response,
+Review, or Settle workflow. An Agent-created or appended step refreshes the
+collection without activating the App, moving focus, or implying that the
+researcher saw or accepted it; reporting remains in the external host under
+§8.6. Empty, loading, stale, invalid-file, and unavailable-provider states stay
+distinct, and one isolated invalid file does not replace valid Records.
+
+The first Record interface provides no delete, merge, split, or write-suspension
+control. Those operations remain unavailable under §22 rather than inheriting
+their superseded implementations.
 
 **Agent Changes** is a temporary read-only comparison presentation, not a
 fourth Document mode, Records collection state, durable review state, or
@@ -206,6 +233,8 @@ paths, source, researcher prose, and Skill names remain verbatim.
 | Summary / Source Basis / Limitations | 摘要 / 来源依据 / 局限 |
 | Review / Edit / Source | 审阅 / 编辑 / 源文本 |
 | Research Record | 研究记录 |
+| Research Step / Basis / Modified | 研究步骤 / 依据 / 已修改 |
+| All / Notes / Records | 全部 / 笔记 / 研究记录 |
 | No Document Selected | 未选择文档 |
 | Expand / Collapse All Folders | 展开 / 折叠所有文件夹 |
 | Move to Trash… | 移至纸篓… |

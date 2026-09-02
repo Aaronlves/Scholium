@@ -27,11 +27,12 @@
 - **Metadata** is the researcher-owned structured state managed by Scholium.
   About combines selected managed values with authored YAML `summary` and
   `keywords` without becoming another status model.
-- A **Research Record** is durable research history organized around a
-  continuing research question and substantive steps. It is not one MCP call,
-  complete chat, operation log, or automatic task result. Its replacement
-  storage and creation contract remains unresolved under §22 and is not part of
-  the first Scholium MCP tool set.
+- A **Research Record** is attributed, portable research history for one
+  continuing inquiry: a revisable question whose substantive steps must be
+  understood together to explain how the current understanding formed,
+  changed, or was challenged. It is not a broad topic, one fixed sentence, one
+  MCP call, complete chat, operation log, or automatic task result. Record
+  prose never establishes truth, researcher adoption, Review, or Settlement.
 
 ## 2. Product role and authority
 
@@ -83,8 +84,9 @@ never erases provenance.
 
 Use sparse visible labels. Vault placement communicates Note role; About
 carries Note detail, and reminders appear only when the current revision
-requires a researcher action. Research Records gain no presentation role until
-their replacement contract is approved under §22.
+requires a researcher action. Research Records use the separate attributed
+history and presentation contract in §§8.6, 13, and 18.5; they never become a
+fourth vault, Note status, or Document mode.
 
 ## 3. The Scholium Triptych
 
@@ -128,12 +130,15 @@ interpret the same Triptych:
 - manifest and stable identity mappings;
 - the Triptych Guide and Triptych-local settings;
 - Metadata profiles and identity-keyed Note Metadata;
-- and Analysis–Zotero bindings and attachment identity/location catalogs.
+- Analysis–Zotero bindings and attachment identity/location catalogs; and
+- versioned Research Record files under `.scholium/inquiry-records/`.
 
 Application Support contains machine-local access and execution state:
 security-scoped bookmarks and paths, window sessions, derived indexes and
-caches, local MCP bridge state, exact Agent Change evidence, and recovery
-artifacts. Markdown/YAML contains only portable research content.
+caches, local MCP bridge state, exact Agent Change evidence, optional
+Record-step/Agent-Change associations, and recovery artifacts. Note
+Markdown/YAML remains the sole writable research-content authority; Markdown
+strings inside a Record are authority only for that attributed history.
 Attachment bytes remain ordinary Finder-owned files.
 
 Portable control state never contains secrets, absolute paths, bookmarks,

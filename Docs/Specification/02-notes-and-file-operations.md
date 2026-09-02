@@ -197,9 +197,9 @@ in-flight or uncertain MCP mutation, unresolved write recovery, identity
 ambiguity, source or manifest drift, or unsafe filesystem entry blocks the
 move.
 
-A Research Record, when present under its separately approved contract, is
-independent historical research content. Moving its participant source to
-system Trash does not alter or delete it. Stable Note identity, Settlement,
+A Research Record under §8.6 is independent attributed research history.
+Moving a referenced Note to system Trash does not alter or delete the Record or
+its historical Note identity and revision. Stable Note identity, Settlement,
 Zotero binding, source-access provenance, and Critique association also remain
 so Finder restoration can reconcile exact source.
 
