@@ -50,9 +50,9 @@ public actor AgentCollaborationOperations: AgentCollaborationUseCases {
         return try await handle.agentChanges()
     }
 
-    public func agentChange(id: UUID) async throws -> AgentChange {
+    public func agentChangeReview(id: UUID) async throws -> AgentChangeReview {
         let handle = try await reference.requireHandle()
-        return try await handle.agentChange(id: id)
+        return try await handle.reviewAgentChange(id: id)
     }
 
     public func undoAgentChange(
@@ -301,9 +301,46 @@ extension WorkspaceHandle {
         return try await services.agentChangeStore.changes()
     }
 
-    func agentChange(id: UUID) async throws -> AgentChange {
+    func reviewAgentChange(id: UUID) async throws -> AgentChangeReview {
         try requireActive()
-        return try await services.agentChangeStore.change(id: id)
+        let evidence = try await services.agentChangeStore.evidence(id: id)
+        let change = evidence.change
+        let comparison = change.operation == .update
+            ? try evidence.exactUpdateComparison()
+            : nil
+
+        guard let endingFingerprint = change.afterFingerprint else {
+            return AgentChangeReview(
+                change: change,
+                comparison: comparison,
+                currentCreatedSource: nil,
+                endingRevisionState: nil
+            )
+        }
+
+        let refreshed = try await refresh()
+        let matches = refreshed.vaults.flatMap(\.documents).filter {
+            $0.stableIdentity.resolvedID == change.noteID
+        }
+        guard matches.count == 1 else {
+            return AgentChangeReview(
+                change: change,
+                comparison: comparison,
+                currentCreatedSource: nil,
+                endingRevisionState: .unavailable
+            )
+        }
+        let current = try await loadDocument(matches[0].id)
+        let revisionState: AgentChangeEndingRevisionState =
+            current.fingerprint == endingFingerprint ? .current : .earlierRevision
+        return AgentChangeReview(
+            change: change,
+            comparison: comparison,
+            currentCreatedSource: change.operation == .create && revisionState == .current
+                ? current.rawContent
+                : nil,
+            endingRevisionState: revisionState
+        )
     }
 
     func undoAgentChange(

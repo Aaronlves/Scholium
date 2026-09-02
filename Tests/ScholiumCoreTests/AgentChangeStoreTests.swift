@@ -40,6 +40,14 @@ struct AgentChangeStoreTests {
             observedAfterFingerprint: DocumentFingerprint(data: after)
         )
         #expect(confirmed.state == .confirmed)
+        let evidence = try await store.evidence(id: id)
+        #expect(evidence.change.id == id)
+        #expect(evidence.change.noteID == noteID)
+        #expect(evidence.beforeData == before)
+        #expect(evidence.afterData == after)
+        let comparison = try evidence.exactUpdateComparison()
+        #expect(comparison.startingRevision == DocumentFingerprint(data: before))
+        #expect(comparison.endingRevision == DocumentFingerprint(data: after))
         #expect(try await store.beforeDataForUndo(
             id: id,
             expectedAfterFingerprint: DocumentFingerprint(data: after)
@@ -50,6 +58,12 @@ struct AgentChangeStoreTests {
             triptychID: fixture.triptychID
         )
         #expect(try await reopened.change(id: id).state == .confirmed)
+        let reopenedEvidence = try await reopened.evidence(id: id)
+        #expect(reopenedEvidence.beforeData == before)
+        #expect(reopenedEvidence.afterData == after)
+        let reopenedComparison = try reopenedEvidence.exactUpdateComparison()
+        #expect(reopenedComparison.startingRevision == DocumentFingerprint(data: before))
+        #expect(reopenedComparison.endingRevision == DocumentFingerprint(data: after))
         let undone = try await reopened.markUndone(
             id: id,
             restoredFingerprint: DocumentFingerprint(data: before)

@@ -19,6 +19,11 @@
 
 ## Human interface and accessibility acceptance
 
+- Re-run the affected Agent Changes exact-comparison/Undo UI journey when the
+  macOS XCTest host can enable automation mode. Three 2026-09-02 attempts built
+  the target and launched the runner against a disposable synthetic Triptych,
+  but the runner timed out before entering the test method; this is not UI
+  execution or acceptance evidence.
 - Establish the retained Core human baseline: one genuine VoiceOver journey,
   one physical Full Keyboard Access journey, one installed Simplified Chinese
   IME exact-source journey, and one visual-adaptation set at supported window

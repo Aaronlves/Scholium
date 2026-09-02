@@ -88,6 +88,77 @@ public struct AgentChangeUndoResult: Hashable, Sendable {
     }
 }
 
+/// Exact machine-local bytes bound to one Agent Change. The Core store
+/// revalidates every byte set against the recorded fingerprints before this
+/// value crosses into Application presentation.
+public struct AgentChangeEvidence: Sendable {
+    public let change: AgentChange
+    public let beforeData: Data?
+    public let afterData: Data?
+
+    public init(
+        change: AgentChange,
+        beforeData: Data?,
+        afterData: Data?
+    ) {
+        self.change = change
+        self.beforeData = beforeData
+        self.afterData = afterData
+    }
+
+    public func exactUpdateComparison() throws -> ExactSourceComparison {
+        guard change.operation == .update,
+              let beforeData,
+              let afterData,
+              let beforeFingerprint = change.beforeFingerprint,
+              let afterFingerprint = change.afterFingerprint else {
+            throw AgentChangeError.undoUnavailable(change.id)
+        }
+        return try ExactSourceComparisonBuilder.build(
+            startingData: beforeData,
+            endingData: afterData,
+            startingRevision: beforeFingerprint,
+            endingRevision: afterFingerprint
+        )
+    }
+}
+
+public enum AgentChangeEndingRevisionState: Hashable, Sendable {
+    /// The authoritative current Note still equals this change's ending
+    /// fingerprint.
+    case current
+    /// The stable Note is present, but authoritative source has moved on.
+    case earlierRevision
+    /// No unique current source can be compared with the ending fingerprint.
+    case unavailable
+}
+
+/// One disposable App review projection. It remains bound to the exact
+/// `(change_id, Note ID)` evidence and carries no viewed, accepted, or
+/// Settlement state.
+public struct AgentChangeReview: Sendable {
+    public let change: AgentChange
+    public let comparison: ExactSourceComparison?
+    public let currentCreatedSource: String?
+    public let endingRevisionState: AgentChangeEndingRevisionState?
+
+    public init(
+        change: AgentChange,
+        comparison: ExactSourceComparison?,
+        currentCreatedSource: String?,
+        endingRevisionState: AgentChangeEndingRevisionState?
+    ) {
+        self.change = change
+        self.comparison = comparison
+        self.currentCreatedSource = currentCreatedSource
+        self.endingRevisionState = endingRevisionState
+    }
+
+    public var isDirectUndoAvailable: Bool {
+        change.isDirectUndoEligible && endingRevisionState == .current
+    }
+}
+
 public enum AgentNoteUpdateMode: String, Codable, Hashable, Sendable {
     case body
     case source
@@ -170,7 +241,7 @@ public protocol AgentCollaborationUseCases: Sendable {
         expectedFingerprint: DocumentFingerprint
     ) async throws -> AgentNoteTrashResult
     func agentChanges() async throws -> [AgentChange]
-    func agentChange(id: UUID) async throws -> AgentChange
+    func agentChangeReview(id: UUID) async throws -> AgentChangeReview
     func undoAgentChange(
         id: UUID,
         expectedAfterFingerprint: DocumentFingerprint

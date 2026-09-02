@@ -132,6 +132,33 @@ enum ExactSourceComparisonPresentation {
     }
 }
 
+enum ExactSourceWhitespacePresentation {
+    static func visible(_ text: String) -> String? {
+        var result = ""
+        var containsWhitespace = false
+        for scalar in text.unicodeScalars {
+            switch scalar.value {
+            case 0x20:
+                containsWhitespace = true
+                result.append("·")
+            case 0x09:
+                containsWhitespace = true
+                result.append("⇥")
+            default:
+                if CharacterSet.whitespaces.contains(scalar) {
+                    containsWhitespace = true
+                    result.append("⟦U+")
+                    result.append(String(scalar.value, radix: 16, uppercase: true))
+                    result.append("⟧")
+                } else {
+                    result.unicodeScalars.append(scalar)
+                }
+            }
+        }
+        return containsWhitespace ? result : nil
+    }
+}
+
 /// Pure unified-diff presentation shared by current editor conflicts and
 /// Source comparison review. Input and consequential actions remain with their
 /// respective owners.
@@ -183,31 +210,53 @@ struct ExactSourceComparisonView: View {
     }
 
     private var revisionHeader: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: ScholiumGrid.Spacing.sectionSeparation) {
-                revisionLabel(
-                    title: startingLabel,
-                    fingerprint: comparison.startingRevision,
-                    hasBOM: comparison.startingHasUTF8BOM
-                )
-                revisionLabel(
-                    title: endingLabel,
-                    fingerprint: comparison.endingRevision,
-                    hasBOM: comparison.endingHasUTF8BOM
-                )
+        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(startingLabel)
+                Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
+                Image(systemName: "arrow.right")
+                    .accessibilityHidden(true)
+                Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
+                Text(endingLabel)
             }
-            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.nestedContentInset) {
-                revisionLabel(
-                    title: startingLabel,
-                    fingerprint: comparison.startingRevision,
-                    hasBOM: comparison.startingHasUTF8BOM
-                )
-                revisionLabel(
-                    title: endingLabel,
-                    fingerprint: comparison.endingRevision,
-                    hasBOM: comparison.endingHasUTF8BOM
-                )
+            .font(ScholiumTypography.interface(.sectionTitle))
+
+            DisclosureGroup("Revision Details") {
+                ViewThatFits(in: .horizontal) {
+                    HStack(
+                        alignment: .top,
+                        spacing: ScholiumGrid.Spacing.sectionSeparation
+                    ) {
+                        revisionLabel(
+                            title: startingLabel,
+                            fingerprint: comparison.startingRevision,
+                            hasBOM: comparison.startingHasUTF8BOM
+                        )
+                        revisionLabel(
+                            title: endingLabel,
+                            fingerprint: comparison.endingRevision,
+                            hasBOM: comparison.endingHasUTF8BOM
+                        )
+                    }
+                    VStack(
+                        alignment: .leading,
+                        spacing: ScholiumGrid.Spacing.nestedContentInset
+                    ) {
+                        revisionLabel(
+                            title: startingLabel,
+                            fingerprint: comparison.startingRevision,
+                            hasBOM: comparison.startingHasUTF8BOM
+                        )
+                        revisionLabel(
+                            title: endingLabel,
+                            fingerprint: comparison.endingRevision,
+                            hasBOM: comparison.endingHasUTF8BOM
+                        )
+                    }
+                }
+                .padding(.top, ScholiumGrid.Spacing.inlineControlGap)
             }
+            .font(ScholiumTypography.interface(.compact))
         }
         .padding(ScholiumGrid.Spacing.nestedContentInset)
     }
@@ -233,7 +282,7 @@ struct ExactSourceComparisonView: View {
 
     private func diffLine(_ line: ExactSourceComparisonLine) -> some View {
         HStack(
-            alignment: .firstTextBaseline,
+            alignment: .top,
             spacing: ScholiumMetrics.DocumentWorkflow.exactDiffColumnSpacing
         ) {
             Text(line.startingLineNumber.map(String.init) ?? "")
@@ -251,15 +300,54 @@ struct ExactSourceComparisonView: View {
                 .scholiumForeground(colorRole(for: line.kind))
                 .frame(width: ScholiumMetrics.DocumentWorkflow.exactDiffMarkerWidth)
                 .accessibilityLabel(accessibilityLabel(for: line.kind))
-            Text(line.text.isEmpty ? " " : line.text)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .lineLimit(nil)
-                .textSelection(.enabled)
+            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                if line.kind != .unchanged {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(accessibilityLabel(for: line.kind))
+                            .font(ScholiumTypography.interface(.small, emphasis: .strong))
+                        Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
+                        Text(lineEndingLabel(line.lineEnding))
+                            .font(ScholiumTypography.interface(.small))
+                            .scholiumForeground(.secondaryText)
+                    }
+                }
+                if line.text.isEmpty {
+                    Text("Blank line")
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.secondaryText)
+                } else {
+                    Text(line.text)
+                        .font(ScholiumTypography.exact(.body))
+                        .scholiumForeground(
+                            line.kind == .unchanged ? .secondaryText : .primaryText
+                        )
+                        .lineLimit(nil)
+                        .textSelection(.enabled)
+                }
+                if line.kind != .unchanged,
+                   let visibleWhitespace = ExactSourceWhitespacePresentation.visible(
+                       line.text
+                   ) {
+                    VStack(
+                        alignment: .leading,
+                        spacing: ScholiumGrid.Spacing.labelAccessoryGap
+                    ) {
+                        Text("Whitespace (· space, ⇥ tab)")
+                            .font(ScholiumTypography.interface(.small))
+                            .scholiumForeground(.secondaryText)
+                        Text(visibleWhitespace)
+                            .font(ScholiumTypography.exact(.small))
+                            .scholiumForeground(.secondaryText)
+                            .lineLimit(nil)
+                            .textSelection(.enabled)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .font(ScholiumTypography.exact(.body))
-        .scholiumForeground(
-            line.kind == .unchanged ? .secondaryText : .primaryText
-        )
+        .font(ScholiumTypography.exact(.small))
+        .scholiumForeground(.secondaryText)
         .padding(.horizontal, ScholiumGrid.Spacing.nestedContentInset)
         .padding(.vertical, ScholiumMetrics.DocumentWorkflow.conflictDiffRowVerticalInset)
         .background(
@@ -315,6 +403,16 @@ struct ExactSourceComparisonView: View {
         switch kind {
         case .unchanged: .secondaryText
         case .startingOnly, .endingOnly: .attention
+        }
+    }
+
+    private func lineEndingLabel(
+        _ ending: ExactSourceComparisonLineEnding
+    ) -> LocalizedStringResource {
+        switch ending {
+        case .lf: "Line ending: LF"
+        case .crlf: "Line ending: CRLF"
+        case .none: "No line ending"
         }
     }
 

@@ -375,6 +375,16 @@ struct PropertyPresentationTests {
         #expect(never.settledAt == nil)
     }
 
+    @Test("Changed-since-settlement exposes Settle Again in the Document Rail")
+    func changedSettlementRailAction() {
+        #expect(DocumentSettlementRailAction.resolve(
+            .changedSinceSettlement
+        ) == .settleAgain)
+        #expect(DocumentSettlementRailAction.resolve(.settled) == .settleAgain)
+        #expect(DocumentSettlementRailAction.resolve(.notYetSettled) == .settle)
+        #expect(DocumentSettlementRailAction.resolve(.unavailable) == .unavailable)
+    }
+
     @Test("About presents file creation and modification facts from the snapshot")
     func aboutFileHistoryFacts() {
         let created = Date(timeIntervalSince1970: 10)

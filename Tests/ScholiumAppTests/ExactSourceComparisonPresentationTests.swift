@@ -46,6 +46,16 @@ struct ExactSourceComparisonPresentationTests {
         #expect(folded.count == 8)
     }
 
+    @Test("Changed-line whitespace receives a visible exact representation")
+    func visibleWhitespace() {
+        #expect(ExactSourceWhitespacePresentation.visible("alpha beta  ") ==
+            "alpha·beta··")
+        #expect(ExactSourceWhitespacePresentation.visible("\talpha") == "⇥alpha")
+        #expect(ExactSourceWhitespacePresentation.visible("alpha\u{00A0}beta") ==
+            "alpha⟦U+A0⟧beta")
+        #expect(ExactSourceWhitespacePresentation.visible("alpha") == nil)
+    }
+
     private func unchanged(_ id: Int) -> ExactSourceComparisonLine {
         ExactSourceComparisonLine(
             id: id,

@@ -838,6 +838,15 @@ struct ContentView: View {
                     }
                     return try await operations.agentChanges()
                 },
+                loadReview: { changeID in
+                    guard let operations = appState.windowWorkspaceController
+                        .activeCapabilities?.agentCollaboration else {
+                        throw ScholiumApplicationError.critiqueStoreUnavailable(
+                            "No workspace is active."
+                        )
+                    }
+                    return try await operations.agentChangeReview(id: changeID)
+                },
                 undo: { change in
                     guard let operations = appState.windowWorkspaceController
                         .activeCapabilities?.agentCollaboration,
@@ -1133,6 +1142,47 @@ private struct WindowFeedbackItem: View {
     }
 }
 
+enum DocumentSettlementRailAction: Hashable {
+    case settle
+    case settleAgain
+    case unavailable
+
+    static func resolve(
+        _ state: AboutSettlementState
+    ) -> DocumentSettlementRailAction {
+        switch state {
+        case .notYetSettled:
+            .settle
+        case .settled, .changedSinceSettlement:
+            .settleAgain
+        case .unavailable:
+            .unavailable
+        }
+    }
+
+    var title: LocalizedStringResource {
+        switch self {
+        case .settle:
+            "Settle"
+        case .settleAgain:
+            "Settle Again"
+        case .unavailable:
+            "Settlement Unavailable"
+        }
+    }
+
+    var help: LocalizedStringResource {
+        switch self {
+        case .settle:
+            "Settle this note"
+        case .settleAgain:
+            "Settle this note again"
+        case .unavailable:
+            "Settlement is unavailable"
+        }
+    }
+}
+
 private struct DocumentSettlementControl: View {
     let presentation: AboutSettlementPresentation
     let settle: (String?) async throws -> Void
@@ -1152,12 +1202,13 @@ private struct DocumentSettlementControl: View {
                 .frame(width: 24, height: 24)
         }
         .buttonStyle(.bordered)
-        .help(presentation.state == .settled ? "Settle this note again" : "Settle this note")
-        .accessibilityLabel(presentation.state == .settled ? "Settled" : "Settle")
+        .disabled(presentation.state == .unavailable)
+        .help(actionHelp)
+        .accessibilityLabel(actionTitle)
         .accessibilityIdentifier("scholium.document.settle")
         .popover(isPresented: $isPresented) {
             VStack(alignment: .leading, spacing: ScholiumMetrics.Apparatus.sectionContentSpacing) {
-                Text(presentation.state == .notYetSettled ? "Settle" : "Settle Again")
+                Text(actionTitle)
                     .font(ScholiumTypography.interface(.sectionTitle))
                 Text("Record this saved revision as sufficiently stable for current research.")
                     .font(ScholiumTypography.interface(.body))
@@ -1177,7 +1228,7 @@ private struct DocumentSettlementControl: View {
                         isPresented = false
                     }
                     Spacer()
-                    Button("Settle") {
+                    Button(actionTitle) {
                         isSettling = true
                         errorMessage = nil
                         Task {
@@ -1199,6 +1250,14 @@ private struct DocumentSettlementControl: View {
             .padding(ScholiumGrid.Spacing.sectionSeparation)
             .frame(width: 300)
         }
+    }
+
+    private var actionTitle: LocalizedStringResource {
+        DocumentSettlementRailAction.resolve(presentation.state).title
+    }
+
+    private var actionHelp: LocalizedStringResource {
+        DocumentSettlementRailAction.resolve(presentation.state).help
     }
 }
 

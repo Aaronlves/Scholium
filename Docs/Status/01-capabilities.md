@@ -37,10 +37,14 @@
   occurrence/link/annotation markup, annotation text, local context, source
   fingerprint, and whole/link/annotation locators. It exposes only authored
   occurrence data.
-- Create, update, and trash write machine-local Agent Change evidence. Confirmed
-  update evidence supports direct Undo only while current source still equals
-  the recorded after fingerprint. This evidence is not portable research
-  history or a second source authority.
+- Create, update, and trash write machine-local Agent Change evidence. Each
+  update retains its own fingerprint-validated exact Before and After bytes;
+  review compares the recorded After fingerprint with freshly loaded
+  authoritative source and marks a superseded ending as an Earlier Revision.
+  Confirmed update evidence supports direct Undo only while that ending remains
+  current. Create and trash retain their actual operation evidence without
+  inventing an empty text preimage or deletion comparison. This evidence is not
+  portable research history or a second source authority.
 - Settings exposes Agent Integration instructions for Codex and Claude Code and
   reveals the bundled `scholium-core-protocol` Skill. Scholium stores no Agent
   credential, session, task, Run, or host preference.

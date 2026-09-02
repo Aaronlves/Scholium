@@ -115,7 +115,7 @@ struct MCPAppBridgeRequestRouterTests {
             min(first.assignment.id.uuidString, second.assignment.id.uuidString).lowercased())
     }
 
-    @Test("Create and update preserve exact source, reject stale writes, and produce direct-undo evidence")
+    @Test("Sequential updates retain noncumulative exact review and direct Undo")
     func mutationsUseApplicationTransactions() async throws {
         let fixture = try await Fixture.make()
         defer { fixture.dispose() }
@@ -132,7 +132,7 @@ struct MCPAppBridgeRequestRouterTests {
                 "triptych_id": .string(triptychID),
                 "role": .string("topics"),
                 "relative_path": .string("Nested/Exact.md"),
-                "body": .string("Line 1\r\nLine 2\r\n"),
+                "body": .string("\n# Line 1\r\nLine 2\r\n"),
             ]
         )))
         let noteIDString = try #require(created["note_id"]?.stringValue)
@@ -144,7 +144,7 @@ struct MCPAppBridgeRequestRouterTests {
         let initialFingerprint = try decodedFingerprint(created["fingerprint"])
         let createdURL = fixture.topicsURL
             .appendingPathComponent("Nested/Exact.md")
-        let initialSource = "---\nsummary: null\nkeywords: []\n---\nLine 1\r\nLine 2\r\n"
+        let initialSource = "---\nsummary: null\nkeywords: []\n---\n\n# Line 1\r\nLine 2\r\n"
         #expect(try Data(contentsOf: createdURL) == Data(initialSource.utf8))
 
         let updated = try result(await router.handle(ScholiumMCPBridgeRequest(
@@ -187,15 +187,91 @@ struct MCPAppBridgeRequestRouterTests {
         #expect(changes.map(\.id).contains(createChangeID))
         #expect(changes.map(\.id).contains(updateChangeID))
         #expect(changes.allSatisfy { $0.state == .confirmed })
+        let currentReview = try await handle.agentCollaboration.agentChangeReview(
+            id: updateChangeID
+        )
+        #expect(currentReview.change.noteID == noteID)
+        #expect(currentReview.endingRevisionState == .current)
+        #expect(currentReview.isDirectUndoAvailable)
+        let comparison = try #require(currentReview.comparison)
+        #expect(comparison.startingRevision == initialFingerprint)
+        #expect(comparison.endingRevision == afterFingerprint)
+        #expect(comparison.lines.contains {
+            $0.kind == .startingOnly && $0.text.isEmpty
+        })
+        #expect(comparison.lines.contains {
+            $0.kind == .endingOnly && $0.text == "Revised A"
+        })
+        let secondUpdated = try result(await router.handle(ScholiumMCPBridgeRequest(
+            tool: .updateNote,
+            arguments: [
+                "triptych_id": .string(triptychID),
+                "note_id": .string(noteID.uuidString),
+                "expected_fingerprint": fingerprintJSON(afterFingerprint),
+                "mode": .string("body"),
+                "content": .string("Revised A\r\nRevised C\r\n"),
+            ]
+        )))
+        let secondChangeIDString = try #require(
+            secondUpdated["change_id"]?.stringValue
+        )
+        let secondChangeID = try #require(UUID(uuidString: secondChangeIDString))
+        let secondFingerprint = try decodedFingerprint(
+            secondUpdated["after_fingerprint"]
+        )
+        let firstEarlierReview = try await handle.agentCollaboration.agentChangeReview(
+            id: updateChangeID
+        )
+        #expect(firstEarlierReview.endingRevisionState == .earlierRevision)
+        #expect(!firstEarlierReview.isDirectUndoAvailable)
+        #expect(firstEarlierReview.comparison?.startingRevision == initialFingerprint)
+        #expect(firstEarlierReview.comparison?.endingRevision == afterFingerprint)
+
+        let secondReview = try await handle.agentCollaboration.agentChangeReview(
+            id: secondChangeID
+        )
+        #expect(secondReview.endingRevisionState == .current)
+        #expect(secondReview.isDirectUndoAvailable)
+        #expect(secondReview.comparison?.startingRevision == afterFingerprint)
+        #expect(secondReview.comparison?.endingRevision == secondFingerprint)
+        #expect(secondReview.comparison?.lines.contains {
+            $0.kind == .startingOnly && $0.text == "Revised B"
+        } == true)
+        #expect(secondReview.comparison?.lines.contains {
+            $0.kind == .endingOnly && $0.text == "Revised C"
+        } == true)
+
+        let secondUndone = try await handle.agentCollaboration.undoAgentChange(
+            id: secondChangeID,
+            expectedAfterFingerprint: secondFingerprint
+        )
+        #expect(secondUndone.restoredFingerprint == afterFingerprint)
+        #expect(try Data(contentsOf: createdURL) == Data(
+            "---\nsummary: null\nkeywords: []\n---\nRevised A\r\nRevised B\r\n".utf8
+        ))
+        let firstCurrentAgain = try await handle.agentCollaboration.agentChangeReview(
+            id: updateChangeID
+        )
+        #expect(firstCurrentAgain.endingRevisionState == .current)
+        #expect(firstCurrentAgain.isDirectUndoAvailable)
+
         let undone = try await handle.agentCollaboration.undoAgentChange(
             id: updateChangeID,
             expectedAfterFingerprint: afterFingerprint
         )
         #expect(undone.restoredFingerprint == initialFingerprint)
         #expect(try Data(contentsOf: createdURL) == Data(initialSource.utf8))
-        #expect(try await handle.agentCollaboration.agentChange(
+        let undoneReview = try await handle.agentCollaboration.agentChangeReview(
             id: updateChangeID
-        ).state == .undone)
+        )
+        #expect(undoneReview.change.state == .undone)
+        #expect(undoneReview.endingRevisionState == .earlierRevision)
+        #expect(!undoneReview.isDirectUndoAvailable)
+        let createReview = try await handle.agentCollaboration.agentChangeReview(
+            id: createChangeID
+        )
+        #expect(createReview.comparison == nil)
+        #expect(createReview.currentCreatedSource == initialSource)
     }
 
     private func result(_ response: ScholiumMCPBridgeResponse) throws

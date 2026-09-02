@@ -109,6 +109,9 @@ final class ScholiumUITests: XCTestCase {
         if name.contains("testDocumentHeadingStudyWrapsLongMixedTitleUsingAcceptedBodyRhythm") {
             return "QA Document Heading Study.md"
         }
+        if name.contains("testAgentChangesShowsExactUpdateAndRestoresSettledBytes") {
+            return "Agent Review.md"
+        }
         return "QA Autosave A.md"
     }
 
@@ -145,6 +148,9 @@ final class ScholiumUITests: XCTestCase {
             appearance: nil,
             openNote: initialOpenNoteForCurrentTest
         )
+        if name.contains("testAgentChangesShowsExactUpdateAndRestoresSettledBytes") {
+            app.launchEnvironment["SCHOLIUM_UI_TEST_OPEN_SLOT"] = "topic_knowledge"
+        }
         // A runner killed by XCTest cannot execute tearDown, so its QA app can
         // survive into the next test process. A fresh XCUIApplication can
         // report `.notRunning` even while that orphan still owns the bundle.

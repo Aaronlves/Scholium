@@ -264,6 +264,17 @@ public actor AgentChangeStore {
         try locked { try readPayload(id).change }
     }
 
+    public func evidence(id: UUID) throws -> AgentChangeEvidence {
+        try locked {
+            let payload = try readPayload(id)
+            return AgentChangeEvidence(
+                change: payload.change,
+                beforeData: payload.beforeData,
+                afterData: payload.afterData
+            )
+        }
+    }
+
     public func changes() throws -> [AgentChange] {
         try locked {
             try storage.fileNames(in: nil)

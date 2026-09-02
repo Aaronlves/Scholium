@@ -32,6 +32,9 @@
   results into its scope or completion vocabulary.
 - System-Trash confirmation describes the exact source and any managed Critique
   moved with it. Recovery stays with the existing bounded transaction owner.
+- The Document Rail presents **Settle Again** for both Settled and Changed since
+  settlement. An external source change does not clear or rewrite Settlement;
+  only the researcher's explicit settlement action records a new revision.
 
 ## Agent Integration and Agent Changes
 
@@ -41,7 +44,16 @@
 - Agent conversation remains in the external host. Scholium shows no chat,
   Agent picker, session, task, activity stack, result review, or Research
   Records window.
-- **Agent Changes** presents machine-local MCP mutation evidence. It can show
-  exact comparison for retained revisions and offers direct Undo only for an
-  eligible confirmed update. It does not express researcher acceptance or
-  Settlement.
+- **Agent Changes** presents one machine-local MCP mutation at a time in
+  confirmation order, with Previous/Next controls and an exact position. Every
+  retained update is bound to one `(change ID, Note ID)` and presents its own
+  Before and After source comparison, including visible blank lines, changed
+  whitespace, per-line LF/CRLF/no-ending evidence, and progressively disclosed
+  fingerprints and BOM state.
+- A recorded After revision that is no longer authoritative is labelled
+  **Earlier Revision** rather than overlaid on current prose. A confirmed update
+  offers direct Undo only while its exact After fingerprint remains current,
+  after native confirmation. Create shows content only when the created
+  revision is still current; trash shows identity, location, and Finder-owned
+  recovery without a fabricated text diff. Agent Changes does not express
+  researcher acceptance or Settlement.

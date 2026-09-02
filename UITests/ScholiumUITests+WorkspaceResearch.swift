@@ -5,6 +5,179 @@ import notify
 
 extension ScholiumUITests {
     @MainActor
+    func testAgentChangesShowsExactUpdateAndRestoresSettledBytes() throws {
+        let noteURL = triptychDirectory
+            .appendingPathComponent("02-topics", isDirectory: true)
+            .appendingPathComponent("Agent Review.md")
+        let originalBytes = try Data(contentsOf: noteURL)
+
+        let settle = app.descendants(matching: .any)["scholium.document.settle"]
+            .firstMatch
+        XCTAssertTrue(settle.waitForExistence(timeout: 10))
+        XCTAssertEqual(settle.label, "Settle")
+        settle.click()
+        let settlePopover = app.popovers.firstMatch
+        XCTAssertTrue(settlePopover.waitForExistence(timeout: 5))
+        let confirmSettle = settlePopover.buttons["Settle"].firstMatch
+        XCTAssertTrue(confirmSettle.waitForExistence(timeout: 5))
+        confirmSettle.click()
+        XCTAssertTrue(waitUntil(timeout: 10) { settle.label == "Settle Again" })
+
+        if !app.scrollViews["scholium.researchInspector"].firstMatch.exists {
+            app.typeKey("b", modifierFlags: [.command, .option])
+        }
+        let inspector = app.scrollViews["scholium.researchInspector"].firstMatch
+        XCTAssertTrue(inspector.waitForExistence(timeout: 5))
+        XCTAssertTrue(inspector.staticTexts["Settled"].firstMatch.waitForExistence(timeout: 5))
+
+        let status = try callQAMCP(tool: "scholium_workspace_status")
+        let triptychID = try XCTUnwrap(status["triptych_id"] as? String)
+        let search = try callQAMCP(
+            tool: "scholium_search_notes",
+            arguments: [
+                "triptych_id": triptychID,
+                "query": "Reasons",
+                "roles": ["topics"],
+            ]
+        )
+        let results = try XCTUnwrap(search["results"] as? [[String: Any]])
+        let result = try XCTUnwrap(results.first(where: {
+            $0["relative_path"] as? String == "Agent Review.md"
+        }))
+        let noteID = try XCTUnwrap(result["note_id"] as? String)
+        let fingerprint = try XCTUnwrap(result["fingerprint"] as? [String: Any])
+        let updatedBody = """
+        # Agent Review
+
+        Reasons can guide action without settling every question about value.
+
+        An external Agent added this synthetic sentence for exact comparison.
+        """
+        _ = try callQAMCP(
+            tool: "scholium_update_note",
+            arguments: [
+                "triptych_id": triptychID,
+                "note_id": noteID,
+                "expected_fingerprint": fingerprint,
+                "mode": "body",
+                "content": updatedBody,
+            ]
+        )
+
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            inspector.staticTexts["Changed since settlement"].firstMatch.exists
+        })
+        XCTAssertEqual(settle.label, "Settle Again")
+
+        let agentChanges = app.toolbars.buttons["Agent Changes"].firstMatch
+        XCTAssertTrue(agentChanges.waitForExistence(timeout: 5))
+        agentChanges.click()
+        let comparison = app.descendants(matching: .any)["scholium.agentChanges"]
+            .firstMatch
+        XCTAssertTrue(comparison.waitForExistence(timeout: 10))
+        for text in [
+            "Updated by External Agent",
+            "Current Revision",
+            "Before",
+            "After",
+            "Removed",
+            "Inserted",
+            "Blank line",
+            "Line ending: LF",
+            "Change 1 of 1",
+        ] {
+            XCTAssertTrue(
+                comparison.staticTexts[text].firstMatch.waitForExistence(timeout: 5),
+                "Agent Changes did not expose \(text)."
+            )
+        }
+        XCTAssertTrue(comparison.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "external Agent added")
+        ).firstMatch.exists)
+        let beforeUndo = XCTAttachment(screenshot: app.screenshot())
+        beforeUndo.name = "Agent Changes exact Before and After"
+        beforeUndo.lifetime = .keepAlways
+        add(beforeUndo)
+
+        let undo = comparison.buttons["Undo"].firstMatch
+        XCTAssertTrue(undo.waitForExistence(timeout: 5))
+        XCTAssertTrue(undo.isEnabled)
+        undo.click()
+        let restore = app.buttons["Restore Before Version"].firstMatch
+        XCTAssertTrue(restore.waitForExistence(timeout: 5))
+        restore.click()
+        XCTAssertTrue(comparison.staticTexts["Earlier Revision"].firstMatch
+            .waitForExistence(timeout: 10))
+        XCTAssertTrue(comparison.staticTexts["This update was undone."].firstMatch.exists)
+        XCTAssertEqual(try Data(contentsOf: noteURL), originalBytes)
+
+        comparison.buttons["Close"].firstMatch.click()
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            inspector.staticTexts["Settled"].firstMatch.exists
+                && !inspector.staticTexts["Changed since settlement"].firstMatch.exists
+        })
+        XCTAssertEqual(settle.label, "Settle Again")
+        let afterUndo = XCTAttachment(screenshot: app.screenshot())
+        afterUndo.name = "Settlement retained after exact Agent Undo"
+        afterUndo.lifetime = .keepAlways
+        add(afterUndo)
+    }
+
+    private func callQAMCP(
+        tool: String,
+        arguments: [String: Any] = [:]
+    ) throws -> [String: Any] {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let executable = repositoryRoot
+            .appendingPathComponent(".build/qa-swiftpm/debug/scholium")
+        let process = Process()
+        process.executableURL = executable
+        process.arguments = ["mcp", "serve"]
+        var environment = ProcessInfo.processInfo.environment
+        environment["SCHOLIUM_HOME"] = homeDirectory.path
+        environment["CFFIXED_USER_HOME"] = homeDirectory.path
+        process.environment = environment
+
+        let input = Pipe()
+        let output = Pipe()
+        let error = Pipe()
+        process.standardInput = input
+        process.standardOutput = output
+        process.standardError = error
+        try process.run()
+
+        let request: [String: Any] = [
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": ["name": tool, "arguments": arguments],
+        ]
+        var requestData = try JSONSerialization.data(withJSONObject: request)
+        requestData.append(0x0A)
+        try input.fileHandleForWriting.write(contentsOf: requestData)
+        try input.fileHandleForWriting.close()
+        let responseData = try output.fileHandleForReading.readToEnd() ?? Data()
+        let errorData = try error.fileHandleForReading.readToEnd() ?? Data()
+        process.waitUntilExit()
+        XCTAssertEqual(
+            process.terminationStatus,
+            0,
+            String(decoding: errorData, as: UTF8.self)
+        )
+        let responseLine = try XCTUnwrap(
+            responseData.split(separator: 0x0A).first
+        )
+        let response = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: responseLine) as? [String: Any]
+        )
+        let result = try XCTUnwrap(response["result"] as? [String: Any])
+        XCTAssertEqual(result["isError"] as? Bool, false)
+        return try XCTUnwrap(result["structuredContent"] as? [String: Any])
+    }
+
+    @MainActor
     func testInspectorDividerResizesWithoutInteractiveCollapse() throws {
         let inspector = app.scrollViews["scholium.researchInspector"].firstMatch
         if !inspector.exists {

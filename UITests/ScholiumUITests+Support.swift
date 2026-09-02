@@ -920,14 +920,25 @@ extension ScholiumUITests {
                 ]
             )
         }
-        try seedManagedTopicAliases(
-            relativePath: "QA Topic.md",
-            aliases: [
-                "Synthetic Topic Alias 001",
-                "Fixture Concept 001",
-                "Normative QA Nexus",
-            ]
-        )
+        if name.contains("testAgentChangesShowsExactUpdateAndRestoresSettledBytes") {
+            try write(
+                """
+                # Agent Review
+
+                Reasons can guide action without settling every question about value.
+                """ + "\n",
+                to: topics.appendingPathComponent("Agent Review.md")
+            )
+        } else {
+            try seedManagedTopicAliases(
+                relativePath: "QA Topic.md",
+                aliases: [
+                    "Synthetic Topic Alias 001",
+                    "Fixture Concept 001",
+                    "Normative QA Nexus",
+                ]
+            )
+        }
         if name.contains("testOverviewRoutesZoteroOnlyFromCurrentAnalysis") {
             try seedAnalysisZoteroBinding(
                 relativePath: "QA Autosave A.md",
