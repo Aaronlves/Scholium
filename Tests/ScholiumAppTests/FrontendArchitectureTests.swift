@@ -913,7 +913,17 @@ struct FrontendArchitectureTests {
         let comparison = try #require(
             applicationSources["Scholium/UI/Components/ExactSourceComparisonView.swift"]
         )
-        #expect(comparison.contains("case .startingOnly, .endingOnly: .attention"))
+        #expect(comparison.contains("case .startingOnly: .comparisonRemoval"))
+        #expect(comparison.contains("case .endingOnly: .comparisonInsertion"))
+        #expect(comparison.contains(
+            "case .startingOnly: ScholiumColorRole.comparisonRemovalBackground.color"
+        ))
+        #expect(comparison.contains(
+            "case .endingOnly: ScholiumColorRole.comparisonInsertionBackground.color"
+        ))
+        #expect(!comparison.contains("ExactSourceWhitespacePresentation"))
+        #expect(!comparison.contains("Text(accessibilityLabel(for: line.kind))"))
+        #expect(!comparison.contains("Text(\"Blank line\")"))
 
         let settings = try #require(viewSources["Scholium/Views/WorkspaceSettingsView.swift"])
         #expect(settings.contains("info.status == .available ? .confirmed : .attention"))
@@ -3816,6 +3826,10 @@ struct FrontendArchitectureTests {
             .destructive: 0x8D453E,
             .confirmed: 0x3E664B,
             .agentAuthorship: 0x61577C,
+            .comparisonRemoval: 0x8D453E,
+            .comparisonInsertion: 0x40684E,
+            .comparisonRemovalBackground: 0xFED7D2,
+            .comparisonInsertionBackground: 0xCBEBD4,
         ]
         let expectedDark: [ScholiumColorRole: UInt32] = [
             .documentBackground: 0x2E2921,
@@ -3835,6 +3849,10 @@ struct FrontendArchitectureTests {
             .destructive: 0xF6A39A,
             .confirmed: 0x99C4A6,
             .agentAuthorship: 0xBDB3DD,
+            .comparisonRemoval: 0xF19E95,
+            .comparisonInsertion: 0x99C4A6,
+            .comparisonRemovalBackground: 0x50312E,
+            .comparisonInsertionBackground: 0x274230,
         ]
         let expectedIncreasedContrastLight: [ScholiumColorRole: UInt32] = [
             .documentBackground: 0xFEF8ED,
@@ -3854,6 +3872,10 @@ struct FrontendArchitectureTests {
             .destructive: 0x681212,
             .confirmed: 0x1A4129,
             .agentAuthorship: 0x3B3154,
+            .comparisonRemoval: 0x681212,
+            .comparisonInsertion: 0x1A4129,
+            .comparisonRemovalBackground: 0xF9C1BB,
+            .comparisonInsertionBackground: 0xB2DEBF,
         ]
         let expectedIncreasedContrastDark: [ScholiumColorRole: UInt32] = [
             .documentBackground: 0x2E2921,
@@ -3873,6 +3895,10 @@ struct FrontendArchitectureTests {
             .destructive: 0xFFDBD6,
             .confirmed: 0xC3EFD0,
             .agentAuthorship: 0xE6E0FD,
+            .comparisonRemoval: 0xFEE6E3,
+            .comparisonInsertion: 0xD2FFDF,
+            .comparisonRemovalBackground: 0x6F413D,
+            .comparisonInsertionBackground: 0x335A40,
         ]
 
         for palette in [
@@ -3938,6 +3964,22 @@ struct FrontendArchitectureTests {
                     let background = try #require(palette[backgroundRole])
                     #expect(contrastRatio(foreground, background) >= target)
                 }
+            }
+        }
+        for (palette, target) in [
+            (expectedLight, 4.5),
+            (expectedDark, 4.5),
+            (expectedIncreasedContrastLight, 7.0),
+            (expectedIncreasedContrastDark, 7.0),
+        ] {
+            let pairs: [(ScholiumColorRole, ScholiumColorRole)] = [
+                (.comparisonRemoval, .comparisonRemovalBackground),
+                (.comparisonInsertion, .comparisonInsertionBackground),
+            ]
+            for (foregroundRole, backgroundRole) in pairs {
+                let foreground = try #require(palette[foregroundRole])
+                let background = try #require(palette[backgroundRole])
+                #expect(contrastRatio(foreground, background) >= target)
             }
         }
         #expect(contrastRatio(0x28241D, 0xFF9A00) >= 7.0)

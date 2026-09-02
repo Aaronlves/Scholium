@@ -132,33 +132,6 @@ enum ExactSourceComparisonPresentation {
     }
 }
 
-enum ExactSourceWhitespacePresentation {
-    static func visible(_ text: String) -> String? {
-        var result = ""
-        var containsWhitespace = false
-        for scalar in text.unicodeScalars {
-            switch scalar.value {
-            case 0x20:
-                containsWhitespace = true
-                result.append("·")
-            case 0x09:
-                containsWhitespace = true
-                result.append("⇥")
-            default:
-                if CharacterSet.whitespaces.contains(scalar) {
-                    containsWhitespace = true
-                    result.append("⟦U+")
-                    result.append(String(scalar.value, radix: 16, uppercase: true))
-                    result.append("⟧")
-                } else {
-                    result.unicodeScalars.append(scalar)
-                }
-            }
-        }
-        return containsWhitespace ? result : nil
-    }
-}
-
 /// Pure unified-diff presentation shared by current editor conflicts and
 /// Source comparison review. Input and consequential actions remain with their
 /// respective owners.
@@ -230,12 +203,14 @@ struct ExactSourceComparisonView: View {
                         revisionLabel(
                             title: startingLabel,
                             fingerprint: comparison.startingRevision,
-                            hasBOM: comparison.startingHasUTF8BOM
+                            hasBOM: comparison.startingHasUTF8BOM,
+                            lineEndings: revisionLineEndings(starting: true)
                         )
                         revisionLabel(
                             title: endingLabel,
                             fingerprint: comparison.endingRevision,
-                            hasBOM: comparison.endingHasUTF8BOM
+                            hasBOM: comparison.endingHasUTF8BOM,
+                            lineEndings: revisionLineEndings(starting: false)
                         )
                     }
                     VStack(
@@ -245,12 +220,14 @@ struct ExactSourceComparisonView: View {
                         revisionLabel(
                             title: startingLabel,
                             fingerprint: comparison.startingRevision,
-                            hasBOM: comparison.startingHasUTF8BOM
+                            hasBOM: comparison.startingHasUTF8BOM,
+                            lineEndings: revisionLineEndings(starting: true)
                         )
                         revisionLabel(
                             title: endingLabel,
                             fingerprint: comparison.endingRevision,
-                            hasBOM: comparison.endingHasUTF8BOM
+                            hasBOM: comparison.endingHasUTF8BOM,
+                            lineEndings: revisionLineEndings(starting: false)
                         )
                     }
                 }
@@ -264,7 +241,8 @@ struct ExactSourceComparisonView: View {
     private func revisionLabel(
         title: LocalizedStringResource,
         fingerprint: DocumentFingerprint,
-        hasBOM: Bool
+        hasBOM: Bool,
+        lineEndings: [ExactSourceComparisonLineEnding]
     ) -> some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
             Text(title)
@@ -275,6 +253,11 @@ struct ExactSourceComparisonView: View {
             Text(hasBOM ? "UTF-8 BOM present" : "No UTF-8 BOM")
                 .font(ScholiumTypography.interface(.small))
                 .scholiumForeground(.secondaryText)
+            ForEach(lineEndings, id: \.self) { ending in
+                Text(lineEndingLabel(ending))
+                    .font(ScholiumTypography.interface(.small))
+                    .scholiumForeground(.secondaryText)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
@@ -301,20 +284,11 @@ struct ExactSourceComparisonView: View {
                 .frame(width: ScholiumMetrics.DocumentWorkflow.exactDiffMarkerWidth)
                 .accessibilityLabel(accessibilityLabel(for: line.kind))
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                if line.kind != .unchanged {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(accessibilityLabel(for: line.kind))
-                            .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                        Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
-                        Text(lineEndingLabel(line.lineEnding))
-                            .font(ScholiumTypography.interface(.small))
-                            .scholiumForeground(.secondaryText)
-                    }
-                }
                 if line.text.isEmpty {
-                    Text("Blank line")
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.secondaryText)
+                    Text(verbatim: " ")
+                        .font(ScholiumTypography.exact(.body))
+                        .accessibilityLabel("Blank line")
+                        .accessibilityHint(lineEndingLabel(line.lineEnding))
                 } else {
                     Text(line.text)
                         .font(ScholiumTypography.exact(.body))
@@ -323,25 +297,7 @@ struct ExactSourceComparisonView: View {
                         )
                         .lineLimit(nil)
                         .textSelection(.enabled)
-                }
-                if line.kind != .unchanged,
-                   let visibleWhitespace = ExactSourceWhitespacePresentation.visible(
-                       line.text
-                   ) {
-                    VStack(
-                        alignment: .leading,
-                        spacing: ScholiumGrid.Spacing.labelAccessoryGap
-                    ) {
-                        Text("Whitespace (· space, ⇥ tab)")
-                            .font(ScholiumTypography.interface(.small))
-                            .scholiumForeground(.secondaryText)
-                        Text(visibleWhitespace)
-                            .font(ScholiumTypography.exact(.small))
-                            .scholiumForeground(.secondaryText)
-                            .lineLimit(nil)
-                            .textSelection(.enabled)
-                    }
-                    .accessibilityElement(children: .combine)
+                        .accessibilityHint(lineEndingLabel(line.lineEnding))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -350,12 +306,11 @@ struct ExactSourceComparisonView: View {
         .scholiumForeground(.secondaryText)
         .padding(.horizontal, ScholiumGrid.Spacing.nestedContentInset)
         .padding(.vertical, ScholiumMetrics.DocumentWorkflow.conflictDiffRowVerticalInset)
-        .background(
-            line.kind == .unchanged
-                ? Color.clear
-                : ScholiumColorRole.raisedSurfaceBackground.color
-        )
-        .accessibilityElement(children: .contain)
+        .background(backgroundColor(for: line.kind))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel(for: line.kind))
+        .accessibilityValue(accessibilityValue(for: line))
+        .accessibilityHint(lineEndingLabel(line.lineEnding))
         .accessibilityIdentifier("\(identifierPrefix).row.\(line.id)")
     }
 
@@ -397,13 +352,48 @@ struct ExactSourceComparisonView: View {
         }
     }
 
+    private func accessibilityValue(
+        for line: ExactSourceComparisonLine
+    ) -> String {
+        let lineNumbers = [line.startingLineNumber, line.endingLineNumber]
+            .compactMap { $0.map(String.init) }
+            .joined(separator: " ")
+        let content = line.text.isEmpty
+            ? String(localized: "Blank line")
+            : line.text
+        return "\(lineNumbers) \(content)"
+    }
+
     private func colorRole(
         for kind: ExactSourceComparisonLineKind
     ) -> ScholiumColorRole {
         switch kind {
         case .unchanged: .secondaryText
-        case .startingOnly, .endingOnly: .attention
+        case .startingOnly: .comparisonRemoval
+        case .endingOnly: .comparisonInsertion
         }
+    }
+
+    private func backgroundColor(
+        for kind: ExactSourceComparisonLineKind
+    ) -> Color {
+        switch kind {
+        case .unchanged: .clear
+        case .startingOnly: ScholiumColorRole.comparisonRemovalBackground.color
+        case .endingOnly: ScholiumColorRole.comparisonInsertionBackground.color
+        }
+    }
+
+    private func revisionLineEndings(
+        starting: Bool
+    ) -> [ExactSourceComparisonLineEnding] {
+        let present = Set(comparison.lines.compactMap { line in
+            let existsInRevision = starting
+                ? line.startingLineNumber != nil
+                : line.endingLineNumber != nil
+            return existsInRevision ? line.lineEnding : nil
+        })
+        return [.lf, .crlf, .none].filter(present.contains)
     }
 
     private func lineEndingLabel(

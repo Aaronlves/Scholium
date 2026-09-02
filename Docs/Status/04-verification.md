@@ -4,13 +4,17 @@
 
 ## Current verification snapshot
 
-**Environment:** 2026-09-02, Xcode 27 beta toolchain
+**Environment:** 2026-09-02 complete integration snapshot with 2026-09-03
+focused Agent Changes evidence, Xcode 27 beta toolchain
 (`DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer`).
 
-The current Agent Changes implementation has automated evidence for the fixed
-MCP contract, exact machine-local Before/After payloads, current-versus-earlier
-revision classification, byte-identical direct Update Undo, exact whitespace
-presentation, and the Changed-since-settlement rail action.
+The 2026-09-02 Agent Changes integration established automated evidence for the
+fixed MCP contract, exact machine-local Before/After payloads,
+current-versus-earlier revision classification, byte-identical direct Update
+Undo, and the Changed-since-settlement rail action. The 2026-09-03 presentation
+change has focused evidence for its unified line model and semantic
+removal/insertion palettes; the complete integration gate was not rerun for
+that single-owner interface change.
 
 Completed automated checks in this worktree:
 
@@ -30,12 +34,19 @@ Completed automated checks in this worktree:
   validator, interface localization validator, bundled-Skill validator,
   resource and retired-surface residue guards, and `git diff --check` passed.
 - The Release product build passed in 123.96 seconds.
-- The affected macOS UI-test journey built and its runner launched three times
-  against a disposable synthetic three-vault Triptych. XCTest timed out while
-  enabling automation mode before it entered the test method on every attempt.
-  Consequently there is no executed UI journey, screenshot set, or end-to-end
-  UI pass to claim from these runs; the retained result bundles are host-failure
-  diagnostics only.
+- On 2026-09-03 the two exact-comparison presentation tests and the focused
+  palette snapshot/contrast and semantic-role architecture tests passed.
+  `build-qa-app.sh` syntax validation and `git diff --check` passed. A fresh
+  disposable fixture opened one coherent workspace instead of the former
+  settings-only Bootstrap failure.
+- The affected macOS UI-test journey entered its test method and completed
+  Settlement plus one MCP update. After synthetic Agent Changes activation,
+  XCTest observed a disabled main window but neither rendered nor exposed the
+  attached sheet, so the journey failed before comparison and Undo assertions.
+  Exploratory Computer Use on the same isolated build rendered the red/green
+  unified comparison and exposed change kind, exact line content, blank-line,
+  line-number, and line-ending accessibility semantics. This observation is
+  neither a deterministic UI pass nor human acceptance.
 
 ## Evidence boundary
 

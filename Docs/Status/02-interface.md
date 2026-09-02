@@ -47,9 +47,11 @@
 - **Agent Changes** presents one machine-local MCP mutation at a time in
   confirmation order, with Previous/Next controls and an exact position. Every
   retained update is bound to one `(change ID, Note ID)` and presents its own
-  Before and After source comparison, including visible blank lines, changed
-  whitespace, per-line LF/CRLF/no-ending evidence, and progressively disclosed
-  fingerprints and BOM state.
+  Before and After unified source comparison. Removed and inserted rows use
+  restrained semantic red/green fields plus `−`/`+` markers; source blank lines
+  remain visually blank. Markers, line numbers, and accessibility semantics
+  preserve the distinction without color, while Revision Details progressively
+  discloses line-ending, fingerprint, and BOM evidence.
 - A recorded After revision that is no longer authoritative is labelled
   **Earlier Revision** rather than overlaid on current prose. A confirmed update
   offers direct Undo only while its exact After fingerprint remains current,

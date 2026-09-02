@@ -80,10 +80,6 @@ extension ScholiumUITests {
             "Current Revision",
             "Before",
             "After",
-            "Removed",
-            "Inserted",
-            "Blank line",
-            "Line ending: LF",
             "Change 1 of 1",
         ] {
             XCTAssertTrue(
@@ -93,6 +89,15 @@ extension ScholiumUITests {
         }
         XCTAssertTrue(comparison.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "external Agent added")
+        ).firstMatch.exists)
+        let changeRows = comparison.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "scholium.agentChanges.row.")
+        )
+        XCTAssertTrue(changeRows.matching(
+            NSPredicate(format: "label == %@", "Removed")
+        ).firstMatch.exists)
+        XCTAssertTrue(changeRows.matching(
+            NSPredicate(format: "label == %@", "Inserted")
         ).firstMatch.exists)
         let beforeUndo = XCTAttachment(screenshot: app.screenshot())
         beforeUndo.name = "Agent Changes exact Before and After"

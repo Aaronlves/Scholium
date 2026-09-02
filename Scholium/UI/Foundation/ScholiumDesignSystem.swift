@@ -48,6 +48,10 @@ enum ScholiumColorRole: String, CaseIterable, Sendable {
     case destructive
     case confirmed
     case agentAuthorship
+    case comparisonRemoval
+    case comparisonInsertion
+    case comparisonRemovalBackground
+    case comparisonInsertionBackground
 
     var cssVariableName: String {
         "--scholium-color-\(rawValue.kebabCased)"
@@ -158,6 +162,10 @@ struct ScholiumResolvedColorPalette: Equatable, Sendable {
     let destructive: UInt32
     let confirmed: UInt32
     let agentAuthorship: UInt32
+    let comparisonRemoval: UInt32
+    let comparisonInsertion: UInt32
+    let comparisonRemovalBackground: UInt32
+    let comparisonInsertionBackground: UInt32
 
     subscript(role: ScholiumColorRole) -> UInt32 {
         switch role {
@@ -178,6 +186,10 @@ struct ScholiumResolvedColorPalette: Equatable, Sendable {
         case .destructive: destructive
         case .confirmed: confirmed
         case .agentAuthorship: agentAuthorship
+        case .comparisonRemoval: comparisonRemoval
+        case .comparisonInsertion: comparisonInsertion
+        case .comparisonRemovalBackground: comparisonRemovalBackground
+        case .comparisonInsertionBackground: comparisonInsertionBackground
         }
     }
 }
@@ -291,6 +303,20 @@ struct ScholiumColorResolver: Sendable {
                 : (increasedContrast ? 0.54 : 0.62),
             chromaLimit: increasedContrast ? 0.13 : 0.10
         )
+        let comparisonBackgroundLightness = isDark
+            ? (increasedContrast ? 0.43 : 0.35)
+            : (increasedContrast ? 0.86 : 0.91)
+        let comparisonBackgroundChroma = increasedContrast ? 0.065 : 0.045
+        let comparisonRemovalBackground = Self.tone(
+            Self.oklch(from: FunctionalAnchor.destructive),
+            lightness: comparisonBackgroundLightness,
+            chromaLimit: comparisonBackgroundChroma
+        )
+        let comparisonInsertionBackground = Self.tone(
+            Self.oklch(from: FunctionalAnchor.confirmed),
+            lightness: comparisonBackgroundLightness,
+            chromaLimit: comparisonBackgroundChroma
+        )
         let semanticStart =
             isDark
             ? (increasedContrast ? 0.88 : 0.78)
@@ -302,6 +328,20 @@ struct ScholiumColorResolver: Sendable {
                 startingLightness: semanticStart,
                 chromaLimit: increasedContrast ? 0.13 : 0.10,
                 backgrounds: backgrounds,
+                target: contrastTarget,
+                preferLight: isDark
+            )
+        }
+
+        func comparisonForeground(
+            _ anchor: UInt32,
+            background: UInt32
+        ) -> UInt32 {
+            Self.contrastColor(
+                Self.oklch(from: anchor),
+                startingLightness: semanticStart,
+                chromaLimit: increasedContrast ? 0.13 : 0.10,
+                backgrounds: [background],
                 target: contrastTarget,
                 preferLight: isDark
             )
@@ -324,7 +364,17 @@ struct ScholiumColorResolver: Sendable {
             attention: semanticColor(FunctionalAnchor.attention),
             destructive: semanticColor(FunctionalAnchor.destructive),
             confirmed: semanticColor(FunctionalAnchor.confirmed),
-            agentAuthorship: semanticColor(FunctionalAnchor.agentAuthorship)
+            agentAuthorship: semanticColor(FunctionalAnchor.agentAuthorship),
+            comparisonRemoval: comparisonForeground(
+                FunctionalAnchor.destructive,
+                background: comparisonRemovalBackground
+            ),
+            comparisonInsertion: comparisonForeground(
+                FunctionalAnchor.confirmed,
+                background: comparisonInsertionBackground
+            ),
+            comparisonRemovalBackground: comparisonRemovalBackground,
+            comparisonInsertionBackground: comparisonInsertionBackground
         )
     }
 

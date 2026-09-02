@@ -10,14 +10,9 @@ FIXTURE_SOURCE="${SCHOLIUM_TEST_VAULTS:-${ROOT}/.build/test-vaults}"
 FIXTURE_COPY="${QA_ROOT}/fixtures"
 SETTINGS_FIXTURE="${ROOT}/Tools/Fixtures/qa-triptych-settings-v8.json"
 QA_HOME="${QA_ROOT}/home"
-REQUIRE_SETTINGS_ONLY="${SCHOLIUM_QA_REQUIRE_SETTINGS_ONLY:-0}"
 
 [[ -d "${FIXTURE_SOURCE}" ]] || { print -u2 "Missing fixture vault root: ${FIXTURE_SOURCE}"; exit 1; }
 [[ -f "${SETTINGS_FIXTURE}" ]] || { print -u2 "Missing current QA Settings fixture: ${SETTINGS_FIXTURE}"; exit 1; }
-if [[ "${REQUIRE_SETTINGS_ONLY}" == "1" && -e "${FIXTURE_SOURCE}/.scholium" ]]; then
-  print -u2 "A settings-only QA source must not contain existing portable .scholium state."
-  exit 1
-fi
 
 terminate_qa_instances() {
   pkill -f "${APP}/Contents/MacOS/Scholium" 2>/dev/null || true
@@ -61,20 +56,15 @@ done
 if [[ -d "${FIXTURE_SOURCE}/.scholium" ]]; then
   cp -R "${FIXTURE_SOURCE}/.scholium" "${FIXTURE_COPY}/.scholium"
 fi
-# QA consumes a static research-note snapshot plus the repository-owned
-# current portable Settings fixture. The replacement occurs only in the
-# disposable copy; unsupported source fixture bytes remain untouched.
-mkdir -p "${FIXTURE_COPY}/.scholium"
-cp "${SETTINGS_FIXTURE}" "${FIXTURE_COPY}/.scholium/settings.json"
-if [[ "${REQUIRE_SETTINGS_ONLY}" == "1" ]]; then
-  unexpected_portable_state="$(
-    find "${FIXTURE_COPY}/.scholium" -mindepth 1 -maxdepth 1 \
-      ! -name settings.json -print -quit
-  )"
-  [[ -z "${unexpected_portable_state}" ]] || {
-    print -u2 "Settings-only QA staging produced unexpected portable state: ${unexpected_portable_state}"
-    exit 1
-  }
+# Never manufacture a nonempty portable-control directory without its
+# manifest. A preconfigured fixture receives the current repository-owned
+# Settings bytes; a fresh fixture stays completely unconfigured so the QA App
+# creates one coherent portable control through the production bootstrap path.
+if [[ -f "${FIXTURE_COPY}/.scholium/manifest.json" ]]; then
+  cp "${SETTINGS_FIXTURE}" "${FIXTURE_COPY}/.scholium/settings.json"
+elif [[ -e "${FIXTURE_COPY}/.scholium" ]]; then
+  print -u2 "QA fixture portable control is incomplete: ${FIXTURE_COPY}/.scholium"
+  exit 1
 fi
 # Authoring utilities such as generate_fixtures.py are deliberately neither
 # copied nor executed.
