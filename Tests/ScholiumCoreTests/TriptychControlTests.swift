@@ -241,7 +241,6 @@ struct TriptychControlTests {
             "schemaVersion",
             "metadataFields",
             "about",
-            "analysisAgentCreation",
             "attentionDismissalDays",
         ])
         #expect((object["schemaVersion"] as? NSNumber)?.intValue == 8)
@@ -267,7 +266,6 @@ struct TriptychControlTests {
             "schemaVersion",
             "metadataFields",
             "about",
-            "analysisAgentCreation",
             "attentionDismissalDays",
         ])
     }

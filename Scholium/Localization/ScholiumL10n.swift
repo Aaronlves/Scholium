@@ -79,7 +79,7 @@ enum ScholiumL10n {
                 defaultValue: "Metadata",
                 table: "Interface",
                 bundle: .module,
-                comment: "Settings tab for managed field definitions, Agent preferences, and About profiles."
+                comment: "Settings tab for managed field definitions and About profiles."
             )
         }
 

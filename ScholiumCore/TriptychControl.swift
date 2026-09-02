@@ -549,8 +549,8 @@ public actor TriptychControlStore {
 
     /// Resolves the one workspace Metadata catalog. A current-schema settings
     /// candidate may still authorize its independently valid definitions while
-    /// About or Agent preferences await repair; unsupported envelopes expose
-    /// built-ins only and never invent custom definitions.
+    /// About settings await repair; unsupported envelopes expose built-ins only
+    /// and never invent custom definitions.
     public func metadataCatalog() throws -> NoteMetadataCatalog {
         switch try settingsLoadState() {
         case .current(let snapshot):

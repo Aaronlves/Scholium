@@ -93,32 +93,6 @@ public struct VaultAboutConfiguration: Codable, Hashable, Sendable {
 
 }
 
-private struct RetiredAnalysisCreationGuidance: Codable, Hashable, Sendable {
-    var preferredFieldsBySourceType: [AnalysisSourceType: [String]]
-
-    init(preferredFieldsBySourceType: [AnalysisSourceType: [String]] = [:]) {
-        self.preferredFieldsBySourceType = preferredFieldsBySourceType
-    }
-
-    private enum CodingKeys: String, CodingKey {
-        case preferredFieldsBySourceType
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        preferredFieldsBySourceType = try container.decode(
-            [AnalysisSourceType: [String]].self,
-            forKey: .preferredFieldsBySourceType
-        )
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(preferredFieldsBySourceType, forKey: .preferredFieldsBySourceType)
-    }
-
-}
-
 public struct TriptychSettings: Codable, Hashable, Sendable {
     public static let currentSchemaVersion = 8
 
@@ -132,9 +106,6 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
     public var about: [WorkspaceVaultSlot: VaultAboutConfiguration] {
         didSet { about = Self.completeAbout(about) }
     }
-    /// Decoded and re-encoded only so a metadata edit does not discard the
-    /// retired v8 field. It has no public or runtime semantics.
-    private var retiredAnalysisCreationGuidance: RetiredAnalysisCreationGuidance
     public var attentionDismissalDays: Int
 
     public init(
@@ -145,7 +116,6 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
         schemaVersion = Self.currentSchemaVersion
         self.metadataFields = Self.completeMetadataFields(metadataFields)
         self.about = Self.completeAbout(about)
-        retiredAnalysisCreationGuidance = .init()
         self.attentionDismissalDays = max(1, attentionDismissalDays)
     }
 
@@ -153,7 +123,6 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
         case schemaVersion
         case metadataFields
         case about
-        case analysisAgentCreation
         case attentionDismissalDays
     }
 
@@ -186,10 +155,6 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
         self.schemaVersion = schemaVersion
         self.metadataFields = metadataFields
         self.about = about
-        retiredAnalysisCreationGuidance = try container.decodeIfPresent(
-            RetiredAnalysisCreationGuidance.self,
-            forKey: .analysisAgentCreation
-        ) ?? .init()
         attentionDismissalDays = try container.decode(
             Int.self,
             forKey: .attentionDismissalDays
@@ -201,10 +166,6 @@ public struct TriptychSettings: Codable, Hashable, Sendable {
         try container.encode(schemaVersion, forKey: .schemaVersion)
         try container.encode(metadataFields, forKey: .metadataFields)
         try container.encode(about, forKey: .about)
-        try container.encode(
-            retiredAnalysisCreationGuidance,
-            forKey: .analysisAgentCreation
-        )
         try container.encode(attentionDismissalDays, forKey: .attentionDismissalDays)
     }
 

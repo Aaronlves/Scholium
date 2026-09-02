@@ -1,9 +1,4 @@
 {
-  "analysisAgentCreation" : {
-    "preferredFieldsBySourceType" : [
-
-    ]
-  },
   "attentionDismissalDays" : 7,
   "about" : [
     "paper_analysis",

@@ -92,7 +92,7 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
                     [String(localized: $0.title), String(localized: $0.menuPath)]
                 }
         case .metadata:
-            ["Metadata", "fields", "About", "Agent preferences", "optional fields"]
+            ["Metadata", "fields", "About", "optional fields"]
         case .attention:
             ["Notifications", "activities", "reminders", "dismissed items", "timing", "This Mac"]
         case .agentIntegration:

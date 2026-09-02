@@ -29,6 +29,12 @@ Completed automated checks in this worktree:
 - The macOS UI-test target built for testing with code signing disabled. No UI
   journey was executed, so this is compile evidence only.
 
+After the never-used Analysis-creation v8 settings field was removed, the
+current source passed all 38 Triptych-control tests, JSON fixture parsing,
+interface-localization validation, retired-field residue search, and
+`git diff --check`. The complete suite and Release results above predate this
+bounded cleanup and were not rerun.
+
 ## Evidence boundary
 
 No clean-account Codex or Claude Code smoke, packaged-artifact bridge smoke,
