@@ -4,15 +4,16 @@
 
 ## Current verification snapshot
 
-**Environment:** 2026-09-03 complete Research Records integration snapshot,
+**Environment:** 2026-09-03 complete Research Records editorial redesign snapshot,
 Xcode 27 beta toolchain
 (`DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer`).
 
-The complete repository gate was rerun after the clean Research Record
-cutover. It established automated evidence for strict portable storage,
+The complete repository gate was rerun after the Design-authoritative Research
+Record redesign. It established automated evidence for strict portable storage,
 reference/currentness validation, provider-separated Search, the ten-tool MCP
-surface, bounded Record read/write/correction routes, read-only interface
-composition, and the retained Agent Change exact-source behavior.
+surface, bounded Record read/write/correction routes, the read-only native
+collection/centered-reading composition, step-local Note attachment buttons,
+and the retained Agent Change exact-source behavior.
 
 Completed automated checks in this worktree:
 
@@ -27,7 +28,9 @@ Completed automated checks in this worktree:
   and correction history, damaged-file isolation, stale Note/Record rejection,
   restart persistence, independent provider results/generations, all ten MCP
   schemas and routes, no Agent Change for Record writes, bounded Markdown
-  projection, and a Record surface with no content editor. Retained coverage
+  projection, native Search, semantic collection selection, minimal attachment
+  controls, working Previous/Next/Refresh toolbar actions, and a Record surface
+  with no content editor or detached evidence rail. Retained coverage
   also proved that exact Agent Change evidence
   survives store reopening, that sequential updates remain independent rather
   than cumulative, that a body update exposes the removed blank line and
@@ -36,7 +39,15 @@ Completed automated checks in this worktree:
 - The public-symbol graph boundary, documentation authority and local-link
   validator, interface localization validator, bundled-Skill validator,
   resource and retired-surface residue guards, and `git diff --check` passed.
-- The Release product build passed in 131.81 seconds.
+- The Release product build passed in 133.15 seconds.
+- Exploratory Computer Use opened the rebuilt isolated QA App with 18 live
+  Notes, 14 Records containing 56 attributed steps and four corrections, plus
+  32 retained Agent Changes. It visually confirmed the full-height native split,
+  centered reading measure, semantic selection boundary, step-local minimal
+  Note buttons, and native toolbar controls. Activating Next selected and opened
+  the next Record; activating a Note attachment opened the bound current Note.
+  This is direct exploratory evidence, not a deterministic XCTest or human
+  acceptance result.
 - On 2026-09-03 the two exact-comparison presentation tests and the focused
   palette snapshot/contrast and semantic-role architecture tests passed.
   `build-qa-app.sh` syntax validation and `git diff --check` passed. A fresh
@@ -54,7 +65,7 @@ Completed automated checks in this worktree:
 ## Evidence boundary
 
 No clean-account Codex or Claude Code ten-tool smoke, packaged-artifact bridge
-smoke, successful Records/Agent Changes UI journey, VoiceOver, Full Keyboard
-Access, Simplified Chinese IME, Finder, notarization, distribution, or other
-human acceptance has run for this cutover. Passing local automated tests does
-not establish those claims.
+smoke, deterministic Records/Agent Changes UI journey, VoiceOver, Full Keyboard
+Access, Simplified Chinese IME, Finder, notarization, distribution, or human
+acceptance has run for this redesign. Passing local automated and exploratory
+checks does not establish those claims.

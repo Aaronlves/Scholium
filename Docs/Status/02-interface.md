@@ -47,12 +47,15 @@
 - Agent conversation remains in the external host. Scholium shows no chat,
   Agent picker, session, task, activity stack, or result-review workflow.
 - **Research Records** opens a separate read-only window. Its left collection
-  scans current questions and last substantive times with Record Search; the
-  centered reading plane shows chronological attributed steps; the optional
-  evidence rail groups basis/modified Note references and distinguishes current,
-  earlier, and unavailable revisions. Step prose renders bounded basic Markdown;
-  headings and unsupported constructs remain literal. There is no Record
-  content editor.
+  scans current questions and last substantive times with system Record Search.
+  The centered reading plane shows chronological attributed steps, and each
+  step presents its own basis/modified Notes as quiet clickable attachment rows
+  with current, earlier, or unavailable revision state. Step prose renders
+  bounded basic Markdown; headings and unsupported constructs remain literal.
+  Current attachment state is omitted as the default; each compact native
+  button adds only Note name and relation, with Earlier/Unavailable shown when
+  needed. The toolbar contains Previous, Next, and Refresh. There is no Record
+  content editor or detached evidence inspector.
 - **Agent Changes** presents one machine-local MCP mutation at a time in
   confirmation order, with Previous/Next controls and an exact position. Every
   retained update is bound to one `(change ID, Note ID)` and presents its own

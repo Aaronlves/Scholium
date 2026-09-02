@@ -162,10 +162,10 @@
   Record, current question, chronological step count and position, step time,
   Agent attribution, revision relation, and current/earlier/unavailable Note
   references in one predictable reading order.
-- Collection, reading plane, and optional evidence rail remain independently
-  named regions. Evidence collapse has keyboard, pointer, focus, and
-  accessibility equivalents; at narrow width or enlarged text it moves below
-  reading content rather than compressing prose into an unusable column.
+- Collection and reading plane remain independently named regions. Every
+  step-local Note attachment is keyboard reachable in the same reading order
+  as the step that declares it; at narrow width or enlarged text the row wraps
+  in place rather than compressing prose or moving provenance elsewhere.
 - Rendered Record paragraphs, emphasis, lists, block quotations, inline code,
   and links retain semantic accessibility. Unsupported syntax remains
   selectable literal text. The current question is the sole page heading;

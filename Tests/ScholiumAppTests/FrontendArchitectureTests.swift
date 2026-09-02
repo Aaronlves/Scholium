@@ -3154,9 +3154,9 @@ struct FrontendArchitectureTests {
             ScholiumMetrics.Library.workspaceNavigatorTopSpacing
                 == ScholiumGrid.Spacing.nestedContentInset
         )
-        #expect(ScholiumMetrics.EvidencePane.minimumWidth == 260)
-        #expect(ScholiumMetrics.EvidencePane.maximumWidth == 304)
-        #expect(ScholiumMetrics.EvidencePane.widthFraction == 0.36)
+        #expect(ScholiumMetrics.ResearchRecords.collectionMinimumWidth == 260)
+        #expect(ScholiumMetrics.ResearchRecords.collectionIdealWidth == 304)
+        #expect(ScholiumMetrics.ResearchRecords.readingMeasure == 720)
     }
 
     @Test("Shared Native and WebKit corner roles stay in parity")
@@ -4099,22 +4099,6 @@ struct FrontendArchitectureTests {
                 appearsActive: true,
                 layoutDirection: .rightToLeft
             ) == .init(opacity: 0.04, radius: 8, x: 2, y: 0))
-        #expect(
-            ScholiumStructuralDepthRole.readingEvidenceBoundary.style(
-                isDark: false,
-                increasedContrast: false,
-                reduceTransparency: false,
-                appearsActive: true,
-                layoutDirection: .leftToRight
-            ) == .init(opacity: 0.04, radius: 8, x: 2, y: 0))
-        #expect(
-            ScholiumStructuralDepthRole.readingEvidenceBoundary.style(
-                isDark: false,
-                increasedContrast: false,
-                reduceTransparency: false,
-                appearsActive: true,
-                layoutDirection: .rightToLeft
-            ) == .init(opacity: 0.04, radius: 8, x: -2, y: 0))
         for quietStyle in [
             ScholiumStructuralDepthRole.documentNavigationBoundary.style(
                 isDark: true,

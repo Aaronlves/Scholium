@@ -49,15 +49,13 @@ boundary and, where applicable, one purpose-named `ScholiumElevationRole`.
 The current shared custom transient roles are `floatingControl`, `boundedPanel`,
 and `searchOverlay`; ordinary structural surfaces resolve to none. The current
 native-only `ScholiumStructuralDepthRole` covers the
-`documentNavigationBoundary` and `readingEvidenceBoundary` plane relationships
-and is not exported to WebKit. The Workspace Library host clips a Document-
+`documentNavigationBoundary` plane relationship and is not exported to WebKit.
+The Workspace Library host clips a Document-
 color caster just outside the logical edge, leaving only the shadow inside
-Library while AppKit's thin divider stays visible and interactive. The Record
-detail host uses the same full-height split grammar to cast from the dominant
-reading plane into the Evidence rail. Each host covers the complete receiving
-split-item bounds beneath the native toolbar, is excluded from hit testing and
-accessibility, and mirrors in right-to-left presentation. The native modifiers
-consume the named structural-shadow exception, while
+Library while AppKit's thin divider stays visible and interactive. The host
+covers the complete receiving split-item bounds beneath the native toolbar, is
+excluded from hit testing and accessibility, and mirrors in right-to-left
+presentation. The native modifiers consume the named structural-shadow exception, while
 `ScholiumWebDesignTokens` exports only the transient role names as CSS shadow
 declarations without converting points to CSS pixels.
 Selection bars and the shared segmented selection plate consume

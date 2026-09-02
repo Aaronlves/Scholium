@@ -644,7 +644,10 @@ enum ScholiumNativeToolbarPresentation {
     ) {
         button.title = ""
         button.toolTip = toolTip
-        button.image = symbol(named: systemImage)
+        button.image = symbol(
+            named: systemImage,
+            accessibilityDescription: label
+        )
         button.imagePosition = .imageOnly
         button.imageScaling = .scaleProportionallyDown
         button.isEnabled = isEnabled
@@ -654,10 +657,13 @@ enum ScholiumNativeToolbarPresentation {
         button.setAccessibilityValue(accessibilityValue)
     }
 
-    static func symbol(named name: String) -> NSImage? {
+    static func symbol(
+        named name: String,
+        accessibilityDescription: String? = nil
+    ) -> NSImage? {
         NSImage(
             systemSymbolName: name,
-            accessibilityDescription: nil
+            accessibilityDescription: accessibilityDescription
         )?.withSymbolConfiguration(NSImage.SymbolConfiguration(
             textStyle: .body,
             scale: .medium

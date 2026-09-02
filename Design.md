@@ -37,14 +37,32 @@ containers. Small capsules are reserved for finite semantic values, never
 general decoration or status walls.
 
 The separate Records window uses a quiet collection-to-reading transition. Its
-detail retains the proven centered scholarly reading measure and optional
-trailing evidence rail, but the new question/step/Note-reference contract alone
-supplies content: no superseded Action ledger, Result, participant workflow, or
+detail retains the proven centered scholarly reading measure, and each step
+presents its own Note references immediately after the prose as quiet clickable
+attachment rows. The question/step/Note-reference contract alone supplies
+content: no superseded Action ledger, Result, participant workflow, or
 bibliographic lead survives as presentation semantics. The question is the one
 primary title; step time and Agent attribution use compact Interface type,
 step prose uses Scholarly type, and identifiers or fingerprints use Exact type.
-Continuous document/evidence planes, structural rules, and whitespace carry
-hierarchy without a card timeline.
+Continuous navigation/document planes, structural rules, and whitespace carry
+hierarchy without a card timeline or detached evidence inspector.
+
+Records uses semantic color only where it changes interpretation or action:
+Agent attribution uses Agent Authorship, Note navigation uses Accent, an
+earlier referenced revision uses Attention, and an unavailable Note uses Muted
+text. The visible state word remains present whenever color varies. A current
+Note is the unmarked default. Each Note reference is one compact native bordered
+button containing only its document name and `Basis` or `Modified`; it adds
+`Earlier` or `Unavailable` only for those exceptional states. It has no
+reference count, `.md` suffix, repeated current-state label, underline, trailing
+chevron, resting card, or second visual button system.
+
+The Records toolbar remains native, borderless at rest, and visually continuous
+with the owning planes. Besides the system Sidebar control, it contains only
+Previous Record, Next Record, and Refresh Records. Search remains in the
+collection because it changes that collection rather than the current reading.
+No disabled write, evidence, share, or technical-identity action is placed in
+the toolbar merely to fill space.
 
 ### 19.2 Typography and color
 
@@ -162,7 +180,7 @@ Metrics express responsibility rather than an application-wide numeric grid:
 | Library | readable width, row height/inset, hierarchy step, header spacing |
 | Apparatus | readable width, fact grid, section and row rhythm |
 | Connect | group/cluster spacing, row height, direction-control bound |
-| Records | collection columns/rows, reading measure, Evidence rail, previews |
+| Records | collection columns/rows, reading measure, Note-reference rows, previews |
 | Document | Appearance measure, adaptive insets, top/trailing scrolling space |
 
 Native geometry, divider position, toolbar height, and window chrome are not
@@ -304,7 +322,7 @@ feature-local composition.
 | `Notifications` | Complete queue in Sidebar/Inspector; Agent Change/Settlement subset in Document. | §§8.4, 13, 18.2–18.3 |
 | `Agent Integration` | Present verifiable local status and copy user-scope host setup without editing external configuration. | §§8.2, 16, 18.2 |
 | `Conflict / Recovery` | Retain bytes, compare exact revisions, and expose safe repair. | §§14, 18.4–18.6 |
-| `Research Records` | Present the dedicated read-only collection, centered question/step reading plane, and optional Note-evidence rail without inheriting chat or superseded workflow semantics. | §§8.6, 13, 18.5 |
+| `Research Records` | Present the dedicated read-only collection, centered question/step reading plane, and step-local Note-reference attachments without inheriting chat or superseded workflow semantics. | §§8.6, 13, 18.5 |
 | `Settlement Reminder` | Invite explicit Settle Again, Mark Unsettled, or no status change; dismissal changes no judgment, and exact Agent Changes open one comparison at a time. | §§7.1, 8.4, 18.3–18.5 |
 
 ### 19.9 Cross-functional state language

@@ -44,6 +44,14 @@ struct ScholiumLocalizationTests {
             ScholiumL10n.string("Search provider", locale: simplifiedChinese)
                 == "搜索对象"
         )
+        #expect(
+            ScholiumL10n.string("Previous Record", locale: simplifiedChinese)
+                == "上一条记录"
+        )
+        #expect(
+            ScholiumL10n.string("Refresh Records", locale: simplifiedChinese)
+                == "刷新记录"
+        )
         #expect(ScholiumL10n.string("Undo", locale: simplifiedChinese) == "撤销")
         #expect(
             ScholiumL10n.string(

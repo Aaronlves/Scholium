@@ -72,8 +72,8 @@ final class ResearchRecordsModel: ObservableObject {
     @Published var selectedRecordID: UUID?
     @Published var selectedStepID: UUID?
     @Published var query = ""
-    @Published var showsEvidence = true
     @Published private(set) var isLoading = true
+    @Published private(set) var isRefreshing = false
     @Published private(set) var errorMessage: String?
 
     let triptychID: UUID
@@ -100,10 +100,19 @@ final class ResearchRecordsModel: ObservableObject {
         records.first { $0.id == selectedRecordID }
     }
 
-    var selectedStep: ResearchRecordStep? {
-        guard let selectedRecord else { return nil }
-        return selectedRecord.record.steps.first { $0.id == selectedStepID }
-            ?? selectedRecord.record.steps.last
+    var selectedVisibleIndex: Int? {
+        guard let selectedRecordID else { return nil }
+        return visibleRecordIDs.firstIndex(of: selectedRecordID)
+    }
+
+    var canSelectPreviousRecord: Bool {
+        guard let selectedVisibleIndex else { return false }
+        return selectedVisibleIndex > visibleRecordIDs.startIndex
+    }
+
+    var canSelectNextRecord: Bool {
+        guard let selectedVisibleIndex else { return false }
+        return selectedVisibleIndex < visibleRecordIDs.index(before: visibleRecordIDs.endIndex)
     }
 
     func load() async {
@@ -128,10 +137,30 @@ final class ResearchRecordsModel: ObservableObject {
             let old = Dictionary(uniqueKeysWithValues: records.map { ($0.id, $0.fingerprint) })
             let new = Dictionary(uniqueKeysWithValues: listing.records.map { ($0.id, $0.fingerprint) })
             guard old != new || issues != listing.issues else { return }
+            noteSnapshots = try await capabilities.documents.snapshot()
+                .flatMap(\.documents)
             records = listing.records
             issues = listing.issues
             await search()
             preserveSelection()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func refresh() async {
+        guard !isRefreshing else { return }
+        guard let capabilities else {
+            await load()
+            return
+        }
+        isRefreshing = true
+        defer { isRefreshing = false }
+        do {
+            noteSnapshots = try await capabilities.documents.snapshot()
+                .flatMap(\.documents)
+            try await reloadRecords(using: capabilities)
+            errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -166,7 +195,17 @@ final class ResearchRecordsModel: ObservableObject {
 
     func select(_ revision: ResearchRecordRevision, stepID: UUID? = nil) {
         selectedRecordID = revision.id
-        selectedStepID = stepID ?? revision.record.steps.last?.id
+        selectedStepID = stepID
+    }
+
+    func selectPreviousRecord() {
+        guard let selectedVisibleIndex else { return }
+        selectVisibleRecord(at: selectedVisibleIndex - 1)
+    }
+
+    func selectNextRecord() {
+        guard let selectedVisibleIndex else { return }
+        selectVisibleRecord(at: selectedVisibleIndex + 1)
     }
 
     func open(_ request: ResearchRecordsWindowRequest) {
@@ -176,11 +215,8 @@ final class ResearchRecordsModel: ObservableObject {
             selectedStepID = request.stepID
             return
         }
+        query = ""
         select(revision, stepID: request.stepID)
-    }
-
-    func selectStep(_ step: ResearchRecordStep) {
-        selectedStepID = step.id
     }
 
     func evidence(for step: ResearchRecordStep) -> [NoteEvidence] {
@@ -207,6 +243,14 @@ final class ResearchRecordsModel: ObservableObject {
         }
     }
 
+    private func selectVisibleRecord(at index: Int) {
+        guard visibleRecordIDs.indices.contains(index),
+              let revision = records.first(where: {
+                  $0.id == visibleRecordIDs[index]
+              }) else { return }
+        select(revision)
+    }
+
     private func reloadRecords(
         using capabilities: ResearchRecordsWindowCapabilities
     ) async throws {
@@ -219,12 +263,17 @@ final class ResearchRecordsModel: ObservableObject {
 
     private func preserveSelection() {
         if let selectedRecordID,
-           records.contains(where: { $0.id == selectedRecordID }) {
-            if selectedStepID == nil { selectedStepID = selectedRecord?.record.steps.last?.id }
+           visibleRecordIDs.contains(selectedRecordID) {
+            if let selectedStepID,
+               selectedRecord?.record.steps.contains(where: {
+                   $0.id == selectedStepID
+               }) != true {
+                self.selectedStepID = nil
+            }
             return
         }
-        selectedRecordID = visibleRecords.first?.id ?? records.first?.id
-        selectedStepID = selectedRecord?.record.steps.last?.id
+        selectedRecordID = visibleRecords.first?.id
+        selectedStepID = nil
     }
 
 }
@@ -234,6 +283,7 @@ struct ResearchRecordsWindowView: View {
     @StateObject private var model: ResearchRecordsModel
     @State private var searchTask: Task<Void, Never>?
     @State private var routeToken: UUID?
+    @FocusState private var focusedRecordID: UUID?
 
     init(
         route: ResearchRecordsWindowRoute,
@@ -247,27 +297,24 @@ struct ResearchRecordsWindowView: View {
     }
 
     var body: some View {
-        HSplitView {
+        NavigationSplitView {
             collection
-                .frame(minWidth: 250, idealWidth: 300, maxWidth: 380)
+                .navigationSplitViewColumnWidth(
+                    min: ScholiumMetrics.ResearchRecords.collectionMinimumWidth,
+                    ideal: ScholiumMetrics.ResearchRecords.collectionIdealWidth,
+                    max: ScholiumMetrics.ResearchRecords.collectionMaximumWidth
+                )
+        } detail: {
             detail
-                .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
-            if model.showsEvidence, let step = model.selectedStep {
-                evidenceRail(step)
-                    .frame(minWidth: 220, idealWidth: 260, maxWidth: 320)
-            }
         }
+        .navigationSplitViewStyle(.balanced)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .scholiumSurface(.document)
+        .tint(ScholiumColorRole.accent.color)
+        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .navigationTitle(String(localized: "Research Records"))
         .toolbar {
-            ToolbarItem {
-                Button {
-                    model.showsEvidence.toggle()
-                } label: {
-                    Label("Evidence", systemImage: "sidebar.trailing")
-                }
-                .help(model.showsEvidence ? "Hide Evidence" : "Show Evidence")
-            }
+            ResearchRecordsToolbar(model: model)
         }
         .task { await model.load() }
         .onAppear {
@@ -304,78 +351,181 @@ struct ResearchRecordsWindowView: View {
     }
 
     private var collection: some View {
-        VStack(spacing: 0) {
-            TextField("Search records", text: $model.query)
-                .textFieldStyle(.roundedBorder)
-                .padding(16)
-                .accessibilityIdentifier("scholium.researchRecords.search")
-            Divider()
-            if model.isLoading {
-                ProgressView("Loading Research Records…")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if model.visibleRecords.isEmpty {
-                ContentUnavailableView(
-                    model.query.isEmpty ? "No Research Records" : "No Results",
-                    systemImage: "text.book.closed",
-                    description: Text(model.errorMessage ??
-                        (model.query.isEmpty
-                            ? "Agents have not recorded substantive progress for this Triptych."
-                            : "Try a different Record query."))
-                )
-            } else {
-                List(model.visibleRecords, selection: $model.selectedRecordID) { revision in
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(revision.record.question)
-                            .font(ScholiumTypography.interface(.rowTitle))
-                            .lineLimit(3)
-                        Text(revision.record.lastSubstantiveAt, style: .relative)
-                            .font(ScholiumTypography.interface(.small))
-                            .scholiumForeground(.secondaryText)
+        ZStack {
+            ScrollViewReader { proxy in
+                ScrollView(.vertical) {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(
+                            Array(model.visibleRecords.enumerated()),
+                            id: \.element.id
+                        ) { index, revision in
+                            let isSelected = model.selectedRecordID == revision.id
+                            Button {
+                                model.select(revision)
+                            } label: {
+                                VStack(
+                                    alignment: .leading,
+                                    spacing: ScholiumMetrics.ResearchRecords.collectionRowSpacing
+                                ) {
+                                    Text(revision.record.question)
+                                        .font(ScholiumTypography.interface(.rowTitle))
+                                        .lineLimit(3)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                    Text(revision.record.lastSubstantiveAt, style: .relative)
+                                        .font(ScholiumTypography.interface(.small))
+                                        .scholiumForeground(.secondaryText)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(
+                                    .vertical,
+                                    ScholiumMetrics.ResearchRecords.collectionRowVerticalInset
+                                )
+                            }
+                            .buttonStyle(ScholiumContentControlButtonStyle(
+                                isSelected: isSelected,
+                                isFocused: focusedRecordID == revision.id,
+                                in: RoundedRectangle(
+                                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
+                                    style: .continuous
+                                )
+                            ))
+                            .scholiumActivationFocus($focusedRecordID, equals: revision.id)
+                            .overlay(alignment: .leading) {
+                                if isSelected {
+                                    Rectangle()
+                                        .fill(ScholiumColorRole.accent.color)
+                                        .frame(
+                                            width: ScholiumGrid.Spacing
+                                                .opticalAlignmentAdjustment
+                                        )
+                                        .accessibilityHidden(true)
+                                }
+                            }
+                            .overlay(alignment: .bottom) {
+                                if index < model.visibleRecords.count - 1 {
+                                    ScholiumStructuralRule()
+                                }
+                            }
+                            .onMoveCommand(perform: moveCollectionSelection)
+                            .accessibilityAddTraits(isSelected ? .isSelected : [])
+                            .accessibilityIdentifier(
+                                "scholium.researchRecords.row."
+                                    + revision.id.uuidString.lowercased()
+                            )
+                            .id(revision.id)
+                        }
+
+                        if !model.issues.isEmpty {
+                            ScholiumStructuralRule()
+                                .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
+                            DisclosureGroup("Unavailable") {
+                                ForEach(model.issues) { issue in
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(issue.fileName)
+                                            .font(ScholiumTypography.interface(.compact))
+                                        Text(issue.reason)
+                                            .font(ScholiumTypography.interface(.small))
+                                            .scholiumForeground(.secondaryText)
+                                    }
+                                    .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
+                                    .textSelection(.enabled)
+                                }
+                            }
+                            .font(ScholiumTypography.interface(.body))
+                        }
                     }
-                    .padding(.vertical, 5)
-                    .tag(revision.id)
-                    .accessibilityIdentifier(
-                        "scholium.researchRecords.row.\(revision.id.uuidString.lowercased())"
-                    )
+                    .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
+                    .padding(.bottom, ScholiumGrid.Spacing.sectionSeparation)
                 }
                 .onChange(of: model.selectedRecordID) { _, id in
-                    guard let revision = model.records.first(where: { $0.id == id }) else { return }
-                    model.select(revision)
-                }
-            }
-            if !model.issues.isEmpty {
-                Divider()
-                DisclosureGroup("Some files could not be loaded") {
-                    ForEach(model.issues) { issue in
-                        Text("\(issue.fileName): \(issue.reason)")
-                            .font(ScholiumTypography.interface(.small))
-                            .textSelection(.enabled)
+                    guard let id else { return }
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        proxy.scrollTo(id, anchor: .center)
                     }
                 }
-                .padding(12)
+            }
+
+            if model.isLoading {
+                ScholiumContentStateView(
+                    "Loading Research Records…",
+                    indicator: .progress
+                )
+                    .scholiumSurface(.navigation)
+            } else if model.visibleRecords.isEmpty {
+                if model.query.isEmpty {
+                    ScholiumContentStateView(
+                        "No Research Records",
+                        detail: Text(model.errorMessage
+                            ?? "Agents have not recorded substantive progress for this Triptych."),
+                        indicator: .symbol("text.book.closed"),
+                        density: .compact
+                    )
+                    .scholiumSurface(.navigation)
+                } else {
+                    ScholiumContentStateView(
+                        "No Results",
+                        detail: Text(model.errorMessage ?? "Try a different Record query."),
+                        indicator: .symbol("magnifyingglass"),
+                        density: .compact
+                    )
+                    .scholiumSurface(.navigation)
+                }
             }
         }
+        .searchable(
+            text: $model.query,
+            placement: .sidebar,
+            prompt: Text("Search records")
+        )
+        .accessibilityIdentifier("scholium.researchRecords.search")
         .scholiumSurface(.navigation)
+    }
+
+    private func moveCollectionSelection(_ direction: MoveCommandDirection) {
+        switch direction {
+        case .up:
+            model.selectPreviousRecord()
+        case .down:
+            model.selectNextRecord()
+        default:
+            return
+        }
+        focusedRecordID = model.selectedRecordID
     }
 
     @ViewBuilder
     private var detail: some View {
-        if let revision = model.selectedRecord {
+        if model.isLoading {
+            ScholiumContentStateView(
+                "Loading Research Records…",
+                indicator: .progress
+            )
+                .scholiumSurface(.document)
+        } else if let revision = model.selectedRecord {
             ScrollViewReader { proxy in
-                ScrollView {
+                ScrollView(.vertical) {
                     VStack(alignment: .leading, spacing: 0) {
-                        Text(revision.record.question)
-                            .font(ScholiumTypography.scholarly(.title))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.bottom, 24)
-                        ForEach(revision.record.steps) { step in
-                            stepView(step)
+                        recordHeader(revision)
+                        ScholiumStructuralRule()
+                        ForEach(Array(revision.record.steps.enumerated()), id: \.element.id) {
+                            index, step in
+                            stepView(step, number: index + 1)
                                 .id(step.id)
                         }
+                        recordDetails(revision)
                     }
-                    .frame(maxWidth: 720, alignment: .leading)
-                    .padding(.horizontal, 48)
-                    .padding(.vertical, 40)
+                    .frame(
+                        maxWidth: ScholiumMetrics.ResearchRecords.readingMeasure,
+                        alignment: .leading
+                    )
+                    .padding(
+                        .horizontal,
+                        ScholiumMetrics.ResearchRecords.readingHorizontalInset
+                    )
+                    .padding(
+                        .vertical,
+                        ScholiumMetrics.ResearchRecords.readingVerticalInset
+                    )
                     .frame(maxWidth: .infinity, alignment: .top)
                 }
                 .onChange(of: model.selectedStepID) { _, stepID in
@@ -385,100 +535,142 @@ struct ResearchRecordsWindowView: View {
                     }
                 }
             }
-        } else {
-            ContentUnavailableView(
+            .scholiumSurface(.document)
+        } else if model.query.isEmpty {
+            ScholiumContentStateView(
                 "Select a Research Record",
-                systemImage: "text.book.closed",
-                description: Text("Choose a current inquiry from the collection.")
+                detail: Text("Choose a current inquiry from the collection."),
+                indicator: .symbol("text.book.closed")
             )
+            .scholiumSurface(.document)
+        } else {
+            ScholiumContentStateView(
+                "No Results",
+                detail: Text("Try a different Record query."),
+                indicator: .symbol("magnifyingglass")
+            )
+            .scholiumSurface(.document)
         }
     }
 
-    private func stepView(_ step: ResearchRecordStep) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
+    private func recordHeader(_ revision: ResearchRecordRevision) -> some View {
+        Text(revision.record.question)
+            .font(ScholiumTypography.scholarly(.title))
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, ScholiumGrid.Spacing.sectionSeparation)
+    }
+
+    private func stepView(_ step: ResearchRecordStep, number: Int) -> some View {
+        VStack(
+            alignment: .leading,
+            spacing: ScholiumMetrics.ResearchRecords.stepHeaderSpacing
+        ) {
+            HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                Text("Step \(number)")
+                    .font(ScholiumTypography.interface(.rowTitle))
                 Text(step.submittedBy.displayName)
-                    .font(ScholiumTypography.interface(.compact))
+                    .font(ScholiumTypography.interface(.small))
+                    .scholiumForeground(.agentAuthorship)
                 Spacer()
                 Text(step.recordedAt, format: .dateTime.year().month().day().hour().minute())
                     .font(ScholiumTypography.interface(.small))
                     .scholiumForeground(.secondaryText)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier(
+                "scholium.researchRecords.step.\(step.id.uuidString.lowercased())"
+            )
             ResearchRecordMarkdownView(source: step.currentBodyMarkdown)
             if !step.currentRevisesStepIDs.isEmpty || !step.corrections.isEmpty {
                 Text(revisionSummary(step))
                     .font(ScholiumTypography.interface(.small))
                     .scholiumForeground(.secondaryText)
             }
+            noteReferences(step)
         }
-        .contentShape(Rectangle())
-        .onTapGesture { model.selectStep(step) }
-        .padding(.vertical, 22)
-        .overlay(alignment: .top) { Divider() }
-        .accessibilityIdentifier(
-            "scholium.researchRecords.step.\(step.id.uuidString.lowercased())"
-        )
-    }
-
-    private func evidenceRail(_ step: ResearchRecordStep) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                Text("Evidence")
-                    .font(ScholiumTypography.interface(.sectionTitle))
-                evidenceSection("Basis", relation: .basis, step: step)
-                evidenceSection("Modified", relation: .modified, step: step)
-                DisclosureGroup("Record Details") {
-                    if let revision = model.selectedRecord {
-                        exactValue("Record", revision.id.uuidString.lowercased())
-                        exactValue("Fingerprint", revision.fingerprint.sha256)
-                        exactValue("Step", step.id.uuidString.lowercased())
-                    }
-                }
-                Spacer(minLength: 0)
+        .padding(.vertical, ScholiumMetrics.ResearchRecords.stepVerticalInset)
+        .overlay(alignment: .top) { ScholiumStructuralRule() }
+        .overlay(alignment: .leading) {
+            if model.selectedStepID == step.id {
+                Rectangle()
+                    .fill(ScholiumColorRole.accent.color)
+                    .frame(width: ScholiumGrid.Spacing.opticalAlignmentAdjustment)
+                    .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
+                    .offset(x: -ScholiumGrid.Spacing.nestedContentInset)
+                    .accessibilityHidden(true)
             }
-            .padding(18)
         }
-        .scholiumSurface(.apparatus)
     }
 
     @ViewBuilder
-    private func evidenceSection(
-        _ title: LocalizedStringKey,
-        relation: ResearchRecordNoteRelation,
-        step: ResearchRecordStep
-    ) -> some View {
-        let evidence = model.evidence(for: step).filter {
-            $0.reference.relation == relation
-        }
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(ScholiumTypography.interface(.rowTitle))
-            if evidence.isEmpty {
-                Text("None")
-                    .font(ScholiumTypography.interface(.compact))
-                    .scholiumForeground(.secondaryText)
-            } else {
-                ForEach(evidence) { item in
-                    Button {
-                        openEvidence(item)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(evidenceTitle(item))
-                                .font(ScholiumTypography.interface(.compact))
-                            Text(evidenceState(item))
-                                .font(ScholiumTypography.interface(.small))
-                                .scholiumForeground(.secondaryText)
+    private func noteReferences(_ step: ResearchRecordStep) -> some View {
+        let evidence = model.evidence(for: step)
+        if !evidence.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Notes")
+                    .font(ScholiumTypography.interface(.rowTitle))
+                    .padding(
+                        .bottom,
+                        ScholiumMetrics.ResearchRecords.referenceSectionSpacing
+                    )
+
+                VStack(
+                    alignment: .leading,
+                    spacing: ScholiumGrid.Spacing.inlineControlGap
+                ) {
+                    ForEach(evidence) { item in
+                        Button {
+                            openEvidence(item)
+                        } label: {
+                            HStack(
+                                alignment: .center,
+                                spacing: ScholiumGrid.Spacing.inlineControlGap
+                            ) {
+                                Image(systemName: "doc.text")
+                                    .accessibilityHidden(true)
+                                Text(evidenceTitle(item))
+                                    .lineLimit(1)
+                                Text(referenceRelation(item.reference.relation))
+                                    .scholiumForeground(.secondaryText)
+                                if let exceptionalState = exceptionalEvidenceState(item) {
+                                    Text(exceptionalState.title)
+                                        .scholiumForeground(exceptionalState.colorRole)
+                                }
+                            }
+                            .font(ScholiumTypography.interface(.compact))
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(!evidenceIsAvailable(item))
+                        .help(evidenceButtonHelp(item))
+                        .accessibilityValue(
+                            "\(referenceRelation(item.reference.relation)), "
+                                + evidenceState(item)
+                        )
+                        .accessibilityIdentifier(
+                            "scholium.researchRecords.reference."
+                                + step.id.uuidString.lowercased()
+                                + "."
+                                + item.reference.noteID.uuidString.lowercased()
+                                + "."
+                                + item.reference.relation.rawValue
+                        )
                     }
-                    .buttonStyle(.plain)
-                    .disabled({
-                        if case .unavailable = item.state { return true }
-                        return false
-                    }())
                 }
             }
+            .padding(.top, ScholiumMetrics.ResearchRecords.referenceSectionSpacing)
         }
+    }
+
+    private func recordDetails(_ revision: ResearchRecordRevision) -> some View {
+        DisclosureGroup("Record Details") {
+            exactValue("Record", revision.id.uuidString.lowercased())
+            exactValue("Fingerprint", revision.fingerprint.sha256)
+        }
+        .font(ScholiumTypography.interface(.body))
+        .padding(.top, ScholiumGrid.Spacing.sectionSeparation)
     }
 
     private func exactValue(_ label: LocalizedStringKey, _ value: String) -> some View {
@@ -510,7 +702,8 @@ struct ResearchRecordsWindowView: View {
 
     private func evidenceTitle(_ evidence: ResearchRecordsModel.NoteEvidence) -> String {
         switch evidence.state {
-        case .current(let route), .earlier(let route): route.relativePath
+        case .current(let route), .earlier(let route):
+            String(route.relativePath.dropLast(route.relativePath.hasSuffix(".md") ? 3 : 0))
         case .unavailable: evidence.reference.noteID.uuidString.lowercased()
         }
     }
@@ -523,6 +716,44 @@ struct ResearchRecordsWindowView: View {
         }
     }
 
+    private func exceptionalEvidenceState(
+        _ evidence: ResearchRecordsModel.NoteEvidence
+    ) -> (title: String, colorRole: ScholiumColorRole)? {
+        switch evidence.state {
+        case .current:
+            nil
+        case .earlier:
+            (String(localized: "Earlier"), .attention)
+        case .unavailable:
+            (String(localized: "Unavailable"), .mutedText)
+        }
+    }
+
+    private func evidenceButtonHelp(
+        _ evidence: ResearchRecordsModel.NoteEvidence
+    ) -> String {
+        switch evidence.state {
+        case .current(let route), .earlier(let route):
+            String(localized: "Open \(route.relativePath)")
+        case .unavailable:
+            String(localized: "This Note is unavailable")
+        }
+    }
+
+    private func evidenceIsAvailable(
+        _ evidence: ResearchRecordsModel.NoteEvidence
+    ) -> Bool {
+        if case .unavailable = evidence.state { return false }
+        return true
+    }
+
+    private func referenceRelation(_ relation: ResearchRecordNoteRelation) -> String {
+        switch relation {
+        case .basis: String(localized: "Basis")
+        case .modified: String(localized: "Modified")
+        }
+    }
+
     private func revisionSummary(_ step: ResearchRecordStep) -> String {
         var parts: [String] = []
         if !step.currentRevisesStepIDs.isEmpty {
@@ -532,6 +763,64 @@ struct ResearchRecordsWindowView: View {
             parts.append(String(localized: "\(step.corrections.count) clerical correction(s)"))
         }
         return parts.joined(separator: " · ")
+    }
+}
+
+private struct ResearchRecordsToolbar: ToolbarContent {
+    @ObservedObject var model: ResearchRecordsModel
+
+    @ToolbarContentBuilder
+    var body: some ToolbarContent {
+        if #available(macOS 26.0, *) {
+            previousItem.sharedBackgroundVisibility(.hidden)
+            nextItem.sharedBackgroundVisibility(.hidden)
+            refreshItem.sharedBackgroundVisibility(.hidden)
+        } else {
+            previousItem
+            nextItem
+            refreshItem
+        }
+    }
+
+    private var previousItem: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            ScholiumNativeToolbarButton(
+                title: String(localized: "Previous Record"),
+                systemImage: "chevron.up",
+                identifier: "scholium.researchRecords.previous",
+                isEnabled: model.canSelectPreviousRecord && !model.isLoading
+            ) {
+                model.selectPreviousRecord()
+            }
+        }
+    }
+
+    private var nextItem: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            ScholiumNativeToolbarButton(
+                title: String(localized: "Next Record"),
+                systemImage: "chevron.down",
+                identifier: "scholium.researchRecords.next",
+                isEnabled: model.canSelectNextRecord && !model.isLoading
+            ) {
+                model.selectNextRecord()
+            }
+        }
+    }
+
+    private var refreshItem: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            ScholiumNativeToolbarButton(
+                title: model.isRefreshing
+                    ? String(localized: "Refreshing Records…")
+                    : String(localized: "Refresh Records"),
+                systemImage: "arrow.clockwise",
+                identifier: "scholium.researchRecords.refresh",
+                isEnabled: !model.isLoading && !model.isRefreshing
+            ) {
+                Task { await model.refresh() }
+            }
+        }
     }
 }
 

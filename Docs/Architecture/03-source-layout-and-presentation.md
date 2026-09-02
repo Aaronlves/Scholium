@@ -87,12 +87,12 @@ participate in constructing that workspace split.
 Research Records use a separate value-keyed `WindowGroup`, one scene identity
 per Triptych. `ResearchRecordsWindowCoordinator` routes an exact Record/step
 selection to the existing scene but retains no research data. The window uses
-an AppKit-owned resizable split: a quiet scanning collection, centered
-scholarly reading plane, and optional evidence rail. Its only text input is the
-Record-provider Search field; step content is a read-only bounded Markdown
-projection. Paragraphs, emphasis, strong text, inline code, lists, blockquotes,
-and ordinary links render semantically. Headings and unsupported constructs
-remain visible literal source.
+a native resizable split: a quiet scanning collection and centered scholarly
+reading plane. Its only text input is the system Record-provider Search field;
+step content is a read-only bounded Markdown projection followed by that
+step's quiet clickable Note-reference rows. Paragraphs, emphasis, strong text,
+inline code, lists, blockquotes, and ordinary links render semantically.
+Headings and unsupported constructs remain visible literal source.
 
 Bootstrap, configured Workspace, and Settings scene roots each own one
 `ScholiumFileSelectionPresenter`. A bounded native attachment supplies that

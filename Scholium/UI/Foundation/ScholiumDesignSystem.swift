@@ -1311,10 +1311,21 @@ enum ScholiumGrid {
         static let compactHorizontalInset = Spacing.inlineControlGap
     }
 
-    enum EvidencePane {
-        static let evidenceMinimumWidth = foundationUnit * 65
-        static let evidenceMaximumWidth = foundationUnit * 76
-        static let evidenceWidthFraction: CGFloat = 0.36
+    /// The separate Records window owns a quiet collection-to-reading
+    /// transition. These values size only Scholium content inside native split
+    /// geometry; the system continues to own dividers and window chrome.
+    enum ResearchRecords {
+        static let collectionMinimumWidth = foundationUnit * 65
+        static let collectionIdealWidth = foundationUnit * 76
+        static let collectionMaximumWidth = foundationUnit * 90
+        static let collectionRowVerticalInset = foundationUnit * 2
+        static let collectionRowSpacing = foundationUnit * 1.25
+        static let readingMeasure = foundationUnit * 180
+        static let readingHorizontalInset = foundationUnit * 12
+        static let readingVerticalInset = foundationUnit * 10
+        static let stepVerticalInset = foundationUnit * 5.5
+        static let stepHeaderSpacing = foundationUnit * 1.25
+        static let referenceSectionSpacing = foundationUnit * 2.5
     }
 
     /// Page- and pane-level state copy shares one readable measure. Placement
@@ -1434,6 +1445,21 @@ enum ScholiumMetrics {
         static let controlSpacing = ScholiumGrid.foundationUnit * 1.5
         static let trailingControlMinimumSpacing = ScholiumGrid.Spacing.nestedContentInset
         static let editorContentInset = ScholiumGrid.foundationUnit * 4.5
+    }
+
+    enum ResearchRecords {
+        static let collectionMinimumWidth = ScholiumGrid.ResearchRecords.collectionMinimumWidth
+        static let collectionIdealWidth = ScholiumGrid.ResearchRecords.collectionIdealWidth
+        static let collectionMaximumWidth = ScholiumGrid.ResearchRecords.collectionMaximumWidth
+        static let collectionRowVerticalInset =
+            ScholiumGrid.ResearchRecords.collectionRowVerticalInset
+        static let collectionRowSpacing = ScholiumGrid.ResearchRecords.collectionRowSpacing
+        static let readingMeasure = ScholiumGrid.ResearchRecords.readingMeasure
+        static let readingHorizontalInset = ScholiumGrid.ResearchRecords.readingHorizontalInset
+        static let readingVerticalInset = ScholiumGrid.ResearchRecords.readingVerticalInset
+        static let stepVerticalInset = ScholiumGrid.ResearchRecords.stepVerticalInset
+        static let stepHeaderSpacing = ScholiumGrid.ResearchRecords.stepHeaderSpacing
+        static let referenceSectionSpacing = ScholiumGrid.ResearchRecords.referenceSectionSpacing
     }
 
     enum ResearchSheet {
@@ -1668,12 +1694,6 @@ enum ScholiumMetrics {
         static let connectionOccurrenceMinimumHeight =
             ScholiumGrid.Apparatus.connectionOccurrenceMinimumHeight
         static let bottomInset = ScholiumGrid.Apparatus.bottomInset
-    }
-
-    enum EvidencePane {
-        static let minimumWidth = ScholiumGrid.EvidencePane.evidenceMinimumWidth
-        static let maximumWidth = ScholiumGrid.EvidencePane.evidenceMaximumWidth
-        static let widthFraction = ScholiumGrid.EvidencePane.evidenceWidthFraction
     }
 
     enum ContentState {
@@ -2054,18 +2074,11 @@ struct ScholiumElevationStyle: Equatable, Sendable {
 /// document surfaces must not receive window-container presentation tokens.
 enum ScholiumStructuralDepthRole: CaseIterable, Sendable {
     case documentNavigationBoundary
-    case readingEvidenceBoundary
 
     /// The hidden one-point caster belongs to the dominant Document plane.
-    /// Workspace navigation receives the shadow from its trailing edge; the
-    /// Record evidence rail receives it from its leading edge.
+    /// Workspace navigation receives the shadow from its trailing edge.
     var castsFromTrailingEdge: Bool {
-        switch self {
-        case .documentNavigationBoundary:
-            true
-        case .readingEvidenceBoundary:
-            false
-        }
+        true
     }
 
     func style(
