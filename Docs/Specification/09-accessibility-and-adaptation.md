@@ -83,6 +83,12 @@
 - Review, Edit, and Source expose current mode, content state, and one coherent
   focus order. Mode, window, external-change, conflict, and recovery transitions
   preserve dirty buffer, composition, selection, Undo, scroll, and recovery.
+- First Edit activation without retained presentation places a collapsed
+  insertion point at the end of the inline Note title. Returning to a still-open
+  or window-restored Note restores its last title/body focus and fingerprint-
+  valid editor selection. Explicit source navigation and Managed New Note's
+  body-start insertion take precedence. Closing the tab ends that retained
+  focus history.
 - Review selection and Edit formatting remain exact and keyboard reachable.
 - Suggestion lists retain document focus and one listbox selection. They do not
   open during marked-text composition.
@@ -101,10 +107,15 @@
 - Autosave Failed and Conflict state the retained-buffer consequence and
   applicable recovery. Proven Saved state is silent. Agent Undo reports each
   outcome without moving Document focus.
-- The app-owned Note title is the first accessible heading in the Review/Edit
-  document plane. Authored H1–H6 expose section-heading levels beneath it
-  without changing source markers; Source exposes the exact authored hierarchy
-  without adding the projected title.
+- The app-owned filename title is the first accessible heading in the
+  Review/Edit document plane. In Edit its inline text field is named **Note
+  title**, supports ordinary text selection and IME input, commits through
+  Return or focus departure, cancels through Escape, announces a rejected
+  rename, and never masquerades as Markdown editing. Its surrounding visible
+  spacing has the same pointer route as the field. Authored H1–H6 expose
+  section-heading levels beneath it without changing source markers; their
+  padding and authored blank lines remain pointer-addressable. Source exposes
+  the exact authored hierarchy without adding the projected title.
 
 ### Metadata and portable settings
 

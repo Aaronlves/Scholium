@@ -138,6 +138,74 @@ struct DocumentSessionLifecycleTests {
         #expect(!session.isEnteringManagedCreation)
     }
 
+    @Test("First activation starts at the title and a retained session returns to its body position")
+    func activationFocusPolicy() {
+        let session = DocumentSessionModel(key: nil)
+        let source = "# Section\n\nArgument."
+
+        session.prepareForDocumentActivation()
+        #expect(session.editorSession.preferredDocumentFocusTarget == .title)
+
+        session.editorSession.loadDocument(
+            source,
+            documentID: "focus-policy",
+            mode: .livePreview
+        )
+        #expect(session.editorSession.preferredDocumentFocusTarget == .title)
+        session.editorSession.updateInteraction(
+            selections: [MarkdownEditorSelectionRange(anchor: 12, head: 12)],
+            line: 3,
+            column: 2,
+            lineCount: 3,
+            documentVersion: 0,
+            focusTarget: .editor,
+            context: nil
+        )
+        session.prepareForDocumentActivation()
+
+        #expect(session.editorSession.preferredDocumentFocusTarget == .editor)
+        #expect(session.windowPresentationSnapshot.focusTarget == .editor)
+        #expect(session.windowPresentationSnapshot.selections == [
+            WindowDocumentSelectionRange(anchor: 12, head: 12),
+        ])
+    }
+
+    @Test("Managed creation overrides first-activation title focus")
+    func managedCreationFocusPolicy() {
+        let session = DocumentSessionModel(key: nil)
+        session.beginManagedCreationEntry(bodyStartUTF16: 24)
+
+        session.prepareForDocumentActivation()
+
+        #expect(session.editorSession.preferredDocumentFocusTarget == .editor)
+    }
+
+    @Test("Persisted editor position restores only for the same exact source")
+    func persistedPresentationRequiresExactSource() {
+        let source = "Argument."
+        let presentation = WindowDocumentPresentationSnapshot(
+            scrollFraction: 0.4,
+            sourceFingerprint: DocumentFingerprint(content: source).sha256,
+            selections: [WindowDocumentSelectionRange(anchor: 5, head: 5)],
+            focusTarget: .editor
+        )
+        let matching = DocumentSessionModel(key: nil)
+        matching.restoreWindowPresentation(presentation, source: source)
+        matching.editorSession.loadDocument(
+            source,
+            documentID: "matching",
+            mode: .livePreview
+        )
+        #expect(matching.editorSession.preferredDocumentFocusTarget == .editor)
+        #expect(matching.windowPresentationSnapshot.selections == presentation.selections)
+
+        let stale = DocumentSessionModel(key: nil)
+        stale.restoreWindowPresentation(presentation, source: "Changed argument.")
+        stale.prepareForDocumentActivation()
+        #expect(stale.editorSession.preferredDocumentFocusTarget == .title)
+        #expect(stale.windowPresentationSnapshot.selections.isEmpty)
+    }
+
     @Test("Lease reconciliation acquires the destination before reaping the source")
     func acquireBeforeRelease() {
         let store = DocumentSessionStore()

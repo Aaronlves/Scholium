@@ -270,11 +270,7 @@ public enum WorkspaceCatalogBuilder {
                 references[reference.id] = reference
                 notes.append(WorkspaceCatalogNote(
                     reference: reference,
-                    title: ResearchNoteTitleResolver.resolve(
-                        document: document,
-                        vaultRole: vault.role,
-                        metadata: metadata
-                    ).title,
+                    title: ResearchNoteTitleResolver.resolve(document: document),
                     aliases: (vault.role == .topicKnowledge
                         ? metadata?.record.fields["aliases"]?.canonicalStringList ?? []
                         : [])

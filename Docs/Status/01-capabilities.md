@@ -15,15 +15,18 @@
   transaction for App, researcher CLI, and MCP callers. Metadata settings,
   About editing, Settlement, Critique, Zotero bindings, transaction recovery,
   and source conflict handling remain reachable through their existing owners.
-- Search contract 14 has independent Note and Research Record providers. Note
-  title identity uses managed Analysis title then filename, and filename for
-  Topics and Works; body headings remain independently searchable. All
+- Search contract 14 has independent Note and Research Record providers. Every
+  Note title identity uses its filename; Analysis academic title Metadata and
+  body headings remain independently searchable. All
   runs both and returns separate rankings, totals, offsets, continuations, and
   generations; Notes and Records are dedicated paths. Record scope follows
   exact current Note references and never treats a reference as query text.
-- Review and Edit project the resolved Note title at the top of their shared
-  scrolling document plane while retaining authored H1 as a body section;
-  Source remains an exact-source surface without the projection.
+- Review and Edit project the filename title at the top of their shared
+  scrolling document plane while retaining authored H1 as a body section.
+  Edit routes inline title changes through the existing safe Rename transaction
+  and retains rejected drafts; Source remains an exact-source surface without
+  the projection. Edit reserves stable authoring geometry for blank source
+  lines and heading markers rather than inheriting Review's tighter spacing.
 - Strict portable Research Records are reachable under
   `.scholium/inquiry-records/v1/`. Create, substantive append, paged read, and
   append-only clerical correction preserve external-Agent attribution,

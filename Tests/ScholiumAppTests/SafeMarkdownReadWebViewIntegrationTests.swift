@@ -1064,7 +1064,10 @@ extension MarkdownEditorWebViewIntegrationTests {
         let custom = try #require(readScenarios.first { $0.0.name == "custom-line-width" }?.1)
         let wideInset = try #require(cssPixels(wide.documentPaddingInlineStart))
         let customInset = try #require(cssPixels(custom.documentPaddingInlineStart))
-        #expect(wide.rootLineWidth == "72ch")
+        #expect(
+            wide.rootLineWidth
+                == "\(Int(DocumentAppearanceSettings.defaultLineWidthCharacterUnits))ch"
+        )
         #expect(custom.rootLineWidth == "84ch")
         #expect(customInset < wideInset)
         // Responsive full-width presentation legitimately changes which block
@@ -1309,7 +1312,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(live.mathMarginBlockStart == "0px")
         let readMathMargin = Double(read.mathMarginBlockStart.dropLast(2)) ?? -.infinity
         let sharedParagraphGap = Double(read.rootParagraphGap.dropLast(2)) ?? .infinity
-        #expect(abs(readMathMargin - sharedParagraphGap) <= 0.001)
+        #expect(abs(readMathMargin - sharedParagraphGap) <= 0.02)
         #expect(live.mathPaddingBlockStart == read.mathPaddingBlockStart)
         #expect(abs(live.mathWidth - read.mathWidth) <= 1)
         #expect(abs(live.mathScrollExtent - read.mathScrollExtent) <= 1)

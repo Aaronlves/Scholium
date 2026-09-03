@@ -303,11 +303,7 @@ public struct SearchIndexDocument: Sendable {
         relativePath = document.relativePath
         self.stableNoteID = stableNoteID
         let profile = WorkflowProfileResolver.resolve(vaultRole: vaultRole)
-        title = ResearchNoteTitleResolver.resolve(
-            document: document,
-            vaultRole: vaultRole,
-            metadata: metadata
-        ).title
+        title = ResearchNoteTitleResolver.resolve(document: document)
         aliases = profile == .topicMarkdown
             ? metadata?.record.fields["aliases"]?.canonicalStringList ?? []
             : []

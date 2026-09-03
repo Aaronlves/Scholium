@@ -1777,7 +1777,12 @@ public actor TriptychSearchIndex {
             """,
             bindings: [
                 .int(documentID), .text(SearchTokenization.indexText(projection.path)),
-                .text(SearchTokenization.indexText(projection.title)),
+                .text(SearchTokenization.indexText(
+                    projection.segments
+                        .filter { $0.field == .title }
+                        .map(\.text)
+                        .joined(separator: " ")
+                )),
                 .text(SearchTokenization.indexText(projection.aliases.joined(separator: " "))),
                 .text(SearchTokenization.indexText(projection.headings.joined(separator: " "))),
                 .text(SearchTokenization.indexText(projection.summary ?? "")),

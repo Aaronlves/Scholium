@@ -97,12 +97,18 @@ typography. The default is a readable Alegreya body with a compact scholarly
 line and paragraph rhythm, natural start alignment, a start-aligned first-level
 body heading, quieter lower headings, and deliberate CJK fallback. The
 app-owned Note title is the strongest typographic element at the top of the
-Review/Edit document plane; authored H1 is never styled as a second document
-title. Native window title identifies the window without competing with that
-in-document title. Review and Edit share the same semantic geometry; active
-exact syntax must not cause neighboring content
-to jump. Lists, blank lines, code fences, tables, mathematics, footnotes, and
-Callouts preserve their source-owned rhythm and object-local overflow.
+Review/Edit document plane. Review keeps it inert; Edit uses the same typography
+as a borderless filename field whose whole visible region, including trailing
+space, accepts focus. No separate edit affordance or title card is added.
+Authored H1 is never styled as a second document title. Native window title
+identifies the window without competing with that in-document title. Review
+and Edit share one measure and typographic hierarchy, but Edit may reserve the
+additional physical-line space required for stable authoring. Moving the
+caret, revealing exact syntax, entering or leaving an authored blank line,
+typing its first character, and deleting it back to empty do not move the
+insertion baseline or neighboring content. Lists, blank lines, code fences,
+tables, mathematics, footnotes, and Callouts preserve their source-owned
+rhythm and object-local overflow.
 
 Native selection is authoritative in every mode and uses the resolved Accent
 consistently. Authored `==highlight==` uses one protected high-contrast Markup

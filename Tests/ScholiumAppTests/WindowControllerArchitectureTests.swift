@@ -574,7 +574,11 @@ struct WindowControllerArchitectureTests {
         )
         let controller = DocumentController()
         controller.restorePresentationState(
-            scrollPositions: [reference.relativePath: 0.64],
+            documentPresentations: [
+                reference.relativePath: WindowDocumentPresentationSnapshot(
+                    scrollFraction: 0.64
+                ),
+            ],
             vaultID: reference.vaultID
         )
 
@@ -611,7 +615,11 @@ struct WindowControllerArchitectureTests {
         #expect(session.scrollAnchor == semanticAnchor)
         #expect(controller.presentationSnapshot(vaultID: reference.vaultID) ==
             DocumentPresentationSnapshot(
-                scrollPositions: [reference.relativePath: 0.31]
+                documents: [
+                    reference.relativePath: WindowDocumentPresentationSnapshot(
+                        scrollFraction: 0.31
+                    ),
+                ]
             ))
 
         controller.resetPresentationState()
@@ -759,7 +767,9 @@ struct WindowControllerArchitectureTests {
         )
         let controller = DocumentController()
         controller.restorePresentationState(
-            scrollPositions: [path: 0.42],
+            documentPresentations: [
+                path: WindowDocumentPresentationSnapshot(scrollFraction: 0.42),
+            ],
             vaultID: nil
         )
         controller.selectUnavailableDocument(vaultID: vaultID, relativePath: path)
@@ -768,6 +778,15 @@ struct WindowControllerArchitectureTests {
         #expect(session.presentationMode == .read)
         #expect(session.pendingEditorMode == nil)
         #expect(session.scrollFraction == 0.42)
+        let otherVaultTarget = DocumentEditingTarget.unavailable(
+            vaultID: UUID(),
+            relativePath: path
+        )
+        controller.session(for: otherVaultTarget).scrollFraction = 0.9
+        #expect(
+            controller.presentationSnapshot(vaultID: vaultID)
+                .documents[path]?.scrollFraction == 0.42
+        )
         controller.clearSelection(forRemovedPaths: [path])
         controller.selectUnavailableDocument(vaultID: vaultID, relativePath: path)
         #expect(controller.session(for: target) === session)

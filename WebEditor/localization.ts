@@ -2,6 +2,7 @@ export const webInterfaceLocalizationKeys = [
   "File and image paste is not supported in Editor 1.0.",
   "Markdown editor, Edit mode",
   "Markdown source editor",
+  "Note title",
   "Heading level {level}",
   "Link",
   "Callout",

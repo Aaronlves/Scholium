@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 17
+let markdownEditorProtocolVersion = 19
 let markdownEditorMaximumInboundBytes = 2_500_000
 let markdownEditorMaximumSelectionRangeCount = 128
 
@@ -74,6 +74,7 @@ struct MarkdownEditorRecoverySnapshot: Codable, Hashable, Sendable {
     let stateJSON: String?
     let undoHistoryPreserved: Bool
     let dirty: Bool
+    let focusTarget: WindowDocumentFocusTarget?
 }
 
 /// A revision-bound position shared by the Read and editable projections.
@@ -230,7 +231,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     case restoreRecovery(MarkdownEditorRecoverySnapshot)
     case acknowledgeCommittedSnapshot(expected: String, committed: String, fingerprint: String)
     case command(MarkdownEditorCommand, argument: String?)
-    case markClean, focus, blur
+    case markClean, focus, focusTitle, blur
 
     /// Only operations that can replace or mutate authoritative source need
     /// transport ordering. Snapshot reads and presentation intents must not
@@ -253,7 +254,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     private enum Kind: String, Codable {
         case initialize, setMode, setDocumentTitle, setPresentationCSS, setUserCSS, setLinkPreviews, showPreview, measureVisibleProjection, showPreviewAt, announceStatus
         case goToLine, revealSourceRange, setScrollFraction, setScrollAnchor, queryText, querySelection, queryContext, queryScrollAnchor, queryPerformance
-        case captureRecovery, restoreRecovery, acknowledgeCommittedSnapshot, command, documentFind, clearDocumentFind, markClean, focus, blur
+        case captureRecovery, restoreRecovery, acknowledgeCommittedSnapshot, command, documentFind, clearDocumentFind, markClean, focus, focusTitle, blur
     }
 
     init(from decoder: any Decoder) throws {
@@ -313,6 +314,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
             )
         case .markClean: self = .markClean
         case .focus: self = .focus
+        case .focusTitle: self = .focusTitle
         case .blur: self = .blur
         }
     }
@@ -370,6 +372,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
             try container.encodeIfPresent(argument, forKey: .argument)
         case .markClean: try container.encode(Kind.markClean, forKey: .type)
         case .focus: try container.encode(Kind.focus, forKey: .type)
+        case .focusTitle: try container.encode(Kind.focusTitle, forKey: .type)
         case .blur: try container.encode(Kind.blur, forKey: .type)
         }
     }

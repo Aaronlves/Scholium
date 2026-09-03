@@ -31,11 +31,14 @@ const dialect = {
 
 describe("editor protocol", () => {
   it("uses the coalesced interaction bridge protocol", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(17);
+    expect(EDITOR_PROTOCOL_VERSION).toBe(19);
   });
   it("accepts a complete versioned request", () => expect(isEditorRequest(request)).toBe(true));
   it("accepts the bounded blur operation", () => {
     expect(isEditorRequest({...request, operation: {type: "blur"}})).toBe(true);
+  });
+  it("accepts the bounded title-focus operation", () => {
+    expect(isEditorRequest({...request, operation: {type: "focusTitle"}})).toBe(true);
   });
   it("accepts the bounded performance query", () => {
     expect(isEditorRequest({...request, operation: {type: "queryPerformance"}})).toBe(true);
@@ -163,6 +166,7 @@ describe("editor protocol", () => {
       source: "Body",
       undoHistoryPreserved: false,
       dirty: true,
+      focusTarget: "title",
     };
     expect(isEditorRequest({
       ...request,
@@ -180,6 +184,13 @@ describe("editor protocol", () => {
       operation: {
         type: "restoreRecovery",
         snapshot: {...snapshot, ranges: [{anchor: -1, head: 0}]},
+      },
+    })).toBe(false);
+    expect(isEditorRequest({
+      ...request,
+      operation: {
+        type: "restoreRecovery",
+        snapshot: {...snapshot, focusTarget: "sidebar"},
       },
     })).toBe(false);
   });

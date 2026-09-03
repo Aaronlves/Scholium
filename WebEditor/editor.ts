@@ -54,6 +54,7 @@ import {
   MAX_SOURCE_UTF8_BYTES,
   type EditorCommandResult,
   type EditorContext,
+  type EditorFocusTarget,
   type EditorMode,
   type EditorRequest,
   type EditorScrollAnchor,
@@ -114,7 +115,7 @@ import {
 import {createPreviewPopoverController} from "./preview-popover";
 import {createEditorScrollCoordinator} from "./scroll-coordinator";
 import {createEditorContextMenuExtension} from "./context-menu";
-import {createEditorInputSuggestions} from "./input-suggestions";
+import {boundedUUID, createEditorInputSuggestions} from "./input-suggestions";
 import {
   createSelectionActionsController,
   selectionActionCommands,
@@ -171,6 +172,12 @@ interface SourceDelta { from: number; to: number; insert: string }
 interface ScholiumEditorAPI {
   dispatch(request: unknown): Promise<EditorCommandResult>;
   resolveLinkCompletionQuery(requestID: string, candidates: unknown): void;
+  resolveDocumentTitleRename(
+    requestID: string,
+    accepted: boolean,
+    title: string,
+    error: string,
+  ): void;
   refreshMathRuntime(): boolean;
 }
 
@@ -259,25 +266,162 @@ const refreshDocumentTitleEffect = StateEffect.define<null>();
 const refreshMermaidThemeEffect = StateEffect.define<number>();
 let mermaidThemeRevision = 0;
 let documentTitle = "";
+let documentTitleDraft: string | null = null;
+let documentTitleError: string | null = null;
+let documentTitleRenameRequest: {
+  requestID: string;
+  expectedTitle: string;
+  requestedTitle: string;
+} | null = null;
+let documentTitlePresentationRevision = 0;
+let lastDocumentFocusTarget: EditorFocusTarget | undefined;
 
 function configuredEditorMode(state: EditorState): EditorMode {
   return state.facet(editorModeFacet);
 }
 
 class DocumentTitleWidget extends WidgetType {
-  constructor(readonly title: string) { super(); }
+  constructor(
+    readonly title: string,
+    readonly presentationRevision: number,
+  ) { super(); }
 
-  eq(other: DocumentTitleWidget) { return other.title === this.title; }
+  eq(other: DocumentTitleWidget) {
+    return other.title === this.title
+      && other.presentationRevision === this.presentationRevision;
+  }
 
   toDOM() {
-    const title = document.createElement("div");
-    title.className = "cm-live-note-title scholium-note-title";
-    title.setAttribute("role", "heading");
-    title.setAttribute("aria-level", "1");
-    title.setAttribute("dir", "auto");
-    title.setAttribute("data-scholium-protected", "note-title");
-    title.textContent = this.title;
-    return title;
+    const wrapper = document.createElement("div");
+    wrapper.className = "cm-live-note-title scholium-note-title";
+    wrapper.setAttribute("role", "heading");
+    wrapper.setAttribute("aria-level", "1");
+    wrapper.setAttribute("aria-label", documentTitleDraft ?? this.title);
+    wrapper.setAttribute("dir", "auto");
+    wrapper.setAttribute("data-scholium-protected", "note-title");
+
+    const input = document.createElement("textarea");
+    input.className = "scholium-note-title-input";
+    input.value = documentTitleDraft ?? this.title;
+    input.rows = 1;
+    input.wrap = "soft";
+    input.spellcheck = false;
+    input.maxLength = 1_024;
+    input.setAttribute("aria-label", localized("Note title"));
+    input.setAttribute("data-scholium-title-input", "true");
+    input.disabled = documentTitleRenameRequest !== null;
+    if (documentTitleRenameRequest) input.setAttribute("aria-busy", "true");
+    if (documentTitleError) {
+      input.setAttribute("aria-invalid", "true");
+      input.setAttribute("aria-describedby", "scholium-note-title-error");
+    }
+
+    const resize = () => {
+      input.style.height = "0";
+      input.style.height = `${input.scrollHeight}px`;
+    };
+    let composing = false;
+    let commitAfterComposition = false;
+    const normalizeInput = () => {
+      if (composing) {
+        documentTitleDraft = input.value;
+        wrapper.setAttribute("aria-label", input.value || this.title);
+        resize();
+        return;
+      }
+      const normalized = input.value.replace(/[\r\n]+/g, " ");
+      if (normalized !== input.value) input.value = normalized;
+      documentTitleDraft = input.value;
+      wrapper.setAttribute("aria-label", input.value || this.title);
+      documentTitleError = null;
+      input.removeAttribute("aria-invalid");
+      input.removeAttribute("aria-describedby");
+      wrapper.querySelector(".scholium-note-title-error")?.remove();
+      resize();
+    };
+    const commit = () => {
+      if (documentTitleRenameRequest) return;
+      const requestedTitle = input.value.replace(/[\r\n]+/g, " ");
+      documentTitleDraft = requestedTitle;
+      if (requestedTitle === documentTitle) {
+        documentTitleDraft = null;
+        documentTitleError = null;
+        return;
+      }
+      const requestID = boundedUUID();
+      documentTitleRenameRequest = {
+        requestID,
+        expectedTitle: documentTitle,
+        requestedTitle,
+      };
+      input.disabled = true;
+      input.setAttribute("aria-busy", "true");
+      post({
+        type: "requestDocumentTitleRename",
+        requestID,
+        expectedTitle: documentTitle,
+        requestedTitle,
+      });
+    };
+    let cancelling = false;
+    input.addEventListener("input", normalizeInput);
+    input.addEventListener("focus", () => {
+      lastDocumentFocusTarget = "title";
+      scheduleEditorInteractionReport();
+    });
+    input.addEventListener("compositionstart", () => { composing = true; });
+    input.addEventListener("compositionend", () => {
+      composing = false;
+      normalizeInput();
+      if (commitAfterComposition) {
+        commitAfterComposition = false;
+        commit();
+      }
+    });
+    input.addEventListener("keydown", (event) => {
+      if (composing || event.isComposing) return;
+      if (event.key === "Enter") {
+        event.preventDefault();
+        commit();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        cancelling = true;
+        documentTitleDraft = null;
+        documentTitleError = null;
+        input.value = documentTitle;
+        resize();
+        input.blur();
+      }
+    });
+    input.addEventListener("blur", () => {
+      if (cancelling) {
+        cancelling = false;
+        return;
+      }
+      if (composing) {
+        commitAfterComposition = true;
+        return;
+      }
+      commit();
+    });
+    wrapper.addEventListener("pointerdown", (event) => {
+      if (event.target === input || input.disabled) return;
+      event.preventDefault();
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    });
+    wrapper.append(input);
+
+    if (documentTitleError) {
+      const error = document.createElement("div");
+      error.id = "scholium-note-title-error";
+      error.className = "scholium-note-title-error";
+      error.setAttribute("role", "alert");
+      error.textContent = documentTitleError;
+      wrapper.append(error);
+    }
+    queueMicrotask(resize);
+    return wrapper;
   }
 
   ignoreEvent() { return true; }
@@ -287,11 +431,48 @@ function documentTitleDecorations(state: EditorState) {
   if (!documentTitle) return Decoration.none;
   return Decoration.set([
     Decoration.widget({
-      widget: new DocumentTitleWidget(documentTitle),
+      widget: new DocumentTitleWidget(
+        documentTitle,
+        documentTitlePresentationRevision,
+      ),
       block: true,
       side: -1,
     }).range(frontmatterBodyOffset(state.doc)),
   ]);
+}
+
+function resolveDocumentTitleRename(
+  requestID: string,
+  accepted: boolean,
+  title: string,
+  error: string,
+) {
+  if (!documentTitleRenameRequest
+      || requestID !== documentTitleRenameRequest.requestID
+      || typeof accepted !== "boolean"
+      || typeof title !== "string" || title.length > 1_024
+      || typeof error !== "string" || error.length > 4_096) return;
+  const requestedTitle = documentTitleRenameRequest.requestedTitle;
+  documentTitleRenameRequest = null;
+  if (accepted) {
+    documentTitle = title;
+    documentTitleDraft = null;
+    documentTitleError = null;
+  } else {
+    documentTitleDraft = requestedTitle;
+    documentTitleError = error;
+  }
+  documentTitlePresentationRevision += 1;
+  editor.dispatch({effects: refreshDocumentTitleEffect.of(null)});
+  if (!accepted) {
+    queueMicrotask(() => {
+      const input = document.querySelector<HTMLTextAreaElement>(
+        ".scholium-note-title-input",
+      );
+      input?.focus();
+      input?.setSelectionRange(input.value.length, input.value.length);
+    });
+  }
 }
 
 const liveDocumentTitle = StateField.define<DecorationSet>({
@@ -308,6 +489,23 @@ const liveDocumentTitle = StateField.define<DecorationSet>({
 
 const hiddenSyntax = Decoration.replace({});
 const liveMark = (className: string) => Decoration.mark({ class: className });
+
+class ReservedSyntaxWidget extends WidgetType {
+  constructor(readonly source: string) { super(); }
+
+  eq(other: ReservedSyntaxWidget) { return other.source === this.source; }
+
+  toDOM() {
+    const marker = document.createElement("span");
+    marker.className = "cm-live-reserved-syntax";
+    marker.textContent = this.source;
+    marker.setAttribute("aria-hidden", "true");
+    return marker;
+  }
+
+  ignoreEvent() { return true; }
+}
+
 const liveInlineClassByKind: Partial<Record<SemanticInlineProjection["kind"], string>> = {
   strong: "cm-live-strong",
   emphasis: "cm-live-emphasis",
@@ -515,6 +713,14 @@ function buildLiveDecorations(
     decorations.push(range);
     atomicRanges.push(range);
   };
+  const addReservedHidden = (from: number, to: number) => {
+    if (to <= from) return;
+    const range = Decoration.replace({
+      widget: new ReservedSyntaxWidget(doc.sliceString(from, to)),
+    }).range(from, to);
+    decorations.push(range);
+    atomicRanges.push(range);
+  };
   const addAtomicReplacement = (decoration: Decoration, from: number, to: number) => {
     if (to <= from) return;
     const range = decoration.range(from, to);
@@ -642,7 +848,10 @@ function buildLiveDecorations(
             range.from < lineQueryTo && range.to > line.from);
           if (!activeLine) {
             for (const marker of lineMarkers) {
-              addHidden(Math.max(line.from, marker.from), Math.min(line.to, marker.to));
+              addReservedHidden(
+                Math.max(line.from, marker.from),
+                Math.min(line.to, marker.to),
+              );
             }
           }
         }
@@ -1518,6 +1727,10 @@ const editorExtensions = [
       }),
 ];
 const editor = createMarkdownEditor(document.getElementById("editor")!, editorExtensions);
+editor.contentDOM.addEventListener("focus", () => {
+  lastDocumentFocusTarget = "editor";
+  scheduleEditorInteractionReport();
+});
 editor.contentDOM.addEventListener("keydown", (event) => {
   const key = event.key;
   const canCommitText = !event.isComposing
@@ -1659,6 +1872,7 @@ function scheduleEditorInteractionReport(forceContext = false) {
       line: line.number,
       column: head - line.from + 1,
       lineCount: editor.state.doc.lines,
+      ...(lastDocumentFocusTarget ? {focusTarget: lastDocumentFocusTarget} : {}),
       ...(includeContext ? {context} : {}),
     });
   });
@@ -1774,6 +1988,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
       stateJSON,
       undoHistoryPreserved: stateJSON !== undefined,
       dirty,
+      focusTarget: lastDocumentFocusTarget,
     };
     return {...successfulResult(request.requestID), recovery};
   }
@@ -1833,6 +2048,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     const restoredMode = configuredEditorMode(editor.state);
     editor.setState(recoveredState);
     exactSourceMirror.replace(snapshot.source);
+    lastDocumentFocusTarget = snapshot.focusTarget;
     await editorOperations.setMode(restoredMode);
     dirty = snapshot.dirty;
     documentVersion = snapshot.generation;
@@ -1891,6 +2107,12 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   case "clearDocumentFind": clearDocumentFind(editor); break;
   case "markClean": editorOperations.markClean(); break;
   case "focus": editorOperations.focus(); break;
+  case "focusTitle": {
+    if (!editorOperations.focusTitle()) {
+      return rejected(request.requestID, documentVersion, "document title is unavailable");
+    }
+    break;
+  }
   case "blur": editorOperations.blur(); break;
   }
   return successfulResult(request.requestID);
@@ -2066,6 +2288,11 @@ const editorOperations = {
     bridgeDocumentID = documentID;
     bridgeFingerprint = startingFingerprint;
     documentTitle = "";
+    documentTitleDraft = null;
+    documentTitleError = null;
+    documentTitleRenameRequest = null;
+    documentTitlePresentationRevision += 1;
+    lastDocumentFocusTarget = undefined;
     documentVersion = 0;
     hiddenFrontmatterSourceSelection = null;
     const separator = text.includes("\r\n") ? "\r\n" : "\n";
@@ -2084,7 +2311,15 @@ const editorOperations = {
   },
 
   setDocumentTitle(value: string) {
+    if (documentTitle === value
+        && documentTitleDraft === null
+        && documentTitleError === null
+        && documentTitleRenameRequest === null) return;
     documentTitle = value;
+    documentTitleDraft = null;
+    documentTitleError = null;
+    documentTitleRenameRequest = null;
+    documentTitlePresentationRevision += 1;
     editor.dispatch({effects: refreshDocumentTitleEffect.of(null)});
   },
 
@@ -2178,6 +2413,7 @@ const editorOperations = {
       selection: { anchor: line.from },
       effects: EditorView.scrollIntoView(line.from, { y: "center" }),
     });
+    lastDocumentFocusTarget = "editor";
     editor.focus();
   },
 
@@ -2199,7 +2435,10 @@ const editorOperations = {
       effects: EditorView.scrollIntoView(EditorSelection.range(from, to), {y: "center"}),
       annotations: Transaction.addToHistory.of(false),
     });
-    if (focusesEditor) editor.focus();
+    if (focusesEditor) {
+      lastDocumentFocusTarget = "editor";
+      editor.focus();
+    }
   },
 
   setScrollFraction(requestedFraction: number) {
@@ -2251,7 +2490,19 @@ const editorOperations = {
   },
 
   focus() {
+    lastDocumentFocusTarget = "editor";
     editor.focus();
+  },
+
+  focusTitle() {
+    const input = document.querySelector<HTMLTextAreaElement>(
+      ".scholium-note-title-input",
+    );
+    if (!input || input.disabled) return false;
+    lastDocumentFocusTarget = "title";
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+    return true;
   },
 
   blur() {
@@ -2263,6 +2514,7 @@ const editorOperations = {
 webkitWindow.scholiumEditor = {
   dispatch: dispatchEditorRequest,
   resolveLinkCompletionQuery: inputSuggestions.resolveLinkCompletionQuery,
+  resolveDocumentTitleRename,
   refreshMathRuntime() {
     editor.dispatch({effects: refreshLivePreviewEffect.of(null)});
     return true;

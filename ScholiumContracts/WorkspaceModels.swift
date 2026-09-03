@@ -68,21 +68,11 @@ public enum WorkspaceNoteIdentityState: Hashable, Sendable {
 
 package struct WorkspaceNoteTitleProjection: Hashable, Sendable {
     package let sourceFingerprint: DocumentFingerprint
-    package let metadataRevision: DocumentFingerprint?
-    package let resolution: ResearchNoteTitleResolution
+    package let title: String
 
-    package init(
-        document: NoteDocument,
-        vaultRole: VaultRole,
-        metadata: NoteMetadataSnapshot? = nil
-    ) {
+    package init(document: NoteDocument) {
         sourceFingerprint = document.fingerprint
-        metadataRevision = metadata?.revision
-        resolution = ResearchNoteTitleResolver.resolve(
-            document: document,
-            vaultRole: vaultRole,
-            metadata: metadata
-        )
+        title = ResearchNoteTitleResolver.resolve(document: document)
     }
 }
 
@@ -185,7 +175,6 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
             ? cachedSemanticDocument
             : nil
         self.cachedTitleProjection = cachedTitleProjection?.sourceFingerprint == document.fingerprint
-            && cachedTitleProjection?.metadataRevision == metadata?.revision
             ? cachedTitleProjection
             : nil
     }
@@ -230,11 +219,7 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
             derivedProjectionState: .portableMetadataAhead,
             cachedSemanticDocument: cachedSemanticDocument,
             cachedTitleProjection: cachedSemanticDocument.map { _ in
-                WorkspaceNoteTitleProjection(
-                    document: document,
-                    vaultRole: vaultRole,
-                    metadata: metadata
-                )
+                WorkspaceNoteTitleProjection(document: document)
             }
         )
     }

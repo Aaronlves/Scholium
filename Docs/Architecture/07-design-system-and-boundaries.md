@@ -279,7 +279,7 @@ violation.
   renderer-specific Source and layout values; the unit-explicit
   `ScholiumDocumentPresentationConfiguration` supplies scale and minimum
   insets without overriding Appearance semantics. The normalized **48–96ch**
-  line width has a **72ch** default; generated CSS exports it as
+  line width has a **66ch** default; generated CSS exports it as
   `--scholium-document-line-width` together with an internal derived half-width
   length so the supported WebKit runtime does not depend on CSS division.
   Read/Live resolve it against Body type and Source against retained

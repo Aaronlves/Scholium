@@ -1,4 +1,4 @@
-export const EDITOR_PROTOCOL_VERSION = 17;
+export const EDITOR_PROTOCOL_VERSION = 19;
 export const MAX_INBOUND_BYTES = 2_500_000;
 export const MAX_SOURCE_UTF8_BYTES = 8_000_000;
 
@@ -18,6 +18,7 @@ export type MarkdownEditorCommand =
   | "pastePlain" | "pasteMarkdown" | "linkSelectedText";
 
 export interface SelectionRange { anchor: number; head: number }
+export type EditorFocusTarget = "title" | "editor";
 export interface SelectionSnapshot {
   documentID: string;
   fingerprint: string;
@@ -29,6 +30,7 @@ export interface RecoverySnapshot extends SelectionSnapshot {
   stateJSON?: string;
   undoHistoryPreserved: boolean;
   dirty: boolean;
+  focusTarget?: EditorFocusTarget;
 }
 export interface EditorScrollAnchor {
   sourceUTF16Offset: number;
@@ -120,7 +122,7 @@ export type EditorOperation =
   | {type: "restoreRecovery"; snapshot: RecoverySnapshot}
   | {type: "acknowledgeCommittedSnapshot"; expectedText: string; committedText: string; committedFingerprint: string}
   | {type: "command"; command: MarkdownEditorCommand; argument?: string}
-  | {type: "markClean"} | {type: "focus"} | {type: "blur"};
+  | {type: "markClean"} | {type: "focus"} | {type: "focusTitle"} | {type: "blur"};
 export interface EditorRequest {
   protocolVersion: number;
   requestID: string;
@@ -151,7 +153,7 @@ export interface EditorCommandResult {
 const operationTypes = new Set([
   "initialize", "setMode", "setDocumentTitle", "setPresentationCSS", "setUserCSS", "setLinkPreviews", "showPreview", "measureVisibleProjection", "showPreviewAt", "announceStatus",
   "goToLine", "revealSourceRange", "setScrollFraction", "setScrollAnchor", "queryText", "querySelection", "queryContext", "queryScrollAnchor", "queryPerformance",
-  "captureRecovery", "restoreRecovery", "acknowledgeCommittedSnapshot", "command", "documentFind", "clearDocumentFind", "markClean", "focus", "blur",
+  "captureRecovery", "restoreRecovery", "acknowledgeCommittedSnapshot", "command", "documentFind", "clearDocumentFind", "markClean", "focus", "focusTitle", "blur",
 ]);
 const commandTypes = new Set<MarkdownEditorCommand>([
   "bold", "emphasis", "strikethrough", "highlight", "inlineCode", "markdownComment", "standardLink", "wikilink",
@@ -187,6 +189,9 @@ function validRecoverySnapshot(value: unknown): value is RecoverySnapshot {
       || typeof snapshot.source !== "string"
       || typeof snapshot.undoHistoryPreserved !== "boolean"
       || typeof snapshot.dirty !== "boolean"
+      || (snapshot.focusTarget !== undefined
+        && snapshot.focusTarget !== "title"
+        && snapshot.focusTarget !== "editor")
       || !Array.isArray(snapshot.ranges) || snapshot.ranges.length === 0
       || snapshot.ranges.length > 256
       || (snapshot.stateJSON !== undefined && typeof snapshot.stateJSON !== "string")) return false;
@@ -217,6 +222,7 @@ const forwardReadableOperationTypes = new Set([
   "acknowledgeCommittedSnapshot",
   "announceStatus",
   "focus",
+  "focusTitle",
   "blur",
 ]);
 
@@ -330,7 +336,7 @@ function validOperation(operation: Record<string, unknown>) {
       && ["update", "next", "previous", "replaceCurrent", "replaceAll"].includes(value.action ?? "");
   }
   case "queryText": case "querySelection": case "queryContext": case "queryScrollAnchor": case "queryPerformance": case "captureRecovery": case "showPreview": case "measureVisibleProjection":
-  case "clearDocumentFind": case "markClean": case "focus": case "blur": return true;
+  case "clearDocumentFind": case "markClean": case "focus": case "focusTitle": case "blur": return true;
   default: return false;
   }
 }

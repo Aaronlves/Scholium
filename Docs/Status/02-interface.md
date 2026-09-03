@@ -23,6 +23,11 @@
 - Document retains Review, Edit, and Source over one exact source buffer.
   Markdown is the sole written annotation authority; there is no separate
   Review Comment or passage Discussion UI.
+- First ordinary Edit activation focuses the inline Note title at its end.
+  Returning to an open Note restores its title/body focus and exact valid
+  selection; final window persistence retains this lightweight state only for
+  tabs that remain open, while explicit source locations and Managed New Note
+  insertion take precedence.
 - Inspector presents Overview and Connect. Overview exposes current About,
   file, Settlement, Critique, and applicable Zotero facts and operations.
   Connect presents exact incoming or outgoing link occurrences, their local

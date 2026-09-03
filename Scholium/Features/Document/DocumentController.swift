@@ -73,7 +73,7 @@ extension WindowSelectedDocument {
 }
 
 struct DocumentPresentationSnapshot: Equatable, Sendable {
-    let scrollPositions: [String: Double]
+    let documents: [String: WindowDocumentPresentationSnapshot]
 }
 
 enum DocumentMemoryPressureLevel: Sendable {
@@ -159,8 +159,12 @@ final class DocumentController: ObservableObject {
     private var deferredWorkspaceSnapshotsDuringSave: [
         DocumentSessionKey: WorkspaceNoteSnapshot
     ] = [:]
-    private var restoredScrollPositionsByVault: [UUID: [String: Double]] = [:]
-    private var restoredUnqualifiedScrollPositions: [String: Double] = [:]
+    private var restoredPresentationsByVault: [
+        UUID: [String: WindowDocumentPresentationSnapshot]
+    ] = [:]
+    private var restoredUnqualifiedPresentations: [
+        String: WindowDocumentPresentationSnapshot
+    ] = [:]
     private var activeWorkspace: WorkspaceVaultSlot = .paperAnalysis
     private var presentationModesByWorkspace: [WorkspaceVaultSlot: NotePresentationMode]
     private struct ClosedPresentationEntry {
@@ -455,7 +459,8 @@ final class DocumentController: ObservableObject {
     }
 
     func selectDocument(_ document: WindowSelectedDocument) {
-        if selectedDocument != document {
+        let selectionChanged = selectedDocument != document
+        if selectionChanged {
             selectedDocument = document
         }
         switch document {
@@ -467,6 +472,9 @@ final class DocumentController: ObservableObject {
                 target: .workspace(descriptor.sessionKey),
                 path: descriptor.reference.relativePath
             )
+            if selectionChanged {
+                selectedSession.prepareForDocumentActivation()
+            }
             applyCurrentPresentationMode(
                 to: selectedSession,
                 target: .workspace(descriptor.sessionKey)
@@ -753,8 +761,10 @@ final class DocumentController: ObservableObject {
 
     func scrollPosition(for path: String, vaultID: UUID?) -> Double {
         let value = presentationSession(for: path, vaultID: vaultID)?.scrollFraction
-            ?? vaultID.flatMap { restoredScrollPositionsByVault[$0]?[path] }
-            ?? restoredUnqualifiedScrollPositions[path]
+            ?? vaultID.flatMap {
+                restoredPresentationsByVault[$0]?[path]?.scrollFraction
+            }
+            ?? restoredUnqualifiedPresentations[path]?.scrollFraction
             ?? 0
         return min(1, max(0, value))
     }
@@ -767,24 +777,29 @@ final class DocumentController: ObservableObject {
             session.scrollFraction = normalized
         } else {
             if let vaultID {
-                guard abs((restoredScrollPositionsByVault[vaultID]?[path] ?? 0) - normalized) > 0.002 else { return }
-                restoredScrollPositionsByVault[vaultID, default: [:]][path] = normalized
+                var presentation = restoredPresentationsByVault[vaultID]?[path]
+                    ?? WindowDocumentPresentationSnapshot()
+                guard abs(presentation.scrollFraction - normalized) > 0.002 else { return }
+                presentation.scrollFraction = normalized
+                restoredPresentationsByVault[vaultID, default: [:]][path] = presentation
             } else {
-                guard abs((restoredUnqualifiedScrollPositions[path] ?? 0) - normalized) > 0.002 else { return }
-                restoredUnqualifiedScrollPositions[path] = normalized
+                var presentation = restoredUnqualifiedPresentations[path]
+                    ?? WindowDocumentPresentationSnapshot()
+                guard abs(presentation.scrollFraction - normalized) > 0.002 else { return }
+                presentation.scrollFraction = normalized
+                restoredUnqualifiedPresentations[path] = presentation
             }
         }
     }
 
     func restorePresentationState(
-        scrollPositions: [String: Double],
+        documentPresentations: [String: WindowDocumentPresentationSnapshot],
         vaultID: UUID?
     ) {
-        let restored = scrollPositions.filter { $0.value.isFinite }
         if let vaultID {
-            restoredScrollPositionsByVault[vaultID] = restored
+            restoredPresentationsByVault[vaultID] = documentPresentations
         } else {
-            restoredUnqualifiedScrollPositions = restored
+            restoredUnqualifiedPresentations = documentPresentations
         }
         if let selectedDocument {
             hydratePresentation(
@@ -796,25 +811,28 @@ final class DocumentController: ObservableObject {
     }
 
     func presentationSnapshot(vaultID: UUID?) -> DocumentPresentationSnapshot {
-        var scrollPositions: [String: Double]
+        var documents: [String: WindowDocumentPresentationSnapshot]
         if let vaultID {
-            scrollPositions = restoredScrollPositionsByVault[vaultID] ?? [:]
+            documents = restoredPresentationsByVault[vaultID] ?? [:]
         } else {
-            scrollPositions = restoredUnqualifiedScrollPositions
+            documents = restoredUnqualifiedPresentations
         }
 
         for (key, reference) in retainedReferences where reference.vaultID == vaultID {
             guard let session = sessions.retainedSession(for: .workspace(key)) else { continue }
-            scrollPositions[reference.relativePath] = min(1, max(0, session.scrollFraction))
+            documents[reference.relativePath] = session.windowPresentationSnapshot
         }
-        for (target, session) in sessions.retainedSessions where target.isFallback {
+        for (target, session) in sessions.retainedSessions
+            where target.isFallback && (vaultID == nil || target.vaultID == vaultID) {
             let path = relativePath(for: target)
-            scrollPositions[path] = min(1, max(0, session.scrollFraction))
+            documents[path] = session.windowPresentationSnapshot
         }
         for (target, entry) in closedPresentations where target.vaultID == vaultID {
-            scrollPositions[entry.relativePath] = min(1, max(0, entry.scrollPosition.fraction))
+            documents[entry.relativePath] = WindowDocumentPresentationSnapshot(
+                scrollFraction: entry.scrollPosition.fraction
+            )
         }
-        return DocumentPresentationSnapshot(scrollPositions: scrollPositions)
+        return DocumentPresentationSnapshot(documents: documents)
     }
 
     func migratePresentationPath(
@@ -823,15 +841,16 @@ final class DocumentController: ObservableObject {
         vaultID: UUID?
     ) {
         if let vaultID,
-           let scroll = restoredScrollPositionsByVault[vaultID]?.removeValue(
+           let presentation = restoredPresentationsByVault[vaultID]?.removeValue(
             forKey: sourcePath
            ) {
-            restoredScrollPositionsByVault[vaultID, default: [:]][destinationPath] = scroll
+            restoredPresentationsByVault[vaultID, default: [:]][destinationPath]
+                = presentation
         } else if vaultID == nil,
-                  let scroll = restoredUnqualifiedScrollPositions.removeValue(
+                  let presentation = restoredUnqualifiedPresentations.removeValue(
                     forKey: sourcePath
                   ) {
-            restoredUnqualifiedScrollPositions[destinationPath] = scroll
+            restoredUnqualifiedPresentations[destinationPath] = presentation
         }
         let migratedKeys = retainedReferences.compactMap { key, reference in
             reference.vaultID == vaultID && reference.relativePath == sourcePath ? key : nil
@@ -858,8 +877,8 @@ final class DocumentController: ObservableObject {
     }
 
     func resetPresentationState() {
-        restoredScrollPositionsByVault = [:]
-        restoredUnqualifiedScrollPositions = [:]
+        restoredPresentationsByVault = [:]
+        restoredUnqualifiedPresentations = [:]
         activeWorkspace = .paperAnalysis
         var resetPresentationModes: [WorkspaceVaultSlot: NotePresentationMode] = [:]
         for workspace in WorkspaceVaultSlot.allCases {
@@ -887,8 +906,8 @@ final class DocumentController: ObservableObject {
             sessions.removeAll()
             retainedReferences.removeAll()
             deferredWorkspaceSnapshotsDuringSave.removeAll()
-            restoredScrollPositionsByVault = [:]
-            restoredUnqualifiedScrollPositions = [:]
+            restoredPresentationsByVault = [:]
+            restoredUnqualifiedPresentations = [:]
             closedPresentations.removeAll(keepingCapacity: false)
             sessionCancellables.removeAll()
             pendingChromeRefreshes.removeAll()
@@ -992,12 +1011,25 @@ final class DocumentController: ObservableObject {
             session.scrollFraction = retained.scrollPosition.fraction
             session.scrollAnchor = retained.scrollPosition.anchor
         }
-        let restoredScroll = restoredScrollPositionsByVault[target.vaultID]?
+        let restoredPresentation = restoredPresentationsByVault[target.vaultID]?
             .removeValue(forKey: path)
-            ?? restoredUnqualifiedScrollPositions.removeValue(forKey: path)
-        if let restoredScroll,
-           restoredScroll.isFinite {
-            session.scrollFraction = min(1, max(0, restoredScroll))
+            ?? restoredUnqualifiedPresentations.removeValue(forKey: path)
+        if let restoredPresentation {
+            let source: String?
+            switch target {
+            case .workspace(let key):
+                source = snapshots[key]?.document.rawContent
+            case .unavailable:
+                source = nil
+            }
+            if let source {
+                session.restoreWindowPresentation(
+                    restoredPresentation,
+                    source: source
+                )
+            } else {
+                session.scrollFraction = restoredPresentation.scrollFraction
+            }
         }
     }
 

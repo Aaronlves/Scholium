@@ -39,7 +39,14 @@ struct WindowSessionStateTests {
                     vaultID: analysesVaultID,
                     openDocuments: [analysis],
                     selectedDocument: analysis,
-                    scrollPositions: ["A.md": 0.25],
+                    documentPresentations: [
+                        "A.md": WindowDocumentPresentationSnapshot(
+                            scrollFraction: 0.25,
+                            sourceFingerprint: "fingerprint",
+                            selections: [WindowDocumentSelectionRange(anchor: 4, head: 9)],
+                            focusTarget: .editor
+                        ),
+                    ],
                     inspectorMode: "connect",
                     documentMode: "source"
                 ),
@@ -74,7 +81,10 @@ struct WindowSessionStateTests {
                     vaultID: vaultID,
                     openDocuments: [present, missing],
                     selectedDocument: missing,
-                    scrollPositions: ["Present.md": 0.8, "Missing.md": 0.2]
+                    documentPresentations: [
+                        "Present.md": WindowDocumentPresentationSnapshot(scrollFraction: 0.8),
+                        "Missing.md": WindowDocumentPresentationSnapshot(scrollFraction: 0.2),
+                    ]
                 ),
             ]
         )
@@ -87,7 +97,9 @@ struct WindowSessionStateTests {
         )
         #expect(session.openDocuments == [present])
         #expect(session.selectedDocument == nil)
-        #expect(session.scrollPositions == ["Present.md": 0.8])
+        #expect(session.documentPresentations == [
+            "Present.md": WindowDocumentPresentationSnapshot(scrollFraction: 0.8),
+        ])
     }
 
     @Test("A late older lifecycle generation cannot replace newer window state")
@@ -133,7 +145,9 @@ struct WindowSessionStateTests {
                     vaultID: vaultID,
                     openDocuments: [matchingDocument],
                     selectedDocument: matchingDocument,
-                    scrollPositions: ["Old.md": 0.6]
+                    documentPresentations: [
+                        "Old.md": WindowDocumentPresentationSnapshot(scrollFraction: 0.6),
+                    ]
                 ),
                 WindowWorkspaceSessionSnapshot(
                     workspace: .topicKnowledge,
@@ -159,7 +173,9 @@ struct WindowSessionStateTests {
             migrated.workspaceSession(for: .topicKnowledge)
         )
         #expect(analyses.selectedDocument?.relativePath == "New.md")
-        #expect(analyses.scrollPositions == ["New.md": 0.6])
+        #expect(analyses.documentPresentations == [
+            "New.md": WindowDocumentPresentationSnapshot(scrollFraction: 0.6),
+        ])
         #expect(topics.selectedDocument == peerDocument)
     }
 

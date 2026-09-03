@@ -285,7 +285,7 @@ export function createLiveSemanticLayout(options: {
       if (line.to >= html.to) classes.add("cm-live-raw-html-end");
     } else {
       if (headingLevel !== null) {
-        if (headingMarkerOnly && !active) {
+        if (headingMarkerOnly) {
           classes.add("cm-live-heading-marker-line");
         } else {
           classes.add("cm-live-heading");

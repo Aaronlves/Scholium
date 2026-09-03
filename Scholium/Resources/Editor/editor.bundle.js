@@ -21040,7 +21040,7 @@
   var completionKeymapExt = /* @__PURE__ */ Prec.highest(/* @__PURE__ */ keymap.computeN([completionConfig], (state) => state.facet(completionConfig).defaultKeymap ? [completionKeymap] : []));
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 17;
+  var EDITOR_PROTOCOL_VERSION = 19;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -21071,6 +21071,7 @@
     "clearDocumentFind",
     "markClean",
     "focus",
+    "focusTitle",
     "blur"
   ]);
   var commandTypes = /* @__PURE__ */ new Set([
@@ -21132,7 +21133,7 @@
   function validRecoverySnapshot(value) {
     if (!value || typeof value !== "object") return false;
     const snapshot = value;
-    if (typeof snapshot.documentID !== "string" || snapshot.documentID.length > 4096 || typeof snapshot.fingerprint !== "string" || snapshot.fingerprint.length > 256 || !Number.isSafeInteger(snapshot.generation) || snapshot.generation < 0 || typeof snapshot.source !== "string" || typeof snapshot.undoHistoryPreserved !== "boolean" || typeof snapshot.dirty !== "boolean" || !Array.isArray(snapshot.ranges) || snapshot.ranges.length === 0 || snapshot.ranges.length > 256 || snapshot.stateJSON !== void 0 && typeof snapshot.stateJSON !== "string") return false;
+    if (typeof snapshot.documentID !== "string" || snapshot.documentID.length > 4096 || typeof snapshot.fingerprint !== "string" || snapshot.fingerprint.length > 256 || !Number.isSafeInteger(snapshot.generation) || snapshot.generation < 0 || typeof snapshot.source !== "string" || typeof snapshot.undoHistoryPreserved !== "boolean" || typeof snapshot.dirty !== "boolean" || snapshot.focusTarget !== void 0 && snapshot.focusTarget !== "title" && snapshot.focusTarget !== "editor" || !Array.isArray(snapshot.ranges) || snapshot.ranges.length === 0 || snapshot.ranges.length > 256 || snapshot.stateJSON !== void 0 && typeof snapshot.stateJSON !== "string") return false;
     const normalizedLength = snapshot.source.replaceAll("\r\n", "\n").length;
     return snapshot.ranges.every((range) => Boolean(range) && Number.isSafeInteger(range.anchor) && range.anchor >= 0 && range.anchor <= normalizedLength && Number.isSafeInteger(range.head) && range.head >= 0 && range.head <= normalizedLength);
   }
@@ -21150,6 +21151,7 @@
     "acknowledgeCommittedSnapshot",
     "announceStatus",
     "focus",
+    "focusTitle",
     "blur"
   ]);
   function generationCanExecuteEditorRequest(operationType, knownGeneration, currentGeneration) {
@@ -21216,6 +21218,7 @@
       case "clearDocumentFind":
       case "markClean":
       case "focus":
+      case "focusTitle":
       case "blur":
         return true;
       default:
@@ -30737,6 +30740,7 @@ ${fence}
     "File and image paste is not supported in Editor 1.0.",
     "Markdown editor, Edit mode",
     "Markdown source editor",
+    "Note title",
     "Heading level {level}",
     "Link",
     "Callout",
@@ -32924,7 +32928,7 @@ ${fence}
         if (line.to >= html2.to) classes.add("cm-live-raw-html-end");
       } else {
         if (headingLevel !== null) {
-          if (headingMarkerOnly && !active) {
+          if (headingMarkerOnly) {
             classes.add("cm-live-heading-marker-line");
           } else {
             classes.add("cm-live-heading");
@@ -36280,27 +36284,155 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   var refreshMermaidThemeEffect = StateEffect.define();
   var mermaidThemeRevision = 0;
   var documentTitle = "";
+  var documentTitleDraft = null;
+  var documentTitleError = null;
+  var documentTitleRenameRequest = null;
+  var documentTitlePresentationRevision = 0;
+  var lastDocumentFocusTarget;
   function configuredEditorMode(state) {
     return state.facet(editorModeFacet);
   }
   var DocumentTitleWidget = class extends WidgetType {
-    constructor(title) {
+    constructor(title, presentationRevision) {
       super();
       this.title = title;
+      this.presentationRevision = presentationRevision;
     }
     title;
+    presentationRevision;
     eq(other) {
-      return other.title === this.title;
+      return other.title === this.title && other.presentationRevision === this.presentationRevision;
     }
     toDOM() {
-      const title = document.createElement("div");
-      title.className = "cm-live-note-title scholium-note-title";
-      title.setAttribute("role", "heading");
-      title.setAttribute("aria-level", "1");
-      title.setAttribute("dir", "auto");
-      title.setAttribute("data-scholium-protected", "note-title");
-      title.textContent = this.title;
-      return title;
+      const wrapper = document.createElement("div");
+      wrapper.className = "cm-live-note-title scholium-note-title";
+      wrapper.setAttribute("role", "heading");
+      wrapper.setAttribute("aria-level", "1");
+      wrapper.setAttribute("aria-label", documentTitleDraft ?? this.title);
+      wrapper.setAttribute("dir", "auto");
+      wrapper.setAttribute("data-scholium-protected", "note-title");
+      const input = document.createElement("textarea");
+      input.className = "scholium-note-title-input";
+      input.value = documentTitleDraft ?? this.title;
+      input.rows = 1;
+      input.wrap = "soft";
+      input.spellcheck = false;
+      input.maxLength = 1024;
+      input.setAttribute("aria-label", localized("Note title"));
+      input.setAttribute("data-scholium-title-input", "true");
+      input.disabled = documentTitleRenameRequest !== null;
+      if (documentTitleRenameRequest) input.setAttribute("aria-busy", "true");
+      if (documentTitleError) {
+        input.setAttribute("aria-invalid", "true");
+        input.setAttribute("aria-describedby", "scholium-note-title-error");
+      }
+      const resize = () => {
+        input.style.height = "0";
+        input.style.height = `${input.scrollHeight}px`;
+      };
+      let composing = false;
+      let commitAfterComposition = false;
+      const normalizeInput = () => {
+        if (composing) {
+          documentTitleDraft = input.value;
+          wrapper.setAttribute("aria-label", input.value || this.title);
+          resize();
+          return;
+        }
+        const normalized2 = input.value.replace(/[\r\n]+/g, " ");
+        if (normalized2 !== input.value) input.value = normalized2;
+        documentTitleDraft = input.value;
+        wrapper.setAttribute("aria-label", input.value || this.title);
+        documentTitleError = null;
+        input.removeAttribute("aria-invalid");
+        input.removeAttribute("aria-describedby");
+        wrapper.querySelector(".scholium-note-title-error")?.remove();
+        resize();
+      };
+      const commit = () => {
+        if (documentTitleRenameRequest) return;
+        const requestedTitle = input.value.replace(/[\r\n]+/g, " ");
+        documentTitleDraft = requestedTitle;
+        if (requestedTitle === documentTitle) {
+          documentTitleDraft = null;
+          documentTitleError = null;
+          return;
+        }
+        const requestID = boundedUUID();
+        documentTitleRenameRequest = {
+          requestID,
+          expectedTitle: documentTitle,
+          requestedTitle
+        };
+        input.disabled = true;
+        input.setAttribute("aria-busy", "true");
+        post({
+          type: "requestDocumentTitleRename",
+          requestID,
+          expectedTitle: documentTitle,
+          requestedTitle
+        });
+      };
+      let cancelling = false;
+      input.addEventListener("input", normalizeInput);
+      input.addEventListener("focus", () => {
+        lastDocumentFocusTarget = "title";
+        scheduleEditorInteractionReport();
+      });
+      input.addEventListener("compositionstart", () => {
+        composing = true;
+      });
+      input.addEventListener("compositionend", () => {
+        composing = false;
+        normalizeInput();
+        if (commitAfterComposition) {
+          commitAfterComposition = false;
+          commit();
+        }
+      });
+      input.addEventListener("keydown", (event) => {
+        if (composing || event.isComposing) return;
+        if (event.key === "Enter") {
+          event.preventDefault();
+          commit();
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          cancelling = true;
+          documentTitleDraft = null;
+          documentTitleError = null;
+          input.value = documentTitle;
+          resize();
+          input.blur();
+        }
+      });
+      input.addEventListener("blur", () => {
+        if (cancelling) {
+          cancelling = false;
+          return;
+        }
+        if (composing) {
+          commitAfterComposition = true;
+          return;
+        }
+        commit();
+      });
+      wrapper.addEventListener("pointerdown", (event) => {
+        if (event.target === input || input.disabled) return;
+        event.preventDefault();
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+      });
+      wrapper.append(input);
+      if (documentTitleError) {
+        const error = document.createElement("div");
+        error.id = "scholium-note-title-error";
+        error.className = "scholium-note-title-error";
+        error.setAttribute("role", "alert");
+        error.textContent = documentTitleError;
+        wrapper.append(error);
+      }
+      queueMicrotask(resize);
+      return wrapper;
     }
     ignoreEvent() {
       return true;
@@ -36310,11 +36442,38 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     if (!documentTitle) return Decoration.none;
     return Decoration.set([
       Decoration.widget({
-        widget: new DocumentTitleWidget(documentTitle),
+        widget: new DocumentTitleWidget(
+          documentTitle,
+          documentTitlePresentationRevision
+        ),
         block: true,
         side: -1
       }).range(frontmatterBodyOffset(state.doc))
     ]);
+  }
+  function resolveDocumentTitleRename(requestID, accepted, title, error) {
+    if (!documentTitleRenameRequest || requestID !== documentTitleRenameRequest.requestID || typeof accepted !== "boolean" || typeof title !== "string" || title.length > 1024 || typeof error !== "string" || error.length > 4096) return;
+    const requestedTitle = documentTitleRenameRequest.requestedTitle;
+    documentTitleRenameRequest = null;
+    if (accepted) {
+      documentTitle = title;
+      documentTitleDraft = null;
+      documentTitleError = null;
+    } else {
+      documentTitleDraft = requestedTitle;
+      documentTitleError = error;
+    }
+    documentTitlePresentationRevision += 1;
+    editor.dispatch({ effects: refreshDocumentTitleEffect.of(null) });
+    if (!accepted) {
+      queueMicrotask(() => {
+        const input = document.querySelector(
+          ".scholium-note-title-input"
+        );
+        input?.focus();
+        input?.setSelectionRange(input.value.length, input.value.length);
+      });
+    }
   }
   var liveDocumentTitle = StateField.define({
     create: (state) => documentTitleDecorations(state),
@@ -36326,6 +36485,26 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   });
   var hiddenSyntax = Decoration.replace({});
   var liveMark = (className) => Decoration.mark({ class: className });
+  var ReservedSyntaxWidget = class extends WidgetType {
+    constructor(source) {
+      super();
+      this.source = source;
+    }
+    source;
+    eq(other) {
+      return other.source === this.source;
+    }
+    toDOM() {
+      const marker = document.createElement("span");
+      marker.className = "cm-live-reserved-syntax";
+      marker.textContent = this.source;
+      marker.setAttribute("aria-hidden", "true");
+      return marker;
+    }
+    ignoreEvent() {
+      return true;
+    }
+  };
   var liveInlineClassByKind = {
     strong: "cm-live-strong",
     emphasis: "cm-live-emphasis",
@@ -36489,6 +36668,14 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       decorations2.push(range);
       atomicRanges2.push(range);
     };
+    const addReservedHidden = (from, to) => {
+      if (to <= from) return;
+      const range = Decoration.replace({
+        widget: new ReservedSyntaxWidget(doc2.sliceString(from, to))
+      }).range(from, to);
+      decorations2.push(range);
+      atomicRanges2.push(range);
+    };
     const addAtomicReplacement = (decoration, from, to) => {
       if (to <= from) return;
       const range = decoration.range(from, to);
@@ -36589,7 +36776,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             const lineMarkers = heading2.markerRanges.filter((range) => range.from < lineQueryTo && range.to > line.from);
             if (!activeLine) {
               for (const marker of lineMarkers) {
-                addHidden(Math.max(line.from, marker.from), Math.min(line.to, marker.to));
+                addReservedHidden(
+                  Math.max(line.from, marker.from),
+                  Math.min(line.to, marker.to)
+                );
               }
             }
           }
@@ -37311,6 +37501,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     })
   ];
   var editor = createMarkdownEditor(document.getElementById("editor"), editorExtensions);
+  editor.contentDOM.addEventListener("focus", () => {
+    lastDocumentFocusTarget = "editor";
+    scheduleEditorInteractionReport();
+  });
   editor.contentDOM.addEventListener("keydown", (event) => {
     const key = event.key;
     const canCommitText = !event.isComposing && !event.metaKey && !event.ctrlKey && !event.altKey && (key.length === 1 || key === "Backspace" || key === "Delete" || key === "Enter");
@@ -37455,6 +37649,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         line: line.number,
         column: head - line.from + 1,
         lineCount: editor.state.doc.lines,
+        ...lastDocumentFocusTarget ? { focusTarget: lastDocumentFocusTarget } : {},
         ...includeContext ? { context } : {}
       });
     });
@@ -37597,7 +37792,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           source: exactEditorSource(),
           stateJSON,
           undoHistoryPreserved: stateJSON !== void 0,
-          dirty
+          dirty,
+          focusTarget: lastDocumentFocusTarget
         };
         return { ...successfulResult(request.requestID), recovery };
       }
@@ -37648,6 +37844,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         const restoredMode = configuredEditorMode(editor.state);
         editor.setState(recoveredState);
         exactSourceMirror.replace(snapshot.source);
+        lastDocumentFocusTarget = snapshot.focusTarget;
         await editorOperations.setMode(restoredMode);
         dirty = snapshot.dirty;
         documentVersion = snapshot.generation;
@@ -37712,6 +37909,12 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       case "focus":
         editorOperations.focus();
         break;
+      case "focusTitle": {
+        if (!editorOperations.focusTitle()) {
+          return rejected(request.requestID, documentVersion, "document title is unavailable");
+        }
+        break;
+      }
       case "blur":
         editorOperations.blur();
         break;
@@ -37859,6 +38062,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       bridgeDocumentID = documentID;
       bridgeFingerprint = startingFingerprint;
       documentTitle = "";
+      documentTitleDraft = null;
+      documentTitleError = null;
+      documentTitleRenameRequest = null;
+      documentTitlePresentationRevision += 1;
+      lastDocumentFocusTarget = void 0;
       documentVersion = 0;
       hiddenFrontmatterSourceSelection = null;
       const separator = text.includes("\r\n") ? "\r\n" : "\n";
@@ -37876,7 +38084,12 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       scheduleEditorInteractionReport(true);
     },
     setDocumentTitle(value) {
+      if (documentTitle === value && documentTitleDraft === null && documentTitleError === null && documentTitleRenameRequest === null) return;
       documentTitle = value;
+      documentTitleDraft = null;
+      documentTitleError = null;
+      documentTitleRenameRequest = null;
+      documentTitlePresentationRevision += 1;
       editor.dispatch({ effects: refreshDocumentTitleEffect.of(null) });
     },
     /** @param {string} mode */
@@ -37961,6 +38174,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         selection: { anchor: line.from },
         effects: EditorView.scrollIntoView(line.from, { y: "center" })
       });
+      lastDocumentFocusTarget = "editor";
       editor.focus();
     },
     /** Selects an exact source range without changing Markdown or undo history. */
@@ -37974,7 +38188,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         effects: EditorView.scrollIntoView(EditorSelection.range(from, to), { y: "center" }),
         annotations: Transaction.addToHistory.of(false)
       });
-      if (focusesEditor) editor.focus();
+      if (focusesEditor) {
+        lastDocumentFocusTarget = "editor";
+        editor.focus();
+      }
     },
     setScrollFraction(requestedFraction) {
       scrollCoordinator.setFraction(requestedFraction);
@@ -38014,7 +38231,18 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       dirty = false;
     },
     focus() {
+      lastDocumentFocusTarget = "editor";
       editor.focus();
+    },
+    focusTitle() {
+      const input = document.querySelector(
+        ".scholium-note-title-input"
+      );
+      if (!input || input.disabled) return false;
+      lastDocumentFocusTarget = "title";
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+      return true;
     },
     blur() {
       previewPopover.hide();
@@ -38024,6 +38252,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   webkitWindow.scholiumEditor = {
     dispatch: dispatchEditorRequest,
     resolveLinkCompletionQuery: inputSuggestions.resolveLinkCompletionQuery,
+    resolveDocumentTitleRename,
     refreshMathRuntime() {
       editor.dispatch({ effects: refreshLivePreviewEffect.of(null) });
       return true;

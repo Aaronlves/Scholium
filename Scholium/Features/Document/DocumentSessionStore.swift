@@ -83,6 +83,7 @@ final class DocumentSessionModel: ObservableObject {
     /// the insertion point at the exact body boundary. This is session-bound
     /// so another navigation can never consume the creation focus intent.
     @Published private(set) var managedCreationBodyStartUTF16: Int? = nil
+    private var hasBeenActivated = false
 
     var autosaveTask: Task<Void, Never>?
     var autosaveDeadline: ContinuousClock.Instant?
@@ -114,6 +115,40 @@ final class DocumentSessionModel: ObservableObject {
 
     func completeManagedCreationEntry() {
         managedCreationBodyStartUTF16 = nil
+    }
+
+    /// A first activation begins at the filename title. A retained or restored
+    /// session reuses its last title/body focus target and exact valid editor
+    /// selection; managed creation keeps its explicit body-start contract.
+    func prepareForDocumentActivation() {
+        let target: WindowDocumentFocusTarget
+        if isEnteringManagedCreation {
+            target = .editor
+        } else if hasBeenActivated {
+            target = editorSession.preferredDocumentFocusTarget ?? .title
+        } else {
+            target = .title
+        }
+        hasBeenActivated = true
+        editorSession.authorizeAutomaticFocus(target: target)
+    }
+
+    func restoreWindowPresentation(
+        _ presentation: WindowDocumentPresentationSnapshot,
+        source: String
+    ) {
+        observedScrollPosition.updateFraction(presentation.scrollFraction)
+        hasBeenActivated = true
+        _ = editorSession.restoreWindowPresentation(
+            presentation,
+            source: source
+        )
+    }
+
+    var windowPresentationSnapshot: WindowDocumentPresentationSnapshot {
+        editorSession.windowPresentationSnapshot(
+            scrollFraction: observedScrollPosition.fraction
+        )
     }
 
     /// Prepares the outer Review projection without invalidating a retained
@@ -191,6 +226,7 @@ final class DocumentSessionModel: ObservableObject {
         editError = nil
         canRetrySave = false
         managedCreationBodyStartUTF16 = nil
+        hasBeenActivated = false
     }
 
     /// A dirty decision must include both the Swift mirror and CodeMirror's

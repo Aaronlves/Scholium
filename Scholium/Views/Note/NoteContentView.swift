@@ -131,6 +131,11 @@ struct DocumentFeatureActions {
     let editProperties: @MainActor () -> Void
     let setResearchInspectorVisible: @MainActor (Bool) -> Void
     let openingDocumentPresentationDidComplete: @MainActor () -> Void
+    let renameNote: @MainActor (
+        WindowDocumentLocation,
+        String,
+        String
+    ) async throws -> String
     let notify: @MainActor (String, DocumentNotificationKind) -> Void
 }
 
@@ -708,6 +713,9 @@ struct NoteContentView: View {
             onRequestFind: handleDocumentFindShortcut,
             onRequestImportImage: requestImageImport,
             onRequestIndexImage: requestImageIndex,
+            onRequestDocumentTitleRename: { expectedTitle, requestedTitle in
+                try await actions.renameNote(note, expectedTitle, requestedTitle)
+            },
             onPasteImage: handlePastedImage,
             onLinkActivation: { target in
                 if let url = URL(string: target),
@@ -1391,7 +1399,7 @@ struct NoteContentView: View {
             ).post()
             return
         }
-        editorSession.focus()
+        editorSession.focusPreferred()
     }
 
     private func retryManagedCreationEditor(in mode: MarkdownEditorMode) {
@@ -1732,6 +1740,7 @@ private extension CritiqueFindingDispositionDecision {
         editProperties: {},
         setResearchInspectorVisible: { _ in },
         openingDocumentPresentationDidComplete: {},
+        renameNote: { _, _, requestedTitle in requestedTitle },
         notify: { _, _ in }
     )
     let critiqueProvenanceContext = CritiqueProvenanceContext(

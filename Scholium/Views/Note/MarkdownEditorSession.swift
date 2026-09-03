@@ -163,6 +163,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var documentStatisticsRequestID: UInt64 = 0
     private var documentStatisticsIdentity: DocumentStatisticsRequestIdentity?
     private var automaticFocusIsAuthorized = false
+    private var automaticFocusTarget: WindowDocumentFocusTarget = .editor
     private var sourceMutationBarrier: Task<Void, Never>?
     private var inFlightRequestTasks: [UUID: Task<MarkdownEditorCommandResult, Error>] = [:]
     private var requestEpoch: UInt64 = 0
@@ -183,6 +184,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var sourceOffsetMap = EditorSourceOffsetMap(source: "")
     private var recoverySnapshot: MarkdownEditorRecoverySnapshot?
     private var lastKnownSelectionSnapshot: MarkdownEditorSelectionSnapshot?
+    private var pendingWindowPresentation: WindowDocumentPresentationSnapshot?
+    private(set) var preferredDocumentFocusTarget: WindowDocumentFocusTarget?
     #if DEBUG
     private static let qaTerminationNotification = Notification.Name(
         "com.scholium.qa.simulate-editor-process-termination"
@@ -198,6 +201,63 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         isDirty || recoverySnapshot?.dirty == true
     }
     var canAttemptPreview: Bool { pendingMode == .livePreview }
+
+    @discardableResult
+    func restoreWindowPresentation(
+        _ presentation: WindowDocumentPresentationSnapshot,
+        source: String
+    ) -> Bool {
+        let fingerprint = DocumentFingerprint(content: source).sha256
+        let offsetMap = EditorSourceOffsetMap(source: source)
+        let ranges = presentation.selections.map {
+            MarkdownEditorSelectionRange(anchor: $0.anchor, head: $0.head)
+        }
+        guard presentation.sourceFingerprint == fingerprint,
+              markdownEditorSelectionRangesAreValid(
+                ranges,
+                forEditorUTF16Length: offsetMap.editorUTF16Length
+              ) else {
+            pendingWindowPresentation = nil
+            preferredDocumentFocusTarget = nil
+            return false
+        }
+        pendingWindowPresentation = presentation
+        preferredDocumentFocusTarget = presentation.focusTarget
+        return true
+    }
+
+    func windowPresentationSnapshot(
+        scrollFraction: Double
+    ) -> WindowDocumentPresentationSnapshot {
+        if let pendingWindowPresentation {
+            return WindowDocumentPresentationSnapshot(
+                scrollFraction: scrollFraction,
+                sourceFingerprint: pendingWindowPresentation.sourceFingerprint,
+                selections: pendingWindowPresentation.selections,
+                focusTarget: pendingWindowPresentation.focusTarget
+            )
+        }
+        guard !isDirty,
+              let selection = lastKnownSelectionSnapshot,
+              selection.isValid(
+                documentID: documentID,
+                fingerprint: startingFingerprint,
+                generation: generation,
+                editorUTF16Length: checkedEditorUTF16Length
+              ) else {
+            return WindowDocumentPresentationSnapshot(
+                scrollFraction: scrollFraction
+            )
+        }
+        return WindowDocumentPresentationSnapshot(
+            scrollFraction: scrollFraction,
+            sourceFingerprint: selection.fingerprint,
+            selections: selection.ranges.map {
+                WindowDocumentSelectionRange(anchor: $0.anchor, head: $0.head)
+            },
+            focusTarget: preferredDocumentFocusTarget
+        )
+    }
 
     /// A SwiftUI/AppKit reconstruction of the same retained document must use
     /// the session's exact mirror, not the parent view's lifecycle snapshot.
@@ -302,6 +362,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         focusHandoffTask?.cancel()
         focusHandoffTask = nil
         automaticFocusIsAuthorized = false
+        automaticFocusTarget = .editor
         cancelScheduledRecoveryCapture()
         committedTextSynchronizer = nil
         sourceChangeHandler = nil
@@ -317,6 +378,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         sourceOffsetMap = EditorSourceOffsetMap(source: "")
         recoverySnapshot = nil
         lastKnownSelectionSnapshot = nil
+        pendingWindowPresentation = nil
+        preferredDocumentFocusTarget = nil
         documentStatisticsTask?.cancel()
         documentStatisticsTask = nil
         documentStatisticsRequestID &+= 1
@@ -344,6 +407,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         column: Int,
         lineCount: Int,
         documentVersion: Int,
+        focusTarget: WindowDocumentFocusTarget? = nil,
         context semanticContext: MarkdownEditorContext?
     ) {
         let wasComposing = context?.composing == true
@@ -359,6 +423,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             generation: documentVersion,
             ranges: selections
         )
+        if let focusTarget {
+            preferredDocumentFocusTarget = focusTarget
+            automaticFocusTarget = focusTarget
+        }
         self.line = max(1, line)
         self.column = max(1, column)
         self.lineCount = max(1, lineCount)
@@ -399,6 +467,17 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         invalidateRequestQueue()
         cancelScheduledRecoveryCapture()
         let nextFingerprint = DocumentFingerprint(content: source).sha256
+        let restoredPresentation = pendingWindowPresentation
+        pendingWindowPresentation = nil
+        let restoredRanges = restoredPresentation?.selections.map {
+            MarkdownEditorSelectionRange(anchor: $0.anchor, head: $0.head)
+        } ?? []
+        let canRestoreWindowPresentation = initialSourceRange == nil
+            && restoredPresentation?.sourceFingerprint == nextFingerprint
+            && markdownEditorSelectionRangesAreValid(
+                restoredRanges,
+                forEditorUTF16Length: EditorSourceOffsetMap(source: source).editorUTF16Length
+            )
         let preservesRecovery = recoverySnapshot.map {
             $0.documentID == documentID
                 && $0.fingerprint == startingFingerprint
@@ -406,8 +485,29 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         } ?? false
         let retainedStartingFingerprint = preservesRecovery ? startingFingerprint : nil
         if !preservesRecovery {
-            recoverySnapshot = nil
-            lastKnownSelectionSnapshot = nil
+            if canRestoreWindowPresentation, let restoredPresentation {
+                recoverySnapshot = MarkdownEditorRecoverySnapshot(
+                    documentID: documentID,
+                    fingerprint: nextFingerprint,
+                    generation: 0,
+                    ranges: restoredRanges,
+                    source: source,
+                    stateJSON: nil,
+                    undoHistoryPreserved: false,
+                    dirty: false,
+                    focusTarget: restoredPresentation.focusTarget
+                )
+                lastKnownSelectionSnapshot = MarkdownEditorSelectionSnapshot(
+                    documentID: documentID,
+                    fingerprint: nextFingerprint,
+                    generation: 0,
+                    ranges: restoredRanges
+                )
+                preferredDocumentFocusTarget = restoredPresentation.focusTarget
+            } else {
+                recoverySnapshot = nil
+                lastKnownSelectionSnapshot = nil
+            }
             reconstructionScrollAnchor = nil
             context = nil
             updatePublished(\.interactionAvailability, to: nil)
@@ -546,11 +646,15 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     }
 
     func goToLine(_ line: Int) {
+        preferredDocumentFocusTarget = .editor
+        automaticFocusTarget = .editor
         pendingLine = max(1, line)
         flushPendingLine()
     }
 
     func revealSourceRange(fromUTF16: Int, toUTF16: Int) {
+        preferredDocumentFocusTarget = .editor
+        automaticFocusTarget = .editor
         let lowerBound = max(0, fromUTF16)
         pendingSourceRange = lowerBound..<max(lowerBound, toUTF16)
         flushPendingSourceRange()
@@ -792,6 +896,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             throw SessionError.invalidResult
         }
         recoverySnapshot = snapshot
+        if let focusTarget = snapshot.focusTarget {
+            preferredDocumentFocusTarget = focusTarget
+            automaticFocusTarget = focusTarget
+        }
         lastKnownSelectionSnapshot = MarkdownEditorSelectionSnapshot(
             documentID: snapshot.documentID,
             fingerprint: snapshot.fingerprint,
@@ -935,7 +1043,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             source: checkedSource,
             stateJSON: nil,
             undoHistoryPreserved: false,
-            dirty: commitSuperseded
+            dirty: commitSuperseded,
+            focusTarget: preferredDocumentFocusTarget
         )
         updatePublished(\.isDirty, to: commitSuperseded)
         committedTextSynchronizer?(checkedSource, fingerprint.sha256)
@@ -969,22 +1078,68 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     }
 
     func focus() {
+        requestFocus(.editor)
+    }
+
+    func focusTitle() {
+        requestFocus(.title)
+    }
+
+    func focusPreferred() {
+        requestFocus(preferredDocumentFocusTarget ?? .editor)
+    }
+
+    private func requestFocus(_ target: WindowDocumentFocusTarget) {
+        automaticFocusTarget = target
+        preferredDocumentFocusTarget = target
         automaticFocusIsAuthorized = true
         let precedingHandoff = focusHandoffTask
         Task {
             await precedingHandoff?.value
-            try? await focusAndWait()
+            try? await focusAndWait(target)
         }
     }
 
-    func authorizeAutomaticFocus() {
+    func authorizeAutomaticFocus(
+        target: WindowDocumentFocusTarget? = nil
+    ) {
+        if let target {
+            automaticFocusTarget = target
+            preferredDocumentFocusTarget = target
+        }
         automaticFocusIsAuthorized = true
     }
 
     func focusAndWait() async throws {
+        try await focusAndWait(.editor)
+    }
+
+    func focusTitleAndWait() async throws {
+        try await focusAndWait(.title)
+    }
+
+    private func focusAndWait(
+        _ target: WindowDocumentFocusTarget
+    ) async throws {
+        automaticFocusTarget = target
+        preferredDocumentFocusTarget = target
         automaticFocusIsAuthorized = true
         guard isReady, isLoaded, let webView else { throw SessionError.unavailable }
-        _ = try await send(.focus, in: webView)
+        _ = try await send(
+            focusOperation(for: target, mode: presentedMode ?? pendingMode),
+            in: webView
+        )
+    }
+
+    private func focusOperation(
+        for target: WindowDocumentFocusTarget,
+        mode: MarkdownEditorMode
+    ) -> MarkdownEditorOperation {
+        switch target {
+        case .title where mode == .livePreview: .focusTitle
+        case .title: .focus
+        case .editor: .focus
+        }
     }
 
     /// Removes keyboard focus before the retained editor is hidden by Read.
@@ -1192,7 +1347,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 source: snapshot.source,
                 stateJSON: snapshot.stateJSON,
                 undoHistoryPreserved: snapshot.undoHistoryPreserved,
-                dirty: isDirty
+                dirty: isDirty,
+                focusTarget: preferredDocumentFocusTarget
             )
         } else {
             recoverySnapshot = MarkdownEditorRecoverySnapshot(
@@ -1203,7 +1359,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 source: checkedSource,
                 stateJSON: nil,
                 undoHistoryPreserved: false,
-                dirty: isDirty
+                dirty: isDirty,
+                focusTarget: preferredDocumentFocusTarget
             )
         }
         let recoverySource = checkedSource
@@ -1357,7 +1514,10 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 }
                 if automaticFocusIsAuthorized {
                     _ = try await send(
-                        .focus,
+                        focusOperation(
+                            for: automaticFocusTarget,
+                            mode: appliedMode
+                        ),
                         in: webView,
                         requiringRequestEpoch: intendedRequestEpoch
                     )

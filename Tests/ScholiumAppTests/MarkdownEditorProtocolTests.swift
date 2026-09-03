@@ -53,6 +53,14 @@ struct MarkdownEditorProtocolTests {
         #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == .blur)
     }
 
+    @Test("Title focus round trips as a nonmutating bridge operation")
+    func titleFocusOperationRoundTrip() throws {
+        let data = try JSONEncoder().encode(MarkdownEditorOperation.focusTitle)
+        let object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(object["type"] as? String == "focusTitle")
+        #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == .focusTitle)
+    }
+
     @Test("Performance samples use the typed non-source diagnostic path")
     func performanceOperationRoundTrip() throws {
         let data = try JSONEncoder().encode(MarkdownEditorOperation.queryPerformance)
@@ -61,7 +69,7 @@ struct MarkdownEditorProtocolTests {
         #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == .queryPerformance)
     }
 
-    @Test("Request envelope and operation round trip with protocol version 17")
+    @Test("Request envelope and operation round trip with protocol version 19")
     func requestRoundTrip() throws {
         let request = MarkdownEditorRequest(
             requestID: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!,
@@ -77,7 +85,7 @@ struct MarkdownEditorProtocolTests {
         #expect(try JSONDecoder().decode(MarkdownEditorRequest.self, from: encoded) == request)
 
         let object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
-        #expect(object["protocolVersion"] as? Int == 17)
+        #expect(object["protocolVersion"] as? Int == 19)
         let operation = try #require(object["operation"] as? [String: Any])
         #expect(operation["type"] as? String == "command")
         #expect(operation["command"] as? String == "bold")
@@ -133,7 +141,7 @@ struct MarkdownEditorProtocolTests {
             """
             {
               "type": "contextMenuRequested",
-              "protocolVersion": 17,
+              "protocolVersion": 19,
               "sessionID": "11111111-2222-3333-4444-555555555555",
               "documentID": "topics:Scope.md",
               "startingFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -166,10 +174,42 @@ struct MarkdownEditorProtocolTests {
         #expect(message.context.availableCommands == [.toggleTask])
     }
 
+    @Test("Document title rename request is typed and bounded")
+    func documentTitleRenameMessageDecoding() throws {
+        let object: [String: Any] = [
+            "type": "requestDocumentTitleRename",
+            "protocolVersion": 19,
+            "sessionID": "11111111-2222-3333-4444-555555555555",
+            "documentID": "topics:Scope.md",
+            "startingFingerprint": String(repeating: "a", count: 64),
+            "documentVersion": 3,
+            "requestID": "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE",
+            "expectedTitle": "Scope",
+            "requestedTitle": "Normative Scope",
+        ]
+        let decoded = try #require(EditorBridgeMessageDecoder.decode(object))
+        guard case .requestDocumentTitleRename(let message) = decoded else {
+            Issue.record("The typed bridge did not decode a title rename request.")
+            return
+        }
+        #expect(message.expectedTitle == "Scope")
+        #expect(message.requestedTitle == "Normative Scope")
+
+        var malformed = object
+        malformed["requestedTitle"] = String(repeating: "x", count: 1_025)
+        #expect(EditorBridgeMessageDecoder.decode(malformed) == nil)
+        malformed = object
+        malformed["requestID"] = "not-a-uuid"
+        #expect(EditorBridgeMessageDecoder.decode(malformed) == nil)
+        malformed = object
+        malformed["legacyPath"] = "Topics/Scope.md"
+        #expect(EditorBridgeMessageDecoder.decode(malformed) == nil)
+    }
+
     @Test("Inbound bridge rejects unknown, stale-version, and extra-field messages")
     func inboundBridgeRejectsUnrecognizedContracts() {
         let envelope: [String: Any] = [
-            "protocolVersion": 17,
+            "protocolVersion": 19,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -197,11 +237,38 @@ struct MarkdownEditorProtocolTests {
         ]) { _, next in next }) == nil)
     }
 
+    @Test("Interaction messages carry only a typed document focus target")
+    func interactionFocusTargetDecoding() throws {
+        let envelope: [String: Any] = [
+            "type": "interactionChanged",
+            "protocolVersion": 19,
+            "sessionID": "11111111-2222-3333-4444-555555555555",
+            "documentID": "session-document",
+            "startingFingerprint": String(repeating: "a", count: 64),
+            "documentVersion": 3,
+            "selections": [["anchor": 4, "head": 4]],
+            "line": 1,
+            "column": 5,
+            "lineCount": 1,
+            "focusTarget": "title",
+        ]
+        let decoded = try #require(EditorBridgeMessageDecoder.decode(envelope))
+        guard case .interactionChanged(let message) = decoded else {
+            Issue.record("The typed bridge did not decode an interaction message.")
+            return
+        }
+        #expect(message.focusTarget == .title)
+
+        var malformed = envelope
+        malformed["focusTarget"] = "sidebar"
+        #expect(EditorBridgeMessageDecoder.decode(malformed) == nil)
+    }
+
     @Test("High-frequency deltas use the shared typed envelope and bounds")
     func inboundDeltaUsesTypedDirectDecoder() throws {
         let object: [String: Any] = [
             "type": "documentChanged",
-            "protocolVersion": 17,
+            "protocolVersion": 19,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),

@@ -552,7 +552,10 @@ Document presentation owns one live Review/Edit/Source selection per workspace,
 defaults each to Review, and carries that selection across Note and tab changes.
 `WindowSessionSnapshot` stores the selected workspace plus three
 `WindowWorkspaceSessionSnapshot` values containing role-partitioned tab order,
-selection, scroll positions, Document mode, and Inspector mode.
+selection, Document mode, Inspector mode, and lightweight presentation for
+each still-open document: normalized scroll plus source-fingerprint-bound
+editor ranges and title/body focus. It stores no source bytes, Undo state, or
+presentation for tabs already closed.
 Unsupported session bytes fail closed rather than entering a compatibility
 decoder.
 

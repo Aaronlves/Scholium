@@ -158,7 +158,7 @@ struct SearchIndexTests {
         let exactTitle = try #require(
             await index.testSearch(fixture.request("\"Café Ethics\"")).noteResults.first
         )
-        #expect(exactTitle.rankReason == .exactTitle)
+        #expect(exactTitle.rankReason == .lexicalRelevance)
 
         let foldedBody = try #require(
             await index.testSearch(fixture.request("naive")).noteResults.first
@@ -276,7 +276,7 @@ struct SearchIndexTests {
         #expect(response.noteResults.map(\.relativePath) == ["A.md"])
     }
 
-    @Test("A 512-note fixture ranks managed titles, aliases, body headings, then body")
+    @Test("A 512-note fixture ranks identity aliases, academic titles, headings, then body")
     func explainableScholarlyRanking() async throws {
         let fixture = try Fixture(); defer { fixture.remove() }
         let index = try fixture.index()
@@ -297,8 +297,8 @@ struct SearchIndexTests {
         _ = try await index.synchronize(documents)
         let hits = try await index.testSearch(fixture.request("\"deliberative autonomy\"", limit: 10))
         #expect(hits.noteResults.map(\.relativePath)
-            == ["Title.md", "Alias.md", "Heading.md", "Body.md"])
-        #expect(hits.noteResults.map(\.matchedField) == [.title, .alias, .heading, .body])
+            == ["Alias.md", "Title.md", "Heading.md", "Body.md"])
+        #expect(hits.noteResults.map(\.matchedField) == [.alias, .title, .heading, .body])
     }
 
     @Test("Topic filename is the title while its first H1 remains a searchable heading")
@@ -350,7 +350,7 @@ struct SearchIndexTests {
         _ = try await index.synchronize(leading + background)
         let first = try await index.testSearch(fixture.request("\"practical identity\"", limit: 20))
         #expect(first.noteResults.prefix(6).map(\.relativePath) == [
-            "00-title.md", "01-title.md", "10-alias.md", "11-alias.md",
+            "10-alias.md", "11-alias.md", "00-title.md", "01-title.md",
             "20-heading.md", "21-heading.md",
         ])
         let repeated = try await index.testSearch(fixture.request("\"practical identity\"", limit: 20))

@@ -11,13 +11,14 @@ struct WebKitInterfaceLocalizationTests {
 
         #expect(english.languageTag == "en")
         #expect(simplifiedChinese.languageTag == "zh-Hans")
-        #expect(english.strings.count == 98)
+        #expect(english.strings.count == 99)
         #expect(simplifiedChinese.strings.keys == english.strings.keys)
         #expect(english.string("Markdown editor, Edit mode") == "Markdown editor, Edit mode")
         #expect(
             simplifiedChinese.string("Markdown editor, Edit mode")
                 == "Markdown 编辑器，编辑模式"
         )
+        #expect(simplifiedChinese.string("Note title") == "笔记标题")
         #expect(
             simplifiedChinese.string("Comment for lines {start} through {end}")
                 == "评论第 {start} 至 {end} 行"

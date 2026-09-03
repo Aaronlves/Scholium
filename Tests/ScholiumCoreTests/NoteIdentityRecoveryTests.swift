@@ -45,7 +45,9 @@ struct NoteIdentityRecoveryTests {
                         vaultID: fixture.worksID,
                         relativePath: "Old.md"
                     ),
-                    scrollPositions: ["Old.md": 42]
+                    documentPresentations: [
+                        "Old.md": WindowDocumentPresentationSnapshot(scrollFraction: 0.42),
+                    ]
                 ),
             ]
         ))

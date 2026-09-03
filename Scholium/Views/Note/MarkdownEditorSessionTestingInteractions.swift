@@ -430,6 +430,48 @@ extension MarkdownEditorSession {
         try await testingClickPagePoint(x: x, y: y, in: webView)
     }
 
+    func testingClickElementBox(
+        _ selector: String,
+        at index: Int = 0,
+        horizontalFraction: Double = 0.1,
+        verticalFraction: Double = 0.5
+    ) async throws {
+        guard let webView else { throw SessionError.unavailable }
+        guard index >= 0,
+              (0...1).contains(horizontalFraction),
+              (0...1).contains(verticalFraction) else {
+            throw SessionError.invalidResult
+        }
+        let result = try await webView.callAsyncJavaScript(
+            """
+            const elements = Array.from(document.querySelectorAll(selector));
+            const element = elements[index];
+            if (!(element instanceof HTMLElement)) return null;
+            element.scrollIntoView({block: 'center', behavior: 'auto'});
+            const rect = element.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return null;
+            return {
+              x: rect.left + rect.width * horizontalFraction,
+              y: rect.top + rect.height * verticalFraction
+            };
+            """,
+            arguments: [
+                "selector": selector,
+                "index": index,
+                "horizontalFraction": horizontalFraction,
+                "verticalFraction": verticalFraction,
+            ],
+            in: nil,
+            contentWorld: .page
+        )
+        guard let position = result as? [String: Any],
+              let x = (position["x"] as? NSNumber)?.doubleValue,
+              let y = (position["y"] as? NSNumber)?.doubleValue else {
+            throw SessionError.invalidResult
+        }
+        try await testingClickPagePoint(x: x, y: y, in: webView)
+    }
+
     private func testingVisibleTextPoint(
         _ requestedText: String,
         in webView: WKWebView

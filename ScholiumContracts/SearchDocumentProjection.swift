@@ -90,11 +90,7 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         hasBrokenLink: Bool = false
     ) {
         let semantic = semantic ?? MarkdownSemanticDocument(parsing: document)
-        let titleResolution = ResearchNoteTitleResolver.resolve(
-            document: document,
-            profile: profile
-        )
-        let titleValue = titleResolution.title
+        let titleValue = ResearchNoteTitleResolver.resolve(document: document)
         title = titleValue
         aliases = []
         headings = semantic.headings.map(\.text)
@@ -340,20 +336,19 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
             ? fields["publication_date"]?.canonicalSearchText
             : nil
 
-        if let managedTitle {
-            updated.title = managedTitle
-        }
         updated.aliases = aliases
         updated.authors = creators.map(\.displayName)
         updated.publicationDate = publicationDate
 
-        var segments = updated.segments.filter { segment in
+        let filenameTitleSegment = updated.segments.first { $0.field == .title }
+        var segments = filenameTitleSegment.map { [$0] } ?? []
+        segments.append(contentsOf: updated.segments.filter { segment in
             switch segment.field {
-            case .title: managedTitle == nil
+            case .title: false
             case .alias, .author, .publicationDate: false
             default: true
             }
-        }
+        })
         let locator = SearchSourceLocator(source: source)
         func append(_ values: [String], field: SearchMatchedField) {
             for value in values where !value.isEmpty {
@@ -367,7 +362,9 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
                 ))
             }
         }
-        if let managedTitle { append([managedTitle], field: .title) }
+        if let managedTitle, managedTitle != updated.title {
+            append([managedTitle], field: .title)
+        }
         append(aliases, field: .alias)
         append(updated.authors, field: .author)
         if let publicationDate { append([publicationDate], field: .publicationDate) }

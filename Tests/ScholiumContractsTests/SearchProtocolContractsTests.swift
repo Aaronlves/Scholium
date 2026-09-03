@@ -443,7 +443,7 @@ struct SearchProtocolContractsTests {
             record: NoteMetadataRecord(
                 noteID: UUID(),
                 fields: [
-                    "title": .string("Test Note"),
+                    "title": .string("Academic Work Title"),
                     "authors": .array([.object(["family": .string("Author")])]),
                     "publication_date": .string("2026"),
                 ]
@@ -457,6 +457,8 @@ struct SearchProtocolContractsTests {
         ).applyingNoteMetadata(metadata, profile: .analysis, source: source)
 
         #expect(projection.title == "Test Note")
+        #expect(projection.segments.filter { $0.field == .title }.map(\.text)
+            == ["Test Note", "Academic Work Title"])
         #expect(projection.summary == "A concise autonomy map")
         #expect(projection.headings == ["Heading Text"])
         #expect(projection.body.contains("visible link"))

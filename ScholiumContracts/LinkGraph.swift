@@ -30,11 +30,7 @@ public struct LinkCatalogNote: Codable, Hashable, Sendable {
     ) {
         let semantic = semantic ?? MarkdownSemanticDocument(parsing: document)
         id = VaultQualifiedNoteID(vaultID: vaultID, relativePath: document.relativePath)
-        title = ResearchNoteTitleResolver.resolve(
-            document: document,
-            profile: profile,
-            metadata: metadata
-        ).title
+        title = ResearchNoteTitleResolver.resolve(document: document)
         aliases = profile == .topicMarkdown
             ? metadata?.record.fields["aliases"]?.canonicalStringList ?? []
             : []

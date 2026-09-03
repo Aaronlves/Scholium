@@ -1782,12 +1782,18 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Edit projects one app-owned title above authored headings without changing source")
-    func editProjectsDocumentTitleOutsideMarkdown() async throws {
+    @Test("Edit exposes the filename title as a source-neutral inline rename control")
+    func editProjectsEditableDocumentTitleOutsideMarkdown() async throws {
         let source = "# Authored section\n\nArgument."
+        var renameRequests: [(expected: String, requested: String)] = []
         let harness = EditorHarness(
             documentTitle: "Reasons & Emotion",
-            source: source
+            source: source,
+            laysOutForPointerTesting: true,
+            onTitleRename: { expected, requested in
+                renameRequests.append((expected, requested))
+                return requested
+            }
         )
         defer { harness.close() }
         try await harness.waitUntilReady()
@@ -1798,7 +1804,8 @@ struct MarkdownEditorWebViewIntegrationTests {
             const section = document.querySelector('.cm-live-h1');
             return {
               titleCount: document.querySelectorAll('.cm-live-note-title').length,
-              titleText: title?.textContent || '',
+              titleText: title?.querySelector('textarea')?.value || '',
+              titleEditable: !title?.querySelector('textarea')?.disabled,
               titleRole: title?.getAttribute('role') || '',
               titleLevel: title?.getAttribute('aria-level') || '',
               sectionLevel: section?.getAttribute('aria-level') || ''
@@ -1807,16 +1814,68 @@ struct MarkdownEditorWebViewIntegrationTests {
         ) as? [String: Any])
         #expect(live["titleCount"] as? Int == 1)
         #expect(live["titleText"] as? String == "Reasons & Emotion")
+        #expect(live["titleEditable"] as? Bool == true)
         #expect(live["titleRole"] as? String == "heading")
         #expect(live["titleLevel"] as? String == "1")
         #expect(live["sectionLevel"] as? String == "2")
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(harness.session.generation == 0)
+        #expect(!harness.session.isDirty)
+
+        try await harness.session.testingClickElementBox(
+            ".scholium-note-title",
+            horizontalFraction: 0.7,
+            verticalFraction: 0.95
+        )
+        #expect(try await harness.callPageJavaScript(
+            "return document.activeElement?.matches('.scholium-note-title-input') === true"
+        ) as? Bool == true)
+
+        _ = try await harness.callPageJavaScript(
+            """
+            const input = document.querySelector('.scholium-note-title-input');
+            input.value = 'Cancelled title';
+            input.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'insertText'}));
+            input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+            return input.value;
+            """
+        )
+        #expect(renameRequests.isEmpty)
+        #expect(try await harness.callPageJavaScript(
+            "return document.querySelector('.scholium-note-title-input')?.value || ''"
+        ) as? String == "Reasons & Emotion")
+
+        _ = try await harness.callPageJavaScript(
+            """
+            const input = document.querySelector('.scholium-note-title-input');
+            input.value = 'Reasons after Inline Rename';
+            input.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'insertText'}));
+            input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+            return true;
+            """
+        )
+        let clock = ContinuousClock()
+        let renameDeadline = clock.now.advanced(by: .seconds(3))
+        while try await harness.callPageJavaScript(
+            "return document.querySelector('.scholium-note-title-input')?.value || ''"
+        ) as? String != "Reasons after Inline Rename" || renameRequests.isEmpty {
+            if clock.now >= renameDeadline {
+                Issue.record("Edit did not complete its inline Note rename.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(renameRequests.count == 1)
+        #expect(renameRequests.first?.expected == "Reasons & Emotion")
+        #expect(renameRequests.first?.requested == "Reasons after Inline Rename")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(harness.session.generation == 0)
+        #expect(!harness.session.isDirty)
 
         harness.setDocumentTitle("Reasons after Rename")
-        let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: .seconds(3))
         while try await harness.callPageJavaScript(
-            "return document.querySelector('.cm-live-note-title')?.textContent || ''"
+            "return document.querySelector('.scholium-note-title-input')?.value || ''"
         ) as? String != "Reasons after Rename" {
             if clock.now >= deadline {
                 Issue.record("Edit did not refresh its projected Note title.")
@@ -1831,6 +1890,245 @@ struct MarkdownEditorWebViewIntegrationTests {
             "return document.querySelectorAll('.cm-live-note-title').length"
         ) as? Int == 0)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Programmatic title focus collapses at the end and recovery records the active surface")
+    func titleFocusAndBodyFocusAreRecoverable() async throws {
+        let title = "Emotion and Reasons"
+        let source = "# The Question\n\nEmotions may disclose reasons."
+        let harness = EditorHarness(documentTitle: title, source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        try await harness.session.focusTitleAndWait()
+        let titleState = try #require(try await harness.callPageJavaScript(
+            """
+            const input = document.querySelector('.scholium-note-title-input');
+            return {
+              focused: document.activeElement === input,
+              start: input?.selectionStart ?? -1,
+              end: input?.selectionEnd ?? -1
+            };
+            """
+        ) as? [String: Any])
+        #expect(titleState["focused"] as? Bool == true)
+        #expect(titleState["start"] as? Int == title.utf16.count)
+        #expect(titleState["end"] as? Int == title.utf16.count)
+
+        try await harness.session.captureStateForViewReconstruction()
+        #expect(harness.session.windowPresentationSnapshot(
+            scrollFraction: 0
+        ).focusTarget == .title)
+
+        harness.session.revealSourceRange(fromUTF16: 18, toUTF16: 18)
+        try await harness.waitUntilSelection(head: 18)
+        try await harness.session.captureStateForViewReconstruction()
+        let restored = harness.session.windowPresentationSnapshot(scrollFraction: 0)
+        #expect(restored.focusTarget == .editor)
+        #expect(restored.selections == [
+            WindowDocumentSelectionRange(anchor: 18, head: 18),
+        ])
+        await harness.closeAndDrain()
+    }
+
+    @Test("A rejected inline title rename preserves the draft and reports the error")
+    func rejectedInlineTitleRenamePreservesDraft() async throws {
+        enum RenameFailure: LocalizedError {
+            case collision
+            var errorDescription: String? { "A note with that name already exists." }
+        }
+        let source = "Argument."
+        let harness = EditorHarness(
+            documentTitle: "Argument",
+            source: source,
+            onTitleRename: { _, _ in throw RenameFailure.collision }
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        _ = try await harness.callPageJavaScript(
+            """
+            const input = document.querySelector('.scholium-note-title-input');
+            input.value = 'Existing';
+            input.dispatchEvent(new InputEvent('input', {bubbles: true, inputType: 'insertText'}));
+            input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+            return true;
+            """
+        )
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+        while try await harness.callPageJavaScript(
+            "return document.querySelector('.scholium-note-title-error')?.textContent || ''"
+        ) as? String != "A note with that name already exists." {
+            if clock.now >= deadline {
+                Issue.record("Edit did not present the rejected rename inline.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let state = try #require(try await harness.callPageJavaScript(
+            """
+            const input = document.querySelector('.scholium-note-title-input');
+            return {
+              value: input?.value || '',
+              invalid: input?.getAttribute('aria-invalid') || '',
+              focused: document.activeElement === input
+            };
+            """
+        ) as? [String: Any])
+        #expect(state["value"] as? String == "Existing")
+        #expect(state["invalid"] as? String == "true")
+        #expect(state["focused"] as? Bool == true)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Inline title rename waits for marked-text composition to finish")
+    func inlineTitleRenameRespectsComposition() async throws {
+        var renameRequests: [String] = []
+        let source = "情绪提供理由。"
+        let harness = EditorHarness(
+            documentTitle: "Emotion",
+            source: source,
+            onTitleRename: { _, requested in
+                renameRequests.append(requested)
+                return requested
+            }
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        _ = try await harness.callPageJavaScript(
+            """
+            const input = document.querySelector('.scholium-note-title-input');
+            input.focus();
+            input.dispatchEvent(new CompositionEvent('compositionstart', {bubbles: true}));
+            input.value = '情绪与理由';
+            input.dispatchEvent(new InputEvent('input', {bubbles: true, isComposing: true}));
+            input.dispatchEvent(new KeyboardEvent('keydown', {
+              key: 'Enter', bubbles: true, isComposing: true
+            }));
+            return !input.disabled;
+            """
+        )
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(renameRequests.isEmpty)
+
+        _ = try await harness.callPageJavaScript(
+            """
+            const input = document.querySelector('.scholium-note-title-input');
+            input.dispatchEvent(new CompositionEvent('compositionend', {bubbles: true}));
+            input.blur();
+            return true;
+            """
+        )
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+        while renameRequests.isEmpty {
+            if clock.now >= deadline {
+                Issue.record("The title rename did not resume after composition ended.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(renameRequests == ["情绪与理由"])
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit heading and spacing regions remain pointer-addressable")
+    func editHeadingAndSpacingRegionsRemainPointerAddressable() async throws {
+        let source = "# First section\nFollowing paragraph.\n\n## Second section\nFinal paragraph.\n"
+        let firstHeading = try #require(source.range(of: "First section"))
+        let firstHeadingFrom = firstHeading.lowerBound.utf16Offset(in: source)
+        let firstHeadingTo = firstHeading.upperBound.utf16Offset(in: source)
+        let secondHeading = try #require(source.range(of: "Second section"))
+        let secondHeadingFrom = secondHeading.lowerBound.utf16Offset(in: source)
+        let secondHeadingTo = secondHeading.upperBound.utf16Offset(in: source)
+        let finalParagraphFrom = try #require(source.range(of: "Final paragraph."))
+            .lowerBound.utf16Offset(in: source)
+        let authoredBlank = try #require(source.range(of: "\n\n"))
+            .lowerBound.utf16Offset(in: source) + 1
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        harness.session.goToLine(5)
+        try await harness.waitUntilSelection(
+            head: finalParagraphFrom,
+            stage: "fixture tail selection"
+        )
+
+        try await harness.session.testingClickElementBox(
+            ".cm-live-h1",
+            verticalFraction: 0.08
+        )
+        _ = try await harness.waitUntilSelection(in: firstHeadingFrom..<firstHeadingTo)
+
+        harness.session.goToLine(5)
+        try await harness.waitUntilSelection(head: finalParagraphFrom)
+        try await harness.session.testingClickElementBox(
+            ".cm-live-h1",
+            verticalFraction: 0.72
+        )
+        _ = try await harness.waitUntilSelection(in: firstHeadingFrom..<firstHeadingTo)
+
+        harness.session.goToLine(1)
+        try await harness.waitUntilSelection(head: 0)
+        try await harness.session.testingClickBlankLine(
+            between: "Following paragraph.",
+            and: "Second section"
+        )
+        try await harness.waitUntilSelection(head: authoredBlank)
+
+        harness.session.goToLine(1)
+        try await harness.waitUntilSelection(head: 0)
+        try await harness.session.testingClickElementBox(
+            ".cm-live-h2",
+            verticalFraction: 0.08
+        )
+        _ = try await harness.waitUntilSelection(in: secondHeadingFrom..<secondHeadingTo)
+
+        harness.session.goToLine(1)
+        try await harness.waitUntilSelection(head: 0)
+        try await harness.session.testingClickElementBox(
+            ".cm-live-h2",
+            verticalFraction: 0.72
+        )
+        _ = try await harness.waitUntilSelection(in: secondHeadingFrom..<secondHeadingTo)
+
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit source-less semantic spacing resolves to its document boundary")
+    func editSourceLessSemanticSpacingResolvesToDocumentBoundary() async throws {
+        let source = "```text\ncode\n```\nFollowing paragraph.\n"
+        let codeFrom = try #require(source.range(of: "code"))
+            .lowerBound.utf16Offset(in: source)
+        let followingFrom = try #require(source.range(of: "Following paragraph."))
+            .lowerBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        harness.session.goToLine(2)
+        try await harness.waitUntilSelection(head: codeFrom)
+        try await harness.session.testingClickElementBox(
+            ".cm-live-semantic-gap",
+            at: 1
+        )
+        try await harness.waitUntilSelection(
+            head: followingFrom,
+            stage: "source-less semantic-gap click"
+        )
+
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
         await harness.closeAndDrain()
     }
 
@@ -1981,7 +2279,11 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(fresh.h1TextAlign == "start")
         #expect(fresh.h2TextAlign == "start")
         #expect(fresh.editBlankLineCount > 0)
-        #expect(abs(fresh.editBlankLineMinimumHeight - 12.125) < 0.01)
+        let stableBlankLineHeight = DocumentAppearanceSettings.defaultSettings
+            .body.lineHeight
+            * DocumentAppearanceSettings.defaultSettings.body.fontSizePoints
+            * (96 / 72)
+        #expect(abs(fresh.editBlankLineMinimumHeight - stableBlankLineHeight) < 0.02)
 
         harness.session.setMode(.source)
         try await harness.waitUntilPresentedMode(.source)
@@ -2451,7 +2753,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Edit paragraph separators remain real symmetric source lines with Review-sized rhythm")
+    @Test("Edit blank lines retain one geometry through entry, input, deletion, and exit")
     func editParagraphSeparatorsRemainEditableSourceLines() async throws {
         let source = "First paragraph.\n\nSecond paragraph.\n"
         let blankOffset = try #require(source.range(of: "\n\n"))
@@ -2464,12 +2766,42 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         let presentation = try await harness.session.testingAccessibilitySnapshot()
         #expect(presentation.editBlankLineCount >= 1)
-        #expect(
-            presentation.editBlankLineMinimumHeight
-                == DocumentAppearanceSettings.defaultSettings.body.paragraphSpacingEm
-                * DocumentAppearanceSettings.defaultSettings.body.fontSizePoints
-                * (96 / 72)
-        )
+        let expectedBlankLineHeight = DocumentAppearanceSettings.defaultSettings
+            .body.lineHeight
+            * DocumentAppearanceSettings.defaultSettings.body.fontSizePoints
+            * (96 / 72)
+        #expect(abs(presentation.editBlankLineMinimumHeight - expectedBlankLineHeight) < 0.02)
+
+        func transitionGeometry(lineIndex: Int) async throws -> [String: Double] {
+            let value = try #require(try await harness.callPageJavaScript(
+                """
+                const lines = Array.from(document.querySelectorAll('.cm-line'));
+                const line = lines[lineIndex] || null;
+                const following = lines[lineIndex + 1] || null;
+                const scroller = document.querySelector('.cm-scroller');
+                const cursor = document.querySelector('.cm-cursor-primary');
+                return line && following && scroller ? {
+                  lineTop: line.getBoundingClientRect().top,
+                  followingTop: following.getBoundingClientRect().top,
+                  lineHeight: Number.parseFloat(getComputedStyle(line).lineHeight),
+                  scrollHeight: scroller.scrollHeight,
+                  cursorTop: cursor?.getBoundingClientRect().top || 0
+                } : null;
+                """,
+                arguments: ["lineIndex": lineIndex]
+            ) as? [String: Any])
+            return [
+                "lineTop": try #require(value["lineTop"] as? NSNumber).doubleValue,
+                "followingTop": try #require(value["followingTop"] as? NSNumber).doubleValue,
+                "lineHeight": try #require(value["lineHeight"] as? NSNumber).doubleValue,
+                "scrollHeight": try #require(value["scrollHeight"] as? NSNumber).doubleValue,
+                "cursorTop": try #require(value["cursorTop"] as? NSNumber).doubleValue,
+            ]
+        }
+
+        harness.session.revealSourceRange(fromUTF16: 0, toUTF16: 0)
+        try await harness.waitUntilSelection(head: 0)
+        let beforeEntry = try await transitionGeometry(lineIndex: 1)
 
         harness.session.revealSourceRange(fromUTF16: secondFrom, toUTF16: secondFrom)
         try await harness.waitUntilSelection(head: secondFrom)
@@ -2502,47 +2834,114 @@ struct MarkdownEditorWebViewIntegrationTests {
                 .contains("cm-live-blank-line-active") == true
         )
         #expect(abs(activeBlankHeight - expectedActiveLineHeight) < 0.5)
-
-        func transitionGeometry(lineIndex: Int) async throws -> [String: Double] {
-            let value = try #require(try await harness.callPageJavaScript(
-                """
-                const lines = Array.from(document.querySelectorAll('.cm-line'));
-                const line = lines[lineIndex] || null;
-                const following = lines[lineIndex + 1] || null;
-                return line && following ? {
-                  lineTop: line.getBoundingClientRect().top,
-                  followingTop: following.getBoundingClientRect().top,
-                  lineHeight: Number.parseFloat(getComputedStyle(line).lineHeight)
-                } : null;
-                """,
-                arguments: ["lineIndex": lineIndex]
-            ) as? [String: Any])
-            return [
-                "lineTop": try #require(value["lineTop"] as? NSNumber).doubleValue,
-                "followingTop": try #require(value["followingTop"] as? NSNumber).doubleValue,
-                "lineHeight": try #require(value["lineHeight"] as? NSNumber).doubleValue,
-            ]
+        let afterEntry = try await transitionGeometry(lineIndex: 1)
+        for key in ["lineTop", "followingTop", "lineHeight", "scrollHeight"] {
+            let before = try #require(beforeEntry[key])
+            let after = try #require(afterEntry[key])
+            #expect(abs(before - after) < 0.5)
         }
 
-        let beforeInput = try await transitionGeometry(lineIndex: 1)
         try await harness.session.perform(.pastePlain, argument: "a")
         try await harness.waitUntilSelection(
             head: blankOffset + 1,
             stage: "first character on separator line"
         )
         let afterInput = try await transitionGeometry(lineIndex: 1)
-        for key in ["lineTop", "followingTop", "lineHeight"] {
-            let before = try #require(beforeInput[key])
+        for key in ["lineTop", "followingTop", "lineHeight", "scrollHeight", "cursorTop"] {
+            let before = try #require(afterEntry[key])
             let after = try #require(afterInput[key])
             #expect(abs(before - after) < 0.5)
         }
 
-        try await harness.session.testingPressArrow("ArrowRight")
-        try await harness.waitUntilSelection(head: secondFrom + 1)
+        try await harness.session.testingPressBackspace()
+        try await harness.waitUntilSelection(head: blankOffset, stage: "deletion back to blank line")
+        let afterDeletion = try await transitionGeometry(lineIndex: 1)
+        for key in ["lineTop", "followingTop", "lineHeight", "scrollHeight", "cursorTop"] {
+            let before = try #require(afterEntry[key])
+            let after = try #require(afterDeletion[key])
+            #expect(abs(before - after) < 0.5)
+        }
+
+        harness.session.revealSourceRange(fromUTF16: secondFrom, toUTF16: secondFrom)
+        try await harness.waitUntilSelection(head: secondFrom, stage: "exit from blank line")
+        let afterExit = try await transitionGeometry(lineIndex: 1)
+        for key in ["lineTop", "followingTop", "lineHeight", "scrollHeight"] {
+            let before = try #require(beforeEntry[key])
+            let after = try #require(afterExit[key])
+            #expect(abs(before - after) < 0.5)
+        }
         #expect(
             try await harness.session.currentText(for: harness.documentID)
-                == "First paragraph.\na\nSecond paragraph.\n"
+                == source
         )
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit heading marker reveal preserves title and following-block geometry")
+    func editHeadingMarkerRevealPreservesGeometry() async throws {
+        let heading = "A deliberately long heading whose authored marker must not move its text"
+        let source = "# \(heading)\n\nFollowing paragraph.\n"
+        let headingFrom = try #require(source.range(of: heading))
+            .lowerBound.utf16Offset(in: source)
+        let followingFrom = try #require(source.range(of: "Following paragraph."))
+            .lowerBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        harness.resize(width: 540)
+        try await harness.waitUntilReady()
+
+        func geometry() async throws -> [String: Double] {
+            let value = try #require(try await harness.callPageJavaScript(
+                """
+                const heading = document.querySelector('.cm-live-h1');
+                const following = Array.from(document.querySelectorAll('.cm-line'))
+                  .find(line => (line.textContent || '').includes('Following paragraph.'));
+                if (!heading || !following) return null;
+                const walker = document.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
+                let node = null;
+                while (walker.nextNode()) {
+                  if ((walker.currentNode.nodeValue || '').includes(headingText)) {
+                    node = walker.currentNode;
+                    break;
+                  }
+                }
+                if (!node) return null;
+                const offset = node.nodeValue.indexOf(headingText);
+                const range = document.createRange();
+                range.setStart(node, offset);
+                range.setEnd(node, offset + 1);
+                return {
+                  headingTop: heading.getBoundingClientRect().top,
+                  headingHeight: heading.getBoundingClientRect().height,
+                  titleLeft: range.getBoundingClientRect().left,
+                  followingTop: following.getBoundingClientRect().top
+                };
+                """,
+                arguments: ["headingText": heading]
+            ) as? [String: Any])
+            return [
+                "headingTop": try #require(value["headingTop"] as? NSNumber).doubleValue,
+                "headingHeight": try #require(value["headingHeight"] as? NSNumber).doubleValue,
+                "titleLeft": try #require(value["titleLeft"] as? NSNumber).doubleValue,
+                "followingTop": try #require(value["followingTop"] as? NSNumber).doubleValue,
+            ]
+        }
+
+        harness.session.revealSourceRange(fromUTF16: followingFrom, toUTF16: followingFrom)
+        try await harness.waitUntilSelection(head: followingFrom)
+        let inactive = try await geometry()
+
+        harness.session.revealSourceRange(fromUTF16: headingFrom, toUTF16: headingFrom)
+        try await harness.waitUntilSelection(head: headingFrom)
+        let active = try await geometry()
+
+        for key in ["headingTop", "headingHeight", "titleLeft", "followingTop"] {
+            let before = try #require(inactive[key])
+            let after = try #require(active[key])
+            #expect(abs(before - after) < 0.5)
+        }
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
         await harness.closeAndDrain()
     }
 
@@ -2910,7 +3309,10 @@ struct MarkdownEditorWebViewIntegrationTests {
             )
         )
         #expect(abs(toolbar.rootLeft - expectedToolbarLeft) <= 1)
-        #expect(toolbar.rootTop >= toolbar.selectionBottom + 5)
+        #expect(
+            toolbar.rootBottom <= toolbar.selectionTop - 5
+                || toolbar.rootTop >= toolbar.selectionBottom + 5
+        )
         #expect(toolbar.minimumControlHeight >= 28)
         #expect(toolbar.interfaceLabelFontSize == "12px")
         #expect(toolbar.rootBorderColor == toolbar.separatorColor)
@@ -3325,7 +3727,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         )
         _ = try await harness.waitUntilPresentation(stage: "regular Source measure") {
             $0.label == "Markdown source editor"
-                && $0.presentation.rootLineWidth == "72ch"
+                && $0.presentation.rootLineWidth
+                    == "\(Int(DocumentAppearanceSettings.defaultLineWidthCharacterUnits))ch"
         }
         let requested = EditorScrollAnchor(
             sourceFingerprint: DocumentFingerprint(content: source).sha256,
@@ -3808,7 +4211,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         ) {
             $0.label == "Markdown source editor"
                 && $0.presentation.viewportWidth > 704
-                && $0.presentation.rootLineWidth == "72ch"
+                && $0.presentation.rootLineWidth
+                    == "\(Int(DocumentAppearanceSettings.defaultLineWidthCharacterUnits))ch"
                 && (Double($0.contentPaddingInlineStart.dropLast(2)) ?? 0) > 40
         }
         #expect(regularSourceGrid.presentation.rootInlineSource == "40.000000px")
@@ -3900,7 +4304,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await matrixHarness.waitUntilReady()
         let livePresentationScenarios = try await matrixHarness.presentationSnapshots(
             for: Self.testingPresentationScenarios,
-            height: 1_800
+            height: 4_000
         )
         await matrixHarness.closeAndDrain()
         try await verifyReadSemanticScrollRestoration(liveScenarios: livePresentationScenarios)
@@ -3989,7 +4393,10 @@ struct MarkdownEditorWebViewIntegrationTests {
             initialSourceRange: Range<Int>? = nil,
             initialWindowSize: NSSize = NSSize(width: 720, height: 520),
             fixedLayoutSize: NSSize? = nil,
-            laysOutForPointerTesting: Bool = false
+            laysOutForPointerTesting: Bool = false,
+            onTitleRename: @escaping @MainActor (String, String) async throws -> String = {
+                _, requested in requested
+            }
         ) {
             _ = NSApplication.shared
             session = bridgeDispatcher.map {
@@ -4030,6 +4437,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 documentID: documentID,
                 sourceBox: sourceBox,
                 linkPreviews: linkPreviews,
+                onTitleRename: onTitleRename,
                 laysOutForPointerTesting: laysOutForPointerTesting,
                 fixedLayoutSize: fixedLayoutSize
             )
@@ -4657,6 +5065,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let session: MarkdownEditorSession
         let documentID: String
         let linkPreviews: [DocumentLinkPreview]
+        let onTitleRename: @MainActor (String, String) async throws -> String
         let laysOutForPointerTesting: Bool
         let fixedLayoutSize: NSSize?
 
@@ -4665,6 +5074,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             documentID: String,
             sourceBox: SourceBox,
             linkPreviews: [DocumentLinkPreview],
+            onTitleRename: @escaping @MainActor (String, String) async throws -> String,
             laysOutForPointerTesting: Bool,
             fixedLayoutSize: NSSize?
         ) {
@@ -4672,6 +5082,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             self.documentID = documentID
             self.sourceBox = sourceBox
             self.linkPreviews = linkPreviews
+            self.onTitleRename = onTitleRename
             self.laysOutForPointerTesting = laysOutForPointerTesting
             self.fixedLayoutSize = fixedLayoutSize
         }
@@ -4713,6 +5124,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                     onRequestFind: { _ in },
                     onRequestImportImage: {},
                     onRequestIndexImage: {},
+                    onRequestDocumentTitleRename: onTitleRename,
                     onPasteImage: { _ in false },
                     onLinkActivation: { sourceBox.activatedLinks.append($0) },
                     onScrollFractionChange: { _ in },

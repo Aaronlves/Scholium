@@ -2157,7 +2157,9 @@ final class WindowModel: ObservableObject {
             guard let self else {
                 throw ScholiumWindowLifecycleError.unregisteredBeforeReady
             }
-            try await self.flushRegisteredEditorIfNeeded()
+            try await self.flushRegisteredEditorIfNeeded(
+                capturingEditorState: true
+            )
         },
         presentationSnapshot: { [weak self] in
             guard let self,
@@ -3490,7 +3492,7 @@ final class WindowModel: ObservableObject {
             )
             if let vaultID = session.vaultID {
                 documentController.restorePresentationState(
-                    scrollPositions: session.scrollPositions,
+                    documentPresentations: session.documentPresentations,
                     vaultID: vaultID
                 )
             }
@@ -3575,15 +3577,20 @@ final class WindowModel: ObservableObject {
         let workspaceSessions = WorkspaceVaultSlot.allCases.map { workspace in
             let vaultID = workspaceAssignment?.vault(for: workspace)?.id
             let tabs = documentTabController.tabs(in: workspace)
+            let openDocuments = tabs.compactMap {
+                vaultQualifiedID(for: $0.document)
+            }
+            let openPaths = Set(openDocuments.map(\.relativePath))
+            let documentPresentations = documentController.presentationSnapshot(
+                vaultID: vaultID
+            ).documents.filter { openPaths.contains($0.key) }
             return WindowWorkspaceSessionSnapshot(
                 workspace: workspace,
                 vaultID: vaultID,
-                openDocuments: tabs.compactMap { vaultQualifiedID(for: $0.document) },
+                openDocuments: openDocuments,
                 selectedDocument: documentTabController.selectedTab(in: workspace)
                     .flatMap { vaultQualifiedID(for: $0.document) },
-                scrollPositions: documentController.presentationSnapshot(
-                    vaultID: vaultID
-                ).scrollPositions,
+                documentPresentations: documentPresentations,
                 inspectorMode: shellState.inspectorMode(for: workspace).rawValue,
                 documentMode: documentController.presentationMode(for: workspace).rawValue
             )
@@ -6195,11 +6202,7 @@ final class WindowModel: ObservableObject {
                 headings: semantic.headings,
                 derivedProjectionState: .sourceAhead,
                 cachedSemanticDocument: semantic,
-                cachedTitleProjection: WorkspaceNoteTitleProjection(
-                    document: document,
-                    vaultRole: context.vaultRole,
-                    metadata: previous?.metadata
-                )
+                cachedTitleProjection: WorkspaceNoteTitleProjection(document: document)
             )
         }
 

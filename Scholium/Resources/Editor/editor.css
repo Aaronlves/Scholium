@@ -47,6 +47,7 @@ body,
   );
   font-size: var(--scholium-document-text-scale);
   caret-color: transparent;
+  cursor: text;
 }
 
 /* CodeMirror alone paints insertion points. WebKit's native caret can leave a
@@ -122,6 +123,13 @@ body,
 
 .cm-line {
   position: relative;
+}
+
+.cm-live-reserved-syntax {
+  visibility: hidden;
+  white-space: pre;
+  pointer-events: none;
+  user-select: none;
 }
 
 .cm-focused {
@@ -344,16 +352,6 @@ body,
 .cm-line.cm-live-blank-line {
   --scholium-live-blank-gap-after: var(--scholium-rhythm-paragraph-gap);
   --scholium-live-blank-gap-before: var(--scholium-rhythm-paragraph-gap);
-  block-size: max(var(--scholium-live-blank-gap-after), var(--scholium-live-blank-gap-before));
-  min-block-size: max(var(--scholium-live-blank-gap-after), var(--scholium-live-blank-gap-before));
-  line-height: max(var(--scholium-live-blank-gap-after), var(--scholium-live-blank-gap-before));
-  padding-block: 0;
-}
-/* A collapsed caret preflights the blank source line with the same line box
-   that its first inserted character will use. Inactive separator lines retain
-   the authored paragraph-gap geometry, so typing cannot move the caret or the
-   surrounding document when the line becomes nonempty. */
-.cm-line.cm-live-blank-line.cm-live-blank-line-active {
   line-height: var(--scholium-rhythm-prose-line-height);
   block-size: max(
     var(--scholium-live-blank-gap-after),
@@ -365,7 +363,11 @@ body,
     var(--scholium-live-blank-gap-before),
     1lh
   );
+  padding-block: 0;
 }
+/* Selection may identify the active blank source line, but it never changes
+   that line's geometry. The reserved line box is already the box used by the
+   first inserted character and by a deletion back to empty. */
 .cm-line.cm-live-blank-line.cm-live-semantic-gap-after-half { --scholium-live-blank-gap-after: var(--scholium-rhythm-rule-block-gap, 0.5em); }
 .cm-line.cm-live-blank-line.cm-live-semantic-gap-before-half { --scholium-live-blank-gap-before: var(--scholium-rhythm-rule-block-gap, 0.5em); }
 .cm-line.cm-live-blank-line.cm-live-semantic-gap-after-paragraph { --scholium-live-blank-gap-after: var(--scholium-rhythm-paragraph-gap); }
@@ -376,9 +378,9 @@ body,
 .cm-line.cm-live-blank-line.cm-live-semantic-gap-before-callout { --scholium-live-blank-gap-before: var(--scholium-callout-block-gap, 1.4em); }
 
 .cm-line.cm-live-heading-marker-line {
-  block-size: 0;
-  min-block-size: 0;
-  line-height: 0;
+  block-size: 1lh;
+  min-block-size: 1lh;
+  line-height: var(--scholium-rhythm-prose-line-height);
   padding: 0;
   overflow: hidden;
 }

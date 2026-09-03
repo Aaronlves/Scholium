@@ -36,6 +36,7 @@ struct EditorInteractionMessage: Equatable, Sendable {
     let line: Int
     let column: Int
     let lineCount: Int
+    let focusTarget: WindowDocumentFocusTarget?
     let context: MarkdownEditorContext?
 }
 
@@ -60,6 +61,13 @@ struct EditorErrorMessage: Equatable, Sendable {
 struct EditorFindShortcutMessage: Equatable, Sendable {
     let envelope: EditorBridgeEnvelope
     let action: DocumentFindShortcut
+}
+
+struct EditorDocumentTitleRenameMessage: Equatable, Sendable {
+    let envelope: EditorBridgeEnvelope
+    let requestID: String
+    let expectedTitle: String
+    let requestedTitle: String
 }
 
 struct EditorLinkCompletionQueryMessage: Equatable, Sendable {
@@ -99,6 +107,7 @@ enum EditorBridgeMessage: Equatable, Sendable {
     case requestDocumentFind(EditorFindShortcutMessage)
     case requestImportImage(EditorBridgeEnvelope)
     case requestIndexImage(EditorBridgeEnvelope)
+    case requestDocumentTitleRename(EditorDocumentTitleRenameMessage)
     case requestImagePaste(EditorBridgeEnvelope)
     case requestMermaidRuntime(EditorBridgeEnvelope)
     case requestMathRuntime(EditorBridgeEnvelope)
@@ -120,6 +129,7 @@ enum EditorBridgeMessage: Equatable, Sendable {
              .requestImagePaste(let envelope),
              .requestMermaidRuntime(let envelope),
              .requestMathRuntime(let envelope): envelope
+        case .requestDocumentTitleRename(let message): message.envelope
         case .requestDocumentFind(let message): message.envelope
         case .linkCompletionQuery(let message): message.envelope
         case .linkActivated(let message): message.envelope
@@ -184,13 +194,14 @@ enum EditorBridgeMessageDecoder {
             ))
         case "interactionChanged":
             guard hasOnlyKeys(object, additional: [
-                "type", "selections", "line", "column", "lineCount", "context",
+                "type", "selections", "line", "column", "lineCount", "focusTarget", "context",
             ]),
             let selections: [MarkdownEditorSelectionRange] = decodable(object["selections"]),
             selections.count <= markdownEditorMaximumSelectionRangeCount,
             let line = nonnegativeInteger(object["line"]),
             let column = nonnegativeInteger(object["column"]),
             let lineCount = nonnegativeInteger(object["lineCount"]),
+            let focusTarget = optionalFocusTarget(object["focusTarget"]),
             let context: MarkdownEditorContext? = optionalDecodable(object["context"])
             else { return nil }
             return .interactionChanged(EditorInteractionMessage(
@@ -199,6 +210,7 @@ enum EditorBridgeMessageDecoder {
                 line: line,
                 column: column,
                 lineCount: lineCount,
+                focusTarget: focusTarget,
                 context: context
             ))
         case "documentChanged":
@@ -234,6 +246,28 @@ enum EditorBridgeMessageDecoder {
             return exactEnvelopeMessage(object, envelope: envelope, case: .requestImportImage)
         case "requestIndexImage":
             return exactEnvelopeMessage(object, envelope: envelope, case: .requestIndexImage)
+        case "requestDocumentTitleRename":
+            guard hasOnlyKeys(object, additional: [
+                "type", "requestID", "expectedTitle", "requestedTitle",
+            ]),
+            let requestID = boundedString(object["requestID"], maximumUTF8Bytes: 128),
+            UUID(uuidString: requestID) != nil,
+            let expectedTitle = boundedString(
+                object["expectedTitle"], maximumUTF8Bytes: 4_096
+            ),
+            !expectedTitle.isEmpty,
+            expectedTitle.utf16.count <= 1_024,
+            let requestedTitle = boundedString(
+                object["requestedTitle"], maximumUTF8Bytes: 4_096
+            ),
+            requestedTitle.utf16.count <= 1_024
+            else { return nil }
+            return .requestDocumentTitleRename(EditorDocumentTitleRenameMessage(
+                envelope: envelope,
+                requestID: requestID,
+                expectedTitle: expectedTitle,
+                requestedTitle: requestedTitle
+            ))
         case "requestImagePaste":
             return exactEnvelopeMessage(object, envelope: envelope, case: .requestImagePaste)
         case "requestMermaidRuntime":
@@ -374,6 +408,17 @@ enum EditorBridgeMessageDecoder {
             result.append(EditorBridgeChange(from: from, to: to, insert: insert))
         }
         return result
+    }
+
+    private static func optionalFocusTarget(
+        _ value: Any?
+    ) -> WindowDocumentFocusTarget?? {
+        guard let value else { return .some(nil) }
+        guard let raw = value as? String,
+              let target = WindowDocumentFocusTarget(rawValue: raw) else {
+            return nil
+        }
+        return .some(target)
     }
 
     private static func hasOnlyKeys(

@@ -206,11 +206,8 @@ struct DocumentOperationsTests {
         let refreshed = try await handle.refresh()
         let projected = try #require(refreshed.document(id: id))
         #expect(projected.metadata == second)
-        #expect(ResearchNoteTitleResolver.resolve(
-            document: projected.document,
-            profile: projected.schemaProfile,
-            metadata: projected.metadata
-        ).title == "Revised managed title")
+        #expect(ResearchNoteTitleResolver.resolve(document: projected.document)
+            == "Managed Metadata")
         await runtime.shutdown()
     }
 

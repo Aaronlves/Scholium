@@ -14519,6 +14519,7 @@
         }
       }
     },
+    "That note name cannot be used." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"That note name cannot be used."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"无法使用这个笔记名称。"}}}},
     "The name distinguishes complete research domains. Works folders remain ordinary researcher-controlled folders, not app-managed projects." : {
       "localizations" : {
         "en" : {
@@ -14561,6 +14562,7 @@
         }
       }
     },
+    "The note was renamed elsewhere. Review its current title before renaming again." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"The note was renamed elsewhere. Review its current title before renaming again."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"该笔记已在其他位置重命名。请确认当前标题后再重试。"}}}},
     "The note was deleted outside Scholium. Its exact editor buffer remains open for recovery." : {
       "localizations" : {
         "en" : {
@@ -15230,6 +15232,7 @@
         }
       }
     },
+    "This note is no longer available to rename." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"This note is no longer available to rename."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"该笔记已无法重命名。"}}}},
     "This note is read-only in Scholium." : {
       "localizations" : {
         "en" : {

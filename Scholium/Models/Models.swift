@@ -161,13 +161,9 @@ extension WindowDocumentLocation {
   var fileName: String { (relativePath as NSString).lastPathComponent }
   var displayName: String {
     if let cached = workspaceSnapshot?.cachedTitleProjection {
-      return cached.resolution.title
+      return cached.title
     }
-    return ResearchNoteTitleResolver.resolve(
-      document: document,
-      profile: schemaProfile,
-      metadata: workspaceSnapshot?.metadata
-    ).title
+    return ResearchNoteTitleResolver.resolve(document: document)
   }
   var vaultRole: VaultRole { workspaceSnapshot?.vaultRole ?? .other }
   var profile: NoteProfile {

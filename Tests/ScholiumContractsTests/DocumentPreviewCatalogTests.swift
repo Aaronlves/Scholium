@@ -54,7 +54,7 @@ struct DocumentPreviewCatalogTests {
         #expect(preview.graphGeneration == 7)
         #expect(preview.links.count == 1)
         #expect(preview.links[0].target == targetID)
-        #expect(preview.links[0].title == "Target B")
+        #expect(preview.links[0].title == "B")
         #expect(preview.links[0].syntax == .wikilink)
         #expect(preview.links[0].fragment == "Claim")
         #expect(preview.links[0].htmlBody.contains("<strong>Rendered</strong>"))

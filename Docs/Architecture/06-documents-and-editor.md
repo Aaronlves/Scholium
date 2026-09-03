@@ -5,22 +5,17 @@ CodeMirror/WebKit, exact source, rendering, and editor performance.
 
 ## Documents and CodeMirror
 
-`DocumentController` is per-window and owns its `DocumentSessionStore`, keyed
-by `DocumentSessionKey`, which
-contains the registered vault UUID and stable note UUID. Path and title changes
-therefore do not replace editor state. Separate windows receive separate
-stores, even when they open the same stable document identity.
+Each window's `DocumentController` owns a `DocumentSessionStore` keyed by the
+registered vault and stable Note UUID. Renames retain editor state; windows
+never share it.
 
-The store reconciles full-session leases before releasing the previous target.
-Dirty, conflict, save-in-flight, retryable-recovery, and recovery-buffer states
-pin a session. Closing any tab flushes its target before membership removal;
-clean zero-lease, zero-pin sessions detach WebKit and discard full editor,
-source, undo, HTML, and preview state immediately. Only a 64-entry lightweight
-scroll-position LRU survives close; memory pressure reduces it to 16 or clears it
-without evicting leased or pinned safety state. Both stable and identity-
-unavailable session keys remain vault-qualified, so equal relative paths in two
-Triptych vaults cannot share a buffer, Read cache identity, or scroll
-state.
+The store acquires destination leases before release. Dirty, conflict,
+save-in-flight, retryable-recovery, and recovery-buffer states pin a session.
+Tab close flushes before membership removal; a clean unleased, unpinned session
+immediately discards editor, source, Undo, HTML, and previews. Only an in-memory
+64-entry scroll LRU survives close; memory pressure reduces it to 16 or clears
+it, and app relaunch does not retain it. Vault-qualified keys prevent equal
+paths in different Triptych vaults from sharing state.
 
 `DocumentController` defaults `currentPresentationMode`
 to Edit. Writable selections inherit it; read-only Notes and Critiques present
@@ -63,12 +58,14 @@ Edit or Source mode; an earlier retained Source frame cannot satisfy Edit
 readiness merely because the WebView was loaded previously. After that editor
 surface has been presented for the current editing run, Edit/Source
 reconfiguration keeps the same CodeMirror surface visible while the bridge
-converges instead of routing through Review. Native focus follows the
-acknowledged mode, never an unconfirmed request.
+converges instead of routing through Review. After acknowledgement, first
+ordinary Edit focuses the filename title's end; a retained/restored open Note
+returns to its valid title/body target and selection. An explicit locator wins,
+and Source uses the body.
 Managed New Note skips Review-first presentation. `DocumentController`
 installs its snapshot, exact source, active Edit phase, and body-start offset in
 one MainActor transaction. Until typed acknowledgement, the host exposes
-neither Review nor Empty Note. Bridge 15 initialization maps one collapsed
+neither Review nor Empty Note. Bridge 19 initialization maps one collapsed
 body-boundary selection into CodeMirror UTF-16 and returns it with the mode.
 Native code verifies that range, converges style and scroll, awaits focus, then
 publishes readiness, announces once, and consumes the intent. A clean external
@@ -517,15 +514,14 @@ separator uses a zero-content block widget. Projected components themselves
 use no Edit-only block margins or fixed-height estimates. Only top-level lists
 participate in semantic block gaps. List-item
 paragraphs and nested lists retain ordinary prose line height with no internal
-paragraph or block gap. A paragraph-separating Markdown blank line is never
-collapsed: the semantic-line field keeps it as the one exact CodeMirror line
-and sizes it from `--scholium-rhythm-paragraph-gap` or the larger adjacent
-object spacing role; Edit paragraph lines do not repeat that gap as padding.
-Pointer placement anywhere in that visible line therefore enters the authored
-empty source line. Native selection, horizontal navigation, deletion,
-composition, and Undo therefore traverse the same source offsets in both
-directions. This keeps the visible DOM, CodeMirror height map, pointer mapping,
-selection, and scrolling under one geometry owner. A prefix-maximum interval
+paragraph or block gap. A Markdown blank line remains one exact CodeMirror line
+and reserves the larger of one prose line box or adjacent semantic spacing. Its
+active class changes no geometry; entry, first input, deletion back to empty,
+and exit retain one baseline and following-line position. Paragraph lines add
+no duplicate gap. The whole visible line maps to its exact source offset, while
+selection, navigation, deletion, composition, and Undo keep their existing
+source semantics. DOM, height map, pointer mapping, selection, and scrolling
+therefore have one geometry owner. A prefix-maximum interval
 index handles nested half-open overlap and containment without mutating
 StateField-owned arrays. Plain bounded insertions outside constructs map
 existing positions only after a physical-line-local semantic-catalog
@@ -560,11 +556,13 @@ Read and Live Preview consume one presentation contract:
 - the Live adapter maps the same roles to bounded CodeMirror decorations and
   widgets without replacing active source, selection, composition, or undo.
 
-Native chrome uses the resolved Note title for window identity. Review's inert
-DOM and Live Preview's block widget project it at the start of the scrolling
-document plane without source characters or another title owner. Shared
-Appearance styles authored H1 as a body section and H2–H6 as lower headings;
-their accessible levels remain beneath the title. Source has no projection.
+Native chrome and Review use the resolved filename title. Live Preview projects
+one borderless auto-height field outside source. Its versioned request carries
+the exact editor envelope and expected title; native validates identity and
+name, then delegates to `moveNote`. Success follows
+the stable-identity path update; failure retains its draft and accessible
+error. The widget consumes its own events and never writes Markdown. Authored
+headings remain beneath the title. Source has no projection.
 
 Review document identity excludes its asynchronously derived link-preview
 catalog. A fingerprint, CSS, or capability change may replace the static page,

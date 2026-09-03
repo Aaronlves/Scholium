@@ -49,7 +49,8 @@ maintained for an Agent. MCP creation does not accept the prior
 Default About always shows managed `type`, `authors`, and `publication_date`
 even when empty, then authored `summary` and `keywords`. Every other present
 managed value appears automatically in its catalog order. Managed `title`
-resolves Analysis identity but is not repeated in About.
+is the analyzed work's optional academic title: it appears in About when
+present and remains searchable, but never establishes the Note title.
 
 ### Topics
 

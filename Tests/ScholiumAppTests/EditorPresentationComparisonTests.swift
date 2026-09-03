@@ -272,7 +272,14 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(abs(mermaid.heightDelta) <= 0.5)
         #expect(mermaid.lineCountDelta == 0)
         #expect(mermaid.precedingBlockOrderMatches == true)
-        #expect(abs(mermaid.precedingBlockGapDelta ?? 0) <= 0.5)
+        let body = DocumentAppearanceSettings.defaultSettings.body
+        let cssPixelsPerPoint = 96.0 / 72.0
+        let stableEditLine = body.lineHeight * body.fontSizePoints * cssPixelsPerPoint
+        let compactReviewGap = body.fontSizePoints * cssPixelsPerPoint
+        let actualGapDelta = try #require(mermaid.precedingBlockGapDelta)
+        #expect(
+            abs(actualGapDelta - (stableEditLine - compactReviewGap)) <= 0.5
+        )
     }
 
     private func waitForGeometrySnapshot(

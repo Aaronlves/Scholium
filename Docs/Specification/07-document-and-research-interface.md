@@ -48,16 +48,42 @@ width, Body, headings, and semantic Callouts while preserving protected
 structure and accessibility. Source typography and app chrome are not
 themeable. Advanced CSS is additive and optional.
 
-The app-owned Note title is the primary document title. Review and Edit place
-it at the top of the shared document plane, inside the document's scrolling
-reading and writing context but outside authoritative Markdown. It is a
-read-only identity projection; existing file operations remain the rename
-route. Native window title continues to identify the window without becoming
-the visual title. Authored Markdown headings belong to the body: H1 is
+The app-owned filename title is the primary document title. Review and Edit
+place it at the top of the shared document plane, inside the document's
+scrolling reading and writing context but outside authoritative Markdown.
+Review presents it as a read-only identity projection. Edit presents the same
+title as a borderless inline filename control: Return or leaving the field
+requests the existing revision-aware Rename file operation, while Escape
+cancels. Its visible trailing space belongs to the control and focuses it when
+clicked; it is never an unresponsive surface. A rejected rename preserves the
+draft and explains the failure beside the title. Native window title continues
+to identify the window without becoming the visual title. Authored Markdown
+headings belong to the body: H1 is
 presented as a first-level section beneath the Note title, while H2–H6 use the
 quieter lower-heading tier. Review and Edit preserve those relative visual and
 accessible levels; Source exposes only the exact authored hierarchy and no
 projected title.
+
+When a Note enters Edit for the first time without retained window
+presentation, focus enters the inline Note title with one collapsed insertion
+point at its end. Returning to a Note that remains open restores its last title
+or body focus and exact valid editor selection; quitting and reopening Scholium
+does the same only for Notes retained in that window's open tabs. Selection
+restoration requires the same exact source fingerprint. An explicit source
+locator and Managed New Note's body-start insertion override this default.
+Closing the Note's tab ends this focus/selection retention; Scholium keeps no
+permanent vault-wide cursor history.
+
+Edit treats all visible document rhythm as addressable. Clicking an authored
+heading's visual padding places the caret in that heading; clicking a visible
+Markdown blank line places it on that exact source line; and source-less
+spacing between projected objects resolves to the nearest explicit source
+boundary. Typography cannot create a region that merely ignores editing input.
+Edit prioritizes stable input geometry over exact spacing parity with Review:
+an authored blank line retains at least one complete prose line box before,
+during, and after input, and cursor-dependent syntax reveal preserves the
+line's dimensions and wrapping. Caret movement alone never reflows neighboring
+content.
 
 ### 18.4.1 Advanced CSS boundary
 

@@ -25,6 +25,10 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     let onRequestFind: (DocumentFindShortcut) -> Void
     let onRequestImportImage: () -> Void
     let onRequestIndexImage: () -> Void
+    let onRequestDocumentTitleRename: @MainActor (
+        String,
+        String
+    ) async throws -> String
     let onPasteImage: (EditorPastedImageSource) -> Bool
     let onLinkActivation: (String) -> Void
     let onScrollFractionChange: (Double) -> Void
@@ -49,6 +53,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             onRequestFind: onRequestFind,
             onRequestImportImage: onRequestImportImage,
             onRequestIndexImage: onRequestIndexImage,
+            onRequestDocumentTitleRename: onRequestDocumentTitleRename,
             linkCompletionQuery: linkCompletionQuery,
             onLinkActivation: onLinkActivation,
             onScrollFractionChange: onScrollFractionChange,
@@ -177,6 +182,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         context.coordinator.onRequestFind = onRequestFind
         context.coordinator.onRequestImportImage = onRequestImportImage
         context.coordinator.onRequestIndexImage = onRequestIndexImage
+        context.coordinator.onRequestDocumentTitleRename = onRequestDocumentTitleRename
         context.coordinator.linkCompletionQuery = linkCompletionQuery
         context.coordinator.onLinkActivation = onLinkActivation
         context.coordinator.onScrollFractionChange = onScrollFractionChange
@@ -201,6 +207,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         }
         if context.coordinator.documentID != documentID {
             context.coordinator.cancelLinkCompletionQuery()
+            context.coordinator.cancelDocumentTitleRename()
             context.coordinator.documentID = documentID
             context.coordinator.source = source
             context.coordinator.startingFingerprint = DocumentFingerprint(content: source).sha256
@@ -227,6 +234,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         coordinator.cancelMermaidRuntimeLoad()
         coordinator.cancelMathRuntimeLoad()
         coordinator.cancelLinkCompletionQuery()
+        coordinator.cancelDocumentTitleRename()
         coordinator.session.detach(webView)
     }
 
@@ -277,6 +285,10 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         var onRequestFind: (DocumentFindShortcut) -> Void
         var onRequestImportImage: () -> Void
         var onRequestIndexImage: () -> Void
+        var onRequestDocumentTitleRename: @MainActor (
+            String,
+            String
+        ) async throws -> String
         var linkCompletionQuery: @MainActor (
             EditorLinkCompletionKind,
             String
@@ -306,6 +318,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         private var mathRuntimeLoadTask: Task<Void, Never>?
         private var linkCompletionQueryTask: Task<Void, Never>?
         private var linkCompletionQueryTaskID: UUID?
+        private var documentTitleRenameTask: Task<Void, Never>?
+        private var documentTitleRenameRequestID: String?
 
         init(
             session: MarkdownEditorSession,
@@ -315,6 +329,10 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             onRequestFind: @escaping (DocumentFindShortcut) -> Void,
             onRequestImportImage: @escaping () -> Void,
             onRequestIndexImage: @escaping () -> Void,
+            onRequestDocumentTitleRename: @escaping @MainActor (
+                String,
+                String
+            ) async throws -> String,
             linkCompletionQuery: @escaping @MainActor (
                 EditorLinkCompletionKind,
                 String
@@ -330,6 +348,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             self.onRequestFind = onRequestFind
             self.onRequestImportImage = onRequestImportImage
             self.onRequestIndexImage = onRequestIndexImage
+            self.onRequestDocumentTitleRename = onRequestDocumentTitleRename
             self.linkCompletionQuery = linkCompletionQuery
             self.onLinkActivation = onLinkActivation
             self.onScrollFractionChange = onScrollFractionChange
@@ -377,6 +396,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
                     column: interaction.column,
                     lineCount: interaction.lineCount,
                     documentVersion: interaction.envelope.documentVersion,
+                    focusTarget: interaction.focusTarget,
                     context: interaction.context
                 )
             case .documentChanged(let change):
@@ -423,6 +443,14 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             case .requestIndexImage(let envelope):
                 guard validEnvelope(envelope) else { return }
                 onRequestIndexImage()
+            case .requestDocumentTitleRename(let request):
+                guard validEnvelope(request.envelope),
+                      let webView = message.webView ?? activeWebView else { return }
+                guard request.expectedTitle == documentTitle else {
+                    rejectChangedDocumentTitleRename(request, in: webView)
+                    return
+                }
+                beginDocumentTitleRename(request, in: webView)
             case .requestImagePaste(let envelope):
                 guard validEnvelope(envelope),
                       let webView = message.webView as? WindowAttachedWebView else { return }
@@ -537,6 +565,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             cancelMermaidRuntimeLoad()
             cancelMathRuntimeLoad()
             cancelLinkCompletionQuery()
+            cancelDocumentTitleRename()
             hasSignaledReady = false
             awaitingEditorLoad = true
             guard let editorHTML = MarkdownEditorWebView.editorHTML else {
@@ -596,6 +625,80 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             linkCompletionQueryTask?.cancel()
             linkCompletionQueryTask = nil
             linkCompletionQueryTaskID = nil
+        }
+
+        func cancelDocumentTitleRename() {
+            documentTitleRenameTask?.cancel()
+            documentTitleRenameTask = nil
+            documentTitleRenameRequestID = nil
+        }
+
+        private func beginDocumentTitleRename(
+            _ request: EditorDocumentTitleRenameMessage,
+            in webView: WKWebView
+        ) {
+            guard documentTitleRenameTask == nil else { return }
+            documentTitleRenameRequestID = request.requestID
+            documentTitleRenameTask = Task { @MainActor [weak self, weak webView] in
+                guard let self else { return }
+                let result: (accepted: Bool, title: String, error: String)
+                do {
+                    let title = try await onRequestDocumentTitleRename(
+                        request.expectedTitle,
+                        request.requestedTitle
+                    )
+                    result = (true, title, "")
+                } catch {
+                    result = (
+                        false,
+                        request.expectedTitle,
+                        String(error.localizedDescription.prefix(2_000))
+                    )
+                }
+                guard !Task.isCancelled,
+                      documentTitleRenameRequestID == request.requestID,
+                      let webView,
+                      webView.navigationDelegate === self else { return }
+                documentTitleRenameTask = nil
+                documentTitleRenameRequestID = nil
+                _ = try? await webView.callAsyncJavaScript(
+                    "window.scholiumEditor.resolveDocumentTitleRename(requestID, accepted, title, error)",
+                    arguments: [
+                        "requestID": request.requestID,
+                        "accepted": result.accepted,
+                        "title": result.title,
+                        "error": result.error,
+                    ],
+                    in: nil,
+                    contentWorld: .page
+                )
+            }
+        }
+
+        private func rejectChangedDocumentTitleRename(
+            _ request: EditorDocumentTitleRenameMessage,
+            in webView: WKWebView
+        ) {
+            let error = String(
+                localized: "The note was renamed elsewhere. Review its current title before renaming again.",
+                table: "Localizable",
+                bundle: .module
+            )
+            Task { @MainActor [weak self, weak webView] in
+                guard let self, let webView,
+                      webView.navigationDelegate === self else { return }
+                _ = try? await webView.callAsyncJavaScript(
+                    "window.scholiumEditor.resolveDocumentTitleRename(requestID, accepted, title, error)",
+                    arguments: [
+                        "requestID": request.requestID,
+                        "accepted": false,
+                        "title": documentTitle,
+                        "error": error,
+                    ],
+                    in: nil,
+                    contentWorld: .page
+                )
+            }
         }
 
         func webView(

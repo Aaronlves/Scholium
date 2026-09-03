@@ -96,11 +96,7 @@ public enum DocumentPreviewCatalogBuilder {
                     rawContent: sourceForPresentation
                 )
                 let rendered = SafeMarkdownRenderer.render(fragment).htmlBody
-                let title = ResearchNoteTitleResolver.resolve(
-                    document: target,
-                    profile: profiles[destination.note] ?? .genericMarkdown,
-                    metadata: metadata[destination.note]
-                ).title
+                let title = ResearchNoteTitleResolver.resolve(document: target)
                 return DocumentLinkPreview(
                     sourceSpan: edge.occurrence.linkSpan,
                     target: destination.note,

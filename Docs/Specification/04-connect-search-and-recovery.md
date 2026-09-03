@@ -123,8 +123,9 @@ Search indexes visible semantic text, valid link-annotation content, and
 canonical fields, not raw delimiters or link destinations. Annotation hits use
 the distinct `link_annotation` field, identify the owning occurrence and source
 range, and remain discovery candidates only: annotation prose never creates a
-predicate or a second edge. Exact title, alias, filename, and path identity outrank
-body matches; normalized title, role order, and path provide stable ties.
+predicate or a second edge. Exact filename Note title, alias, and path identity
+outrank lexical matches. An Analysis academic title remains a weighted `title`
+lexical match, not Note identity; normalized Note title, role order, and path provide stable ties.
 Results explain matched field and rank reason without exposing internal scores.
 CJK uses deterministic projection and substring verification.
 

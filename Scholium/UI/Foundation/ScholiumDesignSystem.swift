@@ -705,8 +705,50 @@ enum ScholiumWebDesignTokens {
           text-align: start;
           text-indent: 0;
           overflow-wrap: anywhere;
-          cursor: default;
-          user-select: none;
+          cursor: text;
+        }
+        .scholium-note-title-input {
+          box-sizing: border-box;
+          display: block;
+          inline-size: 100%;
+          min-block-size: 1lh;
+          margin: 0;
+          padding: 0;
+          overflow: hidden;
+          resize: none;
+          border: 0;
+          border-radius: 0;
+          outline: 0;
+          color: inherit;
+          background: transparent;
+          font: inherit;
+          letter-spacing: inherit;
+          text-align: inherit;
+          overflow-wrap: inherit;
+          cursor: text;
+          appearance: none;
+        }
+        .scholium-note-title-input:disabled {
+          color: inherit;
+          opacity: 1;
+          cursor: progress;
+          -webkit-text-fill-color: currentColor;
+        }
+        .scholium-note-title-input::selection {
+          color: inherit;
+          background: color-mix(
+            in srgb,
+            var(--scholium-color-accent) 28%,
+            transparent
+          ) !important;
+        }
+        .scholium-note-title-error {
+          margin-block-start: 0.35em;
+          color: var(--scholium-color-destructive);
+          font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+          font-size: 0.48em;
+          font-weight: 400;
+          line-height: 1.35;
         }
         .scholium-document p {
           margin: 0;

@@ -469,7 +469,11 @@ private struct RuntimeMembershipFixture: Sendable {
                         vaultID: analysesIdentity.id,
                         relativePath: "Agency.md"
                     ),
-                    scrollPositions: ["Agency.md": 0.25],
+                    documentPresentations: [
+                        "Agency.md": WindowDocumentPresentationSnapshot(
+                            scrollFraction: 0.25
+                        ),
+                    ],
                     inspectorMode: "connect"
                 ),
             ],

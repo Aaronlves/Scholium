@@ -195,15 +195,29 @@ struct AppCompositionRootTests {
         }
         try await Task.sleep(for: .milliseconds(50))
 
+        let path = "Fixtures/Scroll.md"
+        let document = WindowSelectedDocument.unavailable(
+            vaultID: UUID(),
+            relativePath: path
+        )
+        window.documentController.selectDocument(document)
+        window.documentTabController.activate(
+            document: document,
+            title: "Scroll",
+            toolTip: path,
+            placement: .newTab,
+            in: .paperAnalysis
+        )
+
         var invalidationCount = 0
         let observation = window.objectWillChange.sink {
             invalidationCount += 1
         }
-        window.rememberScrollPosition(0.42, for: "Fixtures/Scroll.md")
+        window.rememberScrollPosition(0.42, for: path)
         try await waitUntil("the stopped scroll position was persisted") {
             try await store.windowSession(id: sessionID)?
                 .workspaceSession(for: .paperAnalysis)?
-                .scrollPositions["Fixtures/Scroll.md"] == 0.42
+                .documentPresentations[path]?.scrollFraction == 0.42
         }
         try await Task.sleep(for: .milliseconds(50))
 
@@ -238,6 +252,99 @@ struct AppCompositionRootTests {
 
         let saved = try #require(try await store.windowSession(id: sessionID))
         #expect(saved.documentTextScale == 1.7)
+    }
+
+    @Test("Window close retains open-note focus while explicit tab close forgets it")
+    func openNoteFocusLifetimeMatchesTabMembership() async throws {
+        let fileManager = FileManager.default
+        let isolatedHome = fileManager.temporaryDirectory
+            .appendingPathComponent("Scholium-FocusSession-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: isolatedHome, withIntermediateDirectories: true)
+        let previousHome = ProcessInfo.processInfo.environment["SCHOLIUM_HOME"]
+        setenv("SCHOLIUM_HOME", isolatedHome.path, 1)
+        defer {
+            if let previousHome {
+                setenv("SCHOLIUM_HOME", previousHome, 1)
+            } else {
+                unsetenv("SCHOLIUM_HOME")
+            }
+            try? fileManager.removeItem(at: isolatedHome)
+        }
+
+        let store = makeTestWorkspaceStore()
+        let source = "Argument."
+        let path = "Fixtures/Focus.md"
+
+        let retainedWindow = WindowModel(workspaceStore: store)
+        let retainedSessionID = UUID()
+        await retainedWindow.restoreWindowSession(id: retainedSessionID)
+        let retainedDocument = WindowSelectedDocument.unavailable(
+            vaultID: UUID(),
+            relativePath: path
+        )
+        retainedWindow.documentController.selectDocument(retainedDocument)
+        retainedWindow.documentTabController.activate(
+            document: retainedDocument,
+            title: "Focus",
+            toolTip: path,
+            placement: .newTab,
+            in: .paperAnalysis
+        )
+        let retainedSession = retainedWindow.documentController.session(
+            for: retainedDocument.editingTarget
+        )
+        retainedSession.editorSession.loadDocument(
+            source,
+            documentID: "retained-focus",
+            mode: .livePreview
+        )
+        retainedSession.editorSession.updateInteraction(
+            selections: [MarkdownEditorSelectionRange(anchor: 5, head: 5)],
+            line: 1,
+            column: 6,
+            lineCount: 1,
+            documentVersion: 0,
+            focusTarget: .editor,
+            context: nil
+        )
+
+        _ = try await retainedWindow.windowCloseCoordinator.prepare()
+        let savedOpenPresentation = try #require(
+            try await store.windowSession(id: retainedSessionID)?
+                .workspaceSession(for: .paperAnalysis)?
+                .documentPresentations[path]
+        )
+        #expect(savedOpenPresentation.focusTarget == .editor)
+        #expect(savedOpenPresentation.selections == [
+            WindowDocumentSelectionRange(anchor: 5, head: 5),
+        ])
+
+        let closedWindow = WindowModel(workspaceStore: store)
+        let closedSessionID = UUID()
+        await closedWindow.restoreWindowSession(id: closedSessionID)
+        let closedDocument = WindowSelectedDocument.unavailable(
+            vaultID: UUID(),
+            relativePath: path
+        )
+        closedWindow.documentController.selectDocument(closedDocument)
+        closedWindow.documentTabController.activate(
+            document: closedDocument,
+            title: "Focus",
+            toolTip: path,
+            placement: .newTab,
+            in: .paperAnalysis
+        )
+        let tabID = try #require(
+            closedWindow.documentTabController.selectedTabID(in: .paperAnalysis)
+        )
+        closedWindow.closeDocumentTab(withID: tabID)
+        try await waitUntil("the explicit tab close was persisted") {
+            guard closedWindow.documentTabController.tabs(in: .paperAnalysis).isEmpty,
+                  let persisted = try await store.windowSession(id: closedSessionID)?
+                    .workspaceSession(for: .paperAnalysis) else { return false }
+            return persisted.openDocuments.isEmpty
+                && persisted.documentPresentations[path] == nil
+        }
     }
 
     @Test("Close preparation retains flush ownership until the window actually closes")

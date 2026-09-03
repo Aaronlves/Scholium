@@ -248,12 +248,7 @@ enum WorkspaceSnapshotBuilder {
                     headings: semantics[document.relativePath]?.headings ?? [],
                     cachedSemanticDocument: semantics[document.relativePath],
                     cachedTitleProjection: semantics[document.relativePath].map { _ in
-                        WorkspaceNoteTitleProjection(
-                            document: document,
-                            vaultRole: vault.role,
-                            metadata: identityStates[document.relativePath]?.resolvedID
-                                .flatMap { noteMetadataByID[$0] }
-                        )
+                        WorkspaceNoteTitleProjection(document: document)
                     }
                 )
             },
@@ -700,12 +695,7 @@ enum WorkspaceSnapshotBuilder {
                         cachedTitleProjection: loaded.semantics[
                             document.relativePath
                         ].map { _ in
-                            WorkspaceNoteTitleProjection(
-                                document: document,
-                                vaultRole: loaded.vault.role,
-                                metadata: loaded.identityStates[document.relativePath]?.resolvedID
-                                    .flatMap { noteMetadataByID[$0] }
-                            )
+                            WorkspaceNoteTitleProjection(document: document)
                         }
                     )
                 },

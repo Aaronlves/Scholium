@@ -113,8 +113,10 @@ About. A definition creates no value.
 Scholium validates shape and structural safety, not bibliographic or
 philosophical truth.
 
-Analysis display identity resolves managed `title`, then filename. Topic and
-Work use filename. YAML `title` and body headings have no identity semantics.
+Every Analysis, Topic, and Work uses its filename without `.md` as its Note
+title and display identity. An Analysis's academic work title remains ordinary
+Scholium Metadata: it is visible and searchable but never replaces Note
+identity. YAML `title` and body headings likewise have no identity semantics.
 Rename never synchronizes Metadata or body headings.
 
 About is the current Note's primary Metadata view and ordinary editing surface.
