@@ -33618,7 +33618,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       ...changedCodeBlocks
     ]);
   }
-  function semanticBlockSpacing(block) {
+  function semanticBlockSpacing(block, _edge) {
     switch (block.kind) {
       case "unorderedList":
       case "orderedList":
@@ -33940,41 +33940,40 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       const ranges = [];
       let previous = null;
       for (const current of topLevelBlocks) {
-        const previousSpacing = previous ? semanticBlockSpacing(previous) : "none";
-        const nextSpacing = semanticBlockSpacing(current);
-        if (previousSpacing !== "none" || nextSpacing !== "none") {
-          const previousLineNumber = previous ? state.doc.lineAt(Math.min(previous.to, state.doc.length)).number : 0;
-          const currentLineNumber = state.doc.lineAt(current.from).number;
-          let authoredSeparatorLine = null;
-          for (let number2 = currentLineNumber - 1; number2 > previousLineNumber; number2 -= 1) {
-            const line = state.doc.line(number2);
-            if (/^\s*$/.test(line.text)) {
-              authoredSeparatorLine = line.from;
-              break;
+        const previousSpacing = previous ? semanticBlockSpacing(previous, "after") : "none";
+        const nextSpacing = semanticBlockSpacing(current, "before");
+        const previousLineNumber = previous ? state.doc.lineAt(Math.min(previous.to, state.doc.length)).number : 0;
+        const currentLineNumber = state.doc.lineAt(current.from).number;
+        let authoredSeparatorLine = null;
+        for (let number2 = currentLineNumber - 1; number2 > previousLineNumber; number2 -= 1) {
+          const line = state.doc.line(number2);
+          if (/^\s*$/.test(line.text)) {
+            authoredSeparatorLine = line.from;
+            break;
+          }
+        }
+        if (authoredSeparatorLine !== null) {
+          ranges.push(Decoration.line({
+            attributes: {
+              class: [
+                "cm-live-semantic-blank-gap",
+                `cm-live-semantic-gap-after-${previousSpacing}`,
+                `cm-live-semantic-gap-before-${nextSpacing}`
+              ].join(" "),
+              "data-scholium-blank-source-offset": String(authoredSeparatorLine)
             }
-          }
-          if (authoredSeparatorLine !== null) {
-            ranges.push(Decoration.line({
-              attributes: {
-                class: [
-                  "cm-live-semantic-blank-gap",
-                  `cm-live-semantic-gap-after-${previousSpacing}`,
-                  `cm-live-semantic-gap-before-${nextSpacing}`
-                ].join(" ")
-              }
-            }).range(authoredSeparatorLine));
-          } else {
-            ranges.push(Decoration.widget({
-              widget: new SemanticBlockGapWidget(previousSpacing, nextSpacing),
-              block: true,
-              side: -1
-            }).range(current.from));
-          }
+          }).range(authoredSeparatorLine));
+        } else if (previousSpacing !== "none" || nextSpacing !== "none") {
+          ranges.push(Decoration.widget({
+            widget: new SemanticBlockGapWidget(previousSpacing, nextSpacing),
+            block: true,
+            side: -1
+          }).range(current.from));
         }
         previous = current;
       }
       if (previous) {
-        const spacing = semanticBlockSpacing(previous);
+        const spacing = semanticBlockSpacing(previous, "after");
         if (spacing !== "none") {
           ranges.push(Decoration.widget({
             widget: new SemanticBlockGapWidget(spacing, "none"),
@@ -36850,6 +36849,12 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   }
   var projectedWidgets = createProjectedWidgetRegistry();
   function projectedWidgetSourceOffset(event) {
+    const target = event.target instanceof Element ? event.target : null;
+    const blankSourceOffset = target?.closest("[data-scholium-blank-source-offset]")?.dataset.scholiumBlankSourceOffset;
+    if (blankSourceOffset !== void 0) {
+      const parsed = Number.parseInt(blankSourceOffset, 10);
+      if (Number.isSafeInteger(parsed)) return parsed;
+    }
     return projectedWidgets.sourceOffset(event);
   }
   function projectedWidgetPointerStart(view, event) {
@@ -37061,6 +37066,14 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
                   Math.min(line.to, marker.to)
                 );
               }
+            } else {
+              for (const marker of lineMarkers) {
+                addMark(
+                  Math.max(line.from, marker.from),
+                  Math.min(line.to, marker.to),
+                  "cm-live-heading-source-marker"
+                );
+              }
             }
           }
           const parsedCallout = projectionRangesIntersecting(
@@ -37074,16 +37087,26 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             const semanticLineMarkers = semanticCallout?.markerRanges.filter((range) => range.from < lineQueryTo && range.to > line.from) ?? [];
             const pendingPrefix = semanticLineMarkers.length === 0 ? /^\s*>[ \t]*/.exec(doc2.sliceString(line.from, line.to))?.[0] ?? "" : "";
             const lineMarkers = semanticLineMarkers.length > 0 ? semanticLineMarkers : pendingPrefix.length > 0 ? [{ from: line.from, to: line.from + pendingPrefix.length }] : [];
-            structuralInlineExclusions.push(...lineMarkers);
+            const sourceMarkers = lineMarkers.map((marker) => {
+              let markerTo = Math.min(line.to, marker.to);
+              while (markerTo < line.to) {
+                const code2 = doc2.sliceString(markerTo, markerTo + 1);
+                if (code2 !== " " && code2 !== "	") break;
+                markerTo += 1;
+              }
+              return {
+                from: Math.max(line.from, marker.from),
+                to: markerTo
+              };
+            });
+            structuralInlineExclusions.push(...sourceMarkers);
             if (!activeLine) {
-              for (const marker of lineMarkers) {
-                let markerTo = Math.min(line.to, marker.to);
-                while (markerTo < line.to) {
-                  const code2 = doc2.sliceString(markerTo, markerTo + 1);
-                  if (code2 !== " " && code2 !== "	") break;
-                  markerTo += 1;
-                }
-                addHidden(Math.max(line.from, marker.from), markerTo);
+              for (const marker of sourceMarkers) {
+                addHidden(marker.from, marker.to);
+              }
+            } else {
+              for (const marker of sourceMarkers) {
+                addMark(marker.from, marker.to, "cm-live-callout-source-marker");
               }
             }
             if (parsedCallout && parsedCallout.from === line.from) {
@@ -37102,9 +37125,18 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           }
           const quote = semanticBlocksOnLine.find((block) => block.kind === "blockQuote");
           if (quote && !parsedCallout) {
-            if (!activeLine) {
-              for (const marker of quote.markerRanges.filter((range) => range.from < lineQueryTo && range.to > line.from)) {
-                addHidden(Math.max(line.from, marker.from), Math.min(line.to, marker.to));
+            for (const marker of quote.markerRanges.filter((range) => range.from < lineQueryTo && range.to > line.from)) {
+              const markerFrom = Math.max(line.from, marker.from);
+              let markerTo = Math.min(line.to, marker.to);
+              while (markerTo < line.to) {
+                const code2 = doc2.sliceString(markerTo, markerTo + 1);
+                if (code2 !== " " && code2 !== "	") break;
+                markerTo += 1;
+              }
+              if (activeLine) {
+                addMark(markerFrom, markerTo, "cm-live-quote-source-marker");
+              } else {
+                addHidden(markerFrom, markerTo);
               }
             }
           }

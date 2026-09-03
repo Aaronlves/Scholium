@@ -107,13 +107,18 @@ heading's visual padding places the caret in that heading; clicking a visible
 Markdown blank line places it on that exact source line; and source-less
 spacing between projected objects resolves to the nearest explicit source
 boundary. Typography cannot create a region that merely ignores editing input.
-Edit prioritizes stable input geometry over exact spacing parity with Review:
-an authored blank line retains at least one complete prose line box before,
-during, and after input, and cursor-dependent syntax reveal preserves the
-line's vertical dimensions. An inactive ATX heading removes its complete
-opening marker and required separator from inline measure; entering that
-heading reveals the exact editable source and may shift only that active
-line's inline text. Caret movement never changes neighboring block positions.
+Review and inactive Edit use the same philosophy-manuscript rhythm for each
+semantic block's typography, wrapping, visible start, local line geometry, and
+non-source spacing. Every authored blank line remains one stable prose-height
+source row in Edit, while Review uses manuscript paragraph spacing. Edit does
+not duplicate paragraph-end spacing around the row. Entering the row or adding
+its first visible character changes neither its line box nor its position, and
+the row never overlaps adjacent content. This bounded Edit-only difference may
+accumulate once per authored blank line. An inactive ATX heading or quotation removes its
+complete structural prefix and required separator from inline measure;
+entering it reveals that exact editable source outside the prose measure at the
+line's computed size. Neither the visible text nor neighboring blocks move as
+focus changes.
 Preserved spaces take their exact width without acquiring visible whitespace
 markers in ordinary Edit prose. Ordinary prose follows language-aware
 line-breaking rules, and closing punctuation is not left alone at a visual-line

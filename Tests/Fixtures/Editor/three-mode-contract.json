@@ -9,7 +9,7 @@
         "document measure",
         "body and heading typography",
         "line wrapping",
-        "block spacing and accumulated vertical rhythm",
+        "semantic block order and local text geometry",
         "semantic roles and components",
         "colors"
       ]
@@ -22,6 +22,14 @@
         "explicit selection",
         "marked-text composition",
         "exact markers of only the active syntax construct"
+      ]
+    },
+    {
+      "surface": "Authored blank lines in Edit",
+      "classification": "permittedEditingDifference",
+      "properties": [
+        "each authored blank line remains one stable source-addressable prose row",
+        "the row does not move or overlap adjacent content when it receives input"
       ]
     },
     {

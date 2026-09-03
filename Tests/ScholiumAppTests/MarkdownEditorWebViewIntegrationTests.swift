@@ -2387,11 +2387,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(fresh.h1TextAlign == "start")
         #expect(fresh.h2TextAlign == "start")
         #expect(fresh.editBlankLineCount > 0)
-        let stableBlankLineHeight = DocumentAppearanceSettings.defaultSettings
-            .body.lineHeight
-            * DocumentAppearanceSettings.defaultSettings.body.fontSizePoints
-            * (96 / 72)
-        #expect(abs(fresh.editBlankLineMinimumHeight - stableBlankLineHeight) < 0.02)
+        let body = DocumentAppearanceSettings.defaultSettings.body
+        let expectedBlankLineHeight = body.fontSizePoints * (96 / 72) * body.lineHeight
+        #expect(abs(fresh.editBlankLineMinimumHeight - expectedBlankLineHeight) < 0.5)
 
         harness.session.setMode(.source)
         try await harness.waitUntilPresentedMode(.source)
@@ -2861,7 +2859,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Edit blank lines retain one geometry through entry, input, deletion, and exit")
+    @Test("Edit blank separators remain stable prose rows without overlap")
     func editParagraphSeparatorsRemainEditableSourceLines() async throws {
         let source = "First paragraph.\n\nSecond paragraph.\n"
         let blankOffset = try #require(source.range(of: "\n\n"))
@@ -2874,11 +2872,9 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         let presentation = try await harness.session.testingAccessibilitySnapshot()
         #expect(presentation.editBlankLineCount >= 1)
-        let expectedBlankLineHeight = DocumentAppearanceSettings.defaultSettings
-            .body.lineHeight
-            * DocumentAppearanceSettings.defaultSettings.body.fontSizePoints
-            * (96 / 72)
-        #expect(abs(presentation.editBlankLineMinimumHeight - expectedBlankLineHeight) < 0.02)
+        let body = DocumentAppearanceSettings.defaultSettings.body
+        let expectedBlankLineHeight = body.fontSizePoints * (96 / 72) * body.lineHeight
+        #expect(abs(presentation.editBlankLineMinimumHeight - expectedBlankLineHeight) < 0.5)
 
         func transitionGeometry(lineIndex: Int) async throws -> [String: Double] {
             let value = try #require(try await harness.callPageJavaScript(
@@ -2890,6 +2886,8 @@ struct MarkdownEditorWebViewIntegrationTests {
                 const cursor = document.querySelector('.cm-cursor-primary');
                 return line && following && scroller ? {
                   lineTop: line.getBoundingClientRect().top,
+                  lineBottom: line.getBoundingClientRect().bottom,
+                  height: line.getBoundingClientRect().height,
                   followingTop: following.getBoundingClientRect().top,
                   lineHeight: Number.parseFloat(getComputedStyle(line).lineHeight),
                   scrollHeight: scroller.scrollHeight,
@@ -2900,6 +2898,8 @@ struct MarkdownEditorWebViewIntegrationTests {
             ) as? [String: Any])
             return [
                 "lineTop": try #require(value["lineTop"] as? NSNumber).doubleValue,
+                "lineBottom": try #require(value["lineBottom"] as? NSNumber).doubleValue,
+                "height": try #require(value["height"] as? NSNumber).doubleValue,
                 "followingTop": try #require(value["followingTop"] as? NSNumber).doubleValue,
                 "lineHeight": try #require(value["lineHeight"] as? NSNumber).doubleValue,
                 "scrollHeight": try #require(value["scrollHeight"] as? NSNumber).doubleValue,
@@ -2915,10 +2915,6 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilSelection(head: secondFrom)
         try await harness.session.testingPressArrow("ArrowLeft")
         try await harness.waitUntilSelection(head: blankOffset)
-        let expectedActiveLineHeight = DocumentAppearanceSettings.defaultSettings
-            .body.lineHeight
-            * DocumentAppearanceSettings.defaultSettings.body.fontSizePoints
-            * (96 / 72)
         let activeBlankGeometry = try #require(
             try await harness.callPageJavaScript(
                 """
@@ -2941,9 +2937,12 @@ struct MarkdownEditorWebViewIntegrationTests {
             (activeBlankGeometry["className"] as? String)?
                 .contains("cm-live-blank-line-active") == true
         )
-        #expect(abs(activeBlankHeight - expectedActiveLineHeight) < 0.5)
+        #expect(abs(activeBlankHeight - expectedBlankLineHeight) < 0.5)
         let afterEntry = try await transitionGeometry(lineIndex: 1)
-        for key in ["lineTop", "followingTop", "lineHeight", "scrollHeight"] {
+        let followingTopAfterEntry = try #require(afterEntry["followingTop"])
+        let lineBottomAfterEntry = try #require(afterEntry["lineBottom"])
+        #expect(followingTopAfterEntry >= lineBottomAfterEntry - 0.5)
+        for key in ["lineTop", "lineBottom", "height", "followingTop", "lineHeight", "scrollHeight"] {
             let before = try #require(beforeEntry[key])
             let after = try #require(afterEntry[key])
             #expect(abs(before - after) < 0.5)
@@ -2955,16 +2954,25 @@ struct MarkdownEditorWebViewIntegrationTests {
             stage: "first character on separator line"
         )
         let afterInput = try await transitionGeometry(lineIndex: 1)
-        for key in ["lineTop", "followingTop", "lineHeight", "scrollHeight", "cursorTop"] {
+        for key in [
+            "lineTop", "lineBottom", "height", "followingTop", "lineHeight",
+            "scrollHeight", "cursorTop",
+        ] {
             let before = try #require(afterEntry[key])
             let after = try #require(afterInput[key])
             #expect(abs(before - after) < 0.5)
         }
+        let followingTopAfterInput = try #require(afterInput["followingTop"])
+        let lineBottomAfterInput = try #require(afterInput["lineBottom"])
+        #expect(followingTopAfterInput >= lineBottomAfterInput - 0.5)
 
         try await harness.session.testingPressBackspace()
         try await harness.waitUntilSelection(head: blankOffset, stage: "deletion back to blank line")
         let afterDeletion = try await transitionGeometry(lineIndex: 1)
-        for key in ["lineTop", "followingTop", "lineHeight", "scrollHeight", "cursorTop"] {
+        for key in [
+            "lineTop", "lineBottom", "height", "followingTop", "lineHeight",
+            "scrollHeight", "cursorTop",
+        ] {
             let before = try #require(afterEntry[key])
             let after = try #require(afterDeletion[key])
             #expect(abs(before - after) < 0.5)
@@ -2973,7 +2981,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         harness.session.revealSourceRange(fromUTF16: secondFrom, toUTF16: secondFrom)
         try await harness.waitUntilSelection(head: secondFrom, stage: "exit from blank line")
         let afterExit = try await transitionGeometry(lineIndex: 1)
-        for key in ["lineTop", "followingTop", "lineHeight", "scrollHeight"] {
+        for key in ["lineTop", "lineBottom", "height", "followingTop", "lineHeight", "scrollHeight"] {
             let before = try #require(beforeEntry[key])
             let after = try #require(afterExit[key])
             #expect(abs(before - after) < 0.5)
@@ -3035,7 +3043,11 @@ struct MarkdownEditorWebViewIntegrationTests {
                   headingHeight: heading.getBoundingClientRect().height,
                   titleLeft: range.getBoundingClientRect().left,
                   followingTop: following.getBoundingClientRect().top,
-                  followingLeft: followingRange.getBoundingClientRect().left
+                  followingLeft: followingRange.getBoundingClientRect().left,
+                  markerLeft: heading.querySelector('.cm-live-heading-source-marker')
+                    ?.getBoundingClientRect().left ?? -1,
+                  markerRight: heading.querySelector('.cm-live-heading-source-marker')
+                    ?.getBoundingClientRect().right ?? -1
                 };
                 """,
                 arguments: ["headingText": heading]
@@ -3046,6 +3058,8 @@ struct MarkdownEditorWebViewIntegrationTests {
                 "titleLeft": try #require(value["titleLeft"] as? NSNumber).doubleValue,
                 "followingTop": try #require(value["followingTop"] as? NSNumber).doubleValue,
                 "followingLeft": try #require(value["followingLeft"] as? NSNumber).doubleValue,
+                "markerLeft": try #require(value["markerLeft"] as? NSNumber).doubleValue,
+                "markerRight": try #require(value["markerRight"] as? NSNumber).doubleValue,
             ]
         }
 
@@ -3061,12 +3075,78 @@ struct MarkdownEditorWebViewIntegrationTests {
         let inactiveFollowingLeft = try #require(inactive["followingLeft"])
         let activeTitleLeft = try #require(active["titleLeft"])
         #expect(abs(inactiveTitleLeft - inactiveFollowingLeft) < 0.5)
-        #expect(activeTitleLeft > inactiveTitleLeft + 3)
+        #expect(abs(activeTitleLeft - inactiveTitleLeft) < 0.5)
+        #expect(try #require(active["markerLeft"]) >= 0)
+        #expect(try #require(active["markerRight"]) <= activeTitleLeft + 0.5)
         for key in ["headingTop", "headingHeight", "followingTop"] {
             let before = try #require(inactive[key])
             let after = try #require(active[key])
             #expect(abs(before - after) < 0.5)
         }
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit quotation prefixes reveal outside the prose measure without reflow")
+    func editQuotationPrefixRevealPreservesProseGeometry() async throws {
+        let quotation = "Quoted argument remains stable."
+        let source = "> \(quotation)\n\nFollowing paragraph.\n"
+        let quotationFrom = try #require(source.range(of: quotation))
+            .lowerBound.utf16Offset(in: source)
+        let followingFrom = try #require(source.range(of: "Following paragraph."))
+            .lowerBound.utf16Offset(in: source)
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        harness.resize(width: 540)
+        try await harness.waitUntilReady()
+
+        func geometry() async throws -> [String: Double] {
+            let value = try #require(try await harness.callPageJavaScript(
+                """
+                const quote = document.querySelector('.cm-live-quote');
+                const following = Array.from(document.querySelectorAll('.cm-line'))
+                  .find(line => (line.textContent || '').includes('Following paragraph.'));
+                if (!quote || !following) return null;
+                const textNode = Array.from(quote.childNodes)
+                  .find(node => (node.textContent || '').includes(quotationText));
+                if (!textNode) return null;
+                const textRange = document.createRange();
+                const textOffset = textNode.textContent.indexOf(quotationText);
+                textRange.setStart(textNode, textOffset);
+                textRange.setEnd(textNode, textOffset + 1);
+                const marker = quote.querySelector('.cm-live-quote-source-marker');
+                return {
+                  quoteTop: quote.getBoundingClientRect().top,
+                  quoteHeight: quote.getBoundingClientRect().height,
+                  textLeft: textRange.getBoundingClientRect().left,
+                  followingTop: following.getBoundingClientRect().top,
+                  markerLeft: marker?.getBoundingClientRect().left ?? -1,
+                  markerRight: marker?.getBoundingClientRect().right ?? -1
+                };
+                """,
+                arguments: ["quotationText": quotation]
+            ) as? [String: Any])
+            return try Dictionary(uniqueKeysWithValues: value.map { key, rawValue in
+                (key, try #require(rawValue as? NSNumber).doubleValue)
+            })
+        }
+
+        harness.session.revealSourceRange(fromUTF16: followingFrom, toUTF16: followingFrom)
+        try await harness.waitUntilSelection(head: followingFrom)
+        let inactive = try await geometry()
+
+        harness.session.revealSourceRange(fromUTF16: quotationFrom, toUTF16: quotationFrom)
+        try await harness.waitUntilSelection(head: quotationFrom)
+        let active = try await geometry()
+
+        for key in ["quoteTop", "quoteHeight", "textLeft", "followingTop"] {
+            #expect(abs(try #require(inactive[key]) - (try #require(active[key]))) < 0.5)
+        }
+        #expect(try #require(active["markerLeft"]) >= 0)
+        let activeMarkerRight = try #require(active["markerRight"])
+        let activeTextLeft = try #require(active["textLeft"])
+        #expect(activeMarkerRight <= activeTextLeft + 0.5)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         #expect(!harness.session.isDirty)
         await harness.closeAndDrain()
@@ -3097,15 +3177,27 @@ struct MarkdownEditorWebViewIntegrationTests {
                 stage: "active H\(level) source"
             )
 
-            let activeText = try await harness.callPageJavaScript(
+            let activePresentation = try #require(try await harness.callPageJavaScript(
                 """
                 const line = Array.from(document.querySelectorAll(selector))
                   .find(candidate => (candidate.textContent || '').includes(label));
-                return line?.textContent || '';
+                const sourceMarker = line?.querySelector('.cm-live-heading-source-marker');
+                return line && sourceMarker ? {
+                  text: line.textContent || '',
+                  headingFontSize: Number.parseFloat(getComputedStyle(line).fontSize),
+                  markerFontSize: Number.parseFloat(getComputedStyle(sourceMarker).fontSize)
+                } : null;
                 """,
                 arguments: ["selector": ".cm-live-h\(level)", "label": label]
-            ) as? String
-            #expect(activeText == marker + label)
+            ) as? [String: Any])
+            #expect(activePresentation["text"] as? String == marker + label)
+            let headingFontSize = try #require(
+                activePresentation["headingFontSize"] as? NSNumber
+            ).doubleValue
+            let markerFontSize = try #require(
+                activePresentation["markerFontSize"] as? NSNumber
+            ).doubleValue
+            #expect(abs(headingFontSize - markerFontSize) < 0.02)
 
             try await harness.session.focusTitleAndWait()
             #expect(try await harness.callPageJavaScript(
@@ -3454,7 +3546,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         defer { harness.close() }
         try await harness.waitUntilReady()
         _ = try await harness.waitUntilPresentation(stage: "passive Callout before Backspace") {
-            $0.liveCalloutWidgetCount == 2 && $0.editBlankLineMinimumHeight > 0
+            $0.liveCalloutWidgetCount == 2 && $0.editBlankLineCount > 0
         }
 
         try await harness.session.testingClickFirstCalloutText("synthetic note")

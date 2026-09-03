@@ -25,8 +25,11 @@
   scrolling document plane while retaining authored H1 as a body section.
   Edit routes inline title changes through the existing safe Rename transaction
   and retains rejected drafts; Source remains an exact-source surface without
-  the projection. Edit reserves stable authoring geometry for blank source
-  lines and heading markers rather than inheriting Review's tighter spacing.
+  the projection. Review and inactive Edit share local semantic-block geometry;
+  each authored blank line remains one stable prose-height Edit row rather than
+  duplicating Review paragraph-end spacing or collapsing beneath a caret. Revealed
+  heading and quotation prefixes retain their line's full computed size outside
+  the prose measure without moving visible text or adjacent blocks.
 - Strict portable Research Records are reachable under
   `.scholium/inquiry-records/v1/`. Create, substantive append, paged read, and
   append-only clerical correction preserve external-Agent attribution,

@@ -66,6 +66,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             let topDelta: Double
             let heightDelta: Double
             let lineCountDelta: Int
+            let localLineGeometryMatches: Bool
             let visibleStartDelta: Double?
             let precedingReadBlockID: String?
             let precedingEditBlockID: String?
@@ -151,7 +152,8 @@ extension MarkdownEditorWebViewIntegrationTests {
             htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
             fingerprint: document.fingerprint.sha256,
             initialAnchor: nil,
-            initialScrollFraction: 0
+            initialScrollFraction: 0,
+            documentTitle: "Argument"
         )
         defer { readHarness.close() }
         try await readHarness.waitUntilReady()
@@ -239,6 +241,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(abs(readSnapshot.viewportWidth - editSnapshot.viewportWidth) <= 1)
         #expect(report.probes.count == contract.comparisonProbes.count)
         #expect(report.readBlockOrder == report.editBlockOrder)
+        #expect(report.mustMatchDifferenceCount == 0)
         #expect(report.probes.allSatisfy {
             $0.sourceUTF16LowerBound >= 0
                 && $0.sourceUTF16UpperBound > $0.sourceUTF16LowerBound
@@ -267,19 +270,33 @@ extension MarkdownEditorWebViewIntegrationTests {
             // tolerance; the pre-fix semantic drift was 5–29 pixels.
             #expect(abs(try #require(difference.visibleStartDelta)) <= 1)
         }
+        for id in [
+            "ordinary-paragraph",
+            "cjk-paragraph",
+            "rtl-arabic-paragraph",
+            "rtl-hebrew-paragraph",
+        ] {
+            let difference = try #require(report.probes.first { $0.id == id })
+            #expect(difference.read.lineWidths.count == difference.edit.lineWidths.count)
+            #expect(zip(difference.read.lineWidths, difference.edit.lineWidths).allSatisfy {
+                abs($0 - $1) <= 4
+            })
+        }
         let mermaid = try #require(report.probes.first { $0.id == "mermaid-diagram" })
         #expect(mermaid.styleDifferences.isEmpty)
         #expect(abs(mermaid.heightDelta) <= 0.5)
         #expect(mermaid.lineCountDelta == 0)
         #expect(mermaid.precedingBlockOrderMatches == true)
-        let body = DocumentAppearanceSettings.defaultSettings.body
-        let cssPixelsPerPoint = 96.0 / 72.0
-        let stableEditLine = body.lineHeight * body.fontSizePoints * cssPixelsPerPoint
-        let compactReviewGap = body.fontSizePoints * cssPixelsPerPoint
         let actualGapDelta = try #require(mermaid.precedingBlockGapDelta)
-        #expect(
-            abs(actualGapDelta - (stableEditLine - compactReviewGap)) <= 0.5
-        )
+        let body = DocumentAppearanceSettings.defaultSettings.body
+        let authoredBlankLineHeight = body.fontSizePoints * (96 / 72) * body.lineHeight
+        #expect(abs(actualGapDelta) <= authoredBlankLineHeight + 0.5)
+
+        let paragraph = try #require(report.probes.first { $0.id == "ordinary-paragraph" })
+        let heading = try #require(report.probes.first { $0.id == "section-heading" })
+        #expect(paragraph.read.styles["color"] == paragraph.edit.styles["color"])
+        #expect(heading.read.styles["color"] == heading.edit.styles["color"])
+        #expect(paragraph.read.styles["color"] != heading.read.styles["color"])
     }
 
     private func waitForGeometrySnapshot(
@@ -359,6 +376,10 @@ extension MarkdownEditorWebViewIntegrationTests {
         })
         var differences: [GeometryComparisonReport.Difference] = []
         var mustMatchDifferenceCount = 0
+        var flowPositionComparable = true
+        let body = DocumentAppearanceSettings.defaultSettings.body
+        let authoredBlankLineHeight = body.fontSizePoints * (96 / 72) * body.lineHeight
+        let paragraphSpacing = body.fontSizePoints * (96 / 72) * body.paragraphSpacingEm
 
         let blockIDs = Set(contract.comparisonProbes.lazy
             .filter { $0.level == "block" && $0.expectation == "mustMatchReview" }
@@ -386,6 +407,12 @@ extension MarkdownEditorWebViewIntegrationTests {
             return leftFrom < rightFrom
         }
         for probe in ordered {
+            if probe.level == "block", probe.expectation != "mustMatchReview" {
+                // Review relocates generated structures such as footnote
+                // definitions. Typography can still be compared afterward,
+                // but exact source-order coordinates no longer correspond.
+                flowPositionComparable = false
+            }
             let readProbe = try #require(readByID[probe.id])
             let editProbe = try #require(editByID[probe.id])
             let argument = try #require(argumentsByID[probe.id])
@@ -395,10 +422,19 @@ extension MarkdownEditorWebViewIntegrationTests {
                 let editValue = editProbe.styles[key] ?? ""
                 return readValue == editValue ? nil : (key, [readValue, editValue])
             })
+            let readPaddingEnd = cssPixelValue(readProbe.styles["padding-block-end"])
+            let editPaddingEnd = cssPixelValue(editProbe.styles["padding-block-end"])
+            let paragraphSpacingIsExpectedAdapter = abs(readPaddingEnd - paragraphSpacing) <= 0.5
+                && abs(editPaddingEnd) <= 0.5
             // CodeMirror must preserve exact whitespace in its contenteditable
-            // source DOM. `break-spaces` is therefore an adapter mechanism, not
-            // a visual mismatch when the measured line bands are identical.
-            let adapterStyleKeys = Set(["white-space"] + (probe.adapterStyleKeys ?? []))
+            // source DOM. It also uses authored blank source rows rather than
+            // copying Review's paragraph-end padding. Those transport details
+            // are adapters, not typography differences in the visible lines.
+            let adapterStyleKeys = Set(
+                ["white-space"]
+                    + (paragraphSpacingIsExpectedAdapter ? ["padding-block-end"] : [])
+                    + (probe.adapterStyleKeys ?? [])
+            )
             let styleDifferences = observedStyleDifferences.filter {
                 !adapterStyleKeys.contains($0.key)
             }
@@ -419,14 +455,33 @@ extension MarkdownEditorWebViewIntegrationTests {
                let precedingID = precedingReadBlockID,
                let precedingReadProbe = readByID[precedingID],
                let precedingEditProbe = editByID[precedingID] {
-                precedingGapDelta = (editProbe.top - precedingEditProbe.bottom)
-                    - (readProbe.top - precedingReadProbe.bottom)
+                let precedingReadVisibleBottom = precedingReadProbe.bottom
+                    - cssPixelValue(precedingReadProbe.styles["padding-block-end"])
+                let precedingEditVisibleBottom = precedingEditProbe.bottom
+                    - cssPixelValue(precedingEditProbe.styles["padding-block-end"])
+                precedingGapDelta = (editProbe.top - precedingEditVisibleBottom)
+                    - (readProbe.top - precedingReadVisibleBottom)
             } else {
                 precedingGapDelta = nil
             }
             let topDelta = editProbe.top - readProbe.top
             let heightDelta = editProbe.height - readProbe.height
             let lineCountDelta = editProbe.lineCount - readProbe.lineCount
+            let readContentHeight = readProbe.height
+                - cssPixelValue(readProbe.styles["padding-block-start"])
+                - readPaddingEnd
+            let editContentHeight = editProbe.height
+                - cssPixelValue(editProbe.styles["padding-block-start"])
+                - editPaddingEnd
+            let quotationParagraphEndIsExpectedAdapter = probe.semanticRole == "blockQuote"
+                && abs(abs(heightDelta) - paragraphSpacing) <= 0.5
+            let blockHeightMatches = abs(heightDelta) <= 0.5
+                || abs(readContentHeight - editContentHeight) <= 0.5
+                || quotationParagraphEndIsExpectedAdapter
+            let localLineGeometryMatches = readProbe.lineTops.count == editProbe.lineTops.count
+                && zip(readProbe.lineTops, editProbe.lineTops).allSatisfy { readTop, editTop in
+                    abs((readTop - readProbe.top) - (editTop - editProbe.top)) <= 0.5
+                }
             let visibleStartDelta: Double?
             if let readStart = readProbe.visibleStart,
                let editStart = editProbe.visibleStart {
@@ -434,20 +489,43 @@ extension MarkdownEditorWebViewIntegrationTests {
             } else {
                 visibleStartDelta = nil
             }
+            let sourceFrom = try #require(argument["sourceFrom"] as? Int)
+            let cumulativeBlankLineCount = authoredBlankLineCount(
+                in: 0..<sourceFrom,
+                source: source
+            )
+            let maximumTopDelta = Double(cumulativeBlankLineCount)
+                * authoredBlankLineHeight + 0.5
+            let maximumPrecedingGapDelta: Double
+            if let precedingID = precedingReadBlockID,
+               let precedingArgument = argumentsByID[precedingID],
+               let precedingSourceTo = precedingArgument["sourceTo"] as? Int,
+               precedingSourceTo <= sourceFrom {
+                maximumPrecedingGapDelta = Double(authoredBlankLineCount(
+                    in: precedingSourceTo..<sourceFrom,
+                    source: source
+                )) * authoredBlankLineHeight + 0.5
+            } else {
+                maximumPrecedingGapDelta = 0.5
+            }
             if probe.expectation == "mustMatchReview",
                !styleDifferences.isEmpty
-                || abs(topDelta) > 0.5
-                || abs(heightDelta) > 0.5
                 || lineCountDelta != 0
+                || !blockHeightMatches
+                || !localLineGeometryMatches
                 || probe.compareVisibleStart == true
                     && abs(visibleStartDelta ?? .infinity) > 1
                 || precedingBlockOrderMatches == false
-                || abs(precedingGapDelta ?? 0) > 0.5 {
+                || flowPositionComparable && probe.level == "block"
+                    && abs(topDelta) > maximumTopDelta
+                || flowPositionComparable && probe.level == "block"
+                    && abs(precedingGapDelta ?? 0) > maximumPrecedingGapDelta
+            {
                 mustMatchDifferenceCount += 1
             }
             differences.append(.init(
                 id: probe.id,
-                sourceUTF16LowerBound: try #require(argument["sourceFrom"] as? Int),
+                sourceUTF16LowerBound: sourceFrom,
                 sourceUTF16UpperBound: try #require(argument["sourceTo"] as? Int),
                 semanticRole: probe.semanticRole,
                 level: probe.level,
@@ -459,6 +537,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 topDelta: topDelta,
                 heightDelta: heightDelta,
                 lineCountDelta: lineCountDelta,
+                localLineGeometryMatches: localLineGeometryMatches,
                 visibleStartDelta: visibleStartDelta,
                 precedingReadBlockID: precedingReadBlockID,
                 precedingEditBlockID: precedingEditBlockID,
@@ -478,6 +557,42 @@ extension MarkdownEditorWebViewIntegrationTests {
             editBlockOrder: editBlockOrder,
             probes: differences
         )
+    }
+
+    private func cssPixelValue(_ value: String?) -> Double {
+        guard let value, value.hasSuffix("px") else { return 0 }
+        return Double(value.dropLast(2)) ?? 0
+    }
+
+    private func authoredBlankLineCount(
+        in range: Range<Int>,
+        source: String
+    ) -> Int {
+        guard !range.isEmpty else { return 0 }
+        let units = Array(source.utf16)
+        let lowerBound = max(0, min(range.lowerBound, units.count))
+        let upperBound = max(lowerBound, min(range.upperBound, units.count))
+        var count = 0
+        var lineStart = 0
+        while lineStart < upperBound {
+            var lineEnd = lineStart
+            while lineEnd < units.count, units[lineEnd] != 0x0A {
+                lineEnd += 1
+            }
+            var contentEnd = lineEnd
+            if contentEnd > lineStart, units[contentEnd - 1] == 0x0D {
+                contentEnd -= 1
+            }
+            if lineStart >= lowerBound,
+               lineStart < upperBound,
+               contentEnd <= upperBound,
+               units[lineStart..<contentEnd].allSatisfy({ $0 == 0x20 || $0 == 0x09 }) {
+                count += 1
+            }
+            guard lineEnd < units.count else { break }
+            lineStart = lineEnd + 1
+        }
+        return count
     }
 
     private func sourceRange(

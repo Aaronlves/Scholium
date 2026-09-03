@@ -100,7 +100,10 @@ function affectedProjectionAndCodeBlockRanges(
   ]);
 }
 
-function semanticBlockSpacing(block: SemanticBlockProjection): SemanticBlockSpacing {
+function semanticBlockSpacing(
+  block: SemanticBlockProjection,
+  _edge: "before" | "after",
+): SemanticBlockSpacing {
   switch (block.kind) {
   case "unorderedList":
   case "orderedList":
@@ -495,43 +498,47 @@ export function createLiveSemanticLayout(options: {
     const ranges: Range<Decoration>[] = [];
     let previous: SemanticBlockProjection | null = null;
     for (const current of topLevelBlocks) {
-      const previousSpacing = previous ? semanticBlockSpacing(previous) : "none";
-      const nextSpacing = semanticBlockSpacing(current);
-      if (previousSpacing !== "none" || nextSpacing !== "none") {
-        const previousLineNumber = previous
-          ? state.doc.lineAt(Math.min(previous.to, state.doc.length)).number
-          : 0;
-        const currentLineNumber = state.doc.lineAt(current.from).number;
-        let authoredSeparatorLine: number | null = null;
-        for (let number = currentLineNumber - 1; number > previousLineNumber; number -= 1) {
-          const line = state.doc.line(number);
-          if (/^\s*$/.test(line.text)) {
-            authoredSeparatorLine = line.from;
-            break;
-          }
+      const previousSpacing = previous
+        ? semanticBlockSpacing(previous, "after")
+        : "none";
+      const nextSpacing = semanticBlockSpacing(current, "before");
+      const previousLineNumber = previous
+        ? state.doc.lineAt(Math.min(previous.to, state.doc.length)).number
+        : 0;
+      const currentLineNumber = state.doc.lineAt(current.from).number;
+      let authoredSeparatorLine: number | null = null;
+      for (let number = currentLineNumber - 1; number > previousLineNumber; number -= 1) {
+        const line = state.doc.line(number);
+        if (/^\s*$/.test(line.text)) {
+          authoredSeparatorLine = line.from;
+          break;
         }
-        if (authoredSeparatorLine !== null) {
-          ranges.push(Decoration.line({
-            attributes: {
-              class: [
-                "cm-live-semantic-blank-gap",
-                `cm-live-semantic-gap-after-${previousSpacing}`,
-                `cm-live-semantic-gap-before-${nextSpacing}`,
-              ].join(" "),
-            },
-          }).range(authoredSeparatorLine));
-        } else {
-          ranges.push(Decoration.widget({
-            widget: new SemanticBlockGapWidget(previousSpacing, nextSpacing),
-            block: true,
-            side: -1,
-          }).range(current.from));
-        }
+      }
+      if (authoredSeparatorLine !== null) {
+        // The selected source line carries only the spacing this semantic
+        // boundary actually needs. A heading already owns its before/after
+        // padding, while a paragraph contributes its trailing manuscript gap.
+        ranges.push(Decoration.line({
+          attributes: {
+            class: [
+              "cm-live-semantic-blank-gap",
+              `cm-live-semantic-gap-after-${previousSpacing}`,
+              `cm-live-semantic-gap-before-${nextSpacing}`,
+            ].join(" "),
+            "data-scholium-blank-source-offset": String(authoredSeparatorLine),
+          },
+        }).range(authoredSeparatorLine));
+      } else if (previousSpacing !== "none" || nextSpacing !== "none") {
+        ranges.push(Decoration.widget({
+          widget: new SemanticBlockGapWidget(previousSpacing, nextSpacing),
+          block: true,
+          side: -1,
+        }).range(current.from));
       }
       previous = current;
     }
     if (previous) {
-      const spacing = semanticBlockSpacing(previous);
+      const spacing = semanticBlockSpacing(previous, "after");
       if (spacing !== "none") {
         ranges.push(Decoration.widget({
           widget: new SemanticBlockGapWidget(spacing, "none"),

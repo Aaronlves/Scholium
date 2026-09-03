@@ -571,7 +571,7 @@ extension MarkdownEditorSession {
                     rootInlineNarrow: rootStyle.getPropertyValue('--scholium-rhythm-inline-narrow').trim(),
                     rootLineWidth: rootStyle.getPropertyValue('--scholium-document-line-width').trim(),
                     viewportWidth: document.documentElement.clientWidth,
-                    pageColor: style('.cm-scroller')?.color || '',
+                    pageColor: contentStyle?.color || '',
                     pageBackgroundColor: style('.cm-editor')?.backgroundColor || '',
                     documentFontFamily: style('.cm-scroller')?.fontFamily || '',
                     documentFontSize: style('.cm-scroller')?.fontSize || '',

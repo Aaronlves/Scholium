@@ -3453,7 +3453,7 @@ struct FrontendArchitectureTests {
             ))
         #expect(
             !ScholiumWebDesignTokens.documentPresentationCSS.contains(
-                ".cm-editor.scholium-live-mode .cm-live-paragraph-end"
+                ".cm-editor.scholium-live-mode .cm-live-paragraph-end:not(.cm-live-list)"
             ))
         #expect(
             ScholiumWebDesignTokens.documentPresentationCSS.contains(
@@ -3984,6 +3984,8 @@ struct FrontendArchitectureTests {
             }
         }
         #expect(contrastRatio(0x28241D, 0xFF9A00) >= 7.0)
+        #expect(contrastRatio(0x3D3932, 0xFEF8ED) >= 7.0)
+        #expect(contrastRatio(0xDDD7CE, 0x2E2921) >= 7.0)
     }
 
     @Test("Reduce Motion removes app-defined transitions")
@@ -4297,6 +4299,10 @@ struct FrontendArchitectureTests {
         #expect(sharedCSS.contains("inline-size: 100%;"))
         #expect(sharedCSS.contains("calc(50% - var(--scholium-document-half-line-width))"))
         #expect(sharedCSS.contains(".cm-editor.scholium-source-mode .cm-content"))
+        #expect(sharedCSS.contains("var(--scholium-color-primary-text) 90%"))
+        #expect(sharedCSS.contains("var(--scholium-color-document-background)"))
+        #expect(sharedCSS.contains("color: var(--scholium-color-primary-text);"))
+        #expect(ScholiumColorRole.allCases.filter { $0 == .primaryText }.count == 1)
         let presentationCSS = ScholiumDocumentPresentationConfiguration(textScale: 1).css
         #expect(presentationCSS.contains("var(--scholium-rhythm-inline-narrow)"))
         #expect(presentationCSS.contains("var(--scholium-document-half-line-width)"))

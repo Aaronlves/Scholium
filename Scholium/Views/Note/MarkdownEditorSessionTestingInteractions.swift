@@ -410,9 +410,12 @@ extension MarkdownEditorSession {
                 .find(line => line.classList.contains('cm-live-blank-line'));
             if (!blank) return null;
             const rect = blank.getBoundingClientRect();
+            const hitHeight = Number.parseFloat(
+                getComputedStyle(blank, '::before').blockSize
+            ) || Math.max(1, rect.height);
             return {
                 x: rect.left + Math.min(12, Math.max(1, rect.width / 2)),
-                y: (rect.top + rect.bottom) / 2
+                y: rect.bottom - (hitHeight / 2)
             };
             """,
             arguments: [

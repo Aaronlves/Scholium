@@ -102,19 +102,31 @@ as a borderless filename field whose whole visible region, including trailing
 space, accepts focus. No separate edit affordance or title card is added.
 Authored H1 is never styled as a second document title. Native window title
 identifies the window without competing with that in-document title. Review
-and Edit share one measure and typographic hierarchy, but Edit may reserve the
-additional physical-line space required for stable authoring. Moving the
-caret, entering or leaving an authored blank line, typing its first character,
-and deleting it back to empty do not move the insertion baseline or neighboring
-content. Inactive ATX headings spend no horizontal measure on hidden opening
-syntax; entering one reveals the exact marker within that active line without
-moving neighboring blocks. Preserved spaces remain measurable but acquire no
-visible whitespace glyph in ordinary Edit prose. Ordinary prose uses
-language-aware editorial breaking rather than terminal-style arbitrary
-breaking, and an interactive inline locator remains attached to immediately
-following closing punctuation. Lists, blank lines, code fences, tables,
-mathematics, footnotes, and Callouts preserve their source-owned rhythm and
-object-local overflow.
+and Edit share one continuous philosophy-manuscript rhythm: readable prose,
+restrained paragraph separation, and section headings with stronger space
+before than after. Semantic blocks own their non-source spacing, and inactive
+Edit matches Review's typography, wrapping, and local visible text geometry.
+Each authored blank line remains one full, stable prose row in Edit; Review
+instead represents the same paragraph boundary with manuscript spacing. Edit
+does not add a second paragraph-end gap around that row. The resulting vertical
+difference is accepted once per authored blank line so the caret row never
+collapses, expands on first input, or overlaps its neighbors. Inactive headings
+and quotations spend no horizontal
+measure on hidden structural prefixes; entering one reveals its exact prefix
+outside the prose measure, in Exact type and at the line's full computed size,
+without moving visible text or neighboring blocks. Preserved spaces remain
+measurable but acquire no visible whitespace glyph in ordinary Edit prose.
+Ordinary prose uses language-aware editorial breaking rather than terminal-
+style arbitrary breaking, and an interactive inline locator remains attached
+to immediately following closing punctuation. Lists, blank lines, code fences,
+tables, mathematics, footnotes, and Callouts preserve their source-owned rhythm
+and object-local overflow.
+
+Research prose remains primary content without becoming visually identical to
+its structure. Body ink mixes 90% of the existing Primary Text with 10% of the
+Document Paper; the Note title and authored headings retain Primary Text. This
+is one tonal typographic hierarchy, not a new semantic color or state, and
+Review/Edit resolve it identically across appearances and Increase Contrast.
 
 Native selection is authoritative in every mode and uses the resolved Accent
 consistently. Authored `==highlight==` uses one protected high-contrast Markup

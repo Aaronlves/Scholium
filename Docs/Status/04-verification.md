@@ -123,6 +123,40 @@ Completed automated checks in this worktree:
   boundary, and preserves exact source. Selecting and deleting that extra space
   restores the word's exact pre-edit coordinates, alignment, and source without
   residue.
+- On 2026-09-04 the Review-referenced Edit rhythm slice passed 190 focused
+  mode-contract, frontend-architecture, and editor/Review WKWebView tests. The
+  fixed catalog found no must-match local geometry differences; focused journeys
+  preserved heading and quotation prose coordinates while exact active prefixes
+  remained editable outside the measure, and retained one stable line box
+  through blank-line entry, input, deletion, and exit. The locked frontend again
+  typechecked, passed 213 tests, and reproduced all four generated resources.
+  The complete gate passed documentation, resource, RDF-1, Core 347 plus 3
+  performance tests, Contracts 64, and Application 127 plus its architecture
+  measurement, then stopped because the unchanged WebKit localization test
+  expects 100 entries while both current and committed catalogs contain 99.
+  A focused QA mode-switch journey also stopped during fixture preparation
+  because its disposable Triptych lacked `.scholium/identities.json`; it did not
+  reach or judge the interface, and cleanup removed the QA process and bundle.
+- On 2026-09-04 the philosophy-manuscript rhythm correction passed the locked
+  213-test Web editor suite with reproducible generated resources and all 190
+  focused mode-contract, frontend-architecture, and editor/Review WKWebView
+  tests after the final blank-row correction. The fixed catalog reports no
+  must-match difference: semantic block order,
+  local line geometry, wrapping, visible starts, typography, and colors match,
+  while cumulative vertical position is bounded by one prose row per authored
+  blank line. The dedicated transition test measured a stable 29.47-pixel
+  blank row through entry, first input, deletion, and exit and verified that
+  its bottom never crosses the following row's top. All H1–H6 active source
+  markers retain their heading's computed size. The body mix retains 10.86:1
+  Light and 10.09:1 Dark contrast against Paper. The one complete
+  repository-gate attempt passed documentation/resource/RDF checks,
+  Core 347 plus 3 performance tests, Contracts 64, and Application 127 plus its
+  architecture measurement, then stopped in the 574-test App run solely at the
+  pre-existing localization assertion that expects 100 entries from unchanged
+  99-entry English and Simplified Chinese catalogs; no Release build followed.
+  A rebuilt isolated QA App opened the disposable `QA Autosave A` fixture in one
+  workspace window without Bootstrap. This is automated and exploratory
+  evidence; the researcher's visual acceptance remains pending.
 - The affected macOS UI-test journey entered its test method and completed
   Settlement plus one MCP update. After synthetic Agent Changes activation,
   XCTest observed a disabled main window but neither rendered nor exposed the

@@ -73,5 +73,14 @@ struct EditorModeContractTests {
         #expect(normalizedSpecification.contains(
             "Review and Edit may differ only where editing requires caret, selection, composition, or active syntax."
         ))
+        #expect(normalizedSpecification.contains(
+            "Review and inactive Edit use one philosophy-manuscript rhythm: each semantic block preserves the same typography, wrapping, visible start, local line geometry, and non-source spacing."
+        ))
+        #expect(normalizedSpecification.contains(
+            "Each authored Markdown blank line remains one stable prose-height source row in Edit, while Review represents paragraph boundaries through manuscript spacing."
+        ))
+        #expect(normalizedSpecification.contains(
+            "Exact structural prefixes revealed by the active heading or quotation hang outside the prose measure, retain the computed size of their line"
+        ))
     }
 }

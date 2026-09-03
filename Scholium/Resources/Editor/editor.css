@@ -145,6 +145,40 @@ body,
   vertical-align: baseline;
 }
 
+/* Active block prefixes remain exact editable source, but they hang outside
+   the prose measure instead of entering it. The visible heading/quotation
+   therefore keeps the same start, wrapping, baseline, and neighboring block
+   positions when the caret enters or leaves the construct. */
+.cm-live-heading-source-marker,
+.cm-live-quote-source-marker,
+.cm-live-callout-source-marker {
+  position: absolute;
+  z-index: 1;
+  color: var(--scholium-color-muted-text);
+  font-family: "Victor Mono", ui-monospace, monospace;
+  font-size: 1em;
+  font-style: normal;
+  font-variant-caps: normal;
+  font-weight: 400;
+  letter-spacing: 0;
+  white-space: pre;
+}
+
+.cm-live-heading-source-marker {
+  transform: translateX(-100%);
+}
+
+.cm-live-quote-source-marker,
+.cm-live-callout-source-marker {
+  inset-inline-start: var(--scholium-rhythm-quote-inset);
+  transform: translateX(-100%);
+}
+
+.cm-live-quote:dir(rtl) .cm-live-quote-source-marker,
+.cm-live-callout:dir(rtl) .cm-live-callout-source-marker {
+  transform: translateX(100%);
+}
+
 .cm-live-callout-widget {
   cursor: text;
 }
@@ -297,8 +331,8 @@ body,
 }
 
 .cm-line.cm-live-blank-line {
-  --scholium-live-blank-gap-after: var(--scholium-rhythm-paragraph-gap);
-  --scholium-live-blank-gap-before: var(--scholium-rhythm-paragraph-gap);
+  --scholium-live-blank-gap-after: 0px;
+  --scholium-live-blank-gap-before: 0px;
   line-height: var(--scholium-rhythm-prose-line-height);
   block-size: max(
     var(--scholium-live-blank-gap-after),
@@ -312,9 +346,26 @@ body,
   );
   padding-block: 0;
 }
-/* Selection may identify the active blank source line, but it never changes
-   that line's geometry. The reserved line box is already the box used by the
-   first inserted character and by a deletion back to empty. */
+/* An authored separator remains one stable CodeMirror prose row. Review owns
+   manuscript paragraph spacing while Edit owns exact source rows; accepting
+   that bounded difference avoids collapsed caret rows and overlapping line
+   boxes when the researcher enters or writes into an empty line. */
+.cm-line.cm-live-blank-line.cm-live-semantic-blank-gap {
+  --scholium-live-blank-gap-after: 0px;
+  --scholium-live-blank-gap-before: 0px;
+}
+.cm-line.cm-live-blank-line.cm-live-semantic-blank-gap::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset-inline: 0;
+  inset-block-end: 0;
+  block-size: max(
+    var(--scholium-rhythm-paragraph-gap),
+    var(--scholium-live-blank-gap-after),
+    var(--scholium-live-blank-gap-before)
+  );
+}
 .cm-line.cm-live-blank-line.cm-live-semantic-gap-after-half { --scholium-live-blank-gap-after: var(--scholium-rhythm-rule-block-gap, 0.5em); }
 .cm-line.cm-live-blank-line.cm-live-semantic-gap-before-half { --scholium-live-blank-gap-before: var(--scholium-rhythm-rule-block-gap, 0.5em); }
 .cm-line.cm-live-blank-line.cm-live-semantic-gap-after-paragraph { --scholium-live-blank-gap-after: var(--scholium-rhythm-paragraph-gap); }

@@ -482,17 +482,14 @@ TypeScript catalog extends those base roles with the editing dialect's
 Callouts, footnotes, mathematics, comments, Wikilinks with optional annotations, and protected
 literals. Each catalog entry carries its exact half-open UTF-16 range, exact
 marker ranges, visible ranges, parent and nesting role, and, where applicable,
-heading level, list depth, task marker, link target, and alias range. The
-opening ATX-heading marker owns its required following space or tab; leaving
-that separator as visible source would indent Edit relative to Review under
-CodeMirror's exact-whitespace layout. Inactive Edit replaces that range with
-zero measure; the active heading exposes the exact range without changing its
-line box or neighboring blocks. Semantic blocks do not own their terminal
-CR/LF sequence, and task-list prose owns the text after its task marker. Shared
-LF and BOM/CRLF/Unicode fixtures enforce those boundaries. Incomplete inline
-extension markers remain ordinary editable source, matching mature Markdown
-failure behavior; only structurally opened block mathematics and comments
-produce fail-closed malformed diagnostics.
+heading level, list depth, task marker, link target, and alias range. Opening
+ATX-heading and quotation prefixes include their required separator. Inactive
+Edit gives those ranges zero measure; active Edit absolutely positions their
+exact editable glyphs outside the prose measure, preserving text geometry and
+adjacent blocks. Semantic blocks exclude terminal CR/LF; task-list prose starts
+after its marker. LF and BOM/CRLF/Unicode fixtures enforce those boundaries.
+Incomplete extension markers remain ordinary editable source; only opened
+block mathematics and comments produce fail-closed malformed diagnostics.
 
 `LiveProjectionIndex` derives list-prefix and task-item ranges with the
 semantic catalog and maps them through topology-safe prose edits. A prefix
@@ -509,18 +506,21 @@ literal, code-block, table, Callout, footnote-reference, and mathematics ranges.
 fields own semantic line classes, measured source separator lines, inter-block gaps,
 frontmatter, tables, display mathematics, raw HTML, Callouts, and footnote
 reference markers.
-At a typed block boundary that already contains an authored Markdown separator
-line, that exact line absorbs the larger of the adjacent semantic spacing roles
-and no source-less gap is emitted. Only a boundary without an authored
-separator uses a zero-content block widget. Projected components themselves
-use no Edit-only block margins or fixed-height estimates. Only top-level lists
-participate in semantic block gaps. List-item
-paragraphs and nested lists retain ordinary prose line height with no internal
-paragraph or block gap. A Markdown blank line remains one exact CodeMirror line
-and reserves the larger of one prose line box or adjacent semantic spacing. Its
-active class changes no geometry; entry, first input, deletion back to empty,
-and exit retain one baseline and following-line position. Paragraph lines add
-no duplicate gap. The whole visible line maps to its exact source offset, while
+At a typed block boundary that already contains authored Markdown separators,
+each exact blank line remains a normal prose-height CodeMirror row and no
+source-less gap is emitted. Only a boundary without an authored separator uses
+a zero-content block widget. Edit does not copy Review paragraph-end padding;
+its authored blank rows provide that separation instead. Heading padding and
+projected component spacing continue to use generated Appearance values.
+Review and inactive Edit therefore share local block geometry but may differ in
+cumulative vertical position by at most one Edit row per authored blank line
+before the block. A blank row keeps the same block size and line height before
+entry, while active, and after its first visible input, so its line box cannot
+overflow into the following row. Its source-offset-bound pointer target spans
+at least the manuscript paragraph gap without contributing additional layout
+height. Only top-level lists receive semantic
+gaps; list-item paragraphs and nested lists retain prose line height without
+internal gaps. The visible line maps to its exact source offset, while
 selection, navigation, deletion, composition, and Undo keep their existing
 source semantics. DOM, height map, pointer mapping, selection, and scrolling
 therefore have one geometry owner. A prefix-maximum interval
@@ -561,7 +561,8 @@ Read and Live Preview consume one presentation contract:
 Both modes use strict line breaking, normal word boundaries, and emergency
 long-token wrapping. CodeMirror retains `break-spaces`, so every Edit space has
 width without a custom visible-whitespace decoration in ordinary prose.
-Footnote locators bind their following punctuation.
+Footnote locators bind their following punctuation. Appearance owns numeric
+rhythm; the adapter only maps semantic blocks.
 
 Native chrome and Review use the resolved filename title. Live Preview projects
 one borderless auto-height field outside source. Its versioned request carries

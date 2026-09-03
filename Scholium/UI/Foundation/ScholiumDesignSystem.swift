@@ -677,6 +677,11 @@ enum ScholiumWebDesignTokens {
             var(--scholium-document-prose-font-size)
             * var(--scholium-document-text-scale-factor)
           );
+          color: color-mix(
+            in srgb,
+            var(--scholium-color-primary-text) 90%,
+            var(--scholium-color-document-background)
+          );
           line-height: var(--scholium-rhythm-prose-line-height);
           line-break: strict;
           word-break: normal;
@@ -951,6 +956,7 @@ enum ScholiumWebDesignTokens {
         .scholium-document h5,
         .scholium-document h6,
         .scholium-live-mode .cm-live-heading {
+          color: var(--scholium-color-primary-text);
           font-family: var(--scholium-document-heading-font-family);
           font-style: var(--scholium-document-heading-font-style);
           font-variant-caps: var(--scholium-document-heading-font-variant-caps);

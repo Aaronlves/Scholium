@@ -575,6 +575,14 @@ function modifiedProjectedLink(view: EditorView, event: MouseEvent) {
 const projectedWidgets = createProjectedWidgetRegistry();
 
 function projectedWidgetSourceOffset(event: MouseEvent) {
+  const target = event.target instanceof Element ? event.target : null;
+  const blankSourceOffset = target
+    ?.closest<HTMLElement>("[data-scholium-blank-source-offset]")
+    ?.dataset.scholiumBlankSourceOffset;
+  if (blankSourceOffset !== undefined) {
+    const parsed = Number.parseInt(blankSourceOffset, 10);
+    if (Number.isSafeInteger(parsed)) return parsed;
+  }
   return projectedWidgets.sourceOffset(event);
 }
 
@@ -843,6 +851,14 @@ function buildLiveDecorations(
                 Math.min(line.to, marker.to),
               );
             }
+          } else {
+            for (const marker of lineMarkers) {
+              addMark(
+                Math.max(line.from, marker.from),
+                Math.min(line.to, marker.to),
+                "cm-live-heading-source-marker",
+              );
+            }
           }
         }
 
@@ -868,16 +884,26 @@ function buildLiveDecorations(
           // Callout markers remain excluded from inline semantics on every
           // line. Only the line owning the current caret exposes those exact
           // bytes; the rest of the block stays in its Live Preview shell.
-          structuralInlineExclusions.push(...lineMarkers);
+          const sourceMarkers = lineMarkers.map((marker) => {
+            let markerTo = Math.min(line.to, marker.to);
+            while (markerTo < line.to) {
+              const code = doc.sliceString(markerTo, markerTo + 1);
+              if (code !== " " && code !== "\t") break;
+              markerTo += 1;
+            }
+            return {
+              from: Math.max(line.from, marker.from),
+              to: markerTo,
+            };
+          });
+          structuralInlineExclusions.push(...sourceMarkers);
           if (!activeLine) {
-            for (const marker of lineMarkers) {
-              let markerTo = Math.min(line.to, marker.to);
-              while (markerTo < line.to) {
-                const code = doc.sliceString(markerTo, markerTo + 1);
-                if (code !== " " && code !== "\t") break;
-                markerTo += 1;
-              }
-              addHidden(Math.max(line.from, marker.from), markerTo);
+            for (const marker of sourceMarkers) {
+              addHidden(marker.from, marker.to);
+            }
+          } else {
+            for (const marker of sourceMarkers) {
+              addMark(marker.from, marker.to, "cm-live-callout-source-marker");
             }
           }
           if (parsedCallout && parsedCallout.from === line.from) {
@@ -898,10 +924,19 @@ function buildLiveDecorations(
         }
         const quote = semanticBlocksOnLine.find((block) => block.kind === "blockQuote");
         if (quote && !parsedCallout) {
-          if (!activeLine) {
-            for (const marker of quote.markerRanges.filter((range) =>
-              range.from < lineQueryTo && range.to > line.from)) {
-              addHidden(Math.max(line.from, marker.from), Math.min(line.to, marker.to));
+          for (const marker of quote.markerRanges.filter((range) =>
+            range.from < lineQueryTo && range.to > line.from)) {
+            const markerFrom = Math.max(line.from, marker.from);
+            let markerTo = Math.min(line.to, marker.to);
+            while (markerTo < line.to) {
+              const code = doc.sliceString(markerTo, markerTo + 1);
+              if (code !== " " && code !== "\t") break;
+              markerTo += 1;
+            }
+            if (activeLine) {
+              addMark(markerFrom, markerTo, "cm-live-quote-source-marker");
+            } else {
+              addHidden(markerFrom, markerTo);
             }
           }
         }
