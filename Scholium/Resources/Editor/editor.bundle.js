@@ -30755,6 +30755,7 @@ ${fence}
     "Task item",
     "Show Link Annotation",
     "Hide Link Annotation",
+    "Link Annotation",
     "linked note",
     "Markdown table",
     "Embedded note {title}",
@@ -31075,8 +31076,7 @@ ${fence}
   function normalizedTitle(value) {
     return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
   }
-  function populatePreviewDocument(body, preview) {
-    body.innerHTML = preview.htmlBody;
+  function sanitizePreviewDocument(body) {
     body.querySelectorAll("script, style, iframe, object, embed, form, input, button").forEach((node) => node.remove());
     body.querySelectorAll("*").forEach((node) => {
       for (const attribute of Array.from(node.attributes)) {
@@ -31094,6 +31094,10 @@ ${fence}
       node.removeAttribute("aria-owns");
       node.tabIndex = -1;
     });
+  }
+  function populatePreviewDocument(body, preview) {
+    body.innerHTML = preview.htmlBody;
+    sanitizePreviewDocument(body);
     const firstHeading = body.querySelector(":scope > h1:first-child");
     if (firstHeading && normalizedTitle(firstHeading.textContent ?? "") === normalizedTitle(preview.title)) {
       firstHeading.remove();
@@ -31108,12 +31112,41 @@ ${fence}
     let showTimer;
     let hideTimer;
     let pendingAnchor = null;
-    function hide() {
+    let hoveredLink = null;
+    let armedLink = null;
+    let activeAnnotationButton = null;
+    let pinnedAnnotationButton = null;
+    let activeKind = null;
+    let modifierPressed = false;
+    function annotationTarget(button) {
+      return button.dataset.linkAnnotationTarget?.trim() || localized("linked note");
+    }
+    function setAnnotationExpanded(button, expanded) {
+      button.setAttribute("aria-expanded", expanded ? "true" : "false");
+      button.setAttribute(
+        "aria-label",
+        `${localized(expanded ? "Hide Link Annotation" : "Show Link Annotation")} ${annotationTarget(button)}`
+      );
+    }
+    function setArmedLink(next) {
+      if (armedLink === next) return;
+      armedLink?.classList.remove("scholium-link-preview-armed");
+      armedLink = next;
+      armedLink?.classList.add("scholium-link-preview-armed");
+    }
+    function hide(retainHoveredLink = false) {
       window.clearTimeout(showTimer);
       window.clearTimeout(hideTimer);
       showTimer = void 0;
       hideTimer = void 0;
       pendingAnchor = null;
+      if (!retainHoveredLink) hoveredLink = null;
+      modifierPressed = false;
+      setArmedLink(null);
+      if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
+      activeAnnotationButton = null;
+      pinnedAnnotationButton = null;
+      activeKind = null;
       if (root) {
         root.hidden = true;
         root.style.visibility = "";
@@ -31127,6 +31160,7 @@ ${fence}
       hideTimer = void 0;
     }
     function scheduleHide() {
+      if (pinnedAnnotationButton) return;
       window.clearTimeout(hideTimer);
       hideTimer = window.setTimeout(hide, 180);
     }
@@ -31158,6 +31192,7 @@ ${fence}
           activeRoot.style.left = `${resolved.left}px`;
           activeRoot.style.top = `${resolved.top}px`;
           activeRoot.style.visibility = "visible";
+          if (startedAt === void 0) return;
           scheduleAfterNextPaint(() => {
             const durationMilliseconds = Math.max(0, performance.now() - startedAt);
             recordEditorMetric("cached-preview", startedAt, {
@@ -31171,8 +31206,11 @@ ${fence}
         }
       });
     }
-    function show(preview, anchor, startedAt) {
+    function showLinkPreview(preview, anchor, startedAt) {
       if (!editor2 || !root || !title || !metadata || !body) return;
+      if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
+      activeAnnotationButton = null;
+      activeKind = "link";
       title.textContent = preview.title;
       metadata.textContent = preview.fragment ?? "";
       metadata.hidden = !preview.fragment;
@@ -31182,6 +31220,30 @@ ${fence}
       });
       position(anchor, startedAt);
     }
+    function annotationTemplate(button) {
+      const owner = button.closest(
+        ".scholium-link-annotation-disclosure, .scholium-link-annotation-marker"
+      );
+      return owner?.querySelector(":scope > template") ?? null;
+    }
+    function showAnnotation(button) {
+      if (!root || !title || !metadata || !body) return false;
+      const template = annotationTemplate(button);
+      if (!template) return false;
+      if (activeAnnotationButton && activeAnnotationButton !== button) {
+        setAnnotationExpanded(activeAnnotationButton, false);
+      }
+      activeAnnotationButton = button;
+      activeKind = "annotation";
+      setAnnotationExpanded(button, true);
+      title.textContent = annotationTarget(button);
+      metadata.textContent = localized("Link Annotation");
+      metadata.hidden = false;
+      body.replaceChildren(template.content.cloneNode(true));
+      sanitizePreviewDocument(body);
+      position(button.getBoundingClientRect());
+      return true;
+    }
     function showAtSelection() {
       const startedAt = performance.now();
       if (!editor2) return false;
@@ -31190,7 +31252,8 @@ ${fence}
       if (!coords) return false;
       const preview = options.previews().find((candidate) => head >= candidate.from && head < candidate.to);
       if (preview) {
-        show(preview, coords, startedAt);
+        hide();
+        showLinkPreview(preview, coords, startedAt);
         return true;
       }
       announceEditorMessage(
@@ -31202,55 +31265,128 @@ ${fence}
     function showAtPoint(x, y) {
       const startedAt = performance.now();
       if (!editor2) return false;
-      const anchor = document.elementFromPoint(x, y)?.closest("[data-link-preview-index]");
+      const anchor = linkAnchorAt(document.elementFromPoint(x, y));
       if (!anchor) return showAtSelection();
-      const previewIndex = Number(anchor.dataset.linkPreviewIndex);
-      const preview = options.previews()[previewIndex];
-      if (Number.isInteger(previewIndex) && preview) {
-        show(preview, anchor.getBoundingClientRect(), startedAt);
+      const preview = previewForAnchor(anchor);
+      if (preview) {
+        hide();
+        showLinkPreview(preview, anchor.getBoundingClientRect(), startedAt);
         return true;
       }
       return showAtSelection();
     }
-    function anchorAtEvent(event) {
-      if (!event.metaKey || !(event.target instanceof Element)) {
-        return null;
+    function annotationButtonAt(target) {
+      return target instanceof Element ? target.closest(".scholium-link-annotation-button") : null;
+    }
+    function linkAnchorAt(target) {
+      return target instanceof Element ? target.closest(
+        "[data-link-preview-index], [data-scholium-link-target][data-scholium-source-from][data-scholium-source-to]"
+      ) : null;
+    }
+    function previewForAnchor(anchor) {
+      const previewIndex = Number(anchor.dataset.linkPreviewIndex);
+      if (Number.isInteger(previewIndex) && anchor.dataset.linkPreviewIndex !== void 0) {
+        return options.previews()[previewIndex];
       }
-      return event.target.closest("[data-link-preview-index]");
+      const from = Number(anchor.dataset.scholiumSourceFrom);
+      const to = Number(anchor.dataset.scholiumSourceTo);
+      if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to) || to <= from) return void 0;
+      return options.previews().find((preview) => preview.from === from && preview.to === to);
+    }
+    function scheduleShow(anchor, kind) {
+      cancelHide();
+      if (anchor === pendingAnchor && kind === activeKind) return;
+      window.clearTimeout(showTimer);
+      showTimer = void 0;
+      pendingAnchor = anchor;
+      showTimer = window.setTimeout(() => {
+        if (pendingAnchor !== anchor) return;
+        if (kind === "annotation") {
+          showAnnotation(anchor);
+          return;
+        }
+        const preview = previewForAnchor(anchor);
+        if (preview) {
+          showLinkPreview(preview, anchor.getBoundingClientRect(), performance.now());
+        }
+      }, 300);
     }
     const handlePointerMove = (event) => {
       if (root && event.target instanceof Node && root.contains(event.target)) {
         cancelHide();
         return;
       }
-      const anchor = anchorAtEvent(event);
+      const annotation = annotationButtonAt(event.target);
+      const link = linkAnchorAt(event.target);
+      hoveredLink = link;
+      if (pinnedAnnotationButton && annotation !== pinnedAnnotationButton) {
+        setArmedLink(null);
+        return;
+      }
+      const modifierActive = event.metaKey || event.ctrlKey || modifierPressed;
+      setArmedLink(modifierActive ? link : null);
+      const anchor = annotation ?? (modifierActive ? link : null);
       if (!anchor) {
         if (pendingAnchor || root && !root.hidden) scheduleHide();
         return;
       }
-      cancelHide();
-      if (anchor === pendingAnchor) return;
-      window.clearTimeout(showTimer);
-      showTimer = void 0;
-      pendingAnchor = anchor;
-      showTimer = window.setTimeout(() => {
-        if (pendingAnchor !== anchor) return;
-        const previewIndex = Number(anchor.dataset.linkPreviewIndex);
-        const preview = options.previews()[previewIndex];
-        if (Number.isInteger(previewIndex) && preview) {
-          show(preview, anchor.getBoundingClientRect(), performance.now());
-        }
-      }, 300);
+      scheduleShow(anchor, annotation ? "annotation" : "link");
     };
     const handlePreviewPointerEnter = () => cancelHide();
     const handlePreviewPointerLeave = () => scheduleHide();
     const handleKeyUp = (event) => {
-      if (event.key === "Meta") hide();
+      if (event.key !== "Meta" && event.key !== "Control") return;
+      modifierPressed = false;
+      setArmedLink(null);
+      if (activeKind === "link") hide(true);
     };
     const handleKeyDown = (event) => {
-      if (event.key === "Escape" && root && !root.hidden) hide();
+      if (event.key === "Escape" && root && !root.hidden) {
+        hide();
+        return;
+      }
+      if (event.key !== "Meta" && event.key !== "Control") return;
+      modifierPressed = true;
+      if (!hoveredLink || pinnedAnnotationButton) return;
+      setArmedLink(hoveredLink);
+      scheduleShow(hoveredLink, "link");
     };
-    const handleViewportExit = () => hide();
+    const handleFocusIn = (event) => {
+      const button = annotationButtonAt(event.target);
+      if (!button) return;
+      cancelHide();
+      window.clearTimeout(showTimer);
+      pendingAnchor = button;
+      showAnnotation(button);
+    };
+    const handleFocusOut = (event) => {
+      const button = annotationButtonAt(event.target);
+      if (!button) return;
+      if (event.relatedTarget instanceof Node && root?.contains(event.relatedTarget)) return;
+      scheduleHide();
+    };
+    const handleClick = (event) => {
+      const button = annotationButtonAt(event.target);
+      if (button) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (pinnedAnnotationButton === button) {
+          hide();
+          return;
+        }
+        pinnedAnnotationButton = button;
+        window.clearTimeout(showTimer);
+        pendingAnchor = button;
+        showAnnotation(button);
+        return;
+      }
+      if (pinnedAnnotationButton && !(event.target instanceof Node && root?.contains(event.target))) hide();
+    };
+    const handleViewportExit = () => {
+      hoveredLink = null;
+      modifierPressed = false;
+      hide();
+    };
     function mount(view) {
       if (editor2) return;
       editor2 = view;
@@ -31258,10 +31394,12 @@ ${fence}
       root.id = "scholium-preview-popover";
       root.className = "scholium-preview-popover";
       root.dataset.scholiumProtected = "preview-popover";
-      root.setAttribute("role", "tooltip");
+      root.setAttribute("role", "note");
+      root.setAttribute("aria-labelledby", "scholium-preview-title");
       root.setAttribute("aria-live", "polite");
       root.hidden = true;
       title = document.createElement("h2");
+      title.id = "scholium-preview-title";
       title.className = "scholium-preview-title";
       metadata = document.createElement("p");
       metadata.className = "scholium-preview-metadata";
@@ -31275,6 +31413,9 @@ ${fence}
       root.addEventListener("pointerenter", handlePreviewPointerEnter);
       root.addEventListener("pointerleave", handlePreviewPointerLeave);
       document.addEventListener("pointermove", handlePointerMove, { passive: true });
+      document.addEventListener("focusin", handleFocusIn);
+      document.addEventListener("focusout", handleFocusOut);
+      document.addEventListener("click", handleClick);
       document.addEventListener("keyup", handleKeyUp);
       document.addEventListener("keydown", handleKeyDown);
       view.scrollDOM.addEventListener("scroll", handleViewportExit, { passive: true });
@@ -31285,6 +31426,9 @@ ${fence}
       if (editor2 !== view) return;
       hide();
       document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("focusin", handleFocusIn);
+      document.removeEventListener("focusout", handleFocusOut);
+      document.removeEventListener("click", handleClick);
       document.removeEventListener("keyup", handleKeyUp);
       document.removeEventListener("keydown", handleKeyDown);
       view.scrollDOM.removeEventListener("scroll", handleViewportExit);
@@ -31298,10 +31442,17 @@ ${fence}
       metadata = null;
       body = null;
       editor2 = null;
+      hoveredLink = null;
+      modifierPressed = false;
     }
     const extension = ViewPlugin.define((view) => {
       mount(view);
-      return { destroy: () => unmount(view) };
+      return {
+        update(update) {
+          if (update.docChanged || update.selectionSet || update.viewportChanged) hide();
+        },
+        destroy: () => unmount(view)
+      };
     });
     return { extension, hide, showAtSelection, showAtPoint };
   }
@@ -33654,29 +33805,30 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     const alias = parsed[2]?.trim();
     link.textContent = alias || target;
     identifyProjectedLink(link, target, 0, rawLink.length, rawLink.length, options);
+    const marker = document2.createElement("sup");
+    marker.className = "scholium-link-annotation-marker";
     const button = document2.createElement("button");
     button.type = "button";
     button.className = "scholium-link-annotation-button";
+    button.dataset.linkAnnotation = "true";
+    button.dataset.linkAnnotationTarget = alias || target;
     button.setAttribute("aria-expanded", "false");
+    button.setAttribute("aria-controls", "scholium-preview-popover");
     button.setAttribute("aria-label", `${localized("Show Link Annotation")} ${alias || target}`);
     button.append(systemSymbolElement("text-bubble", "scholium-link-annotation-icon", document2));
-    const panel = document2.createElement("span");
-    panel.className = "scholium-link-annotation-panel";
-    panel.setAttribute("role", "note");
-    panel.hidden = true;
+    const template = document2.createElement("template");
+    template.className = "scholium-link-annotation-template";
     const content2 = document2.createElement("span");
     content2.className = "scholium-link-annotation-content";
     appendMarkdownBlocks(annotationMarkdown, content2, optionsAt(options, rawLink.length + 2));
-    panel.append(content2);
-    button.addEventListener("click", () => {
-      panel.hidden = !panel.hidden;
-      button.setAttribute("aria-expanded", panel.hidden ? "false" : "true");
-      button.setAttribute(
-        "aria-label",
-        `${localized(panel.hidden ? "Show Link Annotation" : "Hide Link Annotation")} ${alias || target}`
-      );
+    template.content.append(content2);
+    button.addEventListener("mousedown", (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
     });
-    wrapper.append(link, button, panel);
+    marker.append(button, template);
+    wrapper.append(link, marker);
     parent.append(wrapper);
   }
   function appendInlineMarkdown(source, parent, options = {}) {
@@ -34653,39 +34805,30 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         return other.markdown === this.markdown && other.target === this.target;
       }
       toDOM() {
-        const wrapper = document.createElement("span");
+        const wrapper = document.createElement("sup");
         wrapper.className = "scholium-link-annotation-disclosure";
         wrapper.dataset.scholiumProtected = "link-annotation";
         const button = document.createElement("button");
         button.type = "button";
         button.className = "scholium-link-annotation-button";
+        button.dataset.linkAnnotation = "true";
+        button.dataset.linkAnnotationTarget = this.target;
         button.setAttribute("aria-expanded", "false");
+        button.setAttribute("aria-controls", "scholium-preview-popover");
         button.setAttribute("aria-label", `${localized("Show Link Annotation")} ${this.target}`);
         button.append(systemSymbolElement("text-bubble", "scholium-link-annotation-icon"));
-        const panel = document.createElement("span");
-        panel.className = "scholium-link-annotation-panel";
-        panel.setAttribute("role", "note");
-        panel.hidden = true;
+        const template = document.createElement("template");
+        template.className = "scholium-link-annotation-template";
         const content2 = document.createElement("span");
         content2.className = "scholium-link-annotation-content";
         appendMarkdownBlocks(this.markdown, content2);
-        panel.append(content2);
+        template.content.append(content2);
         button.addEventListener("mousedown", (event) => {
           if (event.button !== 0) return;
           event.preventDefault();
           event.stopPropagation();
         });
-        button.addEventListener("click", (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          panel.hidden = !panel.hidden;
-          button.setAttribute("aria-expanded", panel.hidden ? "false" : "true");
-          button.setAttribute(
-            "aria-label",
-            `${localized(panel.hidden ? "Show Link Annotation" : "Hide Link Annotation")} ${this.target}`
-          );
-        });
-        wrapper.append(button, panel);
+        wrapper.append(button, template);
         return wrapper;
       }
       ignoreEvent(event) {

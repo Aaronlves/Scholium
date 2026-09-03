@@ -63,6 +63,23 @@ Completed automated checks in this worktree:
   `build-qa-app.sh` syntax validation and `git diff --check` passed. A fresh
   disposable fixture opened one coherent workspace instead of the former
   settings-only Bootstrap failure.
+- On 2026-09-03 the locked Web editor toolchain typechecked, passed 211 tests in
+  38 files, and rebuilt the Editor and Reader bundles. Focused WKWebView tests
+  proved both Command-before-pointer and pointer-before-Command Edit previews,
+  a previewable link inside an inactive Callout, visible armed-link feedback,
+  Review/Edit annotation hover, keyboard focus, click retention and Escape,
+  zero-line-height superscript geometry, unchanged document height, and no
+  inline annotation panel. Focused renderer, localization, and presentation-
+  ownership tests also passed. The complete gate attempt passed 347 Core tests,
+  then stopped when the first-five-page Search microbenchmark measured 513.14
+  ms against its 500 ms threshold; the same isolated three-test performance
+  suite passed immediately afterward at 488.99 ms without a Search change.
+  Contracts passed 64 tests, Application passed 127 tests plus its isolated
+  architecture measurement, the public-symbol graph boundary passed, and the
+  Release build passed in 195.61 seconds. The 564-test App run passed the new
+  link and annotation coverage but ended on the existing long bridge matrix's
+  narrow 200% projection timeout; that exact bridge test passed alone. This is
+  not recorded as a clean complete-gate pass.
 - The affected macOS UI-test journey entered its test method and completed
   Settlement plus one MCP update. After synthetic Agent Changes activation,
   XCTest observed a disabled main window but neither rendered nor exposed the

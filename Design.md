@@ -116,10 +116,16 @@ highlight, not Accent or status color. Current Comment anchoring uses a quiet
 Accent boundary/field plus a counted margin control; stale Comment groups do
 not paint current prose.
 
-Hyperlinks and Wikilinks use Accent plus underline. An annotated Wikilink adds
-one small trailing `text.bubble` disclosure marker; its text and accessibility
-name say that a source-owned annotation is present. The marker never classifies
-argumentative force, truth, evidence, or value.
+Hyperlinks and Wikilinks use Accent plus underline. Hover or keyboard focus
+strengthens the underline and adds only the shared quiet interaction surface;
+Edit applies that feedback while Command arms a projected link for preview or
+opening. An annotated Wikilink adds one small trailing superscript
+`text.bubble` disclosure marker at the link's upper inline end. The marker uses
+footnote-like zero-line-height geometry, reserves only its compact inline width,
+and reveals the annotation in the shared bounded preview surface rather than in
+document flow. Its text and accessibility name say that a source-owned
+annotation is present. The marker never classifies argumentative force, truth,
+evidence, or value.
 
 Color has exactly two researcher inputs:
 

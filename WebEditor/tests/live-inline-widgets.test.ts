@@ -15,13 +15,14 @@ describe("live inline widget presentation", () => {
     vi.stubGlobal("document", document);
     const dom = widgets.linkAnnotation("Reason one.\n\n- Reason two", "Target").toDOM();
     const button = dom.querySelector<HTMLButtonElement>("button")!;
-    const panel = dom.querySelector<HTMLElement>("[role=note]")!;
+    const template = dom.querySelector<HTMLTemplateElement>("template")!;
+    expect(dom.tagName).toBe("SUP");
     expect(button.getAttribute("aria-expanded")).toBe("false");
-    expect(panel.hidden).toBe(true);
-    button.click();
-    expect(button.getAttribute("aria-expanded")).toBe("true");
-    expect(panel.hidden).toBe(false);
-    expect(panel.textContent).toContain("Reason two");
+    expect(button.getAttribute("aria-controls")).toBe("scholium-preview-popover");
+    expect(button.dataset.linkAnnotationTarget).toBe("Target");
+    expect(template.content.querySelector(".scholium-link-annotation-content")?.textContent)
+      .toContain("Reason two");
+    expect(dom.querySelector(".scholium-link-annotation-panel")).toBeNull();
   });
 
   it("derives nested list indentation from the shared semantic variable", () => {

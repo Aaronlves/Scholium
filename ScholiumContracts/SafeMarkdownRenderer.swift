@@ -298,7 +298,8 @@ public enum SafeMarkdownRenderer {
             depth: depth
         )
         let label = escapeAttribute("Show link annotation for \(display)")
-        return "<span class=\"scholium-annotated-link\" data-scholium-protected=\"link-annotation\">\(linkHTML)<button type=\"button\" class=\"scholium-link-annotation-button\" data-link-annotation=\"\(identifier)\" aria-expanded=\"false\" aria-controls=\"\(identifier)\" aria-label=\"\(label)\"><span aria-hidden=\"true\"></span></button><template id=\"\(identifier)-template\"><div class=\"scholium-link-annotation-content\" dir=\"auto\" role=\"note\" \(sourceAttributes(annotation.span))>\(annotationHTML)</div></template></span>"
+        let target = escapeAttribute(display)
+        return "<span class=\"scholium-annotated-link\" data-scholium-protected=\"link-annotation\">\(linkHTML)<sup class=\"scholium-link-annotation-marker\"><button type=\"button\" class=\"scholium-link-annotation-button\" data-link-annotation=\"\(identifier)\" data-link-annotation-target=\"\(target)\" aria-expanded=\"false\" aria-controls=\"scholium-preview-popover\" aria-label=\"\(label)\"><span aria-hidden=\"true\"></span></button><template id=\"\(identifier)-template\"><div class=\"scholium-link-annotation-content\" dir=\"auto\" role=\"note\" \(sourceAttributes(annotation.span))>\(annotationHTML)</div></template></sup></span>"
     }
 
     private static func bodyUTF16Offset(in document: NoteDocument) -> Int {

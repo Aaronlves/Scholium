@@ -91,9 +91,12 @@ describe("appendMarkdownBlocks", () => {
       ".scholium-link-annotation-button",
     )!;
     expect(annotationButton.getAttribute("aria-expanded")).toBe("false");
-    annotationButton.click();
-    expect(root.querySelector(".scholium-link-annotation-panel")?.textContent)
+    expect(annotationButton.getAttribute("aria-controls")).toBe("scholium-preview-popover");
+    expect(root.querySelector(".scholium-link-annotation-marker")?.tagName).toBe("SUP");
+    expect(root.querySelector<HTMLTemplateElement>(".scholium-link-annotation-template")
+      ?.content.querySelector(".scholium-link-annotation-content")?.textContent)
       .toContain("Why this matters.");
+    expect(root.querySelector(".scholium-link-annotation-panel")).toBeNull();
     expect(root.querySelectorAll("table.scholium-table th")).toHaveLength(2);
     expect([...root.querySelectorAll("table.scholium-table th, table.scholium-table td")]
       .every((cell) => cell.getAttribute("dir") === "auto")).toBe(true);

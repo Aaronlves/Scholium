@@ -23,6 +23,12 @@
 - Document retains Review, Edit, and Source over one exact source buffer.
   Markdown is the sole written annotation authority; there is no separate
   Review Comment or passage Discussion UI.
+- Review and inactive Edit show a link annotation from one trailing superscript
+  marker in the shared bounded preview surface, never as a block inserted into
+  prose. Hover or focus reveals it, click keeps it open, and Escape or outside
+  interaction dismisses it. Review previews linked Notes on hover; Edit follows
+  the macOS Command-hover and Command-click convention with visible armed-link
+  feedback, including links inside projected Callouts.
 - First ordinary Edit activation focuses the inline Note title at its end.
   Returning to an open Note restores its title/body focus and exact valid
   selection; final window persistence retains this lightweight state only for

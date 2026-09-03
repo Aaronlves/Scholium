@@ -30,6 +30,23 @@ document focus, show only useful identity/path context, fit the viewport, and
 never introduce another text owner. Selection, menus, and suggestion panels use
 the semantic surfaces, boundaries, and elevation roles in §19.
 
+Internal-link preview preserves each mode's interaction meaning. Review reveals
+the cached destination on ordinary pointer hover or link focus. Edit follows the
+macOS editing convention: holding Command while pointing at an inactive
+projected link reveals the same cached destination, and Command-click opens it;
+pressing Command after the pointer is already over the link works without
+requiring pointer re-entry. The armed link gives visible pointer feedback.
+Unmodified Edit interaction continues to place the caret and reveal exact
+source. Preview never mutates source, moves selection, or takes editor focus.
+
+Review and inactive Edit present an annotated Wikilink through one small
+trailing superscript disclosure marker. Pointer hover or keyboard focus reveals
+its source-owned Markdown in the same bounded anchored surface as a footnote
+preview; primary activation keeps that surface open for reading. Escape,
+outside activation, scrolling, resizing, source activation, or a document
+change dismisses it. Annotation prose never enters document flow or changes
+neighboring line geometry.
+
 All modes use one adaptive editorial grid and one Appearance **Line width**
 value. Review/Edit use scholarly type; Source uses exact-source type. The
 measure remains centered with readable logical insets and adapts at narrow

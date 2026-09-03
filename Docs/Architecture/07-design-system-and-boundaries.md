@@ -118,10 +118,12 @@ suggestions keep their current listbox item on the persistent raised surface
 while pointer hover remains transient. The protected Callout stylesheet owns
 only its disclosure geometry and selectors; its fold mark consumes the shared
 hover/focus values instead of declaring another opacity or focus color.
-Review preview delegation resolves one footnote-or-link anchor for both pointer
-and focus entry, ignores movement inside that anchor, and closes on matching
-pointer or focus exit as well as scroll, resize, or window blur. It does not
-create another source, selection, or focus owner.
+Review preview delegation resolves one footnote, link-annotation marker, or link
+anchor for both pointer and focus entry, ignores movement inside that anchor,
+and closes on matching pointer or focus exit as well as scroll, resize, source
+activation, or window blur. Edit's corresponding controller additionally owns
+Command-armed link feedback and the same annotation-template presentation.
+Neither creates another source, selection, or focus owner.
 `ScholiumTriptychWorkspaceNavigator` owns
 the three vertical workspace rows, neutral Note totals, selection/hover
 surfaces, focus, and Up/Down traversal without owning the selected workspace. Its continuous

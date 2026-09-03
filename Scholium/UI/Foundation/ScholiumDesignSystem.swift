@@ -917,7 +917,28 @@ enum ScholiumWebDesignTokens {
         .scholium-live-mode .cm-live-wiki-link {
           color: var(--scholium-color-accent);
           line-height: 1.2;
-          text-decoration: none;
+          text-decoration-line: underline;
+          text-decoration-color: color-mix(in srgb, var(--scholium-color-accent) 42%, transparent);
+          text-underline-offset: 0.15em;
+          border-radius: var(--scholium-corner-document-control);
+        }
+        .scholium-document .wiki-link:hover,
+        .scholium-document .wiki-link:focus-visible,
+        .scholium-live-mode .cm-live-wiki-link.scholium-link-preview-armed {
+          color: var(--scholium-color-accent);
+          background: var(--scholium-content-hover-surface);
+          text-decoration-color: currentColor;
+        }
+        .scholium-document .wiki-link:focus-visible {
+          outline: 2px solid var(--scholium-content-focus-ring);
+          outline-offset: 2px;
+        }
+        .scholium-document .wiki-link:active,
+        .scholium-live-mode .cm-live-wiki-link.scholium-link-preview-armed:active {
+          background: var(--scholium-content-keyboard-focus-surface);
+        }
+        .scholium-live-mode .cm-live-wiki-link.scholium-link-preview-armed {
+          cursor: pointer;
         }
         .scholium-document h1,
         .scholium-document h2,

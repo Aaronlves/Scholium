@@ -17,6 +17,7 @@ export const webInterfaceLocalizationKeys = [
   "Task item",
   "Show Link Annotation",
   "Hide Link Annotation",
+  "Link Annotation",
   "linked note",
   "Markdown table",
   "Embedded note {title}",

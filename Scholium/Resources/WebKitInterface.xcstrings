@@ -48,6 +48,7 @@
     "Italic" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Italic"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"斜体"}}}},
     "Italic (⌘I)" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Italic (⌘I)"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"斜体（⌘I）"}}}},
     "Link" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Link"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"链接"}}}},
+    "Link Annotation" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Link Annotation"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"链接注释"}}}},
     "Link (⌘K)" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Link (⌘K)"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"链接（⌘K）"}}}},
     "Lists" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Lists"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"列表"}}}},
     "Markdown editor, Edit mode" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Markdown editor, Edit mode"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"Markdown 编辑器，编辑模式"}}}},

@@ -1160,8 +1160,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             </head>
             <body>
               <main id="scholium-document" class="scholium-document">\(titleMarkup)\(body)</main>
-              <aside id="scholium-preview-popover" class="scholium-preview-popover" data-scholium-protected="preview-popover" role="tooltip" aria-live="polite" hidden>
-                <h2 class="scholium-preview-title"></h2>
+              <aside id="scholium-preview-popover" class="scholium-preview-popover" data-scholium-protected="preview-popover" role="note" aria-labelledby="scholium-preview-title" aria-live="polite" hidden>
+                <h2 id="scholium-preview-title" class="scholium-preview-title"></h2>
                 <p class="scholium-preview-metadata" hidden></p>
                 <div class="scholium-preview-body scholium-document"></div>
               </aside>
@@ -1305,14 +1305,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         html.scholium-viewport-resize-suppresses-overlay-scrollbar { scrollbar-width: none; }
         body { font-family: Alegreya, Georgia, serif; font-size: var(--scholium-document-prose-font-size); line-height: var(--scholium-rhythm-prose-line-height); }
         \(ReviewSelectionPresentation.css)
-        .scholium-document .wiki-link { color: var(--scholium-color-accent); text-decoration: underline; text-underline-offset: .12em; }
-        .scholium-link-annotation-button { display: inline-grid; place-items: center; width: 1.35em; height: 1.35em; margin-inline-start: .12em; padding: 0; border: 0; border-radius: .35em; color: var(--scholium-color-accent); background: transparent; vertical-align: text-bottom; }
-        .scholium-link-annotation-button > span { width: .8em; height: .8em; background: currentColor; -webkit-mask: var(--scholium-system-symbol-text-bubble) center / contain no-repeat; mask: var(--scholium-system-symbol-text-bubble) center / contain no-repeat; }
-        .scholium-link-annotation-button:hover, .scholium-link-annotation-button:focus-visible, .scholium-link-annotation-button[aria-expanded="true"] { background: color-mix(in srgb, var(--scholium-color-accent) 12%, transparent); }
-        .scholium-link-annotation-panel { display: block; margin-block: .45em .7em; padding: .65em .8em; border-inline-start: 2px solid var(--scholium-color-accent); border-radius: .35em; background: var(--scholium-color-secondary-background); }
-        .scholium-link-annotation-panel[hidden] { display: none; }
-        .scholium-link-annotation-content > :first-child { margin-block-start: 0; }
-        .scholium-link-annotation-content > :last-child { margin-block-end: 0; }
+        .scholium-link-annotation-button > span { background: currentColor; -webkit-mask: var(--scholium-system-symbol-text-bubble) center / contain no-repeat; mask: var(--scholium-system-symbol-text-bubble) center / contain no-repeat; }
         code { font-family: "Victor Mono", ui-monospace, monospace; }
         img, video, svg { max-width: 100%; height: auto; }
         \(ScholiumCalloutStyles.css)

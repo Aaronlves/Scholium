@@ -728,14 +728,17 @@ esbuild input graph deterministically regenerates the distributed Mermaid and
 transitive-package license notice, so packaging cannot silently omit a newly
 bundled runtime dependency.
 
-Link previews are revision-bound Edit requests. Review resolves
-footnote preview and navigation against its committed sanitized projection. Swift
-owns graph resolution, target selection, committed preview content, containment,
-and external-URL policy. WebKit owns only the source anchor, visible geometry,
-and transient Edit presentation. Responses carry session, document, revision,
-generation, request, and target identity; stale or ambiguous responses are
-discarded. A Review footnote preview contains one referenced definition, never
-the whole footnote section.
+Link previews are revision-bound Edit requests. Review resolves footnote preview
+and navigation against its committed sanitized projection. Swift owns graph
+resolution, committed preview content, containment, and external-URL policy.
+WebKit owns source-range anchors, modifier feedback, geometry, and transient
+presentation. Edit recognizes Command-hover whether modifier or pointer arrives
+first; source activation and document change dismiss it. One bounded surface
+presents link-annotation templates in Review and inactive Edit without inserting
+prose into document flow.
+Responses carry session, document, revision, generation, request, and target
+identity; stale or ambiguous responses are discarded. A Review footnote preview
+contains one referenced definition, never the whole footnote section.
 
 Boundary verification and remaining human acceptance belong to
 [Implementation Status](../IMPLEMENTATION_STATUS.md).

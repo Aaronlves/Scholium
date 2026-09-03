@@ -1418,7 +1418,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         let activeBody = try await harness.session.testingInlineProjectionSnapshot(
             containing: "body ends"
         )
-        #expect(activeBody.lineText.contains("> supportA source reason.; body ends"))
+        #expect(activeBody.lineText.contains("> support; body ends"))
+        #expect(!activeBody.lineText.contains("A source reason."))
         #expect(!activeBody.lineText.contains("[[analysis-001|support]]"))
         try await harness.session.perform(.pastePlain, argument: "继续")
         let editedTo = calloutTo + 2
@@ -3121,30 +3122,99 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
     }
 
-    @Test("Edit presents an annotated link through one accessible disclosure")
+    @Test("Edit previews Command-armed links and annotated links without reflow")
     func editAnnotatedLinkDisclosure() async throws {
-        let source = "Intro.\n\n[[Support]]{{First **reason**.\n\n- Second reason.}}\n"
-        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        let source = "Intro.\n\n> [!state] Related\n> [[Target]]\n\n[[Support]]{{First **reason**.\n\n- Second reason.}}\n"
+        let targetOffset = try #require(source.range(of: "[[Target]]")?.lowerBound)
+            .utf16Offset(in: source)
+        let harness = EditorHarness(
+            source: source,
+            linkPreviews: [Self.linkPreview(atUTF16: targetOffset)],
+            laysOutForPointerTesting: true
+        )
         defer { harness.close() }
         try await harness.waitUntilReady()
 
         let snapshot = try #require(try await harness.callPageJavaScript(
                 """
+                const targetLink = Array.from(document.querySelectorAll('.cm-live-wiki-link'))
+                  .find(candidate => candidate.textContent === 'Target');
                 const button = document.querySelector('.scholium-link-annotation-button');
-                const panel = document.querySelector('.scholium-link-annotation-panel');
                 const icon = button?.querySelector('.scholium-link-annotation-icon');
-                if (!button || !panel || !icon) return null;
-                const initiallyHidden = panel.hidden;
+                const marker = button?.closest('.scholium-link-annotation-disclosure');
+                const popover = document.getElementById('scholium-preview-popover');
+                if (!targetLink || !button || !icon || !marker || !popover) return null;
+                const documentHeightBefore = document.documentElement.scrollHeight;
+                targetLink.dispatchEvent(new PointerEvent('pointermove', {bubbles: true}));
+                await new Promise(resolve => setTimeout(resolve, 350));
+                const hiddenWithoutCommand = popover.hidden;
+                document.dispatchEvent(new KeyboardEvent('keydown', {
+                  key: 'Meta',
+                  metaKey: true,
+                  bubbles: true
+                }));
+                await new Promise(resolve => setTimeout(resolve, 350));
+                const linkStyle = getComputedStyle(targetLink);
+                const targetPreviewTitle = popover.querySelector('.scholium-preview-title')?.textContent || '';
+                const targetPreviewVisible = !popover.hidden;
+                const targetArmed = targetLink.classList.contains('scholium-link-preview-armed');
+                const targetCursor = linkStyle.cursor;
+                const targetUnderline = linkStyle.textDecorationLine;
+                const targetFeedbackVisible = linkStyle.backgroundColor !== 'rgba(0, 0, 0, 0)';
+                document.dispatchEvent(new KeyboardEvent('keyup', {key: 'Meta', bubbles: true}));
+                document.body.dispatchEvent(new PointerEvent('pointermove', {bubbles: true}));
+                document.dispatchEvent(new KeyboardEvent('keydown', {
+                  key: 'Meta',
+                  metaKey: true,
+                  bubbles: true
+                }));
+                targetLink.dispatchEvent(new PointerEvent('pointermove', {bubbles: true}));
+                await new Promise(resolve => setTimeout(resolve, 350));
+                const commandFirstPreviewVisible = !popover.hidden
+                  && popover.querySelector('.scholium-preview-title')?.textContent === 'Target note';
+                document.dispatchEvent(new KeyboardEvent('keyup', {key: 'Meta', bubbles: true}));
+
+                button.dispatchEvent(new PointerEvent('pointermove', {bubbles: true}));
+                await new Promise(resolve => setTimeout(resolve, 350));
+                const annotationBody = popover.querySelector('.scholium-preview-body');
+                const annotationExpanded = button.getAttribute('aria-expanded');
+                const annotationText = annotationBody?.textContent || '';
+                const strongText = annotationBody?.querySelector('strong')?.textContent || '';
                 button.click();
-                const style = getComputedStyle(icon);
+                document.body.dispatchEvent(new PointerEvent('pointermove', {bubbles: true}));
+                await new Promise(resolve => setTimeout(resolve, 220));
+                const pinnedVisibleAfterExit = !popover.hidden;
+                document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+                const hiddenAfterEscape = popover.hidden;
+                button.focus();
+                await new Promise(resolve => setTimeout(resolve, 25));
+                const keyboardFocusVisible = !popover.hidden;
+                button.blur();
+                await new Promise(resolve => setTimeout(resolve, 220));
+                const iconStyle = getComputedStyle(icon);
+                const markerStyle = getComputedStyle(marker);
                 return {
-                  initiallyHidden,
-                  expanded: button.getAttribute('aria-expanded'),
-                  panelHidden: panel.hidden,
-                  panelText: panel.textContent || '',
-                  strongText: panel.querySelector('strong')?.textContent || '',
+                  hiddenWithoutCommand,
+                  targetPreviewTitle,
+                  targetPreviewVisible,
+                  targetArmed,
+                  targetCursor,
+                  targetUnderline,
+                  targetFeedbackVisible,
+                  commandFirstPreviewVisible,
+                  annotationExpanded,
+                  annotationText,
+                  strongText,
+                  pinnedVisibleAfterExit,
+                  hiddenAfterEscape,
+                  keyboardFocusVisible,
+                  hiddenAfterFocusExit: popover.hidden,
+                  documentHeightStable: document.documentElement.scrollHeight === documentHeightBefore,
+                  markerLineHeight: markerStyle.lineHeight,
+                  markerVerticalAlign: markerStyle.verticalAlign,
+                  inlinePanelCount: document.querySelectorAll('.scholium-link-annotation-panel').length,
                   iconName: icon.dataset.scholiumSystemSymbol || '',
-                  iconMasked: [style.webkitMaskImage, style.maskImage].some(
+                  iconMasked: [iconStyle.webkitMaskImage, iconStyle.maskImage].some(
                     value => Boolean(value) && value !== 'none'
                   ),
                   svgCount: icon.querySelectorAll('svg').length
@@ -3152,11 +3222,25 @@ struct MarkdownEditorWebViewIntegrationTests {
                 """
             ) as? [String: Any])
 
-        #expect(snapshot["initiallyHidden"] as? Bool == true)
-        #expect(snapshot["expanded"] as? String == "true")
-        #expect(snapshot["panelHidden"] as? Bool == false)
-        #expect((snapshot["panelText"] as? String)?.contains("Second reason.") == true)
+        #expect(snapshot["hiddenWithoutCommand"] as? Bool == true)
+        #expect(snapshot["targetPreviewTitle"] as? String == "Target note")
+        #expect(snapshot["targetPreviewVisible"] as? Bool == true)
+        #expect(snapshot["targetArmed"] as? Bool == true)
+        #expect(snapshot["targetCursor"] as? String == "pointer")
+        #expect((snapshot["targetUnderline"] as? String)?.contains("underline") == true)
+        #expect(snapshot["targetFeedbackVisible"] as? Bool == true)
+        #expect(snapshot["commandFirstPreviewVisible"] as? Bool == true)
+        #expect(snapshot["annotationExpanded"] as? String == "true")
+        #expect((snapshot["annotationText"] as? String)?.contains("Second reason.") == true)
         #expect(snapshot["strongText"] as? String == "reason")
+        #expect(snapshot["pinnedVisibleAfterExit"] as? Bool == true)
+        #expect(snapshot["hiddenAfterEscape"] as? Bool == true)
+        #expect(snapshot["keyboardFocusVisible"] as? Bool == true)
+        #expect(snapshot["hiddenAfterFocusExit"] as? Bool == true)
+        #expect(snapshot["documentHeightStable"] as? Bool == true)
+        #expect(snapshot["markerLineHeight"] as? String == "0px")
+        #expect(snapshot["markerVerticalAlign"] as? String == "super")
+        #expect(snapshot["inlinePanelCount"] as? Int == 0)
         #expect(snapshot["iconName"] as? String == "text-bubble")
         #expect(snapshot["iconMasked"] as? Bool == true)
         #expect(snapshot["svgCount"] as? Int == 0)

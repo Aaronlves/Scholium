@@ -156,10 +156,12 @@
   source or destination, local context, and whether a link annotation is
   present. Incoming annotations are identified as read-only at the destination;
   destination navigation and **Edit at Source** remain separately named.
-- An inactive annotated Wikilink exposes one adjacent disclosure with its linked
-  title and expanded/collapsed state. Keyboard and pointer activation reveal
-  the same Markdown annotation, focus remains predictable, and source editing
-  exposes the exact delimiters without relying on color or icon alone.
+- An inactive annotated Wikilink exposes one adjacent superscript disclosure
+  with its linked title and expanded/collapsed state. Pointer hover and keyboard
+  focus reveal the same bounded Markdown annotation; primary activation keeps
+  it open, Escape or outside activation dismisses it, and focus remains on the
+  initiating context. Source editing exposes the exact delimiters without
+  relying on color, hover, position, or icon alone.
 - Document Rail exposes the state-valid Settle, Settle Again, or Mark Unsettled
   researcher action without a parallel review milestone or Agent launcher.
   Opening Inspector does not alter reading or focus order.

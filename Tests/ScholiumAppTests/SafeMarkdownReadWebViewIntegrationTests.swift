@@ -652,7 +652,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             """
         ) as? [String: Any])
         #expect(snapshot["sameAccent"] as? Bool == true)
-        #expect(snapshot["wikiDecoration"] as? String == "none")
+        #expect((snapshot["wikiDecoration"] as? String)?.contains("underline") == true)
         #expect((snapshot["externalDecoration"] as? String)?.contains("underline") == true)
         #expect(snapshot["metadataHidden"] as? Bool == true)
         #expect(snapshot["previewUsesDocumentOwner"] as? Bool == true)
@@ -726,9 +726,9 @@ extension MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Review presents an annotated link through one accessible disclosure")
+    @Test("Review presents an annotated link in the shared anchored preview")
     func reviewAnnotatedLinkDisclosure() async throws {
-        let source = "[[Support]]{{First **reason**.\n\n- Second reason.}}\n"
+        let source = "[[Support]]{{First **reason**.\n\n- Second reason.}} followed by prose.\n"
         let document = NoteDocument(relativePath: "Links.md", rawContent: source)
         let harness = ReadHarness(
             source: source,
@@ -744,24 +744,72 @@ extension MarkdownEditorWebViewIntegrationTests {
             """
             const button = document.querySelector('.scholium-link-annotation-button');
             const icon = button?.querySelector('span');
-            if (!button || !icon) return null;
+            const marker = button?.closest('.scholium-link-annotation-marker');
+            const link = document.querySelector('.scholium-annotated-link .wiki-link');
+            const popover = document.getElementById('scholium-preview-popover');
+            if (!button || !icon || !marker || !link || !popover) return null;
+            const documentHeightBefore = document.documentElement.scrollHeight;
+            button.dispatchEvent(new PointerEvent('pointerover', {bubbles: true}));
+            await new Promise(resolve => setTimeout(resolve, 25));
+            const content = popover.querySelector('.scholium-preview-body');
+            const expandedAfterHover = button.getAttribute('aria-expanded');
+            const previewText = content?.textContent || '';
+            const strongText = content?.querySelector('strong')?.textContent || '';
+            const previewRole = popover.getAttribute('role') || '';
+            const feedbackBackground = getComputedStyle(button).backgroundColor;
             button.click();
-            const panel = document.querySelector('.scholium-link-annotation-panel');
+            button.dispatchEvent(new PointerEvent('pointerout', {
+              bubbles: true,
+              relatedTarget: document.body
+            }));
+            await new Promise(resolve => setTimeout(resolve, 220));
+            const pinnedVisibleAfterExit = !popover.hidden;
+            document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+            const hiddenAfterEscape = popover.hidden;
+            button.blur();
+            button.focus({preventScroll: true});
+            await new Promise(resolve => setTimeout(resolve, 25));
+            const keyboardFocusVisible = !popover.hidden;
+            const keyboardFocusOwned = document.activeElement === button;
+            const expandedAfterFocus = button.getAttribute('aria-expanded');
+            button.blur();
+            await new Promise(resolve => setTimeout(resolve, 220));
+            const markerStyle = getComputedStyle(marker);
             return {
-              expanded: button.getAttribute('aria-expanded'),
-              panelRole: panel?.getAttribute('role') || '',
-              panelText: panel?.textContent || '',
-              strongText: panel?.querySelector('strong')?.textContent || '',
-              sourceLocated: Boolean(panel?.querySelector('[data-source-utf16-start]')),
+              expandedAfterHover,
+              previewRole,
+              previewText,
+              strongText,
+              pinnedVisibleAfterExit,
+              hiddenAfterEscape,
+              keyboardFocusVisible,
+              keyboardFocusOwned,
+              expandedAfterFocus,
+              hiddenAfterFocusExit: popover.hidden,
+              documentHeightStable: document.documentElement.scrollHeight === documentHeightBefore,
+              markerLineHeight: markerStyle.lineHeight,
+              markerVerticalAlign: markerStyle.verticalAlign,
+              feedbackVisible: feedbackBackground !== 'rgba(0, 0, 0, 0)',
+              inlinePanelCount: document.querySelectorAll('.scholium-link-annotation-panel').length,
               inlineSVGCount: document.querySelectorAll('svg').length
             };
             """
         ) as? [String: Any])
-        #expect(snapshot["expanded"] as? String == "true")
-        #expect(snapshot["panelRole"] as? String == "note")
-        #expect((snapshot["panelText"] as? String)?.contains("Second reason.") == true)
+        #expect(snapshot["expandedAfterHover"] as? String == "true")
+        #expect(snapshot["previewRole"] as? String == "note")
+        #expect((snapshot["previewText"] as? String)?.contains("Second reason.") == true)
         #expect(snapshot["strongText"] as? String == "reason")
-        #expect(snapshot["sourceLocated"] as? Bool == true)
+        #expect(snapshot["pinnedVisibleAfterExit"] as? Bool == true)
+        #expect(snapshot["hiddenAfterEscape"] as? Bool == true)
+        #expect(snapshot["keyboardFocusVisible"] as? Bool == true)
+        #expect(snapshot["keyboardFocusOwned"] as? Bool == true)
+        #expect(snapshot["expandedAfterFocus"] as? String == "true")
+        #expect(snapshot["hiddenAfterFocusExit"] as? Bool == true)
+        #expect(snapshot["documentHeightStable"] as? Bool == true)
+        #expect(snapshot["markerLineHeight"] as? String == "0px")
+        #expect(snapshot["markerVerticalAlign"] as? String == "super")
+        #expect(snapshot["feedbackVisible"] as? Bool == true)
+        #expect(snapshot["inlinePanelCount"] as? Int == 0)
         #expect(snapshot["inlineSVGCount"] as? Int == 0)
         await harness.closeAndDrain()
     }

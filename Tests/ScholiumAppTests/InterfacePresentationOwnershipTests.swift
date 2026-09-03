@@ -75,9 +75,8 @@ struct InterfacePresentationOwnershipTests {
     #expect(
       webHover == [
         "Scholium/Resources/Editor/callouts.css": 1,
-        "Scholium/Resources/Editor/editor.css": 1,
-        "Scholium/UI/Foundation/ScholiumDesignSystem.swift": 3,
-        "Scholium/Views/Note/SafeMarkdownReadWebView.swift": 1,
+        "Scholium/Resources/Editor/footnotes.css": 1,
+        "Scholium/UI/Foundation/ScholiumDesignSystem.swift": 4,
       ],
       Comment(rawValue: diagnostic(for: webHover))
     )
@@ -89,7 +88,8 @@ struct InterfacePresentationOwnershipTests {
     )
     #expect(
       webPointerEvents == [
-        "WebEditor/reader.ts": 4
+        "WebEditor/preview-popover.ts": 2,
+        "WebEditor/reader.ts": 4,
       ],
       Comment(rawValue: diagnostic(for: webPointerEvents))
     )

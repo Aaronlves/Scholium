@@ -15,9 +15,7 @@ function normalizedTitle(value: string) {
   return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
 }
 
-/** Installs inert rendered content while retaining the shared Document CSS owner. */
-export function populatePreviewDocument(body: HTMLElement, preview: LinkPreview) {
-  body.innerHTML = preview.htmlBody;
+function sanitizePreviewDocument(body: HTMLElement) {
   body.querySelectorAll("script, style, iframe, object, embed, form, input, button")
     .forEach((node) => node.remove());
   body.querySelectorAll<HTMLElement>("*").forEach((node) => {
@@ -36,6 +34,12 @@ export function populatePreviewDocument(body: HTMLElement, preview: LinkPreview)
     node.removeAttribute("aria-owns");
     node.tabIndex = -1;
   });
+}
+
+/** Installs inert rendered content while retaining the shared Document CSS owner. */
+export function populatePreviewDocument(body: HTMLElement, preview: LinkPreview) {
+  body.innerHTML = preview.htmlBody;
+  sanitizePreviewDocument(body);
   const firstHeading = body.querySelector<HTMLElement>(":scope > h1:first-child");
   if (firstHeading && normalizedTitle(firstHeading.textContent ?? "") === normalizedTitle(preview.title)) {
     firstHeading.remove();
@@ -49,7 +53,7 @@ export interface PreviewPopoverController {
   showAtPoint(x: number, y: number): boolean;
 }
 
-/** Owns cached-link preview presentation without owning preview data or source. */
+/** Owns cached-link and source-owned annotation previews without owning either source. */
 export function createPreviewPopoverController(
   options: {
     previews(): readonly LinkPreview[];
@@ -67,13 +71,45 @@ export function createPreviewPopoverController(
   let showTimer: number | undefined;
   let hideTimer: number | undefined;
   let pendingAnchor: HTMLElement | null = null;
+  let hoveredLink: HTMLElement | null = null;
+  let armedLink: HTMLElement | null = null;
+  let activeAnnotationButton: HTMLButtonElement | null = null;
+  let pinnedAnnotationButton: HTMLButtonElement | null = null;
+  let activeKind: "link" | "annotation" | null = null;
+  let modifierPressed = false;
 
-  function hide() {
+  function annotationTarget(button: HTMLButtonElement) {
+    return button.dataset.linkAnnotationTarget?.trim() || localized("linked note");
+  }
+
+  function setAnnotationExpanded(button: HTMLButtonElement, expanded: boolean) {
+    button.setAttribute("aria-expanded", expanded ? "true" : "false");
+    button.setAttribute(
+      "aria-label",
+      `${localized(expanded ? "Hide Link Annotation" : "Show Link Annotation")} ${annotationTarget(button)}`,
+    );
+  }
+
+  function setArmedLink(next: HTMLElement | null) {
+    if (armedLink === next) return;
+    armedLink?.classList.remove("scholium-link-preview-armed");
+    armedLink = next;
+    armedLink?.classList.add("scholium-link-preview-armed");
+  }
+
+  function hide(retainHoveredLink = false) {
     window.clearTimeout(showTimer);
     window.clearTimeout(hideTimer);
     showTimer = undefined;
     hideTimer = undefined;
     pendingAnchor = null;
+    if (!retainHoveredLink) hoveredLink = null;
+    modifierPressed = false;
+    setArmedLink(null);
+    if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
+    activeAnnotationButton = null;
+    pinnedAnnotationButton = null;
+    activeKind = null;
     if (root) {
       root.hidden = true;
       root.style.visibility = "";
@@ -89,11 +125,12 @@ export function createPreviewPopoverController(
   }
 
   function scheduleHide() {
+    if (pinnedAnnotationButton) return;
     window.clearTimeout(hideTimer);
     hideTimer = window.setTimeout(hide, 180);
   }
 
-  function position(anchor: PreviewAnchorRect, startedAt: number) {
+  function position(anchor: PreviewAnchorRect, startedAt?: number) {
     if (!editor || !root) return;
     const activeEditor = editor;
     const activeRoot = root;
@@ -121,6 +158,7 @@ export function createPreviewPopoverController(
         activeRoot.style.left = `${resolved.left}px`;
         activeRoot.style.top = `${resolved.top}px`;
         activeRoot.style.visibility = "visible";
+        if (startedAt === undefined) return;
         scheduleAfterNextPaint(() => {
           const durationMilliseconds = Math.max(0, performance.now() - startedAt);
           recordEditorMetric("cached-preview", startedAt, {
@@ -135,8 +173,11 @@ export function createPreviewPopoverController(
     });
   }
 
-  function show(preview: LinkPreview, anchor: PreviewAnchorRect, startedAt: number) {
+  function showLinkPreview(preview: LinkPreview, anchor: PreviewAnchorRect, startedAt: number) {
     if (!editor || !root || !title || !metadata || !body) return;
+    if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
+    activeAnnotationButton = null;
+    activeKind = "link";
     title.textContent = preview.title;
     metadata.textContent = preview.fragment ?? "";
     metadata.hidden = !preview.fragment;
@@ -147,6 +188,32 @@ export function createPreviewPopoverController(
     position(anchor, startedAt);
   }
 
+  function annotationTemplate(button: HTMLButtonElement) {
+    const owner = button.closest<HTMLElement>(
+      ".scholium-link-annotation-disclosure, .scholium-link-annotation-marker",
+    );
+    return owner?.querySelector<HTMLTemplateElement>(":scope > template") ?? null;
+  }
+
+  function showAnnotation(button: HTMLButtonElement) {
+    if (!root || !title || !metadata || !body) return false;
+    const template = annotationTemplate(button);
+    if (!template) return false;
+    if (activeAnnotationButton && activeAnnotationButton !== button) {
+      setAnnotationExpanded(activeAnnotationButton, false);
+    }
+    activeAnnotationButton = button;
+    activeKind = "annotation";
+    setAnnotationExpanded(button, true);
+    title.textContent = annotationTarget(button);
+    metadata.textContent = localized("Link Annotation");
+    metadata.hidden = false;
+    body.replaceChildren(template.content.cloneNode(true));
+    sanitizePreviewDocument(body);
+    position(button.getBoundingClientRect());
+    return true;
+  }
+
   function showAtSelection() {
     const startedAt = performance.now();
     if (!editor) return false;
@@ -155,7 +222,8 @@ export function createPreviewPopoverController(
     if (!coords) return false;
     const preview = options.previews().find((candidate) => head >= candidate.from && head < candidate.to);
     if (preview) {
-      show(preview, coords, startedAt);
+      hide();
+      showLinkPreview(preview, coords, startedAt);
       return true;
     }
     announceEditorMessage(
@@ -168,22 +236,59 @@ export function createPreviewPopoverController(
   function showAtPoint(x: number, y: number) {
     const startedAt = performance.now();
     if (!editor) return false;
-    const anchor = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-link-preview-index]");
+    const anchor = linkAnchorAt(document.elementFromPoint(x, y));
     if (!anchor) return showAtSelection();
-    const previewIndex = Number(anchor.dataset.linkPreviewIndex);
-    const preview = options.previews()[previewIndex];
-    if (Number.isInteger(previewIndex) && preview) {
-      show(preview, anchor.getBoundingClientRect(), startedAt);
+    const preview = previewForAnchor(anchor);
+    if (preview) {
+      hide();
+      showLinkPreview(preview, anchor.getBoundingClientRect(), startedAt);
       return true;
     }
     return showAtSelection();
   }
 
-  function anchorAtEvent(event: PointerEvent) {
-    if (!event.metaKey || !(event.target instanceof Element)) {
-      return null;
+  function annotationButtonAt(target: EventTarget | null) {
+    return target instanceof Element
+      ? target.closest<HTMLButtonElement>(".scholium-link-annotation-button")
+      : null;
+  }
+
+  function linkAnchorAt(target: EventTarget | null) {
+    return target instanceof Element
+      ? target.closest<HTMLElement>(
+        "[data-link-preview-index], [data-scholium-link-target][data-scholium-source-from][data-scholium-source-to]",
+      )
+      : null;
+  }
+
+  function previewForAnchor(anchor: HTMLElement) {
+    const previewIndex = Number(anchor.dataset.linkPreviewIndex);
+    if (Number.isInteger(previewIndex) && anchor.dataset.linkPreviewIndex !== undefined) {
+      return options.previews()[previewIndex];
     }
-    return event.target.closest<HTMLElement>("[data-link-preview-index]");
+    const from = Number(anchor.dataset.scholiumSourceFrom);
+    const to = Number(anchor.dataset.scholiumSourceTo);
+    if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to) || to <= from) return undefined;
+    return options.previews().find((preview) => preview.from === from && preview.to === to);
+  }
+
+  function scheduleShow(anchor: HTMLElement, kind: "link" | "annotation") {
+    cancelHide();
+    if (anchor === pendingAnchor && kind === activeKind) return;
+    window.clearTimeout(showTimer);
+    showTimer = undefined;
+    pendingAnchor = anchor;
+    showTimer = window.setTimeout(() => {
+      if (pendingAnchor !== anchor) return;
+      if (kind === "annotation") {
+        showAnnotation(anchor as HTMLButtonElement);
+        return;
+      }
+      const preview = previewForAnchor(anchor);
+      if (preview) {
+        showLinkPreview(preview, anchor.getBoundingClientRect(), performance.now());
+      }
+    }, 300);
   }
 
   const handlePointerMove = (event: PointerEvent) => {
@@ -191,34 +296,78 @@ export function createPreviewPopoverController(
       cancelHide();
       return;
     }
-    const anchor = anchorAtEvent(event);
+    const annotation = annotationButtonAt(event.target);
+    const link = linkAnchorAt(event.target);
+    hoveredLink = link;
+    if (pinnedAnnotationButton && annotation !== pinnedAnnotationButton) {
+      setArmedLink(null);
+      return;
+    }
+    const modifierActive = event.metaKey || event.ctrlKey || modifierPressed;
+    setArmedLink(modifierActive ? link : null);
+    const anchor = annotation ?? (modifierActive ? link : null);
     if (!anchor) {
       if (pendingAnchor || (root && !root.hidden)) scheduleHide();
       return;
     }
-    cancelHide();
-    if (anchor === pendingAnchor) return;
-    window.clearTimeout(showTimer);
-    showTimer = undefined;
-    pendingAnchor = anchor;
-    showTimer = window.setTimeout(() => {
-      if (pendingAnchor !== anchor) return;
-      const previewIndex = Number(anchor.dataset.linkPreviewIndex);
-      const preview = options.previews()[previewIndex];
-      if (Number.isInteger(previewIndex) && preview) {
-        show(preview, anchor.getBoundingClientRect(), performance.now());
-      }
-    }, 300);
+    scheduleShow(anchor, annotation ? "annotation" : "link");
   };
   const handlePreviewPointerEnter = () => cancelHide();
   const handlePreviewPointerLeave = () => scheduleHide();
   const handleKeyUp = (event: KeyboardEvent) => {
-    if (event.key === "Meta") hide();
+    if (event.key !== "Meta" && event.key !== "Control") return;
+    modifierPressed = false;
+    setArmedLink(null);
+    if (activeKind === "link") hide(true);
   };
   const handleKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "Escape" && root && !root.hidden) hide();
+    if (event.key === "Escape" && root && !root.hidden) {
+      hide();
+      return;
+    }
+    if (event.key !== "Meta" && event.key !== "Control") return;
+    modifierPressed = true;
+    if (!hoveredLink || pinnedAnnotationButton) return;
+    setArmedLink(hoveredLink);
+    scheduleShow(hoveredLink, "link");
   };
-  const handleViewportExit = () => hide();
+  const handleFocusIn = (event: FocusEvent) => {
+    const button = annotationButtonAt(event.target);
+    if (!button) return;
+    cancelHide();
+    window.clearTimeout(showTimer);
+    pendingAnchor = button;
+    showAnnotation(button);
+  };
+  const handleFocusOut = (event: FocusEvent) => {
+    const button = annotationButtonAt(event.target);
+    if (!button) return;
+    if (event.relatedTarget instanceof Node && root?.contains(event.relatedTarget)) return;
+    scheduleHide();
+  };
+  const handleClick = (event: MouseEvent) => {
+    const button = annotationButtonAt(event.target);
+    if (button) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (pinnedAnnotationButton === button) {
+        hide();
+        return;
+      }
+      pinnedAnnotationButton = button;
+      window.clearTimeout(showTimer);
+      pendingAnchor = button;
+      showAnnotation(button);
+      return;
+    }
+    if (pinnedAnnotationButton
+        && !(event.target instanceof Node && root?.contains(event.target))) hide();
+  };
+  const handleViewportExit = () => {
+    hoveredLink = null;
+    modifierPressed = false;
+    hide();
+  };
 
   function mount(view: EditorView) {
     if (editor) return;
@@ -227,11 +376,13 @@ export function createPreviewPopoverController(
     root.id = "scholium-preview-popover";
     root.className = "scholium-preview-popover";
     root.dataset.scholiumProtected = "preview-popover";
-    root.setAttribute("role", "tooltip");
+    root.setAttribute("role", "note");
+    root.setAttribute("aria-labelledby", "scholium-preview-title");
     root.setAttribute("aria-live", "polite");
     root.hidden = true;
 
     title = document.createElement("h2");
+    title.id = "scholium-preview-title";
     title.className = "scholium-preview-title";
     metadata = document.createElement("p");
     metadata.className = "scholium-preview-metadata";
@@ -245,6 +396,9 @@ export function createPreviewPopoverController(
     root.addEventListener("pointerenter", handlePreviewPointerEnter);
     root.addEventListener("pointerleave", handlePreviewPointerLeave);
     document.addEventListener("pointermove", handlePointerMove, {passive: true});
+    document.addEventListener('focusin', handleFocusIn);
+    document.addEventListener('focusout', handleFocusOut);
+    document.addEventListener("click", handleClick);
     document.addEventListener("keyup", handleKeyUp);
     document.addEventListener("keydown", handleKeyDown);
     view.scrollDOM.addEventListener("scroll", handleViewportExit, {passive: true});
@@ -256,6 +410,9 @@ export function createPreviewPopoverController(
     if (editor !== view) return;
     hide();
     document.removeEventListener("pointermove", handlePointerMove);
+    document.removeEventListener('focusin', handleFocusIn);
+    document.removeEventListener('focusout', handleFocusOut);
+    document.removeEventListener("click", handleClick);
     document.removeEventListener("keyup", handleKeyUp);
     document.removeEventListener("keydown", handleKeyDown);
     view.scrollDOM.removeEventListener("scroll", handleViewportExit);
@@ -269,11 +426,18 @@ export function createPreviewPopoverController(
     metadata = null;
     body = null;
     editor = null;
+    hoveredLink = null;
+    modifierPressed = false;
   }
 
   const extension = ViewPlugin.define((view) => {
     mount(view);
-    return {destroy: () => unmount(view)};
+    return {
+      update(update) {
+        if (update.docChanged || update.selectionSet || update.viewportChanged) hide();
+      },
+      destroy: () => unmount(view),
+    };
   });
 
   return {extension, hide, showAtSelection, showAtPoint};

@@ -313,44 +313,36 @@ async function initializeReader(value: unknown): Promise<void> {
   }
 
   document.querySelectorAll<HTMLButtonElement>('button[data-link-annotation]').forEach(button => {
-    const identifier = button.dataset.linkAnnotation;
-    if (!identifier) return;
-    const wrapper = button.closest<HTMLElement>('.scholium-annotated-link');
-    const template = document.getElementById(`${identifier}-template`) as HTMLTemplateElement | null;
-    const linkName = wrapper?.querySelector('.wiki-link')?.textContent?.trim() || localized('linked note');
-    if (!wrapper || !template) return;
-    const setLabel = (expanded: boolean) => {
-      button.setAttribute(
-        'aria-label',
-        `${localized(expanded ? 'Hide Link Annotation' : 'Show Link Annotation')} ${linkName}`,
-      );
-    };
-    setLabel(false);
-    button.addEventListener('click', event => {
-      event.preventDefault();
-      event.stopPropagation();
-      const existing = wrapper.querySelector<HTMLElement>(':scope > .scholium-link-annotation-panel');
-      if (existing) {
-        existing.remove();
-        button.setAttribute('aria-expanded', 'false');
-        setLabel(false);
-        return;
-      }
-      const panel = document.createElement('span');
-      panel.id = identifier;
-      panel.className = 'scholium-link-annotation-panel';
-      panel.setAttribute('role', 'note');
-      panel.append(template.content.cloneNode(true));
-      wrapper.append(panel);
-      button.setAttribute('aria-expanded', 'true');
-      setLabel(true);
-    });
+    const linkName = button.dataset.linkAnnotationTarget?.trim()
+      || button.closest<HTMLElement>('.scholium-annotated-link')
+        ?.querySelector('.wiki-link')?.textContent?.trim()
+      || localized('linked note');
+    button.dataset.linkAnnotationTarget = linkName;
+    button.setAttribute(
+      'aria-label',
+      `${localized('Show Link Annotation')} ${linkName}`,
+    );
   });
 
   let popoverHideTimer: ReturnType<typeof setTimeout> | undefined;
+  let activeAnnotationButton: HTMLButtonElement | null = null;
+  let pinnedAnnotationButton: HTMLButtonElement | null = null;
+  function annotationTarget(button: HTMLButtonElement) {
+    return button.dataset.linkAnnotationTarget?.trim() || localized('linked note');
+  }
+  function setAnnotationExpanded(button: HTMLButtonElement, expanded: boolean) {
+    button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    button.setAttribute(
+      'aria-label',
+      `${localized(expanded ? 'Hide Link Annotation' : 'Show Link Annotation')} ${annotationTarget(button)}`,
+    );
+  }
   function hidePopover() {
     clearTimeout(popoverHideTimer);
     popoverHideTimer = undefined;
+    if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
+    activeAnnotationButton = null;
+    pinnedAnnotationButton = null;
     popover.hidden = true;
     previewTitle.textContent = '';
     previewMetadata.textContent = '';
@@ -364,6 +356,7 @@ async function initializeReader(value: unknown): Promise<void> {
   }
 
   function schedulePopoverHide() {
+    if (pinnedAnnotationButton) return;
     clearTimeout(popoverHideTimer);
     popoverHideTimer = setTimeout(hidePopover, 180);
   }
@@ -541,6 +534,8 @@ async function initializeReader(value: unknown): Promise<void> {
     const definition = document.getElementById('fn-' + ordinal);
     const content = definition && definition.querySelector('.footnote-content');
     if (!content) return;
+    if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
+    activeAnnotationButton = null;
     previewTitle.textContent = localized('Footnote {ordinal}', {ordinal});
     previewMetadata.textContent = localized('Referenced footnote');
     previewMetadata.hidden = false;
@@ -553,6 +548,8 @@ async function initializeReader(value: unknown): Promise<void> {
     const key = link.dataset.sourceUtf16Start + ':' + link.dataset.sourceUtf16End;
     const preview = previewByRange.get(key);
     if (!preview) return;
+    if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
+    activeAnnotationButton = null;
     previewTitle.textContent = preview.title;
     previewMetadata.textContent = preview.fragment || '';
     previewMetadata.hidden = !preview.fragment;
@@ -560,14 +557,38 @@ async function initializeReader(value: unknown): Promise<void> {
     positionPopover(link);
   }
 
+  function showLinkAnnotationPopover(button: HTMLButtonElement) {
+    const identifier = button.dataset.linkAnnotation;
+    const marker = button.closest<HTMLElement>('.scholium-link-annotation-marker');
+    const template = identifier
+      ? document.getElementById(`${identifier}-template`) as HTMLTemplateElement | null
+      : marker?.querySelector<HTMLTemplateElement>(':scope > template') ?? null;
+    if (!template) return;
+    if (activeAnnotationButton && activeAnnotationButton !== button) {
+      setAnnotationExpanded(activeAnnotationButton, false);
+    }
+    activeAnnotationButton = button;
+    setAnnotationExpanded(button, true);
+    previewTitle.textContent = annotationTarget(button);
+    previewMetadata.textContent = localized('Link Annotation');
+    previewMetadata.hidden = false;
+    previewBody.replaceChildren(template.content.cloneNode(true));
+    sanitizeInertContent(previewBody);
+    positionPopover(button);
+  }
+
   function previewAnchorFor(target: EventTarget | null): HTMLElement | null {
     if (!(target instanceof Element)) return null;
     if (target.closest('.scholium-embedded-note')) return null;
-    return target.closest<HTMLElement>('.footnote-reference, a.wiki-link');
+    return target.closest<HTMLElement>(
+      '.scholium-link-annotation-button, .footnote-reference, a.wiki-link',
+    );
   }
 
   function showPreviewFor(anchor: HTMLElement) {
-    if (anchor.matches('.footnote-reference')) {
+    if (anchor.matches('.scholium-link-annotation-button')) {
+      showLinkAnnotationPopover(anchor as HTMLButtonElement);
+    } else if (anchor.matches('.footnote-reference')) {
       showFootnotePopover(anchor);
     } else if (anchor.matches('a.wiki-link')) {
       showLinkPopover(anchor as HTMLAnchorElement);
@@ -581,12 +602,14 @@ async function initializeReader(value: unknown): Promise<void> {
   document.addEventListener('pointerover', event => {
     const anchor = previewAnchorFor(event.target);
     if (!anchor || remainsInsidePreviewAnchor(anchor, event.relatedTarget)) return;
+    if (pinnedAnnotationButton && anchor !== pinnedAnnotationButton) return;
     cancelPopoverHide();
     showPreviewFor(anchor);
   });
   document.addEventListener('focusin', event => {
     const anchor = previewAnchorFor(event.target);
     if (!anchor || remainsInsidePreviewAnchor(anchor, event.relatedTarget)) return;
+    if (pinnedAnnotationButton && anchor !== pinnedAnnotationButton) return;
     cancelPopoverHide();
     showPreviewFor(anchor);
   });
@@ -612,6 +635,23 @@ async function initializeReader(value: unknown): Promise<void> {
 
   document.addEventListener('click', event => {
     const eventElement = event.target instanceof Element ? event.target : null;
+    const annotationButton = eventElement?.closest<HTMLButtonElement>(
+      '.scholium-link-annotation-button',
+    );
+    if (annotationButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (pinnedAnnotationButton === annotationButton) {
+        hidePopover();
+        return;
+      }
+      pinnedAnnotationButton = annotationButton;
+      cancelPopoverHide();
+      showLinkAnnotationPopover(annotationButton);
+      return;
+    }
+    if (pinnedAnnotationButton
+        && !(event.target instanceof Node && popover.contains(event.target))) hidePopover();
     const reference = eventElement?.closest<HTMLButtonElement>('.footnote-reference');
     if (reference && !reference.disabled) {
       const ordinal = reference.dataset.footnote;

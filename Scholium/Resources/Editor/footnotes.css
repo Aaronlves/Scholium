@@ -13,6 +13,53 @@
   cursor: pointer;
 }
 
+.scholium-link-annotation-disclosure,
+.scholium-link-annotation-marker {
+  margin-inline-start: 0.08em;
+  font-size: inherit;
+  line-height: 0;
+  vertical-align: super;
+}
+
+.scholium-link-annotation-button {
+  appearance: none;
+  display: inline-grid;
+  place-items: center;
+  inline-size: 1.2em;
+  block-size: 1.2em;
+  padding: 0;
+  border: 0;
+  border-radius: var(--scholium-corner-document-control);
+  color: var(--scholium-color-accent);
+  background: transparent;
+  cursor: pointer;
+}
+
+.scholium-link-annotation-button:hover,
+.scholium-link-annotation-button:focus-visible,
+.scholium-link-annotation-button:active,
+.scholium-link-annotation-button[aria-expanded="true"] {
+  background: var(--scholium-content-hover-surface);
+}
+
+.scholium-link-annotation-button:active {
+  background: var(--scholium-content-keyboard-focus-surface);
+}
+
+.scholium-link-annotation-button:focus-visible {
+  outline: 2px solid var(--scholium-content-focus-ring);
+  outline-offset: 2px;
+}
+
+.scholium-link-annotation-button > span,
+.scholium-link-annotation-icon {
+  inline-size: 0.72em;
+  block-size: 0.72em;
+}
+
+.scholium-link-annotation-content > :first-child { margin-block-start: 0; }
+.scholium-link-annotation-content > :last-child { margin-block-end: 0; }
+
 .footnote-reference:disabled,
 .footnote-reference[aria-disabled="true"] {
   color: var(--scholium-color-muted-text);

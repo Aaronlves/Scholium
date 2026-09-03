@@ -244,29 +244,30 @@ function appendAnnotatedWikilink(
   link.textContent = alias || target;
   identifyProjectedLink(link, target, 0, rawLink.length, rawLink.length, options);
 
+  const marker = document.createElement("sup");
+  marker.className = "scholium-link-annotation-marker";
   const button = document.createElement("button");
   button.type = "button";
   button.className = "scholium-link-annotation-button";
+  button.dataset.linkAnnotation = "true";
+  button.dataset.linkAnnotationTarget = alias || target;
   button.setAttribute("aria-expanded", "false");
+  button.setAttribute("aria-controls", "scholium-preview-popover");
   button.setAttribute("aria-label", `${localized("Show Link Annotation")} ${alias || target}`);
   button.append(systemSymbolElement("text-bubble", "scholium-link-annotation-icon", document));
-  const panel = document.createElement("span");
-  panel.className = "scholium-link-annotation-panel";
-  panel.setAttribute("role", "note");
-  panel.hidden = true;
+  const template = document.createElement("template");
+  template.className = "scholium-link-annotation-template";
   const content = document.createElement("span");
   content.className = "scholium-link-annotation-content";
   appendMarkdownBlocks(annotationMarkdown, content, optionsAt(options, rawLink.length + 2));
-  panel.append(content);
-  button.addEventListener("click", () => {
-    panel.hidden = !panel.hidden;
-    button.setAttribute("aria-expanded", panel.hidden ? "false" : "true");
-    button.setAttribute(
-      "aria-label",
-      `${localized(panel.hidden ? "Show Link Annotation" : "Hide Link Annotation")} ${alias || target}`,
-    );
+  template.content.append(content);
+  button.addEventListener("mousedown", (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
   });
-  wrapper.append(link, button, panel);
+  marker.append(button, template);
+  wrapper.append(link, marker);
   parent.append(wrapper);
 }
 
