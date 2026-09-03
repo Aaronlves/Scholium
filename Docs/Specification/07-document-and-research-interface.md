@@ -87,26 +87,33 @@ and it never follows unrelated window focus. Research menu/toolbar activation
 opens the collection, while a Search result opens the same window at the exact
 Record and matched step.
 
-The collection is a quiet native scanning list of current questions and last
-substantive-step times with one system Search field that reuses §13's Record
-provider rather than creating a second parser or index. Selecting one Record
-opens a centered scholarly reading plane. The reading plane presents the
-current question as its sole title and then the complete chronological step
-sequence. Each step shows time and Agent attribution followed by its rendered
-§8.6 Markdown; revision relationships are stated without turning them into
-acceptance or completion. Immediately beneath that step, quiet clickable Note
-attachment rows expose its own `basis` and `modified` references plus current,
-earlier, or unavailable revision state. Record identifiers and fingerprints
-remain progressively disclosed after the sequence. A Note reference navigates
-to the current Note when available but never substitutes current prose for the
-historical revision.
+The collection is a quiet, fixed, non-collapsible scanning index of current
+questions and last substantive-step times with one system Search field that
+reuses §13's Record provider rather than creating a second parser or index.
+Selecting one Record opens a centered scholarly reading plane. The reading
+plane pins the current question as its sole title above an independently
+scrolling chronological step sequence. Each step shows time and Agent
+attribution followed by its rendered §8.6 Markdown; revision relationships are
+stated without turning them into acceptance or completion. Immediately beneath
+that step, one single-line horizontal Note attachment strip exposes its own
+`basis` and `modified` references plus current, earlier, or unavailable revision
+state. Attachments grow rightward, preserve native hover/focus/press feedback,
+and scroll horizontally instead of wrapping. Record identifiers and
+fingerprints remain progressively disclosed after the sequence. A Note
+reference navigates to the current Note when available but never substitutes
+current prose for the historical revision.
 
 The attachment control shows only the Note name and `Basis` or `Modified` in
 the ordinary current-revision case. `Earlier` or `Unavailable` appears only
-when exceptional state changes what navigation means. The native toolbar adds
-Previous Record, Next Record, and Refresh Records beside the system Sidebar
-control; Search remains collection-local, and no unavailable write action is
-advertised.
+when exceptional state changes what navigation means. Records has no toolbar;
+its hidden title-bar style preserves native window controls while allowing the
+two content planes to fill the window. Search remains collection-local, visible
+Records refresh automatically, and no unavailable write or redundant refresh
+action is advertised. The window opens at a compact default size, closes
+through Escape or its close control, and dismisses after an attachment transfers
+focus to its Note in the exact originating Workspace window. It never creates
+a second Workspace window or falls back to another open Workspace. Merely losing
+focus does not close it or discard the current reading position.
 
 The window is read-only. It has no rich, Markdown, or plain-text editor and no
 Action, Run, Method, Result, Reading Lead, participant ledger, chat, response,

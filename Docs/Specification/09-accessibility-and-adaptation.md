@@ -164,8 +164,10 @@
   references in one predictable reading order.
 - Collection and reading plane remain independently named regions. Every
   step-local Note attachment is keyboard reachable in the same reading order
-  as the step that declares it; at narrow width or enlarged text the row wraps
-  in place rather than compressing prose or moving provenance elsewhere.
+  as the step that declares it. At narrow width or enlarged text, its
+  single-line strip scrolls horizontally instead of wrapping, compressing prose,
+  or moving provenance elsewhere; focus traversal also reveals an off-screen
+  attachment.
 - Rendered Record paragraphs, emphasis, lists, block quotations, inline code,
   and links retain semantic accessibility. Unsupported syntax remains
   selectable literal text. The current question is the sole page heading;

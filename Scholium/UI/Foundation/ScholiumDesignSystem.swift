@@ -1312,20 +1312,19 @@ enum ScholiumGrid {
     }
 
     /// The separate Records window owns a quiet collection-to-reading
-    /// transition. These values size only Scholium content inside native split
-    /// geometry; the system continues to own dividers and window chrome.
+    /// transition. A fixed index keeps navigation stable while the reading
+    /// plane and step-local attachment strips own their scrolling axes.
     enum ResearchRecords {
-        static let collectionMinimumWidth = foundationUnit * 65
-        static let collectionIdealWidth = foundationUnit * 76
-        static let collectionMaximumWidth = foundationUnit * 90
+        static let windowDragInset = foundationUnit * 8
+        static let collectionWidth = foundationUnit * 72
         static let collectionRowVerticalInset = foundationUnit * 2
-        static let collectionRowSpacing = foundationUnit * 1.25
+        static let collectionRowSpacing = foundationUnit
         static let readingMeasure = foundationUnit * 180
-        static let readingHorizontalInset = foundationUnit * 12
-        static let readingVerticalInset = foundationUnit * 10
-        static let stepVerticalInset = foundationUnit * 5.5
-        static let stepHeaderSpacing = foundationUnit * 1.25
-        static let referenceSectionSpacing = foundationUnit * 2.5
+        static let readingHorizontalInset = foundationUnit * 8
+        static let readingVerticalInset = foundationUnit * 8
+        static let stepVerticalInset = foundationUnit * 6
+        static let stepHeaderSpacing = foundationUnit
+        static let referenceSectionSpacing = foundationUnit * 2
     }
 
     /// Page- and pane-level state copy shares one readable measure. Placement
@@ -1448,9 +1447,8 @@ enum ScholiumMetrics {
     }
 
     enum ResearchRecords {
-        static let collectionMinimumWidth = ScholiumGrid.ResearchRecords.collectionMinimumWidth
-        static let collectionIdealWidth = ScholiumGrid.ResearchRecords.collectionIdealWidth
-        static let collectionMaximumWidth = ScholiumGrid.ResearchRecords.collectionMaximumWidth
+        static let windowDragInset = ScholiumGrid.ResearchRecords.windowDragInset
+        static let collectionWidth = ScholiumGrid.ResearchRecords.collectionWidth
         static let collectionRowVerticalInset =
             ScholiumGrid.ResearchRecords.collectionRowVerticalInset
         static let collectionRowSpacing = ScholiumGrid.ResearchRecords.collectionRowSpacing

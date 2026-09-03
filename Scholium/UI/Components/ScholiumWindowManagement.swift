@@ -477,6 +477,13 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         researchRecordsPresenter = showResearchRecords
     }
 
+    /// Returns focus to this exact workspace after an auxiliary Records window
+    /// routes one of its Note attachments. It never searches the global window
+    /// list or creates another workspace scene.
+    func makeKeyAndOrderFront() {
+        window?.makeKeyAndOrderFront(nil)
+    }
+
     func attach(to window: NSWindow) {
         guard !didFinalizeWindowAttachments else { return }
         if self.window === window, window.delegate === self {

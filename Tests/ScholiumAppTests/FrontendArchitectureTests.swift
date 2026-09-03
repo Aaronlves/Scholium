@@ -3154,9 +3154,11 @@ struct FrontendArchitectureTests {
             ScholiumMetrics.Library.workspaceNavigatorTopSpacing
                 == ScholiumGrid.Spacing.nestedContentInset
         )
-        #expect(ScholiumMetrics.ResearchRecords.collectionMinimumWidth == 260)
-        #expect(ScholiumMetrics.ResearchRecords.collectionIdealWidth == 304)
+        #expect(ScholiumMetrics.ResearchRecords.windowDragInset == 32)
+        #expect(ScholiumMetrics.ResearchRecords.collectionWidth == 288)
+        #expect(ScholiumMetrics.ResearchRecords.collectionRowSpacing == 4)
         #expect(ScholiumMetrics.ResearchRecords.readingMeasure == 720)
+        #expect(ScholiumMetrics.ResearchRecords.stepVerticalInset == 24)
     }
 
     @Test("Shared Native and WebKit corner roles stay in parity")

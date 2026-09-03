@@ -134,13 +134,18 @@ struct ScholiumApp: App {
             id: "scholium-records",
             for: ResearchRecordsWindowRoute.self,
             content: makeResearchRecordsWindowContent,
-            defaultValue: { ResearchRecordsWindowRoute(triptychID: UUID()) }
+            defaultValue: {
+                ResearchRecordsWindowRoute(
+                    triptychID: UUID(),
+                    sourceWindowID: UUID()
+                )
+            }
         )
-        .defaultSize(width: 1_080, height: 760)
+        .defaultSize(width: 980, height: 720)
+        .windowStyle(.hiddenTitleBar)
         .windowResizability(.automatic)
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
-        .windowToolbarStyle(.unified(showsTitle: true))
         .environmentObject(applicationBootstrap)
         .environmentObject(applicationDelegate)
 
@@ -654,6 +659,7 @@ private struct ScholiumWindowObservedRoot: View {
     @StateObject private var fileSelectionPresenter = ScholiumFileSelectionPresenter()
     @State private var destinationBootstrapWindowID: UUID?
     @State private var accessRecovery: WorkspaceAccessRecovery?
+    @State private var researchRecordsSourceToken: UUID?
 
     init(
         appState: WindowModel,
@@ -754,7 +760,16 @@ private struct ScholiumWindowObservedRoot: View {
                     appState.vaultError = error.localizedDescription
                 }
             }
-            .onAppear {
+            .onAppear { [weak appState, weak windowCoordinator] in
+                guard let appState, let windowCoordinator else { return }
+                if researchRecordsSourceToken == nil {
+                    researchRecordsSourceToken = ResearchRecordsWindowCoordinator.shared
+                        .registerWorkspace(windowID: route.windowID) {
+                            [weak appState, weak windowCoordinator] reference in
+                            appState?.researchController.requestOpen(reference)
+                            windowCoordinator?.makeKeyAndOrderFront()
+                        }
+                }
                 windowCoordinator.activate(
                     showAttention: { request in
                         switch request {
@@ -769,7 +784,10 @@ private struct ScholiumWindowObservedRoot: View {
                     showResearchRecords: { triptychID in
                         openWindow(
                             id: "scholium-records",
-                            value: ResearchRecordsWindowRoute(triptychID: triptychID)
+                            value: ResearchRecordsWindowRoute(
+                                triptychID: triptychID,
+                                sourceWindowID: route.windowID
+                            )
                         )
                     }
                 )
@@ -779,6 +797,13 @@ private struct ScholiumWindowObservedRoot: View {
                 windowCoordinator.update(reduceMotion: reduceMotion)
             }
             .onDisappear {
+                if let researchRecordsSourceToken {
+                    ResearchRecordsWindowCoordinator.shared.unregisterWorkspace(
+                        windowID: route.windowID,
+                        token: researchRecordsSourceToken
+                    )
+                }
+                researchRecordsSourceToken = nil
                 windowCoordinator.detach()
             }
             .scholiumFileSelectionScene(presenter: fileSelectionPresenter)

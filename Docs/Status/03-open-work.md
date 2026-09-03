@@ -37,9 +37,10 @@
   system Trash, conflict, and recovery where they exercise distinct human
   failure modes.
 - Add a human Records-window journey covering All/Notes/Records Search,
-  collection-to-reading navigation, step-local Note attachments, external
-  Agent refresh without focus movement, keyboard traversal, enlarged text,
-  narrow layout, and Simplified Chinese presentation.
+  fixed-index collection-to-reading navigation, horizontal overflow and hover
+  for step-local Note attachments, exact originating-window attachment routing
+  and dismissal, external Agent refresh without focus movement, keyboard
+  traversal, enlarged text, narrow layout, and Simplified Chinese presentation.
 - Retain the current distinction between deterministic build/test evidence and
   human acceptance. Automated accessibility structure checks do not constitute
   VoiceOver, keyboard, IME, or visual acceptance.

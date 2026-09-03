@@ -41,16 +41,16 @@ struct ScholiumLocalizationTests {
                 == "研究记录"
         )
         #expect(
+            ScholiumL10n.string("Research Record Collection", locale: simplifiedChinese)
+                == "研究记录列表"
+        )
+        #expect(
+            ScholiumL10n.string("Referenced Notes", locale: simplifiedChinese)
+                == "引用的笔记"
+        )
+        #expect(
             ScholiumL10n.string("Search provider", locale: simplifiedChinese)
                 == "搜索对象"
-        )
-        #expect(
-            ScholiumL10n.string("Previous Record", locale: simplifiedChinese)
-                == "上一条记录"
-        )
-        #expect(
-            ScholiumL10n.string("Refresh Records", locale: simplifiedChinese)
-                == "刷新记录"
         )
         #expect(ScholiumL10n.string("Undo", locale: simplifiedChinese) == "撤销")
         #expect(

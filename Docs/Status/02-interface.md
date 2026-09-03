@@ -46,16 +46,20 @@
   route to the bundled Core Protocol Skill.
 - Agent conversation remains in the external host. Scholium shows no chat,
   Agent picker, session, task, activity stack, or result-review workflow.
-- **Research Records** opens a separate read-only window. Its left collection
-  scans current questions and last substantive times with system Record Search.
-  The centered reading plane shows chronological attributed steps, and each
-  step presents its own basis/modified Notes as quiet clickable attachment rows
-  with current, earlier, or unavailable revision state. Step prose renders
+- **Research Records** opens a compact separate read-only window. Its fixed,
+  non-collapsible left index scans current questions and last substantive times
+  with system Record Search. The centered reading plane pins the question above
+  independently scrolling chronological attributed steps. Each step presents
+  its basis/modified Notes in one right-growing horizontal attachment strip;
+  overflow scrolls, while each compact native button retains hover/focus/press
+  feedback and adds Earlier/Unavailable only when needed. Step prose renders
   bounded basic Markdown; headings and unsupported constructs remain literal.
-  Current attachment state is omitted as the default; each compact native
-  button adds only Note name and relation, with Earlier/Unavailable shown when
-  needed. The toolbar contains Previous, Next, and Refresh. There is no Record
-  content editor or detached evidence inspector.
+  A hidden title-bar style removes the separate toolbar band while preserving
+  native window controls; Records refreshes automatically while visible.
+  Escape closes the window, and opening an attachment dismisses Records after
+  opening the Note in the exact originating Workspace window; it never creates
+  another Workspace window. There is no Record content editor or detached
+  evidence inspector.
 - **Agent Changes** presents one machine-local MCP mutation at a time in
   confirmation order, with Previous/Next controls and an exact position. Every
   retained update is bound to one `(change ID, Note ID)` and presents its own

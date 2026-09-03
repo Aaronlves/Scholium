@@ -85,14 +85,23 @@ notification, polling, delayed correction, and width calculation do not
 participate in constructing that workspace split.
 
 Research Records use a separate value-keyed `WindowGroup`, one scene identity
-per Triptych. `ResearchRecordsWindowCoordinator` routes an exact Record/step
-selection to the existing scene but retains no research data. The window uses
-a native resizable split: a quiet scanning collection and centered scholarly
-reading plane. Its only text input is the system Record-provider Search field;
-step content is a read-only bounded Markdown projection followed by that
-step's quiet clickable Note-reference rows. Paragraphs, emphasis, strong text,
+per `(Triptych, originating Workspace window)`. `ResearchRecordsWindowCoordinator`
+routes an exact Record/step selection to the existing Records scene and routes
+Note attachments back through the explicitly registered originating Workspace;
+it retains no research data and never opens or searches for a Workspace window.
+The window uses
+a fixed, non-collapsible scanning index beside a centered scholarly reading
+plane with a pinned question header and independently scrolling steps. Its only
+text input is the system Record-provider Search field; step content is a
+read-only bounded Markdown projection followed by that step's single-line,
+horizontally scrolling Note-reference strip. Paragraphs, emphasis, strong text,
 inline code, lists, blockquotes, and ordinary links render semantically.
 Headings and unsupported constructs remain visible literal source.
+The scene uses a hidden title-bar window style and installs no toolbar; periodic
+store observation supplies refresh while native window controls and dragging
+remain AppKit-owned. The originating `WorkspaceWindowCoordinator` performs exact
+window focus after its window-scoped research controller receives the attachment
+route; failure to resolve that registered origin does not create a replacement.
 
 Bootstrap, configured Workspace, and Settings scene roots each own one
 `ScholiumFileSelectionPresenter`. A bounded native attachment supplies that

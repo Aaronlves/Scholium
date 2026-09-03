@@ -95,11 +95,13 @@ fabricated source restore.
 ## App presentation and setup
 
 Research Records use one read-only, Triptych-bound window. Its collection uses
-the Record provider; its detail shows the question, chronological attributed
-steps, bounded Markdown projection, and each step's clickable Note-reference
-attachments in the same reading flow. A
-Triptych-keyed coordinator routes Search selections to the existing window but
-retains no Record data. The window polls the strict store while visible so an
+the Record provider; its fixed index stays visible while the detail pins the
+question above chronological attributed steps, bounded Markdown projection,
+and each step's single-line horizontal Note-reference attachments in the same
+reading flow. A coordinator keyed by Triptych and originating Workspace routes
+Search selections to the existing Records window and attachment selections back
+to that exact Workspace, but retains no Record data and creates no Workspace
+scene. The window polls the strict store while visible so an
 external Agent append refreshes without activation or focus movement.
 
 Agent Changes remain a separate read-only presentation over machine-local Note

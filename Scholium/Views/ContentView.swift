@@ -278,12 +278,16 @@ struct ContentView: View {
                 }
                 ResearchRecordsWindowCoordinator.shared.submit(.init(
                     triptychID: triptychID,
+                    sourceWindowID: appState.nativeWindowID,
                     recordID: recordID,
                     stepID: stepID
                 ))
                 openWindow(
                     id: "scholium-records",
-                    value: ResearchRecordsWindowRoute(triptychID: triptychID)
+                    value: ResearchRecordsWindowRoute(
+                        triptychID: triptychID,
+                        sourceWindowID: appState.nativeWindowID
+                    )
                 )
             }
         )

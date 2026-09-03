@@ -17401,6 +17401,38 @@
         }
       }
     },
+    "Referenced Notes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Referenced Notes"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "引用的笔记"
+          }
+        }
+      }
+    },
+    "Research Record Collection" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Research Record Collection"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "研究记录列表"
+          }
+        }
+      }
+    },
     "Search records" : {
       "localizations" : {
         "en" : {
@@ -17513,22 +17545,6 @@
         }
       }
     },
-    "Next Record" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Next Record"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "下一条记录"
-          }
-        }
-      }
-    },
     "Open %@" : {
       "localizations" : {
         "en" : {
@@ -17541,54 +17557,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "打开 %1$@"
-          }
-        }
-      }
-    },
-    "Previous Record" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Previous Record"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "上一条记录"
-          }
-        }
-      }
-    },
-    "Refresh Records" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Refresh Records"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "刷新记录"
-          }
-        }
-      }
-    },
-    "Refreshing Records…" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Refreshing Records…"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在刷新记录…"
           }
         }
       }

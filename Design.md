@@ -36,10 +36,13 @@ rather than cards, tiles, badges, avatars, chat bubbles, or nested decorative
 containers. Small capsules are reserved for finite semantic values, never
 general decoration or status walls.
 
-The separate Records window uses a quiet collection-to-reading transition. Its
-detail retains the proven centered scholarly reading measure, and each step
-presents its own Note references immediately after the prose as quiet clickable
-attachment rows. The question/step/Note-reference contract alone supplies
+The separate Records window uses a quiet collection-to-reading transition. A
+fixed, non-collapsible index keeps Record navigation continuously available;
+the detail retains the proven centered scholarly reading measure and pins the
+current question above the independently scrolling step sequence. Each step
+presents its own Note references immediately after the prose as one quiet,
+single-line attachment strip that grows to the right and scrolls horizontally
+when necessary. The question/step/Note-reference contract alone supplies
 content: no superseded Action ledger, Result, participant workflow, or
 bibliographic lead survives as presentation semantics. The question is the one
 primary title; step time and Agent attribution use compact Interface type,
@@ -52,17 +55,25 @@ Agent attribution uses Agent Authorship, Note navigation uses Accent, an
 earlier referenced revision uses Attention, and an unavailable Note uses Muted
 text. The visible state word remains present whenever color varies. A current
 Note is the unmarked default. Each Note reference is one compact native bordered
-button containing only its document name and `Basis` or `Modified`; it adds
+button containing only its document name and `Basis` or `Modified`; native
+hover, focus, and press feedback make the affordance visible without a resting
+card. It adds
 `Earlier` or `Unavailable` only for those exceptional states. It has no
 reference count, `.md` suffix, repeated current-state label, underline, trailing
 chevron, resting card, or second visual button system.
 
-The Records toolbar remains native, borderless at rest, and visually continuous
-with the owning planes. Besides the system Sidebar control, it contains only
-Previous Record, Next Record, and Refresh Records. Search remains in the
-collection because it changes that collection rather than the current reading.
-No disabled write, evidence, share, or technical-identity action is placed in
-the toolbar merely to fill space.
+Records has no toolbar or separate white chrome band. Its hidden title-bar style
+lets the navigation and document planes fill the window while preserving native
+close, minimize, zoom, drag, and resize behavior. Search remains at the top of
+the collection because it changes that collection rather than the current
+reading; visible Records refresh automatically while the window is open. The
+compact default window preserves the index and reading measure. Escape or the
+close control dismisses it; opening a Note attachment transfers focus to that
+Note in the exact originating Workspace window and dismisses Records, while
+ordinary focus loss does not. Attachment navigation never creates a second
+Workspace window or falls back to an unrelated one. No disabled write,
+evidence, share, refresh, or technical-identity action is added merely to fill
+space.
 
 ### 19.2 Typography and color
 

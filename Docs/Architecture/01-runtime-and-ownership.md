@@ -307,11 +307,13 @@ SwiftUI disappearance only detaches presentation. `DocumentTransitionCoordinator
 owns and cancels serialized transition tasks. `WindowEditorFlushCoordinator`
 owns ordered current-editor and aggregate-window registrations. They survive
 preparation so cancelled application termination remains retryable, and end
-only after AppKit commits the close. `ResearchRecordsWindowModel` owns only the
-read-only collection selection, Record-provider query, selected step, evidence
-disclosure, and refresh presentation for its Triptych-bound scene. Its
-Triptych-keyed coordinator retains only pending navigation requests. Neither
-object owns durable authorization, source bytes, or writable Record state.
+only after AppKit commits the close. `ResearchRecordsModel` owns only the
+read-only collection selection, Record-provider query, selected step, Note
+reference projection, and automatic refresh for its Records scene. Its
+coordinator keys the scene by Triptych and originating Workspace, retains only
+pending Record selection and registered window-scoped navigation closures, and
+never creates or searches for a Workspace window. Neither object owns durable
+authorization, source bytes, or writable Record state.
 `WindowSearchController` owns Search/temporary Find execution and
 cancellation, provider-aware result routing, generation reruns, and serialized
 Saved Search loading and persistence. It
