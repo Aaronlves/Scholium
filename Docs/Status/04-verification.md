@@ -182,6 +182,21 @@ Completed automated checks in this worktree:
   and a projection-settling pointer test. Each affected contract now passes
   its focused test, including the complete Edit/Review presentation matrix;
   the complete gate was not repeated under the repository's single-run rule.
+- On 2026-09-04 the Sidebar command and activation-cursor slice passed 174
+  focused App tests across Library projection, interface presentation,
+  frontend/window ownership, and native toolbar suites. A newly seeded
+  `Attachments` root remained absent from the Library while an exploratory
+  isolated QA launch showed Search then the nonnumeric Accent-dot Notifications
+  bell at the trailing side of the Scholium wordmark; the toolbar omitted Agent
+  Changes with an empty local change store. The QA process was quit and the
+  generated bundle/fixture state moved to Trash after inspection. The
+  deterministic smoke journey did not enter
+  its test method because XCTest timed out while enabling system automation
+  mode; its result bundle records an initialization failure rather than an App
+  assertion. Documentation authority and `git diff --check` passed. The
+  standalone localization validator still reports the seven pre-existing
+  Research Records entries already named above, so no clean complete-gate claim
+  is made for this slice.
 
 ## Evidence boundary
 

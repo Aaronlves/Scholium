@@ -266,6 +266,7 @@ struct AboutEditablePropertyRow: View {
             }
             .contentShape(Rectangle())
         }
+        .scholiumActivationPointer()
         .buttonStyle(.plain)
         .disabled(!descriptor.isEditable || anotherFieldIsEditing)
         .help(descriptor.isEditable ? "Edit \(descriptor.label)" : "Open Metadata to review this unsupported value")
@@ -365,13 +366,16 @@ struct AboutEditablePropertyRow: View {
                     Button("Remove", role: .destructive) {
                         commit(nil)
                     }
+                    .scholiumActivationPointer()
                     .buttonStyle(.borderless)
                 }
                 Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
                 Button("Cancel") { cancel() }
+                    .scholiumActivationPointer()
                     .buttonStyle(.borderless)
                     .keyboardShortcut(.escape)
                 Button("Save") { commit(candidateValue) }
+                    .scholiumActivationPointer()
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
                     .keyboardShortcut(.return, modifiers: [.command])
@@ -423,6 +427,7 @@ struct AboutEditablePropertyRow: View {
 
         case .toggle:
             Toggle(descriptor.label, isOn: $booleanValue)
+                .scholiumActivationPointer()
                 .toggleStyle(.switch)
                 .labelsHidden()
                 .accessibilityLabel(Text(verbatim: descriptor.label))
@@ -437,6 +442,7 @@ struct AboutEditablePropertyRow: View {
                     )).tag(value)
                 }
             }
+            .scholiumActivationPointer()
             .labelsHidden()
             .pickerStyle(.menu)
             .frame(maxWidth: ScholiumMetrics.Properties.compactControlMaximumWidth, alignment: .leading)
@@ -461,6 +467,7 @@ struct AboutEditablePropertyRow: View {
                     } label: {
                         Image(systemName: "minus.circle")
                     }
+                    .scholiumActivationPointer()
                     .buttonStyle(.borderless)
                     .help("Remove value")
                     .accessibilityLabel("Remove \(descriptor.label) value")
@@ -469,6 +476,7 @@ struct AboutEditablePropertyRow: View {
             Button("Add Value") {
                 listItems.append(AboutListItemDraft())
             }
+            .scholiumActivationPointer()
             .buttonStyle(.borderless)
         }
     }
@@ -483,6 +491,7 @@ struct AboutEditablePropertyRow: View {
                                 Text(kind.title).tag(kind)
                             }
                         }
+                        .scholiumActivationPointer()
                         .labelsHidden()
                         .pickerStyle(.menu)
                         Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
@@ -491,6 +500,7 @@ struct AboutEditablePropertyRow: View {
                         } label: {
                             Image(systemName: "minus.circle")
                         }
+                        .scholiumActivationPointer()
                         .buttonStyle(.borderless)
                         .help("Remove creator")
                         .accessibilityLabel("Remove creator")
@@ -515,6 +525,7 @@ struct AboutEditablePropertyRow: View {
                             }
                             .padding(.top, ScholiumGrid.Spacing.labelAccessoryGap)
                         }
+                        .scholiumActivationPointer()
                     }
                 }
                 .padding(.bottom, ScholiumGrid.Spacing.labelAccessoryGap)
@@ -522,6 +533,7 @@ struct AboutEditablePropertyRow: View {
             Button("Add Creator") {
                 creators.append(AboutCreatorDraft())
             }
+            .scholiumActivationPointer()
             .buttonStyle(.borderless)
         }
     }

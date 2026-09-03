@@ -305,7 +305,9 @@ struct SpotlightSearchPanelView: View {
         .alert("Save Search", isPresented: $showSaveSearch) {
             TextField("Search name", text: $savedSearchName)
             Button("Cancel", role: .cancel) {}
+            .scholiumActivationPointer()
             Button("Save") { context.save(savedSearchName) }
+            .scholiumActivationPointer()
         } message: {
             Text("Saved searches remain in Scholium’s Application Support folder and never modify a vault.")
         }
@@ -315,12 +317,14 @@ struct SpotlightSearchPanelView: View {
         )) {
             TextField("Search name", text: $renamedSearchName)
             Button("Cancel", role: .cancel) { renamingSearch = nil }
+            .scholiumActivationPointer()
             Button("Rename") {
                 if let renamingSearch {
                     context.rename(renamingSearch.id, renamedSearchName)
                 }
                 renamingSearch = nil
             }
+            .scholiumActivationPointer()
             .disabled(renamedSearchName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .confirmationDialog(
@@ -331,7 +335,9 @@ struct SpotlightSearchPanelView: View {
             Button("Archive and Reset", role: .destructive) {
                 Task { await context.recoverSavedSearches() }
             }
+            .scholiumActivationPointer()
             Button("Cancel", role: .cancel) {}
+            .scholiumActivationPointer()
         } message: {
             Text("Scholium will preserve the unreadable Saved Search file under a unique recovery name, then start with an empty Saved Searches list. No vault files will be changed.")
         }
@@ -387,6 +393,7 @@ struct SpotlightSearchPanelView: View {
                     Image(systemName: "xmark.circle.fill")
                         .scholiumForeground(.secondaryText)
                 }
+                .scholiumActivationPointer()
                 .buttonStyle(.plain)
                 .frame(
                     minWidth: ScholiumMetrics.Accessibility.preferredCustomTarget,
@@ -405,6 +412,7 @@ struct SpotlightSearchPanelView: View {
                 Image(systemName: "xmark")
                     .scholiumForeground(.secondaryText)
             }
+            .scholiumActivationPointer()
             .buttonStyle(.borderless)
             .frame(
                 minWidth: ScholiumMetrics.Accessibility.preferredCustomTarget,
@@ -485,6 +493,7 @@ struct SpotlightSearchPanelView: View {
                     )
                     .contentShape(Rectangle())
                 }
+                .scholiumActivationPointer()
                 .buttonStyle(.plain)
                 .accessibilityLabel("\(completion.displayText), \(completion.detail)")
                 .accessibilityAddTraits(
@@ -572,6 +581,7 @@ struct SpotlightSearchPanelView: View {
             Spacer()
             if let action = presentation.action {
                 Button(action.title) { Task { await context.refresh() } }
+                    .scholiumActivationPointer()
                     .controlSize(.small)
             }
         }
@@ -691,25 +701,31 @@ struct SpotlightSearchPanelView: View {
                 savedSearchName = controller.search.criteria.query
                 showSaveSearch = true
             }
+            .scholiumActivationPointer()
             .disabled(controller.search.criteria.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             if !context.savedSearches.isEmpty {
                 Divider()
                 ForEach(Array(context.savedSearches.enumerated()), id: \.element.id) { index, search in
                     Menu {
                         Button("Run Search") { context.run(search) }
+                        .scholiumActivationPointer()
                         Button("Rename…") {
                             renamedSearchName = search.name
                             renamingSearch = search
                         }
+                        .scholiumActivationPointer()
                         Divider()
                         Button("Move Up") { context.move(search.id, -1) }
+                            .scholiumActivationPointer()
                             .disabled(index == 0)
                         Button("Move Down") { context.move(search.id, 1) }
+                            .scholiumActivationPointer()
                             .disabled(index == context.savedSearches.count - 1)
                         Divider()
                         Button("Delete", role: .destructive) {
                             context.delete(search.id)
                         }
+                        .scholiumActivationPointer()
                     } label: {
                         if search.needsEditingDiagnostic != nil {
                             Label(search.name, systemImage: "exclamationmark.triangle")
@@ -717,6 +733,7 @@ struct SpotlightSearchPanelView: View {
                             Text(search.name)
                         }
                     }
+                    .scholiumActivationPointer()
                 }
             }
             if context.savedSearchLoadFailure != nil {
@@ -724,11 +741,13 @@ struct SpotlightSearchPanelView: View {
                 Button("Archive Unreadable Saved Searches…", role: .destructive) {
                     confirmsSavedSearchRecovery = true
                 }
+                .scholiumActivationPointer()
             }
         } label: {
             Image(systemName: "bookmark")
                 .scholiumForeground(.secondaryText)
         }
+        .scholiumActivationPointer()
         .buttonStyle(.borderless)
         .frame(
             minWidth: ScholiumMetrics.Accessibility.preferredCustomTarget,
@@ -821,6 +840,7 @@ struct SpotlightSearchPanelView: View {
                 scope: controller.search.criteria.scope
             )
         }
+        .scholiumActivationPointer()
         .buttonStyle(.plain)
         .id(resultID)
         .listRowInsets(searchResultInsets)
@@ -865,6 +885,7 @@ struct SpotlightSearchPanelView: View {
             .contentShape(Rectangle())
             .frame(minHeight: ScholiumMetrics.Search.resultRowHeight)
         }
+        .scholiumActivationPointer()
         .buttonStyle(.plain)
         .id(resultID)
         .listRowInsets(searchResultInsets)

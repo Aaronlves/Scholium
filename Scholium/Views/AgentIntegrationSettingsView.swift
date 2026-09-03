@@ -53,9 +53,11 @@ struct AgentIntegrationSettingsView: View {
                             Button("Copy Codex Setup Command") {
                                 copySetupCommand(for: .codex)
                             }
+                            .scholiumActivationPointer()
                             Button("Copy Claude Setup Command") {
                                 copySetupCommand(for: .claude)
                             }
+                            .scholiumActivationPointer()
                         }
                         .disabled(cliURL == nil)
 
@@ -77,6 +79,7 @@ struct AgentIntegrationSettingsView: View {
                             guard let coreProtocolURL else { return }
                             NSWorkspace.shared.activateFileViewerSelecting([coreProtocolURL])
                         }
+                        .scholiumActivationPointer()
                         .disabled(coreProtocolURL == nil)
                     }
                 }

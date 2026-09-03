@@ -55,6 +55,7 @@ struct HotkeySettingsView: View {
                         Button("Restore Default Hotkeys…") {
                             pendingResetAll = true
                         }
+                        .scholiumActivationPointer()
                         .disabled(!hasCustomizations)
                     }
                 }
@@ -85,7 +86,9 @@ struct HotkeySettingsView: View {
             Button("Restore Defaults", role: .destructive) {
                 preferencesData = ScholiumHotkeyPreferences.defaultData
             }
+            .scholiumActivationPointer()
             Button("Cancel", role: .cancel) {}
+            .scholiumActivationPointer()
         } message: {
             Text("This restores every customizable Scholium command on this Mac. Standard macOS shortcuts are not affected.")
         }
@@ -138,6 +141,7 @@ struct HotkeySettingsView: View {
 
             Menu {
                 Button("Record New Hotkey…") { editingCommand = command }
+                .scholiumActivationPointer()
                 Button("Clear Hotkey") {
                     preferencesData = ScholiumHotkeyPreferences.data(
                         setting: nil,
@@ -145,6 +149,7 @@ struct HotkeySettingsView: View {
                         in: preferencesData
                     )
                 }
+                .scholiumActivationPointer()
                 .disabled(binding(for: command) == nil)
                 Divider()
                 Button("Restore Default") {
@@ -154,6 +159,7 @@ struct HotkeySettingsView: View {
                         in: preferencesData
                     )
                 }
+                .scholiumActivationPointer()
                 .disabled(!ScholiumHotkeyPreferences.isCustomized(
                     command,
                     data: preferencesData
@@ -163,6 +169,7 @@ struct HotkeySettingsView: View {
                     .monospacedDigit()
                     .frame(minWidth: 64)
             }
+            .scholiumActivationPointer()
             .menuStyle(.button)
             .controlSize(.small)
             .accessibilityLabel(Text("Hotkey for \(String(localized: command.title))"))
@@ -241,13 +248,16 @@ private struct HotkeyRecordingSheet: View {
 
             HStack {
                 Button("Clear") { draft = nil }
+                    .scholiumActivationPointer()
                     .disabled(draft == nil)
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
+                .scholiumActivationPointer()
                 Button("Save") {
                     save(draft)
                     dismiss()
                 }
+                .scholiumActivationPointer()
                 .buttonStyle(.borderedProminent)
                 .disabled(validationIssue != nil)
             }
@@ -329,7 +339,7 @@ private struct HotkeyRecorderControl: NSViewRepresentable {
         }
     }
 
-    final class RecorderButton: NSButton {
+    final class RecorderButton: ScholiumPointingHandButton {
         var isRecording = false
         var capture: ((ScholiumHotkeyBinding) -> Void)?
         var clear: (() -> Void)?

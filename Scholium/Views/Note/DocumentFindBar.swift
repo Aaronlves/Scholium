@@ -157,6 +157,7 @@ struct DocumentFindBar: View {
                 Button(action: model.previous) {
                     Image(systemName: "chevron.up")
                 }
+                .scholiumActivationPointer()
                 .buttonStyle(.borderless)
                 .accessibilityLabel("Find Previous")
                 .disabled(model.query.isEmpty || model.result.total == 0)
@@ -164,6 +165,7 @@ struct DocumentFindBar: View {
                 Button(action: model.next) {
                     Image(systemName: "chevron.down")
                 }
+                .scholiumActivationPointer()
                 .buttonStyle(.borderless)
                 .accessibilityLabel("Find Next")
                 .disabled(model.query.isEmpty || model.result.total == 0)
@@ -171,6 +173,7 @@ struct DocumentFindBar: View {
                 Button(action: model.dismiss) {
                     Image(systemName: "xmark")
                 }
+                .scholiumActivationPointer()
                 .buttonStyle(.borderless)
                 .accessibilityLabel("Close Find")
             }
@@ -215,6 +218,7 @@ struct DocumentFindBar: View {
                     set: model.setCaseSensitive
                 )
             )
+            .scholiumActivationPointer()
             Toggle(
                 "Whole Word",
                 isOn: Binding(
@@ -222,6 +226,7 @@ struct DocumentFindBar: View {
                     set: model.setWholeWord
                 )
             )
+            .scholiumActivationPointer()
         }
         .toggleStyle(.button)
         .controlSize(.small)
@@ -239,8 +244,10 @@ struct DocumentFindBar: View {
             .textFieldStyle(.roundedBorder)
             .accessibilityIdentifier("scholium.documentFind.replacement")
             Button("Replace", action: model.replaceCurrent)
+                .scholiumActivationPointer()
                 .disabled(model.query.isEmpty || model.result.total == 0)
             Button("Replace All", action: model.replaceAll)
+                .scholiumActivationPointer()
                 .disabled(model.query.isEmpty || model.result.total == 0)
         }
         .controlSize(.small)

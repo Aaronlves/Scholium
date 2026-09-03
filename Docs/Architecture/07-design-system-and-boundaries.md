@@ -98,6 +98,17 @@ custom group that consumes the adapter; feature views do
 not add unconditional `FocusState` assignments after native presentation
 dismissal, which prevents pointer interactions from manufacturing keyboard
 focus rings while retaining native keyboard traversal and return behavior.
+
+Discrete activation cursors have one cross-runtime boundary.
+`scholiumActivationPointer` maps enabled SwiftUI activation targets to the
+system link pointer and disabled targets to the arrow;
+`ScholiumPointingHandButton` provides the equivalent AppKit button behavior;
+and generated document CSS applies the same cursor to enabled WebKit buttons,
+links, menus, and options. The native Library outline adds cursor rectangles to
+its clickable rows through its existing pointer owner. Text, drag, divider,
+resize, disabled, and passive surfaces retain their task-specific cursors, so
+this boundary adds no general hover tracker or alternate activation state.
+
 `ScholiumContentControlButtonFeedbackModifier` is the single transient-state
 owner for custom SwiftUI Buttons. The generic
 `ScholiumContentControlButtonStyle` and geometry-owning quiet-row style both

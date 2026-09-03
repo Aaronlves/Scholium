@@ -15,6 +15,7 @@ struct TransactionRecoveryNotice: View {
             region: .workspaceBanner
         ) {
             Button("Inspect Recovery…", action: onInspect)
+            .scholiumActivationPointer()
         }
         .accessibilityIdentifier("scholium.transactionRecovery.notice")
     }
@@ -115,6 +116,7 @@ struct TransactionRecoveryView: View {
             set: { if !$0 { selectedRecord = nil } }
         )) {
             Button("Cancel", role: .cancel) { selectedRecord = nil }
+            .scholiumActivationPointer()
             Button(selectedRecoveryAction.buttonTitle) {
                 guard let record = selectedRecord else { return }
                 selectedRecord = nil
@@ -138,6 +140,7 @@ struct TransactionRecoveryView: View {
                     }
                 }
             }
+            .scholiumActivationPointer()
         } message: {
             Text(selectedRecoveryAction.message)
         }
@@ -146,6 +149,7 @@ struct TransactionRecoveryView: View {
             set: { if !$0 { selectedInterruptedSave = nil } }
         )) {
             Button("Cancel", role: .cancel) { selectedInterruptedSave = nil }
+            .scholiumActivationPointer()
             Button(interruptedSaveConfirmationButtonTitle) {
                 guard let recovery = selectedInterruptedSave else { return }
                 selectedInterruptedSave = nil
@@ -171,6 +175,7 @@ struct TransactionRecoveryView: View {
                     }
                 }
             }
+            .scholiumActivationPointer()
         } message: {
             Text(interruptedSaveConfirmationMessage)
         }
@@ -214,6 +219,7 @@ struct TransactionRecoveryView: View {
                     TransactionRecoveryActionPresentation(record: record)
                         .buttonTitle + "…"
                 ) { selectedRecord = record }
+                .scholiumActivationPointer()
             }
         } header: {
             Text(operationName(record.operation))
@@ -236,12 +242,15 @@ struct TransactionRecoveryView: View {
                     Button("Reveal Operation Records in Finder") {
                         revealRecords()
                     }
+                    .scholiumActivationPointer()
                 }
                 Button("Refresh") {
                     Task { await refresh() }
                 }
+                .scholiumActivationPointer()
                 Spacer()
                 Button("Close") { dismiss() }
+                    .scholiumActivationPointer()
                     .keyboardShortcut(.cancelAction)
             }
         }
@@ -438,6 +447,7 @@ private struct InterruptedSaveRecoveryRow: View {
                         await loadCandidateIfNeeded()
                     }
             }
+            .scholiumActivationPointer()
 
             ViewThatFits(in: .horizontal) {
                 HStack {
@@ -486,6 +496,7 @@ private struct InterruptedSaveRecoveryRow: View {
                     .accessibilityLabel("Interrupted save candidate source")
                 }
                 Button("Copy Candidate") { copy(content.exactSource) }
+                .scholiumActivationPointer()
             }
         } else if let contentError {
             Text(contentError)
@@ -534,10 +545,12 @@ private struct InterruptedSaveRecoveryRow: View {
                 }
             }
         }
+        .scholiumActivationPointer()
     }
 
     private var restoreButton: some View {
         Button(restoreButtonTitle) { requestRestore() }
+            .scholiumActivationPointer()
             .disabled(!recovery.sourceState.permitsRecovery)
             .help(restoreHelp)
     }

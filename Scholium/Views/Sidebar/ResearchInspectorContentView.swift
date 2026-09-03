@@ -58,6 +58,7 @@ struct ResearchProjectionFreshnessView: View {
                 ) {
                     if freshness.permitsRetry {
                         Button("Retry", action: retry)
+                            .scholiumActivationPointer()
                             .controlSize(.small)
                             .buttonStyle(.borderless)
                     }
@@ -318,6 +319,7 @@ struct ResearchOverviewView: View {
                 }
             }
         }
+        .scholiumActivationPointer()
         .scholiumAttentionPopover(
             anchor: .inspector,
             session: context.attentionPopoverSession
@@ -421,6 +423,7 @@ struct ResearchOverviewView: View {
                         showsChevron: false
                     )
                 }
+                .scholiumActivationPointer()
                 .buttonStyle(ScholiumQuietRowButtonStyle(
                     minimumHeight: ScholiumMetrics.Accessibility.preferredCustomTarget,
                     verticalInset: 0
@@ -439,6 +442,7 @@ struct ResearchOverviewView: View {
                             showsChevron: true
                         )
                     }
+                    .scholiumActivationPointer()
                     .buttonStyle(ScholiumQuietRowButtonStyle(
                         minimumHeight: ScholiumMetrics.Accessibility.preferredCustomTarget,
                         verticalInset: 0
@@ -465,6 +469,7 @@ struct ResearchOverviewView: View {
                         showsChevron: true
                     )
                 }
+                .scholiumActivationPointer()
                 .buttonStyle(ScholiumQuietRowButtonStyle(
                     minimumHeight: ScholiumMetrics.Accessibility.preferredCustomTarget,
                     verticalInset: 0

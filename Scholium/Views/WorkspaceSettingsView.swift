@@ -327,6 +327,7 @@ struct ScholiumSettingsView: View {
             Image(systemName: item.symbol)
         }
         .tag(item)
+        .scholiumActivationPointer()
         .accessibilityIdentifier("scholium.settings.destination.\(item.rawValue)")
     }
 
@@ -423,6 +424,7 @@ private struct AttentionSettingsView: View {
                             ledger.removeAll()
                             dismissalLedgerData = AttentionPreferences.encodeLedger(ledger)
                         }
+                        .scholiumActivationPointer()
                         .disabled(!hasDismissedAttention)
 
                         Text("Restores dismissed reminders on this Mac without changing Triptych data.")
@@ -461,6 +463,7 @@ private struct AttentionSettingsView: View {
             set: { if !$0 { errorMessage = nil } }
         )) {
             Button("Dismiss", role: .cancel) { errorMessage = nil }
+            .scholiumActivationPointer()
         } message: {
             Text(errorMessage ?? "")
         }
@@ -477,11 +480,13 @@ private struct AttentionSettingsView: View {
                 Text(days == 1 ? "1 day" : "\(days) days").tag(days)
             }
         }
+        .scholiumActivationPointer()
         .frame(maxWidth: 300)
     }
 
     private var saveAttentionButton: some View {
         Button("Save Notification Settings") { save() }
+            .scholiumActivationPointer()
             .buttonStyle(.borderedProminent)
             .disabled(
                 isSaving
@@ -770,6 +775,7 @@ private struct MetadataSettingsView: View {
             Button("Retry Metadata Settings") {
                 Task { await settingsModel.refresh() }
             }
+            .scholiumActivationPointer()
             .disabled(settingsModel.isRefreshing)
         }
         .padding(ScholiumMetrics.Settings.editorContentInset)
@@ -814,6 +820,7 @@ private struct MetadataSettingsView: View {
                 Button("Reload Saved Settings") {
                     Task { await reloadSavedSettings() }
                 }
+                .scholiumActivationPointer()
                 if let errorMessage {
                     Text(errorMessage)
                         .font(ScholiumTypography.interface(.small))
@@ -870,6 +877,7 @@ private struct MetadataSettingsView: View {
                             Text(displayName(for: kind)).tag(kind)
                         }
                     }
+                    .scholiumActivationPointer()
                     .pickerStyle(.menu)
                     .accessibilityIdentifier("scholium.metadataSettings.valueType")
                     if newFieldKind == .choice {
@@ -890,8 +898,10 @@ private struct MetadataSettingsView: View {
                     }
                     HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                         Button("Cancel") { cancelAddingField() }
+                            .scholiumActivationPointer()
                             .keyboardShortcut(.escape)
                         Button("Add Field") { addFieldDefinition() }
+                            .scholiumActivationPointer()
                             .buttonStyle(.borderedProminent)
                             .disabled(newFieldValidationMessage != nil)
                             .accessibilityIdentifier("scholium.metadataSettings.commitField")
@@ -902,6 +912,7 @@ private struct MetadataSettingsView: View {
                 Button("Add Field…") {
                     isAddingField = true
                 }
+                .scholiumActivationPointer()
                 .accessibilityIdentifier("scholium.metadataSettings.addField")
             }
         }
@@ -951,11 +962,13 @@ private struct MetadataSettingsView: View {
                         Button("Move Up") {
                             moveChoice(choice, in: definition.key, by: -1)
                         }
+                        .scholiumActivationPointer()
                         .disabled(!canMoveChoice(choice, in: definition.key, by: -1))
                         .accessibilityLabel("Move \(choice) up")
                         Button("Move Down") {
                             moveChoice(choice, in: definition.key, by: 1)
                         }
+                        .scholiumActivationPointer()
                         .disabled(!canMoveChoice(choice, in: definition.key, by: 1))
                         .accessibilityLabel("Move \(choice) down")
                     }
@@ -968,6 +981,7 @@ private struct MetadataSettingsView: View {
                     .textFieldStyle(.roundedBorder)
                     .accessibilityLabel("New controlled choice for \(definition.key)")
                     Button("Add Choice") { appendChoice(to: definition.key) }
+                        .scholiumActivationPointer()
                         .disabled(!canAppendChoice(to: definition.key))
                 }
             }
@@ -980,11 +994,13 @@ private struct MetadataSettingsView: View {
                 Button("Move Up") {
                     moveField(definition.key, by: -1)
                 }
+                .scholiumActivationPointer()
                 .disabled(!canMoveField(definition.key, by: -1))
                 .accessibilityLabel("Move \(definition.label) up")
                 Button("Move Down") {
                     moveField(definition.key, by: 1)
                 }
+                .scholiumActivationPointer()
                 .disabled(!canMoveField(definition.key, by: 1))
                 .accessibilityLabel("Move \(definition.label) down")
                 Button(definition.lifecycle == .active ? "Archive Field" : "Restore Field") {
@@ -993,6 +1009,7 @@ private struct MetadataSettingsView: View {
                         for: definition.key
                     )
                 }
+                .scholiumActivationPointer()
                 .accessibilityHint(
                     definition.lifecycle == .active
                         ? "Stops offering this field for new values without deleting stored values."
@@ -1196,6 +1213,7 @@ private struct MetadataSettingsView: View {
                                         Image(systemName: "chevron.up")
                                             .scholiumForeground(.secondaryText)
                                     }
+                                    .scholiumActivationPointer()
                                     .buttonStyle(.borderless)
                                     .disabled(index == 0)
                                     .help("Move \(displayName(for: key)) up")
@@ -1207,6 +1225,7 @@ private struct MetadataSettingsView: View {
                                         Image(systemName: "chevron.down")
                                             .scholiumForeground(.secondaryText)
                                     }
+                                    .scholiumActivationPointer()
                                     .buttonStyle(.borderless)
                                     .disabled(index == group.keys.count - 1)
                                     .help("Move \(displayName(for: key)) down")
@@ -1218,6 +1237,7 @@ private struct MetadataSettingsView: View {
                                         Image(systemName: "minus.circle")
                                             .scholiumForeground(.secondaryText)
                                     }
+                                    .scholiumActivationPointer()
                                     .buttonStyle(.borderless)
                                     .help("Show \(displayName(for: key)) only when it has a value")
                                     .accessibilityLabel("Show \(displayName(for: key)) only when it has a value")
@@ -1240,11 +1260,13 @@ private struct MetadataSettingsView: View {
                                             $0.setVisible(true, field: key)
                                         }
                                     }
+                                    .scholiumActivationPointer()
                                 }
                             }
                         }
                     }
                 }
+                .scholiumActivationPointer()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
@@ -1261,14 +1283,17 @@ private struct MetadataSettingsView: View {
                 configuration.visibleFields = defaults.visibleFields
                 aboutConfigurations[selectedSlot] = configuration
             }
+            .scholiumActivationPointer()
         }
     }
 
     private var revertAndSaveActions: some View {
         HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Button("Revert to Saved") { revertToSaved() }
+                .scholiumActivationPointer()
                 .disabled(!isDirty)
             Button("Save Metadata Settings") { save() }
+                .scholiumActivationPointer()
                 .buttonStyle(.borderedProminent)
                     .disabled(
                         isSaving || !isDirty || validationMessage != nil
@@ -1293,6 +1318,7 @@ private struct MetadataSettingsView: View {
                 Button("Review Invalid Setting") {
                     reveal(diagnostic)
                 }
+                .scholiumActivationPointer()
             }
         }
     }
@@ -1612,7 +1638,9 @@ struct ZoteroSettingsView: View {
         Button("Open Zotero") {
             Task { await settingsModel.openZotero() }
         }
+        .scholiumActivationPointer()
         Button("Check Connection") { refresh() }
+            .scholiumActivationPointer()
             .disabled(isTesting)
         Button("Clear History", role: .destructive) {
             Task {
@@ -1620,6 +1648,7 @@ struct ZoteroSettingsView: View {
                 info = await settingsModel.zoteroConnectionInfo()
             }
         }
+        .scholiumActivationPointer()
         .accessibilityLabel("Clear Connection History")
     }
 
@@ -1743,6 +1772,7 @@ struct WorkspaceSettingsView: View {
                 .tag(Optional(assignment.id))
             }
         }
+        .scholiumActivationPointer()
         .frame(maxWidth: 360)
         .disabled(settingsModel.registeredTriptychs.isEmpty)
         .accessibilityIdentifier("scholium.settings.triptychScope")
@@ -1757,6 +1787,7 @@ struct WorkspaceSettingsView: View {
                 value: TriptychWindowRoute(triptychID: selectedTriptychID)
             )
         }
+        .scholiumActivationPointer()
         .disabled(selectedTriptychID == nil)
 
         Button("New Triptych…") {
@@ -1765,6 +1796,7 @@ struct WorkspaceSettingsView: View {
                 value: BootstrapWindowRoute(purpose: .newTriptych)
             )
         }
+        .scholiumActivationPointer()
     }
 
 }
@@ -1831,6 +1863,7 @@ private struct AppearanceSettingsView: View {
                         advancedCSSContent
                             .padding(.top, ScholiumGrid.Spacing.inlineControlGap)
                     }
+                    .scholiumActivationPointer()
                 }
                 .padding(ScholiumGrid.Spacing.regionContentInset)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -1867,19 +1900,23 @@ private struct AppearanceSettingsView: View {
         .alert("Rename Appearance", isPresented: $showRename) {
             TextField("Configuration name", text: $nameDraft)
             Button("Cancel", role: .cancel) {}
+            .scholiumActivationPointer()
             Button("Rename") {
                 guard let id = store.selectedAppearanceProfileID else { return }
                 store.renameAppearance(id, to: nameDraft)
                 draft?.name = nameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
             }
+            .scholiumActivationPointer()
             .disabled(nameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .alert("Delete Appearance?", isPresented: $showDeleteConfirmation) {
             Button("Cancel", role: .cancel) {}
+            .scholiumActivationPointer()
             Button("Delete", role: .destructive) {
                 guard let id = store.selectedAppearanceProfileID else { return }
                 store.removeAppearance(id)
             }
+            .scholiumActivationPointer()
         } message: {
             Text("This removes the selected configuration from this Mac. Research documents are not changed.")
         }
@@ -1891,7 +1928,9 @@ private struct AppearanceSettingsView: View {
             Button("Restore Defaults", role: .destructive) {
                 draft?.settings = DocumentAppearanceSettings.defaultSettings
             }
+            .scholiumActivationPointer()
             Button("Cancel", role: .cancel) {}
+            .scholiumActivationPointer()
         } message: {
             Text("This replaces the current draft with Scholium’s built-in document appearance. Choose Save to keep it.")
         }
@@ -1905,9 +1944,11 @@ private struct AppearanceSettingsView: View {
                 pendingProfileSelection = nil
                 selectProfile(id)
             }
+            .scholiumActivationPointer()
             Button("Cancel", role: .cancel) {
                 pendingProfileSelection = nil
             }
+            .scholiumActivationPointer()
         } message: {
             Text("The selected appearance has unsaved changes. Switching configurations will discard them.")
         }
@@ -1939,6 +1980,7 @@ private struct AppearanceSettingsView: View {
                     guard let draft else { return }
                     store.updateAppearance(draft)
                 }
+                .scholiumActivationPointer()
                 .buttonStyle(.borderedProminent)
                 .disabled(!hasUnsavedChanges || !store.canModify)
                 .accessibilityLabel("Save Appearance")
@@ -1946,6 +1988,7 @@ private struct AppearanceSettingsView: View {
                 Button("Revert to Saved") {
                     loadSelectedDraft()
                 }
+                .scholiumActivationPointer()
                 .disabled(!hasUnsavedChanges)
 
                 appearanceManagementMenu
@@ -1987,6 +2030,7 @@ private struct AppearanceSettingsView: View {
 
             HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Button("Import CSS Snippet…") { importSnippet() }
+                    .scholiumActivationPointer()
                     .disabled(!store.canModify)
 
                 Menu {
@@ -1995,11 +2039,14 @@ private struct AppearanceSettingsView: View {
                     } label: {
                         Label("Reveal Styles in Finder", systemImage: "folder")
                     }
+                    .scholiumActivationPointer()
                     Button("Disable All Snippets") { store.disableAll() }
+                        .scholiumActivationPointer()
                         .disabled(store.enabledCount == 0 || !store.canModify)
                 } label: {
                     Label("More", systemImage: "ellipsis.circle")
                 }
+                .scholiumActivationPointer()
                 .menuStyle(.borderlessButton)
                 .fixedSize()
             }
@@ -2012,6 +2059,7 @@ private struct AppearanceSettingsView: View {
                 Text(profile.name).tag(Optional(profile.id))
             }
         }
+        .scholiumActivationPointer()
         .labelsHidden()
         .frame(width: ScholiumMetrics.Settings.appearancePickerWidth)
     }
@@ -2019,25 +2067,31 @@ private struct AppearanceSettingsView: View {
     private var appearanceManagementMenu: some View {
         Menu {
             Button("New Appearance") { store.createAppearance() }
+            .scholiumActivationPointer()
             Button("Duplicate Appearance") {
                 guard let id = store.selectedAppearanceProfileID else { return }
                 store.duplicateAppearance(id)
             }
+            .scholiumActivationPointer()
             .disabled(store.selectedAppearanceProfileID == nil)
             Button("Rename Appearance…") { beginRename() }
+                .scholiumActivationPointer()
                 .disabled(store.selectedAppearanceProfileID == nil)
             Button("Restore Default Appearance…") {
                 showRestoreDefaultConfirmation = true
             }
+            .scholiumActivationPointer()
             .disabled(store.selectedAppearanceProfileID == nil)
             Divider()
             Button("Delete Appearance…", role: .destructive) {
                 showDeleteConfirmation = true
             }
+            .scholiumActivationPointer()
             .disabled(store.appearanceProfiles.count <= 1)
         } label: {
             Label("Manage", systemImage: "ellipsis.circle")
         }
+        .scholiumActivationPointer()
         .menuStyle(.borderlessButton)
         .fixedSize()
         .accessibilityIdentifier("scholium.appearance.manage")
@@ -2131,6 +2185,7 @@ private struct AppearanceProfileEditor: View {
                         Text(family.label).tag(family)
                     }
                 }
+                .scholiumActivationPointer()
                 AppearanceDoubleControl("Font size", value: $profile.settings.body.fontSizePoints, range: 9...24, step: 0.5, suffix: "pt")
                 AppearanceDoubleControl("Line spacing", value: $profile.settings.body.lineHeight, range: 1.2...2.4, step: 0.05, suffix: "×")
             }
@@ -2161,13 +2216,17 @@ private struct AppearanceProfileEditor: View {
                                 Text(alignment.label).tag(alignment)
                             }
                         }
+                        .scholiumActivationPointer()
                         Picker("Hyphenation", selection: $profile.settings.body.hyphenation) {
                             ForEach(DocumentHyphenation.allCases, id: \.self) { hyphenation in
                                 Text(hyphenation.label).tag(hyphenation)
                             }
                         }
+                        .scholiumActivationPointer()
                         Toggle("Kerning", isOn: $profile.settings.body.kerning)
+                        .scholiumActivationPointer()
                         Toggle("Common ligatures", isOn: $profile.settings.body.ligatures)
+                        .scholiumActivationPointer()
                     }
 
                     Divider()
@@ -2178,11 +2237,13 @@ private struct AppearanceProfileEditor: View {
                                 Text(family.label).tag(family)
                             }
                         }
+                        .scholiumActivationPointer()
                         Picker("Style", selection: $profile.settings.headings.style) {
                             ForEach(DocumentHeadingStyle.allCases, id: \.self) { style in
                                 Text(style.label).tag(style)
                             }
                         }
+                        .scholiumActivationPointer()
                         AppearanceWeightPicker("Weight", weight: $profile.settings.headings.weight)
                         AppearanceDoubleControl("Line spacing", value: $profile.settings.headings.lineHeight, range: 1...2.4, step: 0.05, suffix: "×")
                         AppearanceDoubleControl("Letter spacing", value: $profile.settings.headings.letterSpacingEm, range: -0.05...0.1, step: 0.005, suffix: "em", precision: 3)
@@ -2190,9 +2251,11 @@ private struct AppearanceProfileEditor: View {
                         DisclosureGroup("First-level heading (H1)") {
                             HeadingLevelAppearanceEditor(level: $profile.settings.headings.level1)
                         }
+                        .scholiumActivationPointer()
                         DisclosureGroup("Lower headings (H2–H6)") {
                             HeadingLevelAppearanceEditor(level: $profile.settings.headings.level2)
                         }
+                        .scholiumActivationPointer()
                     }
 
                     Divider()
@@ -2207,6 +2270,7 @@ private struct AppearanceProfileEditor: View {
                                 DisclosureGroup(role.label) {
                                     CalloutAppearanceEditor(callout: $profile.settings.callouts[index])
                                 }
+                                .scholiumActivationPointer()
                             }
                         }
                     }
@@ -2228,6 +2292,7 @@ private struct HeadingLevelAppearanceEditor: View {
                 Text(alignment.label).tag(alignment)
             }
         }
+        .scholiumActivationPointer()
         AppearanceDoubleControl("Space before", value: $level.spaceBeforeEm, range: 0...4, step: 0.1, suffix: "em")
         AppearanceDoubleControl("Space after", value: $level.spaceAfterEm, range: 0...4, step: 0.1, suffix: "em")
     }
@@ -2429,6 +2494,7 @@ private struct AppearanceWeightPicker: View {
             Text("Semibold, 600").tag(600)
             Text("Bold, 700").tag(700)
         }
+        .scholiumActivationPointer()
     }
 }
 
@@ -2530,6 +2596,7 @@ private struct CSSSnippetRow: View {
                     }
                 }
             }
+            .scholiumActivationPointer()
             .toggleStyle(.checkbox)
 
             Spacer(minLength: ScholiumMetrics.Settings.rowActionMinimumSpacing)
@@ -2537,12 +2604,14 @@ private struct CSSSnippetRow: View {
             Button { store.move(snippet.id, by: -1) } label: {
                 Label("Move Earlier", systemImage: "chevron.up")
             }
+            .scholiumActivationPointer()
             .labelStyle(.iconOnly)
             .help("Move Earlier")
 
             Button { store.move(snippet.id, by: 1) } label: {
                 Label("Move Later", systemImage: "chevron.down")
             }
+            .scholiumActivationPointer()
             .labelStyle(.iconOnly)
             .help("Move Later")
 
@@ -2551,14 +2620,20 @@ private struct CSSSnippetRow: View {
                     nameDraft = snippet.name
                     showRename = true
                 }
+                .scholiumActivationPointer()
                 Button("Duplicate") { store.duplicate(snippet.id) }
+                .scholiumActivationPointer()
                 Button("Edit Managed Copy") { store.editManagedCopy(snippet.id) }
+                .scholiumActivationPointer()
                 Button("Reload from Disk") { store.reload(snippet.id) }
+                .scholiumActivationPointer()
                 Divider()
                 Button("Remove Snippet", role: .destructive) { store.remove(snippet.id) }
+                .scholiumActivationPointer()
             } label: {
                 Label("Snippet Actions", systemImage: "ellipsis.circle")
             }
+            .scholiumActivationPointer()
             .labelStyle(.iconOnly)
             .menuStyle(.borderlessButton)
         }
@@ -2566,7 +2641,9 @@ private struct CSSSnippetRow: View {
         .alert("Rename CSS Snippet", isPresented: $showRename) {
             TextField("Snippet name", text: $nameDraft)
             Button("Cancel", role: .cancel) {}
+            .scholiumActivationPointer()
             Button("Rename") { store.rename(snippet.id, to: nameDraft) }
+            .scholiumActivationPointer()
         }
     }
 }
@@ -2683,10 +2760,12 @@ private struct WorkspacePathEditor: View {
             HStack {
                 if showsCancel {
                     Button("Cancel") { onCancel?() }
+                        .scholiumActivationPointer()
                         .keyboardShortcut(.cancelAction)
                 }
                 Spacer()
                 Button(completionTitle) { save() }
+                    .scholiumActivationPointer()
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canSave || isSaving)
@@ -2829,6 +2908,7 @@ struct PortableControlFolderRow: View {
                 Button(containerURL == nil ? "Authorize…" : "Authorize Again…") {
                     authorizeFolder()
                 }
+                .scholiumActivationPointer()
                 .disabled(worksURL == nil)
                 .accessibilityLabel("Authorize folder containing Works")
             }
@@ -2920,6 +3000,7 @@ struct WorkspaceFolderRow: View {
                 Button(url == nil ? "Choose…" : "Change…") {
                     chooseFolder()
                 }
+                .scholiumActivationPointer()
                 .accessibilityLabel("Choose \(title) folder")
             }
             if let selectionError {

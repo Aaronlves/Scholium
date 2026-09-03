@@ -233,6 +233,7 @@ struct ExactSourceComparisonView: View {
                 }
                 .padding(.top, ScholiumGrid.Spacing.inlineControlGap)
             }
+            .scholiumActivationPointer()
             .font(ScholiumTypography.interface(.compact))
         }
         .padding(ScholiumGrid.Spacing.nestedContentInset)
@@ -328,6 +329,7 @@ struct ExactSourceComparisonView: View {
             .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
             .contentShape(Rectangle())
         }
+        .scholiumActivationPointer()
         .buttonStyle(.plain)
         .scholiumForeground(.secondaryText)
         .accessibilityHint("Shows the folded unchanged lines")

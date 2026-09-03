@@ -1018,6 +1018,7 @@ private struct ScholiumNewWindowCommandContent: View {
                 value: TriptychWindowRoute(triptychID: appState?.workspaceAssignment?.id)
             )
         }
+        .scholiumActivationPointer()
         .keyboardShortcut("n", modifiers: [.command])
         .disabled(!storageReady)
     }
@@ -1036,6 +1037,7 @@ private struct ScholiumAfterNewItemCommandContent: View {
                 value: BootstrapWindowRoute(purpose: .newTriptych)
             )
         }
+        .scholiumActivationPointer()
         .disabled(!storageReady)
         Menu("Open Triptych") {
             ForEach(appState?.registeredTriptychs ?? []) { assignment in
@@ -1045,13 +1047,16 @@ private struct ScholiumAfterNewItemCommandContent: View {
                         value: TriptychWindowRoute(triptychID: assignment.id)
                     )
                 }
+                .scholiumActivationPointer()
             }
         }
+        .scholiumActivationPointer()
         .disabled(appState?.registeredTriptychs.isEmpty != false)
         Divider()
         Button("New Note") {
             appState?.libraryMutationController.requestUntitledNoteCreation(in: nil)
         }
+            .scholiumActivationPointer()
             .keyboardShortcut("n", modifiers: [.command, .shift])
             .disabled(
                 appState?.workspaceAssignment == nil
@@ -1059,6 +1064,7 @@ private struct ScholiumAfterNewItemCommandContent: View {
                     || appState?.libraryMutationController.isCreatingNote == true
             )
         Button("Import Markdown…") { appState?.showMarkdownImporter = true }
+            .scholiumActivationPointer()
             .disabled(appState?.workspaceAssignment == nil)
         Divider()
         Button("Duplicate Note…") {
@@ -1066,22 +1072,26 @@ private struct ScholiumAfterNewItemCommandContent: View {
                   let target = NoteMutationTarget(note) else { return }
             appState?.noteFileRequest = .duplicate(target)
         }
+        .scholiumActivationPointer()
         .disabled(appState?.currentDocumentCapabilities.allows(.duplicate) != true)
         Button("Rename Note…") {
             guard let note = appState?.currentNote,
                   let target = NoteMutationTarget(note) else { return }
             appState?.noteFileRequest = .rename(target)
         }
+        .scholiumActivationPointer()
         .disabled(appState?.currentDocumentCapabilities.allows(.move) != true)
         Button("Move Note…") {
             guard let note = appState?.currentNote,
                   let target = NoteMutationTarget(note) else { return }
             appState?.noteFileRequest = .move(target)
         }
+        .scholiumActivationPointer()
         .disabled(appState?.currentDocumentCapabilities.allows(.move) != true)
         Button("Move to Trash…") {
             appState?.requestCurrentNoteSystemTrash()
         }
+        .scholiumActivationPointer()
         .keyboardShortcut(.delete, modifiers: [.command])
         .disabled(
             appState?.currentDocumentCapabilities.allows(.moveToSystemTrash)
@@ -1089,13 +1099,16 @@ private struct ScholiumAfterNewItemCommandContent: View {
         )
         Divider()
         Button("Attach a Copy…") { editorActions?.attachDocumentCopy() }
+            .scholiumActivationPointer()
             .disabled(editorActions?.canAttachDocument != true)
         Button("Reference Original…") {
             editorActions?.referenceOriginalDocument()
         }
+        .scholiumActivationPointer()
         .disabled(editorActions?.canAttachDocument != true)
         Divider()
         Button("Reveal Current Vault in Finder") { appState?.revealVaultInFinder() }
+            .scholiumActivationPointer()
             .disabled(appState?.vaultConfig == nil)
     }
 
@@ -1123,32 +1136,41 @@ private struct ScholiumPasteboardCommandContent: View {
             guard let payload = markdownPasteboardPayload() else { return }
             editorActions?.performWithArgument(.pasteMarkdown, payload)
         }
+        .scholiumActivationPointer()
         .keyboardShortcut("v", modifiers: [.command, .shift])
         .disabled(editorActions?.isAvailable(.pasteMarkdown) != true)
         Divider()
         Menu("Find") {
             Button("Find…") { editorActions?.presentFind() }
+                .scholiumActivationPointer()
                 .keyboardShortcut("f", modifiers: [.command])
                 .disabled(editorActions == nil)
             Button("Find and Replace…") { editorActions?.presentFind() }
+                .scholiumActivationPointer()
                 .disabled(editorActions?.allowsReplace != true)
             Divider()
             Button("Find Next") { editorActions?.findNext() }
+                .scholiumActivationPointer()
                 .keyboardShortcut("g", modifiers: [.command])
                 .disabled(editorActions == nil)
             Button("Find Previous") { editorActions?.findPrevious() }
+                .scholiumActivationPointer()
                 .keyboardShortcut("g", modifiers: [.command, .shift])
                 .disabled(editorActions == nil)
             Button("Use Selection for Find") { editorActions?.useSelectionForFind() }
+                .scholiumActivationPointer()
                 .keyboardShortcut("e", modifiers: [.command])
                 .disabled(editorActions == nil)
         }
+        .scholiumActivationPointer()
         .disabled(appState?.currentNote == nil)
         Button("Document Statistics") {
             editorActions?.announceDocumentStatistics()
         }
+        .scholiumActivationPointer()
         .disabled(editorActions == nil || appState?.currentNote == nil)
         Button("Edit Metadata…") { appState?.showMetadataEditor = true }
+            .scholiumActivationPointer()
             .disabled(appState?.canEditCurrentNote != true)
     }
 
@@ -1173,69 +1195,97 @@ private struct ScholiumTextFormattingCommandContent: View {
     var body: some View {
         Divider()
         Button("Bold") { editorActions?.perform(.bold) }
+            .scholiumActivationPointer()
             .keyboardShortcut("b", modifiers: [.command])
             .disabled(editorActions?.isAvailable(.bold) != true)
         Button("Italic") { editorActions?.perform(.emphasis) }
+            .scholiumActivationPointer()
             .keyboardShortcut("i", modifiers: [.command])
             .disabled(editorActions?.isAvailable(.emphasis) != true)
         Button("Strikethrough") { editorActions?.perform(.strikethrough) }
+            .scholiumActivationPointer()
             .disabled(editorActions?.isAvailable(.strikethrough) != true)
         Button("Highlight") { editorActions?.perform(.highlight) }
+            .scholiumActivationPointer()
             .disabled(editorActions?.isAvailable(.highlight) != true)
         Button("Inline Code") { editorActions?.perform(.inlineCode) }
+            .scholiumActivationPointer()
             .disabled(editorActions?.isAvailable(.inlineCode) != true)
         Button("Import Image…") { editorActions?.importImage() }
+            .scholiumActivationPointer()
             .disabled(editorActions?.isAvailable(.insertImage) != true)
         Button("Index Image…") { editorActions?.indexImage() }
+            .scholiumActivationPointer()
             .disabled(editorActions?.isAvailable(.insertImage) != true)
         Divider()
         Menu("Heading") {
             Button("Paragraph") { editorActions?.perform(.paragraph) }
+                .scholiumActivationPointer()
                 .disabled(editorActions?.isAvailable(.paragraph) != true)
             ForEach(1...6, id: \.self) { level in
                 Button("Heading \(level)") {
                     editorActions?.perform(headingCommand(level))
                 }
+                .scholiumActivationPointer()
                 .disabled(editorActions?.isAvailable(headingCommand(level)) != true)
             }
         }
+        .scholiumActivationPointer()
         Menu("Lists") {
             Button("Bulleted List") { editorActions?.perform(.bulletList) }
+                .scholiumActivationPointer()
                 .disabled(editorActions?.isAvailable(.bulletList) != true)
             Button("Numbered List") { editorActions?.perform(.numberedList) }
+                .scholiumActivationPointer()
                 .disabled(editorActions?.isAvailable(.numberedList) != true)
             Button("Task List") { editorActions?.perform(.taskList) }
+                .scholiumActivationPointer()
                 .disabled(editorActions?.isAvailable(.taskList) != true)
             Button("Toggle Task") { editorActions?.perform(.toggleTask) }
+                .scholiumActivationPointer()
                 .disabled(editorActions?.isAvailable(.toggleTask) != true)
         }
+        .scholiumActivationPointer()
         Menu("Table") {
             Button("Insert Row Before") { editorActions?.perform(.tableInsertRowBefore) }
+                .scholiumActivationPointer()
                 .disabled(editorActions?.isAvailable(.tableInsertRowBefore) != true)
             Button("Insert Row After") { editorActions?.perform(.tableInsertRowAfter) }
+                .scholiumActivationPointer()
                 .disabled(editorActions?.isAvailable(.tableInsertRowAfter) != true)
             Button("Delete Row") { editorActions?.perform(.tableDeleteRow) }
+                .scholiumActivationPointer()
                 .disabled(editorActions?.isAvailable(.tableDeleteRow) != true)
             Divider()
             Button("Insert Column Before") { editorActions?.perform(.tableInsertColumnBefore) }
+                .scholiumActivationPointer()
                 .disabled(editorActions?.isAvailable(.tableInsertColumnBefore) != true)
             Button("Insert Column After") { editorActions?.perform(.tableInsertColumnAfter) }
+                .scholiumActivationPointer()
                 .disabled(editorActions?.isAvailable(.tableInsertColumnAfter) != true)
             Button("Delete Column") { editorActions?.perform(.tableDeleteColumn) }
+                .scholiumActivationPointer()
                 .disabled(editorActions?.isAvailable(.tableDeleteColumn) != true)
             Divider()
             Button("Align Left") { editorActions?.perform(.tableAlignLeft) }
+                .scholiumActivationPointer()
                 .disabled(editorActions?.isAvailable(.tableAlignLeft) != true)
             Button("Align Center") { editorActions?.perform(.tableAlignCenter) }
+                .scholiumActivationPointer()
                 .disabled(editorActions?.isAvailable(.tableAlignCenter) != true)
             Button("Align Right") { editorActions?.perform(.tableAlignRight) }
+                .scholiumActivationPointer()
                 .disabled(editorActions?.isAvailable(.tableAlignRight) != true)
         }
+        .scholiumActivationPointer()
         Button("Block Quotation") { editorActions?.perform(.blockQuotation) }
+            .scholiumActivationPointer()
             .disabled(editorActions?.isAvailable(.blockQuotation) != true)
         Button("Fenced Code") { editorActions?.perform(.fencedCode) }
+            .scholiumActivationPointer()
             .disabled(editorActions?.isAvailable(.fencedCode) != true)
         Button("Markdown Comment") { editorActions?.perform(.markdownComment) }
+            .scholiumActivationPointer()
             .disabled(editorActions?.isAvailable(.markdownComment) != true)
     }
 
@@ -1258,44 +1308,61 @@ private struct ScholiumInsertCommandContent: View {
 
     var body: some View {
         Button("Import Image…") { editorActions?.importImage() }
+            .scholiumActivationPointer()
             .disabled(editorActions?.isAvailable(.insertImage) != true)
         Button("Index Image…") { editorActions?.indexImage() }
+            .scholiumActivationPointer()
             .disabled(editorActions?.isAvailable(.insertImage) != true)
         Divider()
         Button("Link") { editorActions?.perform(.standardLink) }
+            .scholiumActivationPointer()
             .keyboardShortcut("k", modifiers: [.command])
             .disabled(editorActions?.isAvailable(.standardLink) != true)
         Button("Wikilink") { editorActions?.perform(.wikilink) }
+            .scholiumActivationPointer()
             .disabled(editorActions?.isAvailable(.wikilink) != true)
         Button("Annotated Wikilink") { editorActions?.perform(.annotatedWikilink) }
+            .scholiumActivationPointer()
             .disabled(editorActions?.isAvailable(.annotatedWikilink) != true)
         Divider()
         Button("Footnote") { editorActions?.perform(.insertFootnote) }
+            .scholiumActivationPointer()
             .scholiumKeyboardShortcut(shortcut(for: .insertFootnote))
             .disabled(editorActions?.isAvailable(.insertFootnote) != true)
         Button("Inline Footnote") { editorActions?.perform(.insertInlineFootnote) }
+            .scholiumActivationPointer()
             .scholiumKeyboardShortcut(shortcut(for: .insertInlineFootnote))
             .disabled(editorActions?.isAvailable(.insertInlineFootnote) != true)
         Button("Table") { editorActions?.perform(.insertTable) }
+            .scholiumActivationPointer()
             .disabled(editorActions?.isAvailable(.insertTable) != true)
         Button("Thematic Break") { editorActions?.perform(.thematicBreak) }
+            .scholiumActivationPointer()
             .disabled(editorActions?.isAvailable(.thematicBreak) != true)
         Menu("Callout") {
             Button("Orientation") { editorActions?.perform(.calloutOrient) }
+                .scholiumActivationPointer()
                 .disabled(editorActions?.isAvailable(.calloutOrient) != true)
             Button("Source") { editorActions?.perform(.calloutCite) }
+                .scholiumActivationPointer()
                 .disabled(editorActions?.isAvailable(.calloutCite) != true)
             Button("Connections") { editorActions?.perform(.calloutConnect) }
+                .scholiumActivationPointer()
                 .disabled(editorActions?.isAvailable(.calloutConnect) != true)
             Button("Statement") { editorActions?.perform(.calloutState) }
+                .scholiumActivationPointer()
                 .disabled(editorActions?.isAvailable(.calloutState) != true)
             Button("Illustration") { editorActions?.perform(.calloutIllustrate) }
+                .scholiumActivationPointer()
                 .disabled(editorActions?.isAvailable(.calloutIllustrate) != true)
             Button("Quotation") { editorActions?.perform(.calloutQuote) }
+                .scholiumActivationPointer()
                 .disabled(editorActions?.isAvailable(.calloutQuote) != true)
             Button("Caution") { editorActions?.perform(.calloutFlag) }
+                .scholiumActivationPointer()
                 .disabled(editorActions?.isAvailable(.calloutFlag) != true)
         }
+        .scholiumActivationPointer()
     }
 
     private func shortcut(for command: ScholiumHotkeyCommand) -> ScholiumHotkeyBinding? {
@@ -1318,10 +1385,12 @@ private struct ScholiumSidebarCommandContent: View {
         Button("Back") {
             appState?.navigateDocumentHistory(.back)
         }
+        .scholiumActivationPointer()
         .disabled(appState?.documentNavigationHistoryController.canGoBack != true)
         Button("Forward") {
             appState?.navigateDocumentHistory(.forward)
         }
+        .scholiumActivationPointer()
         .disabled(appState?.documentNavigationHistoryController.canGoForward != true)
         Divider()
         Button(
@@ -1332,22 +1401,26 @@ private struct ScholiumSidebarCommandContent: View {
             guard let appState else { return }
             workspaceWindowActions?.setLibraryVisible(!appState.sidebarVisible)
         }
+        .scholiumActivationPointer()
         .scholiumKeyboardShortcut(shortcut(for: .toggleLibrary))
         .disabled(workspaceWindowActions == nil)
         Divider()
         Button("Search…") {
             searchActions?.begin(.general)
         }
+        .scholiumActivationPointer()
         .scholiumKeyboardShortcut(shortcut(for: .searchResearch))
         .disabled(searchActions == nil)
         Button("Research Records…") {
             workspaceWindowActions?.showResearchRecords()
         }
+        .scholiumActivationPointer()
         .disabled(workspaceWindowActions == nil)
         Menu("Heading Outline") {
             let headings = appState?.currentNote?.workspaceSnapshot?.headings ?? []
             if headings.isEmpty {
                 Button("No Headings") {}
+                    .scholiumActivationPointer()
                     .disabled(true)
             } else {
                 ForEach(headings.indices, id: \.self) { index in
@@ -1362,9 +1435,11 @@ private struct ScholiumSidebarCommandContent: View {
                             ) + heading.text
                         )
                     }
+                    .scholiumActivationPointer()
                 }
             }
         }
+        .scholiumActivationPointer()
         .disabled(appState?.currentNote == nil)
         Button(
             ScholiumL10n.dynamicString(
@@ -1378,6 +1453,7 @@ private struct ScholiumSidebarCommandContent: View {
                 !appState.researchInspectorVisible
             )
         }
+        .scholiumActivationPointer()
         .scholiumKeyboardShortcut(shortcut(for: .toggleResearchInspector))
         .disabled(
             workspaceWindowActions == nil
@@ -1387,25 +1463,32 @@ private struct ScholiumSidebarCommandContent: View {
         Menu("Document Mode") {
             if appState?.presentedDocumentMode == .read {
                 Button("Review") { appState?.requestDocumentMode(.read) }
+                .scholiumActivationPointer()
                 Button("Edit") { appState?.requestDocumentMode(.livePreview) }
+                    .scholiumActivationPointer()
                     .scholiumKeyboardShortcut(shortcut(for: .toggleReviewEdit))
                     .disabled(appState?.canEditCurrentNote != true)
             } else {
                 Button("Review") { appState?.requestDocumentMode(.read) }
+                    .scholiumActivationPointer()
                     .scholiumKeyboardShortcut(shortcut(for: .toggleReviewEdit))
                 Button("Edit") { appState?.requestDocumentMode(.livePreview) }
+                    .scholiumActivationPointer()
                     .disabled(appState?.canEditCurrentNote != true)
             }
             Button("Source") { appState?.requestDocumentMode(.source) }
+                .scholiumActivationPointer()
                 .scholiumKeyboardShortcut(shortcut(for: .showSource))
                 .disabled(appState?.canEditCurrentNote != true)
         }
+        .scholiumActivationPointer()
         .disabled(appState?.currentNote == nil || editorActions?.isComposing == true)
         Divider()
         Menu("Document Text Size") {
             Button("Increase Text Size") {
                 appState?.adjustDocumentTextScale(by: ScholiumMetrics.Document.textScaleStep)
             }
+                .scholiumActivationPointer()
                 .keyboardShortcut("=", modifiers: [.command])
                 .disabled(
                     appState?.currentNote == nil
@@ -1414,12 +1497,14 @@ private struct ScholiumSidebarCommandContent: View {
             Button("Decrease Text Size") {
                 appState?.adjustDocumentTextScale(by: -ScholiumMetrics.Document.textScaleStep)
             }
+                .scholiumActivationPointer()
                 .keyboardShortcut("-", modifiers: [.command])
                 .disabled(
                     appState?.currentNote == nil
                         || appState?.documentTextScale == ScholiumMetrics.Document.minimumTextScale
                 )
             Button("Actual Size (100%)") { appState?.resetDocumentTextScale() }
+                .scholiumActivationPointer()
                 .keyboardShortcut("0", modifiers: [.command])
                 .disabled(
                     appState?.currentNote == nil
@@ -1427,21 +1512,28 @@ private struct ScholiumSidebarCommandContent: View {
                 )
             Divider()
             Button("150%") { appState?.setDocumentTextScale(1.5) }
+                .scholiumActivationPointer()
                 .disabled(appState?.currentNote == nil || appState?.documentTextScale == 1.5)
             Button("200%") {
                 appState?.setDocumentTextScale(ScholiumMetrics.Document.maximumTextScale)
             }
+                .scholiumActivationPointer()
                 .disabled(
                     appState?.currentNote == nil
                         || appState?.documentTextScale == ScholiumMetrics.Document.maximumTextScale
                 )
         }
+        .scholiumActivationPointer()
         .disabled(appState?.currentNote == nil)
         Menu("Appearance") {
             Button("Use System Appearance") { appState?.colorScheme = .system }
+            .scholiumActivationPointer()
             Button("Light") { appState?.colorScheme = .light }
+            .scholiumActivationPointer()
             Button("Dark") { appState?.colorScheme = .dark }
+            .scholiumActivationPointer()
         }
+        .scholiumActivationPointer()
     }
 
     private func shortcut(for command: ScholiumHotkeyCommand) -> ScholiumHotkeyBinding? {
@@ -1461,6 +1553,7 @@ private struct ScholiumAttentionCommandContent: View {
         Button("Notifications") {
             workspaceWindowActions?.showPreferredAttention()
         }
+        .scholiumActivationPointer()
         .scholiumKeyboardShortcut(shortcut(for: .showAttention))
         .disabled(workspaceWindowActions?.canShowAttention() != true)
     }
@@ -1489,6 +1582,7 @@ private struct ScholiumQACommandContent: View {
                     deliverImmediately: true
                 )
             }
+            .scholiumActivationPointer()
             .keyboardShortcut("w", modifiers: [.command, .option, .control])
             .disabled(editorActions == nil)
         }
@@ -1506,6 +1600,7 @@ private struct ScholiumQACommandContent: View {
                     kind: .warning
                 )
             }
+            .scholiumActivationPointer()
             .disabled(appState == nil)
         }
     }
@@ -2193,6 +2288,7 @@ final class WindowModel: ObservableObject {
         finalizeDependencies: { [weak self] in
             guard let self else { return }
             self.libraryMutationController.unbind()
+            self.researchController.unbind()
             self.zoteroCoordinator.cancelAll()
             self.windowWorkspaceController.cancelAll()
             self.documentTransitionCoordinator.cancelAll()
@@ -3798,6 +3894,7 @@ final class WindowModel: ObservableObject {
             to: ResearchControllerCapabilities(
                 documents: capabilities.documents,
                 research: capabilities.research.research,
+                agentCollaboration: capabilities.agentCollaboration,
                 recoveryRecordsURL: capabilities.research.recoveryRecordsURL
             ),
             snapshot: snapshot
@@ -6074,6 +6171,14 @@ final class WindowModel: ObservableObject {
             openDocuments: documentTabController.allTabs.map(\.document)
         )
         researchController.receive(event.snapshot)
+        switch event {
+        case .sourceCommitted, .inventoryChanged:
+            researchController.scheduleAgentChangesRefresh()
+        case .snapshot, .derivedStateChanged, .researchStateChanged,
+             .researchConfigurationInvalidated, .vaultAccessInvalidated,
+             .runtimeReloaded:
+            break
+        }
         if let commit = workspaceProjectionController.receive(
             event,
             runtimeIdentity: capabilities.runtimeIdentity,

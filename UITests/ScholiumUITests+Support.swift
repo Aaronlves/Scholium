@@ -901,7 +901,8 @@ extension ScholiumUITests {
         let topics = triptychDirectory.appendingPathComponent("02-topics", isDirectory: true)
         let works = triptychDirectory.appendingPathComponent("03-works", isDirectory: true)
         let critiques = works.appendingPathComponent("Critiques", isDirectory: true)
-        for directory in [homeDirectory!, analyses, topics, works, critiques] {
+        let attachments = topics.appendingPathComponent("Attachments", isDirectory: true)
+        for directory in [homeDirectory!, analyses, topics, works, critiques, attachments] {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         }
 

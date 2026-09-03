@@ -428,7 +428,6 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-
         #expect(hostSource.contains("if retainsEditor"))
         #expect(!hostSource.contains("if presentsEditor"))
         #expect(hostSource.contains("allowsPendingReadRecovery"))
@@ -1180,7 +1179,6 @@ struct FrontendArchitectureTests {
             ScholiumWorkspaceToolbarController.Item.libraryDivider,
             ScholiumWorkspaceToolbarController.Item.headingOutline,
             .flexibleSpace,
-            ScholiumWorkspaceToolbarController.Item.search,
             ScholiumWorkspaceToolbarController.Item.documentMode,
             ScholiumWorkspaceToolbarController.Item.researchRecords,
             ScholiumWorkspaceToolbarController.Item.agentChanges,
@@ -1314,7 +1312,6 @@ struct FrontendArchitectureTests {
         let headingIndex = try #require(
             identifiers.firstIndex(of: Item.headingOutline)
         )
-        let searchIndex = try #require(identifiers.firstIndex(of: Item.search))
         let modeIndex = try #require(identifiers.firstIndex(of: Item.documentMode))
         let inspectorIndex = try #require(identifiers.firstIndex(of: Item.inspector))
         let apparatusDividerIndex = try #require(
@@ -1325,8 +1322,7 @@ struct FrontendArchitectureTests {
         #expect(forwardIndex < libraryDividerIndex)
         #expect(libraryDividerIndex < headingIndex)
         #expect(headingIndex < documentFlexibleSpaceIndex)
-        #expect(documentFlexibleSpaceIndex < searchIndex)
-        #expect(searchIndex < modeIndex)
+        #expect(documentFlexibleSpaceIndex < modeIndex)
         #expect(modeIndex < apparatusDividerIndex)
         #expect(apparatusDividerIndex < apparatusFlexibleSpaceIndex)
         #expect(apparatusFlexibleSpaceIndex < inspectorIndex)
@@ -1789,7 +1785,7 @@ struct FrontendArchitectureTests {
             componentsSource.contains(
                 "Text(Image(systemName: \"bell\"))"
             ))
-        #expect(componentsSource.contains("alignment: .firstTextBaseline"))
+        #expect(componentsSource.contains("ZStack(alignment: .topTrailing)"))
         #expect(
             componentsSource.contains(
                 "spacing: ScholiumGrid.Spacing.labelAccessoryGap"
@@ -1858,6 +1854,8 @@ struct FrontendArchitectureTests {
         #expect(componentsSource.contains("case unavailable"))
         #expect(!componentsSource.contains("Circle().fill(controlSurface)"))
         #expect(componentsSource.contains(".scholiumForeground(.attention)"))
+        #expect(componentsSource.contains("Circle()\n                        .fill(ScholiumColorRole.accent.color)"))
+        #expect(!componentsSource.contains("Text(count.formatted())"))
         #expect(componentsSource.contains("scholiumAttentionPopoverIsPresented"))
         #expect(!componentsSource.contains("SidebarTriptychAttentionButtonStyle"))
         #expect(componentsSource.contains("ScholiumContentControlButtonStyle("))
@@ -1870,11 +1868,25 @@ struct FrontendArchitectureTests {
             ))
         #expect(!sidebarSource.contains("attentionHorizontalInset"))
         let brandLabel = try #require(sidebarSource.range(of: "Text(\"Scholium\")"))
+        let sidebarSearch = try #require(
+            sidebarSource.range(
+                of: "identifier: \"scholium.sidebarSearch\"",
+                range: brandLabel.upperBound..<sidebarSource.endIndex
+            )
+        )
+        let notifications = try #require(
+            sidebarSource.range(
+                of: "SidebarTriptychAttentionEntry(",
+                range: sidebarSearch.upperBound..<sidebarSource.endIndex
+            )
+        )
         let triptychMenu = try #require(
             sidebarSource.range(
                 of: "Menu {",
-                range: brandLabel.upperBound..<sidebarSource.endIndex
+                range: notifications.upperBound..<sidebarSource.endIndex
             ))
+        #expect(brandLabel.lowerBound < sidebarSearch.lowerBound)
+        #expect(sidebarSearch.lowerBound < notifications.lowerBound)
         #expect(brandLabel.lowerBound < triptychMenu.lowerBound)
         let sidebarBody = try #require(sidebarSource.range(of: "var body: some View"))
         let sidebarSectionsEnd = try #require(
@@ -2305,6 +2317,12 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
+        let sidebarSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Sidebar/SidebarView.swift"
+            ),
+            encoding: .utf8
+        )
         #expect(content.contains(".scholiumSurface(.navigation)"))
         #expect(content.contains("ScholiumNoDocumentDetailView()"))
         #expect(content.contains("ScholiumContentStateView("))
@@ -2333,11 +2351,11 @@ struct FrontendArchitectureTests {
             ScholiumWorkspaceToolbarController.Item.headingOutline.rawValue
                 == "scholium.toolbar.headingOutline"
         )
-        #expect(
-            ScholiumWorkspaceToolbarController.Item.search.rawValue
-                == "scholium.toolbar.search"
-        )
+        #expect(!toolbar.contains("scholium.toolbar.search"))
+        #expect(sidebarSource.contains("scholium.sidebarSearch"))
         #expect(toolbar.contains("scholium.toolbar.researchRecords"))
+        #expect(toolbar.contains("item.isHidden = !appState.researchController.hasAgentChanges"))
+        #expect(toolbar.contains("appState.researchController.$agentChanges"))
         #expect(!toolbar.contains("showNoteResearchRecords"))
         #expect(!toolbar.contains("showTriptychResearchRecords"))
         #expect(!toolbar.contains("clock.arrow.circlepath"))

@@ -37,6 +37,7 @@ struct FolderFileOperationView: View {
                             Text(path).tag(String?.some(path))
                         }
                     }
+                    .scholiumActivationPointer()
                     .labelsHidden()
                     .frame(minWidth: 300)
                     .accessibilityIdentifier("scholium.folderDestination")
@@ -52,9 +53,11 @@ struct FolderFileOperationView: View {
 
             HStack {
                 Button("Cancel") { dismiss() }
+                    .scholiumActivationPointer()
                     .keyboardShortcut(.cancelAction)
                 Spacer()
                 Button(actionTitle) { perform() }
+                    .scholiumActivationPointer()
                     .buttonStyle(.borderedProminent)
                     .disabled(destinationRelativePath == nil || isWorking)
                     .keyboardShortcut(.defaultAction)
@@ -68,6 +71,7 @@ struct FolderFileOperationView: View {
             set: { if !$0 { errorMessage = nil } }
         )) {
             Button("Dismiss", role: .cancel) { errorMessage = nil }
+            .scholiumActivationPointer()
         } message: {
             Text(errorMessage ?? "")
         }

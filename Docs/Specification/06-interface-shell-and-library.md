@@ -53,6 +53,8 @@ workspace and buffer.
 
 The native toolbar has stable leading Sidebar and Back/Forward controls,
 Document identity/actions in the center, and trailing Inspector control.
+Search and Triptych Notifications sit at the logical trailing edge of the
+Sidebar header beside the Scholium wordmark, not in the native toolbar.
 Back/Forward traverse successful document visits only. The toolbar is stable
 during loading and uses live safe areas. Pane visibility is expressed by the
 actual pane, not duplicate controls or persistent custom selection styling.
@@ -73,8 +75,9 @@ save/conflict buffer and provide Retry. Window-session persistence is
 best-effort only after source safety. Cold launch begins with no document
 selected unless the researcher explicitly opens one.
 
-The Sidebar header shows the Scholium wordmark, Triptych identity, and
-Triptych Notifications. The no-document state contains only a decorative
+The Sidebar header's first row shows the Scholium wordmark followed at its
+logical trailing edge by Search and Triptych Notifications; Triptych identity
+occupies the next row. The no-document state contains only a decorative
 document symbol, **No Document Selected**, and **Select a note in the Library
 to read or edit.** as one read-only accessibility group.
 
@@ -127,6 +130,12 @@ Library provides:
   and empty folders; and
 - explicit empty, loading, stale, and recoverable error states.
 
+The application-owned root `Attachments` directory and everything beneath it
+remain on disk but are excluded from the Library hierarchy. Document
+attachments are reached only through their owning Note's attachment routes;
+this projection rule does not hide a researcher-authored file or nested folder
+that merely uses the same word elsewhere in a path.
+
 Folder and Note rows use one quiet hierarchy. Selection stays visible when
 inactive; hover is weaker than selection. Titles expose full accessibility
 names and pointer help when visually truncated. Folder disclosure, selection,
@@ -145,10 +154,12 @@ cleared, only its ancestors expand, unrelated disclosure and sort remain, and
 Library reveal does not steal editor focus. If editor activation fails after
 source commit, the UI offers Retry Edit/Source without duplicate creation.
 
-Triptych Notifications has one stable Sidebar entry and exact nonzero total.
-It opens the complete Agent Change/Settlement/Attention queue without changing
-the selected workspace or Document. Zero is quiet; nonzero uses Attention
-semantics but not a badge, unread model, animation, or auto-open.
+Triptych Notifications has one stable bell beside Search. It opens the complete
+Agent Change/Settlement/Attention queue without changing the selected workspace
+or Document. Zero is quiet; nonzero adds one small Accent dot at the bell's
+upper trailing corner, without a visible number, unread model, animation, or
+auto-open. Bell shape, dot shape, accessible state, and the popover's exact
+contents preserve meaning without relying on color.
 
 An Agent Change requiring inspection and the current Note's Settlement reminder
 may appear in the top-centered **Activity Notification Stack** over the window

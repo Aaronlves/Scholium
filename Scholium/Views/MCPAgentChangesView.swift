@@ -30,6 +30,7 @@ struct AgentChangesView: View {
             identifier: "scholium.agentChanges"
         ) {
             Button("Close", action: dismiss.callAsFunction)
+                .scholiumActivationPointer()
                 .keyboardShortcut(.cancelAction)
         } content: {
             content
@@ -49,7 +50,9 @@ struct AgentChangesView: View {
                 pendingUndo = nil
                 Task { await undoChange(change) }
             }
+            .scholiumActivationPointer()
             Button("Cancel", role: .cancel) { pendingUndo = nil }
+            .scholiumActivationPointer()
         } message: { _ in
             Text("Undo restores the exact Before version only if the Note still matches this change's After version.")
         }
@@ -94,6 +97,7 @@ struct AgentChangesView: View {
         if let selectedIndex, !changes.isEmpty {
             HStack(spacing: ScholiumMetrics.ResearchSheet.footerControlSpacing) {
                 Button("Previous") { select(selectedIndex - 1) }
+                    .scholiumActivationPointer()
                     .disabled(selectedIndex == 0 || isLoadingReview || undoingID != nil)
                     .keyboardShortcut(.leftArrow, modifiers: [.command])
                     .accessibilityIdentifier("scholium.agentChanges.previous")
@@ -104,6 +108,7 @@ struct AgentChangesView: View {
                     .accessibilityIdentifier("scholium.agentChanges.position")
 
                 Button("Next") { select(selectedIndex + 1) }
+                    .scholiumActivationPointer()
                     .disabled(
                         selectedIndex == changes.count - 1
                             || isLoadingReview || undoingID != nil
@@ -119,6 +124,7 @@ struct AgentChangesView: View {
                         Button(undoingID == review.change.id ? "Undoing…" : "Undo") {
                             pendingUndo = review.change
                         }
+                        .scholiumActivationPointer()
                         .buttonStyle(.bordered)
                         .disabled(!review.isDirectUndoAvailable || undoingID != nil)
                         .accessibilityHint(
@@ -334,6 +340,7 @@ private struct AgentChangeReviewContent: View {
             ScholiumApparatusFactGrid(facts: technicalFacts)
                 .padding(.top, ScholiumGrid.Spacing.inlineControlGap)
         }
+        .scholiumActivationPointer()
         .font(ScholiumTypography.interface(.body))
     }
 

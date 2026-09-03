@@ -208,6 +208,7 @@ private struct ScholiumSegmentButton<Value: Hashable>: View {
                     )
                 )
         }
+        .scholiumActivationPointer()
         .buttonStyle(
             ScholiumSegmentButtonStyle(
                 isSelected: isSelected,
@@ -459,9 +460,8 @@ enum SidebarTriptychAttentionState: Equatable {
 }
 
 /// The stable Triptych-level Notifications entry. Queue derivation and dismissal
-/// remain outside this component; it owns exact aggregate presentation,
-/// interaction feedback, and accessible state grammar without resembling an
-/// inventory badge.
+/// remain outside this component; it owns a quiet bell, a nonnumeric pending
+/// dot, interaction feedback, and the complete accessible state grammar.
 struct SidebarTriptychAttentionEntry: View {
     @Environment(\.locale) private var locale
     @Environment(\.scholiumAttentionPopoverIsPresented) private var isPresented
@@ -473,15 +473,15 @@ struct SidebarTriptychAttentionEntry: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(
-                alignment: .firstTextBaseline,
-                spacing: ScholiumGrid.Spacing.labelAccessoryGap
-            ) {
+            ZStack(alignment: .topTrailing) {
                 if state == .checking {
                     ProgressView()
                         .controlSize(.mini)
                         .accessibilityHidden(true)
-                        .frame(height: ScholiumMetrics.Accessibility.preferredCustomTarget)
+                        .frame(
+                            width: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                            height: ScholiumMetrics.Accessibility.preferredCustomTarget
+                        )
                 } else {
                     Text(Image(systemName: "bell"))
                         .font(ScholiumTypography.interface(.rowTitle))
@@ -489,19 +489,36 @@ struct SidebarTriptychAttentionEntry: View {
                             resting: symbolRestingRole,
                             emphasized: symbolEmphasizedRole
                         )
+                        .frame(
+                            width: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                            height: ScholiumMetrics.Accessibility.preferredCustomTarget
+                        )
                         .accessibilityHidden(true)
                 }
 
-                if case .active(let count) = state {
-                    Text(count.formatted())
-                        .font(ScholiumTypography.interface(.small, emphasis: .medium, tabularDigits: true))
-                        .scholiumForeground(.attention)
+                if case .active = state {
+                    Circle()
+                        .fill(ScholiumColorRole.accent.color)
+                        .frame(
+                            width: ScholiumGrid.foundationUnit * 1.5,
+                            height: ScholiumGrid.foundationUnit * 1.5
+                        )
+                        .overlay {
+                            Circle().stroke(
+                                ScholiumColorRole.navigationSurfaceBackground.color,
+                                lineWidth: 1
+                            )
+                        }
+                        .offset(
+                            x: -ScholiumGrid.Spacing.opticalAlignmentAdjustment,
+                            y: ScholiumGrid.Spacing.opticalAlignmentAdjustment
+                        )
+                        .accessibilityHidden(true)
                 }
             }
-            .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
-            .frame(minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget)
             .contentShape(Rectangle())
         }
+        .scholiumActivationPointer()
         .buttonStyle(
             ScholiumContentControlButtonStyle(
                 isSelected: isPresented,
@@ -549,8 +566,10 @@ struct SidebarTriptychAttentionEntry: View {
 
     private var symbolRestingRole: ScholiumColorRole {
         switch state {
-        case .active, .unavailable:
+        case .unavailable:
             .attention
+        case .active:
+            .primaryText
         case .zero, .checking:
             .secondaryText
         }
@@ -558,9 +577,9 @@ struct SidebarTriptychAttentionEntry: View {
 
     private var symbolEmphasizedRole: ScholiumColorRole {
         switch state {
-        case .active, .unavailable:
+        case .unavailable:
             .attention
-        case .zero, .checking:
+        case .active, .zero, .checking:
             .primaryText
         }
     }
@@ -812,6 +831,7 @@ private struct ScholiumTriptychWorkspaceButton: View {
             .contentShape(Rectangle())
             .scholiumContentControlInk()
         }
+        .scholiumActivationPointer()
         .buttonStyle(
             ScholiumContentControlButtonStyle(
                 isSelected: isSelected,
@@ -1241,6 +1261,7 @@ struct ScholiumOperationFeedback: View {
                 detail: message
             )
             Button("Dismiss", action: dismiss)
+                .scholiumActivationPointer()
                 .controlSize(.small)
                 .keyboardShortcut(.cancelAction)
         }

@@ -197,6 +197,7 @@ struct AttentionQueueView: View {
                     Spacer(minLength: 0)
                     if status.offersRetry {
                         Button("Retry") { Task { await session.refresh() } }
+                            .scholiumActivationPointer()
                             .disabled(session.isRefreshing)
                     }
                 }
@@ -239,6 +240,7 @@ struct AttentionQueueView: View {
                 }
             }
         }
+        .scholiumActivationPointer()
         .labelsHidden()
         .frame(maxWidth: 190)
         .accessibilityIdentifier("scholium.attentionKindFilter")
@@ -251,6 +253,7 @@ struct AttentionQueueView: View {
             Label("Refresh", systemImage: "arrow.clockwise")
                 .labelStyle(.iconOnly)
         }
+        .scholiumActivationPointer()
         .help("Refresh Notifications")
         .disabled(session.isRefreshing)
         .accessibilityIdentifier("scholium.attentionRefresh")
@@ -265,6 +268,7 @@ struct AttentionQueueView: View {
                             requirement: requirement
                         )
                         .tag(settlementItemID(requirement))
+                        .scholiumActivationPointer()
                     }
                 } header: {
                     Text("Settlement Reminders")
@@ -285,6 +289,7 @@ struct AttentionQueueView: View {
                                 dismiss: { dismiss(item, forDays: $0) }
                             )
                             .tag(item.id)
+                            .scholiumActivationPointer()
                         }
                     } header: {
                         HStack(alignment: .firstTextBaseline) {
@@ -322,6 +327,7 @@ struct AttentionQueueView: View {
             density: .compact
         ) {
             Button("Retry") { Task { await session.refresh() } }
+                .scholiumActivationPointer()
                 .disabled(session.isRefreshing)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -614,13 +620,16 @@ struct AttentionQueueRow: View {
     @ViewBuilder
     private var actions: some View {
         Button("Inspect", action: inspect)
+        .scholiumActivationPointer()
         Menu("Dismiss…") {
             ForEach(dismissalDurations, id: \.self) { days in
                 Button(days == 1 ? "For 1 Day" : "For \(days) Days") {
                     dismiss(days)
                 }
+                .scholiumActivationPointer()
             }
         }
+        .scholiumActivationPointer()
     }
 
     private var dismissalDurations: [Int] {

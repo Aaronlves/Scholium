@@ -430,6 +430,7 @@ struct ResearchRecordsWindowView: View {
             )
             .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
         }
+        .scholiumActivationPointer()
         .buttonStyle(ScholiumContentControlButtonStyle(
             isSelected: isSelected,
             isFocused: focusedRecordID == revision.id,
@@ -471,6 +472,7 @@ struct ResearchRecordsWindowView: View {
                     .textSelection(.enabled)
                 }
             }
+            .scholiumActivationPointer()
             .font(ScholiumTypography.interface(.body))
         }
     }
@@ -681,6 +683,7 @@ struct ResearchRecordsWindowView: View {
                                 .font(ScholiumTypography.interface(.compact))
                                 .frame(maxWidth: 340, alignment: .leading)
                             }
+                            .scholiumActivationPointer()
                             .buttonStyle(.bordered)
                             .controlSize(.small)
                             .disabled(!evidenceIsAvailable(item))
@@ -711,6 +714,7 @@ struct ResearchRecordsWindowView: View {
             exactValue("Record", revision.id.uuidString.lowercased())
             exactValue("Fingerprint", revision.fingerprint.sha256)
         }
+        .scholiumActivationPointer()
         .font(ScholiumTypography.interface(.body))
         .padding(.top, ScholiumGrid.Spacing.sectionSeparation)
     }

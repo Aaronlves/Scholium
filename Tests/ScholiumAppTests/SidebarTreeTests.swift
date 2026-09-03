@@ -7,6 +7,36 @@ import Testing
 
 @Suite("Library folder tree")
 struct SidebarTreeTests {
+    @Test("App-owned Attachments storage stays outside the Library hierarchy")
+    func attachmentStorageIsNotProjected() {
+        let projection = LibraryTreeProjection(
+            preorderedNotes: [
+                .syntheticPreview(
+                    relativePath: "Research/Visible.md",
+                    rawContent: "# Visible\n"
+                ),
+                .syntheticPreview(
+                    relativePath: "Attachments/id/Attached.md",
+                    rawContent: "# Attached file\n"
+                ),
+            ],
+            folderRelativePaths: [
+                "Research",
+                "Attachments",
+                "Attachments/id",
+            ]
+        )
+
+        #expect(projection.roots.map(\.id) == ["Research"])
+        #expect(
+            projection.roots.flatMap(\.children).map(\.id)
+                == ["Research/Visible.md"]
+        )
+        #expect(!libraryPathIsVisible("Attachments"))
+        #expect(!libraryPathIsVisible("Attachments/id/file.pdf"))
+        #expect(libraryPathIsVisible("Research/Attachments.md"))
+    }
+
     @Test("Window tree cache ignores unrelated presentation publications")
     @MainActor
     func windowTreeProjectionCache() {

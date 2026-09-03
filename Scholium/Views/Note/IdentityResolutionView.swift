@@ -59,6 +59,7 @@ struct IdentityResolutionView: View {
                     Text("This is a new note")
                         .tag(Optional(Choice.newNote))
                 }
+                .scholiumActivationPointer()
                 .pickerStyle(.radioGroup)
                 .accessibilityHint("Choose one previous location, or identify the file as a new note.")
             }
@@ -77,6 +78,7 @@ struct IdentityResolutionView: View {
             HStack {
                 Spacer()
                 Button("Cancel", action: onCancel)
+                    .scholiumActivationPointer()
                     .keyboardShortcut(.cancelAction)
                 Button("Confirm Identity") {
                     let candidateID: UUID?
@@ -87,6 +89,7 @@ struct IdentityResolutionView: View {
                     }
                     Task { await onConfirm(candidateID) }
                 }
+                .scholiumActivationPointer()
                 .keyboardShortcut(.defaultAction)
                 .disabled(choice == nil || isResolving)
             }
@@ -137,6 +140,7 @@ struct IdentityMigrationNotice: View {
             Button("Retry Identity Recovery") {
                 Task { await onRetry() }
             }
+            .scholiumActivationPointer()
             .disabled(isRetrying)
             .accessibilityHint("Retries migration of app-owned records without changing the Markdown note.")
         }
@@ -159,6 +163,7 @@ struct IdentityAmbiguityNotice: View {
             region: .documentInline
         ) {
             Button("Choose Identity…", action: onResolve)
+                .scholiumActivationPointer()
                 .accessibilityHint("Shows the previous note locations without changing the Markdown file.")
         }
     }

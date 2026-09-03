@@ -48,21 +48,25 @@ struct SidebarLibraryFilterMenu: View {
             Menu {
                 Section("Integrity") {
                     Toggle("Needs Attention", isOn: filterBinding(\.needsAttention))
+                        .scholiumActivationPointer()
                         .disabled(!options.catalogIsAvailable)
                     Toggle(
                         "Link Annotations",
                         isOn: filterBinding(\.hasLinkAnnotations)
                     )
+                    .scholiumActivationPointer()
                     .disabled(!options.graphIsAvailable)
                     Toggle(
                         "Malformed Metadata",
                         isOn: filterBinding(\.hasMalformedMetadata)
                     )
+                    .scholiumActivationPointer()
                     .disabled(!options.catalogIsAvailable)
                 }
                 Section("Metadata") {
                     Menu("Keyword") {
                         Button("All Keywords") { updateFilters { $0.tag = nil } }
+                        .scholiumActivationPointer()
                         Divider()
                         ForEach(options.tags, id: \.self) { tag in
                             filterChoice(tag, selected: filters.tag == tag) {
@@ -70,10 +74,12 @@ struct SidebarLibraryFilterMenu: View {
                             }
                         }
                     }
+                    .scholiumActivationPointer()
                     .disabled(options.tags.isEmpty)
                     if !options.authors.isEmpty {
                         Menu("Author") {
                             Button("Any Author") { updateFilters { $0.author = nil } }
+                            .scholiumActivationPointer()
                             Divider()
                             ForEach(options.authors, id: \.self) { author in
                                 filterChoice(author, selected: filters.author == author) {
@@ -81,6 +87,7 @@ struct SidebarLibraryFilterMenu: View {
                                 }
                             }
                         }
+                        .scholiumActivationPointer()
                     }
                 }
                 if !options.propertyKeys.isEmpty {
@@ -91,6 +98,7 @@ struct SidebarLibraryFilterMenu: View {
                                 $0.propertyValue = nil
                             }
                         }
+                        .scholiumActivationPointer()
                         ForEach(options.propertyKeys, id: \.self) { key in
                             Menu(propertyLabel(key)) {
                                 ForEach(options.propertyValues[key] ?? [], id: \.self) { value in
@@ -106,6 +114,7 @@ struct SidebarLibraryFilterMenu: View {
                                     }
                                 }
                             }
+                            .scholiumActivationPointer()
                         }
                     }
                 }
@@ -117,15 +126,18 @@ struct SidebarLibraryFilterMenu: View {
                             }
                         }
                     }
+                    .scholiumActivationPointer()
                 }
                 if activeFilterCount > 0 {
                     Section("Actions") {
                         Button("Clear All Filters", action: clearFilters)
+                        .scholiumActivationPointer()
                     }
                 }
             } label: {
                 label
             }
+            .scholiumActivationPointer()
         }
         .help(activeFilterCount == 0
             ? "Filter and sort Library notes"
@@ -147,6 +159,7 @@ struct SidebarLibraryFilterMenu: View {
             if selected { Label(title, systemImage: "checkmark") }
             else { Text(title) }
         }
+        .scholiumActivationPointer()
     }
 
     private func filterBinding<Value>(

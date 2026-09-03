@@ -58,8 +58,10 @@
 - Triptych navigation is one vertical single-choice group with Up/Down
   traversal, selected state, localized Note totals, and unavailable-state
   semantics. Progressive loading preserves available Library routes and focus.
-- Back/Forward, Sidebar, Inspector, Notifications, filters, folder disclosure,
-  Add, file actions, and hierarchy remain named and reachable without hover.
+- Back/Forward, Sidebar, Inspector, Search, Notifications, filters, folder
+  disclosure, Add, file actions, and hierarchy remain named and reachable
+  without hover. The nonzero Notifications dot has an exact accessible count;
+  bell and dot geometry preserve the visible distinction without color alone.
 - Library rows preserve selected, focused, inactive, disclosed, drop-target,
   disabled, loading, stale, empty, and failure distinctions. Note/Folder Move,
   root placement, system-Trash deletion, and contextual creation have non-drag

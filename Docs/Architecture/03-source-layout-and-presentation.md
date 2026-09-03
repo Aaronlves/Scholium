@@ -132,7 +132,8 @@ registration commands and reveals the bundled Core Protocol Skill. It does not
 store credentials or choose an Agent application.
 
 Each workspace window may present machine-local **Agent Changes**. The view
-reads `AgentChangeSummary` values recorded by successful MCP mutations and
+reads the window `ResearchController`'s borrowed `AgentChangeSummary` values
+recorded by successful MCP mutations and
 compares exact before and after source where both revisions remain available.
 Direct Update is available only after Application revalidates the target and
 performs the exact write. Undo is bounded to the recorded after fingerprint and
@@ -146,6 +147,8 @@ utility panel, or always-on-top surface. Per-workspace
 current immutable state. The machine-local dismissal ledger changes
 presentation only. No queue item authorizes a source mutation, and the
 Document toolbar consumes no notification state.
+Its bell anchor sits beside Search at the logical trailing edge of the Sidebar
+header; the nonzero dot is only a presentation of the existing exact queue.
 
 Ordinary workspace navigation uses a workspace-keyed
 `DiscoveryLibraryRequest(.stagedReplacement)`. `DiscoveryController` retains

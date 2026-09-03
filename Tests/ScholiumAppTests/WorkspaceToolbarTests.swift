@@ -90,6 +90,7 @@ struct WorkspaceToolbarTests {
         #expect(headingButton.showsBorderOnlyWhileMouseInside)
         #expect(headingButton.imagePosition == .imageOnly)
         #expect(headingButton.accessibilityRole() == .popUpButton)
+        #expect(headingButton is ScholiumPointingHandButton)
         #expect(headingButton.target === controller)
         #expect(headingButton.action != nil)
 
@@ -110,7 +111,6 @@ struct WorkspaceToolbarTests {
             ScholiumWorkspaceToolbarController.Item.sidebar,
             ScholiumWorkspaceToolbarController.Item.back,
             ScholiumWorkspaceToolbarController.Item.forward,
-            ScholiumWorkspaceToolbarController.Item.search,
             ScholiumWorkspaceToolbarController.Item.documentMode,
             ScholiumWorkspaceToolbarController.Item.inspector,
         ] {
@@ -141,6 +141,12 @@ struct WorkspaceToolbarTests {
         ] {
             #expect(!(try #require(item(identifier, in: toolbar))).isNavigational)
         }
+
+        let agentChanges = try #require(item(
+            ScholiumWorkspaceToolbarController.Item.agentChanges,
+            in: toolbar
+        ))
+        #expect(agentChanges.isHidden)
     }
 
     @Test("Peripheral controls mirror their current accessible visibility state")

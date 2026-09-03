@@ -2067,6 +2067,12 @@ struct WindowControllerArchitectureTests {
             ),
             encoding: .utf8
         )
+        let researchControllerSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Features/ResearchContext/ResearchController.swift"
+            ),
+            encoding: .utf8
+        )
         let start = try #require(appSource.range(of: "final class WindowModel: ObservableObject"))
         let end = try #require(appSource.range(
             of: "private enum ClipboardWorkflowError",
@@ -2133,6 +2139,14 @@ struct WindowControllerArchitectureTests {
         #expect(toolbarSource.contains("static var itemIdentifiers:"))
         #expect(toolbarSource.contains("appState.commandObservation.$revision"))
         #expect(toolbarSource.contains("appState.researchController.$researchSnapshot"))
+        #expect(toolbarSource.contains("appState.researchController.$agentChanges"))
+        #expect(
+            researchControllerSource.contains(
+                "@Published private(set) var agentChanges: [AgentChange]?"
+            )
+        )
+        #expect(researchControllerSource.contains("var hasAgentChanges: Bool"))
+        #expect(researchControllerSource.contains("func loadAgentChanges() async throws"))
         #expect(!toolbarSource.contains("ScholiumWorkspaceSidebarToolbarView"))
         #expect(!toolbarSource.contains("ScholiumWorkspaceInspectorToolbarView"))
         #expect(!toolbarSource.contains("@ObservedObject var shellState"))

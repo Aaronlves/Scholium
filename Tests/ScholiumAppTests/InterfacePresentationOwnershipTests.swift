@@ -121,6 +121,64 @@ struct InterfacePresentationOwnershipTests {
     )
   }
 
+  @Test("Discrete activation cursors share one cross-runtime contract")
+  func activationCursorContract() throws {
+    let designSystem = try source(
+      at: "Scholium/UI/Foundation/ScholiumDesignSystem.swift"
+    )
+    #expect(designSystem.contains("struct ScholiumActivationPointerModifier"))
+    #expect(
+      designSystem.contains("pointerStyle(isEnabled ? .link : .default)")
+    )
+    #expect(designSystem.contains("class ScholiumPointingHandButton: NSButton"))
+    #expect(designSystem.contains("cursor: isEnabled ? .pointingHand : .arrow"))
+    #expect(
+      designSystem.contains(
+        ":is(.scholium-document, .cm-editor) button:not(:disabled)"
+      )
+    )
+    #expect(designSystem.contains("cursor: pointer;"))
+
+    for path in [
+      "Scholium/UI/Components/ScholiumWorkspaceToolbar.swift",
+      "Scholium/UI/Components/ScholiumWorkspaceSplitView.swift",
+      "Scholium/Views/HotkeySettingsView.swift",
+    ] {
+      #expect(try source(at: path).contains("ScholiumPointingHandButton"))
+    }
+    let outline = try source(
+      at: "Scholium/Views/Sidebar/SidebarOutlineRows.swift"
+    )
+    #expect(outline.contains("addCursorRect(rect(ofRow: row), cursor: .pointingHand)"))
+
+    let activationPattern =
+      #"\b(Button|DisclosureGroup|Link|Menu|NavigationLink|Picker|Toggle)\s*[\({]"#
+    let sourceRoot = repositoryRoot.appendingPathComponent(
+      "Scholium",
+      isDirectory: true
+    )
+    let enumerator = try #require(
+      FileManager.default.enumerator(
+        at: sourceRoot,
+        includingPropertiesForKeys: [.isRegularFileKey],
+        options: [.skipsHiddenFiles]
+      )
+    )
+    for case let fileURL as URL in enumerator where fileURL.pathExtension == "swift" {
+      let contents = try String(contentsOf: fileURL, encoding: .utf8)
+      let activations = matchCount(pattern: activationPattern, in: contents)
+      guard activations > 0 else { continue }
+      let pointers = matchCount(
+        pattern: #"\.scholiumActivationPointer\s*\("#,
+        in: contents
+      )
+      #expect(
+        pointers >= activations,
+        "\(relativePath(for: fileURL)) has \(activations) direct activation controls but only \(pointers) activation cursor mappings"
+      )
+    }
+  }
+
   @Test("Custom controls do not compound pointer feedback owners")
   func compoundPointerOwnershipInventory() throws {
     let compoundOwners = try pointerFeedbackWrappedCalls(

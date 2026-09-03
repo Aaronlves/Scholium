@@ -104,7 +104,7 @@ final class SidebarOutlineHostingCell: NSTableCellView {
     }
 
     private func makeDisclosureButton() -> NSButton {
-        let button = NSButton()
+        let button = ScholiumPointingHandButton()
         button.bezelStyle = .disclosure
         button.setButtonType(.pushOnPushOff)
         button.controlSize = .small
@@ -316,6 +316,15 @@ final class SidebarOutlineView: NSOutlineView {
 
     func invalidateHoverForReload() {
         setHoveredItem(nil, rowView: nil, cell: nil)
+    }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        let visibleRows = rows(in: visibleRect)
+        guard visibleRows.location != NSNotFound else { return }
+        for row in visibleRows.location..<(visibleRows.location + visibleRows.length) {
+            addCursorRect(rect(ofRow: row), cursor: .pointingHand)
+        }
     }
 
     override func canDragRows(

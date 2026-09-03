@@ -108,6 +108,7 @@ struct CritiqueProvenanceView: View {
                         Text(targetNote?.title ?? targetNote?.displayName ?? targetPath)
                             .font(ScholiumTypography.interface(.body))
                     }
+                    .scholiumActivationPointer()
                     .buttonStyle(.link)
                     .disabled(targetNote == nil)
                     .help(targetNote == nil ? "The target Work is unavailable." : targetPath)
@@ -177,6 +178,7 @@ struct CritiqueProvenanceView: View {
                     .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
                     .contentShape(Rectangle())
                 }
+                .scholiumActivationPointer()
                 .buttonStyle(.plain)
                 .accessibilityLabel("Specific Findings")
                 .accessibilityValue(
@@ -250,6 +252,7 @@ struct CritiqueProvenanceView: View {
             }
             .contentShape(Rectangle())
         }
+        .scholiumActivationPointer()
         .buttonStyle(.plain)
         .disabled(target == nil || resolvedLine == nil)
         .accessibilityLabel("\(finding.judgment.rawValue): \(finding.title)")

@@ -46,9 +46,11 @@ struct NoteFileOperationView: View {
 
                 HStack {
                     Button("Cancel") { dismiss() }
+                        .scholiumActivationPointer()
                         .keyboardShortcut(.cancelAction)
                     Spacer()
                     Button(actionTitle) { perform() }
+                        .scholiumActivationPointer()
                         .buttonStyle(.borderedProminent)
                         .disabled(requestedDestinationPath == nil || isWorking)
                         .keyboardShortcut(.defaultAction)
@@ -64,6 +66,7 @@ struct NoteFileOperationView: View {
             set: { if !$0 { errorMessage = nil } }
         )) {
             Button("Dismiss", role: .cancel) { errorMessage = nil }
+            .scholiumActivationPointer()
         } message: {
             Text(errorMessage ?? "")
         }

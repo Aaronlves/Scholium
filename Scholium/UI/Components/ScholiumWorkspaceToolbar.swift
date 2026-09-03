@@ -23,7 +23,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         static let headingOutline = NSToolbarItem.Identifier(
             "scholium.toolbar.headingOutline"
         )
-        static let search = NSToolbarItem.Identifier("scholium.toolbar.search")
         static let documentMode = NSToolbarItem.Identifier(
             "scholium.toolbar.documentMode"
         )
@@ -93,7 +92,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             Item.forward,
             Item.libraryDivider,
             Item.headingOutline,
-            Item.search,
             Item.documentMode,
             Item.researchRecords,
             Item.agentChanges,
@@ -110,7 +108,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             Item.libraryDivider,
             Item.headingOutline,
             .flexibleSpace,
-            Item.search,
             Item.documentMode,
             Item.researchRecords,
             Item.agentChanges,
@@ -180,13 +177,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             item.isNavigational = true
             item.menuFormRepresentation = headingMenuFormRepresentation()
             return item
-        case Item.search:
-            return actionItem(
-                identifier: itemIdentifier,
-                label: ScholiumL10n.string("Search"),
-                systemImage: "magnifyingglass",
-                action: #selector(showSearch(_:))
-            )
         case Item.documentMode:
             return actionItem(
                 identifier: itemIdentifier,
@@ -330,6 +320,9 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             appState.researchController.$researchSnapshot
                 .map { _ in () }
                 .eraseToAnyPublisher(),
+            appState.researchController.$agentChanges
+                .map { _ in () }
+                .eraseToAnyPublisher(),
         ]
         Publishers.MergeMany(changes)
             .sink { [weak self] in self?.refreshPresentation() }
@@ -384,15 +377,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             item.menuFormRepresentation = headingMenuFormRepresentation()
         }
 
-        if let item = toolbarItem(Item.search) {
-            update(
-                item,
-                label: ScholiumL10n.dynamicString("Search"),
-                systemImage: "magnifyingglass",
-                isEnabled: true
-            )
-        }
-
         if let item = toolbarItem(Item.documentMode) {
             let presentation = ScholiumDocumentModeToolbarButtonPresentation(
                 mode: appState.documentController.chromeProjection.mode
@@ -410,11 +394,12 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         }
 
         if let item = toolbarItem(Item.agentChanges) {
+            item.isHidden = !appState.researchController.hasAgentChanges
             update(
                 item,
                 label: ScholiumL10n.dynamicString("Agent Changes"),
                 systemImage: "sparkles.rectangle.stack",
-                isEnabled: appState.windowWorkspaceController.activeCapabilities != nil
+                isEnabled: appState.researchController.hasAgentChanges
             )
         }
 
@@ -556,10 +541,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         )
     }
 
-    @objc private func showSearch(_ sender: Any?) {
-        appState.searchController.begin(.general)
-    }
-
     @objc private func toggleDocumentMode(_ sender: Any?) {
         let presentation = ScholiumDocumentModeToolbarButtonPresentation(
             mode: appState.documentController.chromeProjection.mode
@@ -568,7 +549,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
     }
 
     @objc private func showAgentChanges(_ sender: Any?) {
-        guard appState.windowWorkspaceController.activeCapabilities != nil else { return }
+        guard appState.researchController.hasAgentChanges else { return }
         appState.presentationRouter.present(.agentChanges)
     }
 
@@ -627,7 +608,7 @@ enum ScholiumNativeToolbarPresentation {
     static var controlSize: NSControl.ControlSize { .small }
 
     static func makeButton() -> NSButton {
-        let button = NSButton(frame: .zero)
+        let button = ScholiumPointingHandButton(frame: .zero)
         button.setButtonType(.momentaryPushIn)
         button.controlSize = controlSize
         button.bezelStyle = .toolbar

@@ -693,6 +693,14 @@ enum ScholiumWebDesignTokens {
             calc(50% - var(--scholium-document-half-line-width))
           );
         }
+        :is(.scholium-document, .cm-editor) button:not(:disabled),
+        :is(.scholium-document, .cm-editor) select:not(:disabled),
+        :is(.scholium-document, .cm-editor) a[href],
+        :is(.scholium-document, .cm-editor) [role="button"]:not([aria-disabled="true"]),
+        :is(.scholium-document, .cm-editor) [role="menuitem"]:not([aria-disabled="true"]),
+        :is(.scholium-document, .cm-editor) [role="option"]:not([aria-disabled="true"]) {
+          cursor: pointer;
+        }
         .scholium-document p,
         .cm-editor.scholium-live-mode .cm-live-paragraph {
           box-sizing: border-box;
@@ -813,7 +821,7 @@ enum ScholiumWebDesignTokens {
           font: inherit;
           line-height: inherit;
           white-space: nowrap;
-          cursor: default;
+          cursor: pointer;
           appearance: none;
         }
         .scholium-document-attachment-capsule {
@@ -1188,7 +1196,7 @@ enum ScholiumWebDesignTokens {
           color: inherit;
           background: transparent;
           font: inherit;
-          cursor: default;
+          cursor: pointer;
         }
         .scholium-selection-control:hover,
         .scholium-selection-menu-item:hover,
@@ -1303,7 +1311,7 @@ enum ScholiumWebDesignTokens {
           background: transparent;
           font: inherit;
           text-align: start;
-          cursor: default;
+          cursor: pointer;
         }
         .scholium-selection-menu-check {
           inline-size: 12px;
@@ -2710,6 +2718,31 @@ private struct ScholiumContentControlButtonFeedbackModifier<S: Shape>: ViewModif
     }
 }
 
+/// Applies the product's activation cursor only to controls that perform a
+/// discrete click action. Text entry, selection, dragging, and resizing retain
+/// their native semantic cursors.
+private struct ScholiumActivationPointerModifier: ViewModifier {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func body(content: Content) -> some View {
+        content.pointerStyle(isEnabled ? .link : .default)
+    }
+}
+
+/// AppKit counterpart to `scholiumActivationPointer()`. Use it for explicit
+/// Scholium-owned buttons hosted outside SwiftUI; native text, drag, and split
+/// controls continue to own their own cursor rects.
+@MainActor
+class ScholiumPointingHandButton: NSButton {
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(
+            bounds,
+            cursor: isEnabled ? .pointingHand : .arrow
+        )
+    }
+}
+
 struct ScholiumContentControlButtonStyle<S: Shape>: ButtonStyle {
     let isActive: Bool
     let isSelected: Bool
@@ -3054,6 +3087,7 @@ struct ScholiumInkIconControl: View {
                 )
                 .opacity(isEnabled ? 1 : 0.42)
         }
+        .scholiumActivationPointer()
         .buttonStyle(
             ScholiumContentControlButtonStyle(
                 isActive: isActive,
@@ -3278,6 +3312,12 @@ extension View {
                 stateDidChange: stateDidChange
             )
         )
+    }
+
+    /// Uses the pointing hand for one enabled discrete activation target while
+    /// retaining the arrow for its unavailable state.
+    func scholiumActivationPointer() -> some View {
+        modifier(ScholiumActivationPointerModifier())
     }
 
     /// Applies the shared pointer-neutral, keyboard-complete focus policy to a

@@ -653,12 +653,14 @@ struct NoteContentView: View {
                 Button("Retry Save") {
                     controller.retrySave(session: documentSession, target: target)
                 }
+                .scholiumActivationPointer()
                 .controlSize(.small)
             }
         case .conflict:
             Button("Compare Changes") {
                 showConflictComparison = true
             }
+            .scholiumActivationPointer()
             .controlSize(.small)
             .keyboardShortcut(.defaultAction)
         }
@@ -880,10 +882,12 @@ struct NoteContentView: View {
                 Button("Retry Edit") {
                     retryManagedCreationEditor(in: .livePreview)
                 }
+                .scholiumActivationPointer()
                 .keyboardShortcut(.defaultAction)
                 Button("Source") {
                     retryManagedCreationEditor(in: .source)
                 }
+                .scholiumActivationPointer()
             }
         }
         .accessibilityIdentifier("scholium.managedNewNote.editorFailure")
@@ -1639,7 +1643,9 @@ private struct ConflictComparisonSheet: View {
             identifier: "scholium.conflictComparison"
         ) {
             Button("Expand All") { isDocumentExpanded = true }
+            .scholiumActivationPointer()
             Button("Collapse All") { isDocumentExpanded = false }
+            .scholiumActivationPointer()
         } content: {
             ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: 0) {
@@ -1666,6 +1672,7 @@ private struct ConflictComparisonSheet: View {
                         .padding(ScholiumGrid.Spacing.nestedContentInset)
                         .contentShape(Rectangle())
                     }
+                    .scholiumActivationPointer()
                     .buttonStyle(.plain)
                     .accessibilityLabel(conflict.relativePath)
                     .accessibilityValue(
@@ -1717,9 +1724,11 @@ private struct ConflictComparisonSheet: View {
         } footer: {
             HStack {
                 Button("Return to Editing", action: onReturnToEditing)
+                    .scholiumActivationPointer()
                     .keyboardShortcut(.cancelAction)
                 Spacer()
                 Button("Reload from Disk", role: .destructive, action: onReloadFromDisk)
+                .scholiumActivationPointer()
             }
             .padding(ScholiumGrid.Spacing.sectionSeparation)
         }
@@ -1780,6 +1789,7 @@ private struct CritiqueFindingDispositionRow: View {
                     Text("Reject").tag(CritiqueFindingDispositionDecision.reject)
                     Text("Rebut").tag(CritiqueFindingDispositionDecision.rebut)
                 }
+                .scholiumActivationPointer()
                 .labelsHidden()
                 .pickerStyle(.menu)
                 .frame(width: 108)
@@ -1818,6 +1828,7 @@ private struct CritiqueFindingDispositionRow: View {
                 Button(existing == nil ? "Save Disposition" : "Update Disposition") {
                     persist()
                 }
+                .scholiumActivationPointer()
                 .buttonStyle(.bordered)
                 .disabled(
                     isSaving

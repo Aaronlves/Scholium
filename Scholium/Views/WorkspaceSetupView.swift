@@ -142,9 +142,11 @@ private struct BootstrapFlowView: View {
             Button("Archive and Rebuild", role: .destructive) {
                 recoverPortableControl()
             }
+            .scholiumActivationPointer()
             Button("Cancel", role: .cancel) {
                 pendingPortableControlRecovery = nil
             }
+            .scholiumActivationPointer()
         } message: {
             Text("Scholium will move the entire existing .scholium folder to a uniquely named sibling recovery folder, preserving its exact files without interpreting the old schema. Analyses, Topics, and Works will not be changed. Scholium will then create current portable control state.")
         }
@@ -577,12 +579,14 @@ private struct BootstrapFooter: View {
             HStack(spacing: ScholiumGrid.Spacing.nestedContentInset) {
                 if showsBack {
                     Button("Back", action: onBack)
+                        .scholiumActivationPointer()
                         .keyboardShortcut(.cancelAction)
                 }
                 Spacer()
                 Button(action: onPrimary) {
                     Text(primaryTitle)
                 }
+                .scholiumActivationPointer()
                 .buttonStyle(.borderedProminent)
                 .keyboardShortcut(.defaultAction)
                 .disabled(primaryDisabled)
@@ -807,6 +811,7 @@ private struct BootstrapSetupPathChoice: View {
                     )
             }
         }
+        .scholiumActivationPointer()
         .buttonStyle(.plain)
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
     }
@@ -921,6 +926,7 @@ private struct BootstrapPathSelectionRow: View {
                 Button(action: action) {
                     Text(buttonTitle)
                 }
+                .scholiumActivationPointer()
             }
         }
         .padding(ScholiumGrid.Spacing.sectionSeparation)

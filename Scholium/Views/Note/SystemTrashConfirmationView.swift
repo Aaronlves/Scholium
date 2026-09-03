@@ -62,11 +62,13 @@ struct SystemTrashConfirmationView: View {
             HStack {
                 Spacer()
                 Button("Cancel", action: cancel)
+                    .scholiumActivationPointer()
                     .keyboardShortcut(.cancelAction)
                     .disabled(isWorking)
                 Button("Move to Trash", role: .destructive) {
                     perform()
                 }
+                .scholiumActivationPointer()
                 .keyboardShortcut(.defaultAction)
                 .disabled(isWorking)
             }

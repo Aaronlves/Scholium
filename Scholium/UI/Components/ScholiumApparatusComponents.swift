@@ -376,6 +376,7 @@ struct ScholiumApparatusSectionHeaderButton: View {
                     .accessibilityHidden(true)
             }
         }
+        .scholiumActivationPointer()
         .buttonStyle(
             ScholiumQuietRowButtonStyle(
                 minimumHeight: ScholiumMetrics.Accessibility.preferredCustomTarget,
@@ -439,6 +440,7 @@ struct ScholiumDisclosureHeaderButton<Label: View, Trailing: View>: View {
                 trailing()
             }
         }
+        .scholiumActivationPointer()
         .buttonStyle(
             ScholiumQuietRowButtonStyle(
                 minimumHeight: minimumHeight,

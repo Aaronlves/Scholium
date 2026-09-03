@@ -94,7 +94,9 @@ struct ZoteroBindingPanelView: View {
             Button("Clear Link", role: .destructive) {
                 performClear()
             }
+            .scholiumActivationPointer()
             Button("Cancel", role: .cancel) {}
+            .scholiumActivationPointer()
         } message: {
             Text("This removes only Scholium’s portable relationship. It does not remove Metadata already filled in Scholium or change the Zotero item.")
         }
@@ -106,6 +108,7 @@ struct ZoteroBindingPanelView: View {
             )
         ) {
             Button("Dismiss") { errorMessage = nil }
+            .scholiumActivationPointer()
         } message: {
             Text(errorMessage ?? "")
         }
@@ -241,6 +244,7 @@ struct ZoteroBindingPanelView: View {
                     }
                     .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
                     .tag(hit.id)
+                    .scholiumActivationPointer()
                     .accessibilityElement(children: .combine)
                 }
                 .frame(minHeight: 170, idealHeight: 210, maxHeight: 250)
@@ -426,14 +430,17 @@ struct ZoteroBindingPanelView: View {
                     Button("Clear Link…", role: .destructive) {
                         confirmsClear = true
                     }
+                    .scholiumActivationPointer()
                 }
                 Spacer()
                 Button("Cancel", action: dismiss)
+                    .scholiumActivationPointer()
                     .keyboardShortcut(.cancelAction)
                     .disabled(mutationOwner.isSaving)
                 Button(currentBinding == nil ? "Link and Fill" : "Rebind and Fill") {
                     performSet()
                 }
+                .scholiumActivationPointer()
                 .keyboardShortcut(.defaultAction)
                 .disabled(fillPlan == nil || isPreparingFill || mutationOwner.isSaving)
             }
@@ -446,6 +453,7 @@ struct ZoteroBindingPanelView: View {
                 }
                 Spacer()
                 Button("Cancel", action: dismiss)
+                    .scholiumActivationPointer()
                     .keyboardShortcut(.cancelAction)
                     .disabled(mutationOwner.isSaving)
                 if let fillPlan {
@@ -453,10 +461,12 @@ struct ZoteroBindingPanelView: View {
                         Button("Refresh Metadata") {
                             performSet()
                         }
+                        .scholiumActivationPointer()
                         .keyboardShortcut(.defaultAction)
                         .disabled(isPreparingFill || mutationOwner.isSaving)
                     } else {
                         Button("Done", action: dismiss)
+                            .scholiumActivationPointer()
                             .keyboardShortcut(.defaultAction)
                     }
                 }

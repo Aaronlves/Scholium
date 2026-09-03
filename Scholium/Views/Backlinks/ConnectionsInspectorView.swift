@@ -288,6 +288,7 @@ private struct LinkOccurrenceRow: View {
                 } label: {
                     label
                 }
+                .scholiumActivationPointer()
                 .buttonStyle(ScholiumQuietRowButtonStyle(
                     isFocused: isFocused,
                     minimumHeight: ScholiumMetrics.Apparatus.connectionOccurrenceMinimumHeight,
@@ -297,6 +298,7 @@ private struct LinkOccurrenceRow: View {
                 .contextMenu {
                     if item.edge.occurrence.annotation != nil {
                         Button(sourceActionTitle, action: openSource)
+                        .scholiumActivationPointer()
                     }
                 }
                 .accessibilityAction(named: Text(sourceActionTitle), openSource)

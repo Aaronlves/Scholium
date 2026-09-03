@@ -277,6 +277,7 @@ private struct ApplicationRegistryRecoveryView: View {
                 }
                 .contentShape(Rectangle())
             }
+            .scholiumActivationPointer()
             .buttonStyle(.plain)
             .accessibilityLabel("Details")
             .accessibilityValue(showsDetails ? "Expanded" : "Collapsed")
@@ -291,15 +292,18 @@ private struct ApplicationRegistryRecoveryView: View {
 
             HStack {
                 Button("Quit") { NSApplication.shared.terminate(nil) }
+                .scholiumActivationPointer()
                 Spacer()
                 if recovery.canRelinkAfterPreserving {
                     Button("Relink Triptych", action: relink)
+                        .scholiumActivationPointer()
                         .keyboardShortcut(.defaultAction)
                         .accessibilityHint(
                             "Preserves the damaged registry, then opens Triptych setup so you can choose the three folders again."
                         )
                 } else {
                     Button("Retry", action: retry)
+                        .scholiumActivationPointer()
                         .keyboardShortcut(.defaultAction)
                         .accessibilityHint("Attempts to read the Triptych registry again.")
                 }
@@ -350,6 +354,7 @@ private struct ApplicationStorageUnavailableView: View {
                 }
                 .contentShape(Rectangle())
             }
+            .scholiumActivationPointer()
             .buttonStyle(.plain)
             .accessibilityLabel("Details")
             .accessibilityValue(showsDetails ? "Expanded" : "Collapsed")
@@ -364,8 +369,10 @@ private struct ApplicationStorageUnavailableView: View {
 
             HStack {
                 Button("Quit") { NSApplication.shared.terminate(nil) }
+                .scholiumActivationPointer()
                 Spacer()
                 Button("Retry", action: retry)
+                    .scholiumActivationPointer()
                     .keyboardShortcut(.defaultAction)
                     .accessibilityHint("Attempts to establish Application Support storage again.")
             }

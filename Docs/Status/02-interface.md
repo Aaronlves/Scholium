@@ -14,12 +14,20 @@
   owns window, toolbar, divider, collapse, resize, fullscreen, and focus
   behavior. Each workspace window retains its own Library, document tabs,
   Document mode, Inspector mode, Search, and Attention presentation.
+- The Sidebar header places Search and Notifications at the logical trailing
+  edge of the Scholium wordmark. A nonzero queue uses one Accent dot on the
+  bell, keeps its exact count accessible, and never prints a numeric counter.
+  The toolbar shows Agent Changes only while confirmed local changes exist.
 
 ## Library, Document, and Inspector
 
 - Library presents Analyses, Topics, and Works as peer destinations with stable
   selection, keyboard navigation, filters, ordering, disclosure, and source
-  mutation routes.
+  mutation routes. Its projection omits the application-owned root
+  `Attachments` directory and descendants without altering their stored files.
+- Enabled discrete activation targets use the system pointing hand throughout
+  SwiftUI, AppKit, and retained WebKit surfaces. Disabled, text, drag, divider,
+  resize, and passive surfaces preserve their native cursor semantics.
 - Document retains Review, Edit, and Source over one exact source buffer.
   Markdown is the sole written annotation authority; there is no separate
   Review Comment or passage Discussion UI.

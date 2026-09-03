@@ -35,6 +35,7 @@ struct ResearchInspectorState: Equatable, Sendable {
 struct ResearchControllerCapabilities: Sendable {
     let documents: any DocumentUseCases
     let research: any ResearchUseCases
+    let agentCollaboration: any AgentCollaborationUseCases
     let recoveryRecordsURL: URL
 }
 
@@ -49,6 +50,8 @@ final class ResearchController: ObservableObject {
 
     @Published private(set) var activeDocument: VaultNoteReference?
     @Published private(set) var researchSnapshot: WorkspaceResearchSnapshot?
+    @Published private(set) var agentChanges: [AgentChange]?
+    @Published private(set) var agentChangesError: String?
     @Published private(set) var errorMessage: String?
     @Published var transactionRecoveryRecords: [TriptychMutationRecoveryRecord] = []
     @Published var transactionRecoveryError: String?
@@ -58,6 +61,8 @@ final class ResearchController: ObservableObject {
     private let intentHandler: IntentHandler
     private let shellState: WindowShellState
     private var capabilities: ResearchControllerCapabilities?
+    private var agentChangesRefreshTask: Task<Void, Never>?
+    private var agentChangesRefreshGeneration: UInt64 = 0
 
     init(
         shellState: WindowShellState = WindowShellState(),
@@ -77,14 +82,24 @@ final class ResearchController: ObservableObject {
         to capabilities: ResearchControllerCapabilities,
         snapshot: WorkspaceSnapshot? = nil
     ) {
+        agentChangesRefreshTask?.cancel()
+        agentChangesRefreshGeneration &+= 1
         self.capabilities = capabilities
+        agentChanges = nil
+        agentChangesError = nil
         errorMessage = nil
         if let snapshot { receive(snapshot) }
+        scheduleAgentChangesRefresh()
     }
 
     func unbind() {
+        agentChangesRefreshTask?.cancel()
+        agentChangesRefreshTask = nil
+        agentChangesRefreshGeneration &+= 1
         capabilities = nil
         researchSnapshot = nil
+        agentChanges = nil
+        agentChangesError = nil
         errorMessage = nil
         transactionRecoveryRecords = []
         transactionRecoveryError = nil
@@ -99,6 +114,43 @@ final class ResearchController: ObservableObject {
     func refreshResearchProjection() async throws {
         researchSnapshot = try await requireResearch().snapshot()
         errorMessage = nil
+    }
+
+    var hasAgentChanges: Bool {
+        agentChanges?.isEmpty == false
+    }
+
+    func scheduleAgentChangesRefresh() {
+        agentChangesRefreshTask?.cancel()
+        agentChangesRefreshTask = Task { [weak self] in
+            guard let self else { return }
+            _ = try? await self.loadAgentChanges()
+        }
+    }
+
+    @discardableResult
+    func loadAgentChanges() async throws -> [AgentChange] {
+        agentChangesRefreshGeneration &+= 1
+        let generation = agentChangesRefreshGeneration
+        let operations = try requireAgentCollaboration()
+        do {
+            let changes = try await operations.agentChanges()
+            try Task.checkCancellation()
+            guard generation == agentChangesRefreshGeneration else {
+                throw CancellationError()
+            }
+            agentChanges = changes
+            agentChangesError = nil
+            return changes
+        } catch {
+            guard generation == agentChangesRefreshGeneration else {
+                throw error
+            }
+            if !(error is CancellationError) {
+                agentChangesError = error.localizedDescription
+            }
+            throw error
+        }
     }
 
     @discardableResult
@@ -277,6 +329,15 @@ final class ResearchController: ObservableObject {
             )
         }
         return documents
+    }
+
+    private func requireAgentCollaboration() throws -> any AgentCollaborationUseCases {
+        guard let agentCollaboration = capabilities?.agentCollaboration else {
+            throw ScholiumApplicationError.critiqueStoreUnavailable(
+                "No workspace is active."
+            )
+        }
+        return agentCollaboration
     }
 
 }

@@ -228,6 +228,13 @@ targets remain comfortably clickable and keyboard reachable. Resting controls
 are quiet; focus is stronger than hover and persistent selection stronger than
 both. Pointer activation does not leave a keyboard-only focus effect.
 
+Every enabled discrete activation target uses the system pointing-hand cursor
+across SwiftUI, AppKit, and retained WebKit document surfaces. Disabled targets
+use the arrow. Text insertion and selection keep the I-beam; split dividers,
+window edges, draggable regions, and other direct-manipulation surfaces keep
+their native task-specific cursors. A pointing hand never manufactures an
+activation affordance on passive content.
+
 The shared segmented control is the default custom owner when a bounded
 text-only horizontal single-choice group matches its interaction contract.
 Native controls and feature-owned alternatives remain valid when their
@@ -302,6 +309,11 @@ link direction use their named semantic output with textual/shape redundancy.
 Multicolor, gradient, or variable symbol rendering never encodes workflow
 state.
 
+The Sidebar Notifications bell uses ordinary interface ink. A nonzero pending
+state adds one small Accent dot at its upper trailing corner; it never prints a
+count beside the bell. The dot's shape, the bell, accessible exact count, and
+popover contents carry the state together.
+
 #### Bootstrap narrative illustration
 
 Onboarding illustrations combine the canonical hand, one simple directional
@@ -356,7 +368,7 @@ a reusable component or catalog entry.
 | `Source List` | Quiet hierarchical Note navigation with complete content states. | §18.3 |
 | `Connection Direction Control` | Switch Incoming/Outgoing without changing graph authority. | §§12, 18.5 |
 | `Document Rail` | Keep Settle at the Document edge without an Agent launcher or review milestone. | §§7.1, 18.5 |
-| `Triptych Notifications Entry` | Open the complete Agent Change/Settlement/Attention queue with exact nonzero total. | §§13, 18.2–18.3 |
+| `Triptych Notifications Entry` | Open the complete Agent Change/Settlement/Attention queue from a bell whose nonzero state uses a small Accent dot and an exact accessible count. | §§13, 18.2–18.3 |
 | `Top Notification Banner` | Give Agent Change, Settlement, permission, and persistent operation notices one concise adaptive grammar. | §§18.3–18.5, 20 |
 | `Activity Notification Stack` | Present Agent Changes and Changed Since Settle reminders without becoming the queue or changing Settlement. | §§7.1, 18.3, 18.5 |
 | `Operation Feedback` | Present transient information or persistent consequence/repair. | §§18.2–18.5, 20 |

@@ -12,6 +12,18 @@ extension ScholiumUITests {
         XCTAssertTrue(app.descendants(matching: .any)[
             "scholium.noteRow.QA Autosave A.md"
         ].waitForExistence(timeout: 5))
+        let wordmark = app.descendants(matching: .any)["scholium.wordmark"]
+        let search = app.buttons["scholium.sidebarSearch"]
+        let notifications = app.buttons["scholium.triptychNotifications"]
+        XCTAssertTrue(wordmark.waitForExistence(timeout: 5))
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        XCTAssertTrue(notifications.waitForExistence(timeout: 5))
+        XCTAssertLessThan(wordmark.frame.maxX, search.frame.minX)
+        XCTAssertLessThan(search.frame.maxX, notifications.frame.minX)
+        XCTAssertFalse(
+            app.descendants(matching: .any)["scholium.folderRow.Attachments"].exists
+        )
+        XCTAssertFalse(app.toolbars.firstMatch.buttons["Agent Changes"].exists)
         XCTAssertEqual(app.windows.count, 1)
 
         let sessionsURL = homeDirectory

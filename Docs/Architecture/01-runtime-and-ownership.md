@@ -337,8 +337,9 @@ document/projection facts that affect focused command
 labels or availability. Commands still read and mutate the existing owners.
 `DocumentController` alone owns
 selection and document workflow state; `ResearchController` owns Settlement,
-Critique, and durable-recovery projection. It neither republishes nor duplicates
-document or shell state.
+Critique, durable-recovery projection, and the window-borrowed machine-local
+Agent Change list used for presence and presentation. It neither republishes
+nor duplicates document or shell state.
 `DocumentTransitionCoordinator` serializes workspace and document replacement,
 flushes the exact active editor before mutation, coalesces rapid workspace input
 to the last requested destination, and commits only after the destination
@@ -489,8 +490,11 @@ an unrelated configuration application neither rescans every item twice nor
 replays AppKit expansion. `WindowModel` filters and orders
 the Note sequence before the cache lookup. Modified-time ordering reads a Note
 title only for an actual timestamp tie; title ordering retains its existing
-fallback. The tree projection preserves
-that order within each Folder without receiving a second comparator closure.
+fallback. The projection excludes the application-owned root `Attachments`
+directory and all descendants before constructing roots; attachment storage
+remains intact and is reached through the owning Note. The tree projection
+preserves that order within each Folder without receiving a second comparator
+closure.
 `SidebarContext` derives its vault identity from the disclosure scope and names
 the shared create/move/drop gate as Library mutation capability, so parallel
 immutable inputs cannot disagree about the active vault or authority.
@@ -585,6 +589,11 @@ split-content titlebar host remains: under full-size content that host rendered
 beneath the toolbar's pointer hit-testing layer even when accessibility could
 still discover it. Stable native toolbar controls satisfy §18.2 without adding
 a geometry owner or painted titlebar layer.
+
+Search and Notifications are native SwiftUI controls at the logical trailing
+edge of the Sidebar header. The toolbar's Agent Changes item observes the
+window's borrowed Agent Change projection and is absent unless that list is
+nonempty; hiding it creates no second change-state owner.
 
 AppKit owns resizing, compression, dividers, collapse, fullscreen, frame
 restoration, and drag limits; the Codable route owns scene identity. No width

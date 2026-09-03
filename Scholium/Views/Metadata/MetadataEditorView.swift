@@ -185,6 +185,7 @@ struct MetadataEditorView: View {
                 Spacer()
                 HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                     Button("Cancel") { closeEditor() }
+                        .scholiumActivationPointer()
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                         .keyboardShortcut(.escape)
@@ -199,6 +200,7 @@ struct MetadataEditorView: View {
                             Text("Save")
                         }
                     }
+                    .scholiumActivationPointer()
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
                     .tint(ScholiumColorRole.accent.color)
@@ -222,6 +224,7 @@ struct MetadataEditorView: View {
                         Button("Discard Draft and Reload Current Note") {
                             reloadCurrentNote()
                         }
+                        .scholiumActivationPointer()
                         .disabled(isReloading || reload == nil)
                     }
                 }
@@ -264,6 +267,7 @@ struct MetadataEditorView: View {
             set: { if !$0 { saveError = nil } }
         )) {
             Button("Keep Editing", role: .cancel) { saveError = nil }
+            .scholiumActivationPointer()
         } message: {
             Text(saveError ?? "")
         }
@@ -304,6 +308,7 @@ struct MetadataEditorView: View {
                     Button("Add a Field…") {
                         showAvailableProperties = true
                     }
+                    .scholiumActivationPointer()
                     .focused($addPropertyButtonIsFocused)
                     .accessibilityIdentifier("scholium.metadataEditor.addField")
                     .accessibilityHint("Chooses a managed field without changing Markdown or YAML")
@@ -536,11 +541,13 @@ struct MetadataEditorView: View {
                 Button("Undo Removal") {
                     removedFieldKeys.remove(field.key)
                 }
+                .scholiumActivationPointer()
                 .buttonStyle(.borderless)
             } else if field.isReadOnly {
                 Button("Remove Field", role: .destructive) {
                     removeField(field)
                 }
+                .scholiumActivationPointer()
                 .buttonStyle(.borderless)
             } else {
                 ScholiumEditorialIconControl(
@@ -557,9 +564,11 @@ struct MetadataEditorView: View {
                         ) {
                             removeField(field)
                         }
+                        .scholiumActivationPointer()
                     } label: {
                         label
                     }
+                    .scholiumActivationPointer()
                 }
                 .help("Field Actions")
                 .accessibilityLabel("Field Actions")
@@ -671,6 +680,7 @@ struct MetadataEditorView: View {
                 get: { fieldValues[field.key]?.lowercased() == "true" },
                 set: { fieldValues[field.key] = $0 ? "true" : "false" }
             )) {}
+            .scholiumActivationPointer()
             .labelsHidden()
             .accessibilityLabel(Text(verbatim: field.label))
             .disabled(field.isReadOnly)
@@ -693,6 +703,7 @@ struct MetadataEditorView: View {
                         )).tag(value)
                     }
                 }
+                .scholiumActivationPointer()
                 .labelsHidden()
                 .accessibilityLabel(Text(verbatim: field.label))
                 .pickerStyle(.menu)
@@ -809,6 +820,7 @@ struct MetadataEditorView: View {
                         Image(systemName: "plus.circle")
                     }
                 }
+                .scholiumActivationPointer()
                 .buttonStyle(.borderless)
             }
         }
@@ -894,6 +906,7 @@ struct MetadataEditorView: View {
                 )
                 .contentShape(Rectangle())
         }
+        .scholiumActivationPointer()
         .buttonStyle(.borderless)
         .accessibilityLabel("Remove creator \(index + 1)")
     }
@@ -946,6 +959,7 @@ struct MetadataEditorView: View {
                                 trailingSystemImage: "xmark"
                             )
                         }
+                        .scholiumActivationPointer()
                         .buttonStyle(.plain)
                         .help("Remove tag \(tag)")
                         .accessibilityLabel("Remove tag \(tag)")
@@ -968,6 +982,7 @@ struct MetadataEditorView: View {
                         .scholiumSymbolStyle(.prominent)
                         .scholiumForeground(.accent)
                 }
+                .scholiumActivationPointer()
                 .buttonStyle(.plain)
                 .frame(
                     minWidth: ScholiumMetrics.Accessibility.preferredCustomTarget,
@@ -1021,6 +1036,7 @@ struct MetadataEditorView: View {
                         Image(systemName: "minus.circle.fill")
                             .scholiumForeground(.secondaryText)
                     }
+                    .scholiumActivationPointer()
                     .buttonStyle(.plain)
                     .frame(
                         minWidth: ScholiumMetrics.Accessibility.preferredCustomTarget,
@@ -1038,6 +1054,7 @@ struct MetadataEditorView: View {
                 Label("Add item", systemImage: "plus.circle")
                     .font(ScholiumTypography.interface(.small))
             }
+            .scholiumActivationPointer()
             .buttonStyle(.borderless)
         }
         .disabled(field.isReadOnly)
@@ -1219,6 +1236,7 @@ private struct PropertyChooserView: View {
                 }
                 Spacer()
                 Button("Cancel") { dismiss() }
+                    .scholiumActivationPointer()
                     .keyboardShortcut(.escape)
             }
 
@@ -1263,6 +1281,7 @@ private struct PropertyChooserView: View {
                                 .help(propertyHelpText(for: field))
                                 .tag(field.key)
                                 .contentShape(Rectangle())
+                                .scholiumActivationPointer()
                                 .onTapGesture(count: 2) {
                                     selectionKey = field.key
                                     addSelectedField()
@@ -1279,6 +1298,7 @@ private struct PropertyChooserView: View {
             HStack {
                 Spacer()
                 Button("Add Selected Field") { addSelectedField() }
+                    .scholiumActivationPointer()
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
                     .disabled(selectedField == nil)

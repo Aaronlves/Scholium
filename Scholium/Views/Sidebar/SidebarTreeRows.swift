@@ -165,6 +165,7 @@ struct SidebarTreeNodeRow: View {
             )
             .contentShape(Rectangle())
         }
+        .scholiumActivationPointer()
         .buttonStyle(
             ScholiumContentControlButtonStyle(
                 tracksHover: false,
@@ -188,6 +189,7 @@ struct SidebarTreeNodeRow: View {
             )
             .contentShape(Rectangle())
         }
+        .scholiumActivationPointer()
         .buttonStyle(
             ScholiumContentControlButtonStyle(
                 tracksHover: false,
@@ -219,26 +221,35 @@ struct SidebarTreeNodeRow: View {
         if let path = node.folderRelativePath {
             if canMutateFolder(path) {
                 Button("New Note") { context.createUntitledNote(path) }
+                .scholiumActivationPointer()
                 Button("New Folder") { context.createUntitledFolder(path) }
+                .scholiumActivationPointer()
                 if let target = folderTarget(path) {
                     Button("Rename Folder…") { context.requestFolderFileOperation(.rename(target)) }
+                    .scholiumActivationPointer()
                     Button("Move Folder…") { context.requestFolderFileOperation(.move(target)) }
+                    .scholiumActivationPointer()
                 }
             }
             if !node.children.isEmpty {
                 Button(subtreeIsExpanded ? "Collapse All" : "Expand All", action: toggleEntireSubtree)
+                .scholiumActivationPointer()
             }
             Divider()
             Button("Copy Relative Path") { context.copyRelativePath(path) }
+            .scholiumActivationPointer()
             Button("Reveal in Finder") { context.revealNote(path) }
+            .scholiumActivationPointer()
             if canMutateFolder(path) {
                 Divider()
                 Button("Move Folder and Notes to Trash…", role: .destructive) {
                     if let target = folderTarget(path) { performFolderTrash(target) }
                 }
+                .scholiumActivationPointer()
             }
         } else if !node.children.isEmpty {
             Button(subtreeIsExpanded ? "Collapse All" : "Expand All", action: toggleEntireSubtree)
+            .scholiumActivationPointer()
         }
     }
 
@@ -247,20 +258,28 @@ struct SidebarTreeNodeRow: View {
         if let path = node.folderRelativePath {
             if canMutateFolder(path) {
                 Button("New Note") { context.createUntitledNote(path) }
+                .scholiumActivationPointer()
                 Button("New Folder") { context.createUntitledFolder(path) }
+                .scholiumActivationPointer()
                 if let target = folderTarget(path) {
                     Button("Rename Folder") { context.requestFolderFileOperation(.rename(target)) }
+                    .scholiumActivationPointer()
                     Button("Move Folder") { context.requestFolderFileOperation(.move(target)) }
+                    .scholiumActivationPointer()
                     Button("Move Folder and Notes to Trash") {
                         performFolderTrash(target)
                     }
+                    .scholiumActivationPointer()
                 }
             }
             Button("Copy Relative Path") { context.copyRelativePath(path) }
+            .scholiumActivationPointer()
             Button("Reveal in Finder") { context.revealNote(path) }
+            .scholiumActivationPointer()
         }
         if !node.children.isEmpty {
             Button(subtreeIsExpanded ? "Collapse All" : "Expand All", action: toggleEntireSubtree)
+            .scholiumActivationPointer()
         }
     }
 
@@ -309,6 +328,7 @@ struct SidebarTreeNodeRow: View {
         } label: {
             Text(title)
         }
+        .scholiumActivationPointer()
         .disabled(
             command.requiresMutationTarget && NoteMutationTarget(note) == nil
         )

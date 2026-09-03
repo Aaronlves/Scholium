@@ -633,7 +633,7 @@ private enum ScholiumDocumentTabLayout {
 /// from replacing Scholium's existing native toolbar.
 @MainActor
 final class ScholiumDocumentTabsViewController<Document: View>: NSViewController {
-    private final class TabButton: NSButton {
+    private final class TabButton: ScholiumPointingHandButton {
         var tabID: UUID?
     }
 

@@ -158,10 +158,12 @@ with errors. Rendering failure enters persistent CSS Safe Mode until the
 researcher disables or selectively re-enables managed copies.
 
 The Document toolbar keeps Sidebar and Back/Forward leading, identity and
-outline in the Document region, then Search, Document Mode, Research Records,
-Agent Changes, and trailing Inspector. Source remains available through the
-Document Mode menu; the toolbar button prioritizes Review/Edit and reports its
-current value. Document Text Size is per-window and source-neutral.
+outline in the Document region, then Document Mode, Research Records, and
+trailing Inspector. Search belongs beside Notifications in the Sidebar header.
+Agent Changes appears in the toolbar only while at least one confirmed local
+change exists. Source remains available through the Document Mode menu; the
+toolbar button prioritizes Review/Edit and reports its current value. Document
+Text Size is per-window and source-neutral.
 
 About directly edits one current-Note field at a time. Plain values activate an
 inline control; structured contributors retain their ordered structured editor.

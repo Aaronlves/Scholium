@@ -215,6 +215,7 @@ struct ContentView: View {
                     Button("Retry Refresh") {
                         Task { await appState.retryDerivedRefresh() }
                     }
+                    .scholiumActivationPointer()
                     .buttonStyle(.borderless)
                     .font(
                         ScholiumTypography.interface(
@@ -660,6 +661,10 @@ struct ContentView: View {
                 propertyValues: propertyFilterOptions.valuesByKey
             ),
             attentionPopoverSession: appState.attentionPopoverSession,
+            searchIsPresented: appState.showSearchSurface,
+            openSearch: {
+                appState.searchController.begin(.general)
+            },
             openAttention: {
                 windowCoordinator.actions.showAttention(
                     .queue(
@@ -896,13 +901,7 @@ struct ContentView: View {
         case .agentChanges:
             AgentChangesView(
                 load: {
-                    guard let operations = appState.windowWorkspaceController
-                        .activeCapabilities?.agentCollaboration else {
-                        throw ScholiumApplicationError.critiqueStoreUnavailable(
-                            "No workspace is active."
-                        )
-                    }
-                    return try await operations.agentChanges()
+                    try await researchController.loadAgentChanges()
                 },
                 loadReview: { changeID in
                     guard let operations = appState.windowWorkspaceController
@@ -924,6 +923,7 @@ struct ContentView: View {
                         expectedAfterFingerprint: fingerprint
                     )
                     await appState.refreshWorkspaceCatalog()
+                    _ = try await researchController.loadAgentChanges()
                 }
             )
         }
@@ -1267,6 +1267,7 @@ private struct DocumentSettlementControl: View {
                 : "checkmark.circle")
                 .frame(width: 24, height: 24)
         }
+        .scholiumActivationPointer()
         .buttonStyle(.bordered)
         .disabled(presentation.state == .unavailable)
         .help(actionHelp)
@@ -1293,6 +1294,7 @@ private struct DocumentSettlementControl: View {
                         errorMessage = nil
                         isPresented = false
                     }
+                    .scholiumActivationPointer()
                     Spacer()
                     Button(actionTitle) {
                         isSettling = true
@@ -1309,6 +1311,7 @@ private struct DocumentSettlementControl: View {
                             }
                         }
                     }
+                    .scholiumActivationPointer()
                     .buttonStyle(.borderedProminent)
                     .disabled(isSettling)
                 }

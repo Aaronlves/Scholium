@@ -38,6 +38,8 @@ struct SidebarContext {
     let sourceMutationGeneration: UInt64
     let filterOptions: SidebarLibraryFilterOptions
     let attentionPopoverSession: AttentionPopoverSession?
+    let searchIsPresented: Bool
+    let openSearch: () -> Void
     let openAttention: () -> Void
     let retryAttention: () -> Void
     let openNote: (WindowDocumentLocation, WindowOpenDisposition) -> Void
@@ -156,15 +158,23 @@ struct SidebarView: View {
 
     private var brandHeader: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-            Text("Scholium")
-                .font(ScholiumTypography.Brand.wordmark)
-                .scholiumForeground(.primaryText)
-                .accessibilityAddTraits(.isHeader)
-                .accessibilityIdentifier("scholium.wordmark")
-
             HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                triptychMenu
+                Text("Scholium")
+                    .font(ScholiumTypography.Brand.wordmark)
+                    .scholiumForeground(.primaryText)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("scholium.wordmark")
+
                 Spacer(minLength: 0)
+
+                ScholiumInkIconControl(
+                    title: ScholiumL10n.dynamicString("Search"),
+                    systemImage: "magnifyingglass",
+                    identifier: "scholium.sidebarSearch",
+                    isActive: context.searchIsPresented,
+                    action: context.openSearch
+                )
+
                 SidebarTriptychAttentionEntry(
                     state: triptychAttentionState,
                     open: context.openAttention,
@@ -175,6 +185,8 @@ struct SidebarView: View {
                     session: context.attentionPopoverSession
                 )
             }
+
+            triptychMenu
         }
         .padding(.horizontal, ScholiumMetrics.Library.contentInset)
         .padding(.top, ScholiumGrid.Spacing.sectionSeparation)
@@ -186,9 +198,11 @@ struct SidebarView: View {
             Button(action: context.openSettings) {
                 Label("Manage Triptychs…", systemImage: "folder.badge.gearshape")
             }
+            .scholiumActivationPointer()
             Button(action: context.revealCurrentVault) {
                 Label("Reveal Current Vault in Finder", systemImage: "folder")
             }
+            .scholiumActivationPointer()
         } label: {
             Text(verbatim: context.triptychName)
                 .font(ScholiumTypography.interface(.small, emphasis: .strong))
@@ -198,6 +212,7 @@ struct SidebarView: View {
                 .frame(minHeight: ScholiumMetrics.Accessibility.minimumCustomTarget)
                 .contentShape(Rectangle())
         }
+        .scholiumActivationPointer()
         .menuStyle(.borderlessButton)
         .tint(ScholiumColorRole.primaryText.color)
         .fixedSize(horizontal: false, vertical: true)
@@ -320,6 +335,7 @@ struct SidebarView: View {
                 } label: {
                     label
                 }
+                .scholiumActivationPointer()
             }
             .disabled(!context.canMutateLibrary)
             .help("Create New")
@@ -365,6 +381,7 @@ struct SidebarView: View {
             } label: {
                 label
             }
+            .scholiumActivationPointer()
         }
         .disabled(expandableFolderIDs.isEmpty)
         .help(title)
@@ -397,6 +414,7 @@ struct SidebarView: View {
         } label: {
             Label("New Note", systemImage: "doc.badge.plus")
         }
+        .scholiumActivationPointer()
         .disabled(!context.canMutateLibrary)
         .accessibilityIdentifier("scholium.newNote")
 
@@ -405,6 +423,7 @@ struct SidebarView: View {
         } label: {
             Label("New Folder", systemImage: "folder.badge.plus")
         }
+        .scholiumActivationPointer()
         .disabled(!context.canMutateLibrary)
         .accessibilityIdentifier("scholium.newFolder")
     }
@@ -418,6 +437,7 @@ struct SidebarView: View {
                 .scholiumForeground(.secondaryText)
             Spacer(minLength: 0)
             Button("Clear", action: clearAllFilters)
+                .scholiumActivationPointer()
                 .buttonStyle(.link)
         }
         .frame(minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget)
@@ -451,6 +471,7 @@ struct SidebarView: View {
                             controller.library.workspaceSlot
                         )
                     }
+                    .scholiumActivationPointer()
                 }
             }
             .accessibilityIdentifier("scholium.libraryError")
