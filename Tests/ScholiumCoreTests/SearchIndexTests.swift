@@ -50,6 +50,41 @@ struct SearchIndexTests {
         #expect(SearchQueryParser.parse("callout:argument Guidance").diagnostics.first?.code == .unknownStructuredValue)
     }
 
+    @Test("Multi-term conceptual queries retain AND semantics, including zero hits")
+    func multiTermConceptualQueries() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let index = try fixture.index()
+        _ = try await index.synchronize([
+            fixture.item(
+                fixture.topics,
+                "Emotion and Authority.md",
+                "Emotion, emotional authority, value, reasons, and rationality."
+            ),
+            fixture.item(
+                fixture.analyses,
+                "Blame and Criticizability.md",
+                "Blame and criticizability can each bear on emotion."
+            ),
+            fixture.item(
+                fixture.works,
+                "Emotion and Reasons.md",
+                "Emotion can disclose reasons without settling authority."
+            ),
+        ])
+
+        let expected: [(String, [String])] = [
+            ("blame criticizability emotion", ["Blame and Criticizability.md"]),
+            ("emotional authority", ["Emotion and Authority.md"]),
+            ("emotion value reasons", ["Emotion and Authority.md"]),
+            ("emotion rationality", ["Emotion and Authority.md"]),
+            ("emotion value absent", []),
+        ]
+        for (query, paths) in expected {
+            let response = try await index.testSearch(fixture.request(query))
+            #expect(response.noteResults.map(\.relativePath) == paths)
+        }
+    }
+
     @Test("Canonical Unicode equivalence is searchable")
     func canonicalUnicodeEquivalence() async throws {
         let fixture = try Fixture(); defer { fixture.remove() }

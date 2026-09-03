@@ -148,7 +148,8 @@ public enum ScholiumAppBridgeError: LocalizedError, Hashable, Sendable {
 public enum ScholiumAppBridgeLocation {
     public static let maximumFrameByteCount = 1_024 * 1_024
     public static let timeout: TimeInterval = 5
-    public static let clientTimeout: TimeInterval = 6
+    public static let operationTimeout: TimeInterval = 25
+    public static let clientTimeout: TimeInterval = 30
     public static let authenticationFileName = "app-bridge-auth-v1"
     private static let firstPrivatePort: UInt16 = 49_152
     private static let privatePortCount: UInt64 = 16_384
@@ -274,6 +275,7 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
     private let authenticationURL: URL
     private let port: UInt16
     private let timeout: TimeInterval
+    private let operationTimeout: TimeInterval
     private let handler: Handler
     private let lock = NSLock()
     private var listener: Int32 = -1
@@ -284,6 +286,7 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
     public init(
         applicationSupportURL: URL,
         timeout: TimeInterval = ScholiumAppBridgeLocation.timeout,
+        operationTimeout: TimeInterval = ScholiumAppBridgeLocation.operationTimeout,
         handler: @escaping Handler
     ) throws {
         containerURL = applicationSupportURL.standardizedFileURL
@@ -292,6 +295,7 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
         )
         port = ScholiumAppBridgeLocation.port(applicationSupportURL: containerURL)
         self.timeout = min(max(timeout, 0.1), 30)
+        self.operationTimeout = min(max(operationTimeout, 0.1), 30)
         self.handler = handler
         try start()
     }
@@ -342,6 +346,7 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
             throw ScholiumAppBridgeError.systemCall("create its listener", errno)
         }
         try AppBridgeIO.configure(listener, timeout: timeout)
+        try AppBridgeIO.configureListener(listener)
         var address = AppBridgeIO.address(port: port)
         let bound = withUnsafePointer(to: &address) { pointer in
             pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
@@ -426,7 +431,7 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
                 semaphore.signal()
             }
             lock.withLock { handlerTask = task }
-            let finished = semaphore.wait(timeout: .now() + timeout) == .success
+            let finished = semaphore.wait(timeout: .now() + operationTimeout) == .success
             lock.withLock { handlerTask = nil }
             guard finished else {
                 task.cancel()
@@ -642,6 +647,22 @@ private enum AppBridgeIO {
             ) == 0 else {
                 throw ScholiumAppBridgeError.systemCall("configure its timeout", errno)
             }
+        }
+    }
+
+    static func configureListener(_ descriptor: Int32) throws {
+        var reuseAddress: Int32 = 1
+        guard setsockopt(
+            descriptor,
+            SOL_SOCKET,
+            SO_REUSEADDR,
+            &reuseAddress,
+            socklen_t(MemoryLayout<Int32>.size)
+        ) == 0 else {
+            throw ScholiumAppBridgeError.systemCall(
+                "configure listener reuse",
+                errno
+            )
         }
     }
 
