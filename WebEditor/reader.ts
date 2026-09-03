@@ -537,8 +537,8 @@ async function initializeReader(value: unknown): Promise<void> {
     if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
     activeAnnotationButton = null;
     previewTitle.textContent = localized('Footnote {ordinal}', {ordinal});
-    previewMetadata.textContent = localized('Referenced footnote');
-    previewMetadata.hidden = false;
+    previewMetadata.textContent = '';
+    previewMetadata.hidden = true;
     previewBody.replaceChildren(content.cloneNode(true));
     sanitizeInertContent(previewBody);
     positionPopover(button);
@@ -985,6 +985,11 @@ async function initializeReader(value: unknown): Promise<void> {
     const upper = Number(anchor.blockUTF16UpperBound);
     const relative = Number(anchor.relativeBlockPosition);
     if (![offset, lower, upper, relative].every(Number.isFinite)) return false;
+    const fallback = Number(anchor.fallbackFraction);
+    if (Number.isFinite(fallback) && fallback <= 0) {
+      window.scrollTo({top: 0, behavior: 'auto'});
+      return true;
+    }
     const target = visibleScrollEntry(scrollEntryForAnchor(anchor));
     if (!target) return false;
     const rect = target.element.getBoundingClientRect();

@@ -2,12 +2,16 @@ import type {Extension} from "@codemirror/state";
 import {EditorView, ViewPlugin} from "@codemirror/view";
 import {announceEditorMessage} from "./accessibility";
 import {floatingSurfacePosition} from "./floating-surface-geometry";
+import type {
+  FootnotePresentation,
+  FootnoteReferencePresentation,
+} from "./footnote-presentation";
 import {
   recordEditorMetric,
   scheduleAfterNextPaint,
 } from "./performance";
 import type {LinkPreview} from "./previews";
-import {localized} from "./localization";
+import {localized, localizedTemplate} from "./localization";
 
 type PreviewAnchorRect = Pick<DOMRect, "left" | "right" | "top" | "bottom">;
 
@@ -53,10 +57,12 @@ export interface PreviewPopoverController {
   showAtPoint(x: number, y: number): boolean;
 }
 
-/** Owns cached-link and source-owned annotation previews without owning either source. */
+/** Owns cached-link, footnote, and source-owned annotation previews without owning source. */
 export function createPreviewPopoverController(
   options: {
     previews(): readonly LinkPreview[];
+    footnotes(): FootnotePresentation;
+    renderFootnoteContent(content: string, parent: HTMLElement): void;
     postPerformanceSample(
       metric: "editor_cached_preview",
       durationMilliseconds: number,
@@ -75,7 +81,9 @@ export function createPreviewPopoverController(
   let armedLink: HTMLElement | null = null;
   let activeAnnotationButton: HTMLButtonElement | null = null;
   let pinnedAnnotationButton: HTMLButtonElement | null = null;
-  let activeKind: "link" | "annotation" | null = null;
+  let activeFootnoteButton: HTMLButtonElement | null = null;
+  let pinnedFootnoteButton: HTMLButtonElement | null = null;
+  let activeKind: "link" | "annotation" | "footnote" | null = null;
   let modifierPressed = false;
 
   function annotationTarget(button: HTMLButtonElement) {
@@ -88,6 +96,14 @@ export function createPreviewPopoverController(
       "aria-label",
       `${localized(expanded ? "Hide Link Annotation" : "Show Link Annotation")} ${annotationTarget(button)}`,
     );
+  }
+
+  function setFootnoteExpanded(button: HTMLButtonElement, expanded: boolean) {
+    button.setAttribute("aria-expanded", expanded ? "true" : "false");
+  }
+
+  function hasPinnedPreview() {
+    return pinnedAnnotationButton !== null || pinnedFootnoteButton !== null;
   }
 
   function setArmedLink(next: HTMLElement | null) {
@@ -107,8 +123,11 @@ export function createPreviewPopoverController(
     modifierPressed = false;
     setArmedLink(null);
     if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
+    if (activeFootnoteButton) setFootnoteExpanded(activeFootnoteButton, false);
     activeAnnotationButton = null;
     pinnedAnnotationButton = null;
+    activeFootnoteButton = null;
+    pinnedFootnoteButton = null;
     activeKind = null;
     if (root) {
       root.hidden = true;
@@ -125,7 +144,7 @@ export function createPreviewPopoverController(
   }
 
   function scheduleHide() {
-    if (pinnedAnnotationButton) return;
+    if (hasPinnedPreview()) return;
     window.clearTimeout(hideTimer);
     hideTimer = window.setTimeout(hide, 180);
   }
@@ -176,7 +195,9 @@ export function createPreviewPopoverController(
   function showLinkPreview(preview: LinkPreview, anchor: PreviewAnchorRect, startedAt: number) {
     if (!editor || !root || !title || !metadata || !body) return;
     if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
+    if (activeFootnoteButton) setFootnoteExpanded(activeFootnoteButton, false);
     activeAnnotationButton = null;
+    activeFootnoteButton = null;
     activeKind = "link";
     title.textContent = preview.title;
     metadata.textContent = preview.fragment ?? "";
@@ -202,7 +223,9 @@ export function createPreviewPopoverController(
     if (activeAnnotationButton && activeAnnotationButton !== button) {
       setAnnotationExpanded(activeAnnotationButton, false);
     }
+    if (activeFootnoteButton) setFootnoteExpanded(activeFootnoteButton, false);
     activeAnnotationButton = button;
+    activeFootnoteButton = null;
     activeKind = "annotation";
     setAnnotationExpanded(button, true);
     title.textContent = annotationTarget(button);
@@ -214,12 +237,61 @@ export function createPreviewPopoverController(
     return true;
   }
 
+  function footnoteReferenceFor(button: HTMLButtonElement) {
+    const identifier = button.dataset.footnoteIdentifier;
+    const occurrence = Number(button.dataset.footnoteOccurrence);
+    if (!identifier || !Number.isInteger(occurrence)) return undefined;
+    return options.footnotes().references.find((reference) =>
+      reference.identifier === identifier && reference.occurrence === occurrence);
+  }
+
+  function showFootnoteReference(
+    reference: FootnoteReferencePresentation,
+    anchor: PreviewAnchorRect,
+    button: HTMLButtonElement | null = null,
+  ) {
+    if (!root || !title || !metadata || !body) return false;
+    const definition = options.footnotes().definitions.find((candidate) =>
+      candidate.identifier === reference.identifier);
+    const content = definition?.content.trim().slice(0, 1_600) ?? "";
+    if (!content) return false;
+    if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
+    if (activeFootnoteButton && activeFootnoteButton !== button) {
+      setFootnoteExpanded(activeFootnoteButton, false);
+    }
+    activeAnnotationButton = null;
+    activeFootnoteButton = button;
+    activeKind = "footnote";
+    if (button) setFootnoteExpanded(button, true);
+    title.textContent = localizedTemplate("Footnote {ordinal}", {ordinal: reference.ordinal});
+    metadata.textContent = "";
+    metadata.hidden = true;
+    body.replaceChildren();
+    options.renderFootnoteContent(content, body);
+    sanitizePreviewDocument(body);
+    position(anchor);
+    return true;
+  }
+
+  function showFootnote(button: HTMLButtonElement) {
+    const reference = footnoteReferenceFor(button);
+    return reference
+      ? showFootnoteReference(reference, button.getBoundingClientRect(), button)
+      : false;
+  }
+
   function showAtSelection() {
     const startedAt = performance.now();
     if (!editor) return false;
     const head = editor.state.selection.main.head;
     const coords = editor.coordsAtPos(head);
     if (!coords) return false;
+    const footnote = options.footnotes().references.find((candidate) =>
+      head >= candidate.from && head < candidate.to);
+    if (footnote) {
+      hide();
+      return showFootnoteReference(footnote, coords);
+    }
     const preview = options.previews().find((candidate) => head >= candidate.from && head < candidate.to);
     if (preview) {
       hide();
@@ -237,6 +309,11 @@ export function createPreviewPopoverController(
     const startedAt = performance.now();
     if (!editor) return false;
     const anchor = linkAnchorAt(document.elementFromPoint(x, y));
+    const footnote = footnoteButtonAt(document.elementFromPoint(x, y));
+    if (footnote) {
+      hide();
+      return showFootnote(footnote);
+    }
     if (!anchor) return showAtSelection();
     const preview = previewForAnchor(anchor);
     if (preview) {
@@ -250,6 +327,12 @@ export function createPreviewPopoverController(
   function annotationButtonAt(target: EventTarget | null) {
     return target instanceof Element
       ? target.closest<HTMLButtonElement>(".scholium-link-annotation-button")
+      : null;
+  }
+
+  function footnoteButtonAt(target: EventTarget | null) {
+    return target instanceof Element
+      ? target.closest<HTMLButtonElement>(".cm-live-footnote-reference-widget .footnote-reference")
       : null;
   }
 
@@ -272,7 +355,7 @@ export function createPreviewPopoverController(
     return options.previews().find((preview) => preview.from === from && preview.to === to);
   }
 
-  function scheduleShow(anchor: HTMLElement, kind: "link" | "annotation") {
+  function scheduleShow(anchor: HTMLElement, kind: "link" | "annotation" | "footnote") {
     cancelHide();
     if (anchor === pendingAnchor && kind === activeKind) return;
     window.clearTimeout(showTimer);
@@ -282,6 +365,10 @@ export function createPreviewPopoverController(
       if (pendingAnchor !== anchor) return;
       if (kind === "annotation") {
         showAnnotation(anchor as HTMLButtonElement);
+        return;
+      }
+      if (kind === "footnote") {
+        showFootnote(anchor as HTMLButtonElement);
         return;
       }
       const preview = previewForAnchor(anchor);
@@ -297,20 +384,23 @@ export function createPreviewPopoverController(
       return;
     }
     const annotation = annotationButtonAt(event.target);
+    const footnote = footnoteButtonAt(event.target);
     const link = linkAnchorAt(event.target);
     hoveredLink = link;
-    if (pinnedAnnotationButton && annotation !== pinnedAnnotationButton) {
+    if (hasPinnedPreview()
+        && annotation !== pinnedAnnotationButton
+        && footnote !== pinnedFootnoteButton) {
       setArmedLink(null);
       return;
     }
     const modifierActive = event.metaKey || event.ctrlKey || modifierPressed;
     setArmedLink(modifierActive ? link : null);
-    const anchor = annotation ?? (modifierActive ? link : null);
+    const anchor = annotation ?? footnote ?? (modifierActive ? link : null);
     if (!anchor) {
       if (pendingAnchor || (root && !root.hidden)) scheduleHide();
       return;
     }
-    scheduleShow(anchor, annotation ? "annotation" : "link");
+    scheduleShow(anchor, annotation ? "annotation" : footnote ? "footnote" : "link");
   };
   const handlePreviewPointerEnter = () => cancelHide();
   const handlePreviewPointerLeave = () => scheduleHide();
@@ -327,20 +417,21 @@ export function createPreviewPopoverController(
     }
     if (event.key !== "Meta" && event.key !== "Control") return;
     modifierPressed = true;
-    if (!hoveredLink || pinnedAnnotationButton) return;
+    if (!hoveredLink || hasPinnedPreview()) return;
     setArmedLink(hoveredLink);
     scheduleShow(hoveredLink, "link");
   };
   const handleFocusIn = (event: FocusEvent) => {
-    const button = annotationButtonAt(event.target);
+    const button = annotationButtonAt(event.target) ?? footnoteButtonAt(event.target);
     if (!button) return;
     cancelHide();
     window.clearTimeout(showTimer);
     pendingAnchor = button;
-    showAnnotation(button);
+    if (button.matches(".footnote-reference")) showFootnote(button);
+    else showAnnotation(button);
   };
   const handleFocusOut = (event: FocusEvent) => {
-    const button = annotationButtonAt(event.target);
+    const button = annotationButtonAt(event.target) ?? footnoteButtonAt(event.target);
     if (!button) return;
     if (event.relatedTarget instanceof Node && root?.contains(event.relatedTarget)) return;
     scheduleHide();
@@ -360,7 +451,21 @@ export function createPreviewPopoverController(
       showAnnotation(button);
       return;
     }
-    if (pinnedAnnotationButton
+    const footnote = footnoteButtonAt(event.target);
+    if (footnote && event.detail === 0) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (pinnedFootnoteButton === footnote) {
+        hide();
+        return;
+      }
+      pinnedFootnoteButton = footnote;
+      window.clearTimeout(showTimer);
+      pendingAnchor = footnote;
+      showFootnote(footnote);
+      return;
+    }
+    if (hasPinnedPreview()
         && !(event.target instanceof Node && root?.contains(event.target))) hide();
   };
   const handleViewportExit = () => {

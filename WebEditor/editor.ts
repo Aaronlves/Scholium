@@ -113,6 +113,7 @@ import {
   scheduleAfterNextPaint,
 } from "./performance";
 import {createPreviewPopoverController} from "./preview-popover";
+import {appendMarkdownBlocks} from "./markdown-fragment";
 import {createEditorScrollCoordinator} from "./scroll-coordinator";
 import {createEditorContextMenuExtension} from "./context-menu";
 import {boundedUUID, createEditorInputSuggestions} from "./input-suggestions";
@@ -276,6 +277,15 @@ let documentTitleRenameRequest: {
 let documentTitlePresentationRevision = 0;
 let lastDocumentFocusTarget: EditorFocusTarget | undefined;
 
+function setDocumentFocusTarget(target: EditorFocusTarget) {
+  const changed = lastDocumentFocusTarget !== target;
+  lastDocumentFocusTarget = target;
+  if (changed && configuredEditorMode(editor.state) === "livePreview") {
+    editor.dispatch({effects: refreshLivePreviewEffect.of(null)});
+  }
+  scheduleEditorInteractionReport();
+}
+
 function configuredEditorMode(state: EditorState): EditorMode {
   return state.facet(editorModeFacet);
 }
@@ -366,8 +376,7 @@ class DocumentTitleWidget extends WidgetType {
     let cancelling = false;
     input.addEventListener("input", normalizeInput);
     input.addEventListener("focus", () => {
-      lastDocumentFocusTarget = "title";
-      scheduleEditorInteractionReport();
+      setDocumentFocusTarget("title");
     });
     input.addEventListener("compositionstart", () => { composing = true; });
     input.addEventListener("compositionend", () => {
@@ -489,22 +498,6 @@ const liveDocumentTitle = StateField.define<DecorationSet>({
 
 const hiddenSyntax = Decoration.replace({});
 const liveMark = (className: string) => Decoration.mark({ class: className });
-
-class ReservedSyntaxWidget extends WidgetType {
-  constructor(readonly source: string) { super(); }
-
-  eq(other: ReservedSyntaxWidget) { return other.source === this.source; }
-
-  toDOM() {
-    const marker = document.createElement("span");
-    marker.className = "cm-live-reserved-syntax";
-    marker.textContent = this.source;
-    marker.setAttribute("aria-hidden", "true");
-    return marker;
-  }
-
-  ignoreEvent() { return true; }
-}
 
 const liveInlineClassByKind: Partial<Record<SemanticInlineProjection["kind"], string>> = {
   strong: "cm-live-strong",
@@ -677,7 +670,12 @@ function buildLiveDecorations(
     0,
   );
   const index = liveProjectionIndex.index(view.state);
-  const projectionSelections = liveSelection.selection(view.state).ranges;
+  // CodeMirror retains its exact body selection while the source-neutral
+  // filename title owns focus. That retained selection is a restoration fact,
+  // not an actively edited construct, so it must not keep syntax exposed.
+  const projectionSelections = lastDocumentFocusTarget === "title"
+    ? []
+    : liveSelection.selection(view.state).ranges;
   if (index.hasUnclosedFrontmatter) {
     recordEditorMetric("projection", projectionStartedAt, {
       documentLength: doc.length,
@@ -710,14 +708,6 @@ function buildLiveDecorations(
   const addHidden = (from: number, to: number) => {
     if (to <= from) return;
     const range = hiddenSyntax.range(from, to);
-    decorations.push(range);
-    atomicRanges.push(range);
-  };
-  const addReservedHidden = (from: number, to: number) => {
-    if (to <= from) return;
-    const range = Decoration.replace({
-      widget: new ReservedSyntaxWidget(doc.sliceString(from, to)),
-    }).range(from, to);
     decorations.push(range);
     atomicRanges.push(range);
   };
@@ -848,7 +838,7 @@ function buildLiveDecorations(
             range.from < lineQueryTo && range.to > line.from);
           if (!activeLine) {
             for (const marker of lineMarkers) {
-              addReservedHidden(
+              addHidden(
                 Math.max(line.from, marker.from),
                 Math.min(line.to, marker.to),
               );
@@ -1175,9 +1165,10 @@ class LivePreviewPlugin {
     const viewportNeedsProjection = update.viewportChanged
       && !coversVisibleRanges(this.coveredRanges, update.view.visibleRanges);
     // Projection depends on document, selection, composition, syntax, and the
-    // visible range—not on window focus. Rebuilding on focus loss can observe
-    // an inactive WebKit page with temporarily empty visible ranges and erase
-    // otherwise valid heading/block decorations until another transaction.
+    // visible range—not on window focus. The source-neutral title explicitly
+    // refreshes this field when it takes or yields document focus; generic
+    // WebKit/window focus changes do not. Rebuilding on window focus loss can
+    // observe temporarily empty visible ranges and erase valid decorations.
     if (update.docChanged || viewportNeedsProjection
         || explicitlyRefreshed || syntaxTreeChanged) {
       const projection = buildLiveDecorations(update.view);
@@ -1603,6 +1594,11 @@ const selectionActions = createSelectionActionsController({
 
 const previewPopover = createPreviewPopoverController({
   previews: () => linkPreviews,
+  footnotes: () => liveProjectionIndex.index(editor.state).footnotes,
+  renderFootnoteContent: (content, parent) => appendMarkdownBlocks(content, parent, {
+    mathematics: editingDialect?.mathematics,
+    resolveCallout: calloutDefinition,
+  }),
   postPerformanceSample: postConfiguredPerformanceSample,
 });
 
@@ -1728,8 +1724,7 @@ const editorExtensions = [
 ];
 const editor = createMarkdownEditor(document.getElementById("editor")!, editorExtensions);
 editor.contentDOM.addEventListener("focus", () => {
-  lastDocumentFocusTarget = "editor";
-  scheduleEditorInteractionReport();
+  setDocumentFocusTarget("editor");
 });
 editor.contentDOM.addEventListener("keydown", (event) => {
   const key = event.key;
@@ -1775,7 +1770,7 @@ const allCommands = [
   ...selectionActionCommands,
   "thematicBreak",
   "calloutOrient", "calloutCite", "calloutConnect", "calloutState", "calloutIllustrate", "calloutQuote", "calloutFlag",
-  "insertFootnote", "insertTable", "toggleTask", "tableInsertRowBefore", "tableInsertRowAfter", "tableDeleteRow",
+  "insertFootnote", "insertInlineFootnote", "insertTable", "toggleTask", "tableInsertRowBefore", "tableInsertRowAfter", "tableDeleteRow",
   "tableInsertColumnBefore", "tableInsertColumnAfter", "tableDeleteColumn",
   "tableAlignLeft", "tableAlignCenter", "tableAlignRight", "pastePlain", "pasteMarkdown", "linkSelectedText",
 ] as const;
@@ -2413,7 +2408,6 @@ const editorOperations = {
       selection: { anchor: line.from },
       effects: EditorView.scrollIntoView(line.from, { y: "center" }),
     });
-    lastDocumentFocusTarget = "editor";
     editor.focus();
   },
 
@@ -2436,7 +2430,6 @@ const editorOperations = {
       annotations: Transaction.addToHistory.of(false),
     });
     if (focusesEditor) {
-      lastDocumentFocusTarget = "editor";
       editor.focus();
     }
   },
@@ -2490,7 +2483,6 @@ const editorOperations = {
   },
 
   focus() {
-    lastDocumentFocusTarget = "editor";
     editor.focus();
   },
 
@@ -2499,7 +2491,6 @@ const editorOperations = {
       ".scholium-note-title-input",
     );
     if (!input || input.disabled) return false;
-    lastDocumentFocusTarget = "title";
     input.focus();
     input.setSelectionRange(input.value.length, input.value.length);
     return true;

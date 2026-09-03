@@ -269,6 +269,33 @@ export function transformMarkdown(
     };
   }
 
+  if (command === "insertInlineFootnote") {
+    const values = ranges.map((range) => {
+      const selected = source.slice(range.from, range.to);
+      const insert = `^[${selected}]`;
+      const contentFrom = range.from + 2;
+      return {
+        change: {...range, insert},
+        selection: {anchor: contentFrom, head: contentFrom + selected.length},
+      };
+    });
+    const changes = values.map(({change}) => change);
+    let shift = 0;
+    const resultSelections = values.map(({selection, change}) => {
+      const mapped = {
+        anchor: selection.anchor + shift,
+        head: selection.head + shift,
+      };
+      shift += change.insert.length - (change.to - change.from);
+      return mapped;
+    });
+    return {
+      changes,
+      selections: resultSelections,
+      undoLabel: "Insert Inline Footnote",
+    };
+  }
+
   if (command === "toggleTask") {
     const taskChanges = ranges.map((range) => {
       const bounds = lineBounds(source, range);

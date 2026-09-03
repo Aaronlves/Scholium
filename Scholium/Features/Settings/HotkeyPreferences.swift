@@ -23,6 +23,8 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
     case toggleReviewEdit
     case showSource
     case showAttention
+    case insertFootnote
+    case insertInlineFootnote
 
     var id: String { rawValue }
 
@@ -31,7 +33,7 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
         case .searchResearch, .toggleLibrary, .toggleResearchInspector,
              .showAttention:
             .workspace
-        case .toggleReviewEdit, .showSource:
+        case .toggleReviewEdit, .showSource, .insertFootnote, .insertInlineFootnote:
             .document
         }
     }
@@ -44,6 +46,8 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
         case .toggleReviewEdit: "Switch Review and Edit"
         case .showSource: "Show Source"
         case .showAttention: "Show Attention"
+        case .insertFootnote: "Insert Footnote"
+        case .insertInlineFootnote: "Insert Inline Footnote"
         }
     }
 
@@ -55,6 +59,8 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
         case .toggleReviewEdit: "View → Document Mode"
         case .showSource: "View → Document Mode → Source"
         case .showAttention: "Window → Notifications"
+        case .insertFootnote: "Insert → Footnote"
+        case .insertInlineFootnote: "Insert → Inline Footnote"
         }
     }
 
@@ -68,6 +74,10 @@ enum ScholiumHotkeyCommand: String, CaseIterable, Codable, Identifiable, Sendabl
             ScholiumHotkeyBinding(key: "b", modifiers: [.option, .command])
         case .toggleReviewEdit:
             ScholiumHotkeyBinding(key: "r", modifiers: [.command])
+        case .insertFootnote:
+            ScholiumHotkeyBinding(key: "n", modifiers: [.option, .command])
+        case .insertInlineFootnote:
+            ScholiumHotkeyBinding(key: "n", modifiers: [.option, .shift, .command])
         case .showSource, .showAttention:
             nil
         }

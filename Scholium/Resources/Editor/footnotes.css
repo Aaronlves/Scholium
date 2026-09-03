@@ -3,13 +3,25 @@
   vertical-align: super;
 }
 
+.footnote-reference-cluster { white-space: nowrap; }
+
 .footnote-reference {
   appearance: none;
+  display: inline-grid;
+  place-items: center;
   border: 0;
-  padding: 0 0.1em;
+  min-inline-size: 1.05em;
+  min-block-size: 1.05em;
+  padding: 0 0.08em;
+  border-radius: var(--scholium-corner-document-control);
   color: var(--scholium-color-accent);
-  background: none;
-  font: 700 0.65em system-ui, sans-serif;
+  background: transparent;
+  font-family: inherit;
+  font-size: 0.68em;
+  font-weight: 600;
+  font-variant-numeric: lining-nums tabular-nums;
+  line-height: 1;
+  text-decoration: none;
   cursor: pointer;
 }
 
@@ -35,14 +47,14 @@
   cursor: pointer;
 }
 
-.scholium-link-annotation-button:hover,
-.scholium-link-annotation-button:focus-visible,
-.scholium-link-annotation-button:active,
-.scholium-link-annotation-button[aria-expanded="true"] {
+:is(.footnote-reference, .footnote-return, .scholium-link-annotation-button):hover,
+:is(.footnote-reference, .footnote-return, .scholium-link-annotation-button):focus-visible,
+:is(.footnote-reference, .footnote-return, .scholium-link-annotation-button):active,
+:is(.footnote-reference, .scholium-link-annotation-button)[aria-expanded="true"] {
   background: var(--scholium-content-hover-surface);
 }
 
-.scholium-link-annotation-button:active {
+:is(.footnote-reference, .footnote-return, .scholium-link-annotation-button):active {
   background: var(--scholium-content-keyboard-focus-surface);
 }
 
@@ -79,7 +91,7 @@
   margin-block-start: 0;
   padding-block-start: 0;
   color: var(--scholium-color-secondary-text);
-  font-size: 0.86em;
+  font-size: 0.88em;
 }
 
 .footnotes hr {
@@ -91,14 +103,20 @@
 
 .footnotes ol {
   margin: 0;
-  padding-inline-start: 2em;
+  padding-inline-start: 1.85em;
 }
 
 .footnotes li {
-  position: relative;
   min-inline-size: 0;
-  padding-inline-end: 2.5em;
   overflow-wrap: anywhere;
+}
+
+.footnotes li + li { margin-block-start: 0.65em; }
+
+.footnotes li::marker {
+  color: var(--scholium-color-accent);
+  font-weight: 600;
+  font-variant-numeric: lining-nums tabular-nums;
 }
 
 .footnote-content {
@@ -113,20 +131,27 @@
 .footnote-content > ol { margin-block: 0; }
 .footnote-content p { margin: 0; }
 
+.footnote-content:has(> p:only-child),
+.footnote-content > p:only-child {
+  display: inline;
+}
+
 .footnote-return {
-  position: absolute;
-  inset-block-start: 0;
-  inset-inline-end: 0;
-  min-inline-size: 1.7em;
-  min-block-size: 1.7em;
+  display: inline-grid;
+  place-items: center;
+  min-inline-size: 1.45em;
+  min-block-size: 1.45em;
+  margin-inline-start: 0.2em;
+  padding: 0;
   border: 0;
   border-radius: var(--scholium-corner-document-control);
   color: var(--scholium-color-accent);
-  background: color-mix(in srgb, var(--scholium-color-accent) 9%, transparent);
+  background: transparent;
+  font: 500 0.82em/1 system-ui, sans-serif;
   cursor: pointer;
 }
 
-.cm-live-footnote-reference-widget { white-space: normal; }
+.cm-live-footnote-reference-widget { white-space: nowrap; }
 .cm-live-footnote-reference-widget .footnote-reference { cursor: pointer; }
 
 .scholium-footnotes-slot {

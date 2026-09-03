@@ -167,6 +167,25 @@ export function createEditorScrollCoordinator(
       return;
     }
     const documentSnapshot = editor.state.doc;
+    if (Number.isFinite(anchor.fallbackFraction) && anchor.fallbackFraction <= 0) {
+      editor.scrollDOM.scrollTop = 0;
+      postCurrent();
+      const keepDocumentStart = () => {
+        if (editor.state.doc !== documentSnapshot) return;
+        editor.requestMeasure({
+          read: () => editor.state.doc === documentSnapshot,
+          write: (isCurrentDocument) => {
+            if (!isCurrentDocument || editor.state.doc !== documentSnapshot) return;
+            editor.scrollDOM.scrollTop = 0;
+            postCurrent();
+          },
+        });
+      };
+      keepDocumentStart();
+      void document.fonts.ready.then(keepDocumentStart);
+      window.requestAnimationFrame(keepDocumentStart);
+      return;
+    }
     const blockProbe = anchor.sourceUTF16Offset === anchor.blockUTF16LowerBound
       && anchor.blockUTF16UpperBound > anchor.blockUTF16LowerBound
       ? anchor.blockUTF16LowerBound + 1

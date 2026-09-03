@@ -4713,7 +4713,7 @@ struct FrontendArchitectureTests {
         #expect(css.contains(".footnotes"))
         #expect(css.contains(".cm-live-footnote-reference-widget"))
         #expect(!css.contains(".cm-live-footnotes-widget"))
-        #expect(css.contains("padding-inline-end"))
+        #expect(css.contains(".footnote-content:has(> p:only-child)"))
         #expect(editorHTML.contains(css))
         #expect(
             SafeMarkdownReadWebView.Coordinator.documentHTML(
@@ -4721,7 +4721,7 @@ struct FrontendArchitectureTests {
             ).contains(css))
     }
 
-    @Test("Review owns footnote preview while Edit locates one direct exact-source definition")
+    @Test("Review owns the end section while Edit shares preview and exact-source activation")
     func footnoteInteractionStaysWithinEachModeBoundary() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -4756,10 +4756,21 @@ struct FrontendArchitectureTests {
             contentsOf: repository.appendingPathComponent("WebEditor/reader.ts"),
             encoding: .utf8
         )
+        let previewController = try String(
+            contentsOf: repository.appendingPathComponent(
+                "WebEditor/preview-popover.ts"
+            ),
+            encoding: .utf8
+        )
 
         #expect(footnoteSource.contains("reference.definitionContentFrom"))
-        #expect(!editReference.contains("showFootnotePopover"))
         #expect(!editReference.contains("footnote-return"))
+        #expect(editReference.contains(#"marker.type = "button""#))
+        #expect(editReference.contains(#"marker.setAttribute("aria-controls""#))
+        #expect(editReference.contains(#"marker.setAttribute("aria-expanded""#))
+        #expect(previewController.contains("function showFootnoteReference("))
+        #expect(previewController.contains("options.footnotes().definitions"))
+        #expect(previewController.contains("options.renderFootnoteContent(content, body)"))
         #expect(
             editReference.contains(
                 #"ignoreEvent(event: Event) { return event.type !== "mousedown"; }"#))

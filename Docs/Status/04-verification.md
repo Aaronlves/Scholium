@@ -80,6 +80,39 @@ Completed automated checks in this worktree:
   link and annotation coverage but ended on the existing long bridge matrix's
   narrow 200% projection timeout; that exact bridge test passed alone. This is
   not recorded as a clean complete-gate pass.
+- On 2026-09-03 the footnote authoring and presentation slice advanced the
+  editor bridge to version 20. The locked editor toolchain typechecked, passed
+  213 tests in 38 files, and reproduced the Editor, Reader, mathematics, and
+  Mermaid resources. Focused native tests passed for the typed commands,
+  configurable shortcuts, named/inline rendering, presentation ownership, and
+  Review preview/navigation/return. Focused Edit WKWebView journeys proved that
+  named and inline locators preview rendered current-buffer definitions by
+  pointer or focus without line reflow or source mutation, that named locator
+  activation still reaches its exact definition, and that Inline Footnote wraps
+  one selection in one generation with the expected selection and Undo label.
+  The complete gate passed its authority/resource checks, editor tests, RDF-1
+  fixtures, and all 347 nonperformance Core tests, then stopped when the
+  pre-existing Search first-five-pages microbenchmark measured 561.40 ms
+  against its 500 ms threshold. One isolated rerun measured 522.69 ms and also
+  failed; no Search code changed in this slice. The standalone localization
+  validator recognized every new footnote string but still reports seven
+  pre-existing missing Research Record interface entries. This is not a clean
+  complete-gate pass.
+- On 2026-09-03 the focused Edit/Review layout correction retained CodeMirror's
+  exact `break-spaces` behavior while replacing terminal-style arbitrary prose
+  breaks with strict language-aware wrapping. The locked frontend passed all
+  213 tests in 38 files and reproduced its four generated resources; all 102
+  editor and Review WKWebView tests, 23 safe-renderer tests, and 86 frontend-
+  architecture tests passed. The WebKit journeys proved document-start mode
+  changes retain the filename title, inactive ATX markers have zero width while
+  the active line exposes exact source, one inserted space has immediate
+  measured effect, and a generated footnote locator cannot separate from its
+  following punctuation. A follow-up journey proved that transferring focus
+  from each H1–H6 body heading to the filename title hides its retained marker
+  without changing source or dirty state. Documentation authority validation and
+  `git diff --check` passed. Exploratory isolated QA confirmed the visible
+  title, heading alignment, active-source transition, and paired footnote
+  locator/punctuation; this is not human acceptance.
 - The affected macOS UI-test journey entered its test method and completed
   Settlement plus one MCP update. After synthetic Agent Changes activation,
   XCTest observed a disabled main window but neither rendered nor exposed the

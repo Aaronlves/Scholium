@@ -316,6 +316,119 @@ extension MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Review preserves the visible document title at the document start")
+    func reviewDocumentStartAnchorKeepsTitleVisible() async throws {
+        let source = "# First section\n\n" + (1...80)
+            .map { "Research paragraph \($0) remains available." }
+            .joined(separator: "\n\n") + "\n"
+        let document = NoteDocument(relativePath: "Reasons.md", rawContent: source)
+        let headingUpperBound = source.firstIndex(of: "\n")?.utf16Offset(in: source) ?? 0
+        let anchor = EditorScrollAnchor(
+            sourceFingerprint: document.fingerprint.sha256,
+            sourceUTF16Offset: 0,
+            blockUTF16LowerBound: 0,
+            blockUTF16UpperBound: headingUpperBound,
+            relativeBlockPosition: 0,
+            fallbackFraction: 0
+        )
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: document.fingerprint.sha256,
+            initialAnchor: anchor,
+            initialScrollFraction: 0,
+            documentTitle: "Reasons and Emotional Attitudes"
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await Task.sleep(for: .milliseconds(150))
+
+        let result = try #require(try await harness.callPageJavaScript(
+            """
+            const title = document.querySelector('.scholium-note-title');
+            if (!title) return null;
+            const bounds = title.getBoundingClientRect();
+            return {
+              scrollY: window.scrollY,
+              titleTop: bounds.top,
+              titleBottom: bounds.bottom
+            };
+            """
+        ) as? [String: Any])
+        let scrollY = (result["scrollY"] as? NSNumber)?.doubleValue ?? 100
+        let titleTop = (result["titleTop"] as? NSNumber)?.doubleValue ?? 10_000
+        let titleBottom = (result["titleBottom"] as? NSNumber)?.doubleValue ?? 0
+        #expect(abs(scrollY) < 0.5)
+        #expect(titleTop >= 0)
+        #expect(titleBottom > 0)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Review keeps punctuation with an interactive footnote locator")
+    func reviewFootnoteLocatorDoesNotOrphanPunctuation() async throws {
+        let source = "A philosophical claim[^note].\n\n[^note]: Supporting qualification.\n"
+        let document = NoteDocument(relativePath: "Footnote.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: document.fingerprint.sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let result = try #require(try await harness.callPageJavaScript(
+            """
+            const paragraph = document.querySelector('#scholium-document > p');
+            const reference = paragraph?.querySelector('.footnote-reference-wrap');
+            if (!paragraph || !reference) return null;
+            const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+            let punctuationNode = null;
+            while (walker.nextNode()) {
+              const node = walker.currentNode;
+              if ((reference.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING)
+                  && (node.nodeValue || '').includes('.')) {
+                punctuationNode = node;
+                break;
+              }
+            }
+            if (!punctuationNode) return null;
+            const punctuationOffset = punctuationNode.nodeValue.indexOf('.');
+            const punctuationRange = document.createRange();
+            punctuationRange.setStart(punctuationNode, punctuationOffset);
+            punctuationRange.setEnd(punctuationNode, punctuationOffset + 1);
+            paragraph.style.inlineSize = '360px';
+            const sameLineOffset = punctuationRange.getBoundingClientRect().top
+              - reference.getBoundingClientRect().top;
+            const lineHeight = Number.parseFloat(getComputedStyle(paragraph).lineHeight) || 20;
+            let orphanWidth = 0;
+            for (let width = 48; width <= 360; width += 1) {
+              paragraph.style.inlineSize = width + 'px';
+              const referenceTop = reference.getBoundingClientRect().top;
+              const punctuationTop = punctuationRange.getBoundingClientRect().top;
+              if (punctuationTop - referenceTop > sameLineOffset + lineHeight / 2) {
+                orphanWidth = width;
+                break;
+              }
+            }
+            paragraph.style.inlineSize = '';
+            const style = getComputedStyle(paragraph);
+            return {
+              orphanWidth,
+              lineBreak: style.lineBreak,
+              wordBreak: style.wordBreak,
+              overflowWrap: style.overflowWrap
+            };
+            """
+        ) as? [String: Any])
+        #expect(result["orphanWidth"] as? Int == 0, Comment(rawValue: "\(result)"))
+        #expect(result["lineBreak"] as? String == "strict")
+        #expect(result["wordBreak"] as? String == "normal")
+        #expect(result["overflowWrap"] as? String == "break-word")
+        await harness.closeAndDrain()
+    }
+
     @Test("Review suppresses only overlay scroll bars during viewport reflow")
     func reviewSuppressesOverlayScrollBarDuringViewportReflow() async throws {
         let fixture = Self.longDocumentFixture()
@@ -1480,6 +1593,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         private let source: String
         private let htmlBody: String
         private let fingerprint: String
+        private let documentTitle: String
         private let sourceBox: SourceBox
         private let window: NSWindow
         private var hostingController: NSViewController?
@@ -1491,6 +1605,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             fingerprint: String,
             initialAnchor: EditorScrollAnchor?,
             initialScrollFraction: Double,
+            documentTitle: String = "",
             userCSS: String = "",
             testingForcesFinalizationFailure: Bool = false,
             testingScrollRestoreDelayMilliseconds: Int = 0
@@ -1499,6 +1614,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             self.source = source
             self.htmlBody = htmlBody
             self.fingerprint = fingerprint
+            self.documentTitle = documentTitle
             sourceBox = SourceBox(
                 initialAnchor: initialAnchor,
                 initialScrollFraction: initialScrollFraction,
@@ -1520,6 +1636,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 source: source,
                 htmlBody: htmlBody,
                 fingerprint: fingerprint,
+                documentTitle: documentTitle,
                 userCSS: userCSS,
                 sourceBox: sourceBox
             )
@@ -2342,12 +2459,14 @@ extension MarkdownEditorWebViewIntegrationTests {
         let source: String
         let htmlBody: String
         let fingerprint: String
+        let documentTitle: String
         let userCSS: String
         @ObservedObject var sourceBox: SourceBox
 
         var body: some View {
             var surface = SafeMarkdownReadWebView(
                 documentID: "ReadFixture.md",
+                documentTitle: documentTitle,
                 fingerprint: fingerprint,
                 source: source,
                 htmlBody: htmlBody,

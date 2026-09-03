@@ -65,7 +65,7 @@ and Source uses the body.
 Managed New Note skips Review-first presentation. `DocumentController`
 installs its snapshot, exact source, active Edit phase, and body-start offset in
 one MainActor transaction. Until typed acknowledgement, the host exposes
-neither Review nor Empty Note. Bridge 19 initialization maps one collapsed
+neither Review nor Empty Note. Bridge 20 initialization maps one collapsed
 body-boundary selection into CodeMirror UTF-16 and returns it with the mode.
 Native code verifies that range, converges style and scroll, awaits focus, then
 publishes readiness, announces once, and consumes the intent. A clean external
@@ -184,10 +184,10 @@ semantic typography highlighter. Selection-match highlighting is absent;
 adjacent-bracket matching highlighting is likewise absent because it would
 create a second selection-like presentation beside Markdown delimiter
 projection without changing the actual insertion point. Selection belongs
-only to the researcher's explicit range. Live Preview
-decoration invalidation follows document, viewport, selection, and presentation
-inputs, not window focus, so an inactive WebView cannot erase its semantic
-projection merely because WebKit has no visible range to report.
+only to the researcher's explicit range. Live Preview invalidation follows
+document, viewport, selection, presentation, and title/body focus. Title/body
+transitions refresh syntax exposure; window focus does not, preventing inactive
+WebKit from erasing projections through an empty visible range.
 
 Selection meaning and selection paint are deliberately separate. CodeMirror's
 `EditorSelection` remains the sole Edit/Source range, command, copy, IME, and
@@ -485,7 +485,9 @@ marker ranges, visible ranges, parent and nesting role, and, where applicable,
 heading level, list depth, task marker, link target, and alias range. The
 opening ATX-heading marker owns its required following space or tab; leaving
 that separator as visible source would indent Edit relative to Review under
-CodeMirror's exact-whitespace layout. Semantic blocks do not own their terminal
+CodeMirror's exact-whitespace layout. Inactive Edit replaces that range with
+zero measure; the active heading exposes the exact range without changing its
+line box or neighboring blocks. Semantic blocks do not own their terminal
 CR/LF sequence, and task-list prose owns the text after its task marker. Shared
 LF and BOM/CRLF/Unicode fixtures enforce those boundaries. Incomplete inline
 extension markers remain ordinary editable source, matching mature Markdown
@@ -556,6 +558,12 @@ Read and Live Preview consume one presentation contract:
 - the Live adapter maps the same roles to bounded CodeMirror decorations and
   widgets without replacing active source, selection, composition, or undo.
 
+Both modes use strict line breaking, normal word boundaries, and emergency
+long-token wrapping. CodeMirror retains `break-spaces`, so every
+Edit space has width and wraps. A generated footnote
+locator and its following punctuation form one nonbreaking presentation
+cluster; Edit still exposes the exact source.
+
 Native chrome and Review use the resolved filename title. Live Preview projects
 one borderless auto-height field outside source. Its versioned request carries
 the exact editor envelope and expected title; native validates identity and
@@ -621,24 +629,16 @@ decoration. Each displayed cell retains its source offset; pointer or keyboard
 entry removes the projection and reveals the exact Markdown table in the same
 EditorState. The table DOM is never a writable or round-trip source.
 
-Footnotes deliberately do not use a second Edit block projection. Review owns
-the `footnotes.css` end-section, preview, navigation, and return presentation.
-A direct Live `StateField` derives case-sensitive identifiers,
-first-reference ordinals, repeated occurrences, inline notes, and bounded
-two-space/tab continuations from the current buffer while excluding YAML,
-code, HTML, and comments. It replaces only inactive references with numbered
-locator markers. Activating a named locator moves the same CodeMirror selection
-to the definition's exact source position; inline notes reveal their own exact
-range. Named definitions remain continuously present and directly editable at
-their authoritative Markdown position. `FootnoteDefinition` is one composite
-Lezer block: its exact marker stays visible while its body continues through
-the ordinary inline and nested-block catalog, so emphasis, lists, quotations,
-Callouts, code, tables, and mathematics are projected only at this same source
-position. No hidden definition, reconstructed
-content, end-section widget, or second pointer-to-source geometry exists in
-Edit. The insertion transformation allocates one unused identifier, appends one
-exact definition, and selects its content without renumbering existing forms.
-Duplicate, undefined, and unreferenced forms are not repaired.
+Edit has no footnote end-section projection. Review owns the end section,
+navigation, and return; both preview controllers resolve locator hover or focus
+to an inert current-definition preview. A Live `StateField` derives IDs,
+ordinals, repetitions, inline notes, and bounded continuations while excluding
+non-prose ranges and replaces inactive references. Activation selects the exact
+definition or inline range. Definitions remain editable as composite
+Lezer blocks with nested projections at their source location. There is no
+hidden or reconstructed content or second pointer geometry. Named insertion
+appends an unused numeric definition; inline insertion wraps each selection in
+`^[…]`. Each is one transaction and Undo event. Invalid forms are not repaired.
 
 One Live-selection StateField separates CodeMirror's continuously authoritative
 pointer range from the projection snapshot. Ordinary `select.pointer`

@@ -38,6 +38,10 @@ public enum SafeMarkdownRenderer {
         let text: String
     }
 
+    private static let footnoteTrailingPunctuation = Set(
+        ".,;:!?，。！？；：、…）》】」』’”\""
+    )
+
     private static func renderBody(
         document: NoteDocument,
         semantic: MarkdownSemanticDocument,
@@ -133,8 +137,19 @@ public enum SafeMarkdownRenderer {
                   !overlaps(relative, replacements.map(\.range)) else { continue }
             let key = "SCHOLIUMINLINETOKEN\(nonce)F\(reference.ordinal)R\(reference.occurrence)"
             let definitionExists = definitionsByIdentifier[reference.identifier] != nil
-            inlineHTML[key] = renderFootnoteReference(reference, definitionExists: definitionExists)
-            replacements.append(Replacement(range: relative, text: key))
+            let punctuation = trailingPunctuation(in: document.body, after: relative)
+            inlineHTML[key] = renderFootnoteReference(
+                reference,
+                definitionExists: definitionExists,
+                trailingPunctuation: punctuation.text
+            )
+            replacements.append(Replacement(
+                range: NSRange(
+                    location: relative.location,
+                    length: relative.length + punctuation.utf16Length
+                ),
+                text: key
+            ))
         }
 
         for (index, link) in semantic.links.enumerated() where link.syntax != .markdown {
@@ -229,12 +244,34 @@ public enum SafeMarkdownRenderer {
 
     private static func renderFootnoteReference(
         _ reference: FootnoteReference,
-        definitionExists: Bool
+        definitionExists: Bool,
+        trailingPunctuation: String
     ) -> String {
         let referenceID = "fnref-\(reference.ordinal)-\(reference.occurrence)"
         let target = "fn-\(reference.ordinal)"
         let disabled = definitionExists ? "" : " disabled aria-disabled=\"true\""
-        return "<sup id=\"\(referenceID)\" class=\"footnote-reference-wrap\" \(sourceAttributes(reference.span)) data-scholium-protected=\"footnote\"><button type=\"button\" class=\"footnote-reference\" data-footnote=\"\(reference.ordinal)\" data-target=\"\(target)\" aria-label=\"Footnote \(reference.ordinal)\"\(disabled)>\(reference.ordinal)</button></sup>"
+        let locator = "<sup id=\"\(referenceID)\" class=\"footnote-reference-wrap\" \(sourceAttributes(reference.span)) data-scholium-protected=\"footnote\"><button type=\"button\" class=\"footnote-reference\" data-footnote=\"\(reference.ordinal)\" data-target=\"\(target)\" aria-label=\"Footnote \(reference.ordinal)\"\(disabled)>\(reference.ordinal)</button></sup>"
+        guard !trailingPunctuation.isEmpty else { return locator }
+        return "<span class=\"footnote-reference-cluster\">\(locator)\(escapeHTML(trailingPunctuation))</span>"
+    }
+
+    private static func trailingPunctuation(
+        in body: String,
+        after range: NSRange
+    ) -> (text: String, utf16Length: Int) {
+        let source = body as NSString
+        var location = NSMaxRange(range)
+        var value = ""
+        while location < source.length {
+            let characterRange = source.rangeOfComposedCharacterSequence(at: location)
+            let character = source.substring(with: characterRange)
+            guard character.count == 1,
+                  let valueCharacter = character.first,
+                  footnoteTrailingPunctuation.contains(valueCharacter) else { break }
+            value += character
+            location = NSMaxRange(characterRange)
+        }
+        return (value, location - NSMaxRange(range))
     }
 
     private static func renderMath(_ expression: MathExpression, rawSource: String) -> String {

@@ -21040,7 +21040,7 @@
   var completionKeymapExt = /* @__PURE__ */ Prec.highest(/* @__PURE__ */ keymap.computeN([completionConfig], (state) => state.facet(completionConfig).defaultKeymap ? [completionKeymap] : []));
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 19;
+  var EDITOR_PROTOCOL_VERSION = 20;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -21105,6 +21105,7 @@
     "calloutQuote",
     "calloutFlag",
     "insertFootnote",
+    "insertInlineFootnote",
     "insertTable",
     "insertImage",
     "toggleTask",
@@ -21634,6 +21635,32 @@ ${fence}`;
         changes: [...referenceChanges, { from: source.length, to: source.length, insert: definitions }],
         selections: definitionSelections,
         undoLabel: "Insert Footnote"
+      };
+    }
+    if (command2 === "insertInlineFootnote") {
+      const values3 = ranges.map((range) => {
+        const selected = source.slice(range.from, range.to);
+        const insert2 = `^[${selected}]`;
+        const contentFrom = range.from + 2;
+        return {
+          change: { ...range, insert: insert2 },
+          selection: { anchor: contentFrom, head: contentFrom + selected.length }
+        };
+      });
+      const changes2 = values3.map(({ change }) => change);
+      let shift3 = 0;
+      const resultSelections2 = values3.map(({ selection, change }) => {
+        const mapped = {
+          anchor: selection.anchor + shift3,
+          head: selection.head + shift3
+        };
+        shift3 += change.insert.length - (change.to - change.from);
+        return mapped;
+      });
+      return {
+        changes: changes2,
+        selections: resultSelections2,
+        undoLabel: "Insert Inline Footnote"
       };
     }
     if (command2 === "toggleTask") {
@@ -30770,7 +30797,6 @@ ${fence}
     "Add accTitle and accDescr to provide a concise nonvisual account of this diagram.",
     "This Mermaid diagram could not be rendered. Source is shown.",
     "Footnote {ordinal}",
-    "Referenced footnote",
     "Edit mode is unavailable because YAML frontmatter is not closed. Use Source mode to finish the frontmatter.",
     "Edit mode unavailable",
     "Close the YAML frontmatter in Source mode to restore the visual projection.",
@@ -31116,6 +31142,8 @@ ${fence}
     let armedLink = null;
     let activeAnnotationButton = null;
     let pinnedAnnotationButton = null;
+    let activeFootnoteButton = null;
+    let pinnedFootnoteButton = null;
     let activeKind = null;
     let modifierPressed = false;
     function annotationTarget(button) {
@@ -31127,6 +31155,12 @@ ${fence}
         "aria-label",
         `${localized(expanded ? "Hide Link Annotation" : "Show Link Annotation")} ${annotationTarget(button)}`
       );
+    }
+    function setFootnoteExpanded(button, expanded) {
+      button.setAttribute("aria-expanded", expanded ? "true" : "false");
+    }
+    function hasPinnedPreview() {
+      return pinnedAnnotationButton !== null || pinnedFootnoteButton !== null;
     }
     function setArmedLink(next) {
       if (armedLink === next) return;
@@ -31144,8 +31178,11 @@ ${fence}
       modifierPressed = false;
       setArmedLink(null);
       if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
+      if (activeFootnoteButton) setFootnoteExpanded(activeFootnoteButton, false);
       activeAnnotationButton = null;
       pinnedAnnotationButton = null;
+      activeFootnoteButton = null;
+      pinnedFootnoteButton = null;
       activeKind = null;
       if (root) {
         root.hidden = true;
@@ -31160,7 +31197,7 @@ ${fence}
       hideTimer = void 0;
     }
     function scheduleHide() {
-      if (pinnedAnnotationButton) return;
+      if (hasPinnedPreview()) return;
       window.clearTimeout(hideTimer);
       hideTimer = window.setTimeout(hide, 180);
     }
@@ -31209,7 +31246,9 @@ ${fence}
     function showLinkPreview(preview, anchor, startedAt) {
       if (!editor2 || !root || !title || !metadata || !body) return;
       if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
+      if (activeFootnoteButton) setFootnoteExpanded(activeFootnoteButton, false);
       activeAnnotationButton = null;
+      activeFootnoteButton = null;
       activeKind = "link";
       title.textContent = preview.title;
       metadata.textContent = preview.fragment ?? "";
@@ -31233,7 +31272,9 @@ ${fence}
       if (activeAnnotationButton && activeAnnotationButton !== button) {
         setAnnotationExpanded(activeAnnotationButton, false);
       }
+      if (activeFootnoteButton) setFootnoteExpanded(activeFootnoteButton, false);
       activeAnnotationButton = button;
+      activeFootnoteButton = null;
       activeKind = "annotation";
       setAnnotationExpanded(button, true);
       title.textContent = annotationTarget(button);
@@ -31244,12 +31285,49 @@ ${fence}
       position(button.getBoundingClientRect());
       return true;
     }
+    function footnoteReferenceFor(button) {
+      const identifier4 = button.dataset.footnoteIdentifier;
+      const occurrence = Number(button.dataset.footnoteOccurrence);
+      if (!identifier4 || !Number.isInteger(occurrence)) return void 0;
+      return options.footnotes().references.find((reference) => reference.identifier === identifier4 && reference.occurrence === occurrence);
+    }
+    function showFootnoteReference(reference, anchor, button = null) {
+      if (!root || !title || !metadata || !body) return false;
+      const definition = options.footnotes().definitions.find((candidate) => candidate.identifier === reference.identifier);
+      const content2 = definition?.content.trim().slice(0, 1600) ?? "";
+      if (!content2) return false;
+      if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
+      if (activeFootnoteButton && activeFootnoteButton !== button) {
+        setFootnoteExpanded(activeFootnoteButton, false);
+      }
+      activeAnnotationButton = null;
+      activeFootnoteButton = button;
+      activeKind = "footnote";
+      if (button) setFootnoteExpanded(button, true);
+      title.textContent = localizedTemplate("Footnote {ordinal}", { ordinal: reference.ordinal });
+      metadata.textContent = "";
+      metadata.hidden = true;
+      body.replaceChildren();
+      options.renderFootnoteContent(content2, body);
+      sanitizePreviewDocument(body);
+      position(anchor);
+      return true;
+    }
+    function showFootnote(button) {
+      const reference = footnoteReferenceFor(button);
+      return reference ? showFootnoteReference(reference, button.getBoundingClientRect(), button) : false;
+    }
     function showAtSelection() {
       const startedAt = performance.now();
       if (!editor2) return false;
       const head = editor2.state.selection.main.head;
       const coords = editor2.coordsAtPos(head);
       if (!coords) return false;
+      const footnote = options.footnotes().references.find((candidate) => head >= candidate.from && head < candidate.to);
+      if (footnote) {
+        hide();
+        return showFootnoteReference(footnote, coords);
+      }
       const preview = options.previews().find((candidate) => head >= candidate.from && head < candidate.to);
       if (preview) {
         hide();
@@ -31266,6 +31344,11 @@ ${fence}
       const startedAt = performance.now();
       if (!editor2) return false;
       const anchor = linkAnchorAt(document.elementFromPoint(x, y));
+      const footnote = footnoteButtonAt(document.elementFromPoint(x, y));
+      if (footnote) {
+        hide();
+        return showFootnote(footnote);
+      }
       if (!anchor) return showAtSelection();
       const preview = previewForAnchor(anchor);
       if (preview) {
@@ -31277,6 +31360,9 @@ ${fence}
     }
     function annotationButtonAt(target) {
       return target instanceof Element ? target.closest(".scholium-link-annotation-button") : null;
+    }
+    function footnoteButtonAt(target) {
+      return target instanceof Element ? target.closest(".cm-live-footnote-reference-widget .footnote-reference") : null;
     }
     function linkAnchorAt(target) {
       return target instanceof Element ? target.closest(
@@ -31305,6 +31391,10 @@ ${fence}
           showAnnotation(anchor);
           return;
         }
+        if (kind === "footnote") {
+          showFootnote(anchor);
+          return;
+        }
         const preview = previewForAnchor(anchor);
         if (preview) {
           showLinkPreview(preview, anchor.getBoundingClientRect(), performance.now());
@@ -31317,20 +31407,21 @@ ${fence}
         return;
       }
       const annotation = annotationButtonAt(event.target);
+      const footnote = footnoteButtonAt(event.target);
       const link = linkAnchorAt(event.target);
       hoveredLink = link;
-      if (pinnedAnnotationButton && annotation !== pinnedAnnotationButton) {
+      if (hasPinnedPreview() && annotation !== pinnedAnnotationButton && footnote !== pinnedFootnoteButton) {
         setArmedLink(null);
         return;
       }
       const modifierActive = event.metaKey || event.ctrlKey || modifierPressed;
       setArmedLink(modifierActive ? link : null);
-      const anchor = annotation ?? (modifierActive ? link : null);
+      const anchor = annotation ?? footnote ?? (modifierActive ? link : null);
       if (!anchor) {
         if (pendingAnchor || root && !root.hidden) scheduleHide();
         return;
       }
-      scheduleShow(anchor, annotation ? "annotation" : "link");
+      scheduleShow(anchor, annotation ? "annotation" : footnote ? "footnote" : "link");
     };
     const handlePreviewPointerEnter = () => cancelHide();
     const handlePreviewPointerLeave = () => scheduleHide();
@@ -31347,20 +31438,21 @@ ${fence}
       }
       if (event.key !== "Meta" && event.key !== "Control") return;
       modifierPressed = true;
-      if (!hoveredLink || pinnedAnnotationButton) return;
+      if (!hoveredLink || hasPinnedPreview()) return;
       setArmedLink(hoveredLink);
       scheduleShow(hoveredLink, "link");
     };
     const handleFocusIn = (event) => {
-      const button = annotationButtonAt(event.target);
+      const button = annotationButtonAt(event.target) ?? footnoteButtonAt(event.target);
       if (!button) return;
       cancelHide();
       window.clearTimeout(showTimer);
       pendingAnchor = button;
-      showAnnotation(button);
+      if (button.matches(".footnote-reference")) showFootnote(button);
+      else showAnnotation(button);
     };
     const handleFocusOut = (event) => {
-      const button = annotationButtonAt(event.target);
+      const button = annotationButtonAt(event.target) ?? footnoteButtonAt(event.target);
       if (!button) return;
       if (event.relatedTarget instanceof Node && root?.contains(event.relatedTarget)) return;
       scheduleHide();
@@ -31380,7 +31472,21 @@ ${fence}
         showAnnotation(button);
         return;
       }
-      if (pinnedAnnotationButton && !(event.target instanceof Node && root?.contains(event.target))) hide();
+      const footnote = footnoteButtonAt(event.target);
+      if (footnote && event.detail === 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (pinnedFootnoteButton === footnote) {
+          hide();
+          return;
+        }
+        pinnedFootnoteButton = footnote;
+        window.clearTimeout(showTimer);
+        pendingAnchor = footnote;
+        showFootnote(footnote);
+        return;
+      }
+      if (hasPinnedPreview() && !(event.target instanceof Node && root?.contains(event.target))) hide();
     };
     const handleViewportExit = () => {
       hoveredLink = null;
@@ -31455,6 +31561,580 @@ ${fence}
       };
     });
     return { extension, hide, showAtSelection, showAtPoint };
+  }
+
+  // table-presentation.ts
+  function alignmentFor(separator) {
+    const value = separator.trim();
+    if (value.startsWith(":") && value.endsWith(":")) return "center";
+    if (value.endsWith(":")) return "right";
+    if (value.startsWith(":")) return "left";
+    return null;
+  }
+  function cellSource(source, from, to) {
+    return source.slice(from, to).replaceAll("\\|", "|");
+  }
+  function tablePresentation(source, from, to) {
+    if (from < 0 || to <= from || to > source.length) return null;
+    const parsed = tableAt(source, Math.min(to, from + 1));
+    if (!parsed || parsed.rows[0].lineFrom !== from) return null;
+    const finalRow = parsed.rows[parsed.rows.length - 1];
+    if (finalRow.lineTo !== to) return null;
+    const separator = parsed.rows[parsed.separatorIndex];
+    const alignments = separator.cells.map(
+      (cell) => alignmentFor(source.slice(cell.contentFrom, cell.contentTo))
+    );
+    const rows = parsed.rows.filter((_, index) => index !== parsed.separatorIndex).map((row) => row.cells.map((cell, column) => ({
+      source: cellSource(source, cell.contentFrom, cell.contentTo),
+      sourceOffset: cell.contentFrom,
+      alignment: alignments[column] ?? null
+    })));
+    const header = rows.shift();
+    if (!header) return null;
+    return {
+      from,
+      to,
+      source: source.slice(from, to),
+      header,
+      body: rows
+    };
+  }
+
+  // system-symbols.ts
+  function systemSymbolElement(key, className = "", ownerDocument = document) {
+    const symbol = ownerDocument.createElement("span");
+    symbol.className = `scholium-system-symbol ${className}`.trim();
+    symbol.dataset.scholiumSystemSymbol = key;
+    symbol.style.setProperty(
+      "--scholium-system-symbol-image",
+      `var(--scholium-system-symbol-${key})`
+    );
+    symbol.setAttribute("aria-hidden", "true");
+    return symbol;
+  }
+
+  // markdown-fragment.ts
+  var inlineMarkerNodes = /* @__PURE__ */ new Set([
+    "EmphasisMark",
+    "CodeMark",
+    "LinkMark",
+    "URL",
+    "StrikethroughMark"
+  ]);
+  function documentFor(parent) {
+    if (parent.nodeType === 9) return parent;
+    const owner = parent.ownerDocument;
+    if (!owner) throw new Error("Markdown fragments require an owning document.");
+    return owner;
+  }
+  function locatedOffset(options, offset) {
+    return options.sourceOffset?.(offset) ?? offset;
+  }
+  function optionsAt(options, offset) {
+    return {
+      ...options,
+      sourceOffset: (nestedOffset) => locatedOffset(options, offset + nestedOffset)
+    };
+  }
+  function optionsWithMap(options, offsets) {
+    return {
+      ...options,
+      sourceOffset: (nestedOffset) => locatedOffset(
+        options,
+        offsets[Math.max(0, Math.min(nestedOffset, offsets.length - 1))] ?? 0
+      )
+    };
+  }
+  function identifyProjectedLink(element, target, from, to, caret, options) {
+    element.dataset.scholiumLinkTarget = target;
+    element.dataset.scholiumSourceFrom = String(locatedOffset(options, from));
+    element.dataset.scholiumSourceTo = String(locatedOffset(options, to));
+    element.dataset.scholiumSourceCaret = String(locatedOffset(options, caret));
+  }
+  function appendInlineMarkdownNode(cursor, source, parent, options) {
+    const document2 = documentFor(parent);
+    const raw = source.slice(cursor.from, cursor.to);
+    if (inlineMarkerNodes.has(cursor.name)) return;
+    if (cursor.name === "InlineCode") {
+      const code2 = document2.createElement("code");
+      code2.dir = "ltr";
+      const opening = raw.match(/^`+/)?.[0] ?? "";
+      const closing2 = raw.endsWith(opening) ? opening.length : 0;
+      code2.textContent = raw.slice(opening.length, raw.length - closing2);
+      parent.append(code2);
+      return;
+    }
+    if (cursor.name === "Link") {
+      const link = /^\[([\s\S]*?)\]\(([\s\S]*?)\)$/.exec(raw);
+      const span = document2.createElement("span");
+      span.className = "cm-live-link";
+      span.dir = "auto";
+      span.textContent = link?.[1] ?? raw;
+      if (link) {
+        identifyProjectedLink(
+          span,
+          link[2].trim().replace(/^<|>$/g, ""),
+          cursor.from,
+          cursor.to,
+          cursor.from + 1,
+          options
+        );
+      }
+      parent.append(span);
+      return;
+    }
+    if (cursor.name === "WikiLink") {
+      const link = /^(!?)\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/.exec(raw);
+      if (!link) {
+        parent.append(document2.createTextNode(raw));
+        return;
+      }
+      const span = document2.createElement("span");
+      const embed = link[1] === "!";
+      span.className = embed ? "cm-live-embed" : "cm-live-wiki-link";
+      span.dir = "auto";
+      const target = link[2].trim();
+      const alias = link[3]?.trim();
+      span.append(document2.createTextNode(alias || target));
+      identifyProjectedLink(span, target, cursor.from, cursor.to, cursor.to, options);
+      parent.append(span);
+      return;
+    }
+    if (cursor.name === "Escape") {
+      parent.append(document2.createTextNode(raw.startsWith("\\") ? raw.slice(1) : raw));
+      return;
+    }
+    const wrapperName = cursor.name === "StrongEmphasis" ? "strong" : cursor.name === "Emphasis" ? "em" : cursor.name === "Strikethrough" ? "del" : null;
+    const destination = wrapperName ? document2.createElement(wrapperName) : parent;
+    let position = cursor.from;
+    if (cursor.firstChild()) {
+      do {
+        if (cursor.from > position) {
+          destination.append(document2.createTextNode(source.slice(position, cursor.from)));
+        }
+        appendInlineMarkdownNode(cursor, source, destination, options);
+        position = cursor.to;
+      } while (cursor.nextSibling());
+      cursor.parent();
+      if (position < cursor.to) {
+        destination.append(document2.createTextNode(source.slice(position, cursor.to)));
+      }
+    } else if (!wrapperName) {
+      destination.append(document2.createTextNode(raw));
+    }
+    if (wrapperName) parent.append(destination);
+  }
+  function appendInlineMarkdownPlain(source, parent, options) {
+    const tree = scholiumMarkdownContentLanguage.language.parser.parse(source);
+    const cursor = tree.cursor();
+    appendInlineMarkdownNode(cursor, source, parent, options);
+  }
+  function appendMath(expression, parent) {
+    const document2 = documentFor(parent);
+    const element = document2.createElement(expression.kind === "display" ? "div" : "span");
+    element.className = `scholium-math scholium-math-${expression.kind} scholium-math-fragment`;
+    element.dir = "ltr";
+    element.dataset.scholiumProtected = "math";
+    const runtime = document2.defaultView?.scholiumMath;
+    const rendered = runtime?.version === 1 ? runtime.render({ source: expression.content, kind: expression.kind }) : null;
+    if (rendered?.ok) {
+      element.classList.add("scholium-math-rendered");
+      element.innerHTML = rendered.html;
+    } else {
+      element.classList.add("scholium-math-error");
+      const exact = document2.createElement("code");
+      exact.className = "scholium-math-source";
+      exact.dir = "ltr";
+      const delimiter = "$".repeat(expression.delimiterLength);
+      exact.textContent = expression.kind === "display" ? `${delimiter}
+${expression.content}
+${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
+      element.append(exact);
+    }
+    parent.append(element);
+  }
+  function firstAnnotatedWikilink(source) {
+    const expression = /\[\[([^\]\r\n]+)\]\]/g;
+    for (const match of source.matchAll(expression)) {
+      const from = match.index;
+      let backslashes = 0;
+      for (let cursor = from - 1; cursor >= 0 && source[cursor] === "\\"; cursor -= 1) backslashes += 1;
+      if (backslashes % 2 === 1 || source[from - 1] === "!") continue;
+      const linkTo = from + match[0].length;
+      const annotation = linkAnnotationAfter(source, linkTo);
+      if (annotation) return { from, linkTo, raw: match[0], annotation };
+    }
+    return null;
+  }
+  function appendAnnotatedWikilink(rawLink, annotationMarkdown, parent, options) {
+    const parsed = /^\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/.exec(rawLink);
+    if (!parsed) {
+      parent.append(documentFor(parent).createTextNode(`${rawLink}{{${annotationMarkdown}}}`));
+      return;
+    }
+    const document2 = documentFor(parent);
+    const wrapper = document2.createElement("span");
+    wrapper.className = "scholium-annotated-link";
+    wrapper.dataset.scholiumProtected = "link-annotation";
+    const link = document2.createElement("span");
+    link.className = "cm-live-wiki-link";
+    link.dir = "auto";
+    const target = parsed[1].trim();
+    const alias = parsed[2]?.trim();
+    link.textContent = alias || target;
+    identifyProjectedLink(link, target, 0, rawLink.length, rawLink.length, options);
+    const marker = document2.createElement("sup");
+    marker.className = "scholium-link-annotation-marker";
+    const button = document2.createElement("button");
+    button.type = "button";
+    button.className = "scholium-link-annotation-button";
+    button.dataset.linkAnnotation = "true";
+    button.dataset.linkAnnotationTarget = alias || target;
+    button.setAttribute("aria-expanded", "false");
+    button.setAttribute("aria-controls", "scholium-preview-popover");
+    button.setAttribute("aria-label", `${localized("Show Link Annotation")} ${alias || target}`);
+    button.append(systemSymbolElement("text-bubble", "scholium-link-annotation-icon", document2));
+    const template = document2.createElement("template");
+    template.className = "scholium-link-annotation-template";
+    const content2 = document2.createElement("span");
+    content2.className = "scholium-link-annotation-content";
+    appendMarkdownBlocks(annotationMarkdown, content2, optionsAt(options, rawLink.length + 2));
+    template.content.append(content2);
+    button.addEventListener("mousedown", (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    marker.append(button, template);
+    wrapper.append(link, marker);
+    parent.append(wrapper);
+  }
+  function appendInlineMarkdown(source, parent, options = {}) {
+    const annotated = firstAnnotatedWikilink(source);
+    if (annotated) {
+      if (annotated.from > 0) {
+        appendInlineMarkdown(source.slice(0, annotated.from), parent, options);
+      }
+      appendAnnotatedWikilink(
+        annotated.raw,
+        annotated.annotation.markdown,
+        parent,
+        optionsAt(options, annotated.from)
+      );
+      if (annotated.annotation.to < source.length) {
+        appendInlineMarkdown(
+          source.slice(annotated.annotation.to),
+          parent,
+          optionsAt(options, annotated.annotation.to)
+        );
+      }
+      return;
+    }
+    const expressions = options.mathematics ? scanMath(source, options.mathematics).filter((expression) => expression.kind === "inline") : [];
+    if (expressions.length === 0) {
+      appendInlineMarkdownPlain(source, parent, options);
+      return;
+    }
+    let position = 0;
+    for (const expression of expressions) {
+      if (position < expression.from) {
+        appendInlineMarkdownPlain(
+          source.slice(position, expression.from),
+          parent,
+          optionsAt(options, position)
+        );
+      }
+      appendMath({ ...expression, from: 0, to: expression.to - expression.from }, parent);
+      position = expression.to;
+    }
+    if (position < source.length) {
+      appendInlineMarkdownPlain(source.slice(position), parent, optionsAt(options, position));
+    }
+  }
+  function appendBlockChildren(cursor, source, parent, options) {
+    if (!cursor.firstChild()) return;
+    do {
+      appendMarkdownBlockNode(cursor, source, parent, options);
+    } while (cursor.nextSibling());
+    cursor.parent();
+  }
+  function tableCellDOM(cell, header, document2, options) {
+    const element = document2.createElement(header ? "th" : "td");
+    element.dir = "auto";
+    if (header) element.setAttribute("scope", "col");
+    if (cell.alignment) element.classList.add(`scholium-table-align-${cell.alignment}`);
+    element.dataset.sourceOffset = String(locatedOffset(options, cell.sourceOffset));
+    appendInlineMarkdown(cell.source, element, options);
+    return element;
+  }
+  function createTableDOM(presentation, document2, options = {}) {
+    const scroller = document2.createElement("div");
+    scroller.className = "scholium-table-scroll";
+    scroller.dataset.scholiumProtected = "table";
+    const table = document2.createElement("table");
+    table.className = "scholium-table";
+    table.setAttribute("aria-label", localized("Markdown table"));
+    const head = document2.createElement("thead");
+    const headRow = document2.createElement("tr");
+    headRow.append(...presentation.header.map((cell) => tableCellDOM(cell, true, document2, options)));
+    head.append(headRow);
+    const body = document2.createElement("tbody");
+    for (const row of presentation.body) {
+      const rowElement = document2.createElement("tr");
+      rowElement.append(...row.map((cell) => tableCellDOM(cell, false, document2, options)));
+      body.append(rowElement);
+    }
+    table.append(head, body);
+    scroller.append(table);
+    return scroller;
+  }
+  function calloutParts(raw, options) {
+    if (!options.resolveCallout) return null;
+    const lines = [];
+    let lineFrom = 0;
+    while (lineFrom <= raw.length) {
+      const lineFeed = raw.indexOf("\n", lineFrom);
+      const rawTo = lineFeed < 0 ? raw.length : lineFeed;
+      const lineTo = rawTo > lineFrom && raw.charCodeAt(rawTo - 1) === 13 ? rawTo - 1 : rawTo;
+      lines.push({ text: raw.slice(lineFrom, lineTo), from: lineFrom });
+      if (lineFeed < 0) break;
+      lineFrom = lineFeed + 1;
+    }
+    const match = /^\s*>\s*\[!([^\]]+)\]([+-])?\s*(.*)$/.exec(lines[0]?.text ?? "");
+    if (!match) return null;
+    const rawTitle = match[3];
+    const title = rawTitle.trim();
+    const titleInMatch = match[0].length - rawTitle.length + Math.max(0, rawTitle.indexOf(title));
+    let body = "";
+    const bodyOffsets = [];
+    for (const [index, line] of lines.slice(1).entries()) {
+      const content2 = /^(\s*> ?)(.*)$/.exec(line.text);
+      const prefixLength = content2?.[1].length ?? 0;
+      const text = content2?.[2] ?? line.text;
+      if (index > 0) {
+        body += "\n";
+        bodyOffsets.push(line.from);
+      }
+      const contentFrom = line.from + prefixLength;
+      if (bodyOffsets.length === 0) bodyOffsets.push(contentFrom);
+      else bodyOffsets[bodyOffsets.length - 1] = contentFrom;
+      body += text;
+      for (let offset = 1; offset <= text.length; offset += 1) {
+        bodyOffsets.push(contentFrom + offset);
+      }
+    }
+    return {
+      definition: options.resolveCallout(match[1]),
+      rawKind: match[1],
+      fold: match[2] === "+" ? "expanded" : match[2] === "-" ? "collapsed" : "fixed",
+      title,
+      titleFrom: titleInMatch,
+      body,
+      bodyOffsets
+    };
+  }
+  function appendCallout(parts, parent, options) {
+    const document2 = documentFor(parent);
+    const callout = document2.createElement(parts.fold === "fixed" ? "aside" : "details");
+    callout.className = `scholium-callout scholium-callout-${parts.definition.identifier}`;
+    callout.dataset.callout = parts.definition.identifier;
+    callout.dataset.calloutSource = parts.rawKind;
+    callout.dataset.calloutFold = parts.fold;
+    callout.dataset.scholiumProtected = "callout";
+    if (parts.fold === "expanded") callout.open = true;
+    const headingContainer = document2.createElement(parts.fold === "fixed" ? "header" : "summary");
+    const heading2 = document2.createElement("span");
+    heading2.className = "scholium-callout-heading";
+    heading2.setAttribute("role", "heading");
+    heading2.setAttribute("aria-level", "2");
+    const orientationTitleBecomesBody = parts.definition.identifier === "orient" && parts.title.length > 0 && parts.body.trim().length === 0;
+    const role = document2.createElement("span");
+    role.className = "scholium-callout-role";
+    role.dir = "auto";
+    role.title = parts.definition.meaning;
+    role.textContent = parts.definition.label;
+    heading2.append(role);
+    if (parts.title && !orientationTitleBecomesBody) {
+      const title = document2.createElement("span");
+      title.className = "scholium-callout-title";
+      title.dir = "auto";
+      appendInlineMarkdown(parts.title, title, optionsAt(options, parts.titleFrom));
+      heading2.append(title);
+    }
+    headingContainer.append(heading2);
+    if (parts.fold !== "fixed") {
+      const marker = document2.createElement("span");
+      marker.className = "scholium-callout-fold-mark";
+      marker.setAttribute("aria-hidden", "true");
+      headingContainer.append(marker);
+    }
+    const body = document2.createElement("div");
+    body.className = "scholium-callout-body";
+    const signature = document2.createElement("span");
+    signature.className = "scholium-callout-signature";
+    signature.setAttribute("aria-hidden", "true");
+    const content2 = document2.createElement("div");
+    content2.className = "scholium-callout-content";
+    const destination = parts.definition.identifier === "quote" ? document2.createElement("blockquote") : content2;
+    if (destination !== content2) {
+      destination.className = "scholium-callout-quotation";
+      destination.dir = "auto";
+      content2.append(destination);
+    }
+    if (orientationTitleBecomesBody) {
+      const paragraph = document2.createElement("p");
+      paragraph.className = "scholium-callout-orient-title-body";
+      paragraph.dir = "auto";
+      appendInlineMarkdown(parts.title, paragraph, optionsAt(options, parts.titleFrom));
+      destination.append(paragraph);
+    } else {
+      appendMarkdownBlocks(parts.body, destination, optionsWithMap(options, parts.bodyOffsets));
+    }
+    body.append(signature, content2);
+    callout.append(headingContainer, body);
+    parent.append(callout);
+  }
+  function fencedCode(raw) {
+    const lines = raw.replaceAll("\r\n", "\n").split("\n");
+    const opening = /^\s*(`{3,}|~{3,})\s*([^\s`]*)?.*$/.exec(lines[0] ?? "");
+    const language2 = opening?.[2] ?? "";
+    const fence = opening?.[1] ?? "```";
+    const closing2 = new RegExp(`^\\s*${fence[0]}{${fence.length},}\\s*$`);
+    if (lines.length > 1 && closing2.test(lines.at(-1) ?? "")) lines.pop();
+    lines.shift();
+    return { language: language2, code: lines.join("\n") };
+  }
+  function appendMarkdownBlockNode(cursor, source, parent, options) {
+    const document2 = documentFor(parent);
+    const raw = source.slice(cursor.from, cursor.to);
+    switch (cursor.name) {
+      case "Paragraph": {
+        const paragraph = document2.createElement("p");
+        paragraph.dir = "auto";
+        appendInlineMarkdown(raw, paragraph, options);
+        parent.append(paragraph);
+        return;
+      }
+      case "BulletList": {
+        const list = document2.createElement("ul");
+        appendBlockChildren(cursor, source, list, options);
+        parent.append(list);
+        return;
+      }
+      case "OrderedList": {
+        const list = document2.createElement("ol");
+        const start = /^\s*(\d+)[.)]\s/.exec(raw)?.[1];
+        if (start && start !== "1") list.setAttribute("start", start);
+        appendBlockChildren(cursor, source, list, options);
+        parent.append(list);
+        return;
+      }
+      case "ListItem": {
+        const item = document2.createElement("li");
+        item.dir = "auto";
+        appendBlockChildren(cursor, source, item, options);
+        parent.append(item);
+        return;
+      }
+      case "Callout":
+      case "Blockquote": {
+        const calloutOptions = optionsAt(options, cursor.from);
+        const callout = calloutParts(raw, calloutOptions);
+        if (callout) {
+          appendCallout(callout, parent, calloutOptions);
+          return;
+        }
+        const quote = document2.createElement("blockquote");
+        quote.dir = "auto";
+        appendBlockChildren(cursor, source, quote, options);
+        parent.append(quote);
+        return;
+      }
+      case "FencedCode": {
+        const projection = fencedCode(raw);
+        const pre = document2.createElement("pre");
+        pre.dir = "ltr";
+        const code2 = document2.createElement("code");
+        code2.dir = "ltr";
+        if (projection.language) code2.className = `language-${projection.language}`;
+        code2.textContent = projection.code;
+        pre.append(code2);
+        parent.append(pre);
+        return;
+      }
+      case "HTMLBlock": {
+        const pre = document2.createElement("pre");
+        pre.className = "raw-html";
+        pre.dir = "ltr";
+        const code2 = document2.createElement("code");
+        code2.dir = "ltr";
+        code2.textContent = raw;
+        pre.append(code2);
+        parent.append(pre);
+        return;
+      }
+      case "Table": {
+        const presentation = tablePresentation(raw, 0, raw.length);
+        if (presentation) parent.append(createTableDOM(presentation, document2, options));
+        return;
+      }
+      case "ATXHeading1":
+      case "ATXHeading2":
+      case "ATXHeading3":
+      case "ATXHeading4":
+      case "ATXHeading5":
+      case "ATXHeading6": {
+        const level = Number(cursor.name.at(-1));
+        const heading2 = document2.createElement(`h${level}`);
+        heading2.dir = "auto";
+        const opening = /^\s*#{1,6}\s+/.exec(raw)?.[0].length ?? 0;
+        const trailing = /\s+#+\s*$/.exec(raw.slice(opening));
+        const contentTo = trailing ? opening + trailing.index : raw.length;
+        appendInlineMarkdown(
+          raw.slice(opening, contentTo),
+          heading2,
+          optionsAt(options, cursor.from + opening)
+        );
+        parent.append(heading2);
+        return;
+      }
+      case "HorizontalRule":
+        parent.append(document2.createElement("hr"));
+        return;
+      case "ListMark":
+      case "QuoteMark":
+      case "HeaderMark":
+      case "CodeMark":
+      case "CodeInfo":
+      case "CodeText":
+        return;
+      default:
+        appendBlockChildren(cursor, source, parent, options);
+    }
+  }
+  function appendMarkdownBlocks(source, parent, options = {}) {
+    const displays = options.mathematics ? scanMath(source, options.mathematics).filter((expression) => expression.kind === "display") : [];
+    if (displays.length > 0) {
+      let position = 0;
+      for (const expression of displays) {
+        if (position < expression.from) {
+          appendMarkdownBlocks(
+            source.slice(position, expression.from),
+            parent,
+            optionsAt(options, position)
+          );
+        }
+        appendMath(expression, parent);
+        position = expression.to;
+      }
+      if (position < source.length) {
+        appendMarkdownBlocks(source.slice(position), parent, optionsAt(options, position));
+      }
+      return;
+    }
+    const tree = scholiumMarkdownContentLanguage.language.parser.parse(source);
+    const cursor = tree.cursor();
+    appendBlockChildren(cursor, source, parent, options);
   }
 
   // scroll-coordinator.ts
@@ -31571,6 +32251,25 @@ ${fence}
         return;
       }
       const documentSnapshot = editor2.state.doc;
+      if (Number.isFinite(anchor.fallbackFraction) && anchor.fallbackFraction <= 0) {
+        editor2.scrollDOM.scrollTop = 0;
+        postCurrent();
+        const keepDocumentStart = () => {
+          if (editor2.state.doc !== documentSnapshot) return;
+          editor2.requestMeasure({
+            read: () => editor2.state.doc === documentSnapshot,
+            write: (isCurrentDocument) => {
+              if (!isCurrentDocument || editor2.state.doc !== documentSnapshot) return;
+              editor2.scrollDOM.scrollTop = 0;
+              postCurrent();
+            }
+          });
+        };
+        keepDocumentStart();
+        void document.fonts.ready.then(keepDocumentStart);
+        window.requestAnimationFrame(keepDocumentStart);
+        return;
+      }
       const blockProbe = anchor.sourceUTF16Offset === anchor.blockUTF16LowerBound && anchor.blockUTF16UpperBound > anchor.blockUTF16LowerBound ? anchor.blockUTF16LowerBound + 1 : anchor.sourceUTF16Offset;
       const applyMeasuredAnchor = () => {
         if (editor2.state.doc !== documentSnapshot) return;
@@ -31652,19 +32351,6 @@ ${fence}
         }
       };
     });
-  }
-
-  // system-symbols.ts
-  function systemSymbolElement(key, className = "", ownerDocument = document) {
-    const symbol = ownerDocument.createElement("span");
-    symbol.className = `scholium-system-symbol ${className}`.trim();
-    symbol.dataset.scholiumSystemSymbol = key;
-    symbol.style.setProperty(
-      "--scholium-system-symbol-image",
-      `var(--scholium-system-symbol-${key})`
-    );
-    symbol.setAttribute("aria-hidden", "true");
-    return symbol;
   }
 
   // input-suggestions.ts
@@ -33598,567 +34284,6 @@ ${fence}
     };
   }
 
-  // table-presentation.ts
-  function alignmentFor(separator) {
-    const value = separator.trim();
-    if (value.startsWith(":") && value.endsWith(":")) return "center";
-    if (value.endsWith(":")) return "right";
-    if (value.startsWith(":")) return "left";
-    return null;
-  }
-  function cellSource(source, from, to) {
-    return source.slice(from, to).replaceAll("\\|", "|");
-  }
-  function tablePresentation(source, from, to) {
-    if (from < 0 || to <= from || to > source.length) return null;
-    const parsed = tableAt(source, Math.min(to, from + 1));
-    if (!parsed || parsed.rows[0].lineFrom !== from) return null;
-    const finalRow = parsed.rows[parsed.rows.length - 1];
-    if (finalRow.lineTo !== to) return null;
-    const separator = parsed.rows[parsed.separatorIndex];
-    const alignments = separator.cells.map(
-      (cell) => alignmentFor(source.slice(cell.contentFrom, cell.contentTo))
-    );
-    const rows = parsed.rows.filter((_, index) => index !== parsed.separatorIndex).map((row) => row.cells.map((cell, column) => ({
-      source: cellSource(source, cell.contentFrom, cell.contentTo),
-      sourceOffset: cell.contentFrom,
-      alignment: alignments[column] ?? null
-    })));
-    const header = rows.shift();
-    if (!header) return null;
-    return {
-      from,
-      to,
-      source: source.slice(from, to),
-      header,
-      body: rows
-    };
-  }
-
-  // markdown-fragment.ts
-  var inlineMarkerNodes = /* @__PURE__ */ new Set([
-    "EmphasisMark",
-    "CodeMark",
-    "LinkMark",
-    "URL",
-    "StrikethroughMark"
-  ]);
-  function documentFor(parent) {
-    if (parent.nodeType === 9) return parent;
-    const owner = parent.ownerDocument;
-    if (!owner) throw new Error("Markdown fragments require an owning document.");
-    return owner;
-  }
-  function locatedOffset(options, offset) {
-    return options.sourceOffset?.(offset) ?? offset;
-  }
-  function optionsAt(options, offset) {
-    return {
-      ...options,
-      sourceOffset: (nestedOffset) => locatedOffset(options, offset + nestedOffset)
-    };
-  }
-  function optionsWithMap(options, offsets) {
-    return {
-      ...options,
-      sourceOffset: (nestedOffset) => locatedOffset(
-        options,
-        offsets[Math.max(0, Math.min(nestedOffset, offsets.length - 1))] ?? 0
-      )
-    };
-  }
-  function identifyProjectedLink(element, target, from, to, caret, options) {
-    element.dataset.scholiumLinkTarget = target;
-    element.dataset.scholiumSourceFrom = String(locatedOffset(options, from));
-    element.dataset.scholiumSourceTo = String(locatedOffset(options, to));
-    element.dataset.scholiumSourceCaret = String(locatedOffset(options, caret));
-  }
-  function appendInlineMarkdownNode(cursor, source, parent, options) {
-    const document2 = documentFor(parent);
-    const raw = source.slice(cursor.from, cursor.to);
-    if (inlineMarkerNodes.has(cursor.name)) return;
-    if (cursor.name === "InlineCode") {
-      const code2 = document2.createElement("code");
-      code2.dir = "ltr";
-      const opening = raw.match(/^`+/)?.[0] ?? "";
-      const closing2 = raw.endsWith(opening) ? opening.length : 0;
-      code2.textContent = raw.slice(opening.length, raw.length - closing2);
-      parent.append(code2);
-      return;
-    }
-    if (cursor.name === "Link") {
-      const link = /^\[([\s\S]*?)\]\(([\s\S]*?)\)$/.exec(raw);
-      const span = document2.createElement("span");
-      span.className = "cm-live-link";
-      span.dir = "auto";
-      span.textContent = link?.[1] ?? raw;
-      if (link) {
-        identifyProjectedLink(
-          span,
-          link[2].trim().replace(/^<|>$/g, ""),
-          cursor.from,
-          cursor.to,
-          cursor.from + 1,
-          options
-        );
-      }
-      parent.append(span);
-      return;
-    }
-    if (cursor.name === "WikiLink") {
-      const link = /^(!?)\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/.exec(raw);
-      if (!link) {
-        parent.append(document2.createTextNode(raw));
-        return;
-      }
-      const span = document2.createElement("span");
-      const embed = link[1] === "!";
-      span.className = embed ? "cm-live-embed" : "cm-live-wiki-link";
-      span.dir = "auto";
-      const target = link[2].trim();
-      const alias = link[3]?.trim();
-      span.append(document2.createTextNode(alias || target));
-      identifyProjectedLink(span, target, cursor.from, cursor.to, cursor.to, options);
-      parent.append(span);
-      return;
-    }
-    if (cursor.name === "Escape") {
-      parent.append(document2.createTextNode(raw.startsWith("\\") ? raw.slice(1) : raw));
-      return;
-    }
-    const wrapperName = cursor.name === "StrongEmphasis" ? "strong" : cursor.name === "Emphasis" ? "em" : cursor.name === "Strikethrough" ? "del" : null;
-    const destination = wrapperName ? document2.createElement(wrapperName) : parent;
-    let position = cursor.from;
-    if (cursor.firstChild()) {
-      do {
-        if (cursor.from > position) {
-          destination.append(document2.createTextNode(source.slice(position, cursor.from)));
-        }
-        appendInlineMarkdownNode(cursor, source, destination, options);
-        position = cursor.to;
-      } while (cursor.nextSibling());
-      cursor.parent();
-      if (position < cursor.to) {
-        destination.append(document2.createTextNode(source.slice(position, cursor.to)));
-      }
-    } else if (!wrapperName) {
-      destination.append(document2.createTextNode(raw));
-    }
-    if (wrapperName) parent.append(destination);
-  }
-  function appendInlineMarkdownPlain(source, parent, options) {
-    const tree = scholiumMarkdownContentLanguage.language.parser.parse(source);
-    const cursor = tree.cursor();
-    appendInlineMarkdownNode(cursor, source, parent, options);
-  }
-  function appendMath(expression, parent) {
-    const document2 = documentFor(parent);
-    const element = document2.createElement(expression.kind === "display" ? "div" : "span");
-    element.className = `scholium-math scholium-math-${expression.kind} scholium-math-fragment`;
-    element.dir = "ltr";
-    element.dataset.scholiumProtected = "math";
-    const runtime = document2.defaultView?.scholiumMath;
-    const rendered = runtime?.version === 1 ? runtime.render({ source: expression.content, kind: expression.kind }) : null;
-    if (rendered?.ok) {
-      element.classList.add("scholium-math-rendered");
-      element.innerHTML = rendered.html;
-    } else {
-      element.classList.add("scholium-math-error");
-      const exact = document2.createElement("code");
-      exact.className = "scholium-math-source";
-      exact.dir = "ltr";
-      const delimiter = "$".repeat(expression.delimiterLength);
-      exact.textContent = expression.kind === "display" ? `${delimiter}
-${expression.content}
-${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
-      element.append(exact);
-    }
-    parent.append(element);
-  }
-  function firstAnnotatedWikilink(source) {
-    const expression = /\[\[([^\]\r\n]+)\]\]/g;
-    for (const match of source.matchAll(expression)) {
-      const from = match.index;
-      let backslashes = 0;
-      for (let cursor = from - 1; cursor >= 0 && source[cursor] === "\\"; cursor -= 1) backslashes += 1;
-      if (backslashes % 2 === 1 || source[from - 1] === "!") continue;
-      const linkTo = from + match[0].length;
-      const annotation = linkAnnotationAfter(source, linkTo);
-      if (annotation) return { from, linkTo, raw: match[0], annotation };
-    }
-    return null;
-  }
-  function appendAnnotatedWikilink(rawLink, annotationMarkdown, parent, options) {
-    const parsed = /^\[\[([^\]|]+)(?:\|([^\]]+))?\]\]$/.exec(rawLink);
-    if (!parsed) {
-      parent.append(documentFor(parent).createTextNode(`${rawLink}{{${annotationMarkdown}}}`));
-      return;
-    }
-    const document2 = documentFor(parent);
-    const wrapper = document2.createElement("span");
-    wrapper.className = "scholium-annotated-link";
-    wrapper.dataset.scholiumProtected = "link-annotation";
-    const link = document2.createElement("span");
-    link.className = "cm-live-wiki-link";
-    link.dir = "auto";
-    const target = parsed[1].trim();
-    const alias = parsed[2]?.trim();
-    link.textContent = alias || target;
-    identifyProjectedLink(link, target, 0, rawLink.length, rawLink.length, options);
-    const marker = document2.createElement("sup");
-    marker.className = "scholium-link-annotation-marker";
-    const button = document2.createElement("button");
-    button.type = "button";
-    button.className = "scholium-link-annotation-button";
-    button.dataset.linkAnnotation = "true";
-    button.dataset.linkAnnotationTarget = alias || target;
-    button.setAttribute("aria-expanded", "false");
-    button.setAttribute("aria-controls", "scholium-preview-popover");
-    button.setAttribute("aria-label", `${localized("Show Link Annotation")} ${alias || target}`);
-    button.append(systemSymbolElement("text-bubble", "scholium-link-annotation-icon", document2));
-    const template = document2.createElement("template");
-    template.className = "scholium-link-annotation-template";
-    const content2 = document2.createElement("span");
-    content2.className = "scholium-link-annotation-content";
-    appendMarkdownBlocks(annotationMarkdown, content2, optionsAt(options, rawLink.length + 2));
-    template.content.append(content2);
-    button.addEventListener("mousedown", (event) => {
-      if (event.button !== 0) return;
-      event.preventDefault();
-      event.stopPropagation();
-    });
-    marker.append(button, template);
-    wrapper.append(link, marker);
-    parent.append(wrapper);
-  }
-  function appendInlineMarkdown(source, parent, options = {}) {
-    const annotated = firstAnnotatedWikilink(source);
-    if (annotated) {
-      if (annotated.from > 0) {
-        appendInlineMarkdown(source.slice(0, annotated.from), parent, options);
-      }
-      appendAnnotatedWikilink(
-        annotated.raw,
-        annotated.annotation.markdown,
-        parent,
-        optionsAt(options, annotated.from)
-      );
-      if (annotated.annotation.to < source.length) {
-        appendInlineMarkdown(
-          source.slice(annotated.annotation.to),
-          parent,
-          optionsAt(options, annotated.annotation.to)
-        );
-      }
-      return;
-    }
-    const expressions = options.mathematics ? scanMath(source, options.mathematics).filter((expression) => expression.kind === "inline") : [];
-    if (expressions.length === 0) {
-      appendInlineMarkdownPlain(source, parent, options);
-      return;
-    }
-    let position = 0;
-    for (const expression of expressions) {
-      if (position < expression.from) {
-        appendInlineMarkdownPlain(
-          source.slice(position, expression.from),
-          parent,
-          optionsAt(options, position)
-        );
-      }
-      appendMath({ ...expression, from: 0, to: expression.to - expression.from }, parent);
-      position = expression.to;
-    }
-    if (position < source.length) {
-      appendInlineMarkdownPlain(source.slice(position), parent, optionsAt(options, position));
-    }
-  }
-  function appendBlockChildren(cursor, source, parent, options) {
-    if (!cursor.firstChild()) return;
-    do {
-      appendMarkdownBlockNode(cursor, source, parent, options);
-    } while (cursor.nextSibling());
-    cursor.parent();
-  }
-  function tableCellDOM(cell, header, document2, options) {
-    const element = document2.createElement(header ? "th" : "td");
-    element.dir = "auto";
-    if (header) element.setAttribute("scope", "col");
-    if (cell.alignment) element.classList.add(`scholium-table-align-${cell.alignment}`);
-    element.dataset.sourceOffset = String(locatedOffset(options, cell.sourceOffset));
-    appendInlineMarkdown(cell.source, element, options);
-    return element;
-  }
-  function createTableDOM(presentation, document2, options = {}) {
-    const scroller = document2.createElement("div");
-    scroller.className = "scholium-table-scroll";
-    scroller.dataset.scholiumProtected = "table";
-    const table = document2.createElement("table");
-    table.className = "scholium-table";
-    table.setAttribute("aria-label", localized("Markdown table"));
-    const head = document2.createElement("thead");
-    const headRow = document2.createElement("tr");
-    headRow.append(...presentation.header.map((cell) => tableCellDOM(cell, true, document2, options)));
-    head.append(headRow);
-    const body = document2.createElement("tbody");
-    for (const row of presentation.body) {
-      const rowElement = document2.createElement("tr");
-      rowElement.append(...row.map((cell) => tableCellDOM(cell, false, document2, options)));
-      body.append(rowElement);
-    }
-    table.append(head, body);
-    scroller.append(table);
-    return scroller;
-  }
-  function calloutParts(raw, options) {
-    if (!options.resolveCallout) return null;
-    const lines = [];
-    let lineFrom = 0;
-    while (lineFrom <= raw.length) {
-      const lineFeed = raw.indexOf("\n", lineFrom);
-      const rawTo = lineFeed < 0 ? raw.length : lineFeed;
-      const lineTo = rawTo > lineFrom && raw.charCodeAt(rawTo - 1) === 13 ? rawTo - 1 : rawTo;
-      lines.push({ text: raw.slice(lineFrom, lineTo), from: lineFrom });
-      if (lineFeed < 0) break;
-      lineFrom = lineFeed + 1;
-    }
-    const match = /^\s*>\s*\[!([^\]]+)\]([+-])?\s*(.*)$/.exec(lines[0]?.text ?? "");
-    if (!match) return null;
-    const rawTitle = match[3];
-    const title = rawTitle.trim();
-    const titleInMatch = match[0].length - rawTitle.length + Math.max(0, rawTitle.indexOf(title));
-    let body = "";
-    const bodyOffsets = [];
-    for (const [index, line] of lines.slice(1).entries()) {
-      const content2 = /^(\s*> ?)(.*)$/.exec(line.text);
-      const prefixLength = content2?.[1].length ?? 0;
-      const text = content2?.[2] ?? line.text;
-      if (index > 0) {
-        body += "\n";
-        bodyOffsets.push(line.from);
-      }
-      const contentFrom = line.from + prefixLength;
-      if (bodyOffsets.length === 0) bodyOffsets.push(contentFrom);
-      else bodyOffsets[bodyOffsets.length - 1] = contentFrom;
-      body += text;
-      for (let offset = 1; offset <= text.length; offset += 1) {
-        bodyOffsets.push(contentFrom + offset);
-      }
-    }
-    return {
-      definition: options.resolveCallout(match[1]),
-      rawKind: match[1],
-      fold: match[2] === "+" ? "expanded" : match[2] === "-" ? "collapsed" : "fixed",
-      title,
-      titleFrom: titleInMatch,
-      body,
-      bodyOffsets
-    };
-  }
-  function appendCallout(parts, parent, options) {
-    const document2 = documentFor(parent);
-    const callout = document2.createElement(parts.fold === "fixed" ? "aside" : "details");
-    callout.className = `scholium-callout scholium-callout-${parts.definition.identifier}`;
-    callout.dataset.callout = parts.definition.identifier;
-    callout.dataset.calloutSource = parts.rawKind;
-    callout.dataset.calloutFold = parts.fold;
-    callout.dataset.scholiumProtected = "callout";
-    if (parts.fold === "expanded") callout.open = true;
-    const headingContainer = document2.createElement(parts.fold === "fixed" ? "header" : "summary");
-    const heading2 = document2.createElement("span");
-    heading2.className = "scholium-callout-heading";
-    heading2.setAttribute("role", "heading");
-    heading2.setAttribute("aria-level", "2");
-    const orientationTitleBecomesBody = parts.definition.identifier === "orient" && parts.title.length > 0 && parts.body.trim().length === 0;
-    const role = document2.createElement("span");
-    role.className = "scholium-callout-role";
-    role.dir = "auto";
-    role.title = parts.definition.meaning;
-    role.textContent = parts.definition.label;
-    heading2.append(role);
-    if (parts.title && !orientationTitleBecomesBody) {
-      const title = document2.createElement("span");
-      title.className = "scholium-callout-title";
-      title.dir = "auto";
-      appendInlineMarkdown(parts.title, title, optionsAt(options, parts.titleFrom));
-      heading2.append(title);
-    }
-    headingContainer.append(heading2);
-    if (parts.fold !== "fixed") {
-      const marker = document2.createElement("span");
-      marker.className = "scholium-callout-fold-mark";
-      marker.setAttribute("aria-hidden", "true");
-      headingContainer.append(marker);
-    }
-    const body = document2.createElement("div");
-    body.className = "scholium-callout-body";
-    const signature = document2.createElement("span");
-    signature.className = "scholium-callout-signature";
-    signature.setAttribute("aria-hidden", "true");
-    const content2 = document2.createElement("div");
-    content2.className = "scholium-callout-content";
-    const destination = parts.definition.identifier === "quote" ? document2.createElement("blockquote") : content2;
-    if (destination !== content2) {
-      destination.className = "scholium-callout-quotation";
-      destination.dir = "auto";
-      content2.append(destination);
-    }
-    if (orientationTitleBecomesBody) {
-      const paragraph = document2.createElement("p");
-      paragraph.className = "scholium-callout-orient-title-body";
-      paragraph.dir = "auto";
-      appendInlineMarkdown(parts.title, paragraph, optionsAt(options, parts.titleFrom));
-      destination.append(paragraph);
-    } else {
-      appendMarkdownBlocks(parts.body, destination, optionsWithMap(options, parts.bodyOffsets));
-    }
-    body.append(signature, content2);
-    callout.append(headingContainer, body);
-    parent.append(callout);
-  }
-  function fencedCode(raw) {
-    const lines = raw.replaceAll("\r\n", "\n").split("\n");
-    const opening = /^\s*(`{3,}|~{3,})\s*([^\s`]*)?.*$/.exec(lines[0] ?? "");
-    const language2 = opening?.[2] ?? "";
-    const fence = opening?.[1] ?? "```";
-    const closing2 = new RegExp(`^\\s*${fence[0]}{${fence.length},}\\s*$`);
-    if (lines.length > 1 && closing2.test(lines.at(-1) ?? "")) lines.pop();
-    lines.shift();
-    return { language: language2, code: lines.join("\n") };
-  }
-  function appendMarkdownBlockNode(cursor, source, parent, options) {
-    const document2 = documentFor(parent);
-    const raw = source.slice(cursor.from, cursor.to);
-    switch (cursor.name) {
-      case "Paragraph": {
-        const paragraph = document2.createElement("p");
-        paragraph.dir = "auto";
-        appendInlineMarkdown(raw, paragraph, options);
-        parent.append(paragraph);
-        return;
-      }
-      case "BulletList": {
-        const list = document2.createElement("ul");
-        appendBlockChildren(cursor, source, list, options);
-        parent.append(list);
-        return;
-      }
-      case "OrderedList": {
-        const list = document2.createElement("ol");
-        const start = /^\s*(\d+)[.)]\s/.exec(raw)?.[1];
-        if (start && start !== "1") list.setAttribute("start", start);
-        appendBlockChildren(cursor, source, list, options);
-        parent.append(list);
-        return;
-      }
-      case "ListItem": {
-        const item = document2.createElement("li");
-        item.dir = "auto";
-        appendBlockChildren(cursor, source, item, options);
-        parent.append(item);
-        return;
-      }
-      case "Callout":
-      case "Blockquote": {
-        const calloutOptions = optionsAt(options, cursor.from);
-        const callout = calloutParts(raw, calloutOptions);
-        if (callout) {
-          appendCallout(callout, parent, calloutOptions);
-          return;
-        }
-        const quote = document2.createElement("blockquote");
-        quote.dir = "auto";
-        appendBlockChildren(cursor, source, quote, options);
-        parent.append(quote);
-        return;
-      }
-      case "FencedCode": {
-        const projection = fencedCode(raw);
-        const pre = document2.createElement("pre");
-        pre.dir = "ltr";
-        const code2 = document2.createElement("code");
-        code2.dir = "ltr";
-        if (projection.language) code2.className = `language-${projection.language}`;
-        code2.textContent = projection.code;
-        pre.append(code2);
-        parent.append(pre);
-        return;
-      }
-      case "HTMLBlock": {
-        const pre = document2.createElement("pre");
-        pre.className = "raw-html";
-        pre.dir = "ltr";
-        const code2 = document2.createElement("code");
-        code2.dir = "ltr";
-        code2.textContent = raw;
-        pre.append(code2);
-        parent.append(pre);
-        return;
-      }
-      case "Table": {
-        const presentation = tablePresentation(raw, 0, raw.length);
-        if (presentation) parent.append(createTableDOM(presentation, document2, options));
-        return;
-      }
-      case "ATXHeading1":
-      case "ATXHeading2":
-      case "ATXHeading3":
-      case "ATXHeading4":
-      case "ATXHeading5":
-      case "ATXHeading6": {
-        const level = Number(cursor.name.at(-1));
-        const heading2 = document2.createElement(`h${level}`);
-        heading2.dir = "auto";
-        const opening = /^\s*#{1,6}\s+/.exec(raw)?.[0].length ?? 0;
-        const trailing = /\s+#+\s*$/.exec(raw.slice(opening));
-        const contentTo = trailing ? opening + trailing.index : raw.length;
-        appendInlineMarkdown(
-          raw.slice(opening, contentTo),
-          heading2,
-          optionsAt(options, cursor.from + opening)
-        );
-        parent.append(heading2);
-        return;
-      }
-      case "HorizontalRule":
-        parent.append(document2.createElement("hr"));
-        return;
-      case "ListMark":
-      case "QuoteMark":
-      case "HeaderMark":
-      case "CodeMark":
-      case "CodeInfo":
-      case "CodeText":
-        return;
-      default:
-        appendBlockChildren(cursor, source, parent, options);
-    }
-  }
-  function appendMarkdownBlocks(source, parent, options = {}) {
-    const displays = options.mathematics ? scanMath(source, options.mathematics).filter((expression) => expression.kind === "display") : [];
-    if (displays.length > 0) {
-      let position = 0;
-      for (const expression of displays) {
-        if (position < expression.from) {
-          appendMarkdownBlocks(
-            source.slice(position, expression.from),
-            parent,
-            optionsAt(options, position)
-          );
-        }
-        appendMath(expression, parent);
-        position = expression.to;
-      }
-      if (position < source.length) {
-        appendMarkdownBlocks(source.slice(position), parent, optionsAt(options, position));
-      }
-      return;
-    }
-    const tree = scholiumMarkdownContentLanguage.language.parser.parse(source);
-    const cursor = tree.cursor();
-    appendBlockChildren(cursor, source, parent, options);
-  }
-
   // live-structured-block-projections.ts
   function createLiveStructuredBlockProjections(options) {
     const resolveCallout = (rawKind) => calloutDefinition(options.editingDialect(), rawKind);
@@ -34481,26 +34606,47 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   }
 
   // live-footnote-projection.ts
+  var footnoteTrailingPunctuation = new Set(
+    Array.from('.,;:!?\uFF0C\u3002\uFF01\uFF1F\uFF1B\uFF1A\u3001\u2026\uFF09\u300B\u3011\u300D\u300F\u2019\u201D"')
+  );
+  function trailingFootnotePunctuation(state, from) {
+    let value = "";
+    for (const character of state.doc.sliceString(from, Math.min(state.doc.length, from + 16))) {
+      if (!footnoteTrailingPunctuation.has(character)) break;
+      value += character;
+    }
+    return value;
+  }
   function createLiveFootnoteProjection(options) {
     class FootnoteReferenceWidget extends WidgetType {
-      constructor(reference) {
+      constructor(reference, trailingPunctuation) {
         super();
         this.reference = reference;
+        this.trailingPunctuation = trailingPunctuation;
       }
       reference;
+      trailingPunctuation;
       eq(other) {
-        const equal = other.reference.identifier === this.reference.identifier && other.reference.ordinal === this.reference.ordinal && other.reference.occurrence === this.reference.occurrence && other.reference.from === this.reference.from && other.reference.definitionFrom === this.reference.definitionFrom && other.reference.definitionContentFrom === this.reference.definitionContentFrom;
+        const equal = other.reference.identifier === this.reference.identifier && other.reference.ordinal === this.reference.ordinal && other.reference.occurrence === this.reference.occurrence && other.reference.from === this.reference.from && other.reference.definitionFrom === this.reference.definitionFrom && other.reference.definitionContentFrom === this.reference.definitionContentFrom && other.trailingPunctuation === this.trailingPunctuation;
         if (equal) options.reuseCounts.footnote += 1;
         return equal;
       }
       toDOM() {
+        const cluster = document.createElement("span");
+        cluster.className = "footnote-reference-cluster cm-live-footnote-reference-widget";
+        cluster.dataset.scholiumProtected = "footnote";
+        cluster.dataset.scholiumTrailingPunctuation = this.trailingPunctuation;
         const wrapper = document.createElement("sup");
-        wrapper.className = "footnote-reference-wrap cm-live-footnote-reference-widget";
-        wrapper.dataset.scholiumProtected = "footnote";
-        const marker = document.createElement("span");
+        wrapper.className = "footnote-reference-wrap";
+        const marker = document.createElement("button");
+        marker.type = "button";
         marker.className = "footnote-reference";
         marker.dataset.footnote = String(this.reference.ordinal);
+        marker.dataset.footnoteIdentifier = this.reference.identifier;
+        marker.dataset.footnoteOccurrence = String(this.reference.occurrence);
         marker.dataset.scholiumProtected = "footnote-marker";
+        marker.setAttribute("aria-controls", "scholium-preview-popover");
+        marker.setAttribute("aria-expanded", "false");
         marker.setAttribute(
           "aria-label",
           localizedTemplate("Footnote {ordinal}", { ordinal: this.reference.ordinal })
@@ -34510,13 +34656,14 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           marker.setAttribute("aria-disabled", "true");
           marker.classList.add("footnote-reference-missing");
         }
-        options.widgets.setFootnote(wrapper, this.reference);
         wrapper.append(marker);
-        return wrapper;
+        cluster.append(wrapper, this.trailingPunctuation);
+        options.widgets.setFootnote(cluster, this.reference);
+        return cluster;
       }
       updateDOM(dom) {
         const previous = options.widgets.footnote(dom);
-        const sameContent = previous && previous.identifier === this.reference.identifier && previous.ordinal === this.reference.ordinal && previous.occurrence === this.reference.occurrence && previous.definitionFrom === this.reference.definitionFrom && previous.definitionContentFrom === this.reference.definitionContentFrom;
+        const sameContent = previous && previous.identifier === this.reference.identifier && previous.ordinal === this.reference.ordinal && previous.occurrence === this.reference.occurrence && previous.definitionFrom === this.reference.definitionFrom && previous.definitionContentFrom === this.reference.definitionContentFrom && dom.dataset.scholiumTrailingPunctuation === this.trailingPunctuation;
         if (!sameContent) return false;
         options.widgets.setFootnote(dom, this.reference);
         options.reuseCounts.footnote += 1;
@@ -34527,32 +34674,43 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       }
     }
     function decorations2(state, presentation) {
-      const ranges = [];
+      const decorationRanges = [];
+      const atomicDecorationRanges = [];
+      const projectionRanges = [];
       const active = (from, to) => options.selection.selection(state).ranges.some((range) => selectionIntersectsProjection(range, { from, to }));
       for (const reference of presentation.references) {
         const containedByDefinition = presentation.definitions.some((definition) => !definition.isInline && definition.from <= reference.from && definition.to >= reference.to);
-        if (containedByDefinition || active(reference.from, reference.to)) continue;
-        ranges.push(Decoration.replace({
-          widget: new FootnoteReferenceWidget(reference)
-        }).range(reference.from, reference.to));
+        const trailing = trailingFootnotePunctuation(state, reference.to);
+        const projectionTo = reference.to + trailing.length;
+        projectionRanges.push({ from: reference.from, to: projectionTo });
+        if (containedByDefinition || active(reference.from, projectionTo)) continue;
+        const replacement = Decoration.replace({
+          widget: new FootnoteReferenceWidget(reference, trailing)
+        }).range(reference.from, projectionTo);
+        decorationRanges.push(replacement);
+        atomicDecorationRanges.push(Decoration.mark({}).range(reference.from, reference.to));
       }
-      return Decoration.set(ranges, true);
+      return {
+        decorations: Decoration.set(decorationRanges, true),
+        atomicRanges: Decoration.set(atomicDecorationRanges, true),
+        ranges: projectionRanges
+      };
     }
     function build(state) {
       const index = options.projections.index(state);
       if (index.hasUnclosedFrontmatter) {
         return {
           decorations: Decoration.none,
+          atomicRanges: Decoration.none,
           hasConstructs: true,
           presentation: { definitions: [], references: [] },
           ranges: []
         };
       }
       return {
-        decorations: decorations2(state, index.footnotes),
+        ...decorations2(state, index.footnotes),
         hasConstructs: index.footnotes.definitions.length > 0 || index.footnotes.references.length > 0,
-        presentation: index.footnotes,
-        ranges: index.footnoteRanges
+        presentation: index.footnotes
       };
     }
     const field = StateField.define({
@@ -34571,12 +34729,12 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         )) return previous;
         return {
           ...previous,
-          decorations: decorations2(transaction.state, previous.presentation)
+          ...decorations2(transaction.state, previous.presentation)
         };
       },
       provide: (field2) => [
         EditorView.decorations.from(field2, (value) => value.decorations),
-        EditorView.atomicRanges.of((view) => view.state.field(field2).decorations)
+        EditorView.atomicRanges.of((view) => view.state.field(field2).atomicRanges)
       ]
     });
     return { extension: field };
@@ -36432,6 +36590,14 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   var documentTitleRenameRequest = null;
   var documentTitlePresentationRevision = 0;
   var lastDocumentFocusTarget;
+  function setDocumentFocusTarget(target) {
+    const changed = lastDocumentFocusTarget !== target;
+    lastDocumentFocusTarget = target;
+    if (changed && configuredEditorMode(editor.state) === "livePreview") {
+      editor.dispatch({ effects: refreshLivePreviewEffect.of(null) });
+    }
+    scheduleEditorInteractionReport();
+  }
   function configuredEditorMode(state) {
     return state.facet(editorModeFacet);
   }
@@ -36519,8 +36685,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       let cancelling = false;
       input.addEventListener("input", normalizeInput);
       input.addEventListener("focus", () => {
-        lastDocumentFocusTarget = "title";
-        scheduleEditorInteractionReport();
+        setDocumentFocusTarget("title");
       });
       input.addEventListener("compositionstart", () => {
         composing = true;
@@ -36628,26 +36793,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   });
   var hiddenSyntax = Decoration.replace({});
   var liveMark = (className) => Decoration.mark({ class: className });
-  var ReservedSyntaxWidget = class extends WidgetType {
-    constructor(source) {
-      super();
-      this.source = source;
-    }
-    source;
-    eq(other) {
-      return other.source === this.source;
-    }
-    toDOM() {
-      const marker = document.createElement("span");
-      marker.className = "cm-live-reserved-syntax";
-      marker.textContent = this.source;
-      marker.setAttribute("aria-hidden", "true");
-      return marker;
-    }
-    ignoreEvent() {
-      return true;
-    }
-  };
   var liveInlineClassByKind = {
     strong: "cm-live-strong",
     emphasis: "cm-live-emphasis",
@@ -36777,7 +36922,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       0
     );
     const index = liveProjectionIndex.index(view.state);
-    const projectionSelections = liveSelection.selection(view.state).ranges;
+    const projectionSelections = lastDocumentFocusTarget === "title" ? [] : liveSelection.selection(view.state).ranges;
     if (index.hasUnclosedFrontmatter) {
       recordEditorMetric("projection", projectionStartedAt, {
         documentLength: doc2.length,
@@ -36808,14 +36953,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     const addHidden = (from, to) => {
       if (to <= from) return;
       const range = hiddenSyntax.range(from, to);
-      decorations2.push(range);
-      atomicRanges2.push(range);
-    };
-    const addReservedHidden = (from, to) => {
-      if (to <= from) return;
-      const range = Decoration.replace({
-        widget: new ReservedSyntaxWidget(doc2.sliceString(from, to))
-      }).range(from, to);
       decorations2.push(range);
       atomicRanges2.push(range);
     };
@@ -36919,7 +37056,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             const lineMarkers = heading2.markerRanges.filter((range) => range.from < lineQueryTo && range.to > line.from);
             if (!activeLine) {
               for (const marker of lineMarkers) {
-                addReservedHidden(
+                addHidden(
                   Math.max(line.from, marker.from),
                   Math.min(line.to, marker.to)
                 );
@@ -37539,6 +37676,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   });
   var previewPopover = createPreviewPopoverController({
     previews: () => linkPreviews,
+    footnotes: () => liveProjectionIndex.index(editor.state).footnotes,
+    renderFootnoteContent: (content2, parent) => appendMarkdownBlocks(content2, parent, {
+      mathematics: editingDialect?.mathematics,
+      resolveCallout: calloutDefinition2
+    }),
     postPerformanceSample: postConfiguredPerformanceSample
   });
   var sourceActiveLineDecoration = Decoration.line({ class: "cm-activeLine" });
@@ -37645,8 +37787,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   ];
   var editor = createMarkdownEditor(document.getElementById("editor"), editorExtensions);
   editor.contentDOM.addEventListener("focus", () => {
-    lastDocumentFocusTarget = "editor";
-    scheduleEditorInteractionReport();
+    setDocumentFocusTarget("editor");
   });
   editor.contentDOM.addEventListener("keydown", (event) => {
     const key = event.key;
@@ -37692,6 +37833,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     "calloutQuote",
     "calloutFlag",
     "insertFootnote",
+    "insertInlineFootnote",
     "insertTable",
     "toggleTask",
     "tableInsertRowBefore",
@@ -38317,7 +38459,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         selection: { anchor: line.from },
         effects: EditorView.scrollIntoView(line.from, { y: "center" })
       });
-      lastDocumentFocusTarget = "editor";
       editor.focus();
     },
     /** Selects an exact source range without changing Markdown or undo history. */
@@ -38332,7 +38473,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         annotations: Transaction.addToHistory.of(false)
       });
       if (focusesEditor) {
-        lastDocumentFocusTarget = "editor";
         editor.focus();
       }
     },
@@ -38374,7 +38514,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       dirty = false;
     },
     focus() {
-      lastDocumentFocusTarget = "editor";
       editor.focus();
     },
     focusTitle() {
@@ -38382,7 +38521,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         ".scholium-note-title-input"
       );
       if (!input || input.disabled) return false;
-      lastDocumentFocusTarget = "title";
       input.focus();
       input.setSelectionRange(input.value.length, input.value.length);
       return true;

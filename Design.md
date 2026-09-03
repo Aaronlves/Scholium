@@ -104,11 +104,16 @@ Authored H1 is never styled as a second document title. Native window title
 identifies the window without competing with that in-document title. Review
 and Edit share one measure and typographic hierarchy, but Edit may reserve the
 additional physical-line space required for stable authoring. Moving the
-caret, revealing exact syntax, entering or leaving an authored blank line,
-typing its first character, and deleting it back to empty do not move the
-insertion baseline or neighboring content. Lists, blank lines, code fences,
-tables, mathematics, footnotes, and Callouts preserve their source-owned
-rhythm and object-local overflow.
+caret, entering or leaving an authored blank line, typing its first character,
+and deleting it back to empty do not move the insertion baseline or neighboring
+content. Inactive ATX headings spend no horizontal measure on hidden opening
+syntax; entering one reveals the exact marker within that active line without
+moving neighboring blocks. Preserved spaces remain measurable, ordinary prose
+uses language-aware editorial breaking rather than terminal-style arbitrary
+breaking, and an interactive inline locator remains attached to immediately
+following closing punctuation. Lists, blank lines, code fences, tables,
+mathematics, footnotes, and Callouts preserve their source-owned rhythm and
+object-local overflow.
 
 Native selection is authoritative in every mode and uses the resolved Accent
 consistently. Authored `==highlight==` uses one protected high-contrast Markup
@@ -126,6 +131,16 @@ and reveals the annotation in the shared bounded preview surface rather than in
 document flow. Its text and accessibility name say that a source-owned
 annotation is present. The marker never classifies argumentative force, truth,
 evidence, or value.
+
+Named and inline footnotes use one print-like treatment. Their prose locator is
+a medium-weight Scholarly superscript ordinal with zero-line-height geometry,
+Accent ink, and the shared quiet hover/focus surface. The generated end section
+has no injected heading, card, or enclosing fill: one short leading rule,
+hanging Accent ordinals, compact secondary Scholarly prose, and a quiet return
+control at the content end carry the hierarchy. Footnote previews retain the
+shared bounded-panel surface, show one concise footnote title and rendered
+definition, and add no redundant metadata line. Edit adds no second end-section
+projection.
 
 Color has exactly two researcher inputs:
 

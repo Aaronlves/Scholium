@@ -127,6 +127,26 @@ describe("exact Markdown transformations", () => {
       "[^1] and second.[^2]\n\n[^2]: Existing\n\n[^1]: First\n",
     );
   });
+  it("inserts inline footnotes at one or several exact selections", () => {
+    const empty = transformMarkdown("Claim.", [{anchor: 5, head: 5}], "insertInlineFootnote");
+    expect(empty).not.toBeNull();
+    expect(applySourceChanges("Claim.", empty!.changes)).toBe("Claim^[].");
+    expect(empty!.selections).toEqual([{anchor: 7, head: 7}]);
+    expect(empty!.undoLabel).toBe("Insert Inline Footnote");
+
+    const source = "First and second";
+    const selected = transformMarkdown(source, [
+      {anchor: 0, head: 5},
+      {anchor: 10, head: 16},
+    ], "insertInlineFootnote");
+    expect(selected).not.toBeNull();
+    expect(applySourceChanges(source, selected!.changes))
+      .toBe("^[First] and ^[second]");
+    expect(selected!.selections).toEqual([
+      {anchor: 2, head: 7},
+      {anchor: 15, head: 21},
+    ]);
+  });
   it("toggles only the three task-marker bytes", () => {
     expect(apply("- [ ] exact task", "toggleTask", 8).source).toBe("- [x] exact task");
     expect(apply("- [x] exact task", "toggleTask", 8).source).toBe("- [ ] exact task");

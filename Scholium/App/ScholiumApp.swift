@@ -1260,7 +1260,11 @@ private struct ScholiumInsertCommandContent: View {
             .disabled(editorActions?.isAvailable(.annotatedWikilink) != true)
         Divider()
         Button("Footnote") { editorActions?.perform(.insertFootnote) }
+            .scholiumKeyboardShortcut(shortcut(for: .insertFootnote))
             .disabled(editorActions?.isAvailable(.insertFootnote) != true)
+        Button("Inline Footnote") { editorActions?.perform(.insertInlineFootnote) }
+            .scholiumKeyboardShortcut(shortcut(for: .insertInlineFootnote))
+            .disabled(editorActions?.isAvailable(.insertInlineFootnote) != true)
         Button("Table") { editorActions?.perform(.insertTable) }
             .disabled(editorActions?.isAvailable(.insertTable) != true)
         Button("Thematic Break") { editorActions?.perform(.thematicBreak) }

@@ -16,6 +16,17 @@ struct HotkeyPreferencesTests {
             ScholiumHotkeyPreferences.binding(for: .toggleLibrary, data: data)
                 == ScholiumHotkeyBinding(key: "s", modifiers: [.control, .command])
         )
+        #expect(
+            ScholiumHotkeyPreferences.binding(for: .insertFootnote, data: data)
+                == ScholiumHotkeyBinding(key: "n", modifiers: [.option, .command])
+        )
+        #expect(
+            ScholiumHotkeyPreferences.binding(for: .insertInlineFootnote, data: data)
+                == ScholiumHotkeyBinding(
+                    key: "n",
+                    modifiers: [.option, .shift, .command]
+                )
+        )
     }
 
     @Test("One command can be changed, cleared, and restored without changing peers")

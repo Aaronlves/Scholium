@@ -285,9 +285,16 @@ struct SafeMarkdownRendererTests {
         #expect(rendered.contains("id=\"fnref-1-1\""))
         #expect(rendered.contains("id=\"fnref-1-2\""))
         #expect(rendered.contains("id=\"fn-1\""))
+        #expect(rendered.contains("id=\"fnref-2-1\""))
+        #expect(rendered.contains("id=\"fn-2\""))
+        #expect(rendered.contains("class=\"footnote-reference-cluster\""))
+        #expect(rendered.contains("</sup>,</span> repeated"))
+        #expect(rendered.contains("</sup>.</span>"))
+        #expect(rendered.contains("Inline note"))
         #expect(rendered.contains("class=\"footnote-return\""))
         #expect(rendered.contains("<strong>footnote</strong>"))
         #expect(!rendered.contains("[^a]:"))
+        #expect(!rendered.contains("^[Inline note]"))
     }
 
     @Test("Footnote definitions render owned nested blocks without absorbing following prose")

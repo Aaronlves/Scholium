@@ -30,6 +30,10 @@ document focus, show only useful identity/path context, fit the viewport, and
 never introduce another text owner. Selection, menus, and suggestion panels use
 the semantic surfaces, boundaries, and elevation roles in §19.
 
+Insert presents Footnote and Inline Footnote as neighboring commands. Their
+default shortcuts are Option-Command-N and Option-Shift-Command-N respectively;
+the existing Hotkeys owner may replace or clear either binding.
+
 Internal-link preview preserves each mode's interaction meaning. Review reveals
 the cached destination on ordinary pointer hover or link focus. Edit follows the
 macOS editing convention: holding Command while pointing at an inactive
@@ -46,6 +50,13 @@ preview; primary activation keeps that surface open for reading. Escape,
 outside activation, scrolling, resizing, source activation, or a document
 change dismisses it. Annotation prose never enters document flow or changes
 neighboring line geometry.
+
+Review and inactive Edit present every named or inline footnote occurrence as
+the same superscript ordinal. Pointer hover or keyboard focus reveals one
+bounded rendered definition without adding prose to document flow. Review
+activation navigates to the generated end note and its return route; Edit
+activation reveals the exact source-owned definition or inline range in the
+same Editor state.
 
 All modes use one adaptive editorial grid and one Appearance **Line width**
 value. Review/Edit use scholarly type; Source uses exact-source type. The
@@ -99,8 +110,13 @@ boundary. Typography cannot create a region that merely ignores editing input.
 Edit prioritizes stable input geometry over exact spacing parity with Review:
 an authored blank line retains at least one complete prose line box before,
 during, and after input, and cursor-dependent syntax reveal preserves the
-line's dimensions and wrapping. Caret movement alone never reflows neighboring
-content.
+line's vertical dimensions. An inactive ATX heading removes its complete
+opening marker and required separator from inline measure; entering that
+heading reveals the exact editable source and may shift only that active
+line's inline text. Caret movement never changes neighboring block positions.
+Preserved spaces take their exact width, ordinary prose follows language-aware
+line-breaking rules, and closing punctuation is not left alone at a visual-line
+start merely because it follows an interactive inline projection.
 
 ### 18.4.1 Advanced CSS boundary
 

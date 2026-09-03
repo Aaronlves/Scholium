@@ -678,7 +678,9 @@ enum ScholiumWebDesignTokens {
             * var(--scholium-document-text-scale-factor)
           );
           line-height: var(--scholium-rhythm-prose-line-height);
-          overflow-wrap: anywhere;
+          line-break: strict;
+          word-break: normal;
+          overflow-wrap: break-word;
         }
         .cm-editor.scholium-source-mode .cm-content {
           padding-inline: max(
@@ -704,7 +706,9 @@ enum ScholiumWebDesignTokens {
           letter-spacing: 0;
           text-align: start;
           text-indent: 0;
-          overflow-wrap: anywhere;
+          line-break: strict;
+          word-break: normal;
+          overflow-wrap: break-word;
           cursor: text;
         }
         .scholium-note-title-input {

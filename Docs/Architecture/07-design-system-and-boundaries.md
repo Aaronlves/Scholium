@@ -122,8 +122,9 @@ Review preview delegation resolves one footnote, link-annotation marker, or link
 anchor for both pointer and focus entry, ignores movement inside that anchor,
 and closes on matching pointer or focus exit as well as scroll, resize, source
 activation, or window blur. Edit's corresponding controller additionally owns
-Command-armed link feedback and the same annotation-template presentation.
-Neither creates another source, selection, or focus owner.
+Command-armed link feedback, the same annotation-template presentation, and a
+current-buffer one-definition footnote projection. Neither creates another
+source, selection, or focus owner.
 `ScholiumTriptychWorkspaceNavigator` owns
 the three vertical workspace rows, neutral Note totals, selection/hover
 surfaces, focus, and Up/Down traversal without owning the selected workspace. Its continuous

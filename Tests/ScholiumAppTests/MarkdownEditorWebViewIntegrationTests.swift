@@ -1659,6 +1659,113 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Edit footnote locators preview current named and inline definitions without reflow")
+    func editFootnotesPreviewCurrentBufferWithoutReflow() async throws {
+        let source = "Claim[^note] and aside^[Inline *qualification*].\n\n[^note]: **Basis** for the claim.\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        _ = try await harness.waitUntilPresentation(stage: "two Edit footnote locators") {
+            $0.footnoteReferenceCount == 2 && $0.footnoteDefinitionSourceCount == 1
+        }
+        let preview = try #require(try await harness.callPageJavaScript(
+            """
+            const markers = Array.from(document.querySelectorAll(
+              '.cm-live-footnote-reference-widget .footnote-reference'
+            ));
+            const popover = document.getElementById('scholium-preview-popover');
+            const title = popover?.querySelector('.scholium-preview-title');
+            const metadata = popover?.querySelector('.scholium-preview-metadata');
+            const body = popover?.querySelector('.scholium-preview-body');
+            const line = markers[0]?.closest('.cm-line');
+            if (markers.length !== 2 || !popover || !title || !metadata || !body || !line) {
+              return null;
+            }
+            const before = line.getBoundingClientRect();
+            markers[0].dispatchEvent(new PointerEvent('pointermove', {
+              bubbles: true,
+              pointerType: 'mouse'
+            }));
+            await new Promise(resolve => setTimeout(resolve, 420));
+            await new Promise(resolve => setTimeout(resolve, 40));
+            const after = line.getBoundingClientRect();
+            const named = {
+              hidden: popover.hidden,
+              title: title.textContent || '',
+              body: body.textContent || '',
+              hasStrong: Boolean(body.querySelector('strong')),
+              metadataHidden: metadata.hidden,
+              lineTopDelta: Math.abs(after.top - before.top),
+              lineHeightDelta: Math.abs(after.height - before.height),
+              tag: markers[0].tagName,
+              controls: markers[0].getAttribute('aria-controls'),
+              expanded: markers[0].getAttribute('aria-expanded')
+            };
+            document.body.dispatchEvent(new PointerEvent('pointermove', {
+              bubbles: true,
+              pointerType: 'mouse'
+            }));
+            await new Promise(resolve => setTimeout(resolve, 220));
+            markers[1].focus({preventScroll: true});
+            await new Promise(resolve => setTimeout(resolve, 40));
+            const inline = {
+              hidden: popover.hidden,
+              title: title.textContent || '',
+              body: body.textContent || '',
+              hasEmphasis: Boolean(body.querySelector('em')),
+              metadataHidden: metadata.hidden,
+              expanded: markers[1].getAttribute('aria-expanded')
+            };
+            return {named, inline};
+            """
+        ) as? [String: Any])
+        let named = try #require(preview["named"] as? [String: Any])
+        let inline = try #require(preview["inline"] as? [String: Any])
+        #expect(named["hidden"] as? Bool == false)
+        #expect(named["title"] as? String == "Footnote 1")
+        #expect((named["body"] as? String)?.contains("Basis for the claim") == true)
+        #expect(named["hasStrong"] as? Bool == true)
+        #expect(named["metadataHidden"] as? Bool == true)
+        #expect((named["lineTopDelta"] as? Double ?? 1) <= 0.5)
+        #expect((named["lineHeightDelta"] as? Double ?? 1) <= 0.5)
+        #expect(named["tag"] as? String == "BUTTON")
+        #expect(named["controls"] as? String == "scholium-preview-popover")
+        #expect(named["expanded"] as? String == "true")
+        #expect(inline["hidden"] as? Bool == false)
+        #expect(inline["title"] as? String == "Footnote 2")
+        #expect((inline["body"] as? String)?.contains("Inline qualification") == true)
+        #expect(inline["hasEmphasis"] as? Bool == true)
+        #expect(inline["metadataHidden"] as? Bool == true)
+        #expect(inline["expanded"] as? String == "true")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Inline footnote command wraps the exact selection in one source transaction")
+    func inlineFootnoteCommandWrapsExactSelection() async throws {
+        let source = "Claim remains."
+        let harness = EditorHarness(source: source, initialSourceRange: 0..<5)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        try await harness.session.perform(.insertInlineFootnote)
+        try await harness.waitUntilSelection(head: 7, stage: "inline footnote insertion")
+
+        #expect(
+            try await harness.session.currentText(for: harness.documentID)
+                == "^[Claim] remains."
+        )
+        #expect(harness.session.context?.selections == [
+            MarkdownEditorSelectionRange(anchor: 2, head: 7)
+        ])
+        #expect(harness.session.context?.undoLabel == "Insert Inline Footnote")
+        #expect(harness.session.generation == 1)
+        #expect(harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
     @Test("Edit footnote definitions remain direct exact Markdown after preceding edits")
     func editFootnoteDefinitionRemainsDirectEditableSource() async throws {
         let source = "Claim[^note].\n\n[^note]: Basis for revision.\n"
@@ -2878,9 +2985,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Edit heading marker reveal preserves title and following-block geometry")
-    func editHeadingMarkerRevealPreservesGeometry() async throws {
-        let heading = "A deliberately long heading whose authored marker must not move its text"
+    @Test("Inactive Edit headings remove marker width and reveal exact source on entry")
+    func inactiveEditHeadingRemovesMarkerWidth() async throws {
+        let heading = "Conceptual Distinctions"
         let source = "# \(heading)\n\nFollowing paragraph.\n"
         let headingFrom = try #require(source.range(of: heading))
             .lowerBound.utf16Offset(in: source)
@@ -2911,11 +3018,24 @@ struct MarkdownEditorWebViewIntegrationTests {
                 const range = document.createRange();
                 range.setStart(node, offset);
                 range.setEnd(node, offset + 1);
+                const followingWalker = document.createTreeWalker(following, NodeFilter.SHOW_TEXT);
+                let followingNode = null;
+                while (followingWalker.nextNode()) {
+                  if ((followingWalker.currentNode.nodeValue || '').includes('Following')) {
+                    followingNode = followingWalker.currentNode;
+                    break;
+                  }
+                }
+                if (!followingNode) return null;
+                const followingRange = document.createRange();
+                followingRange.setStart(followingNode, followingNode.nodeValue.indexOf('Following'));
+                followingRange.setEnd(followingNode, followingNode.nodeValue.indexOf('Following') + 1);
                 return {
                   headingTop: heading.getBoundingClientRect().top,
                   headingHeight: heading.getBoundingClientRect().height,
                   titleLeft: range.getBoundingClientRect().left,
-                  followingTop: following.getBoundingClientRect().top
+                  followingTop: following.getBoundingClientRect().top,
+                  followingLeft: followingRange.getBoundingClientRect().left
                 };
                 """,
                 arguments: ["headingText": heading]
@@ -2925,6 +3045,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 "headingHeight": try #require(value["headingHeight"] as? NSNumber).doubleValue,
                 "titleLeft": try #require(value["titleLeft"] as? NSNumber).doubleValue,
                 "followingTop": try #require(value["followingTop"] as? NSNumber).doubleValue,
+                "followingLeft": try #require(value["followingLeft"] as? NSNumber).doubleValue,
             ]
         }
 
@@ -2936,13 +3057,291 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilSelection(head: headingFrom)
         let active = try await geometry()
 
-        for key in ["headingTop", "headingHeight", "titleLeft", "followingTop"] {
+        let inactiveTitleLeft = try #require(inactive["titleLeft"])
+        let inactiveFollowingLeft = try #require(inactive["followingLeft"])
+        let activeTitleLeft = try #require(active["titleLeft"])
+        #expect(abs(inactiveTitleLeft - inactiveFollowingLeft) < 0.5)
+        #expect(activeTitleLeft > inactiveTitleLeft + 3)
+        for key in ["headingTop", "headingHeight", "followingTop"] {
             let before = try #require(inactive[key])
             let after = try #require(active[key])
             #expect(abs(before - after) < 0.5)
         }
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Filename-title focus hides retained source markers for every heading level")
+    func titleFocusHidesRetainedHeadingMarkers() async throws {
+        let headings = (1...6).map { level in
+            "\(String(repeating: "#", count: level)) Heading \(level)"
+        }
+        let source = headings.joined(separator: "\n\n") + "\n"
+        let harness = EditorHarness(
+            documentTitle: "Focus Boundary",
+            source: source,
+            laysOutForPointerTesting: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        for level in 1...6 {
+            let label = "Heading \(level)"
+            let marker = String(repeating: "#", count: level) + " "
+            let labelFrom = try #require(source.range(of: label))
+                .lowerBound.utf16Offset(in: source)
+            harness.session.revealSourceRange(fromUTF16: labelFrom, toUTF16: labelFrom)
+            try await harness.waitUntilSelection(
+                head: labelFrom,
+                stage: "active H\(level) source"
+            )
+
+            let activeText = try await harness.callPageJavaScript(
+                """
+                const line = Array.from(document.querySelectorAll(selector))
+                  .find(candidate => (candidate.textContent || '').includes(label));
+                return line?.textContent || '';
+                """,
+                arguments: ["selector": ".cm-live-h\(level)", "label": label]
+            ) as? String
+            #expect(activeText == marker + label)
+
+            try await harness.session.focusTitleAndWait()
+            #expect(try await harness.callPageJavaScript(
+                "return document.activeElement?.matches('.scholium-note-title-input') === true"
+            ) as? Bool == true)
+            let inactiveText = try await harness.callPageJavaScript(
+                """
+                const line = Array.from(document.querySelectorAll(selector))
+                  .find(candidate => (candidate.textContent || '').includes(label));
+                return line?.textContent || '';
+                """,
+                arguments: ["selector": ".cm-live-h\(level)", "label": label]
+            ) as? String
+            #expect(inactiveText == label)
+        }
+
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Edit whitespace occupies exact width and prose uses editorial line breaking")
+    func editWhitespaceAndLineBreakingFollowEditorialRules() async throws {
+        let source = "Reasons, fittingness, motivation, and value remain distinct as neutral vocabulary.\n"
+        let insertion = try #require(source.range(of: " neutral"))
+            .lowerBound.utf16Offset(in: source) + 1
+        let harness = EditorHarness(
+            source: source,
+            initialSourceRange: insertion..<insertion,
+            laysOutForPointerTesting: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        func neutralPosition() async throws -> (left: Double, top: Double) {
+            let value = try #require(try await harness.callPageJavaScript(
+                """
+                const line = Array.from(document.querySelectorAll('.cm-line'))
+                  .find(candidate => (candidate.textContent || '').includes('neutral vocabulary'));
+                if (!line) return null;
+                const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+                let node = null;
+                while (walker.nextNode()) {
+                  if ((walker.currentNode.nodeValue || '').includes('neutral')) {
+                    node = walker.currentNode;
+                    break;
+                  }
+                }
+                if (!node) return null;
+                const offset = node.nodeValue.indexOf('neutral');
+                const range = document.createRange();
+                range.setStart(node, offset);
+                range.setEnd(node, offset + 1);
+                const rect = range.getBoundingClientRect();
+                return {left: rect.left, top: rect.top};
+                """
+            ) as? [String: Any])
+            return (
+                try #require(value["left"] as? NSNumber).doubleValue,
+                try #require(value["top"] as? NSNumber).doubleValue
+            )
+        }
+
+        let before = try await neutralPosition()
+
+        try await harness.session.perform(.pastePlain, argument: " ")
+        try await harness.waitUntilSelection(head: insertion + 1, stage: "second exact space")
+        let result = try #require(try await harness.callPageJavaScript(
+            """
+            const content = document.querySelector('.cm-content');
+            const line = Array.from(document.querySelectorAll('.cm-line'))
+              .find(candidate => (candidate.textContent || '').includes('neutral vocabulary'));
+            if (!content || !line) return null;
+            const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+            let node = null;
+            while (walker.nextNode()) {
+              if ((walker.currentNode.nodeValue || '').includes('  neutral')) {
+                node = walker.currentNode;
+                break;
+              }
+            }
+            if (!node) return null;
+            const offset = node.nodeValue.indexOf('  neutral') + 1;
+            const range = document.createRange();
+            range.setStart(node, offset);
+            range.setEnd(node, offset + 1);
+            const rect = range.getBoundingClientRect();
+            const style = getComputedStyle(content);
+            return {
+              whiteSpace: style.whiteSpace,
+              wordBreak: style.wordBreak,
+              overflowWrap: style.overflowWrap,
+              lineBreak: style.lineBreak,
+              insertedSpaceWidth: rect.width,
+              insertedSpaceHeight: rect.height
+            };
+            """
+        ) as? [String: Any])
+        #expect(result["whiteSpace"] as? String == "break-spaces")
+        #expect(result["wordBreak"] as? String == "normal")
+        #expect(result["overflowWrap"] as? String == "break-word")
+        #expect(result["lineBreak"] as? String == "strict")
+        #expect((result["insertedSpaceWidth"] as? NSNumber)?.doubleValue ?? 0 > 1)
+        #expect((result["insertedSpaceHeight"] as? NSNumber)?.doubleValue ?? 0 > 1)
+        let after = try await neutralPosition()
+        #expect(abs(after.left - before.left) > 1 || abs(after.top - before.top) > 1)
+        #expect(try await harness.session.currentText(for: harness.documentID)
+            == source.replacingOccurrences(of: " neutral", with: "  neutral"))
+        await harness.closeAndDrain()
+    }
+
+    @Test("Inactive Edit keeps punctuation with a projected footnote locator")
+    func editFootnoteLocatorDoesNotOrphanPunctuation() async throws {
+        let source = "A philosophical claim[^note].\n\n[^note]: Supporting qualification.\n"
+        let punctuationOffset = try #require(source.range(of: "[^note]."))
+            .lowerBound.utf16Offset(in: source) + "[^note]".utf16.count
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let result = try #require(try await harness.callPageJavaScript(
+            """
+            const line = Array.from(document.querySelectorAll('.cm-line'))
+              .find(candidate => candidate.querySelector('.cm-live-footnote-reference-widget'));
+            const reference = line?.querySelector('.cm-live-footnote-reference-widget');
+            const cluster = reference?.closest('.footnote-reference-cluster');
+            if (!line || !reference || !cluster) return {
+              orphanWidth: -1,
+              clusterWhiteSpace: '',
+              html: line?.innerHTML || ''
+            };
+            const walker = document.createTreeWalker(cluster, NodeFilter.SHOW_TEXT);
+            let punctuationNode = null;
+            while (walker.nextNode()) {
+              if ((walker.currentNode.nodeValue || '').includes('.')) {
+                punctuationNode = walker.currentNode;
+                break;
+              }
+            }
+            if (!punctuationNode) return null;
+            const punctuationOffset = punctuationNode.nodeValue.indexOf('.');
+            const punctuationRange = document.createRange();
+            punctuationRange.setStart(punctuationNode, punctuationOffset);
+            punctuationRange.setEnd(punctuationNode, punctuationOffset + 1);
+            line.style.inlineSize = '360px';
+            const sameLineOffset = punctuationRange.getBoundingClientRect().top
+              - reference.getBoundingClientRect().top;
+            const lineHeight = Number.parseFloat(getComputedStyle(line).lineHeight) || 20;
+            let orphanWidth = 0;
+            for (let width = 48; width <= 360; width += 1) {
+              line.style.inlineSize = width + 'px';
+              const referenceTop = reference.getBoundingClientRect().top;
+              const punctuationTop = punctuationRange.getBoundingClientRect().top;
+              if (punctuationTop - referenceTop > sameLineOffset + lineHeight / 2) {
+                orphanWidth = width;
+                break;
+              }
+            }
+            line.style.inlineSize = '';
+            return {
+              orphanWidth,
+              clusterWhiteSpace: getComputedStyle(cluster).whiteSpace
+            };
+            """
+        ) as? [String: Any])
+        #expect(result["orphanWidth"] as? Int == 0, Comment(rawValue: "\(result)"))
+        #expect(result["clusterWhiteSpace"] as? String == "nowrap")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(!harness.session.isDirty)
+
+        harness.session.revealSourceRange(
+            fromUTF16: punctuationOffset,
+            toUTF16: punctuationOffset
+        )
+        try await harness.waitUntilSelection(
+            head: punctuationOffset,
+            stage: "footnote punctuation source reveal"
+        )
+        let revealed = try await harness.callPageJavaScript(
+            """
+            const line = Array.from(document.querySelectorAll('.cm-line'))
+              .find(candidate => (candidate.textContent || '').includes('[^note].'));
+            return Boolean(line)
+              && !line.querySelector('.cm-live-footnote-reference-widget');
+            """
+        ) as? Bool
+        #expect(revealed == true)
+        await harness.closeAndDrain()
+    }
+
+    @Test("A document-start editor anchor keeps the projected title visible")
+    func documentStartEditorAnchorKeepsTitleVisible() async throws {
+        let source = (1...80).map { "Research paragraph \($0) remains available." }
+            .joined(separator: "\n") + "\n"
+        let harness = EditorHarness(
+            documentTitle: "Reasons and Emotional Attitudes",
+            source: source,
+            laysOutForPointerTesting: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let firstLineUpperBound = source.firstIndex(of: "\n")?.utf16Offset(in: source) ?? 0
+        try await harness.session.testingApplyScrollAnchor(EditorScrollAnchor(
+            sourceFingerprint: DocumentFingerprint(content: source).sha256,
+            sourceUTF16Offset: 0,
+            blockUTF16LowerBound: 0,
+            blockUTF16UpperBound: firstLineUpperBound,
+            relativeBlockPosition: 0,
+            fallbackFraction: 0
+        ))
+        try await Task.sleep(for: .milliseconds(150))
+
+        let result = try #require(try await harness.callPageJavaScript(
+            """
+            const scroller = document.querySelector('.cm-scroller');
+            const title = document.querySelector('.scholium-note-title');
+            if (!scroller || !title) return null;
+            const scrollerRect = scroller.getBoundingClientRect();
+            const titleRect = title.getBoundingClientRect();
+            return {
+              scrollTop: scroller.scrollTop,
+              titleTop: titleRect.top,
+              titleBottom: titleRect.bottom,
+              viewportTop: scrollerRect.top,
+              viewportBottom: scrollerRect.bottom
+            };
+            """
+        ) as? [String: Any])
+        let scrollTop = (result["scrollTop"] as? NSNumber)?.doubleValue ?? 100
+        let titleTop = (result["titleTop"] as? NSNumber)?.doubleValue ?? 10_000
+        let titleBottom = (result["titleBottom"] as? NSNumber)?.doubleValue ?? 0
+        let viewportTop = (result["viewportTop"] as? NSNumber)?.doubleValue ?? 1
+        let viewportBottom = (result["viewportBottom"] as? NSNumber)?.doubleValue ?? 0
+        #expect(abs(scrollTop) < 0.5)
+        #expect(titleBottom > viewportTop)
+        #expect(titleTop < viewportBottom)
         await harness.closeAndDrain()
     }
 
@@ -4751,11 +5150,18 @@ struct MarkdownEditorWebViewIntegrationTests {
                 window.setContentSize(NSSize(width: scenario.width, height: height))
                 sourceBox.userCSS = scenario.liveUserCSS
                 sourceBox.presentationCSS = scenario.presentationCSS
-                _ = try await waitUntilPresentation(stage: scenario.name) {
+                _ = try await waitUntilPresentation(stage: "\(scenario.name) layout") {
                     $0.label == "Markdown editor, Edit mode"
                         && $0.presentation.rootTextScale == scenario.expectedTextScale
                         && $0.presentation.documentWidth > 0
-                        && (!requiresCallout || $0.liveCalloutWidgetCount > 0)
+                }
+                // The production adapter intentionally projects a bounded
+                // viewport. Keep the app-owned title visible at document start,
+                // then move this presentation-only probe to the fixture's
+                // middle before requiring every representative component.
+                try await session.testingApplyScrollFraction(0.15)
+                _ = try await waitUntilPresentation(stage: scenario.name) {
+                    (!requiresCallout || $0.liveCalloutWidgetCount > 0)
                         && (!requiresTable || $0.semanticTableCount > 0)
                         && (!requiresMath || $0.renderedMathCount > 0)
                         && $0.mathErrorCount == 0

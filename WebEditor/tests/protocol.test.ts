@@ -31,7 +31,7 @@ const dialect = {
 
 describe("editor protocol", () => {
   it("uses the coalesced interaction bridge protocol", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(19);
+    expect(EDITOR_PROTOCOL_VERSION).toBe(20);
   });
   it("accepts a complete versioned request", () => expect(isEditorRequest(request)).toBe(true));
   it("accepts the bounded blur operation", () => {
@@ -101,6 +101,16 @@ describe("editor protocol", () => {
     expect(isEditorRequest({
       ...request,
       operation: {type: "command", command: "markdownComment"},
+    })).toBe(true);
+  });
+  it("accepts both source-distinct footnote insertion commands", () => {
+    expect(isEditorRequest({
+      ...request,
+      operation: {type: "command", command: "insertFootnote"},
+    })).toBe(true);
+    expect(isEditorRequest({
+      ...request,
+      operation: {type: "command", command: "insertInlineFootnote"},
     })).toBe(true);
   });
   it("accepts only the complete immutable editing dialect", () => {

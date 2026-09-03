@@ -51,6 +51,13 @@ Suggestions do not run inside protected constructs or marked-text composition.
 They retain document focus, alter only the current buffer, and create one Undo
 event.
 
+The Insert menu and configurable shortcuts provide **Footnote** and **Inline
+Footnote** as distinct authoring commands. Footnote allocates the first unused
+numeric identifier, inserts its reference, appends one exact definition, and
+places the selection in that definition without renumbering existing forms.
+Inline Footnote inserts `^[…]` at each selection and retains selected text as
+its content. Each invocation is one source transaction and one Undo event.
+
 Statistics are derived from the current unsaved body or selection and are never
 stored. They distinguish Latin-script word runs, Han characters, and Unicode
 grapheme clusters while excluding YAML, delimiters, and link destinations.
@@ -86,6 +93,10 @@ Protected constructs follow these rules:
 - Link and footnote previews are bounded read-only projections with keyboard,
   pointer, accessibility, dismissal, and source-navigation routes. Missing or
   ambiguous destinations remain exact source.
+- Named and inline footnotes share one reading presentation: a compact
+  superscript ordinal in prose and one generated end section ordered by first
+  reference. Their authoring syntax remains distinguishable only when editing
+  exact source; an inline footnote does not become a separate visible Note kind.
 - An annotated Wikilink keeps the linked title inline and replaces only its
   inactive annotation markup with a small adjacent disclosure. Keyboard and
   pointer activation expose the same annotation; moving the Edit caret into

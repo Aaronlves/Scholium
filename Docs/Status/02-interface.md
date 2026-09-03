@@ -29,11 +29,22 @@
   interaction dismisses it. Review previews linked Notes on hover; Edit follows
   the macOS Command-hover and Command-click convention with visible armed-link
   feedback, including links inside projected Callouts.
+- Named and inline footnotes use the same superscript ordinal, bounded rendered
+  preview, and Review end-note presentation. Review activation navigates to the
+  end note and back; Edit activation reveals the exact named definition or
+  inline range without adding another end section or writable text owner.
+  Insert exposes neighboring Footnote and Inline Footnote commands with
+  configurable Option-Command-N and Option-Shift-Command-N defaults.
 - First ordinary Edit activation focuses the inline Note title at its end.
   Returning to an open Note restores its title/body focus and exact valid
   selection; final window persistence retains this lightweight state only for
   tabs that remain open, while explicit source locations and Managed New Note
   insertion take precedence.
+- Review/Edit keep the visible Note title when a mode handoff occurs at the
+  document start. Inactive Edit headings remove their opening Markdown marker
+  from inline measure and reveal it only on entry. Exact spaces retain visible
+  width, while normal prose uses language-aware line breaking and keeps closing
+  punctuation with an adjacent footnote locator.
 - Inspector presents Overview and Connect. Overview exposes current About,
   file, Settlement, Critique, and applicable Zotero facts and operations.
   Connect presents exact incoming or outgoing link occurrences, their local

@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 19
+let markdownEditorProtocolVersion = 20
 let markdownEditorMaximumInboundBytes = 2_500_000
 let markdownEditorMaximumSelectionRangeCount = 128
 
@@ -12,7 +12,7 @@ enum MarkdownEditorCommand: String, Codable, CaseIterable, Sendable {
     case blockQuotation, bulletList, numberedList, taskList, fencedCode, thematicBreak
     case calloutOrient, calloutCite, calloutConnect, calloutState
     case calloutIllustrate, calloutQuote, calloutFlag
-    case insertFootnote, insertTable, insertImage, toggleTask
+    case insertFootnote, insertInlineFootnote, insertTable, insertImage, toggleTask
     case tableInsertRowBefore, tableInsertRowAfter, tableDeleteRow
     case tableInsertColumnBefore, tableInsertColumnAfter, tableDeleteColumn
     case tableAlignLeft, tableAlignCenter, tableAlignRight
