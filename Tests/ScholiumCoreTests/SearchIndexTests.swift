@@ -85,6 +85,42 @@ struct SearchIndexTests {
         }
     }
 
+    @Test("Large Note result sets page once through the canonical order")
+    func largeResultPagination() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let index = try fixture.index()
+        let noteCount = 433
+        let pageSize = 100
+        let documents = (0..<noteCount).map { number in
+            fixture.item(
+                fixture.topics,
+                String(format: "Paged/%04d.md", number),
+                "# Shared Pagination\n\nlexical corpus term \(number)"
+            )
+        }
+        _ = try await index.synchronize(documents)
+
+        for query in ["lexical corpus", "\"shared pagination\""] {
+            var paths: [String] = []
+            for offset in stride(from: 0, to: noteCount, by: pageSize) {
+                let response = try await index.testSearch(SearchRequest(
+                    query: query,
+                    presentationScope: .triptych,
+                    executionScope: .triptych,
+                    limit: pageSize,
+                    offset: offset
+                ))
+                let page = response.noteResults.map(\.relativePath)
+                #expect(page.count == min(pageSize, noteCount - offset))
+                #expect(Set(paths).isDisjoint(with: page))
+                #expect(response.hasMore == (offset + page.count < noteCount))
+                paths.append(contentsOf: page)
+            }
+
+            #expect(paths == documents.map(\.relativePath).sorted())
+        }
+    }
+
     @Test("Canonical Unicode equivalence is searchable")
     func canonicalUnicodeEquivalence() async throws {
         let fixture = try Fixture(); defer { fixture.remove() }

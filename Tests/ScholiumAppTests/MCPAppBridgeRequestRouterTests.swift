@@ -50,6 +50,38 @@ struct MCPAppBridgeRequestRouterTests {
         #expect(hit["note_id"]?.stringValue == fixture.topicNoteID.uuidString.lowercased())
         #expect(hit["role"]?.stringValue == "topics")
 
+        let firstPage = try result(await router.handle(ScholiumMCPBridgeRequest(
+            tool: .search,
+            arguments: [
+                "triptych_id": .string(fixture.assignment.id.uuidString),
+                "query": .string("agency"),
+                "providers": .array([.string("note")]),
+                "note_limit": .integer(1),
+            ]
+        )))
+        let secondPage = try result(await router.handle(ScholiumMCPBridgeRequest(
+            tool: .search,
+            arguments: [
+                "triptych_id": .string(fixture.assignment.id.uuidString),
+                "query": .string("agency"),
+                "providers": .array([.string("note")]),
+                "note_limit": .integer(1),
+                "note_offset": .integer(1),
+            ]
+        )))
+        let firstNoteGroup = try object(firstPage["notes"])
+        let secondNoteGroup = try object(secondPage["notes"])
+        let firstPageHits = try array(firstNoteGroup["results"])
+        let secondPageHits = try array(secondNoteGroup["results"])
+        #expect(firstNoteGroup["offset"]?.intValue == 0)
+        #expect(secondNoteGroup["offset"]?.intValue == 1)
+        #expect(firstNoteGroup["has_more"]?.boolValue == true)
+        #expect(secondNoteGroup["has_more"]?.boolValue == false)
+        #expect(firstPageHits.count == 1)
+        #expect(secondPageHits.count == 1)
+        #expect(try object(firstPageHits[0])["note_id"]?.stringValue
+            != object(secondPageHits[0])["note_id"]?.stringValue)
+
         let read = try result(await router.handle(ScholiumMCPBridgeRequest(
             tool: .readNote,
             arguments: [

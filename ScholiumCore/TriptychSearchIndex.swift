@@ -767,13 +767,18 @@ public actor TriptychSearchIndex {
                 hasMore: false
             )
         }
+        let resultOffset = request.resultOffset
+        let requiredAcceptedCount = Self.requiredResultCount(
+            offset: resultOffset,
+            limit: limit
+        )
         var accepted: [SearchCandidate] = []
         var seen = Set<Int>()
 
         if let identity = ast.identityNeedle {
             var exactOffset = 0
-            let exactPageSize = min(256, max(32, limit + 1))
-            while accepted.count < limit + 1 {
+            let exactPageSize = min(256, max(32, requiredAcceptedCount))
+            while accepted.count < requiredAcceptedCount {
                 let exact = try exactCandidates(
                     ast: ast,
                     identityKey: identity,
@@ -797,20 +802,20 @@ public actor TriptychSearchIndex {
                             linkMatches: linkMatches
                           ) else { continue }
                     accepted.append(candidate)
-                    if accepted.count >= limit + 1 { break }
+                    if accepted.count >= requiredAcceptedCount { break }
                 }
                 if exact.count < exactPageSize { break }
             }
         }
 
-        if accepted.count < limit + 1 {
+        if accepted.count < requiredAcceptedCount {
             var offset = 0
             // Candidate materialization loads exact aliases and source
             // segments. Bound the first page to the number a response can
             // actually consume; structured filters can request further pages
             // without paying for 256 full documents on every ordinary query.
-            let pageSize = min(256, max(32, limit + 1))
-            while accepted.count < limit + 1 {
+            let pageSize = min(256, max(32, requiredAcceptedCount))
+            while accepted.count < requiredAcceptedCount {
                 try Task.checkCancellation()
                 let page: [SearchCandidate]
                 if ast.positiveLexicalClauses.isEmpty {
@@ -844,15 +849,16 @@ public actor TriptychSearchIndex {
                             linkMatches: linkMatches
                           ) else { continue }
                     accepted.append(candidate)
-                    if accepted.count >= limit + 1 { break }
+                    if accepted.count >= requiredAcceptedCount { break }
                 }
                 if page.count < pageSize { break }
             }
         }
 
         accepted.sort(by: SearchCandidate.precedes)
-        let hasMore = accepted.count > limit
-        let hits = accepted.prefix(limit).map {
+        let page = accepted.dropFirst(min(resultOffset, accepted.count))
+        let hasMore = page.count > limit
+        let hits = page.prefix(limit).map {
             NoteSearchResultBuilder.hit(
                 candidate: $0,
                 ast: ast,
@@ -885,6 +891,18 @@ public actor TriptychSearchIndex {
             return false
         }
         return eligibility.resolvedStableNoteID == indexedStableNoteID
+    }
+
+    private nonisolated static func requiredResultCount(
+        offset: Int,
+        limit: Int
+    ) -> Int {
+        let requestedUpperBound = offset.addingReportingOverflow(limit)
+        let probedUpperBound = requestedUpperBound.partialValue
+            .addingReportingOverflow(1)
+        return requestedUpperBound.overflow || probedUpperBound.overflow
+            ? Int.max
+            : probedUpperBound.partialValue
     }
 
     private nonisolated static func isIncluded(
@@ -1075,33 +1093,38 @@ public actor TriptychSearchIndex {
             ),
             lexicalRank: 0
         )
-        let hits: [NoteSearchResult]
+        let resultOffset = request.resultOffset
+        let requiredHitCount = Self.requiredResultCount(
+            offset: resultOffset,
+            limit: limit
+        )
+        let candidates: [NoteSearchResult]
         if let lead = ast.firstPositiveLexicalClause {
-            hits = NoteSearchResultBuilder.occurrenceHits(
+            candidates = NoteSearchResultBuilder.occurrenceHits(
                 candidate: candidate,
                 ast: ast,
                 lead: lead,
                 freshness: freshness,
-                limit: limit,
+                limit: requiredHitCount,
                 linkMatch: linkMatches[document.noteID]
             )
         } else {
-            hits = [NoteSearchResultBuilder.hit(
+            candidates = [NoteSearchResultBuilder.hit(
                 candidate: candidate,
                 ast: ast,
                 freshness: freshness,
                 linkMatch: linkMatches[document.noteID]
             )]
         }
+        let page = candidates.dropFirst(min(resultOffset, candidates.count))
         return SearchResponse(
             requestID: request.id,
             scope: request.presentationScope,
             explanation: ast.explanation(scope: request.presentationScope),
             freshnessToken: freshness,
             availability: .note(availability),
-            results: hits.map(SearchResult.note),
-            hasMore: hits.count >= limit
-                && SearchMatcher.occurrenceCount(of: ast.firstPositiveLexicalClause, in: document) > limit
+            results: page.prefix(limit).map(SearchResult.note),
+            hasMore: page.count > limit
         )
     }
 
@@ -2683,16 +2706,6 @@ private enum SearchMatcher {
             cursor = range.upperBound
         }
         return result
-    }
-
-    static func occurrenceCount(
-        of clause: SearchLexicalClause?,
-        in document: StoredSearchDocument
-    ) -> Int {
-        guard let clause else { return 0 }
-        return matchingSegments(for: clause, in: document).reduce(into: 0) {
-            $0 += occurrences(of: clause.value, in: $1.normalizedText).count
-        }
     }
 
     static func ftsExpression(for clauses: [SearchLexicalClause]) -> String {

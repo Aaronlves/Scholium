@@ -112,6 +112,24 @@ struct PerformanceRegressionMicrobenchmarkTests {
         }
         let warmQueryP95 = p95(samples)
 
+        let paginationStart = ContinuousClock.now
+        var pagedResultIDs: [String] = []
+        for offset in stride(from: 0, to: 500, by: 100) {
+            let response = try await index.testSearch(SearchRequest(
+                query: "deliberative",
+                presentationScope: .triptych,
+                executionScope: .triptych,
+                limit: 100,
+                offset: offset
+            ))
+            #expect(response.results.count == 100)
+            #expect(response.hasMore)
+            pagedResultIDs.append(contentsOf: response.results.map(\.id))
+        }
+        let firstFivePages = seconds(paginationStart.duration(to: .now))
+        #expect(pagedResultIDs.count == 500)
+        #expect(Set(pagedResultIDs).count == pagedResultIDs.count)
+
         var incrementalSamples: [Double] = []
         for iteration in 0..<45 {
             let documentNumber = iteration % documents.count
@@ -149,6 +167,7 @@ struct PerformanceRegressionMicrobenchmarkTests {
                 p95($0) * 1_000
             },
             "warm_query_result_count": 50,
+            "first_five_100_result_pages_ms": firstFivePages * 1_000,
             "incremental_publication_p95_ms": incrementalP95 * 1_000,
             "database_bytes": databaseFootprint(at: databaseURL),
             "process_peak_rss_bytes": processPeakResidentBytes(),
@@ -167,6 +186,10 @@ struct PerformanceRegressionMicrobenchmarkTests {
         print(String(decoding: reportData, as: UTF8.self))
 
         #expect(warmQueryP95 <= 0.100, "Warm Search v10 p95 was \(warmQueryP95) seconds")
+        #expect(
+            firstFivePages <= 0.500,
+            "The first five 100-result Search pages took \(firstFivePages) seconds"
+        )
         #expect(
             incrementalP95 <= 0.250,
             "Single-note Search v10 publication p95 was \(incrementalP95) seconds"

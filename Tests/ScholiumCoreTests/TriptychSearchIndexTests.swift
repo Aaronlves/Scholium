@@ -590,6 +590,24 @@ struct TriptychSearchIndexTests {
         #expect(response.noteResults.map(\.sourceLine) == [4, 5])
         #expect(response.freshnessToken.rawValue.contains(snapshot.editorSessionID.uuidString.lowercased()))
 
+        let firstPage = try await index.testSearch(SearchRequest(
+            query: "autonomy callout:state",
+            presentationScope: .thisNote,
+            executionScope: .currentNote(snapshot),
+            limit: 1
+        ))
+        let secondPage = try await index.testSearch(SearchRequest(
+            query: "autonomy callout:state",
+            presentationScope: .thisNote,
+            executionScope: .currentNote(snapshot),
+            limit: 1,
+            offset: 1
+        ))
+        #expect(firstPage.noteResults.map(\.sourceLine) == [4])
+        #expect(firstPage.hasMore)
+        #expect(secondPage.noteResults.map(\.sourceLine) == [5])
+        #expect(!secondPage.hasMore)
+
         let indexed = try await index.testSearch(fixture.request("autonomy", scope: .triptych))
         #expect(indexed.noteResults.isEmpty)
         let filterOnly = try await index.testSearch(SearchRequest(
