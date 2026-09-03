@@ -32748,6 +32748,11 @@ ${fence}
     };
   }
 
+  // heading-accessibility.ts
+  function bodyHeadingAccessibilityLevel(markdownLevel) {
+    return Math.min(6, Math.max(1, markdownLevel) + 1);
+  }
+
   // live-semantic-layout.ts
   function isFencedDelimiterLine(doc2, block, lineFrom) {
     if (!block.fenced) return false;
@@ -32920,7 +32925,6 @@ ${fence}
           } else {
             classes.add("cm-live-heading");
             classes.add(`cm-live-h${headingLevel}`);
-            if (headingLevel === 1) classes.add("cm-live-document-title");
           }
         }
         if (paragraph && !callout && headingLevel === null) {
@@ -32971,6 +32975,12 @@ ${fence}
             attributes.class = presentation.classes.join(" ");
           }
           if (direction) attributes.dir = direction;
+          if (presentation.headingLevel !== null) {
+            attributes.role = "heading";
+            attributes["aria-level"] = String(
+              bodyHeadingAccessibilityLevel(presentation.headingLevel)
+            );
+          }
           ranges.push(Decoration.line({ attributes }).range(line.from));
         }
         if (line.number >= state.doc.lines) break;

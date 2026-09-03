@@ -10,7 +10,6 @@ enum DocumentAppearanceStyles {
     static func css(for settings: DocumentAppearanceSettings) -> String {
         let body = settings.body
         let headings = settings.headings
-        let title = headings.title
         let level1 = headings.level1
         let level2 = headings.level2
         let fontStyle = headings.style == .italic ? "italic" : "normal"
@@ -27,16 +26,14 @@ enum DocumentAppearanceStyles {
           --scholium-document-prose-font-size: \(number(body.fontSizePoints))pt;
           --scholium-rhythm-prose-line-height: \(number(body.lineHeight));
           --scholium-rhythm-paragraph-gap: \(number(body.paragraphSpacingEm))em;
-          --scholium-document-h1-size: \(number(title.scale * 100))%;
-          --scholium-document-h2-size: \(number(level1.scale * 100))%;
+          --scholium-document-h1-size: \(number(level1.scale * 100))%;
+          --scholium-document-h2-size: \(number(level2.scale * 100))%;
           --scholium-document-h3-size: \(number(level2.scale * 100))%;
           --scholium-rhythm-heading-line-height: \(number(headings.lineHeight));
-          --scholium-rhythm-title-before: \(number(title.spaceBeforeEm))em;
-          --scholium-rhythm-title-after: \(number(title.spaceAfterEm))em;
-          --scholium-appearance-h2-before: \(number(level1.spaceBeforeEm))em;
-          --scholium-appearance-h2-after: \(number(level1.spaceAfterEm))em;
-          --scholium-appearance-h3-before: \(number(level2.spaceBeforeEm))em;
-          --scholium-appearance-h3-after: \(number(level2.spaceAfterEm))em;
+          --scholium-appearance-h1-before: \(number(level1.spaceBeforeEm))em;
+          --scholium-appearance-h1-after: \(number(level1.spaceAfterEm))em;
+          --scholium-appearance-lower-heading-before: \(number(level2.spaceBeforeEm))em;
+          --scholium-appearance-lower-heading-after: \(number(level2.spaceAfterEm))em;
         }
         .scholium-document,
         .cm-editor.scholium-live-mode .cm-content {
@@ -72,39 +69,30 @@ enum DocumentAppearanceStyles {
           line-height: var(--scholium-rhythm-heading-line-height);
           letter-spacing: \(number(headings.letterSpacingEm))em;
         }
-        .scholium-document > h1:first-child {
+        .scholium-document h1 {
           margin: 0;
-          padding-block: var(--scholium-rhythm-title-before) var(--scholium-rhythm-title-after);
-          text-align: \(title.alignment.rawValue);
+          padding-block: var(--scholium-appearance-h1-before) var(--scholium-appearance-h1-after);
+          text-align: \(level1.alignment.rawValue);
         }
-        .scholium-live-mode .cm-live-document-title,
         .scholium-live-mode .cm-live-h1 {
-          margin-block: 0;
-          padding-block: var(--scholium-rhythm-title-before) var(--scholium-rhythm-title-after);
-          text-align: \(title.alignment.rawValue);
-        }
-        .scholium-document h2 {
-          margin: 0;
-          padding-block: var(--scholium-appearance-h2-before) var(--scholium-appearance-h2-after);
+          padding-block: var(--scholium-appearance-h1-before) var(--scholium-appearance-h1-after);
           text-align: \(level1.alignment.rawValue);
         }
-        .scholium-live-mode .cm-live-h2 {
-          padding-block: var(--scholium-appearance-h2-before) var(--scholium-appearance-h2-after);
-          text-align: \(level1.alignment.rawValue);
-        }
+        .scholium-document h2,
         .scholium-document h3,
         .scholium-document h4,
         .scholium-document h5,
         .scholium-document h6 {
           margin: 0;
-          padding-block: var(--scholium-appearance-h3-before) var(--scholium-appearance-h3-after);
+          padding-block: var(--scholium-appearance-lower-heading-before) var(--scholium-appearance-lower-heading-after);
           text-align: \(level2.alignment.rawValue);
         }
+        .scholium-live-mode .cm-live-h2,
         .scholium-live-mode .cm-live-h3,
         .scholium-live-mode .cm-live-h4,
         .scholium-live-mode .cm-live-h5,
         .scholium-live-mode .cm-live-h6 {
-          padding-block: var(--scholium-appearance-h3-before) var(--scholium-appearance-h3-after);
+          padding-block: var(--scholium-appearance-lower-heading-before) var(--scholium-appearance-lower-heading-after);
           text-align: \(level2.alignment.rawValue);
         }
         """

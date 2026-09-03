@@ -66,7 +66,6 @@ public struct SearchTextSegment: Codable, Hashable, Sendable {
 /// no raw-source field and is never a writable representation of a note.
 public struct SearchDocumentProjection: Codable, Hashable, Sendable {
     public private(set) var title: String
-    public private(set) var titleUsesFilenameFallback: Bool
     public private(set) var aliases: [String]
     public let headings: [String]
     public let summary: String?
@@ -93,12 +92,10 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         let semantic = semantic ?? MarkdownSemanticDocument(parsing: document)
         let titleResolution = ResearchNoteTitleResolver.resolve(
             document: document,
-            profile: profile,
-            semantic: semantic
+            profile: profile
         )
         let titleValue = titleResolution.title
         title = titleValue
-        titleUsesFilenameFallback = titleResolution.source == .filename
         aliases = []
         headings = semantic.headings.map(\.text)
         let propertyProjection = SearchPropertyProjection(
@@ -132,32 +129,14 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
         let sourceLocator = SearchSourceLocator(source: document.rawContent)
         sourceLineStartsUTF16 = sourceLocator.lineStartsUTF16
         var builtSegments: [SearchTextSegment] = []
-        if titleResolution.source == .firstLevelOneHeading,
-                  let heading = semantic.headings.first(where: { $0.level == 1 }) {
-            let range = heading.span.utf16Range
-            builtSegments.append(SearchProjectionBuilder.segment(
-                field: .title,
-                ordinal: builtSegments.count,
-                text: title,
-                sourceRange: range,
-                source: document.rawContent,
-                sourceLocator: sourceLocator,
-                explicitMap: SearchProjectionBuilder.alignedFragments(
-                    text: title,
-                    sourceRange: range,
-                    source: document.rawContent
-                )
-            ))
-        } else {
-            builtSegments.append(SearchProjectionBuilder.segment(
-                field: .title,
-                ordinal: builtSegments.count,
-                text: title,
-                sourceRange: nil,
-                source: document.rawContent,
-                sourceLocator: sourceLocator
-            ))
-        }
+        builtSegments.append(SearchProjectionBuilder.segment(
+            field: .title,
+            ordinal: builtSegments.count,
+            text: title,
+            sourceRange: nil,
+            source: document.rawContent,
+            sourceLocator: sourceLocator
+        ))
         for member in keywordMembers where !member.value.isEmpty {
             let range = member.sourceRange.map {
                 $0.utf16LowerBound..<$0.utf16UpperBound
@@ -363,7 +342,6 @@ public struct SearchDocumentProjection: Codable, Hashable, Sendable {
 
         if let managedTitle {
             updated.title = managedTitle
-            updated.titleUsesFilenameFallback = false
         }
         updated.aliases = aliases
         updated.authors = creators.map(\.displayName)

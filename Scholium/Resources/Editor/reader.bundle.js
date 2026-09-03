@@ -330,6 +330,11 @@
     return config;
   }
 
+  // heading-accessibility.ts
+  function bodyHeadingAccessibilityLevel(markdownLevel) {
+    return Math.min(6, Math.max(1, markdownLevel) + 1);
+  }
+
   // reader.ts
   var readerWindow = window;
   function requiredElement(id) {
@@ -356,6 +361,12 @@
     const userStyle = requiredElement("scholium-user-css");
     presentationStyle.textContent = presentationCSS;
     userStyle.textContent = userCSS;
+    const documentRoot = requiredElement("scholium-document");
+    documentRoot.querySelectorAll("h1, h2, h3, h4, h5, h6").forEach((heading) => {
+      const level = Number(heading.tagName.slice(1));
+      heading.setAttribute("role", "heading");
+      heading.setAttribute("aria-level", String(bodyHeadingAccessibilityLevel(level)));
+    });
     const strings = localization.strings || {};
     const localized = (key, replacements = {}) => String(strings[key] || key).replace(
       /\{([A-Za-z]+)\}/g,
@@ -733,9 +744,9 @@
       shell.replaceWith(fallback);
     }
     function renderEmbeddedNotes() {
-      const documentRoot = document.getElementById("scholium-document");
-      if (!documentRoot) return;
-      for (const shell of documentRoot.querySelectorAll(
+      const documentRoot2 = document.getElementById("scholium-document");
+      if (!documentRoot2) return;
+      for (const shell of documentRoot2.querySelectorAll(
         ".scholium-embedded-note[data-preview-range]"
       )) {
         if (shell.parentElement?.closest(".scholium-embedded-note")) continue;
@@ -762,7 +773,7 @@
           localized("Embedded note {title}", { title: preview.title })
         );
       }
-      const anchors = [...documentRoot.querySelectorAll("a.scholium-embed")].filter((anchor) => !anchor.parentElement?.closest(".scholium-embedded-note"));
+      const anchors = [...documentRoot2.querySelectorAll("a.scholium-embed")].filter((anchor) => !anchor.parentElement?.closest(".scholium-embedded-note"));
       for (const anchor of anchors) {
         const key = anchor.dataset.sourceUtf16Start + ":" + anchor.dataset.sourceUtf16End;
         const preview = previewByRange.get(key);

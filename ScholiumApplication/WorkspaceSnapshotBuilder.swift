@@ -247,13 +247,12 @@ enum WorkspaceSnapshotBuilder {
                         .flatMap { noteMetadataByID[$0] },
                     headings: semantics[document.relativePath]?.headings ?? [],
                     cachedSemanticDocument: semantics[document.relativePath],
-                    cachedTitleProjection: semantics[document.relativePath].map {
+                    cachedTitleProjection: semantics[document.relativePath].map { _ in
                         WorkspaceNoteTitleProjection(
                             document: document,
                             vaultRole: vault.role,
                             metadata: identityStates[document.relativePath]?.resolvedID
-                                .flatMap { noteMetadataByID[$0] },
-                            semantic: $0
+                                .flatMap { noteMetadataByID[$0] }
                         )
                     }
                 )
@@ -700,13 +699,12 @@ enum WorkspaceSnapshotBuilder {
                         ],
                         cachedTitleProjection: loaded.semantics[
                             document.relativePath
-                        ].map {
+                        ].map { _ in
                             WorkspaceNoteTitleProjection(
                                 document: document,
                                 vaultRole: loaded.vault.role,
                                 metadata: loaded.identityStates[document.relativePath]?.resolvedID
-                                    .flatMap { noteMetadataByID[$0] },
-                                semantic: $0
+                                    .flatMap { noteMetadataByID[$0] }
                             )
                         }
                     )

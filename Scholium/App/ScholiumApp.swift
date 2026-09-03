@@ -6198,8 +6198,7 @@ final class WindowModel: ObservableObject {
                 cachedTitleProjection: WorkspaceNoteTitleProjection(
                     document: document,
                     vaultRole: context.vaultRole,
-                    metadata: previous?.metadata,
-                    semantic: semantic
+                    metadata: previous?.metadata
                 )
             )
         }

@@ -113,9 +113,9 @@ About. A definition creates no value.
 Scholium validates shape and structural safety, not bibliographic or
 philosophical truth.
 
-Analysis display identity resolves managed `title`, then first H1, then
-filename. Topic and Work resolve first H1, then filename. YAML `title` has no
-identity semantics. Rename never synchronizes Metadata or H1.
+Analysis display identity resolves managed `title`, then filename. Topic and
+Work use filename. YAML `title` and body headings have no identity semantics.
+Rename never synchronizes Metadata or body headings.
 
 About is the current Note's primary Metadata view and ordinary editing surface.
 It always shows the role's configured core managed fields even when empty,

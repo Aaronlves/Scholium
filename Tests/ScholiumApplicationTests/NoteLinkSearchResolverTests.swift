@@ -125,7 +125,10 @@ private extension NoteLinkSearchResolverTests {
                 ),
             ]
             var documentsByVault = [primaryVault.id: primaryDocuments]
-            let duplicate = NoteDocument(relativePath: "Other Anchor.md", rawContent: "# Anchor\n")
+            let duplicate = NoteDocument(
+                relativePath: "Anchor.md",
+                rawContent: "# A distinct first-level heading\n"
+            )
             if includeDuplicateAnchor { documentsByVault[secondaryVault.id] = [duplicate] }
 
             var semantic: [VaultQualifiedNoteID: MarkdownSemanticDocument] = [:]

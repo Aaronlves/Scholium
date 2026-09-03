@@ -87,19 +87,19 @@ struct TriptychSearchIndexTests {
         ))
         #expect(first.state == .current)
         #expect(Set(first.identityCandidates.map(\.note.relativePath)) == [
-            "Reasons.md", "Outcome Theory.md",
+            "Fittingness.md", "Particularism.md", "Outcome Theory.md",
         ])
         #expect((first.identityCandidates + first.lexicalCandidates).allSatisfy {
             $0.vaultRole == .sourceCorpus || $0.vaultRole == .topicKnowledge
         })
-        let reasonsIdentity = try #require(first.identityCandidates.first {
-            $0.note.relativePath == "Reasons.md"
+        let fittingnessIdentity = try #require(first.identityCandidates.first {
+            $0.note.relativePath == "Fittingness.md"
         })
-        guard case .identityMention(let reasonsMention) = reasonsIdentity.reason else {
+        guard case .identityMention(let fittingnessMention) = fittingnessIdentity.reason else {
             Issue.record("Expected an independent title mention reason")
             return
         }
-        #expect(reasonsMention.mentions.contains {
+        #expect(fittingnessMention.mentions.contains {
             $0.identityKind == .title && $0.seedKind == .sourceNote
         })
         let outcomeIdentity = try #require(first.identityCandidates.first {
@@ -300,8 +300,8 @@ struct TriptychSearchIndexTests {
         #expect(!exact.hasMore)
     }
 
-    @Test("Exact groups retain BM25 order and filename fallback is not a source title")
-    func exactGroupRankingAndFilenameFallback() async throws {
+    @Test("Body headings retain lexical order while filenames own exact titles")
+    func bodyHeadingRankingAndFilenameTitles() async throws {
         let fixture = try Fixture()
         defer { fixture.remove() }
         let index = try TriptychSearchIndex(
@@ -331,17 +331,17 @@ struct TriptychSearchIndexTests {
             scope: .triptych
         ))
         #expect(Array(exact.noteResults.map(\.relativePath).prefix(2)) == ["Z-strong.md", "A-weak.md"])
-        #expect(exact.noteResults.prefix(2).allSatisfy { $0.rankReason == .exactTitle })
+        #expect(exact.noteResults.prefix(2).allSatisfy { $0.rankReason == .lexicalRelevance })
 
         let fielded = try await index.testSearch(fixture.request(
             "title:Autonomy",
             scope: .triptych
         ))
-        #expect(fielded.noteResults.first?.rankReason == .exactTitle)
+        #expect(fielded.noteResults.isEmpty)
 
         let fallback = try await index.testSearch(fixture.request("Fallback", scope: .triptych))
         #expect(fallback.noteResults.first?.relativePath == "Fallback.md")
-        #expect(fallback.noteResults.first?.rankReason == .exactFilename)
+        #expect(fallback.noteResults.first?.rankReason == .exactTitle)
     }
 
     @Test("Canonical summary is an independent lexical field with exact source recovery")
@@ -510,8 +510,8 @@ struct TriptychSearchIndexTests {
         }
         documents.append(fixture.item(
             vault: fixture.works,
-            path: "zzzz-target.md",
-            source: "# Autonomy\n\n> [!state] Intended\n> The intended exact result."
+            path: "Autonomy.md",
+            source: "# Intended\n\n> [!state] Intended\n> The intended exact result."
         ))
         _ = try await index.synchronize(documents)
 
@@ -521,7 +521,7 @@ struct TriptychSearchIndexTests {
             executionScope: .triptych,
             limit: 1
         ))
-        #expect(response.noteResults.map(\.relativePath) == ["zzzz-target.md"])
+        #expect(response.noteResults.map(\.relativePath) == ["Autonomy.md"])
         #expect(response.noteResults.first?.rankReason == .exactTitle)
     }
 

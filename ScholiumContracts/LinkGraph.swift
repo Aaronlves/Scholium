@@ -33,8 +33,7 @@ public struct LinkCatalogNote: Codable, Hashable, Sendable {
         title = ResearchNoteTitleResolver.resolve(
             document: document,
             profile: profile,
-            metadata: metadata,
-            semantic: semantic
+            metadata: metadata
         ).title
         aliases = profile == .topicMarkdown
             ? metadata?.record.fields["aliases"]?.canonicalStringList ?? []

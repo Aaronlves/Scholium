@@ -74,16 +74,14 @@ package struct WorkspaceNoteTitleProjection: Hashable, Sendable {
     package init(
         document: NoteDocument,
         vaultRole: VaultRole,
-        metadata: NoteMetadataSnapshot? = nil,
-        semantic: MarkdownSemanticDocument
+        metadata: NoteMetadataSnapshot? = nil
     ) {
         sourceFingerprint = document.fingerprint
         metadataRevision = metadata?.revision
         resolution = ResearchNoteTitleResolver.resolve(
             document: document,
             vaultRole: vaultRole,
-            metadata: metadata,
-            semantic: semantic
+            metadata: metadata
         )
     }
 }
@@ -231,12 +229,11 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
             headings: headings,
             derivedProjectionState: .portableMetadataAhead,
             cachedSemanticDocument: cachedSemanticDocument,
-            cachedTitleProjection: cachedSemanticDocument.map {
+            cachedTitleProjection: cachedSemanticDocument.map { _ in
                 WorkspaceNoteTitleProjection(
                     document: document,
                     vaultRole: vaultRole,
-                    metadata: metadata,
-                    semantic: $0
+                    metadata: metadata
                 )
             }
         )

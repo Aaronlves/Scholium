@@ -9,6 +9,11 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    private func pixelValue(_ cssValue: String) -> Double? {
+        guard cssValue.hasSuffix("px") else { return nil }
+        return Double(cssValue.dropLast(2))
+    }
+
     @Test("A bare ATX marker and space immediately use heading presentation")
     func bareATXMarkerImmediatelyUsesHeadingPresentation() async throws {
         let source = ""
@@ -582,7 +587,6 @@ struct MarkdownEditorWebViewIntegrationTests {
                 && $0.gutterCount > 0
                 && $0.lineNumberCount > 0
         }
-        #expect(snapshot.liveTitleCount == 0)
         #expect(snapshot.liveH1Count == 0)
         #expect(snapshot.sourceSemanticTypographyCount == 0)
         #expect(snapshot.liveProjectionDOMCount == 0)
@@ -1784,7 +1788,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         ---
         title: Projection stability
         ---
-        # Centered document title
+        # First-level body heading
 
         ## Stable second-level heading
 
@@ -1821,17 +1825,16 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         let initial = try await harness.waitUntilPresentation(stage: "stable enlarged Edit projection") {
             $0.presentation.rootTextScale == "2.000000em"
-                && $0.liveTitleCount == 1
                 && $0.liveH1Count == 1
                 && $0.liveH2Count == 1
                 && $0.collapsedCodeFenceLineCount == 2
                 && $0.liveListMarkerCount == 2
                 && $0.semanticTableCount == 1
         }
-        #expect(initial.titleTextAlign == "center")
+        #expect(initial.h1TextAlign == "start")
         #expect(initial.h2TextAlign == "start")
-        #expect(initial.h1FontSize == "64px")
-        #expect(initial.h2FontSize == "48px")
+        #expect(abs(try #require(pixelValue(initial.h1FontSize)) - 48) < 0.001)
+        #expect(abs(try #require(pixelValue(initial.h2FontSize)) - 36.8) < 0.001)
         #expect(initial.collapsedCodeFenceVisibleHeight <= 0.5)
 
         // At 200% the quotation may be outside CodeMirror's mounted viewport
@@ -1850,13 +1853,13 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(inactiveQuote.quoteMarginInlineStart == "0px")
 
         harness.session.goToLine(4)
-        let titleFrom = try #require(source.range(of: "# Centered document title"))
+        let titleFrom = try #require(source.range(of: "# First-level body heading"))
             .lowerBound.utf16Offset(in: source)
         try await harness.waitUntilSelection(head: titleFrom)
-        let activeTitle = try await harness.waitUntilPresentation(stage: "active document title") {
-            $0.liveTitleCount == 1 && $0.liveH1Count == 1
+        let activeTitle = try await harness.waitUntilPresentation(stage: "active first-level heading") {
+            $0.liveH1Count == 1
         }
-        #expect(activeTitle.titleTextAlign == "center")
+        #expect(activeTitle.h1TextAlign == "start")
 
         harness.session.resignFocus()
         try await Task.sleep(for: .milliseconds(150))
@@ -1864,9 +1867,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         harness.session.focus()
         try await harness.waitUntilFocused()
         let refocused = try await harness.waitUntilPresentation(stage: "refocused heading projection") {
-            $0.liveTitleCount == 1 && $0.liveH1Count == 1 && $0.liveH2Count == 1
+            $0.liveH1Count == 1 && $0.liveH2Count == 1
         }
-        #expect(refocused.titleTextAlign == "center")
+        #expect(refocused.h1TextAlign == "start")
 
         try await harness.session.testingClickFirstTableCell()
         _ = try await harness.waitUntilPresentation(stage: "pointer-activated table source") {
@@ -1883,7 +1886,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let final = try await harness.waitUntilPresentation(stage: "ordered-list pointer placement") {
             $0.liveListMarkerCount == 1
         }
-        #expect(final.liveTitleCount == 1)
+        #expect(final.liveH1Count == 1)
         #expect(final.liveH2Count == 1)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
@@ -1918,13 +1921,12 @@ struct MarkdownEditorWebViewIntegrationTests {
         // `isLoaded` is the product visibility boundary. It must never expose
         // the partial projection that previously appeared after Review -> Edit.
         let fresh = try await harness.session.testingAccessibilitySnapshot()
-        #expect(fresh.liveTitleCount == 1)
         #expect(fresh.liveH1Count == 1)
         #expect(fresh.liveH2Count == 1)
         #expect(fresh.liveCalloutWidgetCount == 2)
-        #expect(fresh.h1FontSize == "32px")
-        #expect(fresh.h2FontSize == "24px")
-        #expect(fresh.titleTextAlign == "center")
+        #expect(abs(try #require(pixelValue(fresh.h1FontSize)) - 24) < 0.001)
+        #expect(abs(try #require(pixelValue(fresh.h2FontSize)) - 18.4) < 0.001)
+        #expect(fresh.h1TextAlign == "start")
         #expect(fresh.h2TextAlign == "start")
         #expect(fresh.editBlankLineCount > 0)
         #expect(fresh.editBlankLineMinimumHeight == 16)
@@ -1938,13 +1940,12 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilPresentedMode(.livePreview)
         let retained = try await harness.session.testingAccessibilitySnapshot()
 
-        #expect(retained.liveTitleCount == fresh.liveTitleCount)
         #expect(retained.liveH1Count == fresh.liveH1Count)
         #expect(retained.liveH2Count == fresh.liveH2Count)
         #expect(retained.liveCalloutWidgetCount == fresh.liveCalloutWidgetCount)
         #expect(retained.h1FontSize == fresh.h1FontSize)
         #expect(retained.h2FontSize == fresh.h2FontSize)
-        #expect(retained.titleTextAlign == fresh.titleTextAlign)
+        #expect(retained.h1TextAlign == fresh.h1TextAlign)
         #expect(retained.h2TextAlign == fresh.h2TextAlign)
         #expect(retained.editBlankLineCount == fresh.editBlankLineCount)
         #expect(retained.editBlankLineMinimumHeight == fresh.editBlankLineMinimumHeight)
@@ -1955,7 +1956,7 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("Losing editor focus preserves the complete heading projection")
     func focusLossPreservesHeadingProjection() async throws {
         let source = """
-        # Focus-stable document title
+        # Focus-stable first-level heading
 
         ## Focus-stable section heading
 
@@ -1972,7 +1973,6 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilReady()
         _ = try await harness.waitUntilPresentation(stage: "focused heading projection") {
             $0.isFocused
-                && $0.liveTitleCount == 1
                 && $0.liveH1Count == 1
                 && $0.liveH2Count == 1
         }
@@ -1980,13 +1980,12 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.session.resignFocusAndWait()
         let blurred = try await harness.waitUntilPresentation(stage: "unfocused heading projection") {
             !$0.isFocused
-                && $0.liveTitleCount == 1
                 && $0.liveH1Count == 1
                 && $0.liveH2Count == 1
         }
-        #expect(blurred.h1FontSize == "64px")
-        #expect(blurred.h2FontSize == "48px")
-        #expect(blurred.titleTextAlign == "center")
+        #expect(abs(try #require(pixelValue(blurred.h1FontSize)) - 48) < 0.001)
+        #expect(abs(try #require(pixelValue(blurred.h2FontSize)) - 36.8) < 0.001)
+        #expect(blurred.h1TextAlign == "start")
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
@@ -4181,7 +4180,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 let snapshot = try await session.testingAccessibilitySnapshot()
                 if predicate(snapshot) { return snapshot }
                 if clock.now >= deadline {
-                    Issue.record("The editor did not apply \(stage); label=\(snapshot.label), top=\(snapshot.contentPaddingTop), inline=\(snapshot.contentPaddingInlineStart), rootRegular=\(snapshot.presentation.rootInlineRegular), rootNarrow=\(snapshot.presentation.rootInlineNarrow), rootLineWidth=\(snapshot.presentation.rootLineWidth), preview=\(snapshot.previewTitle), previewHidden=\(snapshot.previewPopoverHidden), tables=\(snapshot.semanticTableCount), footnoteReferences=\(snapshot.footnoteReferenceCount), footnoteDefinitions=\(snapshot.footnoteDefinitionSourceCount), callouts=\(snapshot.liveCalloutWidgetCount), title=\(snapshot.liveTitleCount), h1=\(snapshot.liveH1Count), h2=\(snapshot.liveH2Count), fences=\(snapshot.collapsedCodeFenceLineCount), fenceHeight=\(snapshot.collapsedCodeFenceVisibleHeight), listMarkers=\(snapshot.liveListMarkerCount), lines=\(snapshot.visibleLineClassSummary).")
+                    Issue.record("The editor did not apply \(stage); label=\(snapshot.label), top=\(snapshot.contentPaddingTop), inline=\(snapshot.contentPaddingInlineStart), rootRegular=\(snapshot.presentation.rootInlineRegular), rootNarrow=\(snapshot.presentation.rootInlineNarrow), rootLineWidth=\(snapshot.presentation.rootLineWidth), preview=\(snapshot.previewTitle), previewHidden=\(snapshot.previewPopoverHidden), tables=\(snapshot.semanticTableCount), footnoteReferences=\(snapshot.footnoteReferenceCount), footnoteDefinitions=\(snapshot.footnoteDefinitionSourceCount), callouts=\(snapshot.liveCalloutWidgetCount), h1=\(snapshot.liveH1Count), h2=\(snapshot.liveH2Count), fences=\(snapshot.collapsedCodeFenceLineCount), fenceHeight=\(snapshot.collapsedCodeFenceVisibleHeight), listMarkers=\(snapshot.liveListMarkerCount), lines=\(snapshot.visibleLineClassSummary).")
                     throw MarkdownEditorSession.SessionError.unavailable
                 }
                 try await Task.sleep(for: .milliseconds(20))

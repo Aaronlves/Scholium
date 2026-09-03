@@ -276,7 +276,7 @@ struct SearchIndexTests {
         #expect(response.noteResults.map(\.relativePath) == ["A.md"])
     }
 
-    @Test("A 512-note fixture ranks H1 and managed titles, then alias and body")
+    @Test("A 512-note fixture ranks managed titles, aliases, body headings, then body")
     func explainableScholarlyRanking() async throws {
         let fixture = try Fixture(); defer { fixture.remove() }
         let index = try fixture.index()
@@ -297,8 +297,39 @@ struct SearchIndexTests {
         _ = try await index.synchronize(documents)
         let hits = try await index.testSearch(fixture.request("\"deliberative autonomy\"", limit: 10))
         #expect(hits.noteResults.map(\.relativePath)
-            == ["Heading.md", "Title.md", "Alias.md", "Body.md"])
-        #expect(hits.noteResults.map(\.matchedField) == [.title, .title, .alias, .body])
+            == ["Title.md", "Alias.md", "Heading.md", "Body.md"])
+        #expect(hits.noteResults.map(\.matchedField) == [.title, .alias, .heading, .body])
+    }
+
+    @Test("Topic filename is the title while its first H1 remains a searchable heading")
+    func topicFilenameOwnsTitleIdentity() async throws {
+        let fixture = try Fixture(); defer { fixture.remove() }
+        let index = try fixture.index()
+        _ = try await index.synchronize([
+            fixture.item(
+                fixture.topics,
+                "Emotion/Basic Emotions.md",
+                "# 1. Why the Question Matters\n\nEmotion concepts remain contested."
+            ),
+        ])
+
+        let title = try #require(
+            try await index.testSearch(
+                fixture.request("title:\"Basic Emotions\"")
+            ).noteResults.first
+        )
+        #expect(title.title == "Basic Emotions")
+        #expect(title.rankReason == .exactTitle)
+        #expect(
+            try await index.testSearch(
+                fixture.request("title:\"Why the Question Matters\"")
+            ).noteResults.isEmpty
+        )
+        #expect(
+            try await index.testSearch(
+                fixture.request("\"Why the Question Matters\"")
+            ).noteResults.first?.matchedField == .heading
+        )
     }
 
     @Test("Large collisions preserve deterministic field precedence")
@@ -319,14 +350,14 @@ struct SearchIndexTests {
         _ = try await index.synchronize(leading + background)
         let first = try await index.testSearch(fixture.request("\"practical identity\"", limit: 20))
         #expect(first.noteResults.prefix(6).map(\.relativePath) == [
-            "20-heading.md", "21-heading.md", "00-title.md", "01-title.md",
-            "10-alias.md", "11-alias.md",
+            "00-title.md", "01-title.md", "10-alias.md", "11-alias.md",
+            "20-heading.md", "21-heading.md",
         ])
         let repeated = try await index.testSearch(fixture.request("\"practical identity\"", limit: 20))
         #expect(repeated.noteResults.map(\.relativePath) == first.noteResults.map(\.relativePath))
     }
 
-    @Test("Exact filename and path rank before body occurrences")
+    @Test("Filename-owned title and exact path rank before body occurrences")
     func exactNoteIdentityPrecedesBodyMatches() async throws {
         let fixture = try Fixture(); defer { fixture.remove() }
         let index = try fixture.index()
@@ -334,7 +365,7 @@ struct SearchIndexTests {
             fixture.item(fixture.analyses, "Archive/Known Note.md", "---\ntitle: Archival Entry\n---\nNo matching prose."),
             fixture.item(fixture.analyses, "Body.md", "Known Note and Archive/Known Note.md appear here."),
         ])
-        #expect(try await index.testSearch(fixture.request("\"Known Note\"")).noteResults.first?.rankReason == .exactFilename)
+        #expect(try await index.testSearch(fixture.request("\"Known Note\"")).noteResults.first?.rankReason == .exactTitle)
         #expect(try await index.testSearch(fixture.request("\"Archive/Known Note.md\"")).noteResults.first?.rankReason == .exactPath)
     }
 

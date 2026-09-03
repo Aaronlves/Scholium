@@ -101,6 +101,9 @@
 - Autosave Failed and Conflict state the retained-buffer consequence and
   applicable recovery. Proven Saved state is silent. Agent Undo reports each
   outcome without moving Document focus.
+- The app-owned Note title is the primary document title. In Review and Edit,
+  authored H1–H6 expose section-heading levels beneath it without changing
+  source markers; Source exposes the exact authored hierarchy.
 
 ### Metadata and portable settings
 

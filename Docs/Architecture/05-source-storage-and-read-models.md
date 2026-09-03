@@ -172,8 +172,8 @@ writable projection of Markdown or YAML.
 `WorkspaceSnapshot` carries the resolved catalog next to its generation;
 `WorkspaceNoteSnapshot` carries the optional validated metadata snapshot next
 to exact source. `ResearchNoteTitleResolver` uses managed Analysis `title`,
-then first H1, then filename; Topic and Work use first H1, then filename. YAML
-`title` has no identity semantics. App's independent `AboutProfileCatalog`
+then filename; Topic and Work use filename. YAML `title` and body headings have
+no identity semantics. App's independent `AboutProfileCatalog`
 owns researcher-configured always-shown choices and order, then appends every
 other present managed value in catalog order; presentation adds label, help,
 visible group, and control style only. About's field-local editor delegates
@@ -198,7 +198,7 @@ For authored `summary` and `keywords`, it proves exact top-level key and
 string/member source ranges and rejects malformed, duplicate, complex, or
 ambiguous source rather than guessing. For managed Metadata, it projects the
 validated record value and revision with no Markdown range. Unknown YAML is
-not indexed. The v9 disposable index stores nullable structured-field ranges;
+not indexed. The v12 disposable index stores nullable structured-field ranges;
 incremental publication and clean rebuild consume the same authorized Note and
 Metadata manifest.
 

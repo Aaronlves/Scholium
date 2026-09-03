@@ -306,8 +306,7 @@ public struct SearchIndexDocument: Sendable {
         title = ResearchNoteTitleResolver.resolve(
             document: document,
             vaultRole: vaultRole,
-            metadata: metadata,
-            semantic: self.semantic
+            metadata: metadata
         ).title
         aliases = profile == .topicMarkdown
             ? metadata?.record.fields["aliases"]?.canonicalStringList ?? []

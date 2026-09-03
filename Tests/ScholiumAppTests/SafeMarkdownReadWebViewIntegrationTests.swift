@@ -1231,11 +1231,9 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(abs(live.headingWidth - read.headingWidth) <= 1)
         #expect(live.headingTextDecorationLine == read.headingTextDecorationLine)
         #expect(live.headingTextDecorationLine == "none")
-        #expect(live.titleTextDecorationLine == read.titleTextDecorationLine)
-        #expect(live.titleTextDecorationLine == "none")
-        #expect(live.titleBorderBottomWidth == read.titleBorderBottomWidth)
-        #expect(live.titleBorderBottomWidth == "1px")
-        #expect(abs(live.titleWidth - read.titleWidth) <= 1)
+        #expect(live.firstLevelHeadingTextDecorationLine == read.firstLevelHeadingTextDecorationLine)
+        #expect(live.firstLevelHeadingTextDecorationLine == "none")
+        #expect(abs(live.firstLevelHeadingWidth - read.firstLevelHeadingWidth) <= 1)
 
         #expect(live.calloutAccent == read.calloutAccent)
         #expect(live.calloutBorderColor == read.calloutBorderColor)
@@ -2057,12 +2055,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                 const documentStyle = style('.scholium-document');
                 const headingBlockStyle = style('.scholium-document > h2');
                 const headingStyle = textStyle('.scholium-document > h2');
-                const titleBlockStyle = style('.scholium-document > h1:first-child');
-                const titleRuleStyle = (() => {
-                    const element = document.querySelector('.scholium-document > h1:first-child');
-                    return element ? getComputedStyle(element, '::after') : null;
-                })();
-                const titleStyle = textStyle('.scholium-document > h1:first-child');
+                const firstLevelHeadingStyle = textStyle('.scholium-document > h1:first-child');
                 const calloutStyle = style('.scholium-document > .scholium-callout-state');
                 const calloutRoleStyle = style('.scholium-document > .scholium-callout-state .scholium-callout-role');
                 const calloutTitleStyle = style('.scholium-document > .scholium-callout-state .scholium-callout-title');
@@ -2137,9 +2130,8 @@ extension MarkdownEditorWebViewIntegrationTests {
                     headingBlockAfter: px(headingBlockStyle?.marginBottom) + px(headingBlockStyle?.paddingBottom),
                     headingWidth: width('.scholium-document > h2'),
                     headingTextDecorationLine: headingStyle?.textDecorationLine || '',
-                    titleTextDecorationLine: titleStyle?.textDecorationLine || '',
-                    titleBorderBottomWidth: titleRuleStyle?.borderTopWidth || '',
-                    titleWidth: width('.scholium-document > h1:first-child'),
+                    firstLevelHeadingTextDecorationLine: firstLevelHeadingStyle?.textDecorationLine || '',
+                    firstLevelHeadingWidth: width('.scholium-document > h1:first-child'),
                     calloutAccent: calloutStyle?.getPropertyValue('--callout-accent').trim() || '',
                     calloutBorderColor: calloutStyle?.borderInlineStartColor || '',
                     calloutFontSize: calloutStyle?.fontSize || '',

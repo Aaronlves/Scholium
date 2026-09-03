@@ -4,7 +4,7 @@ import Testing
 
 @Suite("Role-aware research note titles")
 struct ResearchNoteTitleResolverTests {
-    @Test("Analysis resolves managed title, then H1, then filename and ignores YAML title")
+    @Test("Analysis resolves managed title, then filename and ignores YAML and body headings")
     func analysisFallbackOrder() {
         let property = note(
             "Folder/Filename.md",
@@ -29,8 +29,8 @@ struct ResearchNoteTitleResolverTests {
             document: property,
             profile: .analysis
         ) == ResearchNoteTitleResolution(
-            title: "Heading Title",
-            source: .firstLevelOneHeading
+            title: "Filename",
+            source: .filename
         ))
 
         let heading = note("Folder/Filename.md", "# Heading Title\n")
@@ -38,8 +38,8 @@ struct ResearchNoteTitleResolverTests {
             document: heading,
             profile: .analysis
         ) == ResearchNoteTitleResolution(
-            title: "Heading Title",
-            source: .firstLevelOneHeading
+            title: "Filename",
+            source: .filename
         ))
 
         let filename = note("Folder/Filename.md", "Body only.\n")
@@ -49,8 +49,8 @@ struct ResearchNoteTitleResolverTests {
         ) == ResearchNoteTitleResolution(title: "Filename", source: .filename))
     }
 
-    @Test("Topic and Work ignore YAML title and share H1 fallback")
-    func authoredNotesUseDocumentTitles() {
+    @Test("Topic and Work use filenames and ignore YAML and body headings")
+    func authoredNotesUseFilenames() {
         let source = note(
             "Folder/Filename.md",
             "---\ntitle: Ignored YAML\n---\n# Authored Heading\n"
@@ -60,8 +60,8 @@ struct ResearchNoteTitleResolverTests {
                 document: source,
                 profile: profile
             ) == ResearchNoteTitleResolution(
-                title: "Authored Heading",
-                source: .firstLevelOneHeading
+                title: "Filename",
+                source: .filename
             ))
         }
 

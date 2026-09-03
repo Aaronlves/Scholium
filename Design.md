@@ -94,8 +94,10 @@ exceptions. Feature areas publish no font aliases.
 
 Document Appearance owns document measure, Body, headings, and Callout
 typography. The default is a readable Alegreya body with generous line height,
-paragraph spacing, centered H1, start-aligned lower headings, justified prose
-without hyphenation, and deliberate CJK fallback. Review and Edit share the
+paragraph spacing, a start-aligned first-level body heading, quieter lower
+headings, justified prose without hyphenation, and deliberate CJK fallback.
+The app-owned Note title remains primary in native Document identity chrome;
+authored H1 is never styled as a second document title. Review and Edit share the
 same semantic geometry; active exact syntax must not cause neighboring content
 to jump. Lists, blank lines, code fences, tables, mathematics, footnotes, and
 Callouts preserve their source-owned rhythm and object-local overflow.

@@ -63,7 +63,8 @@ public enum DocumentPreviewCatalogBuilder {
         sourceFingerprint: DocumentFingerprint,
         graph: GraphSnapshot,
         documents: [VaultQualifiedNoteID: NoteDocument],
-        profiles: [VaultQualifiedNoteID: SchemaProfileID] = [:]
+        profiles: [VaultQualifiedNoteID: SchemaProfileID] = [:],
+        metadata: [VaultQualifiedNoteID: NoteMetadataSnapshot] = [:]
     ) -> DocumentPreviewCatalog {
         guard graph.contractVersion == GraphSnapshot.currentContractVersion else {
             return DocumentPreviewCatalog(
@@ -97,7 +98,8 @@ public enum DocumentPreviewCatalogBuilder {
                 let rendered = SafeMarkdownRenderer.render(fragment).htmlBody
                 let title = ResearchNoteTitleResolver.resolve(
                     document: target,
-                    profile: profiles[destination.note] ?? .genericMarkdown
+                    profile: profiles[destination.note] ?? .genericMarkdown,
+                    metadata: metadata[destination.note]
                 ).title
                 return DocumentLinkPreview(
                     sourceSpan: edge.occurrence.linkSpan,

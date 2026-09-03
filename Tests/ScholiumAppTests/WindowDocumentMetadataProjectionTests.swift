@@ -64,8 +64,7 @@ struct WindowDocumentMetadataProjectionTests {
         let semantic = MarkdownSemanticDocument(parsing: document)
         let cachedTitle = WorkspaceNoteTitleProjection(
             document: document,
-            vaultRole: .topicKnowledge,
-            semantic: semantic
+            vaultRole: .topicKnowledge
         )
         let snapshot = WorkspaceNoteSnapshot(
             id: VaultQualifiedNoteID(
@@ -91,6 +90,7 @@ struct WindowDocumentMetadataProjectionTests {
         )
 
         #expect(WindowDocumentLocation.workspace(snapshot).displayName == cachedTitle.resolution.title)
+        #expect(cachedTitle.resolution.title == "Cached")
         #expect(snapshot.cachedTitleProjection?.sourceFingerprint == document.fingerprint)
     }
 

@@ -6,6 +6,7 @@ import {
   editorAccessibilityAttributes,
   updateEditorAccessibility,
 } from "../accessibility";
+import {bodyHeadingAccessibilityLevel} from "../heading-accessibility";
 import type {EditorContext} from "../protocol";
 
 const context = (blocks: string[] = [], inline: string[] = []): EditorContext => ({
@@ -17,6 +18,11 @@ const context = (blocks: string[] = [], inline: string[] = []): EditorContext =>
 });
 
 describe("editor accessibility contract", () => {
+  it("places authored headings beneath the app-owned Note title", () => {
+    expect([1, 2, 3, 4, 5, 6].map(bodyHeadingAccessibilityLevel))
+      .toEqual([2, 3, 4, 5, 6, 6]);
+  });
+
   it("keeps one labeled multiline textbox without a duplicate value representation", () => {
     const attributes = editorAccessibilityAttributes("livePreview");
     expect(attributes).toMatchObject({

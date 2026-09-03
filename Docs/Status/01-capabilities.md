@@ -15,7 +15,9 @@
   transaction for App, researcher CLI, and MCP callers. Metadata settings,
   About editing, Settlement, Critique, Zotero bindings, transaction recovery,
   and source conflict handling remain reachable through their existing owners.
-- Search contract 13 has independent Note and Research Record providers. All
+- Search contract 14 has independent Note and Research Record providers. Note
+  title identity uses managed Analysis title then filename, and filename for
+  Topics and Works; body headings remain independently searchable. All
   runs both and returns separate rankings, totals, offsets, continuations, and
   generations; Notes and Records are dedicated paths. Record scope follows
   exact current Note references and never treats a reference as query text.

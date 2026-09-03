@@ -109,7 +109,6 @@ public struct DocumentHeadingAppearance: Codable, Hashable, Sendable {
     public var weight: Int
     public var lineHeight: Double
     public var letterSpacingEm: Double
-    public var title: DocumentHeadingLevelAppearance
     public var level1: DocumentHeadingLevelAppearance
     public var level2: DocumentHeadingLevelAppearance
 
@@ -119,12 +118,6 @@ public struct DocumentHeadingAppearance: Codable, Hashable, Sendable {
         weight: Int = 500,
         lineHeight: Double = 1.8,
         letterSpacingEm: Double = 0,
-        title: DocumentHeadingLevelAppearance = .init(
-            scale: 2,
-            alignment: .center,
-            spaceBeforeEm: 0,
-            spaceAfterEm: 2
-        ),
         level1: DocumentHeadingLevelAppearance = .init(
             scale: 1.5,
             spaceBeforeEm: 0.6,
@@ -141,7 +134,6 @@ public struct DocumentHeadingAppearance: Codable, Hashable, Sendable {
         self.weight = weight
         self.lineHeight = lineHeight
         self.letterSpacingEm = letterSpacingEm
-        self.title = title
         self.level1 = level1
         self.level2 = level2
     }

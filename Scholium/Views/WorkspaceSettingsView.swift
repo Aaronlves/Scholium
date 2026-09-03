@@ -2187,13 +2187,10 @@ private struct AppearanceProfileEditor: View {
                         AppearanceDoubleControl("Line spacing", value: $profile.settings.headings.lineHeight, range: 1...2.4, step: 0.05, suffix: "×")
                         AppearanceDoubleControl("Letter spacing", value: $profile.settings.headings.letterSpacingEm, range: -0.05...0.1, step: 0.005, suffix: "em", precision: 3)
 
-                        DisclosureGroup("Document title (H1)") {
-                            HeadingLevelAppearanceEditor(level: $profile.settings.headings.title)
-                        }
-                        DisclosureGroup("Section heading (H2)") {
+                        DisclosureGroup("First-level heading (H1)") {
                             HeadingLevelAppearanceEditor(level: $profile.settings.headings.level1)
                         }
-                        DisclosureGroup("Lower headings (H3–H6)") {
+                        DisclosureGroup("Lower headings (H2–H6)") {
                             HeadingLevelAppearanceEditor(level: $profile.settings.headings.level2)
                         }
                     }

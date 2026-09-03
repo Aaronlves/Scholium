@@ -2,7 +2,6 @@ import Foundation
 
 public enum ResearchNoteTitleSource: String, Codable, Hashable, Sendable {
     case managedMetadata = "managed_metadata"
-    case firstLevelOneHeading = "first_level_one_heading"
     case filename
 }
 
@@ -17,14 +16,13 @@ public struct ResearchNoteTitleResolution: Codable, Hashable, Sendable {
 }
 
 /// Resolves the one human and agent-facing Note title. A managed Analysis
-/// title is preferred when supplied explicitly; authored YAML `title` is
-/// never interpreted. Otherwise the first H1 and then filename are used.
+/// title is preferred when supplied explicitly; every other Note uses its
+/// filename. Authored YAML and body headings never establish Note identity.
 public enum ResearchNoteTitleResolver {
     public static func resolve(
         document: NoteDocument,
         profile: SchemaProfileID,
-        metadata: NoteMetadataSnapshot? = nil,
-        semantic: MarkdownSemanticDocument? = nil
+        metadata: NoteMetadataSnapshot? = nil
     ) -> ResearchNoteTitleResolution {
         if profile == .analysis,
            case .string(let value)? = metadata?.record.fields["title"],
@@ -32,16 +30,6 @@ public enum ResearchNoteTitleResolver {
             return ResearchNoteTitleResolution(
                 title: title,
                 source: .managedMetadata
-            )
-        }
-
-        let semantic = semantic ?? MarkdownSemanticDocument(parsing: document)
-        if let title = semantic.headings
-            .first(where: { $0.level == 1 })
-            .flatMap({ nonempty($0.text) }) {
-            return ResearchNoteTitleResolution(
-                title: title,
-                source: .firstLevelOneHeading
             )
         }
 
@@ -57,14 +45,12 @@ public enum ResearchNoteTitleResolver {
     public static func resolve(
         document: NoteDocument,
         vaultRole: VaultRole,
-        metadata: NoteMetadataSnapshot? = nil,
-        semantic: MarkdownSemanticDocument? = nil
+        metadata: NoteMetadataSnapshot? = nil
     ) -> ResearchNoteTitleResolution {
         resolve(
             document: document,
             profile: WorkflowProfileResolver.resolve(vaultRole: vaultRole),
-            metadata: metadata,
-            semantic: semantic
+            metadata: metadata
         )
     }
 

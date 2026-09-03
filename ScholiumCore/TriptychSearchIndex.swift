@@ -1048,7 +1048,6 @@ public actor TriptychSearchIndex {
                 ?? indexed?.stableNoteID,
             title: projection.title,
             normalizedTitle: SearchTextNormalization.normalize(projection.title),
-            titleUsesFilenameFallback: projection.titleUsesFilenameFallback,
             filenameKey: SearchTextNormalization.normalize(
                 ((source.noteID.relativePath as NSString).lastPathComponent as NSString)
                     .deletingPathExtension
@@ -1338,7 +1337,7 @@ public actor TriptychSearchIndex {
                   let vaultName = row.text(at: 1), let roleText = row.text(at: 2),
                   let role = VaultRole(rawValue: roleText), let path = row.text(at: 3),
                   let title = row.text(at: 5), let normalizedTitle = row.text(at: 6),
-                  let titleKey = row.text(at: 7), let filenameKey = row.text(at: 8),
+                  row.text(at: 7) != nil, let filenameKey = row.text(at: 8),
                   let pathKey = row.text(at: 9), let sha = row.text(at: 12),
                   let layerText = row.text(at: 14),
                   let layer = EvidentialLayer(rawValue: layerText) else { return }
@@ -1372,7 +1371,6 @@ public actor TriptychSearchIndex {
                 stableNoteID: row.text(at: 4),
                 title: title,
                 normalizedTitle: normalizedTitle,
-                titleUsesFilenameFallback: titleKey.isEmpty,
                 filenameKey: filenameKey,
                 pathKey: pathKey,
                 aliases: aliases,
@@ -1673,9 +1671,7 @@ public actor TriptychSearchIndex {
                 .text(item.vaultRole.rawValue), .int(roleOrder(item.vaultRole)),
                 .text(item.relativePath), .optionalText(item.stableNoteID), .text(projection.title),
                 .text(SearchTextNormalization.normalize(projection.title)),
-                .text(projection.titleUsesFilenameFallback
-                    ? ""
-                    : SearchTextNormalization.normalize(projection.title)),
+                .text(SearchTextNormalization.normalize(projection.title)),
                 .text(SearchTextNormalization.normalize(
                     ((item.relativePath as NSString).lastPathComponent as NSString).deletingPathExtension
                 )),
@@ -2188,7 +2184,6 @@ private struct StoredSearchDocument {
     let stableNoteID: String?
     let title: String
     let normalizedTitle: String
-    let titleUsesFilenameFallback: Bool
     let filenameKey: String
     let pathKey: String
     let aliases: [String]
@@ -2366,9 +2361,7 @@ private struct RelatedContentSeedMaterial {
         for document: StoredSearchDocument
     ) -> RelatedContentIdentityMentionReason? {
         var identities: [(RelatedContentIdentityKind, String)] = []
-        if !document.titleUsesFilenameFallback {
-            identities.append((.title, document.title))
-        }
+        identities.append((.title, document.title))
         identities.append(contentsOf: document.aliases.map { (.alias, $0) })
         var mentions: [RelatedContentIdentityMention] = []
         var seen = Set<RelatedContentIdentityMention>()
@@ -2615,8 +2608,7 @@ private enum SearchMatcher {
         document: StoredSearchDocument
     ) -> Int {
         guard let identityNeedle else { return 10 }
-        if !document.titleUsesFilenameFallback,
-           document.normalizedTitle == identityNeedle { return 0 }
+        if document.normalizedTitle == identityNeedle { return 0 }
         if document.aliases.contains(where: {
             SearchTextNormalization.normalize($0) == identityNeedle
         }) { return 1 }

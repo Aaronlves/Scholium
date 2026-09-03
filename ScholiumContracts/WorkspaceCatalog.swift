@@ -273,13 +273,7 @@ public enum WorkspaceCatalogBuilder {
                     title: ResearchNoteTitleResolver.resolve(
                         document: document,
                         vaultRole: vault.role,
-                        metadata: metadata,
-                        semantic: resolvedSemanticDocuments[
-                            VaultQualifiedNoteID(
-                                vaultID: vault.id,
-                                relativePath: document.relativePath
-                            )
-                        ]
+                        metadata: metadata
                     ).title,
                     aliases: (vault.role == .topicKnowledge
                         ? metadata?.record.fields["aliases"]?.canonicalStringList ?? []

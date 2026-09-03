@@ -560,6 +560,12 @@ Read and Live Preview consume one presentation contract:
 - the Live adapter maps the same roles to bounded CodeMirror decorations and
   widgets without replacing active source, selection, composition, or undo.
 
+Native window and Document chrome consume the resolved Note title. The WebKit
+surfaces treat authored H1 as a body section: shared Appearance maps H1 to the
+first-level heading tier and H2–H6 to the lower tier, and Review/Edit expose
+their accessible heading levels beneath the app-owned title without changing
+source bytes or Source presentation.
+
 Review document identity excludes its asynchronously derived link-preview
 catalog. A fingerprint, CSS, or capability change may replace the static page,
 while a later graph-bound preview revision updates one bounded in-page preview

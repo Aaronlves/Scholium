@@ -39,9 +39,8 @@ extension MarkdownEditorSession {
         let headingBlockAfter: Double
         let headingWidth: Double
         let headingTextDecorationLine: String
-        let titleTextDecorationLine: String
-        let titleBorderBottomWidth: String
-        let titleWidth: Double
+        let firstLevelHeadingTextDecorationLine: String
+        let firstLevelHeadingWidth: Double
         let calloutAccent: String
         let calloutBorderColor: String
         let calloutFontSize: String
@@ -109,12 +108,11 @@ extension MarkdownEditorSession {
         let gutterCount: Int
         let lineNumberCount: Int
         let activeLineCount: Int
-        let liveTitleCount: Int
         let liveH1Count: Int
         let liveH2Count: Int
         let h1FontSize: String
         let h2FontSize: String
-        let titleTextAlign: String
+        let h1TextAlign: String
         let h2TextAlign: String
         let collapsedCodeFenceLineCount: Int
         let collapsedCodeFenceVisibleHeight: Double
@@ -363,12 +361,7 @@ extension MarkdownEditorSession {
             };
             const headingBlockStyle = style('.cm-live-h2');
             const headingStyle = textStyle('.cm-live-h2');
-            const titleBlockStyle = style('.cm-live-document-title');
-            const titleRuleStyle = (() => {
-                const element = document.querySelector('.cm-live-document-title');
-                return element ? getComputedStyle(element, '::after') : null;
-            })();
-            const titleStyle = textStyle('.cm-live-document-title');
+            const firstLevelHeadingStyle = textStyle('.cm-live-h1');
             const calloutStyle = style('.cm-live-callout-widget.scholium-callout-state');
             const calloutRoleStyle = style('.cm-live-callout-widget.scholium-callout-state .scholium-callout-role');
             const calloutTitleStyle = style('.cm-live-callout-widget.scholium-callout-state .scholium-callout-title');
@@ -437,12 +430,11 @@ extension MarkdownEditorSession {
                 gutterCount: document.querySelectorAll('.cm-gutters').length,
                 lineNumberCount: document.querySelectorAll('.cm-lineNumbers .cm-gutterElement').length,
                 activeLineCount: document.querySelectorAll('.cm-activeLine').length,
-                liveTitleCount: document.querySelectorAll('.cm-live-document-title').length,
                 liveH1Count: document.querySelectorAll('.cm-live-h1').length,
                 liveH2Count: document.querySelectorAll('.cm-live-h2').length,
                 h1FontSize: style('.cm-live-h1')?.fontSize || '',
                 h2FontSize: style('.cm-live-h2')?.fontSize || '',
-                titleTextAlign: style('.cm-live-document-title')?.textAlign || '',
+                h1TextAlign: style('.cm-live-h1')?.textAlign || '',
                 h2TextAlign: style('.cm-live-h2')?.textAlign || '',
                 collapsedCodeFenceLineCount: document.querySelectorAll('.cm-live-code-fence-line').length,
                 collapsedCodeFenceVisibleHeight: Array.from(document.querySelectorAll('.cm-live-code-fence-line'))
@@ -602,9 +594,8 @@ extension MarkdownEditorSession {
                     headingBlockAfter: px(headingBlockStyle?.marginBottom) + px(headingBlockStyle?.paddingBottom),
                     headingWidth: width('.cm-live-h2'),
                     headingTextDecorationLine: headingStyle?.textDecorationLine || '',
-                    titleTextDecorationLine: titleStyle?.textDecorationLine || '',
-                    titleBorderBottomWidth: titleRuleStyle?.borderTopWidth || '',
-                    titleWidth: width('.cm-live-document-title'),
+                    firstLevelHeadingTextDecorationLine: firstLevelHeadingStyle?.textDecorationLine || '',
+                    firstLevelHeadingWidth: width('.cm-live-h1'),
                     calloutAccent: calloutStyle?.getPropertyValue('--callout-accent').trim() || '',
                     calloutBorderColor: calloutStyle?.borderInlineStartColor || '',
                     calloutFontSize: calloutStyle?.fontSize || '',

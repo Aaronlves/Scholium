@@ -456,7 +456,6 @@ public actor StyleOperations: StyleUseCases {
         profile.settings.headings.weight = profile.settings.headings.weight.clamped(to: 400...700)
         profile.settings.headings.lineHeight = profile.settings.headings.lineHeight.clamped(to: 1...2.4)
         profile.settings.headings.letterSpacingEm = profile.settings.headings.letterSpacingEm.clamped(to: -0.05...0.1)
-        profile.settings.headings.title = normalized(profile.settings.headings.title)
         profile.settings.headings.level1 = normalized(profile.settings.headings.level1)
         profile.settings.headings.level2 = normalized(profile.settings.headings.level2)
         profile.settings.callouts = DocumentCalloutAppearanceRole.allCases.map { role in

@@ -565,18 +565,22 @@ struct WindowWorkspaceProjectionControllerTests {
         await waitUntil { probe.callCount == 2 }
 
         #expect(probe.cancelledLoadCount == 0)
-        #expect(controller.catalog?.notes.first {
+        let firstActive = controller.catalog?.notes.first {
             $0.reference.relativePath == "Active.md"
-        }?.title == "First")
+        }
+        #expect(firstActive?.title == "Active")
+        #expect(firstActive?.fingerprint == DocumentFingerprint(content: "# First\n"))
 
         probe.resumeNext(with: second.discovery.catalog)
         await waitUntil { !controller.isRefreshingCatalog }
 
         #expect(probe.callCount == 2)
         #expect(probe.cancelledLoadCount == 0)
-        #expect(controller.catalog?.notes.first {
+        let secondActive = controller.catalog?.notes.first {
             $0.reference.relativePath == "Active.md"
-        }?.title == "Second")
+        }
+        #expect(secondActive?.title == "Active")
+        #expect(secondActive?.fingerprint == DocumentFingerprint(content: "# Second\n"))
     }
 
     @Test("A late catalog load cannot overwrite a newer Workspace event")
@@ -614,9 +618,11 @@ struct WindowWorkspaceProjectionControllerTests {
 
         #expect(!controller.isRefreshingCatalog)
         #expect(controller.searchGeneration?.sequence == 3)
-        #expect(controller.catalog?.notes.first {
+        let eventActive = controller.catalog?.notes.first {
             $0.reference.relativePath == "Active.md"
-        }?.title == "Event New")
+        }
+        #expect(eventActive?.title == "Active")
+        #expect(eventActive?.fingerprint == DocumentFingerprint(content: "# Event New\n"))
     }
 
     private func waitUntil(

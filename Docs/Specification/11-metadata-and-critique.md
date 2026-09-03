@@ -59,8 +59,8 @@ resolves Analysis identity but is not repeated in About.
 | Authored YAML | `summary` | Multiline text | Authored YAML |
 | Authored YAML | `keywords` | Text list | Authored YAML |
 
-Topic identity is first H1, then filename. Similar-looking custom YAML keys have
-no canonical meaning.
+Topic identity is its filename. Body headings and similar-looking custom YAML
+keys have no canonical identity meaning.
 
 ### Works
 
@@ -71,8 +71,8 @@ no canonical meaning.
 | Authored YAML | `summary` | Multiline text | Authored YAML |
 | Authored YAML | `keywords` | Text list | Authored YAML |
 
-Work identity is first H1, then filename. Similar-looking custom YAML keys,
-including status or deadline fields, have no canonical meaning.
+Work identity is its filename. Body headings and similar-looking custom YAML
+keys, including status or deadline fields, have no canonical meaning.
 
 ### Shared presentation and settings rules
 

@@ -5,8 +5,8 @@ import ScholiumContracts
 
 @Suite("Triptych workspace catalog")
 struct WorkspaceCatalogTests {
-    @Test("Workspace catalog assembly reuses only fingerprint-bound semantics")
-    func catalogReusesFingerprintBoundSemantics() throws {
+    @Test("Workspace catalog title remains filename-owned across semantic caches")
+    func catalogTitleIgnoresSemanticCaches() throws {
         let topics = vault("Topics", .topicKnowledge)
         let document = note("Topic.md", "# Authoritative Title\n\nBody")
         let projectedDocument = note(
@@ -42,8 +42,8 @@ struct WorkspaceCatalogTests {
             semanticDocuments: [id: projected]
         )
 
-        #expect(try #require(reused.notes.first).title == "Cached Semantic Title")
-        #expect(try #require(stale.notes.first).title == "Authoritative Title")
+        #expect(try #require(reused.notes.first).title == "Topic")
+        #expect(try #require(stale.notes.first).title == "Topic")
     }
 
     @Test("Incomplete retired catalog projections are rejected")

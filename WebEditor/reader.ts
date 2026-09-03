@@ -9,6 +9,7 @@ import {
   type ReadLinkPreview,
   validatedReaderConfiguration,
 } from "./reader-configuration";
+import {bodyHeadingAccessibilityLevel} from "./heading-accessibility";
 
 interface ReaderMessageHandler {
   postMessage(message: Record<string, unknown>): void;
@@ -67,6 +68,12 @@ async function initializeReader(value: unknown): Promise<void> {
   const userStyle = requiredElement<HTMLStyleElement>('scholium-user-css');
   presentationStyle.textContent = presentationCSS;
   userStyle.textContent = userCSS;
+  const documentRoot = requiredElement('scholium-document');
+  documentRoot.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6').forEach(heading => {
+    const level = Number(heading.tagName.slice(1));
+    heading.setAttribute('role', 'heading');
+    heading.setAttribute('aria-level', String(bodyHeadingAccessibilityLevel(level)));
+  });
   const strings = localization.strings || {};
   const localized = (key: string, replacements: Record<string, unknown> = {}) =>
     String(strings[key] || key).replace(

@@ -29,6 +29,7 @@ import type {
   SemanticCodeBlockRange,
 } from "./live-projection-index";
 import {calloutDefinition, calloutHeader} from "./callout-presentation";
+import {bodyHeadingAccessibilityLevel} from "./heading-accessibility";
 
 interface SemanticPhysicalLine {
   readonly from: number;
@@ -289,7 +290,6 @@ export function createLiveSemanticLayout(options: {
         } else {
           classes.add("cm-live-heading");
           classes.add(`cm-live-h${headingLevel}`);
-          if (headingLevel === 1) classes.add("cm-live-document-title");
         }
       }
       if (paragraph && !callout && headingLevel === null) {
@@ -354,6 +354,12 @@ export function createLiveSemanticLayout(options: {
           attributes.class = presentation.classes.join(" ");
         }
         if (direction) attributes.dir = direction;
+        if (presentation.headingLevel !== null) {
+          attributes.role = "heading";
+          attributes["aria-level"] = String(
+            bodyHeadingAccessibilityLevel(presentation.headingLevel),
+          );
+        }
         ranges.push(Decoration.line({attributes}).range(line.from));
       }
       if (line.number >= state.doc.lines) break;

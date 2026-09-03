@@ -551,8 +551,8 @@ enum ScholiumWebDesignTokens {
             --scholium-document-half-line-width: \(number(defaults.lineWidthCharacterUnits / 2))ch;
             --scholium-document-prose-font-size: \(number(body.fontSizePoints))pt;
             --scholium-document-source-font-size: \(ScholiumDocumentRhythm.sourceFontSizePixels)px;
-            --scholium-document-h1-size: \(number(headings.title.scale * 100))%;
-            --scholium-document-h2-size: \(number(headings.level1.scale * 100))%;
+            --scholium-document-h1-size: \(number(headings.level1.scale * 100))%;
+            --scholium-document-h2-size: \(number(headings.level2.scale * 100))%;
             --scholium-document-h3-size: \(number(headings.level2.scale * 100))%;
             --scholium-document-h4-size: \(number(headings.level2.scale * 100))%;
             --scholium-rhythm-prose-line-height: \(number(body.lineHeight));
@@ -563,13 +563,10 @@ enum ScholiumWebDesignTokens {
             ))px;
             --scholium-rhythm-heading-line-height: \(number(headings.lineHeight));
             \(DocumentAppearanceStyles.headingTransportDeclarations(for: defaults))
-            --scholium-rhythm-title-before: \(number(headings.title.spaceBeforeEm))em;
-            --scholium-rhythm-title-after: \(number(headings.title.spaceAfterEm))em;
-            --scholium-appearance-h2-before: \(number(headings.level1.spaceBeforeEm))em;
-            --scholium-appearance-h2-after: \(number(headings.level1.spaceAfterEm))em;
-            --scholium-appearance-h3-before: \(number(headings.level2.spaceBeforeEm))em;
-            --scholium-appearance-h3-after: \(number(headings.level2.spaceAfterEm))em;
-            --scholium-rhythm-title-rule-gap: 0.5em;
+            --scholium-appearance-h1-before: \(number(headings.level1.spaceBeforeEm))em;
+            --scholium-appearance-h1-after: \(number(headings.level1.spaceAfterEm))em;
+            --scholium-appearance-lower-heading-before: \(number(headings.level2.spaceBeforeEm))em;
+            --scholium-appearance-lower-heading-after: \(number(headings.level2.spaceAfterEm))em;
             --scholium-rhythm-code-inset: \(ScholiumDocumentRhythm.codeBlockInset)px;
             --scholium-rhythm-quote-inset: \(ScholiumDocumentRhythm.quoteInlineInset)px;
             --scholium-rhythm-semantic-block-gap: 1em;
@@ -878,22 +875,23 @@ enum ScholiumWebDesignTokens {
           text-wrap: balance;
           box-sizing: border-box;
           margin: 0;
-          padding-block: var(--scholium-appearance-h3-before) var(--scholium-appearance-h3-after);
+          padding-block: var(--scholium-appearance-lower-heading-before) var(--scholium-appearance-lower-heading-after);
         }
         .scholium-document h1,
         .scholium-live-mode .cm-live-h1 {
           font-size: var(--scholium-document-h1-size);
           font-weight: var(--scholium-document-heading-weight);
+          padding-block: var(--scholium-appearance-h1-before) var(--scholium-appearance-h1-after);
         }
         .scholium-document h2,
         .scholium-live-mode .cm-live-h2 {
           font-size: var(--scholium-document-h2-size);
-          padding-block: var(--scholium-appearance-h2-before) var(--scholium-appearance-h2-after);
+          padding-block: var(--scholium-appearance-lower-heading-before) var(--scholium-appearance-lower-heading-after);
         }
         .scholium-document h3,
         .scholium-live-mode .cm-live-h3 {
           font-size: var(--scholium-document-h3-size);
-          padding-block: var(--scholium-appearance-h3-before) var(--scholium-appearance-h3-after);
+          padding-block: var(--scholium-appearance-lower-heading-before) var(--scholium-appearance-lower-heading-after);
         }
         .scholium-document h4,
         .scholium-document h5,
@@ -902,7 +900,7 @@ enum ScholiumWebDesignTokens {
         .scholium-live-mode .cm-live-h5,
         .scholium-live-mode .cm-live-h6 {
           font-size: var(--scholium-document-h4-size);
-          padding-block: var(--scholium-appearance-h3-before) var(--scholium-appearance-h3-after);
+          padding-block: var(--scholium-appearance-lower-heading-before) var(--scholium-appearance-lower-heading-after);
         }
         .scholium-document h1 a:not(.wiki-link),
         .scholium-document h2 a:not(.wiki-link),
@@ -912,28 +910,6 @@ enum ScholiumWebDesignTokens {
         .scholium-document h6 a:not(.wiki-link),
         .scholium-live-mode .cm-live-heading .cm-live-link {
           text-decoration: underline;
-        }
-        .scholium-document > h1:first-child,
-        .scholium-live-mode .cm-live-document-title,
-        .scholium-live-mode .cm-live-h1 {
-          position: relative;
-          margin: 0;
-          padding-block: var(--scholium-rhythm-title-before) var(--scholium-rhythm-title-after);
-          text-align: center;
-          border-block-end: 0;
-        }
-        .scholium-document > h1:first-child::after,
-        .scholium-live-mode .cm-live-document-title::after,
-        .scholium-live-mode .cm-live-h1::after {
-          content: "";
-          position: absolute;
-          inset-inline: 0;
-          inset-block-end: max(
-            0px,
-            calc(var(--scholium-rhythm-title-after) - var(--scholium-rhythm-title-rule-gap))
-          );
-          border-block-start: 1px solid var(--scholium-color-separator);
-          pointer-events: none;
         }
         .scholium-document .scholium-embed {
           display: block;

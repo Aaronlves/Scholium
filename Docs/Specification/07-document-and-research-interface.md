@@ -48,6 +48,12 @@ width, Body, headings, and semantic Callouts while preserving protected
 structure and accessibility. Source typography and app chrome are not
 themeable. Advanced CSS is additive and optional.
 
+The app-owned Note title in window and Document identity chrome is the primary
+document title. Authored Markdown headings belong to the body: H1 is presented
+as a first-level section beneath that title, while H2–H6 use the quieter lower-
+heading tier. Review and Edit preserve those relative visual and accessible
+levels; Source continues to expose the exact authored heading markers.
+
 ### 18.4.1 Advanced CSS boundary
 
 Imported CSS is copied into managed Application Support storage and applies

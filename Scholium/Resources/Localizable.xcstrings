@@ -4839,18 +4839,18 @@
         }
       }
     },
-    "Document title (H1)" : {
+    "First-level heading (H1)" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Document title (H1)"
+            "value" : "First-level heading (H1)"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "文稿标题（H1）"
+            "value" : "一级正文标题（H1）"
           }
         }
       }
@@ -7496,18 +7496,18 @@
         }
       }
     },
-    "Lower headings (H3–H6)" : {
+    "Lower headings (H2–H6)" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Lower headings (H3–H6)"
+            "value" : "Lower headings (H2–H6)"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "下级标题（H3–H6）"
+            "value" : "下级标题（H2–H6）"
           }
         }
       }
@@ -12944,22 +12944,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "搜索…"
-          }
-        }
-      }
-    },
-    "Section heading (H2)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Section heading (H2)"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "章节标题（H2）"
           }
         }
       }

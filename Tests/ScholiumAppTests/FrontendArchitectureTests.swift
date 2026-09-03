@@ -2976,7 +2976,6 @@ struct FrontendArchitectureTests {
         let appearance = DocumentAppearanceSettings.defaultSettings
         #expect(appearance.body.fontSizePoints == 12)
         #expect(appearance.body.lineHeight == 2)
-        #expect(appearance.headings.title.scale == 2)
         #expect(appearance.headings.level1.scale == 1.5)
         #expect(appearance.headings.level2.scale == 1.15)
         #expect(appearance.headings.lineHeight == 1.8)
@@ -3443,15 +3442,11 @@ struct FrontendArchitectureTests {
             ))
         #expect(
             ScholiumWebDesignTokens.documentPresentationCSS.contains(
-                "padding-block: var(--scholium-appearance-h3-before) var(--scholium-appearance-h3-after)"
+                "padding-block: var(--scholium-appearance-h1-before) var(--scholium-appearance-h1-after)"
             ))
         #expect(
-            ScholiumWebDesignTokens.documentPresentationCSS.contains(
-                "--scholium-rhythm-title-rule-gap: 0.5em"
-            ))
-        #expect(
-            ScholiumWebDesignTokens.documentPresentationCSS.contains(
-                ".scholium-live-mode .cm-live-document-title::after"
+            !ScholiumWebDesignTokens.documentPresentationCSS.contains(
+                "cm-live-document-title"
             ))
         #expect(
             !ScholiumWebDesignTokens.documentPresentationCSS.contains(
@@ -4246,11 +4241,11 @@ struct FrontendArchitectureTests {
         let defaults = DocumentAppearanceSettings.defaultSettings
         #expect(
             ScholiumWebDesignTokens.rhythmCSSDeclarations.contains(
-                "--scholium-document-h1-size: 200%"
+                "--scholium-document-h1-size: 150%"
             ))
         #expect(
             ScholiumWebDesignTokens.rhythmCSSDeclarations.contains(
-                "--scholium-document-h2-size: 150%"
+                "--scholium-document-h2-size: 115%"
             ))
         #expect(
             ScholiumWebDesignTokens.rhythmCSSDeclarations.contains(
@@ -4396,8 +4391,8 @@ struct FrontendArchitectureTests {
             ))
     }
 
-    @Test("Edit H1 owns the document-title tier without a cached body-line condition")
-    func liveH1OwnsDocumentTitleTier() throws {
+    @Test("Edit H1 remains an authored first-level body heading")
+    func liveH1OwnsFirstLevelBodyHeadingTier() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -4410,7 +4405,7 @@ struct FrontendArchitectureTests {
         )
 
         #expect(
-            editorSource.contains(
+            !editorSource.contains(
                 #"if (headingLevel === 1) classes.add("cm-live-document-title");"#
             ))
         #expect(
@@ -4423,15 +4418,11 @@ struct FrontendArchitectureTests {
             ))
         #expect(
             ScholiumWebDesignTokens.documentPresentationCSS.contains(
-                "text-align: center;"
-            ))
-        #expect(
-            ScholiumWebDesignTokens.documentPresentationCSS.contains(
-                ".scholium-live-mode .cm-live-document-title,"
-            ))
-        #expect(
-            ScholiumWebDesignTokens.documentPresentationCSS.contains(
                 ".scholium-live-mode .cm-live-h1 {"
+            ))
+        #expect(
+            ScholiumWebDesignTokens.documentPresentationCSS.contains(
+                "padding-block: var(--scholium-appearance-h1-before) var(--scholium-appearance-h1-after);"
             ))
     }
 
@@ -4676,8 +4667,8 @@ struct FrontendArchitectureTests {
 
         #expect(css.contains("--scholium-document-prose-font-size: 12pt"))
         #expect(css.contains("--scholium-rhythm-prose-line-height: 2"))
-        #expect(css.contains("--scholium-rhythm-title-before: 0em"))
-        #expect(css.contains("--scholium-rhythm-title-after: 2em"))
+        #expect(css.contains("--scholium-appearance-h1-before: 0.6em"))
+        #expect(css.contains("--scholium-appearance-h1-after: 0.6em"))
         #expect(
             css.contains(
                 "font-size: calc(var(--scholium-document-prose-font-size) * var(--scholium-document-text-scale-factor))"

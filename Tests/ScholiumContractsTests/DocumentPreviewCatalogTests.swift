@@ -40,14 +40,21 @@ struct DocumentPreviewCatalogTests {
             sourceFingerprint: source.fingerprint,
             graph: graph,
             documents: [sourceID: source, targetID: target],
-            profiles: [targetID: .analysis]
+            profiles: [targetID: .analysis],
+            metadata: [targetID: NoteMetadataSnapshot(
+                record: NoteMetadataRecord(
+                    noteID: UUID(),
+                    fields: ["title": .string("Target B")]
+                ),
+                revision: DocumentFingerprint(content: "target-metadata")
+            )]
         )
 
         #expect(preview.contractVersion == 3)
         #expect(preview.graphGeneration == 7)
         #expect(preview.links.count == 1)
         #expect(preview.links[0].target == targetID)
-        #expect(preview.links[0].title == "Claim")
+        #expect(preview.links[0].title == "Target B")
         #expect(preview.links[0].syntax == .wikilink)
         #expect(preview.links[0].fragment == "Claim")
         #expect(preview.links[0].htmlBody.contains("<strong>Rendered</strong>"))

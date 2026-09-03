@@ -818,12 +818,16 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         let targetProfiles = Dictionary(uniqueKeysWithValues: targetIDs.compactMap { id in
             currentSnapshot.document(id: id).map { (id, $0.schemaProfile) }
         })
+        let targetMetadata = Dictionary(uniqueKeysWithValues: targetIDs.compactMap { id in
+            currentSnapshot.document(id: id)?.metadata.map { (id, $0) }
+        })
         return DocumentPreviewCatalogBuilder.build(
             source: source,
             sourceFingerprint: sourceFingerprint,
             graph: graph,
             documents: targetDocuments,
-            profiles: targetProfiles
+            profiles: targetProfiles,
+            metadata: targetMetadata
         )
     }
 
