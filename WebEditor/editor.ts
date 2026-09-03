@@ -79,6 +79,7 @@ import {
   boundedProjectionRanges,
   boundedLinePrefix,
   rangeKey,
+  type SemanticBlockProjection,
   type SemanticInlineProjection,
 } from "./semantic-projection";
 import {
@@ -133,6 +134,11 @@ import {
   projectionSelectionOverlaps,
 } from "./projection-index";
 import {localized} from "./localization";
+import {
+  createDocumentAttachmentRail,
+  revealDocumentAttachmentAddControl,
+  type DocumentAttachmentPresentation,
+} from "./document-attachments";
 import {
   calloutDefinition as resolveCalloutDefinition,
   calloutHeader,
@@ -264,6 +270,7 @@ const editorModeFacet = Facet.define<EditorMode, EditorMode>({
 const programmaticDocumentChange = Annotation.define<boolean>();
 const refreshLivePreviewEffect = StateEffect.define<null>();
 const refreshDocumentTitleEffect = StateEffect.define<null>();
+const refreshDocumentAttachmentsEffect = StateEffect.define<null>();
 const refreshMermaidThemeEffect = StateEffect.define<number>();
 let mermaidThemeRevision = 0;
 let documentTitle = "";
@@ -275,6 +282,9 @@ let documentTitleRenameRequest: {
   requestedTitle: string;
 } | null = null;
 let documentTitlePresentationRevision = 0;
+let documentAttachments: readonly DocumentAttachmentPresentation[] = [];
+let documentAttachmentPresentationRevision = 0;
+let documentAttachmentInitialRevealDeadline = 0;
 let lastDocumentFocusTarget: EditorFocusTarget | undefined;
 
 function setDocumentFocusTarget(target: EditorFocusTarget) {
@@ -445,7 +455,7 @@ function documentTitleDecorations(state: EditorState) {
         documentTitlePresentationRevision,
       ),
       block: true,
-      side: -1,
+      side: -2,
     }).range(frontmatterBodyOffset(state.doc)),
   ]);
 }
@@ -491,6 +501,65 @@ const liveDocumentTitle = StateField.define<DecorationSet>({
       effect.is(refreshDocumentTitleEffect));
     return transaction.docChanged || titleChanged
       ? documentTitleDecorations(transaction.state)
+      : decorations;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
+
+class DocumentAttachmentWidget extends WidgetType {
+  constructor(
+    readonly attachments: readonly DocumentAttachmentPresentation[],
+    readonly presentationRevision: number,
+  ) { super(); }
+
+  eq(other: DocumentAttachmentWidget) {
+    return other.presentationRevision === this.presentationRevision;
+  }
+
+  toDOM(view: EditorView) {
+    const revealInitially = performance.now() < documentAttachmentInitialRevealDeadline;
+    return createDocumentAttachmentRail(
+      view.dom.ownerDocument,
+      this.attachments,
+      {
+        localized,
+        revealInitially,
+        requestPreview: (attachmentID) => post({
+          type: "requestDocumentAttachmentPreview",
+          attachmentID,
+        }),
+        requestMenu: (anchor) => post({
+          type: "requestDocumentAttachmentMenu",
+          clientX: anchor.left,
+          clientY: anchor.bottom,
+        }),
+      },
+    );
+  }
+
+  ignoreEvent() { return true; }
+}
+
+function documentAttachmentDecorations(state: EditorState) {
+  return Decoration.set([
+    Decoration.widget({
+      widget: new DocumentAttachmentWidget(
+        documentAttachments,
+        documentAttachmentPresentationRevision,
+      ),
+      block: true,
+      side: -1,
+    }).range(frontmatterBodyOffset(state.doc)),
+  ]);
+}
+
+const liveDocumentAttachments = StateField.define<DecorationSet>({
+  create: (state) => documentAttachmentDecorations(state),
+  update: (decorations, transaction) => {
+    const attachmentsChanged = transaction.effects.some((effect) =>
+      effect.is(refreshDocumentAttachmentsEffect));
+    return transaction.docChanged || attachmentsChanged
+      ? documentAttachmentDecorations(transaction.state)
       : decorations;
   },
   provide: (field) => EditorView.decorations.from(field),
@@ -586,8 +655,92 @@ function projectedWidgetSourceOffset(event: MouseEvent) {
   return projectedWidgets.sourceOffset(event);
 }
 
+function projectedHeadingSourceOffset(view: EditorView, event: MouseEvent) {
+  const target = event.target instanceof Element ? event.target : null;
+  const heading = target?.closest<HTMLElement>(".cm-live-heading")
+    ?? [...view.contentDOM.querySelectorAll<HTMLElement>(".cm-live-heading")]
+      .find((candidate) => {
+        const box = candidate.getBoundingClientRect();
+        return event.clientX >= box.left && event.clientX <= box.right
+          && event.clientY >= box.top && event.clientY <= box.bottom;
+      });
+  if (!heading) return null;
+
+  // CodeMirror maps a point in a line's vertical padding to an adjacent block
+  // boundary. Live Preview deliberately gives headings generous semantic
+  // padding, so clamp that point to the heading's actual glyph row before
+  // resolving the visible character back to its authoritative source line.
+  // This is especially important when title, attachment, and authored blank
+  // line widgets share a nearby source boundary.
+  const rect = heading.getBoundingClientRect();
+  const style = getComputedStyle(heading);
+  const paddingTop = Number.parseFloat(style.paddingTop) || 0;
+  const paddingBottom = Number.parseFloat(style.paddingBottom) || 0;
+  const contentTop = Math.min(rect.bottom, rect.top + paddingTop);
+  const contentBottom = Math.max(contentTop, rect.bottom - paddingBottom);
+  const contentY = contentBottom > contentTop
+    ? Math.max(contentTop + 0.5, Math.min(event.clientY, contentBottom - 0.5))
+    : (rect.top + rect.bottom) / 2;
+  const caret = document.caretRangeFromPoint?.(event.clientX, contentY) ?? null;
+  const caretNode = caret && heading.contains(caret.startContainer)
+    ? caret.startContainer
+    : null;
+  if (caretNode) {
+    const caretOffset = caret!.startOffset;
+    const visible = heading.textContent ?? "";
+    const visibleRange = document.createRange();
+    visibleRange.setStart(heading, 0);
+    visibleRange.setEnd(caretNode, caretOffset);
+    const visibleOffset = Math.max(0, Math.min(visibleRange.toString().length, visible.length));
+    const domStart = view.posAtDOM(heading, 0);
+    const parsedHeading = liveProjectionIndex.index(view.state).syntax.blocks
+      .filter((block) => block.kind === "heading")
+      .reduce<SemanticBlockProjection | null>((nearest, block) => {
+        if (!nearest) return block;
+        return Math.abs(block.from - domStart) < Math.abs(nearest.from - domStart)
+          ? block
+          : nearest;
+      }, null);
+    const sourcePosition = parsedHeading?.from
+      ?? view.posAtDOM(heading, heading.childNodes.length);
+    const sourceLine = view.state.doc.lineAt(
+      Math.max(0, Math.min(sourcePosition, view.state.doc.length)),
+    );
+    const source = sourceLine.text;
+    const directStart = visible ? source.indexOf(visible) : -1;
+    if (directStart >= 0) {
+      return sourceLine.from + directStart + visibleOffset;
+    }
+
+    // Inline Markdown markers can make the visible heading non-contiguous in
+    // source. Align its UTF-16 code units as an ordered subsequence so hidden
+    // emphasis/link syntax remains accounted for without duplicating parser
+    // state in the DOM.
+    const sourceOffsets: number[] = [];
+    let sourceCursor = 0;
+    for (let visibleIndex = 0; visibleIndex < visible.length; visibleIndex += 1) {
+      const found = source.indexOf(visible[visibleIndex], sourceCursor);
+      if (found < 0) break;
+      sourceOffsets.push(found);
+      sourceCursor = found + 1;
+    }
+    if (sourceOffsets.length === visible.length && sourceOffsets.length > 0) {
+      const sourceOffset = visibleOffset >= sourceOffsets.length
+        ? sourceOffsets.at(-1)! + 1
+        : sourceOffsets[visibleOffset];
+      return sourceLine.from + sourceOffset;
+    }
+    return view.posAtDOM(caretNode, caretOffset);
+  }
+  return event.clientX <= rect.left + rect.width / 2
+    ? view.posAtDOM(heading, 0)
+    : view.posAtDOM(heading, heading.childNodes.length);
+}
+
 function projectedWidgetPointerStart(view: EditorView, event: MouseEvent) {
-  const sourceOffset = projectedWidgetSourceOffset(event);
+  const sourceOffset = projectedWidgets.sourceOffset(event)
+    ?? projectedHeadingSourceOffset(view, event)
+    ?? projectedWidgetSourceOffset(event);
   if (sourceOffset === null) return false;
   event.preventDefault();
   dispatchProjectedPointerSelection(view, event, sourceOffset);
@@ -1689,6 +1842,7 @@ const livePreviewMode = [
   Prec.high(liveSelection.extension),
   liveProjectionIndex.extension,
   liveDocumentTitle,
+  liveDocumentAttachments,
   inputSuggestions.extension,
   liveSemanticLayout.extension,
   liveFrontmatterGuardField,
@@ -1966,6 +2120,10 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   switch (operation.type) {
   case "setMode": await editorOperations.setMode(operation.mode); break;
   case "setDocumentTitle": editorOperations.setDocumentTitle(operation.value); break;
+  case "setDocumentAttachments": editorOperations.setDocumentAttachments(operation.value); break;
+  case "revealDocumentAttachmentControl":
+    revealDocumentAttachmentAddControl(editor.dom.ownerDocument);
+    break;
   case "setPresentationCSS": editorOperations.setPresentationCSS(operation.value); break;
   case "setUserCSS": editorOperations.setUserCSS(operation.value); break;
   case "setLinkPreviews": editorOperations.setLinkPreviews(operation.value); break;
@@ -2322,6 +2480,9 @@ const editorOperations = {
     documentTitleError = null;
     documentTitleRenameRequest = null;
     documentTitlePresentationRevision += 1;
+    documentAttachments = [];
+    documentAttachmentPresentationRevision += 1;
+    documentAttachmentInitialRevealDeadline = performance.now() + 1800;
     lastDocumentFocusTarget = undefined;
     documentVersion = 0;
     hiddenFrontmatterSourceSelection = null;
@@ -2351,6 +2512,14 @@ const editorOperations = {
     documentTitleRenameRequest = null;
     documentTitlePresentationRevision += 1;
     editor.dispatch({effects: refreshDocumentTitleEffect.of(null)});
+  },
+
+  setDocumentAttachments(value: readonly DocumentAttachmentPresentation[]) {
+    const next = value.slice(0, 100).map((attachment) => ({...attachment}));
+    if (JSON.stringify(next) === JSON.stringify(documentAttachments)) return;
+    documentAttachments = next;
+    documentAttachmentPresentationRevision += 1;
+    editor.dispatch({effects: refreshDocumentAttachmentsEffect.of(null)});
   },
 
   /** @param {string} mode */

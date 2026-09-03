@@ -19,6 +19,25 @@ struct AttachmentContractsTests {
         }
     }
 
+    @Test("Document attachment records bind a Finder file to one stable Note")
+    func documentAttachmentRoundTrip() throws {
+        let record = DocumentAttachmentRecord(
+            id: UUID(),
+            noteID: UUID(),
+            vaultID: UUID(),
+            location: .vaultRelative(try AttachmentRelativePath(
+                "Attachments/identity/Emotion and Reasons.pdf"
+            ))
+        )
+        let data = try JSONEncoder().encode(record)
+
+        #expect(try JSONDecoder().decode(
+            DocumentAttachmentRecord.self,
+            from: data
+        ) == record)
+        #expect(record.filename == "Emotion and Reasons.pdf")
+    }
+
     @Test("Only absolute Markdown image destinations enter indexed availability checks")
     func indexedImagePaths() {
         let source = """

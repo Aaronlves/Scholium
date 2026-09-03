@@ -856,6 +856,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         await refresh?.value
         await sourceCommitRefresh?.value
         await events.finish(finalSnapshot: currentSnapshot)
+        await services.indexedAttachmentAccessStore.endAllAccesses()
         for lease in leases.reversed() where lease.started {
             lease.url.stopAccessingSecurityScopedResource()
         }
@@ -1189,6 +1190,181 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             }
         }
         return unavailable.sorted()
+    }
+
+    func documentAttachments(
+        for target: NoteDocumentAttachmentTarget
+    ) async throws -> [DocumentAttachmentSnapshot] {
+        try requireActive()
+        _ = try await verifiedDocumentAttachmentTarget(target)
+        let records = try await services.controlStore.documentAttachmentRecords(
+            noteID: target.noteID
+        )
+        var snapshots: [DocumentAttachmentSnapshot] = []
+        snapshots.reserveCapacity(records.count)
+        for record in records where record.vaultID == target.vaultID {
+            let available: Bool
+            switch record.location {
+            case .vaultRelative(let path):
+                let repository = try repository(vaultID: record.vaultID)
+                let store = VaultAttachmentStore(vaultURL: await repository.vaultURL)
+                available = try await store.documentURLIfAvailable(
+                    relativePath: path
+                ) != nil
+            case .absolutePath(let path):
+                available = try await services.indexedAttachmentAccessStore.isAvailable(
+                    attachmentID: record.id,
+                    expectedAbsolutePath: path
+                )
+            }
+            snapshots.append(DocumentAttachmentSnapshot(
+                record: record,
+                availability: available ? .available : .unavailable
+            ))
+        }
+        return snapshots
+    }
+
+    func attachDocument(
+        at sourceURL: URL,
+        to target: NoteDocumentAttachmentTarget,
+        management: DocumentAttachmentManagement
+    ) async throws -> DocumentAttachmentSnapshot {
+        try requireActive()
+        let secured = sourceURL.startAccessingSecurityScopedResource()
+        defer {
+            if secured { sourceURL.stopAccessingSecurityScopedResource() }
+        }
+        let mutationLease = try await beginSourceMutation()
+        defer { endSourceMutation(mutationLease) }
+
+        let repository = try await verifiedDocumentAttachmentTarget(target)
+        let fileStore = VaultAttachmentStore(vaultURL: await repository.vaultURL)
+        let attachmentID = UUID()
+        let prepared = try await fileStore.prepareDocument(
+            at: sourceURL,
+            attachmentID: attachmentID,
+            management: management
+        )
+        let registration: (record: DocumentAttachmentRecord, created: Bool)
+        do {
+            registration = try await services.controlStore.registerDocumentAttachment(
+                noteID: target.noteID,
+                vaultID: target.vaultID,
+                location: prepared.location,
+                preferredID: attachmentID
+            )
+        } catch {
+            if let fingerprint = prepared.copiedFileFingerprint,
+               let relativePath = prepared.copiedRelativePath {
+                if let attachmentError = error as? DocumentAttachmentError,
+                   case .catalogCommitUncertain = attachmentError {
+                    throw error
+                }
+                do {
+                    try await fileStore.removeCopiedDocumentIfExact(
+                        relativePath: relativePath,
+                        expectedFingerprint: fingerprint
+                    )
+                } catch let cleanupError {
+                    throw DocumentAttachmentError.preparationCleanupFailed(
+                        operation: error.localizedDescription,
+                        cleanup: cleanupError.localizedDescription
+                    )
+                }
+            }
+            throw error
+        }
+
+        if case .absolutePath(let path) = registration.record.location {
+            do {
+                _ = try await services.indexedAttachmentAccessStore.register(
+                    attachmentID: registration.record.id,
+                    selectedURL: sourceURL,
+                    expectedAbsolutePath: path
+                )
+            } catch {
+                if registration.created {
+                    do {
+                        try await services.controlStore.removeDocumentAttachment(
+                            registration.record
+                        )
+                    } catch let cleanupError {
+                        throw DocumentAttachmentError.preparationCleanupFailed(
+                            operation: error.localizedDescription,
+                            cleanup: cleanupError.localizedDescription
+                        )
+                    }
+                }
+                throw error
+            }
+        }
+        return DocumentAttachmentSnapshot(
+            record: registration.record,
+            availability: .available
+        )
+    }
+
+    func prepareDocumentAttachmentPreview(
+        attachmentID: UUID,
+        for target: NoteDocumentAttachmentTarget
+    ) async throws -> DocumentAttachmentPreviewLease {
+        try requireActive()
+        _ = try await verifiedDocumentAttachmentTarget(target)
+        guard let record = try await services.controlStore
+            .documentAttachmentRecords(noteID: target.noteID)
+            .first(where: {
+                $0.id == attachmentID && $0.vaultID == target.vaultID
+            }) else {
+            throw DocumentAttachmentError.unavailable(attachmentID.uuidString)
+        }
+        switch record.location {
+        case .vaultRelative(let path):
+            let repository = try repository(vaultID: record.vaultID)
+            let store = VaultAttachmentStore(vaultURL: await repository.vaultURL)
+            guard let url = try await store.documentURLIfAvailable(
+                relativePath: path
+            ) else {
+                throw DocumentAttachmentError.unavailable(record.filename)
+            }
+            return DocumentAttachmentPreviewLease(
+                accessToken: UUID(),
+                attachmentID: record.id,
+                filename: record.filename,
+                fileURL: url
+            )
+        case .absolutePath(let path):
+            let access = try await services.indexedAttachmentAccessStore.beginAccess(
+                attachmentID: record.id,
+                expectedAbsolutePath: path
+            )
+            return DocumentAttachmentPreviewLease(
+                accessToken: access.token,
+                attachmentID: record.id,
+                filename: record.filename,
+                fileURL: access.url
+            )
+        }
+    }
+
+    func releaseDocumentAttachmentPreview(accessToken: UUID) async {
+        await services.indexedAttachmentAccessStore.endAccess(accessToken)
+    }
+
+    private func verifiedDocumentAttachmentTarget(
+        _ target: NoteDocumentAttachmentTarget
+    ) async throws -> VaultRepository {
+        let repository = try repository(vaultID: target.vaultID)
+        let document = try await repository.load(relativePath: target.relativePath)
+        guard let identity = try await services.controlStore.identity(
+            forVaultID: target.vaultID,
+            relativePath: target.relativePath,
+            fingerprint: document.fingerprint,
+            createIfMissing: false
+        ), identity.id == target.noteID else {
+            throw DocumentAttachmentError.noteIdentityChanged(target.relativePath)
+        }
+        return repository
     }
 
     func importMarkdownSource(

@@ -92,6 +92,20 @@ quieter lower-heading tier. Review and Edit preserve those relative visual and
 accessible levels; Source exposes only the exact authored hierarchy and no
 projected title.
 
+Review and Edit place the Note's document attachments in one compact,
+single-line strip immediately below that title. Existing attachments remain
+visible as paperclip-and-filename capsules; each uses bounded middle truncation,
+exposes its complete filename as Help and accessibility text, and opens native
+Quick Look without moving the document selection. Overflow scrolls locally
+rather than wrapping or narrowing the manuscript. The trailing **Add
+Document** control always retains its layout slot, appears briefly when a Note
+opens or changes, and otherwise becomes visible when pointer or keyboard focus
+enters the title/attachment region. Its menu distinguishes **Attach a Copy…**
+from **Reference Original…**; both remain available in the File menu without
+hover. Hiding the control changes opacity and hit testing only, so document
+layout never moves. Source has no attachment strip because it presents exact
+authored source only.
+
 When a Note enters Edit for the first time without retained window
 presentation, focus enters the inline Note title with one collapsed insertion
 point at its end. Returning to a Note that remains open restores its last title
@@ -101,6 +115,11 @@ restoration requires the same exact source fingerprint. An explicit source
 locator and Managed New Note's body-start insertion override this default.
 Closing the Note's tab ends this focus/selection retention; Scholium keeps no
 permanent vault-wide cursor history.
+
+Quick Look owns a temporary native presentation and any required read-access
+lease. Closing it returns Edit to the title or body target and exact selection
+that owned focus before preview; changing the attachment projection while it is
+open never recreates the retained editor or Review document.
 
 Edit treats all visible document rhythm as addressable. Clicking an authored
 heading's visual padding places the caret in that heading; clicking a visible

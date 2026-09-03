@@ -2001,6 +2001,89 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Document attachment projection preserves the exact source, title DOM, and caret")
+    func documentAttachmentProjectionPreservesEditorState() async throws {
+        let source = "A reason can be disclosed without being created."
+        let harness = EditorHarness(
+            documentTitle: "Reasons and Emotion",
+            source: source,
+            laysOutForPointerTesting: true
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.revealSourceRange(fromUTF16: 9, toUTF16: 9)
+        try await harness.waitUntilSelection(head: 9)
+        _ = try await harness.callPageJavaScript(
+            "window.__scholiumTitleBeforeAttachment = document.querySelector('.scholium-note-title'); return true"
+        )
+
+        let record = DocumentAttachmentRecord(
+            id: UUID(),
+            noteID: UUID(),
+            vaultID: UUID(),
+            location: .vaultRelative(try AttachmentRelativePath(
+                "Attachments/0a10d143-b9c4-4a16-8ca1-758daff70c09/A Very Long Philosophical Manuscript.pdf"
+            ))
+        )
+        harness.session.setDocumentAttachments([
+            DocumentAttachmentSnapshot(record: record, availability: .available),
+        ])
+
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+        var projection: [String: Any]?
+        repeat {
+            projection = try await harness.callPageJavaScript(
+                """
+                const title = document.querySelector('.scholium-note-title');
+                const rail = document.querySelector('.scholium-document-attachment-rail');
+                const capsule = rail?.querySelector('.scholium-document-attachment-capsule');
+                return rail && capsule ? {
+                  sameTitle: title === window.__scholiumTitleBeforeAttachment,
+                  attachmentCount: rail.querySelectorAll('.scholium-document-attachment-capsule').length,
+                  filename: capsule.title || '',
+                  titleBeforeRail: title.getBoundingClientRect().top < rail.getBoundingClientRect().top
+                } : null;
+                """
+            ) as? [String: Any]
+            if projection != nil { break }
+            if clock.now >= deadline {
+                Issue.record("The document attachment projection did not converge.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        } while true
+
+        #expect(projection?["sameTitle"] as? Bool == true)
+        #expect(projection?["attachmentCount"] as? Int == 1)
+        #expect(projection?["filename"] as? String
+            == "A Very Long Philosophical Manuscript.pdf")
+        #expect(projection?["titleBeforeRail"] as? Bool == true)
+        #expect(harness.session.context?.selections.first?.head == 9)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        #expect(harness.session.generation == 0)
+        #expect(!harness.session.isDirty)
+
+        _ = try await harness.callPageJavaScript(
+            "document.querySelector('.scholium-document-attachment-rail')?.classList.remove('scholium-document-attachment-add-visible'); return true"
+        )
+        harness.session.revealDocumentAttachmentControl()
+        try await Task.sleep(for: .milliseconds(80))
+        #expect(try await harness.callPageJavaScript(
+            "return document.querySelector('.scholium-document-attachment-rail')?.classList.contains('scholium-document-attachment-add-visible') === true"
+        ) as? Bool == true)
+        #expect(harness.session.context?.selections.first?.head == 9)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+
+        harness.session.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        #expect(try await harness.callPageJavaScript(
+            "return document.querySelectorAll('.scholium-document-attachment-rail').length"
+        ) as? Int == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
     @Test("Programmatic title focus collapses at the end and recovery records the active surface")
     func titleFocusAndBodyFocusAreRecoverable() async throws {
         let title = "Emotion and Reasons"

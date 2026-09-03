@@ -326,13 +326,153 @@
   function validatedReaderConfiguration(value) {
     if (!value || typeof value !== "object") return null;
     const config = value;
-    if (config.version !== 2 || typeof config.documentID !== "string" || !config.documentID || config.documentID.length > 4096 || typeof config.fingerprint !== "string" || !config.fingerprint || config.fingerprint.length > 256 || !Number.isSafeInteger(config.loadGeneration) || Number(config.loadGeneration) < 0 || typeof config.selectionEnabled !== "boolean" || typeof config.testingEnabled !== "boolean" || typeof config.presentationCSS !== "string" || typeof config.userCSS !== "string" || !config.localization || typeof config.localization !== "object" || !config.localization.strings || typeof config.localization.strings !== "object" || !Array.isArray(config.linkPreviews) || config.linkPreviews.length > 128) return null;
+    if (config.version !== 2 || typeof config.documentID !== "string" || !config.documentID || config.documentID.length > 4096 || typeof config.fingerprint !== "string" || !config.fingerprint || config.fingerprint.length > 256 || !Number.isSafeInteger(config.loadGeneration) || Number(config.loadGeneration) < 0 || typeof config.selectionEnabled !== "boolean" || typeof config.testingEnabled !== "boolean" || typeof config.presentationCSS !== "string" || typeof config.userCSS !== "string" || !config.localization || typeof config.localization !== "object" || !config.localization.strings || typeof config.localization.strings !== "object" || !Array.isArray(config.linkPreviews) || config.linkPreviews.length > 128 || !Array.isArray(config.documentAttachments) || config.documentAttachments.length > 100 || !config.documentAttachments.every((attachment) => Boolean(attachment) && typeof attachment === "object" && typeof attachment.id === "string" && attachment.id.length <= 128 && typeof attachment.filename === "string" && attachment.filename.length <= 1024 && typeof attachment.available === "boolean")) return null;
     return config;
   }
 
   // heading-accessibility.ts
   function bodyHeadingAccessibilityLevel(markdownLevel) {
     return Math.min(6, Math.max(1, markdownLevel) + 1);
+  }
+
+  // system-symbols.ts
+  function systemSymbolElement(key, className = "", ownerDocument = document) {
+    const symbol = ownerDocument.createElement("span");
+    symbol.className = `scholium-system-symbol ${className}`.trim();
+    symbol.dataset.scholiumSystemSymbol = key;
+    symbol.style.setProperty(
+      "--scholium-system-symbol-image",
+      `var(--scholium-system-symbol-${key})`
+    );
+    symbol.setAttribute("aria-hidden", "true");
+    return symbol;
+  }
+
+  // document-attachments.ts
+  function filenameParts(filename) {
+    const characters = Array.from(filename);
+    if (characters.length <= 18) return { leading: filename, trailing: "" };
+    const trailingCount = Math.min(12, Math.max(7, Math.floor(characters.length / 3)));
+    return {
+      leading: characters.slice(0, -trailingCount).join(""),
+      trailing: characters.slice(-trailingCount).join("")
+    };
+  }
+  function localizedTemplate(localized, key, title) {
+    return localized(key).replace("{title}", title);
+  }
+  var attachmentRailByTitle = /* @__PURE__ */ new WeakMap();
+  function revealRailAddControl(rail) {
+    rail.classList.add("scholium-document-attachment-add-visible");
+    (rail.ownerDocument.defaultView ?? window).setTimeout(() => {
+      if (!rail.matches(":hover") && !rail.matches(":focus-within")) {
+        rail.classList.remove("scholium-document-attachment-add-visible");
+      }
+    }, 1800);
+  }
+  function revealDocumentAttachmentAddControl(ownerDocument) {
+    const rail = ownerDocument.querySelector(
+      ".scholium-document-attachment-rail"
+    );
+    if (!rail) return false;
+    revealRailAddControl(rail);
+    return true;
+  }
+  function bindTitleRegionVisibility(rail) {
+    const title = rail.parentElement?.querySelector(".scholium-note-title") ?? rail.closest(".cm-content")?.querySelector(".scholium-note-title") ?? rail.ownerDocument.querySelector(".scholium-note-title");
+    if (!title) return;
+    attachmentRailByTitle.set(title, rail);
+    if (title.dataset.scholiumAttachmentVisibilityBound === "true") return;
+    title.dataset.scholiumAttachmentVisibilityBound = "true";
+    const show = () => attachmentRailByTitle.get(title)?.classList.add(
+      "scholium-document-attachment-add-visible"
+    );
+    const hide = () => attachmentRailByTitle.get(title)?.classList.remove(
+      "scholium-document-attachment-add-visible"
+    );
+    title.addEventListener("pointerenter", show);
+    title.addEventListener("pointerleave", hide);
+    title.addEventListener("focusin", show);
+    title.addEventListener("focusout", hide);
+  }
+  function createDocumentAttachmentRail(ownerDocument, attachments, options) {
+    const rail = ownerDocument.createElement("div");
+    rail.className = "scholium-document-attachment-rail";
+    rail.dataset.scholiumProtected = "document-attachments";
+    rail.setAttribute("role", "group");
+    rail.setAttribute("aria-label", options.localized("Attachments"));
+    const strip = ownerDocument.createElement("div");
+    strip.className = "scholium-document-attachment-strip";
+    for (const attachment of attachments) {
+      const button = ownerDocument.createElement("button");
+      button.type = "button";
+      button.className = "scholium-document-attachment-capsule";
+      button.dataset.attachmentID = attachment.id;
+      button.dataset.available = attachment.available ? "true" : "false";
+      button.title = attachment.filename;
+      const label = localizedTemplate(
+        options.localized,
+        attachment.available ? "Preview attached document {title}" : "Attached document unavailable {title}",
+        attachment.filename
+      );
+      button.setAttribute("aria-label", label);
+      button.setAttribute("aria-disabled", attachment.available ? "false" : "true");
+      button.append(systemSymbolElement("paperclip", "scholium-document-attachment-icon", ownerDocument));
+      const text = ownerDocument.createElement("span");
+      text.className = "scholium-document-attachment-name";
+      const parts = filenameParts(attachment.filename);
+      const leading = ownerDocument.createElement("span");
+      leading.className = "scholium-document-attachment-name-leading";
+      leading.textContent = parts.leading;
+      const trailing = ownerDocument.createElement("span");
+      trailing.className = "scholium-document-attachment-name-trailing";
+      trailing.textContent = parts.trailing;
+      text.append(leading, trailing);
+      button.append(text);
+      button.addEventListener("pointerdown", (event) => event.preventDefault());
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        if (attachment.available) options.requestPreview(attachment.id);
+      });
+      strip.append(button);
+    }
+    const add = ownerDocument.createElement("button");
+    add.type = "button";
+    add.className = "scholium-document-attachment-add";
+    add.setAttribute("aria-label", options.localized("Add Document"));
+    add.title = options.localized("Add Document");
+    add.append(systemSymbolElement("paperclip", "scholium-document-attachment-icon", ownerDocument));
+    const addLabel = ownerDocument.createElement("span");
+    addLabel.textContent = options.localized("Add Document");
+    add.append(addLabel);
+    add.addEventListener("pointerdown", (event) => event.preventDefault());
+    add.addEventListener("click", (event) => {
+      event.preventDefault();
+      options.requestMenu(add.getBoundingClientRect());
+    });
+    strip.append(add);
+    rail.append(strip);
+    if (options.revealInitially) {
+      revealRailAddControl(rail);
+    }
+    rail.addEventListener("pointerenter", () => {
+      rail.classList.add("scholium-document-attachment-add-visible");
+    });
+    rail.addEventListener("pointerleave", () => {
+      if (!rail.matches(":focus-within")) {
+        rail.classList.remove("scholium-document-attachment-add-visible");
+      }
+    });
+    rail.addEventListener("focusin", () => {
+      rail.classList.add("scholium-document-attachment-add-visible");
+    });
+    rail.addEventListener("focusout", () => {
+      if (!rail.matches(":hover")) {
+        rail.classList.remove("scholium-document-attachment-add-visible");
+      }
+    });
+    queueMicrotask(() => bindTitleRegionVisibility(rail));
+    return rail;
   }
 
   // reader.ts
@@ -355,7 +495,8 @@
       userCSS,
       localization,
       linkPreviews,
-      testingEnabled
+      testingEnabled,
+      documentAttachments
     } = config;
     const presentationStyle = requiredElement("scholium-presentation-css");
     const userStyle = requiredElement("scholium-user-css");
@@ -381,6 +522,32 @@
       type,
       ...extra
     });
+    let didRevealDocumentAttachmentControl = false;
+    const renderDocumentAttachments = (attachments, revealInitially) => {
+      const current = document.getElementById("scholium-document-attachment-mount") ?? document.querySelector(".scholium-document-attachment-rail");
+      if (!current) return false;
+      const rail = createDocumentAttachmentRail(document, attachments, {
+        localized,
+        revealInitially: revealInitially && !didRevealDocumentAttachmentControl,
+        requestPreview: (attachmentID) => post(
+          "requestDocumentAttachmentPreview",
+          { attachmentID }
+        ),
+        requestMenu: (anchor) => post("requestDocumentAttachmentMenu", {
+          clientX: anchor.left,
+          clientY: anchor.bottom
+        })
+      });
+      didRevealDocumentAttachmentControl ||= revealInitially;
+      current.replaceWith(rail);
+      return true;
+    };
+    renderDocumentAttachments(documentAttachments, true);
+    readerWindow.scholiumSetDocumentAttachments = (attachments) => {
+      if (!Array.isArray(attachments) || attachments.length > 100) return false;
+      return renderDocumentAttachments(attachments, false);
+    };
+    readerWindow.scholiumRevealDocumentAttachmentControl = () => revealDocumentAttachmentAddControl(document);
     const popover = requiredElement("scholium-preview-popover");
     const previewTitle = popover.querySelector(".scholium-preview-title");
     const previewMetadata = popover.querySelector(".scholium-preview-metadata");

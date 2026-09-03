@@ -445,12 +445,17 @@ extension MarkdownEditorSession {
               (0...1).contains(verticalFraction) else {
             throw SessionError.invalidResult
         }
+        // Let CodeMirror finish the selection-driven projection before
+        // measuring. Waiting after measurement would deliberately click a
+        // stale point whenever an active semantic line changes geometry.
+        try await Task.sleep(for: .milliseconds(100))
         let result = try await webView.callAsyncJavaScript(
             """
             const elements = Array.from(document.querySelectorAll(selector));
             const element = elements[index];
             if (!(element instanceof HTMLElement)) return null;
             element.scrollIntoView({block: 'center', behavior: 'auto'});
+            await new Promise(resolve => setTimeout(resolve, 50));
             const rect = element.getBoundingClientRect();
             if (rect.width <= 0 || rect.height <= 0) return null;
             return {
@@ -472,7 +477,12 @@ extension MarkdownEditorSession {
               let y = (position["y"] as? NSNumber)?.doubleValue else {
             throw SessionError.invalidResult
         }
-        try await testingClickPagePoint(x: x, y: y, in: webView)
+        try await testingClickPagePoint(
+            x: x,
+            y: y,
+            in: webView,
+            waitsForLayout: false
+        )
     }
 
     private func testingVisibleTextPoint(
@@ -513,10 +523,13 @@ extension MarkdownEditorSession {
         y: Double,
         in webView: WKWebView,
         modifierFlags: NSEvent.ModifierFlags = [],
-        clickCount: Int = 1
+        clickCount: Int = 1,
+        waitsForLayout: Bool = true
     ) async throws {
         guard let window = webView.window else { throw SessionError.invalidResult }
-        try await Task.sleep(for: .milliseconds(100))
+        if waitsForLayout {
+            try await Task.sleep(for: .milliseconds(100))
+        }
 
         let webViewPoint = NSPoint(
             x: x,

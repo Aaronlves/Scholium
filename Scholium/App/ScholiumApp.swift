@@ -975,6 +975,9 @@ struct ScholiumFocusedEditorActions {
     let announceDocumentStatistics: () -> Void
     let importImage: () -> Void
     let indexImage: () -> Void
+    let canAttachDocument: Bool
+    let attachDocumentCopy: () -> Void
+    let referenceOriginalDocument: () -> Void
 }
 
 struct ScholiumFocusedEditorActionsKey: FocusedValueKey {
@@ -1024,6 +1027,7 @@ private struct ScholiumAfterNewItemCommandContent: View {
     let storageReady: Bool
     @Environment(\.openWindow) private var openWindow
     @FocusedObject private var appState: WindowModel?
+    @FocusedValue(\.scholiumEditorActions) private var editorActions
 
     var body: some View {
         Button("New Triptych…") {
@@ -1083,6 +1087,13 @@ private struct ScholiumAfterNewItemCommandContent: View {
             appState?.currentDocumentCapabilities.allows(.moveToSystemTrash)
                 != true
         )
+        Divider()
+        Button("Attach a Copy…") { editorActions?.attachDocumentCopy() }
+            .disabled(editorActions?.canAttachDocument != true)
+        Button("Reference Original…") {
+            editorActions?.referenceOriginalDocument()
+        }
+        .disabled(editorActions?.canAttachDocument != true)
         Divider()
         Button("Reveal Current Vault in Finder") { appState?.revealVaultInFinder() }
             .disabled(appState?.vaultConfig == nil)

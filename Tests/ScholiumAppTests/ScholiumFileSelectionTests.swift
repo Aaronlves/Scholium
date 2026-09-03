@@ -126,7 +126,7 @@ struct ScholiumFileSelectionTests {
         #expect(nativePanelOwners == ["UI/Components/ScholiumFileSelection.swift"])
         #expect(requestOwners == [
             "App/ScholiumApp.swift": 1,
-            "Views/Note/NoteContentView.swift": 1,
+            "Views/Note/NoteContentView.swift": 2,
             "Views/RestoreWorkspaceAccessView.swift": 1,
             "Views/WorkspaceSettingsView.swift": 3,
             "Views/WorkspaceSetupView.swift": 2,

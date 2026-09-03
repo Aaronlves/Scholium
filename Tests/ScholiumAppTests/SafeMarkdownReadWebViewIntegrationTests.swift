@@ -164,6 +164,91 @@ extension MarkdownEditorWebViewIntegrationTests {
         let titleRange = try #require(html.range(of: "scholium-note-title"))
         let sectionRange = try #require(html.range(of: "Authored section"))
         #expect(titleRange.lowerBound < sectionRange.lowerBound)
+
+        let emptyHTML = SafeMarkdownReadWebView.Coordinator.documentHTML(
+            body: "",
+            documentTitle: "Empty Argument"
+        )
+        #expect(emptyHTML.contains("scholium-document-attachment-mount"))
+        #expect(emptyHTML.contains("scholium-document-empty-state"))
+        #expect(emptyHTML.contains("This note has no body content."))
+    }
+
+    @Test("Review updates document attachments without reloading or moving the document")
+    func reviewDocumentAttachmentProjectionIsIndependent() async throws {
+        let source = "# Question\n\n" + (1...40).map {
+            "Philosophical paragraph \($0)."
+        }.joined(separator: "\n\n")
+        let document = NoteDocument(relativePath: "Reasons.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: document.fingerprint.sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0,
+            documentTitle: "Reasons and Emotion"
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        _ = try await harness.callBridgeJavaScript(
+            "window.scrollTo({top: 220, behavior: 'auto'}); return window.scrollY;"
+        )
+        let before = try #require(try await harness.callBridgeJavaScript(
+            "window.__scholiumReviewTitleBeforeAttachment = document.querySelector('.scholium-note-title'); return window.scrollY;"
+        ) as? NSNumber).doubleValue
+
+        let record = DocumentAttachmentRecord(
+            id: UUID(),
+            noteID: UUID(),
+            vaultID: UUID(),
+            location: .vaultRelative(try AttachmentRelativePath(
+                "Attachments/f94d290a-3cb3-41b6-8cb5-0751fdfbbc66/Emotion and Reasons.pdf"
+            ))
+        )
+        harness.updateDocumentAttachments([
+            DocumentAttachmentSnapshot(record: record, availability: .available),
+        ])
+
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+        var result: [String: Any]?
+        repeat {
+            result = try await harness.callBridgeJavaScript(
+                """
+                const rail = document.querySelector('.scholium-document-attachment-rail');
+                const capsule = rail?.querySelector('.scholium-document-attachment-capsule');
+                return capsule ? {
+                  sameTitle: document.querySelector('.scholium-note-title') === window.__scholiumReviewTitleBeforeAttachment,
+                  filename: capsule.title || '',
+                  scrollY: window.scrollY
+                } : null;
+                """
+            ) as? [String: Any]
+            if result != nil { break }
+            if clock.now >= deadline {
+                Issue.record("Review did not apply its document attachment projection.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        } while true
+
+        #expect(result?["sameTitle"] as? Bool == true)
+        #expect(result?["filename"] as? String == "Emotion and Reasons.pdf")
+        let after = (result?["scrollY"] as? NSNumber)?.doubleValue ?? -1
+        #expect(abs(after - before) < 1)
+        _ = try await harness.callBridgeJavaScript(
+            "document.querySelector('.scholium-document-attachment-rail')?.classList.remove('scholium-document-attachment-add-visible'); return true"
+        )
+        harness.revealDocumentAttachmentControl()
+        try await Task.sleep(for: .milliseconds(80))
+        #expect(try await harness.callBridgeJavaScript(
+            "return document.querySelector('.scholium-document-attachment-rail')?.classList.contains('scholium-document-attachment-add-visible') === true"
+        ) as? Bool == true)
+        let afterReveal = try #require(try await harness.callBridgeJavaScript(
+            "return window.scrollY"
+        ) as? NSNumber).doubleValue
+        #expect(abs(afterReveal - before) < 1)
+        await harness.closeAndDrain()
     }
 
     @Test("Read loads its packaged prose font through the allowlisted scheme")
@@ -1507,6 +1592,9 @@ extension MarkdownEditorWebViewIntegrationTests {
         @Published var reachedSourceLine: Int?
         @Published var linkPreviews: [DocumentLinkPreview] = []
         @Published var linkPreviewRevision = "no-previews"
+        @Published var documentAttachments: [DocumentAttachmentSnapshot] = []
+        @Published var documentAttachmentRevision = "no-document-attachments"
+        @Published var documentAttachmentRevealRevision: UInt64 = 0
         @Published var selectionSurfaceIsActive = true
         var selection: MarkdownReviewSelection?
         #if DEBUG
@@ -1586,6 +1674,17 @@ extension MarkdownEditorWebViewIntegrationTests {
             linkPreviewRevision = revision
         }
 
+        func updateDocumentAttachments(
+            _ attachments: [DocumentAttachmentSnapshot]
+        ) {
+            documentAttachments = attachments
+            documentAttachmentRevision = UUID().uuidString
+        }
+
+        func revealDocumentAttachmentControl() {
+            documentAttachmentRevealRevision &+= 1
+        }
+
     }
 
     @MainActor
@@ -1660,6 +1759,16 @@ extension MarkdownEditorWebViewIntegrationTests {
                 }
                 try await Task.sleep(for: .milliseconds(25))
             }
+        }
+
+        func updateDocumentAttachments(
+            _ attachments: [DocumentAttachmentSnapshot]
+        ) {
+            sourceBox.updateDocumentAttachments(attachments)
+        }
+
+        func revealDocumentAttachmentControl() {
+            sourceBox.revealDocumentAttachmentControl()
         }
 
         func resize(width: CGFloat, height: CGFloat, duration: TimeInterval = 0) {
@@ -2475,6 +2584,10 @@ extension MarkdownEditorWebViewIntegrationTests {
                 configurationRevision: "read-harness:\(sourceBox.presentationCSS.hashValue):\(sourceBox.userCSS.hashValue)",
                 linkPreviews: sourceBox.linkPreviews,
                 linkPreviewRevision: sourceBox.linkPreviewRevision,
+                documentAttachments: sourceBox.documentAttachments,
+                documentAttachmentRevision: sourceBox.documentAttachmentRevision,
+                documentAttachmentRevealRevision:
+                    sourceBox.documentAttachmentRevealRevision,
                 onLinkClick: { _ in },
                 onOpenExternalURL: { _ in },
                 onSelectionChange: { sourceBox.selection = $0 },

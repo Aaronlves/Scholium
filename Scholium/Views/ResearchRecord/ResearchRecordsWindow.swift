@@ -669,6 +669,8 @@ struct ResearchRecordsWindowView: View {
                                         .accessibilityHidden(true)
                                     Text(evidenceTitle(item))
                                         .lineLimit(1)
+                                        .truncationMode(.middle)
+                                        .frame(maxWidth: 220, alignment: .leading)
                                     Text(referenceRelation(item.reference.relation))
                                         .scholiumForeground(.secondaryText)
                                     if let exceptionalState = exceptionalEvidenceState(item) {
@@ -677,7 +679,7 @@ struct ResearchRecordsWindowView: View {
                                     }
                                 }
                                 .font(ScholiumTypography.interface(.compact))
-                                .fixedSize(horizontal: true, vertical: false)
+                                .frame(maxWidth: 340, alignment: .leading)
                             }
                             .buttonStyle(.bordered)
                             .controlSize(.small)

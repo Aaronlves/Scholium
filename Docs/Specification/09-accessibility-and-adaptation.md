@@ -98,6 +98,15 @@
 - Statistics identify body versus selection scope. Spelling/grammar preserve
   system routes. Image Import/Index name the copy-versus-reference consequence
   and preserve source/focus on failure.
+- Note-level document attachments expose paperclip decoration separately from
+  each complete filename, availability, and preview action. Middle truncation
+  is visual only; Help and accessibility retain the complete name. The local
+  strip scrolls focused off-screen attachments into view, **Add Document** is
+  reachable through keyboard focus and the File menu without hover, and the
+  copy-versus-reference choice is explicit. Quick Look returns focus to the
+  initiating title/body target without changing selection. Reduce Motion makes
+  the Add-control reveal immediate while preserving the same content and
+  layout.
 - English, Chinese, mixed content, and other Unicode source retain consistent
   visible cursor/selection within the declared support boundary. Technical
   regions are directionally isolated without changing surrounding prose.

@@ -37,6 +37,7 @@ public actor IndexedAttachmentAccessStore {
     private let triptychID: UUID
     private let directory: SecureRecordDirectory
     private let lock: AdvisoryFileLock
+    private var activeAccesses: [UUID: (url: URL, started: Bool)] = [:]
 
     public init(applicationSupportURL: URL, triptychID: UUID) throws {
         self.triptychID = triptychID
@@ -167,6 +168,69 @@ public actor IndexedAttachmentAccessStore {
                 .isSymbolicLinkKey,
             ]) else { return false }
             return values.isRegularFile == true && values.isSymbolicLink != true
+        }
+    }
+
+    /// Begins one bounded read lease for a native preview. Bookmark bytes stay
+    /// machine-local; the caller receives only the resolved URL and an opaque
+    /// token that must be released when presentation ends.
+    public func beginAccess(
+        attachmentID: UUID,
+        expectedAbsolutePath: String
+    ) throws -> (token: UUID, url: URL) {
+        try lock.withSharedLock {
+            guard let binding = try load().bindings.first(where: {
+                $0.attachmentID == attachmentID
+            }), binding.absolutePath == expectedAbsolutePath else {
+                throw IndexedAttachmentAccessError.bookmarkUnavailable(
+                    expectedAbsolutePath
+                )
+            }
+            var stale = false
+            guard let resolved = try? URL(
+                resolvingBookmarkData: binding.bookmarkData,
+                options: [.withSecurityScope, .withoutUI],
+                relativeTo: nil,
+                bookmarkDataIsStale: &stale
+            ), !stale,
+                  resolved.resolvingSymlinksInPath().standardizedFileURL.path
+                    == expectedAbsolutePath else {
+                throw IndexedAttachmentAccessError.bookmarkUnavailable(
+                    expectedAbsolutePath
+                )
+            }
+            let started = resolved.startAccessingSecurityScopedResource()
+            do {
+                let values = try resolved.resourceValues(forKeys: [
+                    .isRegularFileKey,
+                    .isSymbolicLinkKey,
+                ])
+                guard values.isRegularFile == true,
+                      values.isSymbolicLink != true else {
+                    throw IndexedAttachmentAccessError.bookmarkUnavailable(
+                        expectedAbsolutePath
+                    )
+                }
+            } catch {
+                if started { resolved.stopAccessingSecurityScopedResource() }
+                throw error
+            }
+            let token = UUID()
+            activeAccesses[token] = (resolved, started)
+            return (token, resolved)
+        }
+    }
+
+    public func endAccess(_ token: UUID) {
+        guard let access = activeAccesses.removeValue(forKey: token) else { return }
+        if access.started { access.url.stopAccessingSecurityScopedResource() }
+    }
+
+    public func endAllAccesses() {
+        let accesses = activeAccesses.values
+        activeAccesses.removeAll()
+        for access in accesses where access.started {
+            access.url.stopAccessingSecurityScopedResource()
         }
     }
 

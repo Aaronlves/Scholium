@@ -52,6 +52,13 @@
   body and heading ink: body prose is a subtle Primary Text/Paper mix, while
   titles and headings retain Primary Text without creating another semantic
   color role.
+- Review and Edit show Note-level document attachments directly below the
+  filename title in one compact, horizontally scrolling capsule strip. Full
+  filenames remain available through Help/accessibility despite bounded middle
+  truncation; primary activation opens native Quick Look. The trailing Add
+  control reveals on note entry and title/strip hover or focus without moving
+  layout, while File provides permanent **Attach a Copy…** and **Reference
+  Original…** routes. Source omits this source-neutral projection.
 - Inspector presents Overview and Connect. Overview exposes current About,
   file, Settlement, Critique, and applicable Zotero facts and operations.
   Connect presents exact incoming or outgoing link occurrences, their local

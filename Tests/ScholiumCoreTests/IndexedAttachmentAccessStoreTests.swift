@@ -25,6 +25,13 @@ struct IndexedAttachmentAccessStoreTests {
             attachmentID: attachmentID,
             expectedAbsolutePath: selected.path
         ))
+        let access = try await store.beginAccess(
+            attachmentID: attachmentID,
+            expectedAbsolutePath: selected.path
+        )
+        #expect(access.url.resolvingSymlinksInPath().standardizedFileURL.path
+            == selected.path)
+        await store.endAccess(access.token)
 
         let moved = fixture.root.appendingPathComponent("Moved.png")
         try FileManager.default.moveItem(at: selected, to: moved)

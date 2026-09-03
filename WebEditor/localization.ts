@@ -1,4 +1,8 @@
 export const webInterfaceLocalizationKeys = [
+  "Attachments",
+  "Add Document",
+  "Preview attached document {title}",
+  "Attached document unavailable {title}",
   "File and image paste is not supported in Editor 1.0.",
   "Markdown editor, Edit mode",
   "Markdown source editor",

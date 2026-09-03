@@ -10,6 +10,11 @@ import {
   validatedReaderConfiguration,
 } from "./reader-configuration";
 import {bodyHeadingAccessibilityLevel} from "./heading-accessibility";
+import {
+  createDocumentAttachmentRail,
+  revealDocumentAttachmentAddControl,
+  type DocumentAttachmentPresentation,
+} from "./document-attachments";
 
 interface ReaderMessageHandler {
   postMessage(message: Record<string, unknown>): void;
@@ -38,6 +43,10 @@ type ReaderWindow = Window & {
   scholiumReviewSelection?: ReturnType<typeof createReviewSelectionPresentation>;
   scholiumMermaidReady?: Promise<void>;
   scholiumSetLinkPreviews?: (previews: ReadLinkPreview[]) => void;
+  scholiumSetDocumentAttachments?: (
+    attachments: DocumentAttachmentPresentation[],
+  ) => boolean;
+  scholiumRevealDocumentAttachmentControl?: () => boolean;
   scholiumSetReviewSelectionSurfaceActive?: (active: boolean) => boolean;
   scholiumReadScroll?: {
     restoreCount: number;
@@ -62,7 +71,7 @@ async function initializeReader(value: unknown): Promise<void> {
   const {
     version, documentID, fingerprint, loadGeneration,
     selectionEnabled, presentationCSS, userCSS, localization, linkPreviews,
-    testingEnabled,
+    testingEnabled, documentAttachments,
   } = config;
   const presentationStyle = requiredElement<HTMLStyleElement>('scholium-presentation-css');
   const userStyle = requiredElement<HTMLStyleElement>('scholium-user-css');
@@ -86,6 +95,37 @@ async function initializeReader(value: unknown): Promise<void> {
   const post = (type: string, extra: Record<string, unknown> = {}) => handler?.postMessage({
     version, documentID, fingerprint, loadGeneration, type, ...extra,
   });
+  let didRevealDocumentAttachmentControl = false;
+  const renderDocumentAttachments = (
+    attachments: readonly DocumentAttachmentPresentation[],
+    revealInitially: boolean,
+  ) => {
+    const current = document.getElementById("scholium-document-attachment-mount")
+      ?? document.querySelector<HTMLElement>(".scholium-document-attachment-rail");
+    if (!current) return false;
+    const rail = createDocumentAttachmentRail(document, attachments, {
+      localized,
+      revealInitially: revealInitially && !didRevealDocumentAttachmentControl,
+      requestPreview: (attachmentID) => post(
+        "requestDocumentAttachmentPreview",
+        {attachmentID},
+      ),
+      requestMenu: (anchor) => post("requestDocumentAttachmentMenu", {
+        clientX: anchor.left,
+        clientY: anchor.bottom,
+      }),
+    });
+    didRevealDocumentAttachmentControl ||= revealInitially;
+    current.replaceWith(rail);
+    return true;
+  };
+  renderDocumentAttachments(documentAttachments, true);
+  readerWindow.scholiumSetDocumentAttachments = (attachments) => {
+    if (!Array.isArray(attachments) || attachments.length > 100) return false;
+    return renderDocumentAttachments(attachments, false);
+  };
+  readerWindow.scholiumRevealDocumentAttachmentControl = () =>
+    revealDocumentAttachmentAddControl(document);
   const popover = requiredElement('scholium-preview-popover');
   const previewTitle = popover.querySelector<HTMLElement>('.scholium-preview-title')!;
   const previewMetadata = popover.querySelector<HTMLElement>('.scholium-preview-metadata')!;

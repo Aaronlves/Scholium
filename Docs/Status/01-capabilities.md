@@ -30,6 +30,12 @@
   duplicating Review paragraph-end spacing or collapsing beneath a caret. Revealed
   heading and quotation prefixes retain their line's full computed size outside
   the prose measure without moving visible text or adjacent blocks.
+- Notes can bind regular document files independently of Markdown: copy stores
+  exact bytes under `Attachments`, reference retains the Finder-owned file, and
+  both persist a stable-Note relationship in portable control state with only
+  machine-local access credentials. Quick Look resolves current availability;
+  media files remain on the inline image/audio path. Attachment projection does
+  not change source, editor generation, selection, Undo, or scroll.
 - Strict portable Research Records are reachable under
   `.scholium/inquiry-records/v1/`. Create, substantive append, paged read, and
   append-only clerical correction preserve external-Agent attribution,

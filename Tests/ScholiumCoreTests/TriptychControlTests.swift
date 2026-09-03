@@ -230,6 +230,53 @@ struct TriptychControlTests {
         #expect(!FileManager.default.fileExists(atPath: recordURL.path))
     }
 
+    @Test("Document attachments are portable relationships scoped by stable Note identity")
+    func documentAttachmentCatalogScopesRelationshipsByNote() async throws {
+        let fixture = try Fixture()
+        defer { fixture.remove() }
+        let store = TriptychControlStore(worksVaultURL: fixture.works)
+        let vaultIDs = Dictionary(
+            uniqueKeysWithValues: WorkspaceVaultSlot.allCases.map { ($0, UUID()) }
+        )
+        _ = try await store.bootstrap(vaultIDs: vaultIDs)
+        let vaultID = try #require(vaultIDs[.output])
+        let firstNote = UUID()
+        let secondNote = UUID()
+        let location = try AttachmentLocation(
+            absolutePath: "/Users/researcher/Documents/Argument.pdf"
+        )
+
+        let first = try await store.registerDocumentAttachment(
+            noteID: firstNote,
+            vaultID: vaultID,
+            location: location
+        )
+        let reused = try await store.registerDocumentAttachment(
+            noteID: firstNote,
+            vaultID: vaultID,
+            location: location
+        )
+        let second = try await store.registerDocumentAttachment(
+            noteID: secondNote,
+            vaultID: vaultID,
+            location: location
+        )
+
+        #expect(first.created)
+        #expect(!reused.created)
+        #expect(reused.record == first.record)
+        #expect(second.created)
+        #expect(second.record.id != first.record.id)
+        #expect(try await store.documentAttachmentRecords(noteID: firstNote)
+            == [first.record])
+        #expect(try await store.documentAttachmentRecords().count == 2)
+
+        try await store.removeDocumentAttachment(first.record)
+        #expect(try await store.documentAttachmentRecords(noteID: firstNote).isEmpty)
+        #expect(try await store.documentAttachmentRecords(noteID: secondNote)
+            == [second.record])
+    }
+
     @Test("Portable Settings schema has one bounded set of owners")
     func portableSettingsSchemaOwners() throws {
         let object = try #require(

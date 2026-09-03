@@ -77,6 +77,21 @@ public protocol DocumentUseCases: LibraryMutationUseCases {
         for note: VaultQualifiedNoteID
     ) async throws -> PreparedImageAttachment
     func unavailableIndexedImagePaths(in markdownSource: String) async throws -> [String]
+    func documentAttachments(
+        for target: NoteDocumentAttachmentTarget
+    ) async throws -> [DocumentAttachmentSnapshot]
+    func attachDocument(
+        at sourceURL: URL,
+        to target: NoteDocumentAttachmentTarget,
+        management: DocumentAttachmentManagement
+    ) async throws -> DocumentAttachmentSnapshot
+    func prepareDocumentAttachmentPreview(
+        attachmentID: UUID,
+        for target: NoteDocumentAttachmentTarget
+    ) async throws -> DocumentAttachmentPreviewLease
+    func releaseDocumentAttachmentPreview(
+        accessToken: UUID
+    ) async
     func rollbackImageAttachment(
         _ preparation: PreparedImageAttachment
     ) async throws

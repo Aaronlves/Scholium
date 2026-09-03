@@ -21040,13 +21040,15 @@
   var completionKeymapExt = /* @__PURE__ */ Prec.highest(/* @__PURE__ */ keymap.computeN([completionConfig], (state) => state.facet(completionConfig).defaultKeymap ? [completionKeymap] : []));
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 20;
+  var EDITOR_PROTOCOL_VERSION = 21;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var operationTypes = /* @__PURE__ */ new Set([
     "initialize",
     "setMode",
     "setDocumentTitle",
+    "setDocumentAttachments",
+    "revealDocumentAttachmentControl",
     "setPresentationCSS",
     "setUserCSS",
     "setLinkPreviews",
@@ -21143,6 +21145,8 @@
   }
   var forwardReadableOperationTypes = /* @__PURE__ */ new Set([
     "setDocumentTitle",
+    "setDocumentAttachments",
+    "revealDocumentAttachmentControl",
     "queryText",
     "querySelection",
     "queryContext",
@@ -21179,6 +21183,8 @@
         return validMode(operation.mode);
       case "setDocumentTitle":
         return typeof operation.value === "string" && operation.value.length <= 1024;
+      case "setDocumentAttachments":
+        return Array.isArray(operation.value) && operation.value.length <= 100 && operation.value.every((item) => Boolean(item) && typeof item === "object" && typeof item.id === "string" && String(item.id).length <= 128 && typeof item.filename === "string" && String(item.filename).length <= 1024 && typeof item.available === "boolean");
       case "setPresentationCSS":
       case "setUserCSS":
         return typeof operation.value === "string" && operation.value.length <= 1e6;
@@ -21216,6 +21222,7 @@
       case "captureRecovery":
       case "showPreview":
       case "measureVisibleProjection":
+      case "revealDocumentAttachmentControl":
       case "clearDocumentFind":
       case "markClean":
       case "focus":
@@ -30764,6 +30771,10 @@ ${fence}
 
   // localization.ts
   var webInterfaceLocalizationKeys = [
+    "Attachments",
+    "Add Document",
+    "Preview attached document {title}",
+    "Attached document unavailable {title}",
     "File and image paste is not supported in Editor 1.0.",
     "Markdown editor, Edit mode",
     "Markdown source editor",
@@ -33439,6 +33450,133 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       latest?.();
     }
   };
+
+  // document-attachments.ts
+  function filenameParts(filename) {
+    const characters = Array.from(filename);
+    if (characters.length <= 18) return { leading: filename, trailing: "" };
+    const trailingCount = Math.min(12, Math.max(7, Math.floor(characters.length / 3)));
+    return {
+      leading: characters.slice(0, -trailingCount).join(""),
+      trailing: characters.slice(-trailingCount).join("")
+    };
+  }
+  function localizedTemplate2(localized2, key, title) {
+    return localized2(key).replace("{title}", title);
+  }
+  var attachmentRailByTitle = /* @__PURE__ */ new WeakMap();
+  function revealRailAddControl(rail) {
+    rail.classList.add("scholium-document-attachment-add-visible");
+    (rail.ownerDocument.defaultView ?? window).setTimeout(() => {
+      if (!rail.matches(":hover") && !rail.matches(":focus-within")) {
+        rail.classList.remove("scholium-document-attachment-add-visible");
+      }
+    }, 1800);
+  }
+  function revealDocumentAttachmentAddControl(ownerDocument) {
+    const rail = ownerDocument.querySelector(
+      ".scholium-document-attachment-rail"
+    );
+    if (!rail) return false;
+    revealRailAddControl(rail);
+    return true;
+  }
+  function bindTitleRegionVisibility(rail) {
+    const title = rail.parentElement?.querySelector(".scholium-note-title") ?? rail.closest(".cm-content")?.querySelector(".scholium-note-title") ?? rail.ownerDocument.querySelector(".scholium-note-title");
+    if (!title) return;
+    attachmentRailByTitle.set(title, rail);
+    if (title.dataset.scholiumAttachmentVisibilityBound === "true") return;
+    title.dataset.scholiumAttachmentVisibilityBound = "true";
+    const show = () => attachmentRailByTitle.get(title)?.classList.add(
+      "scholium-document-attachment-add-visible"
+    );
+    const hide = () => attachmentRailByTitle.get(title)?.classList.remove(
+      "scholium-document-attachment-add-visible"
+    );
+    title.addEventListener("pointerenter", show);
+    title.addEventListener("pointerleave", hide);
+    title.addEventListener("focusin", show);
+    title.addEventListener("focusout", hide);
+  }
+  function createDocumentAttachmentRail(ownerDocument, attachments, options) {
+    const rail = ownerDocument.createElement("div");
+    rail.className = "scholium-document-attachment-rail";
+    rail.dataset.scholiumProtected = "document-attachments";
+    rail.setAttribute("role", "group");
+    rail.setAttribute("aria-label", options.localized("Attachments"));
+    const strip = ownerDocument.createElement("div");
+    strip.className = "scholium-document-attachment-strip";
+    for (const attachment of attachments) {
+      const button = ownerDocument.createElement("button");
+      button.type = "button";
+      button.className = "scholium-document-attachment-capsule";
+      button.dataset.attachmentID = attachment.id;
+      button.dataset.available = attachment.available ? "true" : "false";
+      button.title = attachment.filename;
+      const label = localizedTemplate2(
+        options.localized,
+        attachment.available ? "Preview attached document {title}" : "Attached document unavailable {title}",
+        attachment.filename
+      );
+      button.setAttribute("aria-label", label);
+      button.setAttribute("aria-disabled", attachment.available ? "false" : "true");
+      button.append(systemSymbolElement("paperclip", "scholium-document-attachment-icon", ownerDocument));
+      const text = ownerDocument.createElement("span");
+      text.className = "scholium-document-attachment-name";
+      const parts = filenameParts(attachment.filename);
+      const leading = ownerDocument.createElement("span");
+      leading.className = "scholium-document-attachment-name-leading";
+      leading.textContent = parts.leading;
+      const trailing = ownerDocument.createElement("span");
+      trailing.className = "scholium-document-attachment-name-trailing";
+      trailing.textContent = parts.trailing;
+      text.append(leading, trailing);
+      button.append(text);
+      button.addEventListener("pointerdown", (event) => event.preventDefault());
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        if (attachment.available) options.requestPreview(attachment.id);
+      });
+      strip.append(button);
+    }
+    const add2 = ownerDocument.createElement("button");
+    add2.type = "button";
+    add2.className = "scholium-document-attachment-add";
+    add2.setAttribute("aria-label", options.localized("Add Document"));
+    add2.title = options.localized("Add Document");
+    add2.append(systemSymbolElement("paperclip", "scholium-document-attachment-icon", ownerDocument));
+    const addLabel = ownerDocument.createElement("span");
+    addLabel.textContent = options.localized("Add Document");
+    add2.append(addLabel);
+    add2.addEventListener("pointerdown", (event) => event.preventDefault());
+    add2.addEventListener("click", (event) => {
+      event.preventDefault();
+      options.requestMenu(add2.getBoundingClientRect());
+    });
+    strip.append(add2);
+    rail.append(strip);
+    if (options.revealInitially) {
+      revealRailAddControl(rail);
+    }
+    rail.addEventListener("pointerenter", () => {
+      rail.classList.add("scholium-document-attachment-add-visible");
+    });
+    rail.addEventListener("pointerleave", () => {
+      if (!rail.matches(":focus-within")) {
+        rail.classList.remove("scholium-document-attachment-add-visible");
+      }
+    });
+    rail.addEventListener("focusin", () => {
+      rail.classList.add("scholium-document-attachment-add-visible");
+    });
+    rail.addEventListener("focusout", () => {
+      if (!rail.matches(":hover")) {
+        rail.classList.remove("scholium-document-attachment-add-visible");
+      }
+    });
+    queueMicrotask(() => bindTitleRegionVisibility(rail));
+    return rail;
+  }
 
   // callout-presentation.ts
   var neutralCallout = {
@@ -36581,6 +36719,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   var programmaticDocumentChange = Annotation.define();
   var refreshLivePreviewEffect = StateEffect.define();
   var refreshDocumentTitleEffect = StateEffect.define();
+  var refreshDocumentAttachmentsEffect = StateEffect.define();
   var refreshMermaidThemeEffect = StateEffect.define();
   var mermaidThemeRevision = 0;
   var documentTitle = "";
@@ -36588,6 +36727,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   var documentTitleError = null;
   var documentTitleRenameRequest = null;
   var documentTitlePresentationRevision = 0;
+  var documentAttachments = [];
+  var documentAttachmentPresentationRevision = 0;
+  var documentAttachmentInitialRevealDeadline = 0;
   var lastDocumentFocusTarget;
   function setDocumentFocusTarget(target) {
     const changed = lastDocumentFocusTarget !== target;
@@ -36754,7 +36896,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           documentTitlePresentationRevision
         ),
         block: true,
-        side: -1
+        side: -2
       }).range(frontmatterBodyOffset(state.doc))
     ]);
   }
@@ -36787,6 +36929,61 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     update: (decorations2, transaction) => {
       const titleChanged = transaction.effects.some((effect) => effect.is(refreshDocumentTitleEffect));
       return transaction.docChanged || titleChanged ? documentTitleDecorations(transaction.state) : decorations2;
+    },
+    provide: (field) => EditorView.decorations.from(field)
+  });
+  var DocumentAttachmentWidget = class extends WidgetType {
+    constructor(attachments, presentationRevision) {
+      super();
+      this.attachments = attachments;
+      this.presentationRevision = presentationRevision;
+    }
+    attachments;
+    presentationRevision;
+    eq(other) {
+      return other.presentationRevision === this.presentationRevision;
+    }
+    toDOM(view) {
+      const revealInitially = performance.now() < documentAttachmentInitialRevealDeadline;
+      return createDocumentAttachmentRail(
+        view.dom.ownerDocument,
+        this.attachments,
+        {
+          localized,
+          revealInitially,
+          requestPreview: (attachmentID) => post({
+            type: "requestDocumentAttachmentPreview",
+            attachmentID
+          }),
+          requestMenu: (anchor) => post({
+            type: "requestDocumentAttachmentMenu",
+            clientX: anchor.left,
+            clientY: anchor.bottom
+          })
+        }
+      );
+    }
+    ignoreEvent() {
+      return true;
+    }
+  };
+  function documentAttachmentDecorations(state) {
+    return Decoration.set([
+      Decoration.widget({
+        widget: new DocumentAttachmentWidget(
+          documentAttachments,
+          documentAttachmentPresentationRevision
+        ),
+        block: true,
+        side: -1
+      }).range(frontmatterBodyOffset(state.doc))
+    ]);
+  }
+  var liveDocumentAttachments = StateField.define({
+    create: (state) => documentAttachmentDecorations(state),
+    update: (decorations2, transaction) => {
+      const attachmentsChanged = transaction.effects.some((effect) => effect.is(refreshDocumentAttachmentsEffect));
+      return transaction.docChanged || attachmentsChanged ? documentAttachmentDecorations(transaction.state) : decorations2;
     },
     provide: (field) => EditorView.decorations.from(field)
   });
@@ -36857,8 +37054,61 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     }
     return projectedWidgets.sourceOffset(event);
   }
+  function projectedHeadingSourceOffset(view, event) {
+    const target = event.target instanceof Element ? event.target : null;
+    const heading2 = target?.closest(".cm-live-heading") ?? [...view.contentDOM.querySelectorAll(".cm-live-heading")].find((candidate) => {
+      const box = candidate.getBoundingClientRect();
+      return event.clientX >= box.left && event.clientX <= box.right && event.clientY >= box.top && event.clientY <= box.bottom;
+    });
+    if (!heading2) return null;
+    const rect = heading2.getBoundingClientRect();
+    const style = getComputedStyle(heading2);
+    const paddingTop = Number.parseFloat(style.paddingTop) || 0;
+    const paddingBottom = Number.parseFloat(style.paddingBottom) || 0;
+    const contentTop = Math.min(rect.bottom, rect.top + paddingTop);
+    const contentBottom = Math.max(contentTop, rect.bottom - paddingBottom);
+    const contentY = contentBottom > contentTop ? Math.max(contentTop + 0.5, Math.min(event.clientY, contentBottom - 0.5)) : (rect.top + rect.bottom) / 2;
+    const caret = document.caretRangeFromPoint?.(event.clientX, contentY) ?? null;
+    const caretNode = caret && heading2.contains(caret.startContainer) ? caret.startContainer : null;
+    if (caretNode) {
+      const caretOffset = caret.startOffset;
+      const visible = heading2.textContent ?? "";
+      const visibleRange = document.createRange();
+      visibleRange.setStart(heading2, 0);
+      visibleRange.setEnd(caretNode, caretOffset);
+      const visibleOffset = Math.max(0, Math.min(visibleRange.toString().length, visible.length));
+      const domStart = view.posAtDOM(heading2, 0);
+      const parsedHeading = liveProjectionIndex.index(view.state).syntax.blocks.filter((block) => block.kind === "heading").reduce((nearest, block) => {
+        if (!nearest) return block;
+        return Math.abs(block.from - domStart) < Math.abs(nearest.from - domStart) ? block : nearest;
+      }, null);
+      const sourcePosition = parsedHeading?.from ?? view.posAtDOM(heading2, heading2.childNodes.length);
+      const sourceLine = view.state.doc.lineAt(
+        Math.max(0, Math.min(sourcePosition, view.state.doc.length))
+      );
+      const source = sourceLine.text;
+      const directStart = visible ? source.indexOf(visible) : -1;
+      if (directStart >= 0) {
+        return sourceLine.from + directStart + visibleOffset;
+      }
+      const sourceOffsets = [];
+      let sourceCursor = 0;
+      for (let visibleIndex = 0; visibleIndex < visible.length; visibleIndex += 1) {
+        const found = source.indexOf(visible[visibleIndex], sourceCursor);
+        if (found < 0) break;
+        sourceOffsets.push(found);
+        sourceCursor = found + 1;
+      }
+      if (sourceOffsets.length === visible.length && sourceOffsets.length > 0) {
+        const sourceOffset = visibleOffset >= sourceOffsets.length ? sourceOffsets.at(-1) + 1 : sourceOffsets[visibleOffset];
+        return sourceLine.from + sourceOffset;
+      }
+      return view.posAtDOM(caretNode, caretOffset);
+    }
+    return event.clientX <= rect.left + rect.width / 2 ? view.posAtDOM(heading2, 0) : view.posAtDOM(heading2, heading2.childNodes.length);
+  }
   function projectedWidgetPointerStart(view, event) {
-    const sourceOffset = projectedWidgetSourceOffset(event);
+    const sourceOffset = projectedWidgets.sourceOffset(event) ?? projectedHeadingSourceOffset(view, event) ?? projectedWidgetSourceOffset(event);
     if (sourceOffset === null) return false;
     event.preventDefault();
     dispatchProjectedPointerSelection(view, event, sourceOffset);
@@ -37751,6 +38001,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     Prec.high(liveSelection.extension),
     liveProjectionIndex.extension,
     liveDocumentTitle,
+    liveDocumentAttachments,
     inputSuggestions.extension,
     liveSemanticLayout.extension,
     liveFrontmatterGuardField,
@@ -38031,6 +38282,12 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         break;
       case "setDocumentTitle":
         editorOperations.setDocumentTitle(operation.value);
+        break;
+      case "setDocumentAttachments":
+        editorOperations.setDocumentAttachments(operation.value);
+        break;
+      case "revealDocumentAttachmentControl":
+        revealDocumentAttachmentAddControl(editor.dom.ownerDocument);
         break;
       case "setPresentationCSS":
         editorOperations.setPresentationCSS(operation.value);
@@ -38383,6 +38640,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       documentTitleError = null;
       documentTitleRenameRequest = null;
       documentTitlePresentationRevision += 1;
+      documentAttachments = [];
+      documentAttachmentPresentationRevision += 1;
+      documentAttachmentInitialRevealDeadline = performance.now() + 1800;
       lastDocumentFocusTarget = void 0;
       documentVersion = 0;
       hiddenFrontmatterSourceSelection = null;
@@ -38408,6 +38668,13 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       documentTitleRenameRequest = null;
       documentTitlePresentationRevision += 1;
       editor.dispatch({ effects: refreshDocumentTitleEffect.of(null) });
+    },
+    setDocumentAttachments(value) {
+      const next = value.slice(0, 100).map((attachment) => ({ ...attachment }));
+      if (JSON.stringify(next) === JSON.stringify(documentAttachments)) return;
+      documentAttachments = next;
+      documentAttachmentPresentationRevision += 1;
+      editor.dispatch({ effects: refreshDocumentAttachmentsEffect.of(null) });
     },
     /** @param {string} mode */
     async setMode(mode) {

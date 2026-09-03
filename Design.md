@@ -122,6 +122,17 @@ to immediately following closing punctuation. Lists, blank lines, code fences,
 tables, mathematics, footnotes, and Callouts preserve their source-owned rhythm
 and object-local overflow.
 
+Note-level document attachments form one quiet horizontal strip immediately
+below the app-owned title in Review and Edit. A capsule reuses the bounded
+Note-reference grammar—paperclip, filename, fine border, and quiet
+hover/focus/press surface—without inheriting Record provenance or state labels.
+Its width is capped, its middle truncation preserves both identity-bearing
+ends, and its complete filename remains available through Help and
+accessibility. The strip scrolls locally instead of wrapping. The trailing Add
+control reserves its geometry at all times and changes only opacity and hit
+testing when the title/strip region is inactive; initial disclosure is brief,
+and Reduce Motion removes the transition. Source omits this projection.
+
 Research prose remains primary content without becoming visually identical to
 its structure. Body ink mixes 90% of the existing Primary Text with 10% of the
 Document Paper; the Note title and authored headings retain Primary Text. This
@@ -352,6 +363,7 @@ a reusable component or catalog entry.
 | `Agent Changes` | Present one temporary exact `(change_id, Note)` mutation at a time without creating review state or completing Settlement. | §§7.1, 8.4, 18.5 |
 | `Recovery Notice` | Present candidate, consequence, and safe repair from the workflow owner. | §§14, 18.6 |
 | `Document Find Bar` | Find/replace in the current unsaved buffer while preserving editor state. | §§13, 18.4 |
+| `Document Attachment Strip` | Present Note-level document files below the title with bounded identity, local overflow, Quick Look, and a non-shifting Add route. | §§5.1, 18.4, 20 |
 | `Review Comment Anchor` | Locate current Comment groups without becoming authored Markdown. | §§7.2, 18.4 |
 | `Property Group` | Group Metadata/About fields through a concise visible heading, spacing, and stable action slots. | §§5.2, 18.4–18.5 |
 | `Content State` | Present page/pane state, explanation, and first repair. | §§18.2–18.5, 19.9 |

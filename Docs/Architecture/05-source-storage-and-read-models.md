@@ -252,3 +252,16 @@ descriptor-relative exact Import creation, and fingerprint-bound rollback.
 Triptych-keyed Application Support. It requires the bookmark to resolve to the
 authored absolute path and reports unavailable rather than following a moved
 file or rewriting source.
+
+Note-level document attachments use a distinct portable catalog under
+`.scholium/document-attachments/v1/<attachment-uuid>.json` because their owner
+is a stable Note relationship, not an authored Markdown image occurrence.
+Each strict schema-1 record stores its attachment UUID, Note UUID, vault UUID,
+and either a vault-relative copied location or standardized absolute reference;
+it stores no file bytes, bookmark, title cache, or writable source projection.
+The same `VaultAttachmentStore` validates regular no-follow document files,
+rejects inline media, performs exact copy and fingerprint-bound rollback, and
+never deletes an original reference. `IndexedAttachmentAccessStore` holds the
+machine-local bookmark and one explicit preview-lifetime access lease. Reads
+join the portable record to current availability without mutating either
+authority.

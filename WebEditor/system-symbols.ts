@@ -23,6 +23,7 @@ export const webSystemSymbolKeys = [
   "tablecells",
   "textformat-superscript",
   "minus",
+  "paperclip",
 ] as const;
 
 export type WebSystemSymbolKey = typeof webSystemSymbolKeys[number];

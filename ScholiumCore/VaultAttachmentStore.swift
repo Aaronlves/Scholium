@@ -12,6 +12,12 @@ public struct PreparedVaultImageFile: Hashable, Sendable {
     public let copiedRelativePath: AttachmentRelativePath?
 }
 
+public struct PreparedVaultDocumentFile: Hashable, Sendable {
+    public let location: AttachmentLocation
+    public let copiedFileFingerprint: DocumentFingerprint?
+    public let copiedRelativePath: AttachmentRelativePath?
+}
+
 public enum VaultImageAttachmentManagement: Equatable, Sendable {
     case indexAbsolutePath
     case importIntoAttachments
@@ -69,6 +75,146 @@ public actor VaultAttachmentStore {
             attachmentID: attachmentID,
             noteRelativePath: noteRelativePath
         )
+    }
+
+    public func prepareDocument(
+        at sourceURL: URL,
+        attachmentID: UUID,
+        management: DocumentAttachmentManagement
+    ) throws -> PreparedVaultDocumentFile {
+        let directValues = try sourceURL.resourceValues(forKeys: [
+            .isRegularFileKey,
+            .isSymbolicLinkKey,
+        ])
+        guard directValues.isRegularFile == true,
+              directValues.isSymbolicLink != true else {
+            throw DocumentAttachmentError.unsupportedDocument(sourceURL.path)
+        }
+        let resolvedSource = sourceURL.resolvingSymlinksInPath().standardizedFileURL
+        let filename = resolvedSource.lastPathComponent
+        guard !filename.isEmpty, filename != ".", filename != ".." else {
+            throw DocumentAttachmentError.unsupportedDocument(sourceURL.path)
+        }
+        try validateDocumentType(at: resolvedSource)
+
+        if management == .referenceOriginal {
+            return PreparedVaultDocumentFile(
+                location: try AttachmentLocation(absolutePath: resolvedSource.path),
+                copiedFileFingerprint: nil,
+                copiedRelativePath: nil
+            )
+        }
+
+        let data: Data
+        do {
+            data = try Self.readStableRegularFile(at: resolvedSource)
+        } catch {
+            throw DocumentAttachmentError.unsupportedDocument(sourceURL.path)
+        }
+        let relativePath = try AttachmentRelativePath(
+            "Attachments/\(attachmentID.uuidString.lowercased())/\(filename)"
+        )
+        let destination = vaultURL.appendingPathComponent(
+            relativePath.rawValue,
+            isDirectory: false
+        )
+        guard !fileManager.fileExists(atPath: destination.path) else {
+            throw VaultRepositoryError.fileAlreadyExists(relativePath.rawValue)
+        }
+        let fingerprint = DocumentFingerprint(data: data)
+        do {
+            try coordinatedCreate(
+                data,
+                relativePath: relativePath,
+                coordinatingAt: destination
+            )
+        } catch {
+            try? removeCopiedDocumentIfExact(
+                relativePath: relativePath,
+                expectedFingerprint: fingerprint
+            )
+            throw error
+        }
+        return PreparedVaultDocumentFile(
+            location: .vaultRelative(relativePath),
+            copiedFileFingerprint: fingerprint,
+            copiedRelativePath: relativePath
+        )
+    }
+
+    public func documentURLIfAvailable(
+        relativePath: AttachmentRelativePath
+    ) throws -> URL? {
+        guard Self.isOwnedAttachmentPath(relativePath) else {
+            throw DocumentAttachmentError.unavailable(relativePath.rawValue)
+        }
+        let candidate = vaultURL.appendingPathComponent(
+            relativePath.rawValue,
+            isDirectory: false
+        )
+        let isAvailable: Bool
+        do {
+            isAvailable = try withParentDescriptor(
+                relativePath: relativePath,
+                createDirectories: false
+            ) { parentDescriptor, name in
+                let descriptor = openat(
+                    parentDescriptor,
+                    name,
+                    O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC
+                )
+                guard descriptor >= 0 else {
+                    if errno == ENOENT { return false }
+                    throw POSIXError(Self.posixCode(errno))
+                }
+                defer { Darwin.close(descriptor) }
+                var status = stat()
+                return fstat(descriptor, &status) == 0
+                    && (status.st_mode & S_IFMT) == S_IFREG
+            }
+        } catch let error as POSIXError where error.code == .ENOENT {
+            return nil
+        }
+        return isAvailable ? candidate.standardizedFileURL : nil
+    }
+
+    public func removeCopiedDocumentIfExact(
+        relativePath: AttachmentRelativePath,
+        expectedFingerprint: DocumentFingerprint
+    ) throws {
+        guard Self.isOwnedAttachmentPath(relativePath) else {
+            throw DocumentAttachmentError.cleanupRefused(relativePath.rawValue)
+        }
+        let candidate = vaultURL.appendingPathComponent(
+            relativePath.rawValue,
+            isDirectory: false
+        )
+        let coordinator = NSFileCoordinator(filePresenter: nil)
+        var coordinationError: NSError?
+        var outcome: Result<Void, Error>?
+        coordinator.coordinate(
+            writingItemAt: candidate,
+            options: .forDeleting,
+            error: &coordinationError
+        ) { _ in
+            outcome = Result {
+                do {
+                    try self.deleteExactFile(
+                        relativePath: relativePath,
+                        expectedFingerprint: expectedFingerprint
+                    )
+                } catch {
+                    throw DocumentAttachmentError.cleanupRefused(
+                        relativePath.rawValue
+                    )
+                }
+            }
+        }
+        if let coordinationError { throw coordinationError }
+        guard let outcome else {
+            throw DocumentAttachmentError.cleanupRefused(relativePath.rawValue)
+        }
+        try outcome.get()
     }
 
     public func preparePastedImage(
@@ -198,6 +344,24 @@ public actor VaultAttachmentStore {
             throw ImageAttachmentError.unsupportedImage(path)
         }
         return type
+    }
+
+    private func validateDocumentType(at url: URL) throws {
+        let type = try url.resourceValues(forKeys: [.contentTypeKey]).contentType
+        guard let type,
+              !type.conforms(to: .image),
+              !type.conforms(to: .audiovisualContent) else {
+            throw DocumentAttachmentError.unsupportedDocument(url.path)
+        }
+    }
+
+    private static func isOwnedAttachmentPath(
+        _ relativePath: AttachmentRelativePath
+    ) -> Bool {
+        let components = relativePath.components.map(String.init)
+        return components.count >= 3
+            && components[0] == "Attachments"
+            && UUID(uuidString: components[1]) != nil
     }
 
     private static func readStableRegularFile(at url: URL) throws -> Data {

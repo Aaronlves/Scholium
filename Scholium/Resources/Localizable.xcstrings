@@ -1701,6 +1701,54 @@
         }
       }
     },
+    "Attach" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Attach"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "附加"
+          }
+        }
+      }
+    },
+    "Attach a Copy" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Attach a Copy"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "附加副本"
+          }
+        }
+      }
+    },
+    "Attach a Copy…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Attach a Copy…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "附加副本…"
+          }
+        }
+      }
+    },
     "Attachment cleanup needs attention: %@" : {
       "localizations" : {
         "zh-Hans" : {
@@ -2862,6 +2910,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "请为此字段选择允许的值。"
+          }
+        }
+      }
+    },
+    "Choose a document to copy into this Triptych's Attachments folder." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Choose a document to copy into this Triptych's Attachments folder."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择要复制到此三联库 Attachments 文件夹的文档。"
+          }
+        }
+      }
+    },
+    "Choose a document to reference in its current Finder location." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Choose a document to reference in its current Finder location."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择要在其当前“访达”位置引用的文档。"
           }
         }
       }
@@ -4771,6 +4851,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "文档"
+          }
+        }
+      }
+    },
+    "Document attached." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Document attached."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已附加文档。"
           }
         }
       }
@@ -17464,6 +17560,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "搜索对象"
+          }
+        }
+      }
+    },
+    "Reference Original" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Reference Original"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "引用原文件"
+          }
+        }
+      }
+    },
+    "Reference Original…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Reference Original…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "引用原文件…"
           }
         }
       }

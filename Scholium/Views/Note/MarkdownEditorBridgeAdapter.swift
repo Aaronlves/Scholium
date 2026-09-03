@@ -82,6 +82,17 @@ struct EditorLinkActivationMessage: Equatable, Sendable {
     let target: String
 }
 
+struct EditorDocumentAttachmentPreviewMessage: Equatable, Sendable {
+    let envelope: EditorBridgeEnvelope
+    let attachmentID: UUID
+}
+
+struct EditorDocumentAttachmentMenuMessage: Equatable, Sendable {
+    let envelope: EditorBridgeEnvelope
+    let clientX: Double
+    let clientY: Double
+}
+
 struct EditorContextMenuMessage: Equatable, Sendable {
     let envelope: EditorBridgeEnvelope
     let clientX: Double
@@ -113,6 +124,8 @@ enum EditorBridgeMessage: Equatable, Sendable {
     case requestMathRuntime(EditorBridgeEnvelope)
     case linkCompletionQuery(EditorLinkCompletionQueryMessage)
     case linkActivated(EditorLinkActivationMessage)
+    case requestDocumentAttachmentPreview(EditorDocumentAttachmentPreviewMessage)
+    case requestDocumentAttachmentMenu(EditorDocumentAttachmentMenuMessage)
     case contextMenuRequested(EditorContextMenuMessage)
     case scrollChanged(EditorScrollMessage)
 
@@ -133,6 +146,8 @@ enum EditorBridgeMessage: Equatable, Sendable {
         case .requestDocumentFind(let message): message.envelope
         case .linkCompletionQuery(let message): message.envelope
         case .linkActivated(let message): message.envelope
+        case .requestDocumentAttachmentPreview(let message): message.envelope
+        case .requestDocumentAttachmentMenu(let message): message.envelope
         case .contextMenuRequested(let message): message.envelope
         case .scrollChanged(let message): message.envelope
         }
@@ -307,6 +322,32 @@ enum EditorBridgeMessageDecoder {
                 envelope: envelope,
                 target: target
             ))
+        case "requestDocumentAttachmentPreview":
+            guard hasOnlyKeys(object, additional: ["type", "attachmentID"]),
+                  let rawID = boundedString(
+                    object["attachmentID"], maximumUTF8Bytes: 128
+                  ),
+                  let attachmentID = UUID(uuidString: rawID) else { return nil }
+            return .requestDocumentAttachmentPreview(
+                EditorDocumentAttachmentPreviewMessage(
+                    envelope: envelope,
+                    attachmentID: attachmentID
+                )
+            )
+        case "requestDocumentAttachmentMenu":
+            guard hasOnlyKeys(object, additional: [
+                "type", "clientX", "clientY",
+            ]),
+            let clientX = finiteDouble(object["clientX"]),
+            let clientY = finiteDouble(object["clientY"])
+            else { return nil }
+            return .requestDocumentAttachmentMenu(
+                EditorDocumentAttachmentMenuMessage(
+                    envelope: envelope,
+                    clientX: clientX,
+                    clientY: clientY
+                )
+            )
         case "contextMenuRequested":
             guard hasOnlyKeys(object, additional: [
                 "type", "clientX", "clientY", "context", "mode",

@@ -132,6 +132,44 @@ public actor DocumentOperations: DocumentUseCases {
         )
     }
 
+    public func documentAttachments(
+        for target: NoteDocumentAttachmentTarget
+    ) async throws -> [DocumentAttachmentSnapshot] {
+        let handle = try await reference.requireHandle()
+        return try await handle.documentAttachments(for: target)
+    }
+
+    public func attachDocument(
+        at sourceURL: URL,
+        to target: NoteDocumentAttachmentTarget,
+        management: DocumentAttachmentManagement
+    ) async throws -> DocumentAttachmentSnapshot {
+        let handle = try await reference.requireHandle()
+        return try await handle.attachDocument(
+            at: sourceURL,
+            to: target,
+            management: management
+        )
+    }
+
+    public func prepareDocumentAttachmentPreview(
+        attachmentID: UUID,
+        for target: NoteDocumentAttachmentTarget
+    ) async throws -> DocumentAttachmentPreviewLease {
+        let handle = try await reference.requireHandle()
+        return try await handle.prepareDocumentAttachmentPreview(
+            attachmentID: attachmentID,
+            for: target
+        )
+    }
+
+    public func releaseDocumentAttachmentPreview(
+        accessToken: UUID
+    ) async {
+        guard let handle = try? await reference.requireHandle() else { return }
+        await handle.releaseDocumentAttachmentPreview(accessToken: accessToken)
+    }
+
     public func importMarkdownSource(
         _ source: String,
         at id: VaultQualifiedNoteID

@@ -357,6 +357,41 @@ final class DocumentController: ObservableObject {
         )
     }
 
+    func documentAttachments(
+        for target: NoteDocumentAttachmentTarget
+    ) async throws -> [DocumentAttachmentSnapshot] {
+        try await requireOperations().documentAttachments(for: target)
+    }
+
+    func attachDocument(
+        at sourceURL: URL,
+        to target: NoteDocumentAttachmentTarget,
+        management: DocumentAttachmentManagement
+    ) async throws -> DocumentAttachmentSnapshot {
+        try await requireOperations().attachDocument(
+            at: sourceURL,
+            to: target,
+            management: management
+        )
+    }
+
+    func prepareDocumentAttachmentPreview(
+        attachmentID: UUID,
+        for target: NoteDocumentAttachmentTarget
+    ) async throws -> DocumentAttachmentPreviewLease {
+        try await requireOperations().prepareDocumentAttachmentPreview(
+            attachmentID: attachmentID,
+            for: target
+        )
+    }
+
+    func releaseDocumentAttachmentPreview(accessToken: UUID) async {
+        guard let operations else { return }
+        await operations.releaseDocumentAttachmentPreview(
+            accessToken: accessToken
+        )
+    }
+
     func save(
         _ id: VaultQualifiedNoteID,
         changeSet: NoteChangeSet,

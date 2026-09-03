@@ -85,6 +85,19 @@ new state from that attempt. The catalog never regenerates authored links, and
 Scholium does not move or delete attachments as a side effect of Note editing
 or deletion.
 
+Document attachments are Note-level relationships, not Markdown embeds.
+**Attach a Copy…** copies one regular non-media file without replacement to
+`Attachments/<uuid>/<filename>`; **Reference Original…** leaves it in its
+Finder-owned location. Both bind the chosen file to the Note's stable identity
+in portable control state, while any security-scoped bookmark remains
+machine-local. The relationship and availability are source-neutral
+projections: listing, adding, or previewing a document cannot rewrite Markdown,
+change its fingerprint, or alter editor selection, composition, Undo, scroll,
+or focus. Images and audiovisual files remain governed by their inline
+authoring routes and are rejected here. A failed operation rolls back only the
+new copied file and control state from that attempt; Note edits, renames, and
+deletion do not implicitly move or delete a document attachment.
+
 Review and Edit preserve exact Markdown while presenting semantic Callouts,
 lists, quotations, tables, footnotes, mathematics, code, links, occurrence-owned
 link annotations, and Mermaid.

@@ -31,7 +31,7 @@ const dialect = {
 
 describe("editor protocol", () => {
   it("uses the coalesced interaction bridge protocol", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(20);
+    expect(EDITOR_PROTOCOL_VERSION).toBe(21);
   });
   it("accepts a complete versioned request", () => expect(isEditorRequest(request)).toBe(true));
   it("accepts the bounded blur operation", () => {
@@ -53,6 +53,38 @@ describe("editor protocol", () => {
       operation: {type: "setDocumentTitle", value: "x".repeat(1_025)},
     })).toBe(false);
     expect(generationCanExecuteEditorRequest("setDocumentTitle", 3, 4)).toBe(true);
+  });
+  it("accepts bounded document attachments as source-independent projections", () => {
+    const attachment = {
+      id: "dbe53f58-1d57-4ec2-8f67-e43b92bc9f39",
+      filename: "A Deliberately Long Philosophical Manuscript.pdf",
+      available: true,
+    };
+    expect(isEditorRequest({
+      ...request,
+      operation: {type: "setDocumentAttachments", value: [attachment]},
+    })).toBe(true);
+    expect(isEditorRequest({
+      ...request,
+      operation: {
+        type: "setDocumentAttachments",
+        value: Array.from({length: 101}, () => attachment),
+      },
+    })).toBe(false);
+    expect(generationCanExecuteEditorRequest(
+      "setDocumentAttachments",
+      3,
+      4,
+    )).toBe(true);
+    expect(isEditorRequest({
+      ...request,
+      operation: {type: "revealDocumentAttachmentControl"},
+    })).toBe(true);
+    expect(generationCanExecuteEditorRequest(
+      "revealDocumentAttachmentControl",
+      3,
+      4,
+    )).toBe(true);
   });
   it("accepts only bounded literal document-find requests", () => {
     const value = {

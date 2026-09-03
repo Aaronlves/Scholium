@@ -147,6 +147,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var pendingSource: String?
     private var pendingDocumentID = ""
     private var pendingDocumentTitle = ""
+    private var pendingDocumentAttachments: [MarkdownEditorDocumentAttachment] = []
     private var pendingMode: MarkdownEditorMode = .livePreview
     private var pendingPresentationCSS = ""
     private var pendingUserCSS = ""
@@ -369,6 +370,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         pendingSource = nil
         pendingDocumentID = ""
         pendingDocumentTitle = ""
+        pendingDocumentAttachments = []
         pendingLinkPreviews = []
         pendingScrollFraction = nil
         pendingScrollAnchor = nil
@@ -557,6 +559,32 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         Task { [weak self, weak webView] in
             guard let self, let webView else { return }
             _ = try? await self.send(.setDocumentTitle(documentTitle), in: webView)
+        }
+    }
+
+    func setDocumentAttachments(_ attachments: [DocumentAttachmentSnapshot]) {
+        pendingDocumentAttachments = attachments.prefix(100).map(
+            MarkdownEditorDocumentAttachment.init
+        )
+        guard isReady, isLoaded, let webView else { return }
+        let projection = pendingDocumentAttachments
+        Task { [weak self, weak webView] in
+            guard let self, let webView else { return }
+            _ = try? await self.send(
+                .setDocumentAttachments(projection),
+                in: webView
+            )
+        }
+    }
+
+    func revealDocumentAttachmentControl() {
+        guard isReady, isLoaded, let webView else { return }
+        Task { [weak self, weak webView] in
+            guard let self, let webView else { return }
+            _ = try? await self.send(
+                .revealDocumentAttachmentControl,
+                in: webView
+            )
         }
     }
 
@@ -1572,11 +1600,17 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     ) async throws {
         while true {
             let documentTitle = pendingDocumentTitle
+            let documentAttachments = pendingDocumentAttachments
             let presentationCSS = pendingPresentationCSS
             let userCSS = pendingUserCSS
             let linkPreviews = pendingLinkPreviews
             _ = try await send(
                 .setDocumentTitle(documentTitle),
+                in: webView,
+                requiringRequestEpoch: intendedRequestEpoch
+            )
+            _ = try await send(
+                .setDocumentAttachments(documentAttachments),
                 in: webView,
                 requiringRequestEpoch: intendedRequestEpoch
             )
@@ -1601,6 +1635,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 throw SessionError.staleRequest
             }
             if documentTitle == pendingDocumentTitle,
+               documentAttachments == pendingDocumentAttachments,
                presentationCSS == pendingPresentationCSS,
                userCSS == pendingUserCSS,
                linkPreviews == pendingLinkPreviews {

@@ -26,6 +26,45 @@ struct MarkdownEditorProtocolTests {
         #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == operation)
     }
 
+    @Test("Document attachments round trip as source-neutral projections")
+    func documentAttachmentOperationRoundTrip() throws {
+        let attachment = MarkdownEditorDocumentAttachment(
+            DocumentAttachmentSnapshot(
+                record: DocumentAttachmentRecord(
+                    id: UUID(),
+                    noteID: UUID(),
+                    vaultID: UUID(),
+                    location: .vaultRelative(try AttachmentRelativePath(
+                        "Attachments/id/Argument.pdf"
+                    ))
+                ),
+                availability: .available
+            )
+        )
+        let operation = MarkdownEditorOperation.setDocumentAttachments([
+            attachment,
+        ])
+        let data = try JSONEncoder().encode(operation)
+        let object = try #require(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+
+        #expect(object["type"] as? String == "setDocumentAttachments")
+        #expect(try JSONDecoder().decode(
+            MarkdownEditorOperation.self,
+            from: data
+        ) == operation)
+        #expect(!operation.serializesSourceMutation)
+
+        let reveal = MarkdownEditorOperation.revealDocumentAttachmentControl
+        let revealData = try JSONEncoder().encode(reveal)
+        #expect(try JSONDecoder().decode(
+            MarkdownEditorOperation.self,
+            from: revealData
+        ) == reveal)
+        #expect(!reveal.serializesSourceMutation)
+    }
+
     @Test("Preview request round trips as a nonmutating bridge operation")
     func previewOperationRoundTrip() throws {
         let data = try JSONEncoder().encode(MarkdownEditorOperation.showPreview)
@@ -69,7 +108,7 @@ struct MarkdownEditorProtocolTests {
         #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == .queryPerformance)
     }
 
-    @Test("Request envelope and operation round trip with protocol version 20")
+    @Test("Request envelope and operation round trip with protocol version 21")
     func requestRoundTrip() throws {
         let request = MarkdownEditorRequest(
             requestID: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!,
@@ -85,7 +124,7 @@ struct MarkdownEditorProtocolTests {
         #expect(try JSONDecoder().decode(MarkdownEditorRequest.self, from: encoded) == request)
 
         let object = try #require(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
-        #expect(object["protocolVersion"] as? Int == 20)
+        #expect(object["protocolVersion"] as? Int == 21)
         let operation = try #require(object["operation"] as? [String: Any])
         #expect(operation["type"] as? String == "command")
         #expect(operation["command"] as? String == "bold")
@@ -163,7 +202,7 @@ struct MarkdownEditorProtocolTests {
             """
             {
               "type": "contextMenuRequested",
-              "protocolVersion": 20,
+              "protocolVersion": 21,
               "sessionID": "11111111-2222-3333-4444-555555555555",
               "documentID": "topics:Scope.md",
               "startingFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -200,7 +239,7 @@ struct MarkdownEditorProtocolTests {
     func documentTitleRenameMessageDecoding() throws {
         let object: [String: Any] = [
             "type": "requestDocumentTitleRename",
-            "protocolVersion": 20,
+            "protocolVersion": 21,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "topics:Scope.md",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -228,10 +267,45 @@ struct MarkdownEditorProtocolTests {
         #expect(EditorBridgeMessageDecoder.decode(malformed) == nil)
     }
 
+    @Test("Document attachment bridge requests are typed and bounded")
+    func documentAttachmentMessageDecoding() throws {
+        let envelope: [String: Any] = [
+            "protocolVersion": 21,
+            "sessionID": "11111111-2222-3333-4444-555555555555",
+            "documentID": "topics:Scope.md",
+            "startingFingerprint": String(repeating: "a", count: 64),
+            "documentVersion": 3,
+        ]
+        let attachmentID = UUID()
+        let preview = envelope.merging([
+            "type": "requestDocumentAttachmentPreview",
+            "attachmentID": attachmentID.uuidString,
+        ]) { _, new in new }
+        let menu = envelope.merging([
+            "type": "requestDocumentAttachmentMenu",
+            "clientX": 42.5,
+            "clientY": 81.25,
+        ]) { _, new in new }
+
+        guard case .requestDocumentAttachmentPreview(let previewMessage) =
+                try #require(EditorBridgeMessageDecoder.decode(preview)) else {
+            Issue.record("The attachment preview request was not decoded.")
+            return
+        }
+        #expect(previewMessage.attachmentID == attachmentID)
+        guard case .requestDocumentAttachmentMenu(let menuMessage) =
+                try #require(EditorBridgeMessageDecoder.decode(menu)) else {
+            Issue.record("The attachment menu request was not decoded.")
+            return
+        }
+        #expect(menuMessage.clientX == 42.5)
+        #expect(menuMessage.clientY == 81.25)
+    }
+
     @Test("Inbound bridge rejects unknown, stale-version, and extra-field messages")
     func inboundBridgeRejectsUnrecognizedContracts() {
         let envelope: [String: Any] = [
-            "protocolVersion": 20,
+            "protocolVersion": 21,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -263,7 +337,7 @@ struct MarkdownEditorProtocolTests {
     func interactionFocusTargetDecoding() throws {
         let envelope: [String: Any] = [
             "type": "interactionChanged",
-            "protocolVersion": 20,
+            "protocolVersion": 21,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),
@@ -290,7 +364,7 @@ struct MarkdownEditorProtocolTests {
     func inboundDeltaUsesTypedDirectDecoder() throws {
         let object: [String: Any] = [
             "type": "documentChanged",
-            "protocolVersion": 20,
+            "protocolVersion": 21,
             "sessionID": "11111111-2222-3333-4444-555555555555",
             "documentID": "session-document",
             "startingFingerprint": String(repeating: "a", count: 64),

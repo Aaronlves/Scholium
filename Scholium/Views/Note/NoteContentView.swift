@@ -301,9 +301,12 @@ struct NoteContentView: View {
     let critiqueProvenanceContext: CritiqueProvenanceContext
     @StateObject private var documentFind = DocumentFindPresentationModel()
     @StateObject private var reviewDocumentStatistics = ReviewDocumentStatisticsModel()
+    @StateObject private var documentQuickLook = DocumentAttachmentQuickLookPresenter()
     @State private var isInsertingImage = false
+    @State private var isAttachingDocument = false
     @State private var announcedUnavailableIndexedImages: Set<String> = []
     @State private var indexedImageAvailabilityGeneration = 0
+    @State private var documentAttachmentRevealRevision: UInt64 = 0
 
     init(
         controller: DocumentController,
@@ -373,6 +376,19 @@ struct NoteContentView: View {
         nonmutating set { documentSession.showConflictComparison = newValue }
     }
     private var editorSession: MarkdownEditorSession { documentSession.editorSession }
+    private var documentAttachments: [DocumentAttachmentSnapshot] {
+        documentSession.documentAttachments
+    }
+
+    private var documentAttachmentTarget: NoteDocumentAttachmentTarget? {
+        guard case .workspace(let key) = target,
+              key.vaultID == note.vaultID else { return nil }
+        return NoteDocumentAttachmentTarget(
+            noteID: key.noteID,
+            vaultID: key.vaultID,
+            relativePath: note.relativePath
+        )
+    }
 
     var body: some View {
         AnyView(VStack(spacing: 0) {
@@ -464,7 +480,15 @@ struct NoteContentView: View {
                 useSelectionForFind: useSelectionForDocumentFind,
                 announceDocumentStatistics: announceDocumentStatistics,
                 importImage: requestImageImport,
-                indexImage: requestImageIndex
+                indexImage: requestImageIndex,
+                canAttachDocument: documentAttachmentTarget != nil
+                    && !isAttachingDocument,
+                attachDocumentCopy: {
+                    requestDocumentAttachment(.copyIntoTriptych)
+                },
+                referenceOriginalDocument: {
+                    requestDocumentAttachment(.referenceOriginal)
+                }
             )
         ))
         .sheet(isPresented: Binding(
@@ -591,6 +615,12 @@ struct NoteContentView: View {
         .task(id: indexedImageAvailabilityTaskIdentity) {
             await checkIndexedImageAvailability()
         }
+        .task(id: documentAttachmentTaskIdentity) {
+            await loadDocumentAttachments()
+        }
+        .task(id: documentAttachmentRevealTaskIdentity) {
+            documentAttachmentRevealRevision &+= 1
+        }
         .task(id: previewTaskIdentity) {
             await rebuildPreviewCatalog()
         }
@@ -607,6 +637,9 @@ struct NoteContentView: View {
             } catch {
                 documentFind.fail(error, for: request.id)
             }
+        }
+        .onDisappear {
+            documentQuickLook.close()
         }
     }
 
@@ -694,6 +727,8 @@ struct NoteContentView: View {
             ),
             linkCompletionQuery: queryEditorLinkCompletions,
             linkPreviews: documentSession.previewCatalog?.links ?? [],
+            documentAttachments: documentAttachments,
+            documentAttachmentRevealRevision: documentAttachmentRevealRevision,
             initialScrollFraction: state.initialScrollFraction,
             initialScrollAnchor: editorScrollAnchor,
             onDocumentActivity: {
@@ -716,6 +751,8 @@ struct NoteContentView: View {
             onRequestDocumentTitleRename: { expectedTitle, requestedTitle in
                 try await actions.renameNote(note, expectedTitle, requestedTitle)
             },
+            onPreviewDocumentAttachment: previewDocumentAttachment,
+            onAttachDocument: requestDocumentAttachment,
             onPasteImage: handlePastedImage,
             onLinkActivation: { target in
                 if let url = URL(string: target),
@@ -797,7 +834,7 @@ struct NoteContentView: View {
                 Color.clear
                     .accessibilityHidden(true)
             }
-        } else if note.document.hasExactEmptyBody {
+        } else if note.document.hasExactEmptyBody && documentAttachments.isEmpty {
             emptyReviewState
         } else {
             let hasWebProjection = renderedReadFingerprint == noteFingerprint.sha256
@@ -880,10 +917,15 @@ struct NoteContentView: View {
             configurationRevision: readConfigurationRevision,
             linkPreviews: documentSession.previewCatalog?.links ?? [],
             linkPreviewRevision: readLinkPreviewRevision,
+            documentAttachments: documentAttachments,
+            documentAttachmentRevision: documentAttachmentRevision,
+            documentAttachmentRevealRevision: documentAttachmentRevealRevision,
             onLinkClick: {
                 actions.openInternalLink($0)
             },
             onOpenExternalURL: actions.openExternalURL,
+            onPreviewDocumentAttachment: previewDocumentAttachment,
+            onAttachDocument: requestDocumentAttachment,
             onSelectionChange: { selection in
                 guard !isEditing else { return }
                 documentSession.readSelection = selection
@@ -1021,6 +1063,145 @@ struct NoteContentView: View {
 
     private var indexedImageAvailabilityTaskIdentity: String {
         "\(note.relativePath):\(noteFingerprint.sha256):\(indexedImageAvailabilityGeneration)"
+    }
+
+    private var documentAttachmentTaskIdentity: String {
+        let stableID = documentAttachmentTarget?.noteID.uuidString ?? "unavailable"
+        return "\(stableID):\(note.relativePath):\(indexedImageAvailabilityGeneration)"
+    }
+
+    private var documentAttachmentRevealTaskIdentity: String {
+        let stableID = documentAttachmentTarget?.noteID.uuidString ?? "unavailable"
+        return "\(stableID):\(note.relativePath)"
+    }
+
+    private var documentAttachmentRevision: String {
+        documentAttachments.map {
+            "\($0.record.id.uuidString):\($0.record.filename):\($0.availability.rawValue)"
+        }.joined(separator: "|")
+    }
+
+    @MainActor
+    private func loadDocumentAttachments() async {
+        guard let expectedTarget = documentAttachmentTarget else {
+            documentSession.documentAttachments = []
+            return
+        }
+        do {
+            let attachments = try await controller.documentAttachments(
+                for: expectedTarget
+            )
+            guard !Task.isCancelled,
+                  documentAttachmentTarget == expectedTarget else { return }
+            documentSession.documentAttachments = attachments
+        } catch is CancellationError {
+            return
+        } catch {
+            guard !Task.isCancelled,
+                  documentAttachmentTarget == expectedTarget else { return }
+            documentSession.documentAttachments = []
+            actions.notify(error.localizedDescription, .error)
+        }
+    }
+
+    private func requestDocumentAttachment(
+        _ mode: DocumentAttachmentSelectionMode
+    ) {
+        guard let expectedTarget = documentAttachmentTarget,
+              !isAttachingDocument else { return }
+        isAttachingDocument = true
+        Task { @MainActor in
+            defer {
+                isAttachingDocument = false
+                if isEditing { editorSession.focusPreferred() }
+            }
+            do {
+                guard let fileSelectionPresenter else {
+                    throw ScholiumFileSelectionError.presenterUnavailable
+                }
+                let copiesFile = mode == .copyIntoTriptych
+                let request = ScholiumFileSelectionRequest(
+                    title: copiesFile
+                        ? String(localized: "Attach a Copy")
+                        : String(localized: "Reference Original"),
+                    message: copiesFile
+                        ? String(localized: "Choose a document to copy into this Triptych's Attachments folder.")
+                        : String(localized: "Choose a document to reference in its current Finder location."),
+                    prompt: String(localized: "Attach"),
+                    kind: .files(allowedContentTypes: [.content])
+                )
+                guard let sourceURL = try await fileSelectionPresenter.selectURL(request) else {
+                    return
+                }
+                guard documentAttachmentTarget == expectedTarget else {
+                    throw MarkdownEditorSession.SessionError.staleRequest
+                }
+                let management: DocumentAttachmentManagement = copiesFile
+                    ? .copyIntoTriptych
+                    : .referenceOriginal
+                let attachment = try await controller.attachDocument(
+                    at: sourceURL,
+                    to: expectedTarget,
+                    management: management
+                )
+                guard documentAttachmentTarget == expectedTarget else {
+                    throw MarkdownEditorSession.SessionError.staleRequest
+                }
+                var attachments = documentSession.documentAttachments.filter {
+                    $0.record.id != attachment.record.id
+                }
+                attachments.append(attachment)
+                attachments.sort {
+                    let order = $0.record.filename.localizedStandardCompare(
+                        $1.record.filename
+                    )
+                    return order == .orderedSame
+                        ? $0.record.id.uuidString < $1.record.id.uuidString
+                        : order == .orderedAscending
+                }
+                documentSession.documentAttachments = attachments
+                AccessibilityNotification.Announcement(
+                    String(localized: "Document attached.")
+                ).post()
+            } catch is CancellationError {
+                return
+            } catch {
+                actions.notify(error.localizedDescription, .error)
+            }
+        }
+    }
+
+    private func previewDocumentAttachment(_ attachmentID: UUID) {
+        guard let expectedTarget = documentAttachmentTarget else { return }
+        Task { @MainActor in
+            do {
+                let lease = try await controller.prepareDocumentAttachmentPreview(
+                    attachmentID: attachmentID,
+                    for: expectedTarget
+                )
+                guard documentAttachmentTarget == expectedTarget else {
+                    await controller.releaseDocumentAttachmentPreview(
+                        accessToken: lease.accessToken
+                    )
+                    return
+                }
+                documentQuickLook.present(
+                    lease,
+                    releaseAccess: { token in
+                        await controller.releaseDocumentAttachmentPreview(
+                            accessToken: token
+                        )
+                    },
+                    restoreFocus: {
+                        if isEditing { editorSession.focusPreferred() }
+                    }
+                )
+            } catch is CancellationError {
+                return
+            } catch {
+                actions.notify(error.localizedDescription, .error)
+            }
+        }
     }
 
     @MainActor

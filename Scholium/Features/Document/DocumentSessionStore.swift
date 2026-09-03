@@ -75,6 +75,7 @@ final class DocumentSessionModel: ObservableObject {
     @Published var renderedReadReadyFingerprint = ""
     @Published var failedReadFingerprint: String?
     @Published var previewCatalog: DocumentPreviewCatalog?
+    @Published var documentAttachments: [DocumentAttachmentSnapshot] = []
     var readSelection: MarkdownReviewSelection?
     @Published var conflict: DocumentConflictSnapshot?
     @Published var canRetrySave = false
@@ -217,6 +218,7 @@ final class DocumentSessionModel: ObservableObject {
         originalEditingSource = ""
         editingRevision = nil
         renderedReadHTML = ""
+        documentAttachments = []
         renderedReadFingerprint = ""
         renderedReadReadyFingerprint = ""
         failedReadFingerprint = nil

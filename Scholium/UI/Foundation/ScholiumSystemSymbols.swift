@@ -30,6 +30,7 @@ enum ScholiumSystemSymbol: String, CaseIterable, Sendable {
     case tablecells
     case textFormatSuperscript = "textformat.superscript"
     case minus
+    case paperclip
 
     var systemName: String { rawValue }
 

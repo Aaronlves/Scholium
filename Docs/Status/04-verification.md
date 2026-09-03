@@ -165,6 +165,23 @@ Completed automated checks in this worktree:
   unified comparison and exposed change kind, exact line content, blank-line,
   line-number, and line-ending accessibility semantics. This observation is
   neither a deterministic UI pass nor human acceptance.
+- On 2026-09-04 the Note-level document-attachment slice passed the locked
+  214-test Web editor suite with reproducible Editor/Reader resources; 41
+  focused protocol, localization, Quick Look, and Editor/Review WebKit tests;
+  the Application source-neutral/stable-identity operation test; and the Core
+  copy, availability, rollback, media-rejection, and symlink-containment tests.
+  Editor projection retained exact source, generation, dirty state, title DOM,
+  caret, and Undo; Review retained its page and scroll. Native Quick Look
+  released its access lease and restored the retained focus target. An isolated
+  nonprivate QA build showed the bounded middle-truncated capsule in Light and
+  Dark appearances and the non-shifting Add control after returning to a
+  retained Note; the title caret remained in place. This is automated and
+  exploratory evidence, not human visual or assistive-technology acceptance.
+  The complete repository gate was run once and reached the App suite, where
+  it exposed stale ownership inventories, a title-less Review parity fixture,
+  and a projection-settling pointer test. Each affected contract now passes
+  its focused test, including the complete Edit/Review presentation matrix;
+  the complete gate was not repeated under the repository's single-run rule.
 
 ## Evidence boundary
 

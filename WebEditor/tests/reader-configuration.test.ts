@@ -12,6 +12,7 @@ const currentConfiguration = {
   userCSS: "",
   localization: {strings: {}},
   linkPreviews: [],
+  documentAttachments: [],
 };
 
 describe("reader configuration", () => {
@@ -28,6 +29,10 @@ describe("reader configuration", () => {
     expect(validatedReaderConfiguration({
       ...currentConfiguration,
       linkPreviews: Array.from({length: 129}, () => ({})),
+    })).toBeNull();
+    expect(validatedReaderConfiguration({
+      ...currentConfiguration,
+      documentAttachments: Array.from({length: 101}, () => ({})),
     })).toBeNull();
   });
 });

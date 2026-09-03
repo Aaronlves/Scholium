@@ -65,7 +65,7 @@ and Source uses the body.
 Managed New Note skips Review-first presentation. `DocumentController`
 installs its snapshot, exact source, active Edit phase, and body-start offset in
 one MainActor transaction. Until typed acknowledgement, the host exposes
-neither Review nor Empty Note. Bridge 20 initialization maps one collapsed
+neither Review nor Empty Note. Bridge 21 initialization maps one collapsed
 body-boundary selection into CodeMirror UTF-16 and returns it with the mode.
 Native code verifies that range, converges style and scroll, awaits focus, then
 publishes readiness, announces once, and consumes the intent. A clean external
@@ -559,30 +559,31 @@ Read and Live Preview consume one presentation contract:
   widgets without replacing active source, selection, composition, or undo.
 
 Both modes use strict line breaking, normal word boundaries, and emergency
-long-token wrapping. CodeMirror retains `break-spaces`, so every Edit space has
-width without a custom visible-whitespace decoration in ordinary prose.
-Footnote locators bind their following punctuation. Appearance owns numeric
-rhythm; the adapter only maps semantic blocks.
+long-token wrapping. CodeMirror `break-spaces` preserves each Edit space without
+a visible-whitespace decoration. Footnote locators bind following punctuation;
+Appearance alone owns numeric rhythm.
 
-Native chrome and Review use the resolved filename title. Live Preview projects
-one borderless auto-height field outside source. Its versioned request carries
-the exact editor envelope and expected title; native validates identity and
-name, then delegates to `moveNote`. Success follows
-the stable-identity path update; failure retains its draft and accessible
-error. The widget consumes its own events and never writes Markdown. Authored
-headings remain beneath the title. Source has no projection.
+Native chrome and Review use the resolved filename title. Live Preview's
+borderless field sends the exact editor envelope and expected title; native
+validates both before `moveNote`. Success follows stable identity; failure
+retains the accessible draft error. It never writes Markdown; headings stay
+below it and Source has no title projection.
 
-Review document identity excludes its asynchronously derived link-preview
-catalog. A fingerprint, CSS, or capability change may replace the static page,
-while a later graph-bound preview revision updates one bounded in-page preview
-map. It cannot reload the document DOM, disturb selection or scroll, or become
-a writable source authority.
+Bridge 21 carries document attachments through a bounded source-neutral
+operation. Live Preview owns a sibling StateField/widget and
+Review a dedicated DOM mount. Updating either subtree cannot change the load
+signature, title DOM, `EditorState`, exact-source mirror, selection,
+composition, history, or scroll. Pointer activation blocks caret placement
+before its typed preview/add request; Source installs no attachment field.
+`NoteContentView` resolves records and availability. Native Quick Look owns and
+releases each access lease, then restores the retained title/body focus target.
 
-Read and Live Preview use separate DOMs. Generated, type-checked
-`reader.bundle.js` from `reader*.ts` owns Read behavior;
-`SafeMarkdownReadWebView` owns page identity and configuration, while bounded
-native coordinators own cancellable work. Thin adapters preserve shared
-semantics and accessibility. Layout changes must not reconstruct the retained
+Review page identity excludes asynchronously derived link previews and document
+attachments. Only fingerprint, CSS, or capability changes replace the page;
+in-page updates are read-only and preserve selection and scroll.
+`reader.bundle.js` owns the Read DOM,
+`SafeMarkdownReadWebView` owns its configuration, and coordinators own
+cancellable work. Layout never reconstructs the retained
 `WKWebView` or `EditorState`.
 
 The Host owns three ordered CSS layers on both surfaces: app/protected

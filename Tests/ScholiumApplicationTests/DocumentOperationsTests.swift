@@ -146,6 +146,79 @@ struct DocumentOperationsTests {
         await reopenedRuntime.shutdown()
     }
 
+    @Test("Document attachments remain source-neutral and follow stable Note identity")
+    func documentAttachmentsRemainSourceNeutral() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let original = try await handle.documents.load(fixture.targetID)
+        let projection = try #require(
+            try await handle.snapshot().document(id: fixture.targetID)
+        )
+        let stableID = try #require(projection.stableIdentity.resolvedID)
+        let target = NoteDocumentAttachmentTarget(
+            noteID: stableID,
+            vaultID: fixture.targetID.vaultID,
+            relativePath: fixture.targetID.relativePath
+        )
+        let sourceURL = fixture.rootURL.appendingPathComponent(
+            "A Deliberately Long Supporting Document Name.pdf"
+        )
+        let attachmentBytes = Data("document attachment bytes".utf8)
+        try attachmentBytes.write(to: sourceURL, options: .atomic)
+
+        let attached = try await handle.documents.attachDocument(
+            at: sourceURL,
+            to: target,
+            management: .copyIntoTriptych
+        )
+        guard case .vaultRelative(let copiedPath) = attached.record.location else {
+            Issue.record("Expected a portable copied attachment.")
+            await runtime.shutdown()
+            return
+        }
+        #expect(attached.record.noteID == stableID)
+        #expect(attached.availability == .available)
+        #expect(
+            try Data(contentsOf: fixture.analysesURL.appendingPathComponent(
+                copiedPath.rawValue
+            )) == attachmentBytes
+        )
+        let afterAttach = try await handle.documents.load(fixture.targetID)
+        #expect(afterAttach.rawContent == original.rawContent)
+        #expect(afterAttach.fingerprint == original.fingerprint)
+
+        let lease = try await handle.documents.prepareDocumentAttachmentPreview(
+            attachmentID: attached.record.id,
+            for: target
+        )
+        #expect(try Data(contentsOf: lease.fileURL) == attachmentBytes)
+        await handle.documents.releaseDocumentAttachmentPreview(
+            accessToken: lease.accessToken
+        )
+
+        let movedPath = "Moved/Attachment Target.md"
+        _ = try await handle.documents.move(
+            fixture.targetID,
+            to: movedPath,
+            expectedRevision: original.fingerprint
+        ).committedValue
+        let movedTarget = NoteDocumentAttachmentTarget(
+            noteID: stableID,
+            vaultID: fixture.targetID.vaultID,
+            relativePath: movedPath
+        )
+        let movedAttachments = try await handle.documents.documentAttachments(
+            for: movedTarget
+        )
+        #expect(movedAttachments.map(\.record.id) == [attached.record.id])
+        await #expect(throws: (any Error).self) {
+            _ = try await handle.documents.documentAttachments(for: target)
+        }
+        await runtime.shutdown()
+    }
+
     @Test("Metadata save is revision-checked and leaves exact Markdown and YAML bytes unchanged")
     func metadataSaveDoesNotRewriteSource() async throws {
         let fixture = try await LifecycleFixture.make()

@@ -1,7 +1,10 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Add Document" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Add Document"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"附加文档"}}}},
     "Add accTitle and accDescr to provide a concise nonvisual account of this diagram." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Add accTitle and accDescr to provide a concise nonvisual account of this diagram."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"请添加 accTitle 和 accDescr，为此图提供简明的非视觉说明。"}}}},
+    "Attached document unavailable {title}" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Attached document unavailable {title}"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"附加文档不可用：{title}"}}}},
+    "Attachments" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Attachments"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"附件"}}}},
     "Blockquote" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Blockquote"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"块引用"}}}},
     "Bold" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Bold"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"粗体"}}}},
     "Bold (⌘B)" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Bold (⌘B)"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"粗体（⌘B）"}}}},
@@ -75,6 +78,7 @@
     "Preserves an unsupported callout without assigning a research role." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Preserves an unsupported callout without assigning a research role."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"保留不受支持的标注框，不为其指定研究角色。"}}}},
     "Preserves source-specific wording with attribution." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Preserves source-specific wording with attribution."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"保留带有出处的来源原文。"}}}},
     "Preview content" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Preview content"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"预览内容"}}}},
+    "Preview attached document {title}" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Preview attached document {title}"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"预览附加文档：{title}"}}}},
     "Quotation" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Quotation"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"引用"}}}},
     "Records sources that anchor the note without implying that they support every claim." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Records sources that anchor the note without implying that they support every claim."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"记录作为笔记依据的来源，但不表示这些来源支持其中的每项主张。"}}}},
     "Show Link Annotation" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Show Link Annotation"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"展开链接注释"}}}},

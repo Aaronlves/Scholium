@@ -76,7 +76,7 @@ struct InterfacePresentationOwnershipTests {
       webHover == [
         "Scholium/Resources/Editor/callouts.css": 1,
         "Scholium/Resources/Editor/footnotes.css": 1,
-        "Scholium/UI/Foundation/ScholiumDesignSystem.swift": 4,
+        "Scholium/UI/Foundation/ScholiumDesignSystem.swift": 7,
       ],
       Comment(rawValue: diagnostic(for: webHover))
     )
