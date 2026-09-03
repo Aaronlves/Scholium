@@ -21040,12 +21040,13 @@
   var completionKeymapExt = /* @__PURE__ */ Prec.highest(/* @__PURE__ */ keymap.computeN([completionConfig], (state) => state.facet(completionConfig).defaultKeymap ? [completionKeymap] : []));
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 16;
+  var EDITOR_PROTOCOL_VERSION = 17;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var operationTypes = /* @__PURE__ */ new Set([
     "initialize",
     "setMode",
+    "setDocumentTitle",
     "setPresentationCSS",
     "setUserCSS",
     "setLinkPreviews",
@@ -21139,6 +21140,7 @@
     return Number.isSafeInteger(snapshotGeneration) && Number.isSafeInteger(currentGeneration) && snapshotGeneration >= currentGeneration;
   }
   var forwardReadableOperationTypes = /* @__PURE__ */ new Set([
+    "setDocumentTitle",
     "queryText",
     "querySelection",
     "queryContext",
@@ -21172,6 +21174,8 @@
         );
       case "setMode":
         return validMode(operation.mode);
+      case "setDocumentTitle":
+        return typeof operation.value === "string" && operation.value.length <= 1024;
       case "setPresentationCSS":
       case "setUserCSS":
         return typeof operation.value === "string" && operation.value.length <= 1e6;
@@ -36272,11 +36276,54 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   });
   var programmaticDocumentChange = Annotation.define();
   var refreshLivePreviewEffect = StateEffect.define();
+  var refreshDocumentTitleEffect = StateEffect.define();
   var refreshMermaidThemeEffect = StateEffect.define();
   var mermaidThemeRevision = 0;
+  var documentTitle = "";
   function configuredEditorMode(state) {
     return state.facet(editorModeFacet);
   }
+  var DocumentTitleWidget = class extends WidgetType {
+    constructor(title) {
+      super();
+      this.title = title;
+    }
+    title;
+    eq(other) {
+      return other.title === this.title;
+    }
+    toDOM() {
+      const title = document.createElement("div");
+      title.className = "cm-live-note-title scholium-note-title";
+      title.setAttribute("role", "heading");
+      title.setAttribute("aria-level", "1");
+      title.setAttribute("dir", "auto");
+      title.setAttribute("data-scholium-protected", "note-title");
+      title.textContent = this.title;
+      return title;
+    }
+    ignoreEvent() {
+      return true;
+    }
+  };
+  function documentTitleDecorations(state) {
+    if (!documentTitle) return Decoration.none;
+    return Decoration.set([
+      Decoration.widget({
+        widget: new DocumentTitleWidget(documentTitle),
+        block: true,
+        side: -1
+      }).range(frontmatterBodyOffset(state.doc))
+    ]);
+  }
+  var liveDocumentTitle = StateField.define({
+    create: (state) => documentTitleDecorations(state),
+    update: (decorations2, transaction) => {
+      const titleChanged = transaction.effects.some((effect) => effect.is(refreshDocumentTitleEffect));
+      return transaction.docChanged || titleChanged ? documentTitleDecorations(transaction.state) : decorations2;
+    },
+    provide: (field) => EditorView.decorations.from(field)
+  });
   var hiddenSyntax = Decoration.replace({});
   var liveMark = (className) => Decoration.mark({ class: className });
   var liveInlineClassByKind = {
@@ -37196,6 +37243,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     EditorView.contentAttributes.of(editorAccessibilityAttributes("livePreview")),
     Prec.high(liveSelection.extension),
     liveProjectionIndex.extension,
+    liveDocumentTitle,
     inputSuggestions.extension,
     liveSemanticLayout.extension,
     liveFrontmatterGuardField,
@@ -37468,6 +37516,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     switch (operation.type) {
       case "setMode":
         await editorOperations.setMode(operation.mode);
+        break;
+      case "setDocumentTitle":
+        editorOperations.setDocumentTitle(operation.value);
         break;
       case "setPresentationCSS":
         editorOperations.setPresentationCSS(operation.value);
@@ -37807,6 +37858,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       bridgeSessionID = sessionID;
       bridgeDocumentID = documentID;
       bridgeFingerprint = startingFingerprint;
+      documentTitle = "";
       documentVersion = 0;
       hiddenFrontmatterSourceSelection = null;
       const separator = text.includes("\r\n") ? "\r\n" : "\n";
@@ -37822,6 +37874,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       dirty = false;
       lastInteractionAvailabilitySignature = null;
       scheduleEditorInteractionReport(true);
+    },
+    setDocumentTitle(value) {
+      documentTitle = value;
+      editor.dispatch({ effects: refreshDocumentTitleEffect.of(null) });
     },
     /** @param {string} mode */
     async setMode(mode) {

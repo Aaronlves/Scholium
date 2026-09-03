@@ -6,6 +6,7 @@ import WebKit
 struct MarkdownEditorWebView: NSViewRepresentable {
     @ObservedObject var session: MarkdownEditorSession
     let documentID: String
+    let documentTitle: String
     let performanceDocumentID: String
     let source: String
     let mode: MarkdownEditorMode
@@ -133,6 +134,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         webView.navigationDelegate = context.coordinator
         webView.setValue(false, forKey: "drawsBackground")
         context.coordinator.documentID = documentID
+        context.coordinator.documentTitle = documentTitle
         context.coordinator.source = attachmentSource
         context.coordinator.startingFingerprint = DocumentFingerprint(content: attachmentSource).sha256
         context.coordinator.lastModeInput = mode
@@ -146,6 +148,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         }
         context.coordinator.performanceDocumentID = performanceDocumentID
         session.setPresentationCSS(presentationCSS)
+        session.setDocumentTitle(documentTitle)
         session.setScrollPosition(anchor: initialScrollAnchor, fallbackFraction: initialScrollFraction)
         session.attach(webView)
         session.loadDocument(attachmentSource, documentID: documentID, mode: mode)
@@ -180,6 +183,10 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         context.coordinator.onScrollAnchorChange = onScrollAnchorChange
         context.coordinator.initialScrollFraction = initialScrollFraction
         context.coordinator.initialScrollAnchor = initialScrollAnchor
+        if context.coordinator.documentTitle != documentTitle {
+            context.coordinator.documentTitle = documentTitle
+            session.setDocumentTitle(documentTitle)
+        }
         if context.coordinator.presentationCSS != presentationCSS {
             context.coordinator.presentationCSS = presentationCSS
             session.setPresentationCSS(presentationCSS)
@@ -278,6 +285,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         var onScrollFractionChange: (Double) -> Void
         var onScrollAnchorChange: (EditorScrollAnchor) -> Void
         var documentID = ""
+        var documentTitle = ""
         var performanceDocumentID: String
         weak var activeWebView: WKWebView?
         var source = ""

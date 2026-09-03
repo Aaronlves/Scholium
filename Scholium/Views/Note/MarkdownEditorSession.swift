@@ -146,6 +146,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     var webView: WKWebView?
     private var pendingSource: String?
     private var pendingDocumentID = ""
+    private var pendingDocumentTitle = ""
     private var pendingMode: MarkdownEditorMode = .livePreview
     private var pendingPresentationCSS = ""
     private var pendingUserCSS = ""
@@ -306,6 +307,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         sourceChangeHandler = nil
         pendingSource = nil
         pendingDocumentID = ""
+        pendingDocumentTitle = ""
         pendingLinkPreviews = []
         pendingScrollFraction = nil
         pendingScrollAnchor = nil
@@ -446,6 +448,16 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         guard requiresConvergence else { return }
         guard isReady, isLoaded, let webView else { return }
         startModeConvergence(in: webView)
+    }
+
+    func setDocumentTitle(_ title: String) {
+        pendingDocumentTitle = String(title.prefix(1_024))
+        guard isReady, isLoaded, let webView else { return }
+        let documentTitle = pendingDocumentTitle
+        Task { [weak self, weak webView] in
+            guard let self, let webView else { return }
+            _ = try? await self.send(.setDocumentTitle(documentTitle), in: webView)
+        }
     }
 
     /// Serially converges the retained CodeMirror configuration on the latest
@@ -1399,9 +1411,15 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         documentID: String
     ) async throws {
         while true {
+            let documentTitle = pendingDocumentTitle
             let presentationCSS = pendingPresentationCSS
             let userCSS = pendingUserCSS
             let linkPreviews = pendingLinkPreviews
+            _ = try await send(
+                .setDocumentTitle(documentTitle),
+                in: webView,
+                requiringRequestEpoch: intendedRequestEpoch
+            )
             _ = try await send(
                 .setPresentationCSS(presentationCSS),
                 in: webView,
@@ -1422,7 +1440,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                   self.webView === webView else {
                 throw SessionError.staleRequest
             }
-            if presentationCSS == pendingPresentationCSS,
+            if documentTitle == pendingDocumentTitle,
+               presentationCSS == pendingPresentationCSS,
                userCSS == pendingUserCSS,
                linkPreviews == pendingLinkPreviews {
                 return

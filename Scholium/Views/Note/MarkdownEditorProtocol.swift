@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 16
+let markdownEditorProtocolVersion = 17
 let markdownEditorMaximumInboundBytes = 2_500_000
 let markdownEditorMaximumSelectionRangeCount = 128
 
@@ -212,6 +212,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         initialSelection: MarkdownEditorSelectionRange?
     )
     case setMode(MarkdownEditorMode)
+    case setDocumentTitle(String)
     case setPresentationCSS(String)
     case setUserCSS(String)
     case setLinkPreviews([MarkdownEditorLinkPreview])
@@ -250,7 +251,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case expectedText, committedText, committedFingerprint, command, argument
     }
     private enum Kind: String, Codable {
-        case initialize, setMode, setPresentationCSS, setUserCSS, setLinkPreviews, showPreview, measureVisibleProjection, showPreviewAt, announceStatus
+        case initialize, setMode, setDocumentTitle, setPresentationCSS, setUserCSS, setLinkPreviews, showPreview, measureVisibleProjection, showPreviewAt, announceStatus
         case goToLine, revealSourceRange, setScrollFraction, setScrollAnchor, queryText, querySelection, queryContext, queryScrollAnchor, queryPerformance
         case captureRecovery, restoreRecovery, acknowledgeCommittedSnapshot, command, documentFind, clearDocumentFind, markClean, focus, blur
     }
@@ -269,6 +270,8 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
                 )
             )
         case .setMode: self = try .setMode(container.decode(MarkdownEditorMode.self, forKey: .mode))
+        case .setDocumentTitle:
+            self = try .setDocumentTitle(container.decode(String.self, forKey: .value))
         case .setPresentationCSS: self = try .setPresentationCSS(container.decode(String.self, forKey: .value))
         case .setUserCSS: self = try .setUserCSS(container.decode(String.self, forKey: .value))
         case .setLinkPreviews: self = try .setLinkPreviews(container.decode([MarkdownEditorLinkPreview].self, forKey: .value))
@@ -327,6 +330,8 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
                 forKey: .initialSelection
             )
         case let .setMode(mode): try pair(.setMode, mode, .mode, into: &container)
+        case let .setDocumentTitle(value):
+            try pair(.setDocumentTitle, value, .value, into: &container)
         case let .setPresentationCSS(value): try pair(.setPresentationCSS, value, .value, into: &container)
         case let .setUserCSS(value): try pair(.setUserCSS, value, .value, into: &container)
         case let .setLinkPreviews(value): try pair(.setLinkPreviews, value, .value, into: &container)

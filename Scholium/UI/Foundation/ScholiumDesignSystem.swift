@@ -551,6 +551,9 @@ enum ScholiumWebDesignTokens {
             --scholium-document-half-line-width: \(number(defaults.lineWidthCharacterUnits / 2))ch;
             --scholium-document-prose-font-size: \(number(body.fontSizePoints))pt;
             --scholium-document-source-font-size: \(ScholiumDocumentRhythm.sourceFontSizePixels)px;
+            --scholium-document-title-size: 180%;
+            --scholium-document-title-line-height: 1.15;
+            --scholium-document-title-after: 0.65em;
             --scholium-document-h1-size: \(number(headings.level1.scale * 100))%;
             --scholium-document-h2-size: \(number(headings.level2.scale * 100))%;
             --scholium-document-h3-size: \(number(headings.level2.scale * 100))%;
@@ -686,6 +689,24 @@ enum ScholiumWebDesignTokens {
         .scholium-document p,
         .cm-editor.scholium-live-mode .cm-live-paragraph {
           box-sizing: border-box;
+        }
+        .scholium-note-title {
+          box-sizing: border-box;
+          margin: 0;
+          padding-block: 0 var(--scholium-document-title-after);
+          color: var(--scholium-color-primary-text);
+          font-family: var(--scholium-document-heading-font-family);
+          font-size: var(--scholium-document-title-size);
+          font-style: normal;
+          font-variant-caps: normal;
+          font-weight: 600;
+          line-height: var(--scholium-document-title-line-height);
+          letter-spacing: 0;
+          text-align: start;
+          text-indent: 0;
+          overflow-wrap: anywhere;
+          cursor: default;
+          user-select: none;
         }
         .scholium-document p {
           margin: 0;

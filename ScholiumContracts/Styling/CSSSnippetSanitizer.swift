@@ -47,7 +47,7 @@ public enum CSSSnippetSanitizer {
         "scholium-callout", "footnote", "review", "diagnostic", "provenance",
         "source-warning", "data-scholium-protected", "researcher-comment", "scholium-preview",
         "workflow-gate", "cm-live-callout", "scholium-link-annotation",
-        "cm-live-link-annotation"
+        "cm-live-link-annotation", "scholium-note-title"
     ]
 
     private static let allowedElements: Set<String> = [

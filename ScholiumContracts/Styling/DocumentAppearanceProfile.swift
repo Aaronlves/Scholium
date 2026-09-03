@@ -59,13 +59,13 @@ public struct DocumentBodyAppearance: Codable, Hashable, Sendable {
 
     public init(
         fontFamily: DocumentAppearanceFontFamily = .alegreya,
-        fontSizePoints: Double = 12,
-        lineHeight: Double = 2,
-        paragraphSpacingEm: Double = 1,
+        fontSizePoints: Double = 13,
+        lineHeight: Double = 1.7,
+        paragraphSpacingEm: Double = 0.7,
         firstLineIndentEm: Double = 0,
-        letterSpacingEm: Double = 0.02,
+        letterSpacingEm: Double = 0,
         wordSpacingEm: Double = 0,
-        alignment: DocumentTextAlignment = .justify,
+        alignment: DocumentTextAlignment = .start,
         hyphenation: DocumentHyphenation = .none,
         kerning: Bool = true,
         ligatures: Bool = true
@@ -116,17 +116,17 @@ public struct DocumentHeadingAppearance: Codable, Hashable, Sendable {
         fontFamily: DocumentHeadingFontFamily = .body,
         style: DocumentHeadingStyle = .upright,
         weight: Int = 500,
-        lineHeight: Double = 1.8,
+        lineHeight: Double = 1.35,
         letterSpacingEm: Double = 0,
         level1: DocumentHeadingLevelAppearance = .init(
-            scale: 1.5,
-            spaceBeforeEm: 0.6,
-            spaceAfterEm: 0.6
+            scale: 1.4,
+            spaceBeforeEm: 0.9,
+            spaceAfterEm: 0.35
         ),
         level2: DocumentHeadingLevelAppearance = .init(
-            scale: 1.15,
-            spaceBeforeEm: 0.5,
-            spaceAfterEm: 0.5
+            scale: 1.12,
+            spaceBeforeEm: 0.7,
+            spaceAfterEm: 0.3
         )
     ) {
         self.fontFamily = fontFamily
@@ -199,7 +199,7 @@ public struct DocumentCalloutAppearance: Codable, Hashable, Identifiable, Sendab
 }
 
 public struct DocumentAppearanceSettings: Codable, Hashable, Sendable {
-    public static let defaultLineWidthCharacterUnits: Double = 72
+    public static let defaultLineWidthCharacterUnits: Double = 66
     public static let lineWidthCharacterUnitsRange: ClosedRange<Double> = 48...96
 
     public var lineWidthCharacterUnits: Double
@@ -261,10 +261,10 @@ public struct DocumentAppearanceSettings: Codable, Hashable, Sendable {
         .init(
             role: .caution,
             inlineInsetEm: 0,
-            blockGapEm: 1.5,
+            blockGapEm: 1.25,
             titleWeight: 500,
-            paddingBlockEm: 0.9,
-            paddingInlineEm: 1
+            paddingBlockEm: 0.7,
+            paddingInlineEm: 0.85
         ),
         .init(
             role: .folded,
@@ -284,10 +284,10 @@ public struct DocumentAppearanceSettings: Codable, Hashable, Sendable {
         .init(
             role: .source,
             inlineInsetEm: 0,
-            blockGapEm: 1.7,
+            blockGapEm: 1.25,
             titleWeight: 500,
-            paddingBlockEm: 0.9,
-            paddingInlineEm: 1
+            paddingBlockEm: 0.7,
+            paddingInlineEm: 0.85
         )
     ]
 

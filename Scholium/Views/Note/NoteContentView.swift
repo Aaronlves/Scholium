@@ -677,6 +677,7 @@ struct NoteContentView: View {
         AnyView(MarkdownEditorWebView(
             session: editorSession,
             documentID: editorSession.bridgeDocumentID,
+            documentTitle: note.displayName,
             performanceDocumentID: note.relativePath,
             source: editingSource,
             mode: documentSession.retainedEditorMode,
@@ -862,6 +863,7 @@ struct NoteContentView: View {
     private var readDocumentSurface: some View {
         SafeMarkdownReadWebView(
             documentID: note.relativePath,
+            documentTitle: note.displayName,
             fingerprint: noteFingerprint.sha256,
             source: note.rawContent,
             htmlBody: renderedReadHTML,
@@ -957,6 +959,7 @@ struct NoteContentView: View {
     private var readConfigurationRevision: String {
         [
             noteFingerprint.sha256,
+            String(note.displayName.hashValue),
             String(state.documentTextScale.bitPattern),
             String(state.appearanceCSS.hashValue),
             String(state.readCSS.hashValue),

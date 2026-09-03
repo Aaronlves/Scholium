@@ -31,7 +31,7 @@ const dialect = {
 
 describe("editor protocol", () => {
   it("uses the coalesced interaction bridge protocol", () => {
-    expect(EDITOR_PROTOCOL_VERSION).toBe(16);
+    expect(EDITOR_PROTOCOL_VERSION).toBe(17);
   });
   it("accepts a complete versioned request", () => expect(isEditorRequest(request)).toBe(true));
   it("accepts the bounded blur operation", () => {
@@ -39,6 +39,17 @@ describe("editor protocol", () => {
   });
   it("accepts the bounded performance query", () => {
     expect(isEditorRequest({...request, operation: {type: "queryPerformance"}})).toBe(true);
+  });
+  it("accepts only a bounded document title projection", () => {
+    expect(isEditorRequest({
+      ...request,
+      operation: {type: "setDocumentTitle", value: "Reasons and Emotion"},
+    })).toBe(true);
+    expect(isEditorRequest({
+      ...request,
+      operation: {type: "setDocumentTitle", value: "x".repeat(1_025)},
+    })).toBe(false);
+    expect(generationCanExecuteEditorRequest("setDocumentTitle", 3, 4)).toBe(true);
   });
   it("accepts only bounded literal document-find requests", () => {
     const value = {

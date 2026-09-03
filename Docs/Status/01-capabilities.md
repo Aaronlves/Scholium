@@ -21,6 +21,9 @@
   runs both and returns separate rankings, totals, offsets, continuations, and
   generations; Notes and Records are dedicated paths. Record scope follows
   exact current Note references and never treats a reference as query text.
+- Review and Edit project the resolved Note title at the top of their shared
+  scrolling document plane while retaining authored H1 as a body section;
+  Source remains an exact-source surface without the projection.
 - Strict portable Research Records are reachable under
   `.scholium/inquiry-records/v1/`. Create, substantive append, paged read, and
   append-only clerical correction preserve external-Agent attribution,

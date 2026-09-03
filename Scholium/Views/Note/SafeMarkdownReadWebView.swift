@@ -11,6 +11,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     static let bridgeContentWorld = WKContentWorld.world(name: bridgeContentWorldName)
 
     let documentID: String
+    var documentTitle = ""
     let fingerprint: String
     let source: String
     let htmlBody: String
@@ -107,6 +108,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         webView.setAccessibilityIdentifier("scholium.renderedDocument.loading")
         context.coordinator.loadIfNeeded(
             htmlBody,
+            documentTitle: documentTitle,
             source: source,
             presentationCSS: presentationCSS,
             userCSS: userCSS,
@@ -147,6 +149,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         )
         context.coordinator.loadIfNeeded(
             htmlBody,
+            documentTitle: documentTitle,
             source: source,
             presentationCSS: presentationCSS,
             userCSS: userCSS,
@@ -333,6 +336,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
 
         func loadIfNeeded(
             _ body: String,
+            documentTitle: String,
             source: String,
             presentationCSS: String,
             userCSS: String,
@@ -345,10 +349,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let capabilitySignature = "\(onSelectionChange != nil)"
             let previewRevision = linkPreviewRevision ?? String(linkPreviews.hashValue)
             let signature = configurationRevision.map {
-                "revision:\($0):\(capabilitySignature):\(interfaceLocalization.languageTag)"
+                "revision:\($0):\(documentTitle.hashValue):\(capabilitySignature):\(interfaceLocalization.languageTag)"
             } ?? [
                 fingerprint,
                 String(body.utf8.count),
+                String(documentTitle.hashValue),
                 String(presentationCSS.hashValue),
                 String(userCSS.hashValue),
                 String(linkPreviews.hashValue),
@@ -402,6 +407,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             )
             let html = Self.documentHTML(
                 body: body,
+                documentTitle: documentTitle,
                 includesMathRuntime: includesMathRuntime,
                 localization: interfaceLocalization
             )
@@ -1127,12 +1133,20 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
 
         static func documentHTML(
             body: String,
+            documentTitle: String? = nil,
             includesMathRuntime: Bool? = nil,
             localization: WebKitInterfaceLocalization = .current()
         ) -> String {
             let includesMathRuntime = includesMathRuntime
                 ?? requiresMathRuntime(body: body, linkPreviews: [])
             let mathCSS = includesMathRuntime ? ScholiumMathAssets.css : ""
+            let titleMarkup = documentTitle.flatMap { title -> String? in
+                let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !title.isEmpty else { return nil }
+                return """
+                <div class="scholium-note-title" role="heading" aria-level="1" dir="auto" data-scholium-protected="note-title">\(escapedHTMLText(title))</div>
+                """
+            } ?? ""
             return """
             <!doctype html>
             <html lang="\(localization.languageTag)">
@@ -1145,7 +1159,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
               <style id="scholium-user-css"></style>
             </head>
             <body>
-              <main id="scholium-document" class="scholium-document">\(body)</main>
+              <main id="scholium-document" class="scholium-document">\(titleMarkup)\(body)</main>
               <aside id="scholium-preview-popover" class="scholium-preview-popover" data-scholium-protected="preview-popover" role="tooltip" aria-live="polite" hidden>
                 <h2 class="scholium-preview-title"></h2>
                 <p class="scholium-preview-metadata" hidden></p>
@@ -1154,6 +1168,15 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             </body>
             </html>
             """
+        }
+
+        private static func escapedHTMLText(_ value: String) -> String {
+            value
+                .replacingOccurrences(of: "&", with: "&amp;")
+                .replacingOccurrences(of: "<", with: "&lt;")
+                .replacingOccurrences(of: ">", with: "&gt;")
+                .replacingOccurrences(of: "\"", with: "&quot;")
+                .replacingOccurrences(of: "'", with: "&#39;")
         }
 
         /// Mathematics is an immutable optional projection. Avoid parsing the

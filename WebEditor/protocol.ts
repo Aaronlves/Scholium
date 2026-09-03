@@ -1,4 +1,4 @@
-export const EDITOR_PROTOCOL_VERSION = 16;
+export const EDITOR_PROTOCOL_VERSION = 17;
 export const MAX_INBOUND_BYTES = 2_500_000;
 export const MAX_SOURCE_UTF8_BYTES = 8_000_000;
 
@@ -100,6 +100,7 @@ export type EditorOperation =
     initialSelection?: SelectionRange;
   }
   | {type: "setMode"; mode: EditorMode}
+  | {type: "setDocumentTitle"; value: string}
   | {type: "setPresentationCSS"; value: string}
   | {type: "setUserCSS"; value: string}
   | {type: "setLinkPreviews"; value: unknown[]}
@@ -148,7 +149,7 @@ export interface EditorCommandResult {
 }
 
 const operationTypes = new Set([
-  "initialize", "setMode", "setPresentationCSS", "setUserCSS", "setLinkPreviews", "showPreview", "measureVisibleProjection", "showPreviewAt", "announceStatus",
+  "initialize", "setMode", "setDocumentTitle", "setPresentationCSS", "setUserCSS", "setLinkPreviews", "showPreview", "measureVisibleProjection", "showPreviewAt", "announceStatus",
   "goToLine", "revealSourceRange", "setScrollFraction", "setScrollAnchor", "queryText", "querySelection", "queryContext", "queryScrollAnchor", "queryPerformance",
   "captureRecovery", "restoreRecovery", "acknowledgeCommittedSnapshot", "command", "documentFind", "clearDocumentFind", "markClean", "focus", "blur",
 ]);
@@ -206,6 +207,7 @@ export function recoveryGenerationCanReplaceCurrent(
 }
 
 const forwardReadableOperationTypes = new Set([
+  "setDocumentTitle",
   "queryText",
   "querySelection",
   "queryContext",
@@ -282,6 +284,8 @@ function validOperation(operation: Record<string, unknown>) {
         operation.text.replaceAll("\r\n", "\n").length,
       );
   case "setMode": return validMode(operation.mode);
+  case "setDocumentTitle":
+    return typeof operation.value === "string" && operation.value.length <= 1_024;
   case "setPresentationCSS":
   case "setUserCSS": return typeof operation.value === "string" && operation.value.length <= 1_000_000;
   case "announceStatus": return typeof operation.value === "string" && operation.value.length <= 500;

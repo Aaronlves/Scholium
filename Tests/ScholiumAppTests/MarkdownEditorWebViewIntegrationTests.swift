@@ -1782,6 +1782,58 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
+    @Test("Edit projects one app-owned title above authored headings without changing source")
+    func editProjectsDocumentTitleOutsideMarkdown() async throws {
+        let source = "# Authored section\n\nArgument."
+        let harness = EditorHarness(
+            documentTitle: "Reasons & Emotion",
+            source: source
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+
+        let live = try #require(try await harness.callPageJavaScript(
+            """
+            const title = document.querySelector('.cm-live-note-title');
+            const section = document.querySelector('.cm-live-h1');
+            return {
+              titleCount: document.querySelectorAll('.cm-live-note-title').length,
+              titleText: title?.textContent || '',
+              titleRole: title?.getAttribute('role') || '',
+              titleLevel: title?.getAttribute('aria-level') || '',
+              sectionLevel: section?.getAttribute('aria-level') || ''
+            };
+            """
+        ) as? [String: Any])
+        #expect(live["titleCount"] as? Int == 1)
+        #expect(live["titleText"] as? String == "Reasons & Emotion")
+        #expect(live["titleRole"] as? String == "heading")
+        #expect(live["titleLevel"] as? String == "1")
+        #expect(live["sectionLevel"] as? String == "2")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+
+        harness.setDocumentTitle("Reasons after Rename")
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+        while try await harness.callPageJavaScript(
+            "return document.querySelector('.cm-live-note-title')?.textContent || ''"
+        ) as? String != "Reasons after Rename" {
+            if clock.now >= deadline {
+                Issue.record("Edit did not refresh its projected Note title.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+
+        harness.session.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        #expect(try await harness.callPageJavaScript(
+            "return document.querySelectorAll('.cm-live-note-title').length"
+        ) as? Int == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
     @Test("Two-hundred-percent Edit projections remain measured and pointer-addressable")
     func enlargedEditProjectionRemainsStableAcrossFocusAndBlockActivation() async throws {
         let source = """
@@ -1833,8 +1885,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
         #expect(initial.h1TextAlign == "start")
         #expect(initial.h2TextAlign == "start")
-        #expect(abs(try #require(pixelValue(initial.h1FontSize)) - 48) < 0.001)
-        #expect(abs(try #require(pixelValue(initial.h2FontSize)) - 36.8) < 0.001)
+        #expect(abs(try #require(pixelValue(initial.h1FontSize)) - 48.5333) < 0.01)
+        #expect(abs(try #require(pixelValue(initial.h2FontSize)) - 38.8267) < 0.01)
         #expect(initial.collapsedCodeFenceVisibleHeight <= 0.5)
 
         // At 200% the quotation may be outside CodeMirror's mounted viewport
@@ -1924,12 +1976,12 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(fresh.liveH1Count == 1)
         #expect(fresh.liveH2Count == 1)
         #expect(fresh.liveCalloutWidgetCount == 2)
-        #expect(abs(try #require(pixelValue(fresh.h1FontSize)) - 24) < 0.001)
-        #expect(abs(try #require(pixelValue(fresh.h2FontSize)) - 18.4) < 0.001)
+        #expect(abs(try #require(pixelValue(fresh.h1FontSize)) - 24.2667) < 0.01)
+        #expect(abs(try #require(pixelValue(fresh.h2FontSize)) - 19.4133) < 0.01)
         #expect(fresh.h1TextAlign == "start")
         #expect(fresh.h2TextAlign == "start")
         #expect(fresh.editBlankLineCount > 0)
-        #expect(fresh.editBlankLineMinimumHeight == 16)
+        #expect(abs(fresh.editBlankLineMinimumHeight - 12.125) < 0.01)
 
         harness.session.setMode(.source)
         try await harness.waitUntilPresentedMode(.source)
@@ -1983,8 +2035,8 @@ struct MarkdownEditorWebViewIntegrationTests {
                 && $0.liveH1Count == 1
                 && $0.liveH2Count == 1
         }
-        #expect(abs(try #require(pixelValue(blurred.h1FontSize)) - 48) < 0.001)
-        #expect(abs(try #require(pixelValue(blurred.h2FontSize)) - 36.8) < 0.001)
+        #expect(abs(try #require(pixelValue(blurred.h1FontSize)) - 48.5333) < 0.01)
+        #expect(abs(try #require(pixelValue(blurred.h2FontSize)) - 38.8267) < 0.01)
         #expect(blurred.h1TextAlign == "start")
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
@@ -3927,6 +3979,7 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         init(
             documentID: String = "Argument.md",
+            documentTitle: String = "Argument",
             source: String,
             linkPreviews: [DocumentLinkPreview] = [],
             bridgeDispatcher: (any MarkdownEditorBridgeDispatching)? = nil,
@@ -3953,7 +4006,11 @@ struct MarkdownEditorWebViewIntegrationTests {
                 )
             }
             self.documentID = documentID
-            sourceBox = SourceBox(source, mode: initialMode)
+            sourceBox = SourceBox(
+                source,
+                mode: initialMode,
+                documentTitle: documentTitle
+            )
             sourceBox.presentationCSS = initialPresentationCSS
             window = NSWindow(
                 contentRect: NSRect(
@@ -4232,6 +4289,10 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         func setPresentationCSS(_ css: String) {
             sourceBox.presentationCSS = css
+        }
+
+        func setDocumentTitle(_ title: String) {
+            sourceBox.documentTitle = title
         }
 
         func close() {
@@ -4577,15 +4638,17 @@ struct MarkdownEditorWebViewIntegrationTests {
     @MainActor
     private final class SourceBox: ObservableObject {
         @Published var source: String
+        @Published var documentTitle: String
         @Published var showsEditor = true
         @Published var scrollAnchor: EditorScrollAnchor?
         @Published var presentationCSS = ""
         @Published var userCSS = ""
         var activatedLinks: [String] = []
         let mode: MarkdownEditorMode
-        init(_ source: String, mode: MarkdownEditorMode) {
+        init(_ source: String, mode: MarkdownEditorMode, documentTitle: String) {
             self.source = source
             self.mode = mode
+            self.documentTitle = documentTitle
         }
     }
 
@@ -4631,6 +4694,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             MarkdownEditorWebView(
                     session: session,
                     documentID: documentID,
+                    documentTitle: sourceBox.documentTitle,
                     performanceDocumentID: documentID,
                     source: sourceBox.source,
                     mode: sourceBox.mode,

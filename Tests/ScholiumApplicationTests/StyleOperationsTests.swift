@@ -20,9 +20,9 @@ struct StyleOperationsTests {
         #expect(initial.appearanceProfiles.count == 1)
         #expect(initial.selectedAppearanceProfileID == original.id)
         #expect(original.name == "Custom")
-        #expect(original.settings.lineWidthCharacterUnits == 72)
-        #expect(original.settings.body.fontSizePoints == 12)
-        #expect(original.settings.body.lineHeight == 2)
+        #expect(original.settings.lineWidthCharacterUnits == 66)
+        #expect(original.settings.body.fontSizePoints == 13)
+        #expect(original.settings.body.lineHeight == 1.7)
 
         var edited = original
         edited.settings.lineWidthCharacterUnits = 84
@@ -76,8 +76,8 @@ struct StyleOperationsTests {
             (48.0, 48.0),
             (96.0, 96.0),
             (97.0, 96.0),
-            (Double.nan, 72.0),
-            (Double.infinity, 72.0),
+            (Double.nan, 66.0),
+            (Double.infinity, 66.0),
         ] {
             var candidate = original
             candidate.settings.lineWidthCharacterUnits = input

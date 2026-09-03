@@ -255,12 +255,56 @@ const editorModeFacet = Facet.define<EditorMode, EditorMode>({
 });
 const programmaticDocumentChange = Annotation.define<boolean>();
 const refreshLivePreviewEffect = StateEffect.define<null>();
+const refreshDocumentTitleEffect = StateEffect.define<null>();
 const refreshMermaidThemeEffect = StateEffect.define<number>();
 let mermaidThemeRevision = 0;
+let documentTitle = "";
 
 function configuredEditorMode(state: EditorState): EditorMode {
   return state.facet(editorModeFacet);
 }
+
+class DocumentTitleWidget extends WidgetType {
+  constructor(readonly title: string) { super(); }
+
+  eq(other: DocumentTitleWidget) { return other.title === this.title; }
+
+  toDOM() {
+    const title = document.createElement("div");
+    title.className = "cm-live-note-title scholium-note-title";
+    title.setAttribute("role", "heading");
+    title.setAttribute("aria-level", "1");
+    title.setAttribute("dir", "auto");
+    title.setAttribute("data-scholium-protected", "note-title");
+    title.textContent = this.title;
+    return title;
+  }
+
+  ignoreEvent() { return true; }
+}
+
+function documentTitleDecorations(state: EditorState) {
+  if (!documentTitle) return Decoration.none;
+  return Decoration.set([
+    Decoration.widget({
+      widget: new DocumentTitleWidget(documentTitle),
+      block: true,
+      side: -1,
+    }).range(frontmatterBodyOffset(state.doc)),
+  ]);
+}
+
+const liveDocumentTitle = StateField.define<DecorationSet>({
+  create: (state) => documentTitleDecorations(state),
+  update: (decorations, transaction) => {
+    const titleChanged = transaction.effects.some((effect) =>
+      effect.is(refreshDocumentTitleEffect));
+    return transaction.docChanged || titleChanged
+      ? documentTitleDecorations(transaction.state)
+      : decorations;
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
 
 const hiddenSyntax = Decoration.replace({});
 const liveMark = (className: string) => Decoration.mark({ class: className });
@@ -1404,6 +1448,7 @@ const livePreviewMode = [
   EditorView.contentAttributes.of(editorAccessibilityAttributes("livePreview")),
   Prec.high(liveSelection.extension),
   liveProjectionIndex.extension,
+  liveDocumentTitle,
   inputSuggestions.extension,
   liveSemanticLayout.extension,
   liveFrontmatterGuardField,
@@ -1676,6 +1721,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   }
   switch (operation.type) {
   case "setMode": await editorOperations.setMode(operation.mode); break;
+  case "setDocumentTitle": editorOperations.setDocumentTitle(operation.value); break;
   case "setPresentationCSS": editorOperations.setPresentationCSS(operation.value); break;
   case "setUserCSS": editorOperations.setUserCSS(operation.value); break;
   case "setLinkPreviews": editorOperations.setLinkPreviews(operation.value); break;
@@ -2019,6 +2065,7 @@ const editorOperations = {
     bridgeSessionID = sessionID;
     bridgeDocumentID = documentID;
     bridgeFingerprint = startingFingerprint;
+    documentTitle = "";
     documentVersion = 0;
     hiddenFrontmatterSourceSelection = null;
     const separator = text.includes("\r\n") ? "\r\n" : "\n";
@@ -2034,6 +2081,11 @@ const editorOperations = {
     dirty = false;
     lastInteractionAvailabilitySignature = null;
     scheduleEditorInteractionReport(true);
+  },
+
+  setDocumentTitle(value: string) {
+    documentTitle = value;
+    editor.dispatch({effects: refreshDocumentTitleEffect.of(null)});
   },
 
   /** @param {string} mode */

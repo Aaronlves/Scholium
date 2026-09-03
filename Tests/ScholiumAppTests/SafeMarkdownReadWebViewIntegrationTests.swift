@@ -149,6 +149,23 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(html.contains("script-src 'none'"))
     }
 
+    @Test("Review projects an escaped app-owned title before authored content")
+    func readHTMLProjectsDocumentTitleOutsideMarkdown() throws {
+        let html = SafeMarkdownReadWebView.Coordinator.documentHTML(
+            body: "<h1 aria-level=\"2\">Authored section</h1>",
+            documentTitle: "Reasons < Emotion & Value"
+        )
+
+        #expect(html.contains(
+            "class=\"scholium-note-title\" role=\"heading\" aria-level=\"1\""
+        ))
+        #expect(html.contains("Reasons &lt; Emotion &amp; Value"))
+        #expect(html.contains("data-scholium-protected=\"note-title\""))
+        let titleRange = try #require(html.range(of: "scholium-note-title"))
+        let sectionRange = try #require(html.range(of: "Authored section"))
+        #expect(titleRange.lowerBound < sectionRange.lowerBound)
+    }
+
     @Test("Read loads its packaged prose font through the allowlisted scheme")
     func readLoadsAllowlistedPackagedFont() async throws {
         let source = "# Exact\n\nA rendered claim.\n"
