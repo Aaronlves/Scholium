@@ -113,6 +113,16 @@ Completed automated checks in this worktree:
   `git diff --check` passed. Exploratory isolated QA confirmed the visible
   title, heading alignment, active-source transition, and paired footnote
   locator/punctuation; this is not human acceptance.
+- On 2026-09-04 the caret-local repeated-space correction started from committed
+  baseline `dc0a25c`. The locked frontend typechecked, passed 213 tests in 38
+  files, and reproduced all four generated resources; all 102 editor WKWebView
+  tests and 86 frontend-architecture tests passed. The focused WebKit journey
+  proved that Edit uses natural start alignment and that adding a second
+  internal prose space retains nonzero authored measure without introducing a
+  visible whitespace marker, moves the neighboring word at the tested soft-wrap
+  boundary, and preserves exact source. Selecting and deleting that extra space
+  restores the word's exact pre-edit coordinates, alignment, and source without
+  residue.
 - The affected macOS UI-test journey entered its test method and completed
   Settlement plus one MCP update. After synthetic Agent Changes activation,
   XCTest observed a disabled main window but neither rendered nor exposed the

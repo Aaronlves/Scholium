@@ -3170,6 +3170,10 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
 
         let before = try await neutralPosition()
+        let alignmentBefore = try await harness.callPageJavaScript(
+            "return getComputedStyle(document.querySelector('.cm-content')).textAlign"
+        ) as? String
+        #expect(alignmentBefore == "start")
 
         try await harness.session.perform(.pastePlain, argument: " ")
         try await harness.waitUntilSelection(head: insertion + 1, stage: "second exact space")
@@ -3200,7 +3204,10 @@ struct MarkdownEditorWebViewIntegrationTests {
               overflowWrap: style.overflowWrap,
               lineBreak: style.lineBreak,
               insertedSpaceWidth: rect.width,
-              insertedSpaceHeight: rect.height
+              insertedSpaceHeight: rect.height,
+              visibleSpaceMarkerCount: document.querySelectorAll(
+                '.cm-live-authored-extra-space'
+              ).length
             };
             """
         ) as? [String: Any])
@@ -3210,10 +3217,38 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(result["lineBreak"] as? String == "strict")
         #expect((result["insertedSpaceWidth"] as? NSNumber)?.doubleValue ?? 0 > 1)
         #expect((result["insertedSpaceHeight"] as? NSNumber)?.doubleValue ?? 0 > 1)
+        #expect(result["visibleSpaceMarkerCount"] as? Int == 0)
         let after = try await neutralPosition()
         #expect(abs(after.left - before.left) > 1 || abs(after.top - before.top) > 1)
         #expect(try await harness.session.currentText(for: harness.documentID)
             == source.replacingOccurrences(of: " neutral", with: "  neutral"))
+
+        harness.session.revealSourceRange(
+            fromUTF16: insertion,
+            toUTF16: insertion + 1
+        )
+        let selectionDeadline = ContinuousClock().now.advanced(by: .seconds(3))
+        while harness.session.context?.selections != [
+            MarkdownEditorSelectionRange(anchor: insertion, head: insertion + 1)
+        ] {
+            if ContinuousClock().now >= selectionDeadline {
+                Issue.record("The exact extra space did not become selected for deletion.")
+                break
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        try await harness.session.perform(.pastePlain, argument: "")
+        try await harness.waitUntilSelection(head: insertion, stage: "removed extra space")
+        let restored = try await neutralPosition()
+        #expect(abs(restored.left - before.left) < 0.5)
+        #expect(abs(restored.top - before.top) < 0.5)
+        #expect(try await harness.callPageJavaScript(
+            "return document.querySelectorAll('.cm-live-authored-extra-space').length"
+        ) as? Int == 0)
+        #expect(try await harness.callPageJavaScript(
+            "return getComputedStyle(document.querySelector('.cm-content')).textAlign"
+        ) as? String == alignmentBefore)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
 

@@ -42,9 +42,10 @@
   insertion take precedence.
 - Review/Edit keep the visible Note title when a mode handoff occurs at the
   document start. Inactive Edit headings remove their opening Markdown marker
-  from inline measure and reveal it only on entry. Exact spaces retain visible
-  width, while normal prose uses language-aware line breaking and keeps closing
-  punctuation with an adjacent footnote locator.
+  from inline measure and reveal it only on entry. Exact spaces retain their
+  authored width without acquiring visible whitespace markers. Normal prose uses
+  language-aware line breaking and keeps closing punctuation with an adjacent
+  footnote locator.
 - Inspector presents Overview and Connect. Overview exposes current About,
   file, Settlement, Critique, and applicable Zotero facts and operations.
   Connect presents exact incoming or outgoing link occurrences, their local

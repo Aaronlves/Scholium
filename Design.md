@@ -108,8 +108,9 @@ caret, entering or leaving an authored blank line, typing its first character,
 and deleting it back to empty do not move the insertion baseline or neighboring
 content. Inactive ATX headings spend no horizontal measure on hidden opening
 syntax; entering one reveals the exact marker within that active line without
-moving neighboring blocks. Preserved spaces remain measurable, ordinary prose
-uses language-aware editorial breaking rather than terminal-style arbitrary
+moving neighboring blocks. Preserved spaces remain measurable but acquire no
+visible whitespace glyph in ordinary Edit prose. Ordinary prose uses
+language-aware editorial breaking rather than terminal-style arbitrary
 breaking, and an interactive inline locator remains attached to immediately
 following closing punctuation. Lists, blank lines, code fences, tables,
 mathematics, footnotes, and Callouts preserve their source-owned rhythm and

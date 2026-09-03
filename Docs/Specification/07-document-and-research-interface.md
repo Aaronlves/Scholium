@@ -114,7 +114,8 @@ line's vertical dimensions. An inactive ATX heading removes its complete
 opening marker and required separator from inline measure; entering that
 heading reveals the exact editable source and may shift only that active
 line's inline text. Caret movement never changes neighboring block positions.
-Preserved spaces take their exact width, ordinary prose follows language-aware
+Preserved spaces take their exact width without acquiring visible whitespace
+markers in ordinary Edit prose. Ordinary prose follows language-aware
 line-breaking rules, and closing punctuation is not left alone at a visual-line
 start merely because it follows an interactive inline projection.
 

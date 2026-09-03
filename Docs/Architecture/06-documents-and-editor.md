@@ -559,10 +559,9 @@ Read and Live Preview consume one presentation contract:
   widgets without replacing active source, selection, composition, or undo.
 
 Both modes use strict line breaking, normal word boundaries, and emergency
-long-token wrapping. CodeMirror retains `break-spaces`, so every
-Edit space has width and wraps. A generated footnote
-locator and its following punctuation form one nonbreaking presentation
-cluster; Edit still exposes the exact source.
+long-token wrapping. CodeMirror retains `break-spaces`, so every Edit space has
+width without a custom visible-whitespace decoration in ordinary prose.
+Footnote locators bind their following punctuation.
 
 Native chrome and Review use the resolved filename title. Live Preview projects
 one borderless auto-height field outside source. Its versioned request carries

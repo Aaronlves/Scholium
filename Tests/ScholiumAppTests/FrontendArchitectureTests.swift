@@ -3431,6 +3431,8 @@ struct FrontendArchitectureTests {
         #expect(editorStyles.contains(".scholium-live-mode .cm-activeLine"))
         #expect(editorStyles.contains("#editor .cm-editor.scholium-live-mode .cm-scroller"))
         #expect(editorStyles.contains("#editor .cm-editor.scholium-source-mode .cm-scroller"))
+        #expect(!editorStyles.contains(".cm-live-authored-extra-space"))
+        #expect(!editorSource.contains("liveAuthoredExtraSpaces"))
         #expect(!editorSource.contains("editor.dom.classList.toggle"))
         #expect(!editorSource.contains("editor.scrollDOM.classList.toggle"))
         #expect(
