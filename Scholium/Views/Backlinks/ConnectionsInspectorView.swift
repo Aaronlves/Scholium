@@ -249,7 +249,9 @@ struct ConnectionsInspectorView: View {
         itemCount: Int,
         isExpanded: Bool
     ) -> some View {
-        let title = group.title(currentRole: projection.currentRole)
+        let title = ScholiumL10n.dynamicString(
+            group.title(currentRole: projection.currentRole)
+        )
         return ScholiumDisclosureHeaderButton(
             isExpanded: isExpanded,
             accessibilityLabel: Text(title),
@@ -350,15 +352,31 @@ private struct LinkOccurrenceRow: View {
     }
 
     private var sourceActionTitle: String {
-        item.direction == .incoming ? "Edit at Source" : "Edit Link Annotation"
+        ScholiumL10n.dynamicString(
+            item.direction == .incoming ? "Edit at Source" : "Edit Link Annotation"
+        )
     }
 
     private var accessibilityLabel: String {
-        let directionText = item.direction == .incoming ? "Incoming link from" : "Outgoing link to"
-        let annotation = item.edge.occurrence.annotation.map {
-            ". Link annotation: \($0.text)"
-        } ?? ". No link annotation"
-        return "\(directionText) \(item.displayTitle)\(annotation)"
+        if let annotation = item.edge.occurrence.annotation {
+            return switch item.direction {
+            case .incoming:
+                ScholiumL10n.string(
+                    "Incoming link from \(item.displayTitle). Link annotation: \(annotation.text)"
+                )
+            case .outgoing:
+                ScholiumL10n.string(
+                    "Outgoing link to \(item.displayTitle). Link annotation: \(annotation.text)"
+                )
+            }
+        }
+
+        return switch item.direction {
+        case .incoming:
+            ScholiumL10n.string("Incoming link from \(item.displayTitle). No link annotation")
+        case .outgoing:
+            ScholiumL10n.string("Outgoing link to \(item.displayTitle). No link annotation")
+        }
     }
 
     private var accessibilityHint: Text {

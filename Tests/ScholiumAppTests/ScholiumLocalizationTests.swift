@@ -110,6 +110,31 @@ struct ScholiumLocalizationTests {
         )
     }
 
+    @Test("Connect localizes headings, source actions, and occurrence semantics")
+    func connectInterfaceCopy() {
+        let expectations: [(String.LocalizationValue, String)] = [
+            ("LINKED ANALYSES", "已连接的分析"),
+            ("LINKED SOURCES", "已连接的来源"),
+            ("LINKED TOPICS", "已连接的议题"),
+            ("LINKED WORKS", "已连接的写作"),
+            ("Edit at Source", "在源笔记中编辑"),
+            ("Edit Link Annotation", "编辑链接注释"),
+        ]
+        for (key, expected) in expectations {
+            #expect(ScholiumL10n.string(key, locale: simplifiedChinese) == expected)
+        }
+
+        let incomingWithoutAnnotation = String(
+            format: ScholiumL10n.string(
+                "Incoming link from %@. No link annotation",
+                locale: simplifiedChinese
+            ),
+            locale: simplifiedChinese,
+            "判断"
+        )
+        #expect(incomingWithoutAnnotation == "来自 判断 的传入连接。无链接注释")
+    }
+
     @Test("The application name remains verbatim")
     func verbatimProductName() {
         #expect(ScholiumL10n.string("Scholium", locale: simplifiedChinese) == "Scholium")

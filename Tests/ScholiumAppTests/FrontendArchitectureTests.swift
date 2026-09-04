@@ -523,6 +523,8 @@ struct FrontendArchitectureTests {
         #expect(webViewSource.contains(
             #"scholium.renderedDocument.\(expectedDocumentID)"#
         ))
+        #expect(noteSource.contains("if !webProjectionIsReady"))
+        #expect(!noteSource.contains(".accessibilityHidden(webProjectionIsReady)"))
         #expect(uiSupport.contains("identifier BEGINSWITH %@"))
         #expect(uiSupport.contains("scholium.renderedDocument.loading"))
         #expect(uiSupport.contains("scholium.renderedDocument.failed"))
@@ -2732,6 +2734,10 @@ struct FrontendArchitectureTests {
         #expect(source.contains("case .property("))
         #expect(source.contains("case .link("))
         #expect(source.contains("Explain Query:"))
+        #expect(source.contains("DisclosureGroup("))
+        #expect(source.contains("isExpanded: $showsQueryExplanation"))
+        #expect(source.contains("scholium.searchExplanation"))
+        #expect(source.contains(".textSelection(.enabled)"))
     }
 
     @Test("Search has no parallel Related provider or selection path")
@@ -4895,6 +4901,9 @@ struct FrontendArchitectureTests {
         #expect(source.contains("edge.occurrence.annotation"))
         #expect(source.contains("edge.occurrence.localContext"))
         #expect(source.contains("Edit at Source"))
+        #expect(source.contains("ScholiumL10n.dynamicString("))
+        #expect(source.contains("Incoming link from \\(item.displayTitle)"))
+        #expect(source.contains("Outgoing link to \\(item.displayTitle)"))
         #expect(!source.contains("ScholiumConnectionPresentation"))
     }
 

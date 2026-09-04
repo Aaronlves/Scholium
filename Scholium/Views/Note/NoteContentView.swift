@@ -845,12 +845,12 @@ struct NoteContentView: View {
                 && documentSession.renderedReadReadyFingerprint == noteFingerprint.sha256
 
             ZStack {
-                readProjectionPlaceholder
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .layoutPriority(1)
-                .opacity(webProjectionIsReady ? 0 : 1)
-                .allowsHitTesting(false)
-                .accessibilityHidden(webProjectionIsReady)
+                if !webProjectionIsReady {
+                    readProjectionPlaceholder
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .layoutPriority(1)
+                        .allowsHitTesting(false)
+                }
 
                 if hasWebProjection {
                     readDocumentSurface

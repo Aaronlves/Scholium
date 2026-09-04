@@ -5529,6 +5529,22 @@
         }
       }
     },
+    "Explain Query" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Explain Query"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "解释查询"
+          }
+        }
+      }
+    },
     "Explain Query: %@" : {
       "localizations" : {
         "en" : {
@@ -17752,6 +17768,166 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "打开 %1$@"
+          }
+        }
+      }
+    },
+    "Edit at Source" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Edit at Source"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在源笔记中编辑"
+          }
+        }
+      }
+    },
+    "Edit Link Annotation" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Edit Link Annotation"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "编辑链接注释"
+          }
+        }
+      }
+    },
+    "Incoming link from %@. Link annotation: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Incoming link from %1$@. Link annotation: %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "来自 %1$@ 的传入连接。链接注释：%2$@"
+          }
+        }
+      }
+    },
+    "Incoming link from %@. No link annotation" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Incoming link from %1$@. No link annotation"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "来自 %1$@ 的传入连接。无链接注释"
+          }
+        }
+      }
+    },
+    "LINKED ANALYSES" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "LINKED ANALYSES"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已连接的分析"
+          }
+        }
+      }
+    },
+    "LINKED SOURCES" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "LINKED SOURCES"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已连接的来源"
+          }
+        }
+      }
+    },
+    "LINKED TOPICS" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "LINKED TOPICS"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已连接的议题"
+          }
+        }
+      }
+    },
+    "LINKED WORKS" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "LINKED WORKS"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已连接的写作"
+          }
+        }
+      }
+    },
+    "Outgoing link to %@. Link annotation: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Outgoing link to %1$@. Link annotation: %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "指向 %1$@ 的传出连接。链接注释：%2$@"
+          }
+        }
+      }
+    },
+    "Outgoing link to %@. No link annotation" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Outgoing link to %1$@. No link annotation"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "指向 %1$@ 的传出连接。无链接注释"
           }
         }
       }

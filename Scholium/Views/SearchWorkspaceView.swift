@@ -183,6 +183,7 @@ struct SpotlightSearchPanelView: View {
     @State private var completionSelection: Int?
     @State private var suppressedCompletionQuery: String?
     @State private var confirmsSavedSearchRecovery = false
+    @State private var showsQueryExplanation = false
 
     init(
         controller: DiscoveryController,
@@ -212,13 +213,26 @@ struct SpotlightSearchPanelView: View {
             searchScopeBar
 
             if let explanationText {
-                Text(explanationText)
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
-                    .padding(.bottom, ScholiumMetrics.Search.explanationBottomInset)
-                    .accessibilityLabel("Explain Query: \(explanationText)")
+                DisclosureGroup(
+                    "Explain Query",
+                    isExpanded: $showsQueryExplanation
+                ) {
+                    Text(explanationText)
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.secondaryText)
+                        .textSelection(.enabled)
+                        .padding(.top, ScholiumGrid.Spacing.labelAccessoryGap)
+                        .accessibilityLabel("Explain Query: \(explanationText)")
+                }
+                .font(
+                    ScholiumTypography.interface(
+                        .small,
+                        emphasis: .medium
+                    )
+                )
+                .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
+                .padding(.bottom, ScholiumMetrics.Search.explanationBottomInset)
+                .accessibilityIdentifier("scholium.searchExplanation")
             }
 
             if isExpanded {
