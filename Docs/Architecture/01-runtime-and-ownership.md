@@ -577,20 +577,23 @@ contains no split geometry, visibility, toolbar, or semantic state; collapsing
 the native Sidebar removes the complete container projection with it.
 
 The one `NSWindow.toolbar` is divided into Library, Document, and Apparatus
-sections by native tracking separators. Before split attachment,
+sections by native tracking separators. Ordinary actions are standard bordered
+`NSToolbarItem` instances with no custom view or fixed-size host; AppKit owns
+their regular Glass, edge highlight, shadow, adaptive appearance, and geometry.
+Heading Outline is an `NSMenuToolbarItem`; the Inspector projection remains a
+native `NSSegmentedControl`. Before split attachment,
 `WorkspaceWindowCoordinator` installs an inert toolbar and later replaces its
-items in place. Sidebar retains one borderless hosted `NSToolbarItem` at the
-logical trailing edge of the Library section immediately before its tracking
-separator; Inspector retains its matching item immediately before the
-Apparatus separator. Their hosted views observe `WindowShellState` and switch
-accessible Show/Hide label, value, ink state, and explicit exact-window action
-without changing toolbar item topology or adding a persistent active enclosure.
+items in place. Sidebar retains one native toolbar item at the logical trailing
+edge of the Library section immediately before its tracking separator;
+Inspector retains its matching item immediately before the Apparatus separator.
+The items observe `WindowShellState` and switch their accessible Show/Hide
+action labels without changing toolbar topology or adding a persistent active
+enclosure.
 Pane content contains no duplicate visibility control. No
 split-content titlebar host remains: under full-size content that host rendered
 beneath the toolbar's pointer hit-testing layer even when accessibility could
-still discover it. Stable native toolbar controls satisfy §18.2 with an
-always-present system toolbar bezel inside the existing 28 × 28 hosts, without
-adding a geometry owner or painted titlebar layer. The Inspector projection
+still discover it. Stable native toolbar controls satisfy §18.2 without adding
+a geometry owner or painted titlebar layer. The Inspector projection
 retains its native 70 × 20 fitting size while automatic styling adopts the
 current system material.
 
@@ -624,14 +627,13 @@ factory is a fixed-width presentation whose committed drag behavior returns to
 the system Inspector thickness. Explicit toolbar and View commands set the
 retained split item's native collapsed state directly; divider interaction only
 changes width and never enters the collapse path. Because the nested split may
-sit outside the responder chain, the visibility route is a borderless hosted
-item, not the platform-wrapped standard toolbar item, and bridges with the View
-command through the exact per-window coordinator. Selected-document state
-supplies availability when showing, while a visible Inspector can always be hidden.
+sit outside the responder chain, the visibility route targets one standard
+native toolbar item through the exact per-window coordinator and shares that
+route with the View command. Selected-document state supplies availability when
+showing, while a visible Inspector can always be hidden.
 `WindowShellState` mirrors native visibility for commands, toolbar labels, and
-restoration. The toolbar controller installs one stable item list; its hosted
-controls observe shell visibility without reasserting split state or storing
-width.
+restoration. The toolbar controller installs one stable item list; its items
+observe shell visibility without reasserting split state or storing width.
 
 ### Inspector ownership
 

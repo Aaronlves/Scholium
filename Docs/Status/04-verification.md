@@ -197,19 +197,23 @@ Completed automated checks in this worktree:
   standalone localization validator still reports the seven pre-existing
   Research Records entries already named above, so no clean complete-gate claim
   is made for this slice.
-- On 2026-09-04 the native Liquid Glass control slice passed all 88 focused
-  frontend-architecture tests, including exact 28-by-28-point fitting-size
-  checks for its SwiftUI and AppKit compact toolbar hosts. Focused XCUITest
-  journeys passed Inspector open/close in Light and Dark appearances, sampled
-  the Inspector width throughout Sidebar hide and show with every sample within
-  two points of the settled width and right edge, and exercised one
-  identity-bound shared-search fixture after the test setup was corrected to
-  create portable identities before seeding aliases. Four retained screenshots
-  were visually inspected: the Sidebar, document, and Inspector colors remain
-  continuous through the titlebar while regular system Glass stays confined to
-  controls. Documentation authority and `git diff --check` passed. Reduce
+- On 2026-09-04 the native Liquid Glass button correction passed all 88 focused
+  frontend-architecture tests and all five Workspace-toolbar tests. Three
+  focused XCUITest journeys then passed in 92.400 seconds: Document Mode changed
+  among Edit, Review, and Source while keeping its native item width; Inspector
+  divider resizing plus Sidebar hide/show preserved the Inspector; and
+  Inspector open/close passed in Light and Dark. Visual inspection of four of
+  the seven retained screenshots shows continuous Sidebar, Document, and
+  Inspector colors through the transparent titlebar; standard AppKit toolbar
+  groups retain native edge highlights and shadows; Search and Notifications
+  Glass remains monochrome; and only the explicit nonzero Notifications dot
+  uses Accent. Production code adds no custom toolbar Glass effect, blur,
+  material opacity, or shadow. A separate ownership inventory remains red on
+  the pre-existing `SearchWorkspaceView` count of 22 direct activation controls
+  to 21 pointer mappings; it does not involve these system-generated toolbar
+  items. Documentation authority and `git diff --check` passed. Reduce
   Transparency, Increase Contrast, VoiceOver, Full Keyboard Access, and human
-  visual acceptance remain unverified for this slice.
+  visual acceptance remain unverified.
 
 ## Evidence boundary
 

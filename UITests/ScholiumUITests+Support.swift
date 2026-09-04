@@ -539,15 +539,17 @@ extension ScholiumUITests {
         if let root { focusWorkspaceWindow(root) }
         let mode = documentModeControl(in: root)
         XCTAssertTrue(mode.waitForExistence(timeout: 10))
-        if mode.value as? String == title { return }
+        if documentModeState(mode) == title { return }
 
         switch title {
         case "Review":
             app.typeKey("r", modifierFlags: [.command])
         case "Edit":
-            if mode.value as? String == "Source" {
+            if documentModeState(mode) == "Source" {
                 app.typeKey("r", modifierFlags: [.command])
-                XCTAssertTrue(waitUntil(timeout: 8) { mode.value as? String == "Review" })
+                XCTAssertTrue(waitUntil(timeout: 8) {
+                    self.documentModeState(mode) == "Review"
+                })
             }
             app.typeKey("r", modifierFlags: [.command])
         case "Source":
@@ -564,17 +566,25 @@ extension ScholiumUITests {
         }
 
         XCTAssertTrue(
-            waitUntil(timeout: 10) { mode.value as? String == title },
+            waitUntil(timeout: 10) { self.documentModeState(mode) == title },
             "The Document mode did not become \(title)."
         )
     }
 
     @MainActor
     func documentModeControl(in root: XCUIElement? = nil) -> XCUIElement {
+        let predicate = NSPredicate(format: "label BEGINSWITH %@", "Document Mode,")
         if let root {
-            return root.toolbars.firstMatch.buttons["Document Mode"].firstMatch
+            return root.toolbars.firstMatch.buttons.matching(predicate).firstMatch
         }
-        return app.toolbars.firstMatch.buttons["Document Mode"].firstMatch
+        return app.toolbars.firstMatch.buttons.matching(predicate).firstMatch
+    }
+
+    @MainActor
+    func documentModeState(_ control: XCUIElement) -> String? {
+        control.label.split(separator: ",", maxSplits: 1)
+            .last?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     @MainActor

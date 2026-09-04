@@ -81,31 +81,13 @@ struct WorkspaceToolbarTests {
             ScholiumWorkspaceToolbarController.Item.headingOutline,
             in: toolbar
         ))
-        let headingButton = try #require(heading.view?.subviews.first as? NSButton)
         #expect(heading.visibilityPriority == .high)
         #expect(heading.label == "Heading Outline")
-        #expect(!heading.isBordered)
+        #expect(heading.isBordered)
+        #expect(heading.style == .plain)
         #expect(heading.isNavigational)
-        #expect(headingButton.isBordered)
-        #expect(headingButton.showsBorderOnlyWhileMouseInside)
-        #expect(headingButton.imagePosition == .imageOnly)
-        #expect(headingButton.accessibilityRole() == .popUpButton)
-        #expect(headingButton is ScholiumPointingHandButton)
-        #expect(headingButton.target === controller)
-        #expect(headingButton.action != nil)
-
-        let documentMode = try #require(item(
-            ScholiumWorkspaceToolbarController.Item.documentMode,
-            in: toolbar
-        ))
-        let documentModeButton = try #require(
-            documentMode.view?.subviews.first as? NSButton
-        )
-        #expect(
-            documentModeButton.accessibilityIdentifier()
-                == ScholiumWorkspaceToolbarController.Item
-                    .documentModeAccessibilityIdentifier
-        )
+        #expect(heading.view == nil)
+        #expect((heading as? NSMenuToolbarItem)?.menu != nil)
 
         for identifier in [
             ScholiumWorkspaceToolbarController.Item.sidebar,
@@ -115,24 +97,44 @@ struct WorkspaceToolbarTests {
             ScholiumWorkspaceToolbarController.Item.inspector,
         ] {
             let command = try #require(item(identifier, in: toolbar))
-            let button = try #require(command.view?.subviews.first as? NSButton)
-            #expect(button.target === controller)
-            #expect(button.action != nil)
+            #expect(command.target === controller)
+            #expect(command.action != nil)
             #expect(command.visibilityPriority == (
                 identifier == ScholiumWorkspaceToolbarController.Item.sidebar
                     || identifier == ScholiumWorkspaceToolbarController.Item.inspector
                     ? .user
                     : .high
             ))
-            #expect(!command.isBordered)
-            #expect(button.isBordered)
-            #expect(button.showsBorderOnlyWhileMouseInside)
-            #expect(button.imagePosition == .imageOnly)
+            #expect(command.isBordered)
+            #expect(command.style == .plain)
+            #expect(command.view == nil)
             let overflowCommand = try #require(command.menuFormRepresentation)
             #expect(overflowCommand.target === controller)
-            #expect(overflowCommand.action == button.action)
+            #expect(overflowCommand.action == command.action)
             #expect(overflowCommand.image != nil)
         }
+
+        let documentMode = try #require(item(
+            ScholiumWorkspaceToolbarController.Item.documentMode,
+            in: toolbar
+        ))
+        #expect(documentMode.label.hasPrefix("Document Mode,"))
+        #expect(documentMode.possibleLabels.count == 3)
+
+        let sidebar = try #require(item(
+            ScholiumWorkspaceToolbarController.Item.sidebar,
+            in: toolbar
+        ))
+        #expect(sidebar.possibleLabels == ["Hide Sidebar", "Show Sidebar"])
+
+        let inspector = try #require(item(
+            ScholiumWorkspaceToolbarController.Item.inspector,
+            in: toolbar
+        ))
+        #expect(inspector.possibleLabels == [
+            "Hide Research Inspector",
+            "Show Research Inspector",
+        ])
 
         for identifier in [
             ScholiumWorkspaceToolbarController.Item.sidebar,
@@ -173,9 +175,7 @@ struct WorkspaceToolbarTests {
             ScholiumWorkspaceToolbarController.Item.sidebar,
             in: toolbar
         ))
-        let sidebarButton = try #require(sidebar.view?.subviews.first as? NSButton)
-        #expect(sidebarButton.accessibilityLabel() == "Hide Sidebar")
-        #expect(sidebarButton.accessibilityValue() as? String == "Shown")
+        #expect(sidebar.label == "Hide Sidebar")
 
         model.shellState.recordLibraryVisibility(false)
         await withCheckedContinuation { continuation in
@@ -184,8 +184,7 @@ struct WorkspaceToolbarTests {
             }
         }
 
-        #expect(sidebarButton.accessibilityLabel() == "Show Sidebar")
-        #expect(sidebarButton.accessibilityValue() as? String == "Hidden")
+        #expect(sidebar.label == "Show Sidebar")
     }
 
     private var inertWindowActions: WorkspaceWindowActions {

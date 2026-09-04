@@ -4923,6 +4923,22 @@
         }
       }
     },
+    "Document Mode, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Document Mode, %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文档模式，%@"
+          }
+        }
+      }
+    },
     "Document Statistics" : {
       "localizations" : {
         "en" : {

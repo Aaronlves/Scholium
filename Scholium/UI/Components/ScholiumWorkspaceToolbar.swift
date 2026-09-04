@@ -2,7 +2,6 @@ import AppKit
 import Combine
 import Foundation
 import ScholiumContracts
-import SwiftUI
 
 /// The configured window has one native toolbar. Tracking separators establish
 /// Library, Document, and Apparatus sections. Sidebar and document-history
@@ -35,8 +34,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         static let researchRecords = NSToolbarItem.Identifier(
             "scholium.toolbar.researchRecords"
         )
-        static let documentModeAccessibilityIdentifier =
-            "scholium.documentModeButton"
         // Apparatus is an explicitly managed trailing split item rather than
         // AppKit's Inspector factory item. A private identifier keeps the
         // initializer's explicit dividerIndex authoritative instead of asking
@@ -129,13 +126,18 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
     ) -> NSToolbarItem? {
         switch itemIdentifier {
         case Item.sidebar:
-            return actionItem(
+            let item = actionItem(
                 identifier: itemIdentifier,
                 label: ScholiumL10n.string("Sidebar"),
                 systemImage: "sidebar.leading",
                 action: #selector(toggleSidebar(_:)),
                 visibilityPriority: .user
             )
+            item.possibleLabels = [
+                ScholiumL10n.string("Hide Sidebar"),
+                ScholiumL10n.string("Show Sidebar"),
+            ]
+            return item
         case Item.back:
             return actionItem(
                 identifier: itemIdentifier,
@@ -160,22 +162,14 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             item.visibilityPriority = .user
             return item
         case Item.headingOutline:
-            let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+            let item = NSMenuToolbarItem(itemIdentifier: itemIdentifier)
             configure(
                 item,
                 label: ScholiumL10n.string("Heading Outline"),
                 systemImage: "list.bullet.indent",
                 visibilityPriority: .high
             )
-            let button = makeToolbarButton(
-                label: ScholiumL10n.string("Heading Outline"),
-                systemImage: "list.bullet.indent"
-            )
-            button.target = self
-            button.action = #selector(showHeadingOutline(_:))
-            button.setAccessibilityRole(.popUpButton)
-            button.imagePosition = .imageOnly
-            item.view = ScholiumToolbarControlHost(button: button)
+            item.menu = headingMenu()
             // This is the one Document-leading item AppKit may position next
             // to the system-owned title. Sidebar and history controls must
             // remain in their declared section before the tracking separator.
@@ -183,13 +177,17 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             item.menuFormRepresentation = headingMenuFormRepresentation()
             return item
         case Item.documentMode:
-            return actionItem(
+            let item = actionItem(
                 identifier: itemIdentifier,
                 label: ScholiumL10n.string("Document Mode"),
                 systemImage: NotePresentationMode.livePreview.symbol,
-                action: #selector(toggleDocumentMode(_:)),
-                accessibilityIdentifier: Item.documentModeAccessibilityIdentifier
+                action: #selector(toggleDocumentMode(_:))
             )
+            item.possibleLabels = Set(NotePresentationMode.allCases.map {
+                ScholiumDocumentModeToolbarButtonPresentation(mode: $0)
+                    .accessibilityLabel
+            })
+            return item
         case Item.agentChanges:
             return actionItem(
                 identifier: itemIdentifier,
@@ -216,13 +214,18 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         case Item.inspectorModes:
             return inspectorModeItem(identifier: itemIdentifier)
         case Item.inspector:
-            return actionItem(
+            let item = actionItem(
                 identifier: itemIdentifier,
                 label: ScholiumL10n.string("Research Inspector"),
                 systemImage: "sidebar.trailing",
                 action: #selector(toggleInspector(_:)),
                 visibilityPriority: .user
             )
+            item.possibleLabels = [
+                ScholiumL10n.string("Hide Research Inspector"),
+                ScholiumL10n.string("Show Research Inspector"),
+            ]
+            return item
         case .flexibleSpace:
             return NSToolbarItem(itemIdentifier: .flexibleSpace)
         default:
@@ -241,8 +244,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         label: String,
         systemImage: String,
         action: Selector,
-        visibilityPriority: NSToolbarItem.VisibilityPriority = .high,
-        accessibilityIdentifier: String? = nil
+        visibilityPriority: NSToolbarItem.VisibilityPriority = .high
     ) -> NSToolbarItem {
         let item = NSToolbarItem(itemIdentifier: identifier)
         configure(
@@ -251,16 +253,8 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             systemImage: systemImage,
             visibilityPriority: visibilityPriority
         )
-        let button = makeToolbarButton(
-            label: label,
-            systemImage: systemImage
-        )
-        button.target = self
-        button.action = action
-        if let accessibilityIdentifier {
-            button.setAccessibilityIdentifier(accessibilityIdentifier)
-        }
-        item.view = ScholiumToolbarControlHost(button: button)
+        item.target = self
+        item.action = action
         let overflowItem = NSMenuItem(
             title: label,
             action: action,
@@ -327,41 +321,15 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         item.paletteLabel = label
         item.title = ""
         item.toolTip = label
-        item.image = ScholiumNativeToolbarPresentation.symbol(named: systemImage)
+        item.image = ScholiumNativeToolbarPresentation.symbol(
+            named: systemImage,
+            accessibilityDescription: label
+        )
         item.visibilityPriority = visibilityPriority
-        // The custom view is a native AppKit toolbar button. Keep the item
-        // wrapper borderless so AppKit doesn't add a second material around the
-        // control; the nested button owns its system Liquid Glass treatment.
-        item.isBordered = false
+        // With no custom view, AppKit creates the toolbar control and owns its
+        // geometry, Glass, hover, press, focus, contrast, and transparency.
+        item.isBordered = true
         item.style = .plain
-    }
-
-    private func makeToolbarButton(
-        label: String,
-        systemImage: String
-    ) -> NSButton {
-        let button = ScholiumNativeToolbarPresentation.makeButton()
-        configureToolbarButton(
-            button,
-            label: label,
-            systemImage: systemImage
-        )
-        return button
-    }
-
-    private func configureToolbarButton(
-        _ button: NSButton,
-        label: String,
-        systemImage: String
-    ) {
-        ScholiumNativeToolbarPresentation.update(
-            button,
-            label: label,
-            systemImage: systemImage,
-            toolTip: label,
-            accessibilityValue: nil,
-            isEnabled: true
-        )
     }
 
     private func observePresentation() {
@@ -421,16 +389,15 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             )
         }
 
-        if let item = toolbarItem(Item.headingOutline),
-           let button = toolbarButton(in: item) {
+        if let item = toolbarItem(Item.headingOutline) as? NSMenuToolbarItem {
             item.isHidden = appState.currentNote == nil
-            configureToolbarButton(
-                button,
+            update(
+                item,
                 label: ScholiumL10n.dynamicString("Heading Outline"),
-                systemImage: "list.bullet.indent"
+                systemImage: "list.bullet.indent",
+                isEnabled: true
             )
-            button.setAccessibilityRole(.popUpButton)
-            button.imagePosition = .imageOnly
+            item.menu = headingMenu()
             item.menuFormRepresentation = headingMenuFormRepresentation()
         }
 
@@ -441,7 +408,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             item.isHidden = appState.currentNote == nil
             update(
                 item,
-                label: ScholiumL10n.dynamicString("Document Mode"),
+                label: presentation.accessibilityLabel,
                 systemImage: presentation.symbol,
                 isEnabled: !currentEditorIsComposing
                     && (presentation.destination == .read || appState.canEditCurrentNote),
@@ -505,29 +472,18 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         item.paletteLabel = label
         item.title = ""
         item.toolTip = toolTip ?? label
-        item.image = ScholiumNativeToolbarPresentation.symbol(named: systemImage)
+        item.image = ScholiumNativeToolbarPresentation.symbol(
+            named: systemImage,
+            accessibilityDescription: accessibilityValue ?? label
+        )
         item.isEnabled = isEnabled
         item.menuFormRepresentation?.title = label
         item.menuFormRepresentation?.image = item.image
         item.menuFormRepresentation?.isEnabled = isEnabled
-        if let button = toolbarButton(in: item) {
-            ScholiumNativeToolbarPresentation.update(
-                button,
-                label: label,
-                systemImage: systemImage,
-                toolTip: toolTip ?? label,
-                accessibilityValue: accessibilityValue,
-                isEnabled: isEnabled
-            )
-        }
     }
 
     private func toolbarItem(_ identifier: NSToolbarItem.Identifier) -> NSToolbarItem? {
         toolbar.items.first { $0.itemIdentifier == identifier }
-    }
-
-    private func toolbarButton(in item: NSToolbarItem) -> NSButton? {
-        (item.view as? ScholiumToolbarControlHost)?.button
     }
 
     private func headingMenu() -> NSMenu {
@@ -628,15 +584,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         appState.pendingSourceLine = line
     }
 
-    @objc private func showHeadingOutline(_ sender: NSButton) {
-        let menu = headingMenu()
-        menu.popUp(
-            positioning: nil,
-            at: NSPoint(x: sender.bounds.minX, y: sender.bounds.maxY),
-            in: sender
-        )
-    }
-
     @objc private func toggleDocumentMode(_ sender: Any?) {
         let presentation = ScholiumDocumentModeToolbarButtonPresentation(
             mode: appState.documentController.chromeProjection.mode
@@ -677,84 +624,11 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
     }
 }
 
-/// Keeps AppKit's generated toolbar wrapper borderless while the nested native
-/// button owns its Liquid Glass treatment. The host preserves the established
-/// 28 x 28 pointer and accessibility target, so adopting the current system
-/// material cannot resize toolbar sections or move tracking separators.
-@MainActor
-final class ScholiumToolbarControlHost: NSView {
-    private static let targetSize = ScholiumMetrics.Accessibility.preferredCustomTarget
-
-    let button: NSButton
-
-    init(button: NSButton) {
-        self.button = button
-        super.init(frame: NSRect(
-            origin: .zero,
-            size: NSSize(width: Self.targetSize, height: Self.targetSize)
-        ))
-        button.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(button)
-        NSLayoutConstraint.activate([
-            button.leadingAnchor.constraint(equalTo: leadingAnchor),
-            button.trailingAnchor.constraint(equalTo: trailingAnchor),
-            button.topAnchor.constraint(equalTo: topAnchor),
-            button.bottomAnchor.constraint(equalTo: bottomAnchor),
-            widthAnchor.constraint(equalToConstant: Self.targetSize),
-            heightAnchor.constraint(equalToConstant: Self.targetSize),
-        ])
-        setAccessibilityElement(false)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override var intrinsicContentSize: NSSize {
-        NSSize(width: Self.targetSize, height: Self.targetSize)
-    }
-}
-
 /// One semantic presentation recipe for native Liquid Glass toolbar symbols
-/// and the remaining AppKit controls embedded in secondary surfaces.
+/// and the remaining AppKit controls embedded in the window toolbar.
 @MainActor
 enum ScholiumNativeToolbarPresentation {
     static var controlSize: NSControl.ControlSize { .small }
-
-    static func makeButton() -> NSButton {
-        let button = ScholiumPointingHandButton(frame: .zero)
-        button.setButtonType(.momentaryPushIn)
-        button.controlSize = controlSize
-        button.bezelStyle = .toolbar
-        return button
-    }
-
-    static func update(
-        _ button: NSButton,
-        label: String,
-        systemImage: String,
-        toolTip: String,
-        accessibilityValue: String?,
-        isEnabled: Bool
-    ) {
-        button.title = ""
-        button.toolTip = toolTip
-        button.image = symbol(
-            named: systemImage,
-            accessibilityDescription: label
-        )
-        button.imagePosition = .imageOnly
-        button.imageScaling = .scaleProportionallyDown
-        button.isEnabled = isEnabled
-        button.isBordered = true
-        // A rebuilt macOS 26+ toolbar button resolves this always-present
-        // native bezel as Liquid Glass. The borderless NSToolbarItem wrapper
-        // above prevents a second enclosing material or altered item geometry.
-        button.showsBorderOnlyWhileMouseInside = false
-        button.setAccessibilityLabel(label)
-        button.setAccessibilityValue(accessibilityValue)
-    }
 
     static func symbol(
         named name: String,
@@ -767,64 +641,6 @@ enum ScholiumNativeToolbarPresentation {
             textStyle: .body,
             scale: .medium
         ))
-    }
-}
-
-/// Native toolbar buttons retain AppKit's pointer, press, keyboard-focus, and
-/// disabled rendering. SwiftUI remains only the observation bridge that keeps
-/// the exact window's command state current inside the hosted toolbar item.
-struct ScholiumNativeToolbarButton: NSViewRepresentable {
-    let title: String
-    let systemImage: String
-    let identifier: String
-    var toolTip: String? = nil
-    var accessibilityValue: String? = nil
-    var isEnabled = true
-    var keyEquivalent: String? = nil
-    var keyEquivalentModifierMask: NSEvent.ModifierFlags = []
-    let action: () -> Void
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(action: action)
-    }
-
-    func makeNSView(context: Context) -> NSButton {
-        let button = ScholiumNativeToolbarPresentation.makeButton()
-        button.target = context.coordinator
-        button.action = #selector(Coordinator.activate(_:))
-        update(button)
-        return button
-    }
-
-    func updateNSView(_ button: NSButton, context: Context) {
-        context.coordinator.action = action
-        update(button)
-    }
-
-    private func update(_ button: NSButton) {
-        ScholiumNativeToolbarPresentation.update(
-            button,
-            label: title,
-            systemImage: systemImage,
-            toolTip: toolTip ?? title,
-            accessibilityValue: accessibilityValue,
-            isEnabled: isEnabled
-        )
-        button.keyEquivalent = keyEquivalent ?? ""
-        button.keyEquivalentModifierMask = keyEquivalentModifierMask
-        button.setAccessibilityIdentifier(identifier)
-    }
-
-    final class Coordinator: NSObject {
-        var action: () -> Void
-
-        init(action: @escaping () -> Void) {
-            self.action = action
-        }
-
-        @objc func activate(_ sender: NSButton) {
-            action()
-        }
     }
 }
 
@@ -845,4 +661,10 @@ struct ScholiumDocumentModeToolbarButtonPresentation: Equatable {
 
     var symbol: String { mode.symbol }
     var toolTip: String { mode.title }
+    var accessibilityLabel: String {
+        String.localizedStringWithFormat(
+            ScholiumL10n.string("Document Mode, %@"),
+            mode.title
+        )
+    }
 }

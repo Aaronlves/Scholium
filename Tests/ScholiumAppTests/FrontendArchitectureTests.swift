@@ -1235,7 +1235,7 @@ struct FrontendArchitectureTests {
         ])
         #expect(!sidebarSource.contains(".ignoresSafeArea(.container, edges: .leading)"))
         #expect(sidebarSource.contains("private var brandHeader"))
-        #expect(toolbarSource.contains("button.setAccessibilityRole(.popUpButton)"))
+        #expect(toolbarSource.contains("item.menu = headingMenu()"))
         #expect(appSource.contains(".navigationTitle(workspaceWindowTitle)"))
         #expect(appSource.contains("@ObservedObject private var commandObservation"))
         #expect(!toolbarSource.contains("window?.title ="))
@@ -1269,7 +1269,10 @@ struct FrontendArchitectureTests {
                 "&& appState?.currentNote == nil"
             ))
         #expect(!toolbarSource.contains("glassEffect"))
-        #expect(toolbarSource.contains("button.showsBorderOnlyWhileMouseInside = false"))
+        #expect(toolbarSource.contains("item.isBordered = true"))
+        #expect(toolbarSource.contains("item.style = .plain"))
+        #expect(toolbarSource.contains("NSMenuToolbarItem"))
+        #expect(!toolbarSource.contains("ScholiumToolbarControlHost"))
         #expect(toolbarSource.contains("control.segmentStyle = .automatic"))
         #expect(!noteSource.contains("ScholiumInspectorModeIndex("))
         #expect(!noteSource.contains("Picker(\"Research Inspector\""))
@@ -1279,6 +1282,7 @@ struct FrontendArchitectureTests {
         #expect(!appSource.contains("removeAutomaticSidebarToolbarItem"))
         #expect(appSource.contains(".toolbar(removing: .sidebarToggle)"))
         #expect(windowManagementSource.contains("window.titlebarAppearsTransparent = true"))
+        #expect(windowManagementSource.contains("window.titlebarSeparatorStyle = .none"))
         #expect(!windowManagementSource.contains("windowDidEnterFullScreen"))
         #expect(!windowManagementSource.contains("windowDidExitFullScreen"))
         #expect(windowManagementSource.contains("ScholiumWindowAppearance.apply"))
@@ -1428,6 +1432,8 @@ struct FrontendArchitectureTests {
         #expect(edit.symbol == NotePresentationMode.livePreview.symbol)
         #expect(source.symbol == NotePresentationMode.source.symbol)
         #expect(review.toolTip == NotePresentationMode.read.title)
+        #expect(review.accessibilityLabel == "Document Mode, Review")
+        #expect(edit.accessibilityLabel == "Document Mode, Edit")
         #expect(NotePresentationMode.livePreview.symbol == "square.and.pencil")
 
         let repository = URL(fileURLWithPath: #filePath)
@@ -1447,6 +1453,7 @@ struct FrontendArchitectureTests {
         )
         #expect(toolbarSource.contains("systemImage: presentation.symbol"))
         #expect(toolbarSource.contains("toolTip: presentation.toolTip"))
+        #expect(toolbarSource.contains("label: presentation.accessibilityLabel"))
         #expect(
             toolbarSource.contains(
                 "mode: appState.documentController.chromeProjection.mode"
@@ -1456,7 +1463,7 @@ struct FrontendArchitectureTests {
         #expect(!toolbarSource.contains("NSSegmentedControl(frame: .zero)"))
         #expect(!toolbarSource.contains("scholium.documentModeToggle"))
         #expect(!toolbarSource.contains("scholium.documentModeMenu"))
-        #expect(!toolbarSource.contains("NotePresentationMode.allCases.map"))
+        #expect(toolbarSource.contains("item.possibleLabels = Set(NotePresentationMode.allCases.map"))
 
         let appSource = try String(
             contentsOf: repository.appendingPathComponent(
@@ -1914,10 +1921,18 @@ struct FrontendArchitectureTests {
         #expect(!componentsSource.contains("Text(count.formatted())"))
         #expect(componentsSource.contains("scholiumAttentionPopoverIsPresented"))
         #expect(!componentsSource.contains("SidebarTriptychAttentionButtonStyle"))
+        #expect(
+            componentsSource.components(separatedBy: ".tint(nil as Color?)").count
+                == 2
+        )
         #expect(componentsSource.contains("ScholiumContentControlButtonStyle("))
         #expect(!componentsSource.contains("SidebarAttentionAlertSurface"))
         #expect(ScholiumMetrics.Library.leadingSlotWidth == 16)
         #expect(ScholiumMetrics.Library.hierarchyRowHeight == 28)
+        #expect(
+            designSystemSource.components(separatedBy: ".tint(nil as Color?)").count
+                == 2
+        )
         #expect(
             sidebarSource.contains(
                 ".padding(.horizontal, ScholiumMetrics.Library.contentInset)"
@@ -2958,8 +2973,8 @@ struct FrontendArchitectureTests {
         #expect(!splitSource.contains("ScholiumSurfaceHostController"))
         #expect(splitSource.contains("ScholiumSurfaceContainerViewController"))
         #expect(!splitSource.contains("NSBackgroundExtensionView"))
-        #expect(toolbarSource.contains("item.isBordered = false"))
-        #expect(toolbarSource.contains("button.showsBorderOnlyWhileMouseInside = false"))
+        #expect(toolbarSource.contains("item.isBordered = true"))
+        #expect(!toolbarSource.contains("ScholiumToolbarControlHost"))
         #expect(toolbarSource.contains("control.segmentStyle = .automatic"))
     }
 
@@ -3243,13 +3258,8 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMetrics.ResearchRecords.stepVerticalInset == 24)
     }
 
-    @Test("Native Glass icon controls preserve the established 28-point target")
+    @Test("Compact Sidebar Glass controls preserve the established 28-point target")
     func nativeGlassControlGeometry() {
-        let toolbarButton = ScholiumNativeToolbarPresentation.makeButton()
-        let toolbarHost = ScholiumToolbarControlHost(button: toolbarButton)
-        #expect(toolbarHost.intrinsicContentSize == NSSize(width: 28, height: 28))
-        #expect(toolbarHost.fittingSize == NSSize(width: 28, height: 28))
-
         let swiftUIButton = NSHostingView(rootView: ScholiumInkIconControl(
             title: "Search",
             systemImage: "magnifyingglass",

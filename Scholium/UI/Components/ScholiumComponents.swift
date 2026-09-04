@@ -515,6 +515,9 @@ struct SidebarTriptychAttentionEntry: View {
         }
         .scholiumActivationPointer()
         .buttonStyle(.glass)
+        // This is an ordinary toolbar action. Do not let the workspace Accent
+        // turn its Glass background into a prominent, primary-action surface.
+        .tint(nil as Color?)
         .buttonBorderShape(.circle)
         .controlSize(.regular)
         .frame(

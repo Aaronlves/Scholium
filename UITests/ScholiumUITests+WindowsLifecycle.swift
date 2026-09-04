@@ -15,11 +15,11 @@ extension ScholiumUITests {
         XCTAssertFalse((editor.value as? String ?? "").isEmpty)
 
         app.typeKey("e", modifierFlags: [.command, .shift])
-        XCTAssertEqual(mode.value as? String, "Edit", "Source must be entered through the document-mode menu")
+        XCTAssertEqual(documentModeState(mode), "Edit", "Source must be entered through the document-mode menu")
 
         selectDocumentMode("Source")
         XCTAssertTrue(app.descendants(matching: .any)["Markdown source editor"].waitForExistence(timeout: 8))
-        XCTAssertEqual(mode.value as? String, "Source")
+        XCTAssertEqual(documentModeState(mode), "Source")
     }
 
     @MainActor
@@ -315,7 +315,7 @@ extension ScholiumUITests {
             documentTitle(in: window) == "QA Autosave B"
         })
         XCTAssertEqual(
-            documentModeControl(in: restoredA).value as? String,
+            documentModeState(documentModeControl(in: restoredA)),
             "Edit"
         )
         let restoredBMode = documentModeControl(in: restoredB)
@@ -331,7 +331,7 @@ extension ScholiumUITests {
         let mode = documentModeControl()
         XCTAssertTrue(mode.waitForExistence(timeout: 10))
         selectDocumentMode("Edit")
-        XCTAssertTrue(waitUntil(timeout: 5) { mode.value as? String == "Edit" })
+        XCTAssertTrue(waitUntil(timeout: 5) { self.documentModeState(mode) == "Edit" })
 
         let sessionFile = homeDirectory.appendingPathComponent("ApplicationSupport/Window Sessions")
             .appendingPathComponent(sessionID.uuidString + ".json")

@@ -3065,6 +3065,9 @@ struct ScholiumInkIconControl: View {
         }
         .scholiumActivationPointer()
         .buttonStyle(.glass)
+        // Ordinary toolbar actions stay system-monochrome even though the
+        // workspace uses Scholium Accent for selection and semantic emphasis.
+        .tint(nil as Color?)
         .buttonBorderShape(.circle)
         .controlSize(.regular)
         .frame(

@@ -241,7 +241,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
             application.windows.firstMatch.waitForExistence(timeout: 30),
             "The retained-memory app window did not appear."
         )
-        let modeMenu = application.descendants(matching: .any)["scholium.documentModeButton"]
+        let modeMenu = documentModeControl(in: application)
         XCTAssertTrue(modeMenu.waitForExistence(timeout: 30))
         selectEditorMode(
             "Edit",
@@ -273,7 +273,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
         let finalModeIsSource = transitions.isMultiple(of: 2) == false
         XCTAssertTrue(
             waitUntil(timeout: 20) {
-                (modeMenu.value as? String) == (finalModeIsSource ? "Source" : "Edit")
+                self.documentModeState(modeMenu) == (finalModeIsSource ? "Source" : "Edit")
                     && application.descendants(matching: .any)[
                         finalModeIsSource
                             ? "Markdown source editor"
@@ -348,7 +348,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
 
         application.launch()
         XCTAssertTrue(application.windows.firstMatch.waitForExistence(timeout: 30))
-        let modeMenu = application.descendants(matching: .any)["scholium.documentModeButton"]
+        let modeMenu = documentModeControl(in: application)
         XCTAssertTrue(modeMenu.waitForExistence(timeout: 30))
         selectCJKDocumentMode(
             "Edit",
@@ -531,16 +531,14 @@ final class ScholiumPerformanceUITests: XCTestCase {
             "The warm metric setup document did not expose an accessible surface."
         )
         if metric == .warmReadActivation {
-            let modeMenu = application.descendants(matching: .any)[
-                "scholium.documentModeButton"
-            ]
+            let modeMenu = documentModeControl(in: application)
             XCTAssertTrue(modeMenu.waitForExistence(timeout: 10))
-            if (modeMenu.value as? String) != "Review" {
+            if documentModeState(modeMenu) != "Review" {
                 application.typeKey("r", modifierFlags: [.command])
             }
             XCTAssertTrue(
                 waitUntil(timeout: 30) {
-                    (modeMenu.value as? String) == "Review"
+                    self.documentModeState(modeMenu) == "Review"
                         && self.waitForRenderedDocument(
                             setupDocument,
                             in: application,
@@ -556,11 +554,9 @@ final class ScholiumPerformanceUITests: XCTestCase {
             || metric == .editorCachedPreview
             || metric == .warmEditActivation
             || metric == .editorVisibleProjection {
-            let modeMenu = application.descendants(matching: .any)[
-                "scholium.documentModeButton"
-            ]
+            let modeMenu = documentModeControl(in: application)
             XCTAssertTrue(modeMenu.waitForExistence(timeout: 10))
-            if (modeMenu.value as? String) != "Edit"
+            if documentModeState(modeMenu) != "Edit"
                 || !application.descendants(matching: .any)[
                     "Markdown editor, Edit mode"
                 ].exists {
@@ -568,7 +564,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
             }
             XCTAssertTrue(
                 waitUntil(timeout: 20) {
-                    (modeMenu.value as? String) == "Edit"
+                    self.documentModeState(modeMenu) == "Edit"
                         && application.descendants(matching: .any)[
                             "Markdown editor, Edit mode"
                         ].exists
@@ -593,7 +589,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
                 requestPerformanceEditorAction("review")
                 XCTAssertTrue(
                     waitUntil(timeout: 20) {
-                        (modeMenu.value as? String) == "Review"
+                        self.documentModeState(modeMenu) == "Review"
                             && self.waitForRenderedDocument(
                                 setupDocument,
                                 in: application,
@@ -734,16 +730,14 @@ final class ScholiumPerformanceUITests: XCTestCase {
                 },
                 "Sample \(sample): Editor mode transition did not publish exactly one performance record."
             )
-            let modeMenu = application.descendants(matching: .any)[
-                "scholium.documentModeButton"
-            ]
+            let modeMenu = documentModeControl(in: application)
             let accessibilityLabel = sourceMode
                 ? "Markdown source editor"
                 : "Markdown editor, Edit mode"
             XCTAssertTrue(modeMenu.waitForExistence(timeout: 10))
             XCTAssertTrue(
                 waitUntil(timeout: 20) {
-                    (modeMenu.value as? String) == (sourceMode ? "Source" : "Edit")
+                    self.documentModeState(modeMenu) == (sourceMode ? "Source" : "Edit")
                         && application.descendants(matching: .any)[accessibilityLabel].exists
                 },
                 "Sample \(sample): the measured Editor mode was not accessible after publication."
@@ -772,12 +766,10 @@ final class ScholiumPerformanceUITests: XCTestCase {
                 },
                 "Sample \(sample): warm Edit activation did not publish exactly one performance record."
             )
-            let modeMenu = application.descendants(matching: .any)[
-                "scholium.documentModeButton"
-            ]
+            let modeMenu = documentModeControl(in: application)
             XCTAssertTrue(
                 waitUntil(timeout: 20) {
-                    (modeMenu.value as? String) == "Edit"
+                    self.documentModeState(modeMenu) == "Edit"
                         && application.descendants(matching: .any)[
                             "Markdown editor, Edit mode"
                         ].exists
@@ -787,7 +779,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
                 requestPerformanceEditorAction("review")
                 XCTAssertTrue(
                     waitUntil(timeout: 20) {
-                        (modeMenu.value as? String) == "Review"
+                        self.documentModeState(modeMenu) == "Review"
                     }
                 )
             }
@@ -829,6 +821,22 @@ final class ScholiumPerformanceUITests: XCTestCase {
     }
 
     @MainActor
+    private func documentModeControl(
+        in application: XCUIApplication
+    ) -> XCUIElement {
+        application.toolbars.firstMatch.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Document Mode,")
+        ).firstMatch
+    }
+
+    @MainActor
+    private func documentModeState(_ control: XCUIElement) -> String? {
+        control.label.split(separator: ",", maxSplits: 1)
+            .last?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    @MainActor
     private func performFirstEditActivation(
         in application: XCUIApplication,
         resultsPath: String,
@@ -846,12 +854,10 @@ final class ScholiumPerformanceUITests: XCTestCase {
             waitUntil(timeout: 30) { self.lineCount(at: resultsPath) == sample + 1 },
             "Sample \(sample): first Edit did not publish exactly one performance record."
         )
-        let modeMenu = application.descendants(matching: .any)[
-            "scholium.documentModeButton"
-        ]
+        let modeMenu = documentModeControl(in: application)
         XCTAssertTrue(
             waitUntil(timeout: 20) {
-                (modeMenu.value as? String) == "Edit"
+                self.documentModeState(modeMenu) == "Edit"
                     && application.descendants(matching: .any)[
                         "Markdown editor, Edit mode"
                     ].exists
@@ -1013,7 +1019,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
                 "The QA Editor mode request could not be posted."
             )
             if waitUntil(timeout: 1.5, condition: {
-                (modeMenu.value as? String) == title
+                self.documentModeState(modeMenu) == title
                     && application.descendants(matching: .any)[accessibilityLabel].exists
             }) {
                 return
@@ -1070,7 +1076,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
         application: XCUIApplication,
         documentID: String
     ) {
-        if (modeMenu.value as? String) != title {
+        if documentModeState(modeMenu) != title {
             let notificationName = title == "Edit"
                 ? "com.scholium.qa.performance-editor-mode.live-preview"
                 : "com.scholium.qa.performance-editor-mode.source"
@@ -1082,7 +1088,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
         }
         XCTAssertTrue(
             waitUntil(timeout: 60) {
-                (modeMenu.value as? String) == title
+                self.documentModeState(modeMenu) == title
                     && application.descendants(matching: .any)[accessibilityLabel].exists
             },
             "The packaged CJK \(title) surface for \(documentID) did not become accessible."

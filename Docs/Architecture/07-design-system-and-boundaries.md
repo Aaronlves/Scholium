@@ -164,15 +164,19 @@ shadow. The Debug Editorial
 Parchment acceptance board consumes these production components and resolved
 roles; it is not a second design-system source.
 
-Workspace toolbar hosts bridge live window observations into native AppKit
-toolbar-bezel buttons and pull-downs. Each `NSToolbarItem` wrapper stays
-borderless while its nested `NSButton` keeps an always-present system toolbar
-bezel, which macOS 26+ resolves as Liquid Glass without a second enclosing
-material. The host retains its exact 28 × 28 target. The Inspector projection
+Workspace toolbar observations update standard bordered `NSToolbarItem`
+instances and one `NSMenuToolbarItem`; no custom button view or fixed-size host
+intervenes. AppKit therefore owns regular Glass, edge highlight, shadow, hover,
+press, focus, geometry, and adaptive appearance. The Inspector projection
 uses automatic native segmented-control styling and retains its 70 × 20 fitting
 size. AppKit owns hover, press, focus, active-window, Reduce Transparency, menu
 tracking, and disabled rendering; SwiftUI does not reconstruct those states or
 paint a toolbar band.
+
+The Sidebar Search and Notifications Glass controls locally clear the
+workspace Accent tint. Their system material therefore remains monochrome;
+Scholium color stays limited to the explicit nonzero Notifications dot and
+other semantic states rather than staining ordinary control backgrounds.
 
 `MCPAgentChangesView` uses one continuous semantic Document surface and a flat
 machine-local change list. Each row distinguishes operation, stable Note

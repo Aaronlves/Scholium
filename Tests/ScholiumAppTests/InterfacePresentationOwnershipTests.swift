@@ -140,12 +140,16 @@ struct InterfacePresentationOwnershipTests {
     #expect(designSystem.contains("cursor: pointer;"))
 
     for path in [
-      "Scholium/UI/Components/ScholiumWorkspaceToolbar.swift",
       "Scholium/UI/Components/ScholiumWorkspaceSplitView.swift",
       "Scholium/Views/HotkeySettingsView.swift",
     ] {
       #expect(try source(at: path).contains("ScholiumPointingHandButton"))
     }
+    let toolbar = try source(
+      at: "Scholium/UI/Components/ScholiumWorkspaceToolbar.swift"
+    )
+    #expect(toolbar.contains("item.isBordered = true"))
+    #expect(!toolbar.contains("ScholiumPointingHandButton"))
     let outline = try source(
       at: "Scholium/Views/Sidebar/SidebarOutlineRows.swift"
     )

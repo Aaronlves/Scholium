@@ -1357,7 +1357,7 @@ extension ScholiumUITests {
         )
         XCTAssertTrue(try source(at: workURL).contains("[[QA Topic]]"))
         let mode = documentModeControl()
-        XCTAssertEqual(mode.value as? String, "Source")
+        XCTAssertEqual(documentModeState(mode), "Source")
     }
 
     @MainActor
@@ -1503,7 +1503,7 @@ extension ScholiumUITests {
             "The selected Search result did not finish revealing its source range."
         )
         let mode = documentModeControl()
-        XCTAssertEqual(mode.value as? String, "Source")
+        XCTAssertEqual(documentModeState(mode), "Source")
     }
 
     @MainActor

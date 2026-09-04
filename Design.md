@@ -32,6 +32,8 @@ backgrounds as three continuous planes that extend through the transparent
 titlebar. The toolbar contributes no separate full-width material band. Native
 controls and compact control groups float above those planes in system regular
 Glass, allowing each plane's color to remain legible through the material.
+Ordinary Glass actions remain system-monochrome; Accent tint is reserved for a
+genuine primary action or a separately identified semantic state.
 
 Glass never encloses research prose, metadata groups, lists, rows, fields,
 cards, or whole planes. Clear Glass is excluded from Scholium's text-heavy
@@ -242,22 +244,25 @@ targets remain comfortably clickable and keyboard reachable. Resting controls
 are quiet; focus is stronger than hover and persistent selection stronger than
 both. Pointer activation does not leave a keyboard-only focus effect.
 
-Every enabled discrete activation target uses the system pointing-hand cursor
-across SwiftUI, AppKit, and retained WebKit document surfaces. Disabled targets
-use the arrow. Text insertion and selection keep the I-beam; split dividers,
-window edges, draggable regions, and other direct-manipulation surfaces keep
-their native task-specific cursors. A pointing hand never manufactures an
-activation affordance on passive content.
+Every enabled discrete activation target owned by Scholium uses the system
+pointing-hand cursor across SwiftUI, AppKit, and retained WebKit document
+surfaces. System-generated toolbar items retain AppKit's native cursor together
+with its native Glass, edge highlight, shadow, press, and focus behavior.
+Disabled custom targets use the arrow. Text insertion and selection keep the
+I-beam; split dividers, window edges, draggable regions, and other direct-
+manipulation surfaces keep their native task-specific cursors. A pointing hand
+never manufactures an activation affordance on passive content.
 
 The shared segmented control is the default custom owner when a bounded
 text-only horizontal single-choice group matches its interaction contract.
 Native controls and feature-owned alternatives remain valid when their
-semantics or interaction differ. Toolbar item wrappers remain borderless while
-their native controls carry system Glass, preventing a second enclosing capsule
-or a changed toolbar-section width.
+semantics or interaction differ. Ordinary toolbar actions use standard bordered
+`NSToolbarItem` instances with no custom view or fixed-size host. AppKit owns
+their geometry, regular Glass, edge highlight, shadow, and adaptive states while
+the transparent toolbar background preserves the continuous semantic planes.
 Library icons share one editorial-control recipe. The Document Mode button
-reports current Review, Edit, or Source through symbol, Help, and accessibility
-value without becoming a segmented control.
+reports current Review, Edit, or Source through symbol, Help, and a state-bearing
+accessibility label without becoming a segmented control.
 
 #### Metrics
 
@@ -378,7 +383,7 @@ a reusable component or catalog entry.
 | Component | Presentation responsibility | Semantic owner |
 | --- | --- | --- |
 | `Sidebar / Document / Apparatus` | Keep Document primary across three continuous semantic content planes beneath the transparent titlebar. | §18.2 |
-| `Native Glass Controls` | Give toolbar and compact chrome controls system-owned regular Glass without changing their target or section geometry. | §§18.2, 20 |
+| `Native Glass Controls` | Give standard toolbar items and compact chrome controls system-owned regular Glass, including native edge highlight and shadow. | §§18.2, 20 |
 | `Triptych Workspace Navigator` | Present Analyses, Topics, Works as peers with one selection and Note totals. | §§3.2, 18.2–18.3 |
 | `Segmented Control` | Shared bounded text-only single-choice input with native-equivalent focus/traversal. | §§18.4–18.5 |
 | `Source List` | Quiet hierarchical Note navigation with complete content states. | §18.3 |

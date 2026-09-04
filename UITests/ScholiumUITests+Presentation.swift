@@ -367,7 +367,7 @@ extension ScholiumUITests {
                 withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55)
             ).hover()
             let expandedScreenshot = XCTAttachment(screenshot: expandedWindow.screenshot())
-            expandedScreenshot.name = "\(appearance.displayName) — continuous Inspector titlebar"
+            expandedScreenshot.name = "\(appearance.displayName) — native buttons with Inspector"
             expandedScreenshot.lifetime = .keepAlways
             add(expandedScreenshot)
 
@@ -376,7 +376,7 @@ extension ScholiumUITests {
 
             let sidebarToggle = sidebarVisibilityControl()
             let documentIdentity = documentTitleElement(in: app.windows.firstMatch)
-            let documentCommands = app.toolbars.firstMatch.buttons["Document Mode"]
+            let documentCommands = documentModeControl()
             XCTAssertTrue(
                 sidebarToggle.isHittable,
                 "Hiding Inspector must preserve the fixed leading toolbar zone."
@@ -414,7 +414,7 @@ extension ScholiumUITests {
                 withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55)
             ).hover()
             let screenshot = XCTAttachment(screenshot: window.screenshot())
-            screenshot.name = "\(appearance.displayName) — Glass Show Inspector"
+            screenshot.name = "\(appearance.displayName) — native buttons without Inspector"
             screenshot.lifetime = .keepAlways
             add(screenshot)
         }
@@ -424,8 +424,8 @@ extension ScholiumUITests {
     func testDocumentModeButtonShowsAndSwitchesCurrentState() throws {
         let mode = documentModeControl()
         XCTAssertTrue(mode.waitForExistence(timeout: 10))
-        XCTAssertEqual(mode.label, "Document Mode")
-        XCTAssertEqual(mode.value as? String, "Edit")
+        XCTAssertEqual(mode.label, "Document Mode, Edit")
+        XCTAssertEqual(documentModeState(mode), "Edit")
 
         let initialWidth = mode.frame.width
         let initialEditScreenshot = XCTAttachment(
@@ -436,7 +436,7 @@ extension ScholiumUITests {
         add(initialEditScreenshot)
 
         selectDocumentMode("Review")
-        XCTAssertTrue(waitUntil(timeout: 10) { mode.value as? String == "Review" })
+        XCTAssertTrue(waitUntil(timeout: 10) { self.documentModeState(mode) == "Review" })
         waitForCurrentDocumentSurface()
         XCTAssertEqual(mode.frame.width, initialWidth, accuracy: 1)
         let reviewScreenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
@@ -445,7 +445,7 @@ extension ScholiumUITests {
         add(reviewScreenshot)
 
         selectDocumentMode("Edit")
-        XCTAssertTrue(waitUntil(timeout: 10) { mode.value as? String == "Edit" })
+        XCTAssertTrue(waitUntil(timeout: 10) { self.documentModeState(mode) == "Edit" })
         XCTAssertTrue(
             app.descendants(matching: .any)["Markdown editor, Edit mode"]
                 .waitForExistence(timeout: 8)
@@ -453,7 +453,7 @@ extension ScholiumUITests {
         XCTAssertEqual(mode.frame.width, initialWidth, accuracy: 1)
 
         selectDocumentMode("Source")
-        XCTAssertEqual(mode.value as? String, "Source")
+        XCTAssertEqual(documentModeState(mode), "Source")
         XCTAssertEqual(mode.frame.width, initialWidth, accuracy: 1)
 
         let screenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
@@ -462,7 +462,7 @@ extension ScholiumUITests {
         add(screenshot)
 
         selectDocumentMode("Review")
-        XCTAssertTrue(waitUntil(timeout: 10) { mode.value as? String == "Review" })
+        XCTAssertTrue(waitUntil(timeout: 10) { self.documentModeState(mode) == "Review" })
         waitForCurrentDocumentSurface()
     }
 
@@ -659,7 +659,7 @@ extension ScholiumUITests {
         let mode = documentModeControl()
         XCTAssertTrue(mode.waitForExistence(timeout: 5))
         selectDocumentMode("Review")
-        XCTAssertEqual(mode.value as? String, "Review")
+        XCTAssertEqual(documentModeState(mode), "Review")
         let renderedDocument = workspace.descendants(matching: .any)["Rendered Markdown"]
         XCTAssertTrue(renderedDocument.waitForExistence(timeout: 10))
         let anchorParagraph = renderedDocument.staticTexts.matching(
@@ -759,7 +759,7 @@ extension ScholiumUITests {
             focusWorkspaceWindow(workspace)
             XCTAssertTrue(renderedDocument.waitForExistence(timeout: 8))
             XCTAssertTrue(anchorParagraph.waitForExistence(timeout: 8))
-            XCTAssertEqual(mode.value as? String, "Review")
+            XCTAssertEqual(documentModeState(mode), "Review")
             XCTAssertEqual(
                 self.documentTitle(in: workspace),
                 expectedTitle
@@ -808,7 +808,7 @@ extension ScholiumUITests {
 
         XCTAssertEqual(try Data(contentsOf: noteURL), sourceBefore)
         XCTAssertEqual(workspace.identifier, workspaceIdentity)
-        XCTAssertEqual(mode.value as? String, "Review")
+        XCTAssertEqual(documentModeState(mode), "Review")
     }
 
     @MainActor

@@ -43,9 +43,10 @@ readable peripheral thresholds, and the one initial Inspector reveal request.
 It never continuously reasserts divider positions. Each plane keeps one
 continuous opaque semantic background through the transparent titlebar, and
 the system separator is the sole interactive boundary. The toolbar paints no
-separate full-width band; its native controls use regular system Liquid Glass
-above the three planes. Design §19 owns that material boundary and the single
-decorative Sidebar-edge depth cue.
+separate full-width band; its standard native controls use regular system
+Liquid Glass, including system-managed edge highlight and shadow, above the
+three planes. Design §19 owns that material boundary and the single decorative
+Sidebar-edge depth cue.
 
 New windows show Library, hide Inspector, and begin in Analyses/Overview.
 Visibility and workspace session state are installed before first presentation,
