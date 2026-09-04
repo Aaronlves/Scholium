@@ -280,7 +280,6 @@ private struct BootstrapFlowView: View {
             BootstrapCreateStructureStep(
                 triptychName: $triptychName,
                 parentURL: baseLocationURL,
-                proposedRootURL: proposedTriptychRootURL,
                 chooseParent: chooseParentLocation
             )
         case .existingAnalyses:
@@ -418,7 +417,7 @@ private struct BootstrapFlowView: View {
     private func authorizeDetectedParent() {
         guard let expected = detectedParentURL else { return }
         let request = ScholiumFileSelectionRequest(
-            title: String(localized: "Authorize the Detected Folder"),
+            title: String(localized: "Authorize the Folder Containing Works"),
             message: String(
                 localized: "Confirm this folder so Scholium can use the portable .scholium control folder beside Works."
             ),
@@ -617,7 +616,7 @@ private struct BootstrapStepCanvas<Content: View>: View {
 
 private struct BootstrapStepHeading: View {
     let title: LocalizedStringResource
-    let subtitle: LocalizedStringResource
+    var subtitle: LocalizedStringResource? = nil
     var alignment: HorizontalAlignment = .leading
 
     var body: some View {
@@ -625,10 +624,12 @@ private struct BootstrapStepHeading: View {
             Text(title)
                 .font(ScholiumTypography.Bootstrap.title)
                 .accessibilityAddTraits(.isHeader)
-            Text(subtitle)
-                .font(ScholiumTypography.interface(.body))
-                .scholiumForeground(.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
+            if let subtitle {
+                Text(subtitle)
+                    .font(ScholiumTypography.interface(.body))
+                    .scholiumForeground(.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .frame(
             maxWidth: .infinity,
@@ -645,14 +646,14 @@ private struct BootstrapWelcomeStep: View {
                     .font(ScholiumTypography.Bootstrap.wordmark)
                     .accessibilityAddTraits(.isHeader)
 
-                Text("A local-first, document-authoritative research environment for philosophy and the humanities.")
+                Text("A field of inquiry takes shape as a Triptych.")
                     .font(ScholiumTypography.Bootstrap.statement)
                     .tracking(-0.1)
                     .lineSpacing(ScholiumMetrics.Onboarding.statementLineSpacing)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.top, ScholiumMetrics.Onboarding.welcomeStatementTopSpacing)
 
-                Text("The research document—not a dashboard, task board, or Agent conversation—remains the primary interface.")
+                Text("A local-first research environment for philosophy and the humanities, where ordinary Markdown remains authoritative.")
                     .font(ScholiumTypography.interface(.body))
                     .scholiumForeground(.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -662,9 +663,6 @@ private struct BootstrapWelcomeStep: View {
                     .fill(ScholiumColorRole.separator.color)
                     .frame(height: 1)
                     .padding(.vertical, ScholiumMetrics.Onboarding.welcomeRuleVerticalInset)
-
-                Text("A field of inquiry takes shape as a Triptych.")
-                    .font(ScholiumTypography.interface(.sectionTitle))
 
                 HStack(alignment: .top, spacing: ScholiumGrid.Spacing.sectionSeparation) {
                     BootstrapWelcomeTriptychRole(
@@ -681,12 +679,6 @@ private struct BootstrapWelcomeStep: View {
                     )
                 }
                 .padding(.top, ScholiumGrid.Spacing.sectionSeparation)
-
-                Text("Markdown stays ordinary and inspectable. Reading, writing, Search, Connections, review, and recovery work without an Agent.")
-                    .font(ScholiumTypography.interface(.body))
-                    .scholiumForeground(.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, ScholiumMetrics.Onboarding.welcomeClosingTopSpacing)
             }
             .frame(maxHeight: .infinity, alignment: .center)
         }
@@ -721,26 +713,22 @@ private struct BootstrapChoosePathStep: View {
         BootstrapStepCanvas {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.regionContentInset) {
                 BootstrapStepHeading(
-                    title: "Choose a Starting Point",
-                    subtitle: "Create the Triptych together, or connect the folders you already use."
+                    title: "Choose a Starting Point"
                 )
                 BootstrapSetupPathChoice(
                     title: "Create a New Triptych",
-                    detail: "Choose one parent location. Scholium prepares Analyses, Topics, Works, and .scholium together.",
+                    detail: "Choose one parent; Scholium creates Analyses, Topics, Works, and .scholium.",
                     symbol: "folder.badge.plus",
                     isSelected: selection == .createNew,
                     action: chooseCreateNew
                 )
                 BootstrapSetupPathChoice(
                     title: "Connect Existing Folders",
-                    detail: "Keep the three folders you already use and authorize their detected parent once.",
+                    detail: "Keep your existing folders; Scholium then asks for access beside Works.",
                     symbol: "folder.badge.gearshape",
                     isSelected: selection == .existingFolders,
                     action: chooseExisting
                 )
-                Text("You can manage Triptych locations later in Research Guidance Settings.")
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.mutedText)
             }
             .frame(maxHeight: .infinity, alignment: .center)
         }
@@ -820,15 +808,13 @@ private struct BootstrapSetupPathChoice: View {
 private struct BootstrapCreateStructureStep: View {
     @Binding var triptychName: String
     let parentURL: URL?
-    let proposedRootURL: URL?
     let chooseParent: () -> Void
 
     var body: some View {
         BootstrapStepCanvas {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.regionContentInset) {
                 BootstrapStepHeading(
-                    title: "Create a Research Structure",
-                    subtitle: "Name the Triptych and choose its parent location once."
+                    title: "Create a New Triptych"
                 )
                 VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                     Text("Triptych Name")
@@ -847,10 +833,6 @@ private struct BootstrapCreateStructureStep: View {
                         action: chooseParent
                     )
                 }
-                BootstrapStructurePreview(rootURL: proposedRootURL)
-                Text("Nothing is created until you review and confirm the structure.")
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.mutedText)
             }
             .frame(maxHeight: .infinity, alignment: .center)
         }
@@ -874,9 +856,6 @@ private struct BootstrapExistingFolderStep: View {
                     buttonTitle: "Choose Folder…",
                     action: chooseAction
                 )
-                Text("Only this folder is selected at this step.")
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.mutedText)
             }
             .frame(maxHeight: .infinity, alignment: .center)
         }
@@ -947,16 +926,15 @@ private struct BootstrapAuthorizeParentStep: View {
         BootstrapStepCanvas {
             VStack(alignment: .leading, spacing: ScholiumMetrics.Onboarding.reviewSectionSpacing) {
                 BootstrapStepHeading(
-                    title: "Authorize the Detected Folder",
-                    subtitle: "Scholium needs access beside Works for the portable .scholium control folder."
+                    title: "Authorize the Folder Containing Works"
                 )
                 BootstrapExplanationBlock(
                     symbol: "location.fill",
-                    title: "Folder Detected from Works",
+                    title: "Folder Containing Works",
                     detail: rootURL?.path(percentEncoded: false) ?? "Works has not been selected"
                 )
                 Label {
-                    Text("macOS still requires one system confirmation. The detected folder opens directly, so you do not browse the file tree again.")
+                    Text("macOS will ask you to confirm this exact folder so Scholium can use the adjacent .scholium control folder.")
                         .font(ScholiumTypography.interface(.body))
                         .scholiumForeground(.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1025,7 +1003,7 @@ private struct BootstrapReviewTriptychStep: View {
                     title: setupPath == .createNew
                         ? "Review the New Triptych"
                         : "Review the Connected Triptych",
-                    subtitle: "Research files remain ordinary folders and exact Markdown remains authoritative."
+                    subtitle: "Research files remain ordinary folders; exact Markdown remains authoritative."
                 )
                 if setupPath == .createNew {
                     BootstrapStructurePreview(rootURL: rootURL)
@@ -1037,20 +1015,6 @@ private struct BootstrapReviewTriptychStep: View {
                         BootstrapFolderSummaryRow(title: "Authorized Parent", path: rootURL)
                     }
                 }
-                Label {
-                    Text("You can connect an external Agent later from Research Guidance → Agent Integration.")
-                        .font(ScholiumTypography.interface(.body))
-                        .scholiumForeground(.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                } icon: {
-                    Image(systemName: "person.badge.key")
-                        .scholiumForeground(.accent)
-                }
-                Text("Scholium keeps source documents authoritative and records each successful Agent mutation with exact before-and-after evidence.")
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.mutedText)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("scholium.bootstrap.activityTracking")
             }
             .frame(maxHeight: .infinity, alignment: .center)
         }
@@ -1132,14 +1096,13 @@ private struct BootstrapReadyStep: View {
         BootstrapStepCanvas {
             VStack(spacing: ScholiumMetrics.Onboarding.readySectionSpacing) {
                 BootstrapStepHeading(
-                    title: "Your Triptych Is Ready",
-                    subtitle: "Your research structure is configured.",
+                    title: "Triptych Ready",
                     alignment: .center
                 )
                 VStack(spacing: 0) {
                     BootstrapCompletionStatusRow(
                         symbol: "rectangle.3.group",
-                        title: triptychName.isEmpty ? "Triptych Ready" : triptychName,
+                        title: triptychName.isEmpty ? "Triptych" : triptychName,
                         detail: rootURL?.path(percentEncoded: false) ?? "Configured"
                     )
                 }

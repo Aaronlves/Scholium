@@ -1603,7 +1603,6 @@ enum ScholiumMetrics {
         static let statementLineSpacing = ScholiumGrid.foundationUnit * 0.75
         static let welcomeStatementTopSpacing = ScholiumGrid.foundationUnit * 4.5
         static let welcomeRuleVerticalInset = ScholiumGrid.foundationUnit * 6
-        static let welcomeClosingTopSpacing = ScholiumGrid.foundationUnit * 5.5
         static let decisionRowSpacing = ScholiumGrid.foundationUnit * 3.5
         static let decisionDetailSpacing = ScholiumGrid.foundationUnit * 1.25
         static let decisionActionMinimumSpacing = ScholiumGrid.Spacing.inlineControlGap

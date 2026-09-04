@@ -1007,6 +1007,50 @@ struct FrontendArchitectureTests {
         #expect(!appSource.contains("ScholiumWindowModelFocusedKey"))
     }
 
+    @Test("Bootstrap keeps one-decision copy and the canonical narrative artwork")
+    func bootstrapCopyAndBrandArtworkBoundary() throws {
+        let repositoryRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let setupSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/WorkspaceSetupView.swift"
+            ),
+            encoding: .utf8
+        )
+        let artworkSource = try String(
+            contentsOf: repositoryRoot.appendingPathComponent(
+                "Scholium/Views/BootstrapStageArtworkView.swift"
+            ),
+            encoding: .utf8
+        )
+
+        #expect(setupSource.contains("A field of inquiry takes shape as a Triptych."))
+        #expect(setupSource.contains("where ordinary Markdown remains authoritative."))
+        #expect(setupSource.contains("BootstrapStageArtwork(stage: artworkStage)"))
+        #expect(
+            setupSource.components(
+                separatedBy: "BootstrapStructurePreview(rootURL:"
+            ).count - 1 == 1
+        )
+        #expect(!setupSource.contains("The research document—not a dashboard"))
+        #expect(!setupSource.contains("You can manage Triptych locations later"))
+        #expect(!setupSource.contains("Only this folder is selected at this step."))
+        #expect(!setupSource.contains("Research Guidance → Agent Integration"))
+        #expect(!setupSource.contains("scholium.bootstrap.activityTracking"))
+
+        for assetName in [
+            "manicule-canonical",
+            "manicule-offer-v2",
+            "manicule-unlock-straight-v1",
+            "manicule-lift-v1",
+        ] {
+            #expect(artworkSource.contains(assetName))
+        }
+        #expect(artworkSource.contains(".accessibilityHidden(true)"))
+    }
+
     @Test("The native split protects Document reachability and Library readability")
     func compactLibraryReachability() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)

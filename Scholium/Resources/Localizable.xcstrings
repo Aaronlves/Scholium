@@ -583,6 +583,16 @@
         }
       }
     },
+    "A local-first research environment for philosophy and the humanities, where ordinary Markdown remains authoritative." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一个面向哲学与人文学科的本地优先研究环境，以普通 Markdown 为权威。"
+          }
+        }
+      }
+    },
     "A local-first, document-authoritative research environment for philosophy and the humanities." : {
       "localizations" : {
         "zh-Hans" : {
@@ -3004,6 +3014,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "选择一个父位置。Scholium 会一并准备分析、主题、作品与 .scholium。"
+          }
+        }
+      }
+    },
+    "Choose one parent; Scholium creates Analyses, Topics, Works, and .scholium." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择一个父位置；Scholium 会创建分析、议题、写作与 .scholium。"
           }
         }
       }
@@ -7202,6 +7222,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "保留你已在使用的三个文件夹，并对检测到的父文件夹授权一次。"
+          }
+        }
+      }
+    },
+    "Keep your existing folders; Scholium then asks for access beside Works." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留现有文件夹；随后，Scholium 会请求访问“写作”旁的文件夹。"
           }
         }
       }
@@ -11522,6 +11552,16 @@
         }
       }
     },
+    "Research files remain ordinary folders; exact Markdown remains authoritative." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "研究文件仍是普通文件夹；Markdown 的精确字节仍具权威性。"
+          }
+        }
+      }
+    },
     "Researcher" : {
       "localizations" : {
         "en" : {
@@ -15833,6 +15873,16 @@
         }
       }
     },
+    "Triptych Ready" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "脉络已准备就绪"
+          }
+        }
+      }
+    },
     "Triptych Registry Needs Repair" : {
       "localizations" : {
         "en" : {
@@ -17162,6 +17212,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "macOS 仍需一次系统确认。检测到的文件夹会直接打开，因此无需再次浏览文件树。"
+          }
+        }
+      }
+    },
+    "macOS will ask you to confirm this exact folder so Scholium can use the adjacent .scholium control folder." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS 会要求你确认这个确切文件夹，以便 Scholium 使用相邻的 .scholium 控制文件夹。"
           }
         }
       }
