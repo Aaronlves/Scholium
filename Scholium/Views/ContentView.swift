@@ -345,7 +345,6 @@ struct ContentView: View {
         ResearchInspectorContentContext(
             presentation: ResearchOverviewPresentation(
                 visibleAttentionItems: visibleCurrentDocumentAttentionItems,
-                activityNotificationCount: 0,
                 freshness: researchProjectionFreshness,
                 aboutConfiguration: appState.currentDocumentAboutConfiguration,
                 metadataCatalog: workspaceProjectionController.metadataCatalog,

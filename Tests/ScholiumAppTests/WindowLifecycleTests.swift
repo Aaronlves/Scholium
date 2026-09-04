@@ -474,8 +474,8 @@ struct WindowLifecycleTests {
         #expect(!inspectorItem.isCollapsed)
     }
 
-    @Test("Workspace split leaves compression priorities to AppKit")
-    func workspaceSplitUsesNativeCompressionPriorities() throws {
+    @Test("Workspace split protects Inspector width with native holding priority")
+    func workspaceSplitProtectsInspectorWidth() throws {
         let controller = ScholiumWorkspaceSplitView<Text, Text, Text>.Controller(
             initialLibraryVisible: true,
             initialApparatusVisible: true,
@@ -495,9 +495,61 @@ struct WindowLifecycleTests {
         let documentItem = controller.splitViewItems[1]
         let inspectorItem = try #require(controller.splitViewItems.last)
         #expect(
-            documentItem.holdingPriority.rawValue
-                == inspectorItem.holdingPriority.rawValue
+            inspectorItem.holdingPriority.rawValue
+                > documentItem.holdingPriority.rawValue
         )
+    }
+
+    @Test("Library visibility animation preserves Inspector width on every frame")
+    func libraryVisibilityAnimationPreservesInspectorWidth() async throws {
+        let controller = ScholiumWorkspaceSplitView<Text, Text, Text>.Controller(
+            initialLibraryVisible: true,
+            initialApparatusVisible: true,
+            documentTabs: [],
+            selectedDocumentTabID: nil,
+            selectDocumentTab: { _ in },
+            closeDocumentTab: { _ in },
+            libraryVisibilityDidChange: { _ in },
+            researchInspectorVisibilityDidChange: { _ in },
+            splitControllerDidAttach: { _ in },
+            splitControllerDidDetach: { _ in },
+            library: Text("Library"),
+            document: Text("Document"),
+            apparatus: Text("Research")
+        )
+        let window = testWindow()
+        window.contentViewController = controller
+        window.orderFront(nil)
+        window.layoutIfNeeded()
+
+        let inspectorItem = try #require(controller.splitViewItems.last)
+        let inspectorView = try #require(controller.splitView.arrangedSubviews.last)
+        let originalPriority = inspectorItem.holdingPriority
+        let dividerIndex = controller.splitView.arrangedSubviews.count - 2
+        controller.splitView.setPosition(
+            controller.splitView.bounds.maxX - 360,
+            ofDividerAt: dividerIndex
+        )
+        window.layoutIfNeeded()
+        let originalWidth = inspectorView.frame.width
+
+        controller.setLibraryVisible(false, animated: true)
+        #expect(inspectorItem.holdingPriority.rawValue > 250)
+
+        var sampledWidths: [CGFloat] = []
+        for _ in 0..<30 {
+            try await Task.sleep(for: .milliseconds(20))
+            window.layoutIfNeeded()
+            sampledWidths.append(inspectorView.frame.width)
+        }
+
+        #expect(
+            sampledWidths.allSatisfy { abs($0 - originalWidth) <= 2 },
+            "Original \(originalWidth); samples \(sampledWidths)"
+        )
+        #expect(!controller.libraryIsVisible)
+        #expect(inspectorItem.holdingPriority == originalPriority)
+        window.close()
     }
 
     @Test("Research Inspector divider resizes one pane while its trailing edge stays fixed")

@@ -474,7 +474,7 @@ private struct RuntimeMembershipFixture: Sendable {
                             scrollFraction: 0.25
                         ),
                     ],
-                    inspectorMode: "connect"
+                    inspectorMode: "outgoing"
                 ),
             ],
             inspectorVisible: true,

@@ -246,14 +246,18 @@ and never changes Settlement. Direct Undo remains per eligible update and uses
 §8.4's revision requirement; creation and system Trash have no fabricated
 source preimage or Undo.
 
-There is one native trailing Inspector with **Overview** and **Connect** modes.
-Each workspace retains its selected mode; Note/tab/mode changes do not alter it.
-Hiding Inspector moves no content elsewhere. Without a Document it presents
-**No Document Selected**.
+There is one native trailing Inspector with **Overview**, **Outgoing**, and
+**Incoming** projections. An icon-only single-choice group sits at the logical
+leading edge of the Inspector's native toolbar section; every icon has a full
+Help/accessibility name and the selected projection remains visible. Pane
+content contains no duplicate projection selector. Each workspace retains its
+selected projection; Note/tab/projection changes do not alter it. Hiding
+Inspector moves no content elsewhere. Without a Document it presents **No
+Document Selected**.
 
 Overview contains, in order:
 
-1. **Needs Attention** count and route for the current Note;
+1. a conditional **Needs Attention** count and route for the current Note;
 2. **About** with visible semantic groups, configured core fields even when
    empty, every other present managed value, authored values, direct field
    editing, read-only file dates and exact-revision Settlement state, plus Add
@@ -264,16 +268,15 @@ It has no generic Research Status, Provenance, Derived State, or inline Zotero
 metadata section. Freshness appears only when pending, stale, failed, or
 unavailable and retains last trustworthy content plus Retry.
 
-Connect starts with one Incoming/Outgoing control, then role-appropriate groups
-for linked Analyses, Topics, and Works. It shows one row per authored occurrence
-without predicate clusters, inferred grouping, or Combined direction. Each row
-retains its exact source anchor, local context, and optional annotation; repeated
-links remain repeated occurrences. Outgoing annotation editing changes only the
-current source Note. Incoming annotations are read-only and expose a separately
-named **Edit at Source** route that navigates to the source occurrence. Row
-titles and annotation text wrap and use full-row native destination activation.
-The sole scroll owner preserves group context. Switching direction changes only
-the projection and returns scroll to its beginning.
+Outgoing and Incoming each show one flat row per authored occurrence, without
+role folders, predicate clusters, inferred grouping, or a Combined direction.
+Each row retains its exact source anchor, complete local context, and optional
+annotation; repeated links remain repeated occurrences. Outgoing annotation
+editing changes only the current source Note. Incoming annotations are
+read-only and expose a separately named **Edit at Source** route that navigates
+to the source occurrence. Row titles, annotation text, and context wrap and use
+full-row native destination activation. Switching projection changes only the
+derived occurrence list and returns its sole scroll owner to the beginning.
 
 Document owns a trailing-centered overlay **Document Rail**. Settle, Settle
 Again, or Mark Unsettled appears as the quiet state-valid researcher judgment;

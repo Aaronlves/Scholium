@@ -1229,6 +1229,7 @@ struct FrontendArchitectureTests {
             ScholiumWorkspaceToolbarController.Item.researchRecords,
             ScholiumWorkspaceToolbarController.Item.agentChanges,
             ScholiumWorkspaceToolbarController.Item.apparatusDivider,
+            ScholiumWorkspaceToolbarController.Item.inspectorModes,
             .flexibleSpace,
             ScholiumWorkspaceToolbarController.Item.inspector,
         ])
@@ -1268,10 +1269,11 @@ struct FrontendArchitectureTests {
                 "&& appState?.currentNote == nil"
             ))
         #expect(!toolbarSource.contains("glassEffect"))
-        #expect(noteSource.contains("ScholiumInspectorModeIndex("))
+        #expect(!noteSource.contains("ScholiumInspectorModeIndex("))
         #expect(!noteSource.contains("Picker(\"Research Inspector\""))
-        #expect(apparatusComponentsSource.contains("struct ScholiumInspectorModeIndex"))
-        #expect(apparatusComponentsSource.contains("ScholiumSegmentedControl("))
+        #expect(!apparatusComponentsSource.contains("struct ScholiumInspectorModeIndex"))
+        #expect(toolbarSource.contains("NSSegmentedControl("))
+        #expect(toolbarSource.contains("Item.inspectorModes"))
         #expect(!appSource.contains("removeAutomaticSidebarToolbarItem"))
         #expect(appSource.contains(".toolbar(removing: .sidebarToggle)"))
         #expect(windowManagementSource.contains("window.titlebarAppearsTransparent = true"))
@@ -1360,6 +1362,9 @@ struct FrontendArchitectureTests {
         )
         let modeIndex = try #require(identifiers.firstIndex(of: Item.documentMode))
         let inspectorIndex = try #require(identifiers.firstIndex(of: Item.inspector))
+        let inspectorModesIndex = try #require(
+            identifiers.firstIndex(of: Item.inspectorModes)
+        )
         let apparatusDividerIndex = try #require(
             identifiers.firstIndex(of: Item.apparatusDivider)
         )
@@ -1370,12 +1375,14 @@ struct FrontendArchitectureTests {
         #expect(headingIndex < documentFlexibleSpaceIndex)
         #expect(documentFlexibleSpaceIndex < modeIndex)
         #expect(modeIndex < apparatusDividerIndex)
-        #expect(apparatusDividerIndex < apparatusFlexibleSpaceIndex)
+        #expect(apparatusDividerIndex < inspectorModesIndex)
+        #expect(inspectorModesIndex < apparatusFlexibleSpaceIndex)
         #expect(apparatusFlexibleSpaceIndex < inspectorIndex)
         #expect(identifiers.filter { $0 == .flexibleSpace }.count == 2)
         #expect(identifiers.filter { $0 == Item.sidebar }.count == 1)
         #expect(identifiers.filter { $0 == Item.back }.count == 1)
         #expect(identifiers.filter { $0 == Item.forward }.count == 1)
+        #expect(identifiers.filter { $0 == Item.inspectorModes }.count == 1)
         #expect(identifiers.filter { $0 == Item.inspector }.count == 1)
 
         let toolbarSource = try String(
@@ -2418,8 +2425,6 @@ struct FrontendArchitectureTests {
             ScholiumMetrics.Apparatus.sectionContentSpacing
                 == ScholiumGrid.Apparatus.headingToContentGap
         )
-        #expect(ScholiumMetrics.Apparatus.headerHeight == ScholiumGrid.Apparatus.modeStripHeight)
-        #expect(ScholiumMetrics.Apparatus.headerHeight == 40)
         #expect(ScholiumMetrics.Library.hierarchyRowHeight == 28)
 
         let productionRoot = repository.appendingPathComponent("Scholium")
@@ -4949,6 +4954,9 @@ struct FrontendArchitectureTests {
         #expect(source.contains("Incoming link from \\(item.displayTitle)"))
         #expect(source.contains("Outgoing link to \\(item.displayTitle)"))
         #expect(!source.contains("ScholiumConnectionPresentation"))
+        #expect(!source.contains("ConnectionPeerGroup"))
+        #expect(!source.contains("ScholiumDisclosureHeaderButton"))
+        #expect(!source.contains("ScholiumSegmentedControl"))
     }
 
     @Test("Connection direction names exact incoming and outgoing projections")

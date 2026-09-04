@@ -446,9 +446,9 @@ struct WindowControllerArchitectureTests {
 
         let firstResearch = ResearchController(shellState: presentation)
         let secondResearch = ResearchController(shellState: presentation)
-        firstResearch.selectInspectorMode(.connect)
+        firstResearch.selectInspectorMode(.incoming)
         firstResearch.showResearchInspector(true)
-        #expect(secondResearch.inspector.mode == .connect)
+        #expect(secondResearch.inspector.mode == .incoming)
         #expect(secondResearch.inspector.isVisible)
 
         let firstDocument = DocumentController()
@@ -467,13 +467,13 @@ struct WindowControllerArchitectureTests {
         arguments: [
             (nil as String?, ResearchInspectorMode.overview),
             ("overview", ResearchInspectorMode.overview),
-            ("connect", .connect),
+            ("outgoing", .outgoing),
+            ("incoming", .incoming),
+            ("connect", .overview),
             ("actions", .overview),
-            ("connections", .connect),
+            ("connections", .overview),
             ("functions", .overview),
             ("research", .overview),
-            ("incoming", .connect),
-            ("outgoing", .connect),
             ("unknown", .overview),
         ]
     )
@@ -635,7 +635,7 @@ struct WindowControllerArchitectureTests {
         let shell = WindowShellState()
 
         document.rememberPresentationMode(.livePreview)
-        shell.selectInspectorMode(.connect)
+        shell.selectInspectorMode(.outgoing)
 
         shell.selectWorkspace(.topicKnowledge)
         document.selectWorkspace(.topicKnowledge)
@@ -648,7 +648,7 @@ struct WindowControllerArchitectureTests {
         document.selectWorkspace(.paperAnalysis)
 
         #expect(document.currentPresentationMode == .livePreview)
-        #expect(shell.inspector.mode == .connect)
+        #expect(shell.inspector.mode == .outgoing)
         #expect(document.presentationMode(for: .topicKnowledge) == .source)
         #expect(shell.inspectorMode(for: .topicKnowledge) == .overview)
     }
@@ -1961,7 +1961,9 @@ struct WindowControllerArchitectureTests {
         ))
         #expect(windowSource.contains("scheduleAuthorizedClose(sender, attempt: attempt)"))
         #expect(windowSource.contains("DispatchQueue.main.async { @MainActor"))
-        #expect(!splitSource.contains("apparatusItem.holdingPriority"))
+        #expect(splitSource.contains("NSLayoutConstraint.Priority.defaultLow.rawValue + 1"))
+        #expect(!splitSource.contains("restoreApparatusWidth"))
+        #expect(!splitSource.contains("retainedApparatusWidth"))
     }
 
     @Test("Remaining WindowModel Store calls are classified and allowlisted")

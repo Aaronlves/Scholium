@@ -450,8 +450,8 @@ struct PropertyPresentationTests {
         #expect(changed.map(\.value) == [
             "Changed since settlement", "30", "Researcher",
         ])
-        #expect(never.map(\.value) == ["Not yet settled", "Never"])
-        #expect(unavailable.map(\.value) == ["Unavailable", "Unavailable"])
+        #expect(never.map(\.value) == ["Not yet settled"])
+        #expect(unavailable.map(\.value) == ["Unavailable"])
     }
 
     @Test("About authored edits preserve every unrelated source byte")

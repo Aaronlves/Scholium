@@ -81,7 +81,6 @@ struct ResearchProjectionFreshnessView: View {
 
 struct ResearchOverviewPresentation {
     let visibleAttentionItems: [AttentionQueueItem]
-    let activityNotificationCount: Int
     let freshness: ResearchProjectionFreshness
     let aboutConfiguration: VaultAboutConfiguration?
     let metadataCatalog: NoteMetadataCatalog
@@ -166,29 +165,25 @@ enum AboutFactPresentation {
         _ settlement: AboutSettlementPresentation,
         formatDate: (Date?) -> String
     ) -> [ScholiumApparatusFact] {
-        let settledValue = switch settlement.state {
-        case .notYetSettled:
-            String(localized: "Never")
-        case .unavailable:
-            String(localized: "Unavailable")
-        case .settled, .changedSinceSettlement:
-            formatDate(settlement.settledAt)
-        }
         var facts = [
             ScholiumApparatusFact(
                 id: "settlement-status",
                 label: String(localized: "Status"),
                 value: settlementStatus(settlement.state)
             ),
-            ScholiumApparatusFact(
+        ]
+        if settlement.state == .settled
+            || settlement.state == .changedSinceSettlement
+        {
+            facts.append(ScholiumApparatusFact(
                 id: "settled-at",
                 label: settlement.state == .changedSinceSettlement
                     ? String(localized: "Last Settled")
                     : String(localized: "Settled"),
-                value: settledValue,
+                value: formatDate(settlement.settledAt),
                 monospacedDigits: true
-            ),
-        ]
+            ))
+        }
         if let researcher = settlement.researcher, !researcher.isEmpty {
             facts.append(ScholiumApparatusFact(
                 id: "settled-by",
@@ -230,10 +225,7 @@ struct ResearchInspectorContentContext {
     let manageZoteroBinding: (UUID, AnalysisZoteroBinding?) -> Void
 
     var visibleAttentionItems: [AttentionQueueItem] { presentation.visibleAttentionItems }
-    var notificationCount: Int {
-        presentation.visibleAttentionItems.count
-            + presentation.activityNotificationCount
-    }
+    var attentionCount: Int { presentation.visibleAttentionItems.count }
     var freshness: ResearchProjectionFreshness { presentation.freshness }
     var aboutConfiguration: VaultAboutConfiguration? {
         presentation.aboutConfiguration
@@ -258,7 +250,9 @@ struct ResearchOverviewView: View {
                 alignment: .leading,
                 spacing: ScholiumMetrics.Apparatus.sectionSpacing
             ) {
-                attentionSection
+                if !context.visibleAttentionItems.isEmpty {
+                    attentionSection
+                }
                 aboutSection
                 ResearchProjectionFreshnessView(
                     freshness: context.freshness,
@@ -281,16 +275,16 @@ struct ResearchOverviewView: View {
                 spacing: ScholiumMetrics.Apparatus.sectionContentSpacing
             ) {
                 HStack(spacing: ScholiumMetrics.Apparatus.iconToTextSpacing) {
-                    Image(systemName: "bell")
+                    Image(systemName: "exclamationmark.triangle")
                         .font(ScholiumTypography.interface(.small, emphasis: .medium))
                         .scholiumForeground(.attention)
                         .accessibilityHidden(true)
-                    Text("NOTIFICATIONS")
+                    Text("NEEDS ATTENTION")
                         .font(ScholiumTypography.interface(.small, emphasis: .strong))
                         .tracking(0.7)
                         .scholiumForeground(.attention)
                     Spacer(minLength: ScholiumMetrics.Apparatus.iconToTextSpacing)
-                    Text(context.notificationCount.formatted())
+                    Text(context.attentionCount.formatted())
                         .font(
                             ScholiumTypography.interface(.small, emphasis: .strong, tabularDigits: true)
                         )
@@ -329,8 +323,8 @@ struct ResearchOverviewView: View {
             verticalInset: ScholiumMetrics.Apparatus.actionRowVerticalInset
         ))
         .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
-        .accessibilityLabel("Notifications")
-        .accessibilityValue("\(context.notificationCount) items")
+        .accessibilityLabel("Needs Attention")
+        .accessibilityValue("\(context.attentionCount) items")
         .accessibilityIdentifier("scholium.researchOverview.notifications")
     }
 
@@ -388,7 +382,7 @@ struct ResearchOverviewView: View {
                     label: String(localized: "File History"),
                     separatesFromPrevious: !aboutGroups.isEmpty
                 ) {
-                    ScholiumApparatusFactGrid(facts: fileHistoryFacts)
+                    ScholiumApparatusFactList(facts: fileHistoryFacts)
                 }
 
                 ScholiumPropertyGroup(
@@ -399,7 +393,7 @@ struct ResearchOverviewView: View {
                         alignment: .leading,
                         spacing: ScholiumMetrics.Properties.fieldBlockSeparation
                     ) {
-                        ScholiumApparatusFactGrid(facts: settlementFacts)
+                        ScholiumApparatusFactList(facts: settlementFacts)
                         if let rationale = context.settlement.rationale {
                             ScholiumApparatusReadingBlock(
                                 label: String(localized: "Rationale"),
@@ -439,7 +433,7 @@ struct ResearchOverviewView: View {
                         ScholiumApparatusActionRowContent(
                             title: Text("Refresh Zotero Metadata…"),
                             systemImage: "arrow.clockwise",
-                            showsChevron: true
+                            showsChevron: false
                         )
                     }
                     .scholiumActivationPointer()
@@ -466,7 +460,7 @@ struct ResearchOverviewView: View {
                                 : "Manage Zotero Link…"
                         ),
                         systemImage: "link",
-                        showsChevron: true
+                        showsChevron: false
                     )
                 }
                 .scholiumActivationPointer()
@@ -592,7 +586,6 @@ struct ResearchOverviewView: View {
         context: ResearchInspectorContentContext(
             presentation: ResearchOverviewPresentation(
                 visibleAttentionItems: [],
-                activityNotificationCount: 0,
                 freshness: .unavailable("No workspace is open."),
                 aboutConfiguration: nil,
                 metadataCatalog: .builtIn,

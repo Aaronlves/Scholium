@@ -147,7 +147,9 @@ finite option labels, then owns equal layout, the Paper-derived track, adaptive
 raised selection plate, continuous corners, pointer and press feedback,
 Left/Right traversal, and accessibility state. A future group may remain native
 or feature-owned when its semantics or interaction genuinely differ.
-`ScholiumInspectorModeIndex` is now a semantic adapter into that component.
+The Research Inspector's icon-only projection group remains a native AppKit
+toolbar control because its placement and icon semantics differ from bounded
+text choices in content.
 `ScholiumEditorialIconControl` is the single presentation owner for Filter,
 disclosure, and Add in the Library header. It gives all three one exact 28pt target,
 semantic ink, and one rounded-rectangle hover, focus, and press surface. Its Button or

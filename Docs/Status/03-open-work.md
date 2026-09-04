@@ -33,7 +33,8 @@
   IME exact-source journey, and one visual-adaptation set at supported window
   sizes.
 - Include Agent Integration command copying, Agent Changes comparison/Undo,
-  Library navigation, Document mode transitions, Inspector Overview/Connect,
+  Library navigation, Inspector Overview/Outgoing/Incoming projection and
+  Document mode transitions,
   system Trash, conflict, and recovery where they exercise distinct human
   failure modes.
 - Add a human Records-window journey covering All/Notes/Records Search,

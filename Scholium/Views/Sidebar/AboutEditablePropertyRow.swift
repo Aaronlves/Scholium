@@ -189,6 +189,7 @@ struct AboutEditablePropertyRow: View {
     @State private var creators: [AboutCreatorDraft] = []
     @State private var operationState: AboutFieldOperationState = .idle
     @FocusState private var scalarIsFocused: Bool
+    @FocusState private var displayIsFocused: Bool
 
     private var isEditing: Bool { activeEditorKey == descriptor.key }
     private var anotherFieldIsEditing: Bool {
@@ -243,59 +244,53 @@ struct AboutEditablePropertyRow: View {
             guard descriptor.isEditable, !anotherFieldIsEditing else { return }
             activeEditorKey = descriptor.key
         } label: {
-            ViewThatFits(in: .horizontal) {
-                HStack(alignment: .firstTextBaseline, spacing: ScholiumMetrics.Apparatus.factColumnSpacing) {
-                    fieldLabel
-                        .multilineTextAlignment(.trailing)
-                        .frame(
-                            width: ScholiumMetrics.Apparatus.factLabelMinimumWidth,
-                            alignment: .trailing
-                        )
-                    displayValue
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                VStack(
-                    alignment: .leading,
-                    spacing: ScholiumMetrics.Apparatus.longTextLabelSpacing
-                ) {
-                    fieldLabel
-                    displayValue
-                        .padding(.leading, ScholiumMetrics.Apparatus.longTextIndent)
-                }
+            VStack(
+                alignment: .leading,
+                spacing: ScholiumMetrics.Apparatus.longTextLabelSpacing
+            ) {
+                fieldLabel
+                displayValue
             }
             .contentShape(Rectangle())
         }
         .scholiumActivationPointer()
-        .buttonStyle(.plain)
+        .buttonStyle(
+            ScholiumQuietRowButtonStyle(
+                isFocused: displayIsFocused,
+                minimumHeight: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                verticalInset: ScholiumGrid.Spacing.labelAccessoryGap
+            )
+        )
+        .scholiumActivationFocus($displayIsFocused)
+        .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
         .disabled(!descriptor.isEditable || anotherFieldIsEditing)
-        .help(descriptor.isEditable ? "Edit \(descriptor.label)" : "Open Metadata to review this unsupported value")
+        .help(
+            descriptor.isEditable
+                ? "Edit \(descriptor.label)"
+                : "Open Metadata to review this unsupported value"
+        )
         .accessibilityLabel(Text(verbatim: descriptor.label))
         .accessibilityValue(Text(verbatim: displayText))
-        .accessibilityHint(descriptor.isEditable ? "Edits this field in About" : "This value has an unsupported editable shape")
+        .accessibilityHint(
+            descriptor.isEditable
+                ? "Edits this field in About"
+                : "This value has an unsupported editable shape"
+        )
     }
 
     private var fieldLabel: some View {
         Text(verbatim: descriptor.label)
-            .font(ScholiumTypography.interface(.compact, emphasis: .strong))
-            .scholiumForeground(.secondaryText)
+            .font(ScholiumTypography.interface(.small, emphasis: .medium))
+            .scholiumForeground(.mutedText)
             .fixedSize(horizontal: false, vertical: true)
     }
 
     private var displayValue: some View {
-        HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-            Text(verbatim: displayText)
-                .font(displayFont)
-                .scholiumForeground(descriptor.value == nil ? .mutedText : .primaryText)
-                .lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)
-                .fixedSize(horizontal: false, vertical: true)
-            if descriptor.isEditable {
-                Image(systemName: "pencil")
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.mutedText)
-                    .accessibilityHidden(true)
-            }
-        }
+        Text(verbatim: displayText)
+            .font(displayFont)
+            .scholiumForeground(descriptor.value == nil ? .mutedText : .primaryText)
+            .lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private var displayFont: Font {

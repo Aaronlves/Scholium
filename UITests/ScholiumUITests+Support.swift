@@ -424,24 +424,32 @@ extension ScholiumUITests {
         }
         XCTAssertTrue(inspector.waitForExistence(timeout: 5))
 
-        let modeButton = app.buttons[
-            "scholium.inspectorMode.\(mode)"
-        ].firstMatch
-        XCTAssertTrue(modeButton.waitForExistence(timeout: 5))
-        modeButton.click()
-
-        let contentIdentifier: String
+        let modeLabel: String
         switch mode {
-        case "overview": contentIdentifier = "scholium.about"
-        case "connect": contentIdentifier = "scholium.connectionGroup.0"
+        case "overview": modeLabel = "Overview"
+        case "outgoing": modeLabel = "Outgoing Links"
+        case "incoming": modeLabel = "Incoming Links"
         default:
             XCTFail("Unknown Inspector mode: \(mode)")
             return inspector
         }
-        XCTAssertTrue(
-            app.descendants(matching: .any)[contentIdentifier]
-                .waitForExistence(timeout: 8)
-        )
+        let modeButton = app.descendants(matching: .any)[modeLabel].firstMatch
+        XCTAssertTrue(modeButton.waitForExistence(timeout: 5))
+        modeButton.click()
+
+        if mode == "overview" {
+            XCTAssertTrue(
+                app.descendants(matching: .any)["scholium.about"]
+                    .waitForExistence(timeout: 8)
+            )
+        } else {
+            let modeGroup = app.descendants(matching: .any)[
+                "scholium.inspectorMode"
+            ].firstMatch
+            XCTAssertTrue(waitUntil(timeout: 8) {
+                modeGroup.value as? String == modeLabel
+            })
+        }
         let scrollableInspector = app.scrollViews[
             "scholium.researchInspector"
         ].firstMatch
@@ -944,6 +952,20 @@ extension ScholiumUITests {
             try seedAnalysisZoteroBinding(
                 relativePath: "QA Autosave A.md",
                 itemKey: "QAITEM01"
+            )
+        }
+        if name.contains("testInspectorToolbarSelectsFlatLinkProjections") {
+            let analysisURL = analyses.appendingPathComponent("QA Autosave A.md")
+            let topicURL = topics.appendingPathComponent("QA Topic.md")
+            try write(
+                try String(contentsOf: analysisURL, encoding: .utf8)
+                    + "\n[[QA Topic]]{{Outgoing annotation.}}\n",
+                to: analysisURL
+            )
+            try write(
+                try String(contentsOf: topicURL, encoding: .utf8)
+                    + "\n[[QA Autosave A]]{{Incoming annotation.}}\n",
+                to: topicURL
             )
         }
         if name.contains("testAppearanceLineWidthVisualMatrixAndKeyboardControl") {

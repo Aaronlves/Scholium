@@ -8572,12 +8572,12 @@
         }
       }
     },
-    "NOTIFICATIONS" : {
+    "NEEDS ATTENTION" : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "通知"
+            "value" : "需要注意"
           }
         }
       }
@@ -17832,6 +17832,22 @@
         }
       }
     },
+    "Context: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Context: %1$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上下文：%1$@"
+          }
+        }
+      }
+    },
     "Edit at Source" : {
       "localizations" : {
         "en" : {
@@ -17892,70 +17908,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "来自 %1$@ 的传入连接。无链接注释"
-          }
-        }
-      }
-    },
-    "LINKED ANALYSES" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "LINKED ANALYSES"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已连接的分析"
-          }
-        }
-      }
-    },
-    "LINKED SOURCES" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "LINKED SOURCES"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已连接的来源"
-          }
-        }
-      }
-    },
-    "LINKED TOPICS" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "LINKED TOPICS"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已连接的议题"
-          }
-        }
-      }
-    },
-    "LINKED WORKS" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "LINKED WORKS"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "已连接的写作"
           }
         }
       }

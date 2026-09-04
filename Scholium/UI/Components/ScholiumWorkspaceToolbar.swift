@@ -6,9 +6,9 @@ import SwiftUI
 
 /// The configured window has one native toolbar. Tracking separators establish
 /// Library, Document, and Apparatus sections. Sidebar and document-history
-/// controls remain leading of the Library boundary, while Inspector remains
-/// trailing of the Apparatus boundary; collapsing either pane changes no item
-/// topology.
+/// controls remain leading of the Library boundary. The Inspector projection
+/// control begins the Apparatus section and its visibility control ends it;
+/// collapsing either pane changes no item topology.
 @MainActor
 final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
     static let toolbarIdentifier = NSToolbar.Identifier("scholium.workspaceToolbar")
@@ -18,6 +18,9 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         static let back = NSToolbarItem.Identifier("scholium.toolbar.back")
         static let forward = NSToolbarItem.Identifier("scholium.toolbar.forward")
         static let inspector = NSToolbarItem.Identifier("scholium.toolbar.inspector")
+        static let inspectorModes = NSToolbarItem.Identifier(
+            "scholium.toolbar.inspectorModes"
+        )
         // These identifiers are structural bounds for the Document toolbar.
         static let libraryDivider = NSToolbarItem.Identifier.sidebarTrackingSeparator
         static let headingOutline = NSToolbarItem.Identifier(
@@ -96,6 +99,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             Item.researchRecords,
             Item.agentChanges,
             Item.apparatusDivider,
+            Item.inspectorModes,
             Item.inspector,
         ]
     }
@@ -112,6 +116,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             Item.researchRecords,
             Item.agentChanges,
             Item.apparatusDivider,
+            Item.inspectorModes,
             .flexibleSpace,
             Item.inspector,
         ]
@@ -208,6 +213,8 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             )
             item.visibilityPriority = .user
             return item
+        case Item.inspectorModes:
+            return inspectorModeItem(identifier: itemIdentifier)
         case Item.inspector:
             return actionItem(
                 identifier: itemIdentifier,
@@ -262,6 +269,49 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         overflowItem.target = self
         overflowItem.image = item.image
         item.menuFormRepresentation = overflowItem
+        return item
+    }
+
+    private func inspectorModeItem(
+        identifier: NSToolbarItem.Identifier
+    ) -> NSToolbarItem {
+        let label = ScholiumL10n.dynamicString("Research Inspector")
+        let modes = ResearchInspectorMode.allCases
+        let control = NSSegmentedControl(
+            images: modes.compactMap {
+                ScholiumNativeToolbarPresentation.symbol(
+                    named: $0.systemImage,
+                    accessibilityDescription: ScholiumL10n.localized(
+                        $0.interfaceTitleResource
+                    )
+                )
+            },
+            trackingMode: .selectOne,
+            target: self,
+            action: #selector(selectInspectorMode(_:))
+        )
+        control.controlSize = ScholiumNativeToolbarPresentation.controlSize
+        control.segmentStyle = .rounded
+        control.setAccessibilityLabel(label)
+        control.setAccessibilityIdentifier("scholium.inspectorMode")
+        for (index, mode) in modes.enumerated() {
+            control.setToolTip(
+                ScholiumL10n.localized(mode.interfaceTitleResource),
+                forSegment: index
+            )
+            control.setImageScaling(.scaleProportionallyDown, forSegment: index)
+        }
+
+        let item = NSToolbarItem(itemIdentifier: identifier)
+        item.label = label
+        item.paletteLabel = label
+        item.title = ""
+        item.toolTip = label
+        item.visibilityPriority = .user
+        item.isBordered = false
+        item.style = .plain
+        item.view = control
+        item.menuFormRepresentation = inspectorModeMenu()
         return item
     }
 
@@ -321,6 +371,11 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
                 .map { _ in () }
                 .eraseToAnyPublisher(),
             appState.researchController.$agentChanges
+                .map { _ in () }
+                .eraseToAnyPublisher(),
+            appState.shellState.$inspector
+                .dropFirst()
+                .receive(on: DispatchQueue.main)
                 .map { _ in () }
                 .eraseToAnyPublisher(),
         ]
@@ -401,6 +456,23 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
                 systemImage: "sparkles.rectangle.stack",
                 isEnabled: appState.researchController.hasAgentChanges
             )
+        }
+
+        if let item = toolbarItem(Item.inspectorModes),
+           let control = item.view as? NSSegmentedControl {
+            let hasDocument = appState.documentController.selectedDocument != nil
+            let isAvailable = shellState.inspector.isVisible && hasDocument
+            item.isHidden = !isAvailable
+            control.isEnabled = isAvailable
+            control.selectedSegment = ResearchInspectorMode.allCases.firstIndex(
+                of: shellState.inspector.mode
+            ) ?? 0
+            control.setAccessibilityValue(
+                ScholiumL10n.localized(
+                    shellState.inspector.mode.interfaceTitleResource
+                )
+            )
+            item.menuFormRepresentation = inspectorModeMenu()
         }
 
         if let item = toolbarItem(Item.inspector) {
@@ -497,6 +569,28 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         return item
     }
 
+    private func inspectorModeMenu() -> NSMenuItem {
+        let label = ScholiumL10n.dynamicString("Research Inspector")
+        let root = NSMenuItem(title: label, action: nil, keyEquivalent: "")
+        let menu = NSMenu(title: label)
+        for mode in ResearchInspectorMode.allCases {
+            let item = NSMenuItem(
+                title: ScholiumL10n.localized(mode.interfaceTitleResource),
+                action: #selector(selectInspectorModeFromMenu(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = mode.rawValue
+            item.image = ScholiumNativeToolbarPresentation.symbol(
+                named: mode.systemImage
+            )
+            item.state = appState.shellState.inspector.mode == mode ? .on : .off
+            menu.addItem(item)
+        }
+        root.submenu = menu
+        return root
+    }
+
     private var currentEditorIsComposing: Bool {
         guard let session = currentDocumentSession else { return false }
         return session.isEditing && session.editorSession.context?.composing == true
@@ -559,6 +653,25 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
 
     @objc private func toggleInspector(_ sender: Any?) {
         windowActions.setResearchInspectorVisible(!appState.shellState.inspector.isVisible)
+    }
+
+    @objc private func selectInspectorMode(_ sender: NSSegmentedControl) {
+        guard ResearchInspectorMode.allCases.indices.contains(
+            sender.selectedSegment
+        ) else {
+            return
+        }
+        appState.researchController.selectInspectorMode(
+            ResearchInspectorMode.allCases[sender.selectedSegment]
+        )
+        refreshPresentation()
+    }
+
+    @objc private func selectInspectorModeFromMenu(_ sender: NSMenuItem) {
+        guard let rawValue = sender.representedObject as? String,
+              let mode = ResearchInspectorMode(rawValue: rawValue) else { return }
+        appState.researchController.selectInspectorMode(mode)
+        refreshPresentation()
     }
 }
 

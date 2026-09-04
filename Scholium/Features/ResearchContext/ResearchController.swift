@@ -4,14 +4,16 @@ import Foundation
 
 enum ResearchInspectorMode: String, CaseIterable, Identifiable, Sendable {
     case overview
-    case connect
+    case outgoing
+    case incoming
 
     var id: Self { self }
 
     init(restoring rawValue: String?) {
         switch rawValue?.lowercased() {
-        case "connect", "connections", "incoming", "outgoing": self = .connect
-        case "overview", "research", .none: self = .overview
+        case "outgoing": self = .outgoing
+        case "incoming": self = .incoming
+        case "overview", .none: self = .overview
         default: self = .overview
         }
     }
@@ -19,7 +21,16 @@ enum ResearchInspectorMode: String, CaseIterable, Identifiable, Sendable {
     var interfaceTitleResource: LocalizedStringResource {
         switch self {
         case .overview: "Overview"
-        case .connect: "Connect"
+        case .outgoing: "Outgoing Links"
+        case .incoming: "Incoming Links"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .overview: "info.circle"
+        case .outgoing: "arrow.up.right"
+        case .incoming: "arrow.down.left"
         }
     }
 }

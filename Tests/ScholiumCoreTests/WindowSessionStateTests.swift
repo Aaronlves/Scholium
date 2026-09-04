@@ -47,7 +47,7 @@ struct WindowSessionStateTests {
                             focusTarget: .editor
                         ),
                     ],
-                    inspectorMode: "connect",
+                    inspectorMode: "outgoing",
                     documentMode: "source"
                 ),
                 WindowWorkspaceSessionSnapshot(

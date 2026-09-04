@@ -67,10 +67,11 @@
   control reveals on note entry and title/strip hover or focus without moving
   layout, while File provides permanent **Attach a Copy…** and **Reference
   Original…** routes. Source omits this source-neutral projection.
-- Inspector presents Overview and Connect. Overview exposes current About,
-  file, Settlement, Critique, and applicable Zotero facts and operations.
-  Connect presents exact incoming or outgoing link occurrences, their local
-  context, and any source-owned Markdown annotation. Incoming annotations are
+- Inspector presents Overview, Outgoing, and Incoming through a native
+  icon-only toolbar group. Overview exposes current About, file, Settlement,
+  Critique, and applicable Zotero facts and operations. Outgoing and Incoming
+  present flat exact occurrence lists without peer-role folders, including
+  local context and source-owned Markdown annotation. Incoming annotations are
   read-only and route editing to the source Note. It has no Actions mode.
 - Search defaults to **All** and presents separate Notes and Research Records
   sections without cross-provider ranking. Notes and Records are directly

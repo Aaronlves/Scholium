@@ -249,10 +249,19 @@ extension ScholiumUITests {
         hideSidebar.coordinate(
             withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
         ).click()
+        var hiddenTransitionWidths: [CGFloat] = []
+        let hiddenSamplingDeadline = Date().addingTimeInterval(0.55)
+        repeat {
+            hiddenTransitionWidths.append(inspector.frame.width)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        } while Date() < hiddenSamplingDeadline
         XCTAssertTrue(waitUntil(timeout: 5) {
             !library.exists
                 && abs(inspector.frame.width - stableInspectorFrame.width) <= 2
                 && abs(inspector.frame.maxX - stableInspectorFrame.maxX) <= 2
+        })
+        XCTAssertTrue(hiddenTransitionWidths.allSatisfy {
+            abs($0 - stableInspectorFrame.width) <= 2
         })
 
         let showSidebar = toolbar.buttons["Show Sidebar"].firstMatch
@@ -260,11 +269,41 @@ extension ScholiumUITests {
         showSidebar.coordinate(
             withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
         ).click()
+        var shownTransitionWidths: [CGFloat] = []
+        let shownSamplingDeadline = Date().addingTimeInterval(0.55)
+        repeat {
+            shownTransitionWidths.append(inspector.frame.width)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        } while Date() < shownSamplingDeadline
         XCTAssertTrue(waitUntil(timeout: 5) {
             library.exists
                 && abs(inspector.frame.width - stableInspectorFrame.width) <= 2
                 && abs(inspector.frame.maxX - stableInspectorFrame.maxX) <= 2
         })
+        XCTAssertTrue(shownTransitionWidths.allSatisfy {
+            abs($0 - stableInspectorFrame.width) <= 2
+        })
+    }
+
+    @MainActor
+    func testInspectorToolbarSelectsFlatLinkProjections() {
+        _ = selectResearchInspectorMode("outgoing")
+        let outgoing = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Outgoing link to QA Topic.'")
+        ).firstMatch
+        XCTAssertTrue(outgoing.waitForExistence(timeout: 8))
+
+        for retiredHeading in [
+            "LINKED ANALYSES", "LINKED SOURCES", "LINKED TOPICS", "LINKED WORKS",
+        ] {
+            XCTAssertFalse(app.staticTexts[retiredHeading].exists)
+        }
+
+        _ = selectResearchInspectorMode("incoming")
+        let incoming = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Incoming link from QA Topic.'")
+        ).firstMatch
+        XCTAssertTrue(incoming.waitForExistence(timeout: 8))
     }
 
     /// A completed primary click on the Folder row—not only its disclosure

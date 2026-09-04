@@ -1483,15 +1483,12 @@ enum ScholiumGrid {
         static let contentInset = foundationUnit * 7
     }
 
-    /// Inspector-owned layout variables. The mode strip, section hierarchy,
-    /// dense content groups, and Action rows each have a distinct cadence.
+    /// Inspector-owned layout variables. Section hierarchy, content groups,
+    /// link occurrences, and Action rows each have a distinct cadence.
     enum Apparatus {
         static let contentInset = Peripheral.contentInset
-        static let modeStripHeight = foundationUnit * 10
         static let firstSectionGap = foundationUnit * 4
         static let sectionGap = foundationUnit * 4
-        static let connectionDirectionControlMaximumWidth = foundationUnit * 60
-        static let connectionGroupContentGap = foundationUnit * 2
         static let headingToContentGap = foundationUnit * 2.5
         static let contentRowGap = foundationUnit * 2
         static let contentLineSpacing = foundationUnit
@@ -1503,13 +1500,6 @@ enum ScholiumGrid {
         static let actionRowVerticalInset = foundationUnit * 2
         static let actionRowMinimumHeight = foundationUnit * 11
         static let actionCopyGap = foundationUnit
-        static let factGridMinimumWidth = foundationUnit * 51
-        static let factLabelMinimumWidth = foundationUnit * 19.5
-        static let factColumnGap = foundationUnit * 3.5
-        static let factValueMinimumWidth =
-            factGridMinimumWidth
-            - factLabelMinimumWidth
-            - factColumnGap
         static let longTextLabelGap = foundationUnit
         static let longTextIndent = foundationUnit * 3
         static let readingBlockGap = foundationUnit * 2
@@ -1867,19 +1857,11 @@ enum ScholiumMetrics {
         /// One initial suggestion, mirroring the system inspector's ideal-width
         /// semantics. AppKit continues to own subsequent resizing.
         static let firstRevealWidth: CGFloat = 320
-        /// Component-owned height for the Overview/Connections/Functions row and
-        /// the trailing Research Inspector header. It does not size the window
-        /// toolbar or the standard window controls.
-        static let headerHeight = ScholiumGrid.Apparatus.modeStripHeight
         /// All three Inspector modes share one outer content edge. Individual
         /// sections must not invent their own horizontal padding.
         static let contentInset = ScholiumGrid.Apparatus.contentInset
         static let firstSectionSpacing = ScholiumGrid.Apparatus.firstSectionGap
         static let sectionSpacing = ScholiumGrid.Apparatus.sectionGap
-        static let connectionDirectionControlMaximumWidth =
-            ScholiumGrid.Apparatus.connectionDirectionControlMaximumWidth
-        static let connectionGroupContentSpacing =
-            ScholiumGrid.Apparatus.connectionGroupContentGap
         /// Internal section rhythm is deliberately separate from the spacing
         /// between complete sections.
         static let sectionContentSpacing = ScholiumGrid.Apparatus.headingToContentGap
@@ -1888,10 +1870,6 @@ enum ScholiumMetrics {
         static let actionRowVerticalInset = ScholiumGrid.Apparatus.actionRowVerticalInset
         static let actionRowMinimumHeight = ScholiumGrid.Apparatus.actionRowMinimumHeight
         static let actionCopySpacing = ScholiumGrid.Apparatus.actionCopyGap
-        static let factGridMinimumWidth = ScholiumGrid.Apparatus.factGridMinimumWidth
-        static let factLabelMinimumWidth = ScholiumGrid.Apparatus.factLabelMinimumWidth
-        static let factColumnSpacing = ScholiumGrid.Apparatus.factColumnGap
-        static let factValueMinimumWidth = ScholiumGrid.Apparatus.factValueMinimumWidth
         static let longTextLabelSpacing = ScholiumGrid.Apparatus.longTextLabelGap
         static let longTextIndent = ScholiumGrid.Apparatus.longTextIndent
         static let readingBlockSpacing = ScholiumGrid.Apparatus.readingBlockGap

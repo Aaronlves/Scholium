@@ -251,8 +251,7 @@ Metrics express responsibility rather than an application-wide numeric grid:
 | --- | --- |
 | Shared | optical alignment, inline/section/region spacing, custom target minimums |
 | Library | readable width, row height/inset, hierarchy step, header spacing |
-| Apparatus | readable width, fact grid, section and row rhythm |
-| Connect | group/cluster spacing, row height, direction-control bound |
+| Apparatus | readable width, section, field, occurrence, and action-row rhythm |
 | Records | collection columns/rows, reading measure, Note-reference rows, previews |
 | Document | Appearance measure, adaptive insets, top/trailing scrolling space |
 
@@ -366,7 +365,7 @@ a reusable component or catalog entry.
 | `Triptych Workspace Navigator` | Present Analyses, Topics, Works as peers with one selection and Note totals. | §§3.2, 18.2–18.3 |
 | `Segmented Control` | Shared bounded text-only single-choice input with native-equivalent focus/traversal. | §§18.4–18.5 |
 | `Source List` | Quiet hierarchical Note navigation with complete content states. | §18.3 |
-| `Connection Direction Control` | Switch Incoming/Outgoing without changing graph authority. | §§12, 18.5 |
+| `Inspector Projection Control` | Select Overview/Outgoing/Incoming in the native toolbar without changing source or graph authority. | §§12, 18.5 |
 | `Document Rail` | Keep Settle at the Document edge without an Agent launcher or review milestone. | §§7.1, 18.5 |
 | `Triptych Notifications Entry` | Open the complete Agent Change/Settlement/Attention queue from a bell whose nonzero state uses a small Accent dot and an exact accessible count. | §§13, 18.2–18.3 |
 | `Top Notification Banner` | Give Agent Change, Settlement, permission, and persistent operation notices one concise adaptive grammar. | §§18.3–18.5, 20 |
@@ -397,7 +396,7 @@ feature-local composition.
 | `Review / Edit / Source` | Reversible projections over one buffer and workspace-owned mode. | §§5.1, 18.4 |
 | `Document Find` | Inline literal Find/Replace, distinct from Research Search. | §§13, 18.4 |
 | `Search` | Explicit provider/scope, explanation, freshness, and bounded results. | §§13, 18.3 |
-| `Connect` | Direct authored link occurrences with direction, source anchors, local context, and source-owned annotations. | §§12, 18.5 |
+| `Connect` | Flat direct authored link occurrences in separate Outgoing and Incoming projections, with source anchors, local context, and source-owned annotations. | §§12, 18.5 |
 | `Notifications` | Complete queue in Sidebar/Inspector; Agent Change/Settlement subset in Document. | §§8.4, 13, 18.2–18.3 |
 | `Agent Integration` | Present verifiable local status and copy user-scope host setup without editing external configuration. | §§8.2, 16, 18.2 |
 | `Conflict / Recovery` | Retain bytes, compare exact revisions, and expose safe repair. | §§14, 18.4–18.6 |

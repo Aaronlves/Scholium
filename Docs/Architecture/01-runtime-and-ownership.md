@@ -598,7 +598,10 @@ nonempty; hiding it creates no second change-state owner.
 AppKit owns resizing, compression, dividers, collapse, fullscreen, frame
 restoration, and drag limits; the Codable route owns scene identity. No width
 binding, window search, persisted divider geometry, or continuous correction
-intervenes. Library receives the specified 300pt native content minimum,
+intervenes. Apparatus has a higher native holding priority than Document, so
+Document absorbs width changes before the researcher-sized Inspector during
+Library visibility animations and ordinary window resizing; no delayed divider
+correction follows. Library receives the specified 300pt native content minimum,
 without a preferred/maximum width or second geometry owner. Apparatus uses a
 standard resizable `NSSplitViewItem` with the 270pt system Inspector minimum,
 no application-defined maximum, and its initial collapsed state installed
@@ -607,8 +610,8 @@ the provisional 320pt ideal exactly once when the first explicit reveal
 finishes and Document can retain at least that width. The adapter is never
 called by the split resize callback, so the offer cannot override a user drag.
 The offer is neither persisted nor replayed; all later resizing, hiding,
-showing, and restoration remain AppKit-owned. No item receives a Scholium
-fraction, holding priority, or restoration state. A scene/window minimum
+showing, and restoration remain AppKit-owned. No item receives a persisted
+Scholium fraction, divider width, or restoration state. A scene/window minimum
 remains contingent on §20's representative adaptation acceptance set.
 
 Apparatus remains the semantic Inspector, but does not use
@@ -628,10 +631,13 @@ width.
 
 ### Inspector ownership
 
-The Inspector has Overview and Connect. Overview presents Notifications routed
-to the Workspace popover, then grouped About. Empty core and all present values
-show. Saves delegate to Metadata or, after editor flush, exact source. File and
-Settlement facts are read-only; Add Field opens the Metadata sheet.
+The Inspector has Overview, Outgoing, and Incoming projections. One native
+icon-only toolbar group owns projection selection and mirrors the workspace's
+retained mode; the content plane owns no second selector. Overview conditionally
+presents current-Note Needs Attention routed to the Workspace popover, then
+grouped About. Empty core and all present values show. Saves delegate to
+Metadata or, after editor flush, exact source. File and Settlement facts are
+read-only; Add Field opens the Metadata sheet.
 
 For Analysis, `WorkspaceSnapshotBuilder` joins portable Zotero binding by Note
 UUID; the window supplies exact library/key and `ZoteroBridge`. About exposes
@@ -644,10 +650,10 @@ binding/Metadata revisions; writes absent fields for Link and Fill or previewed
 differences for Refresh; reports partial commit; and refreshes derived state
 after mutation. UI owns no mapping or writes; frontmatter is excluded.
 
-Connect projects every direct incoming or outgoing link occurrence as a
-separate full-row target, pins the original collapsible peer-role group header
-within its sole vertical scroll, and shows its source-owned Markdown annotation
-and local context when present. Incoming annotation is read-only there; the
+Outgoing and Incoming project every direct link occurrence as a separate
+full-row target in one flat list without peer-role grouping, and show its
+source-owned Markdown annotation and local context when present. Incoming
+annotation is read-only there; the
 named source action opens the source occurrence for editing. Settle and
 Critique remain researcher-owned current-state
 operations at their specified surfaces. Agent conversation, tool selection,

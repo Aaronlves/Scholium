@@ -251,24 +251,24 @@ struct ResearchInspectorView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScholiumInspectorModeIndex(
-                selectedMode: shellState.inspector.mode,
-                select: shellState.selectInspectorMode
-            )
-
-            Group {
-                switch shellState.inspector.mode {
-                case .overview:
-                    ResearchOverviewView(
-                        note: note,
-                        context: researchInspectorContentContext
-                    )
-                case .connect:
-                    ConnectionsInspectorView(context: connectionsContext)
-                }
+        Group {
+            switch shellState.inspector.mode {
+            case .overview:
+                ResearchOverviewView(
+                    note: note,
+                    context: researchInspectorContentContext
+                )
+            case .outgoing:
+                ConnectionsInspectorView(
+                    context: connectionsContext,
+                    direction: .outgoing
+                )
+            case .incoming:
+                ConnectionsInspectorView(
+                    context: connectionsContext,
+                    direction: .incoming
+                )
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .scholiumSurface(.apparatus)

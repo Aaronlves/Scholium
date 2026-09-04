@@ -34,8 +34,8 @@ Each configured window contains one native split view:
 1. **Sidebar**: Scholium/Triptych identity, Analyses–Topics–Works navigation,
    Triptych Notifications, and the selected workspace's Library.
 2. **Document**: the selected Note or the restrained no-document state.
-3. **Apparatus**: the trailing Research Inspector's read-only Overview and
-   Connect projections.
+3. **Apparatus**: the trailing Research Inspector's Overview, Outgoing, and
+   Incoming projections.
 
 The native window and split controller own frame, dividers, collapse,
 compression, fullscreen, and toolbar geometry. Scholium owns semantic order,
@@ -52,7 +52,8 @@ commits only after source safety succeeds; failure preserves the exact origin
 workspace and buffer.
 
 The native toolbar has stable leading Sidebar and Back/Forward controls,
-Document identity/actions in the center, and trailing Inspector control.
+Document identity/actions in the center, and an Inspector projection group plus
+trailing Inspector visibility control in the Apparatus section.
 Search and Triptych Notifications sit at the logical trailing edge of the
 Sidebar header beside the Scholium wordmark, not in the native toolbar.
 Back/Forward traverse successful document visits only. The toolbar is stable

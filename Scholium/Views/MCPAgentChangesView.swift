@@ -337,7 +337,7 @@ private struct AgentChangeReviewContent: View {
 
     private var technicalDetails: some View {
         DisclosureGroup("Technical Details") {
-            ScholiumApparatusFactGrid(facts: technicalFacts)
+            ScholiumApparatusFactList(facts: technicalFacts)
                 .padding(.top, ScholiumGrid.Spacing.inlineControlGap)
         }
         .scholiumActivationPointer()

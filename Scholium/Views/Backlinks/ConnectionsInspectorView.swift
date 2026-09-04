@@ -50,7 +50,7 @@ enum ConnectionDirection: String, CaseIterable, Identifiable {
         }
     }
 
-    var emptyAnnouncement: String {
+    var emptyAnnouncement: LocalizedStringResource {
         switch self {
         case .incoming: "No Incoming Links"
         case .outgoing: "No Outgoing Links"
@@ -58,45 +58,8 @@ enum ConnectionDirection: String, CaseIterable, Identifiable {
     }
 }
 
-private enum ConnectionPeerGroup: Int, CaseIterable, Hashable {
-    case analyses
-    case topics
-    case works
-
-    init(role: VaultRole) {
-        self = switch role {
-        case .sourceCorpus: .analyses
-        case .topicKnowledge: .topics
-        case .draftProject: .works
-        case .other: .analyses
-        }
-    }
-
-    func title(currentRole: VaultRole) -> String {
-        switch (currentRole, self) {
-        case (.sourceCorpus, .analyses): "LINKED ANALYSES"
-        case (.sourceCorpus, .topics): "LINKED TOPICS"
-        case (.sourceCorpus, .works): "LINKED WORKS"
-        case (.topicKnowledge, .analyses): "LINKED SOURCES"
-        case (.topicKnowledge, .topics): "LINKED TOPICS"
-        case (.topicKnowledge, .works): "LINKED WORKS"
-        case (.draftProject, .analyses): "LINKED SOURCES"
-        case (.draftProject, .topics): "LINKED TOPICS"
-        case (.draftProject, .works): "LINKED WORKS"
-        case (.other, .analyses): "LINKED ANALYSES"
-        case (.other, .topics): "LINKED TOPICS"
-        case (.other, .works): "LINKED WORKS"
-        }
-    }
-}
-
 private struct ConnectionsProjection {
-    let currentRole: VaultRole
-    let groups: [ConnectionPeerGroup: [InspectorLinkItem]]
-
-    var totalCount: Int {
-        groups.values.reduce(0) { $0 + $1.count }
-    }
+    let items: [InspectorLinkItem]
 
     static func make(
         graph: GraphSnapshot?,
@@ -110,51 +73,41 @@ private struct ConnectionsProjection {
                 relativePath: $0.reference.relativePath
             ), $0)
         })
-        let currentRole = current.flatMap { notesByID[$0]?.reference.vaultRole } ?? .other
         guard let graph, let current else {
-            return Self(currentRole: currentRole, groups: [:])
+            return Self(items: [])
         }
 
         let edges = switch direction {
         case .incoming: graph.incoming[current] ?? []
         case .outgoing: graph.outgoing[current] ?? []
         }
-        var groups: [ConnectionPeerGroup: [InspectorLinkItem]] = [:]
-        for edge in edges {
+        let items = edges.map { edge in
             let peerID = direction == .incoming ? edge.source : edge.destination?.note
             let peer = peerID.flatMap { notesByID[$0] }
-            let group = ConnectionPeerGroup(role: peer?.reference.vaultRole ?? currentRole)
-            groups[group, default: []].append(InspectorLinkItem(
+            return InspectorLinkItem(
                 edge: edge,
                 peer: peer,
                 source: notesByID[edge.source],
                 direction: direction
-            ))
-        }
-        for group in ConnectionPeerGroup.allCases {
-            groups[group] = (groups[group] ?? []).sorted {
-                if $0.displayTitle != $1.displayTitle {
-                    return $0.displayTitle.localizedStandardCompare($1.displayTitle)
-                        == .orderedAscending
-                }
-                if $0.edge.source != $1.edge.source {
-                    return $0.edge.source < $1.edge.source
-                }
-                return $0.edge.occurrence.span.utf16LowerBound
-                    < $1.edge.occurrence.span.utf16LowerBound
+            )
+        }.sorted {
+            if $0.displayTitle != $1.displayTitle {
+                return $0.displayTitle.localizedStandardCompare($1.displayTitle)
+                    == .orderedAscending
             }
+            if $0.edge.source != $1.edge.source {
+                return $0.edge.source < $1.edge.source
+            }
+            return $0.edge.occurrence.span.utf16LowerBound
+                < $1.edge.occurrence.span.utf16LowerBound
         }
-        return Self(currentRole: currentRole, groups: groups)
+        return Self(items: items)
     }
 }
 
-private let connectionScrollTopID = "scholium.connect.top"
-
 struct ConnectionsInspectorView: View {
     let context: ConnectionsInspectorContext
-
-    @State private var expandedGroups = Set(ConnectionPeerGroup.allCases)
-    @State private var direction: ConnectionDirection = .outgoing
+    let direction: ConnectionDirection
 
     private var projection: ConnectionsProjection {
         ConnectionsProjection.make(
@@ -166,113 +119,46 @@ struct ConnectionsInspectorView: View {
     }
 
     var body: some View {
-        ScrollViewReader { scrollProxy in
-            ScrollView(.vertical) {
-                LazyVStack(
-                    alignment: .leading,
-                    spacing: ScholiumMetrics.Apparatus.sectionSpacing,
-                    pinnedViews: [.sectionHeaders]
-                ) {
-                    if context.freshness.isActionable {
-                        ResearchProjectionFreshnessView(
-                            freshness: context.freshness,
-                            retry: context.retryRefresh
-                        )
-                    }
+        ScrollView(.vertical) {
+            LazyVStack(
+                alignment: .leading,
+                spacing: ScholiumMetrics.Apparatus.sectionSpacing
+            ) {
+                if context.freshness.isActionable {
+                    ResearchProjectionFreshnessView(
+                        freshness: context.freshness,
+                        retry: context.retryRefresh
+                    )
+                }
 
-                    ScholiumSegmentedControl(
-                        selection: $direction,
-                        options: ConnectionDirection.allCases.map { candidate in
-                            ScholiumSegmentedControlOption(
-                                candidate,
-                                title: ScholiumL10n.dynamicString(candidate.title)
+                if projection.items.isEmpty {
+                    ScholiumApparatusStateView(
+                        direction.emptyAnnouncement,
+                        systemImage: "link"
+                    )
+                    .accessibilityIdentifier("scholium.connections.empty")
+                } else {
+                    LazyVStack(
+                        alignment: .leading,
+                        spacing: ScholiumMetrics.Apparatus.connectionOccurrenceSpacing
+                    ) {
+                        ForEach(projection.items) { item in
+                            LinkOccurrenceRow(
+                                item: item,
+                                openReference: context.openReference
                             )
-                        },
-                        label: ScholiumL10n.dynamicString("Link Direction"),
-                        size: .compact,
-                        accessibilityIdentifier: "scholium.connectionDirection"
-                    )
-                    .frame(
-                        maxWidth: ScholiumMetrics.Apparatus
-                            .connectionDirectionControlMaximumWidth
-                    )
-                    .frame(maxWidth: .infinity, alignment: .center)
-
-                    ForEach(ConnectionPeerGroup.allCases, id: \.self) { group in
-                        connectionGroup(group, items: projection.groups[group] ?? [])
+                        }
                     }
                 }
-                .padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)
-                .padding(.top, ScholiumMetrics.Apparatus.firstSectionSpacing)
-                .padding(.bottom, ScholiumMetrics.Apparatus.bottomInset)
-                .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-                .id(connectionScrollTopID)
             }
-            .scrollContentBackground(.hidden)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .onChange(of: direction) { _, selectedDirection in
-                scrollProxy.scrollTo(connectionScrollTopID, anchor: .top)
-                if projection.totalCount == 0 {
-                    AccessibilityNotification.Announcement(
-                        ScholiumL10n.dynamicString(selectedDirection.emptyAnnouncement)
-                    ).post()
-                }
-            }
+            .padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)
+            .padding(.top, ScholiumMetrics.Apparatus.firstSectionSpacing)
+            .padding(.bottom, ScholiumMetrics.Apparatus.bottomInset)
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
         }
-    }
-
-    private func connectionGroup(
-        _ group: ConnectionPeerGroup,
-        items: [InspectorLinkItem]
-    ) -> some View {
-        let isExpanded = expandedGroups.contains(group)
-        return Section {
-            if isExpanded && !items.isEmpty {
-                LazyVStack(alignment: .leading, spacing: ScholiumMetrics.Apparatus.connectionOccurrenceSpacing) {
-                    ForEach(items) { item in
-                        LinkOccurrenceRow(
-                            item: item,
-                            openReference: context.openReference
-                        )
-                    }
-                }
-                .padding(.top, ScholiumMetrics.Apparatus.connectionGroupContentSpacing)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        } header: {
-            connectionGroupHeader(group, itemCount: items.count, isExpanded: isExpanded)
-        }
-    }
-
-    private func connectionGroupHeader(
-        _ group: ConnectionPeerGroup,
-        itemCount: Int,
-        isExpanded: Bool
-    ) -> some View {
-        let title = ScholiumL10n.dynamicString(
-            group.title(currentRole: projection.currentRole)
-        )
-        return ScholiumDisclosureHeaderButton(
-            isExpanded: isExpanded,
-            accessibilityLabel: Text(title),
-            accessibilityIdentifier: "scholium.connectionGroup.\(group.rawValue)",
-            minimumHeight: ScholiumGrid.Dimension.compactHierarchyRowHeight,
-            action: {
-                if isExpanded { expandedGroups.remove(group) }
-                else { expandedGroups.insert(group) }
-            },
-            label: {
-                Text(title)
-                    .scholiumApparatusHeadingStyle()
-                    .fixedSize(horizontal: false, vertical: true)
-            },
-            trailing: {
-                Text(itemCount.formatted())
-                    .font(ScholiumTypography.interface(.small, tabularDigits: true))
-                    .scholiumForeground(.secondaryText)
-            }
-        )
-        .scholiumSurface(.apparatus)
+        .scrollContentBackground(.hidden)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .accessibilityLabel(Text(verbatim: direction.title))
     }
 }
 
@@ -303,15 +189,19 @@ private struct LinkOccurrenceRow: View {
                         .scholiumActivationPointer()
                     }
                 }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(accessibilityLabel)
+                .accessibilityHint(accessibilityHint)
+                .accessibilityAddTraits(.isButton)
                 .accessibilityAction(named: Text(sourceActionTitle), openSource)
             } else {
                 label
                     .padding(.vertical, ScholiumMetrics.Apparatus.connectionOccurrenceVerticalInset)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(accessibilityLabel)
+                    .accessibilityHint(accessibilityHint)
             }
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityLabel)
-        .accessibilityHint(accessibilityHint)
     }
 
     private var label: some View {
@@ -333,14 +223,12 @@ private struct LinkOccurrenceRow: View {
                 Text(annotation.text)
                     .font(ScholiumTypography.interface(.compact))
                     .scholiumForeground(.secondaryText)
-                    .lineLimit(4)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if !item.edge.occurrence.localContext.isEmpty {
                 Text(item.edge.occurrence.localContext)
                     .font(ScholiumTypography.exact(.small))
                     .scholiumForeground(.mutedText)
-                    .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -358,24 +246,31 @@ private struct LinkOccurrenceRow: View {
     }
 
     private var accessibilityLabel: String {
+        let sourceContext = item.edge.occurrence.localContext.isEmpty
+            ? ""
+            : " " + ScholiumL10n.string(
+                "Context: \(item.edge.occurrence.localContext)"
+            )
         if let annotation = item.edge.occurrence.annotation {
             return switch item.direction {
             case .incoming:
                 ScholiumL10n.string(
                     "Incoming link from \(item.displayTitle). Link annotation: \(annotation.text)"
-                )
+                ) + sourceContext
             case .outgoing:
                 ScholiumL10n.string(
                     "Outgoing link to \(item.displayTitle). Link annotation: \(annotation.text)"
-                )
+                ) + sourceContext
             }
         }
 
         return switch item.direction {
         case .incoming:
             ScholiumL10n.string("Incoming link from \(item.displayTitle). No link annotation")
+                + sourceContext
         case .outgoing:
             ScholiumL10n.string("Outgoing link to \(item.displayTitle). No link annotation")
+                + sourceContext
         }
     }
 
@@ -399,6 +294,6 @@ private struct LinkOccurrenceRow: View {
         freshness: .unavailable("No workspace is open."),
         retryRefresh: {},
         openReference: { _, _ in }
-    ))
+    ), direction: .outgoing)
     .frame(width: 320, height: 600)
 }

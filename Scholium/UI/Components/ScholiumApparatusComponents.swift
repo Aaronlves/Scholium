@@ -16,35 +16,6 @@ extension View {
     }
 }
 
-/// The production Overview / Connect index. It owns only visual
-/// selection and keyboard traversal; the surrounding window remains the mode
-/// state owner.
-struct ScholiumInspectorModeIndex: View {
-    let selectedMode: ResearchInspectorMode
-    let select: (ResearchInspectorMode) -> Void
-
-    var body: some View {
-        ScholiumSegmentedControl(
-            selection: Binding(
-                get: { selectedMode },
-                set: { select($0) }
-            ),
-            options: ResearchInspectorMode.allCases.map { mode in
-                ScholiumSegmentedControlOption(
-                    mode,
-                    title: String(localized: mode.interfaceTitleResource),
-                    accessibilityIdentifier: "scholium.inspectorMode.\(mode.rawValue)"
-                )
-            },
-            label: String(localized: "Research Inspector"),
-            size: .compact,
-            accessibilityIdentifier: "scholium.inspectorMode"
-        )
-        .padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)
-        .frame(minHeight: ScholiumMetrics.Apparatus.headerHeight)
-    }
-}
-
 /// One Inspector section with a shared heading, internal rhythm, optional
 /// trailing action, and no implicit boundary. It owns presentation only;
 /// feature state and actions remain with the feature that supplies its content.
@@ -113,71 +84,30 @@ struct ScholiumApparatusFact: Identifiable, Hashable {
     }
 }
 
-/// Short facts share one label column for scanning. At a genuinely narrow
-/// width the complete group changes to a stacked layout; individual rows
-/// never choose their own structure.
-struct ScholiumApparatusFactGrid: View {
+/// Short source facts use the same leading reading edge as editable About
+/// fields. A stacked label-and-value rhythm remains legible at every supported
+/// Inspector width and avoids turning scholarly metadata into a cramped table.
+struct ScholiumApparatusFactList: View {
     let facts: [ScholiumApparatusFact]
 
     var body: some View {
         Group {
             if !visibleFacts.isEmpty {
-                ViewThatFits(in: .horizontal) {
-                    Grid(
-                        alignment: .leading,
-                        horizontalSpacing: ScholiumMetrics.Apparatus.factColumnSpacing,
-                        verticalSpacing: ScholiumMetrics.Apparatus.rowSpacing
-                    ) {
-                        ForEach(visibleFacts) { fact in
-                            GridRow(alignment: .firstTextBaseline) {
-                                factLabel(fact.label)
-                                    .multilineTextAlignment(.trailing)
-                                    .frame(
-                                        width: ScholiumMetrics.Apparatus.factLabelMinimumWidth,
-                                        alignment: .trailing
-                                    )
-                                    .gridColumnAlignment(.trailing)
-                                factValue(
-                                    fact.value,
-                                    monospacedDigits: fact.monospacedDigits,
-                                    valueStyle: fact.valueStyle
-                                )
-                                .frame(
-                                    minWidth: ScholiumMetrics.Apparatus.factValueMinimumWidth,
-                                    idealWidth: ScholiumMetrics.Apparatus.factValueMinimumWidth,
-                                    maxWidth: .infinity,
-                                    alignment: .leading
-                                )
-                                .gridColumnAlignment(.leading)
-                            }
-                        }
-                    }
-                    .frame(
-                        minWidth: ScholiumMetrics.Apparatus.factGridMinimumWidth,
-                        maxWidth: .infinity,
-                        alignment: .leading
-                    )
-
-                    VStack(
-                        alignment: .leading,
-                        spacing: ScholiumMetrics.Apparatus.readingBlockSpacing
-                    ) {
-                        ForEach(visibleFacts) { fact in
-                            VStack(
-                                alignment: .leading,
-                                spacing: ScholiumMetrics.Apparatus.longTextLabelSpacing
-                            ) {
-                                factLabel(fact.label)
-                                factValue(
-                                    fact.value,
-                                    monospacedDigits: fact.monospacedDigits,
-                                    valueStyle: fact.valueStyle
-                                )
-                                .padding(
-                                    .leading,
-                                    ScholiumMetrics.Apparatus.longTextIndent
-                                )
-                            }
+                VStack(
+                    alignment: .leading,
+                    spacing: ScholiumMetrics.Properties.fieldBlockSeparation
+                ) {
+                    ForEach(visibleFacts) { fact in
+                        VStack(
+                            alignment: .leading,
+                            spacing: ScholiumMetrics.Apparatus.longTextLabelSpacing
+                        ) {
+                            factLabel(fact.label)
+                            factValue(
+                                fact.value,
+                                monospacedDigits: fact.monospacedDigits,
+                                valueStyle: fact.valueStyle
+                            )
                         }
                     }
                 }
@@ -193,8 +123,8 @@ struct ScholiumApparatusFactGrid: View {
 
     private func factLabel(_ label: String) -> some View {
         Text(label)
-            .font(ScholiumTypography.interface(.compact, emphasis: .strong))
-            .scholiumForeground(.secondaryText)
+            .font(ScholiumTypography.interface(.small, emphasis: .medium))
+            .scholiumForeground(.mutedText)
             .fixedSize(horizontal: false, vertical: true)
     }
 

@@ -110,19 +110,26 @@ struct ScholiumLocalizationTests {
         )
     }
 
-    @Test("Connect localizes headings, source actions, and occurrence semantics")
-    func connectInterfaceCopy() {
+    @Test("Inspector localizes projections, attention, and occurrence semantics")
+    func inspectorInterfaceCopy() {
         let expectations: [(String.LocalizationValue, String)] = [
-            ("LINKED ANALYSES", "已连接的分析"),
-            ("LINKED SOURCES", "已连接的来源"),
-            ("LINKED TOPICS", "已连接的议题"),
-            ("LINKED WORKS", "已连接的写作"),
+            ("Overview", "概览"),
+            ("Outgoing Links", "本笔记指向的链接"),
+            ("Incoming Links", "指向本笔记的链接"),
+            ("NEEDS ATTENTION", "需要注意"),
             ("Edit at Source", "在源笔记中编辑"),
             ("Edit Link Annotation", "编辑链接注释"),
         ]
         for (key, expected) in expectations {
             #expect(ScholiumL10n.string(key, locale: simplifiedChinese) == expected)
         }
+
+        let context = String(
+            format: ScholiumL10n.string("Context: %@", locale: simplifiedChinese),
+            locale: simplifiedChinese,
+            "原文"
+        )
+        #expect(context == "上下文：原文")
 
         let incomingWithoutAnnotation = String(
             format: ScholiumL10n.string(

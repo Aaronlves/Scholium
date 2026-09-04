@@ -160,10 +160,10 @@
 - Search exposes provider, scope, query, completion/result selection, count,
   match reason, freshness, destination, and Explain Query. Invalid, ambiguous,
   provider mismatch, unavailable, partial, stale, and empty remain distinct.
-- Inspector Overview/Connect and Incoming/Outgoing are labelled single-choice
-  groups with visible selection and keyboard traversal. No-document Inspector
-  remains a nonempty read-only state.
-- Connect states the authored occurrence direction textually. Each row names
+- Inspector Overview/Outgoing/Incoming is one labelled single-choice native
+  toolbar group with visible selection, complete icon names, Help, and keyboard
+  traversal. No-document Inspector remains a nonempty read-only state.
+- Outgoing and Incoming state the authored occurrence direction textually. Each row names
   source or destination, local context, and whether a link annotation is
   present. Incoming annotations are identified as read-only at the destination;
   destination navigation and **Edit at Source** remain separately named.

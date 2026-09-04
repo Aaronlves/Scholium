@@ -159,8 +159,8 @@ its retained selected tab, and only then commits Shell selection, the
 destination tab group, Document mode, and Inspector mode. Rapid requests
 converge on the last requested workspace.
 
-The Research Inspector receives immutable Overview and Connect presentation
-values composed at the window root. It owns no workspace refresh, Agent
+The Research Inspector receives immutable Overview, Outgoing, and Incoming
+presentation values composed at the window root. It owns no workspace refresh, Agent
 conversation, mutation, or lifecycle state. Its modes share the one native
 trailing split item and one mode value per Triptych workspace; changing modes,
 notes, or tabs never reconstructs the retained Document host. Overview contains
@@ -169,13 +169,14 @@ binding for the selected Analysis. Field-local edits delegate to the portable
 Metadata revision owner or, after editor flush and target revalidation, to the
 exact-source writer. File timestamps remain read-only snapshot facts.
 
-`ConnectionsInspectorView` owns one nonpersistent link direction. The shared
-segmented component projects the same immutable directed occurrence graph into
+`WindowShellState` owns the workspace-retained link direction as the selected
+native toolbar projection. `ConnectionsInspectorView` receives that direction
+and projects the same immutable directed occurrence graph into one flat list of
 Incoming or Outgoing rows. Each authored occurrence appears once in the chosen
 projection with its exact annotation, context, and source locator; no endpoint
-pair is collapsed or classified. Peer-role headings and occurrence rows use one
-flat scan hierarchy. Direction changes retain major-group
-disclosure and return the sole Connect scroll owner to its beginning.
+pair is collapsed, classified, or placed in a peer-role folder. Projection
+changes reconstruct only the derived list and begin at the top of its sole
+scroll owner.
 
 When the split item remains visible without a selected Document, the
 composition root installs a read-only Apparatus content-state projection rather
