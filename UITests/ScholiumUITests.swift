@@ -127,6 +127,11 @@ final class ScholiumUITests: XCTestCase {
         continueAfterFailure = false
         sessionID = UUID()
         try createIsolatedTriptych()
+        try prepareIdentityBoundFixturesIfNeeded(
+            initialWorkspaceWidth: initialWorkspaceWidthForCurrentTest,
+            initialOpenNote: initialOpenNoteForCurrentTest,
+            readyTimeout: initialWorkspaceReadyTimeout
+        )
         if name.contains("testStorageUnavailableRetriesWithoutConstructingWorkspace") {
             try FileManager.default.createDirectory(
                 at: homeDirectory,

@@ -1269,6 +1269,8 @@ struct FrontendArchitectureTests {
                 "&& appState?.currentNote == nil"
             ))
         #expect(!toolbarSource.contains("glassEffect"))
+        #expect(toolbarSource.contains("button.showsBorderOnlyWhileMouseInside = false"))
+        #expect(toolbarSource.contains("control.segmentStyle = .automatic"))
         #expect(!noteSource.contains("ScholiumInspectorModeIndex("))
         #expect(!noteSource.contains("Picker(\"Research Inspector\""))
         #expect(!apparatusComponentsSource.contains("struct ScholiumInspectorModeIndex"))
@@ -1851,7 +1853,8 @@ struct FrontendArchitectureTests {
                 "struct ScholiumEditorialIconControl<NativeControl: View>"
             ))
         #expect(componentsSource.contains(".menuStyle(.button)"))
-        #expect(componentsSource.contains(".buttonStyle(.borderless)"))
+        #expect(componentsSource.contains(".buttonStyle(.glass)"))
+        #expect(componentsSource.contains(".buttonBorderShape(.circle)"))
         #expect(
             sidebarSource.components(
                 separatedBy: "ScholiumEditorialIconControl("
@@ -2107,7 +2110,8 @@ struct FrontendArchitectureTests {
         #expect(!sidebarSource.contains("ScholiumEditorialIconControlLabel("))
         #expect(!filterMenuSource.contains("ScholiumEditorialIconControlLabel("))
         #expect(componentsSource.contains("struct ScholiumEditorialIconControlLabel"))
-        #expect(componentsSource.contains(".scholiumContentControlPointerFeedback("))
+        #expect(componentsSource.contains(".buttonStyle(.glass)"))
+        #expect(componentsSource.contains(".buttonBorderShape(.circle)"))
         #expect(
             componentsSource.contains(
                 "@Environment(\\.scholiumContentControlIsEmphasized)"
@@ -2120,6 +2124,10 @@ struct FrontendArchitectureTests {
         #expect(
             componentsSource.contains(
                 "width: ScholiumMetrics.Accessibility.preferredCustomTarget"
+            ))
+        #expect(
+            componentsSource.contains(
+                "width: ScholiumMetrics.Accessibility.minimumCustomTarget"
             ))
         #expect(
             designSystemSource.contains(
@@ -2343,7 +2351,7 @@ struct FrontendArchitectureTests {
         #expect(noteSource.contains("documentPresentation.css + \"\\n\" + state.appearanceCSS"))
     }
 
-    @Test("The Library plane is opaque, Liquid Glass is absent, and no-note is restrained")
+    @Test("Continuous content planes reserve Liquid Glass for native chrome controls")
     func scholarlyEditorialWorkspaceSurfaceContract() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -2428,11 +2436,10 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMetrics.Library.hierarchyRowHeight == 28)
 
         let productionRoot = repository.appendingPathComponent("Scholium")
-        let forbiddenLiquidGlassAPIs = [
-            "glassEffect(",
-            "GlassEffectContainer",
-            ".buttonStyle(.glass",
-        ]
+        let allowedGlassButtonOwners = Set([
+            "ScholiumComponents.swift",
+            "ScholiumDesignSystem.swift",
+        ])
         let enumerator = try #require(
             FileManager.default.enumerator(
                 at: productionRoot,
@@ -2441,10 +2448,12 @@ struct FrontendArchitectureTests {
         )
         for case let sourceURL as URL in enumerator where sourceURL.pathExtension == "swift" {
             let source = try String(contentsOf: sourceURL, encoding: .utf8)
-            for forbiddenAPI in forbiddenLiquidGlassAPIs {
+            #expect(!source.contains("glassEffect("))
+            #expect(!source.contains("GlassEffectContainer"))
+            if source.contains(".buttonStyle(.glass") {
                 #expect(
-                    !source.contains(forbiddenAPI),
-                    "\(sourceURL.lastPathComponent) must not use \(forbiddenAPI)"
+                    allowedGlassButtonOwners.contains(sourceURL.lastPathComponent),
+                    "\(sourceURL.lastPathComponent) must not extend Glass into content"
                 )
             }
         }
@@ -2950,7 +2959,8 @@ struct FrontendArchitectureTests {
         #expect(splitSource.contains("ScholiumSurfaceContainerViewController"))
         #expect(!splitSource.contains("NSBackgroundExtensionView"))
         #expect(toolbarSource.contains("item.isBordered = false"))
-        #expect(toolbarSource.contains("button.showsBorderOnlyWhileMouseInside = true"))
+        #expect(toolbarSource.contains("button.showsBorderOnlyWhileMouseInside = false"))
+        #expect(toolbarSource.contains("control.segmentStyle = .automatic"))
     }
 
     @Test("Native and WebKit color roles use one semantic vocabulary")
@@ -3231,6 +3241,22 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMetrics.ResearchRecords.collectionRowSpacing == 4)
         #expect(ScholiumMetrics.ResearchRecords.readingMeasure == 720)
         #expect(ScholiumMetrics.ResearchRecords.stepVerticalInset == 24)
+    }
+
+    @Test("Native Glass icon controls preserve the established 28-point target")
+    func nativeGlassControlGeometry() {
+        let toolbarButton = ScholiumNativeToolbarPresentation.makeButton()
+        let toolbarHost = ScholiumToolbarControlHost(button: toolbarButton)
+        #expect(toolbarHost.intrinsicContentSize == NSSize(width: 28, height: 28))
+        #expect(toolbarHost.fittingSize == NSSize(width: 28, height: 28))
+
+        let swiftUIButton = NSHostingView(rootView: ScholiumInkIconControl(
+            title: "Search",
+            systemImage: "magnifyingglass",
+            identifier: "scholium.test.glass",
+            action: {}
+        ))
+        #expect(swiftUIButton.fittingSize == NSSize(width: 28, height: 28))
     }
 
     @Test("Shared Native and WebKit corner roles stay in parity")

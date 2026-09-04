@@ -9,11 +9,13 @@ own research meaning, authorization, and state transitions.
 ## 19. Scholarly Editorialism and design variables
 
 **Scholarly Editorialism** combines humanist type, editorial hierarchy, warm
-opaque surfaces, fine rules, marginal organization, deliberate whitespace, and
-restrained color in a contemporary macOS environment. It is neither
-antique-book imitation nor decorative minimalism.
+opaque content planes, native Liquid Glass controls, fine rules, marginal
+organization, deliberate whitespace, and restrained color in a contemporary
+macOS environment. It is neither antique-book imitation nor decorative
+minimalism.
 
-Document remains primary across opaque Sidebar, Document, and Apparatus planes.
+Document remains primary across continuous Sidebar, Document, and Apparatus
+planes.
 System Sans, Alegreya, and Victor Mono distinguish interface, scholarly, and
 exact content. Hierarchy begins with type, spacing, alignment, and semantic
 color; boundaries and elevation are secondary. Native controls retain platform
@@ -24,10 +26,20 @@ state owners, weaken accessibility/source safety, or block a usable core.
 
 ### 19.1 Liquid Glass and material boundary
 
-Liquid Glass is not Scholium's interface language. Structural planes and
-research content remain opaque. A bounded native material may be used only for
-a platform-owned presentation whose readability, contrast, focus, hit testing,
-and adaptation remain intact; it creates no reusable permission elsewhere.
+Liquid Glass is Scholium's native functional layer, not its research-content
+language. Sidebar, Document, and Apparatus retain their warm semantic
+backgrounds as three continuous planes that extend through the transparent
+titlebar. The toolbar contributes no separate full-width material band. Native
+controls and compact control groups float above those planes in system regular
+Glass, allowing each plane's color to remain legible through the material.
+
+Glass never encloses research prose, metadata groups, lists, rows, fields,
+cards, or whole planes. Clear Glass is excluded from Scholium's text-heavy
+interface. Native Button, Menu, segmented-control, toolbar, sheet, and popover
+implementations own material shape, hover, press, focus, window activity, Reduce
+Transparency, and Increase Contrast behavior. A custom Glass host is permitted
+only when a native control must bridge an existing AppKit boundary without
+changing its established geometry, hit target, menu route, or accessibility.
 
 Chrome, menus, controls, focus, selection, separators, tabs, sheets, and
 popovers stay native. Research Guidance, Agent Integration, Agent Changes, and
@@ -205,7 +217,9 @@ or authority alone.
 
 - **Typography:** §19.2 roles; Document typography remains owned by Appearance.
 - **Color:** Accent and Paper inputs; every other color is a semantic output.
-- **Surfaces:** opaque Navigation, Document, and Apparatus planes.
+- **Surfaces:** continuous opaque Navigation, Document, and Apparatus content
+  planes, with regular system Glass reserved for controls and compact control
+  groups above them.
 - **Boundaries:** structural divider, subtle boundary, and floating boundary.
 - **Elevation:** native presentation elevation plus the current shared custom
   floating-control, bounded-panel, and Search-overlay recipes. Current
@@ -238,7 +252,9 @@ activation affordance on passive content.
 The shared segmented control is the default custom owner when a bounded
 text-only horizontal single-choice group matches its interaction contract.
 Native controls and feature-owned alternatives remain valid when their
-semantics or interaction differ. Toolbar controls remain native and borderless.
+semantics or interaction differ. Toolbar item wrappers remain borderless while
+their native controls carry system Glass, preventing a second enclosing capsule
+or a changed toolbar-section width.
 Library icons share one editorial-control recipe. The Document Mode button
 reports current Review, Edit, or Source through symbol, Help, and accessibility
 value without becoming a segmented control.
@@ -361,7 +377,8 @@ a reusable component or catalog entry.
 
 | Component | Presentation responsibility | Semantic owner |
 | --- | --- | --- |
-| `Sidebar / Document / Apparatus` | Keep Document primary across three opaque native planes. | §18.2 |
+| `Sidebar / Document / Apparatus` | Keep Document primary across three continuous semantic content planes beneath the transparent titlebar. | §18.2 |
+| `Native Glass Controls` | Give toolbar and compact chrome controls system-owned regular Glass without changing their target or section geometry. | §§18.2, 20 |
 | `Triptych Workspace Navigator` | Present Analyses, Topics, Works as peers with one selection and Note totals. | §§3.2, 18.2–18.3 |
 | `Segmented Control` | Shared bounded text-only single-choice input with native-equivalent focus/traversal. | §§18.4–18.5 |
 | `Source List` | Quiet hierarchical Note navigation with complete content states. | §18.3 |

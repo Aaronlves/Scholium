@@ -197,6 +197,19 @@ Completed automated checks in this worktree:
   standalone localization validator still reports the seven pre-existing
   Research Records entries already named above, so no clean complete-gate claim
   is made for this slice.
+- On 2026-09-04 the native Liquid Glass control slice passed all 88 focused
+  frontend-architecture tests, including exact 28-by-28-point fitting-size
+  checks for its SwiftUI and AppKit compact toolbar hosts. Focused XCUITest
+  journeys passed Inspector open/close in Light and Dark appearances, sampled
+  the Inspector width throughout Sidebar hide and show with every sample within
+  two points of the settled width and right edge, and exercised one
+  identity-bound shared-search fixture after the test setup was corrected to
+  create portable identities before seeding aliases. Four retained screenshots
+  were visually inspected: the Sidebar, document, and Inspector colors remain
+  continuous through the titlebar while regular system Glass stays confined to
+  controls. Documentation authority and `git diff --check` passed. Reduce
+  Transparency, Increase Contrast, VoiceOver, Full Keyboard Access, and human
+  visual acceptance remain unverified for this slice.
 
 ## Evidence boundary
 

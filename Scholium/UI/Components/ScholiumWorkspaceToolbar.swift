@@ -291,7 +291,9 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             action: #selector(selectInspectorMode(_:))
         )
         control.controlSize = ScholiumNativeToolbarPresentation.controlSize
-        control.segmentStyle = .rounded
+        // Automatic lets AppKit select the current toolbar treatment, including
+        // Liquid Glass, without changing the control's 70 x 20 fitting size.
+        control.segmentStyle = .automatic
         control.setAccessibilityLabel(label)
         control.setAccessibilityIdentifier("scholium.inspectorMode")
         for (index, mode) in modes.enumerated() {
@@ -328,8 +330,8 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         item.image = ScholiumNativeToolbarPresentation.symbol(named: systemImage)
         item.visibilityPriority = visibilityPriority
         // The custom view is a native AppKit toolbar button. Keep the item
-        // wrapper borderless so AppKit doesn't group adjacent commands into a
-        // resting capsule; the control supplies pointer-only border feedback.
+        // wrapper borderless so AppKit doesn't add a second material around the
+        // control; the nested button owns its system Liquid Glass treatment.
         item.isBordered = false
         item.style = .plain
     }
@@ -675,12 +677,12 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
     }
 }
 
-/// Keeps AppKit's generated toolbar wrapper borderless while allowing the
-/// nested native button to use `showsBorderOnlyWhileMouseInside`. If the button
-/// itself is the toolbar item's view, AppKit 27 treats its border as a request
-/// for a persistent grouped capsule around adjacent items.
+/// Keeps AppKit's generated toolbar wrapper borderless while the nested native
+/// button owns its Liquid Glass treatment. The host preserves the established
+/// 28 x 28 pointer and accessibility target, so adopting the current system
+/// material cannot resize toolbar sections or move tracking separators.
 @MainActor
-private final class ScholiumToolbarControlHost: NSView {
+final class ScholiumToolbarControlHost: NSView {
     private static let targetSize = ScholiumMetrics.Accessibility.preferredCustomTarget
 
     let button: NSButton
@@ -714,8 +716,8 @@ private final class ScholiumToolbarControlHost: NSView {
     }
 }
 
-/// One semantic presentation recipe for native toolbar symbols and the
-/// remaining AppKit controls embedded in secondary surfaces.
+/// One semantic presentation recipe for native Liquid Glass toolbar symbols
+/// and the remaining AppKit controls embedded in secondary surfaces.
 @MainActor
 enum ScholiumNativeToolbarPresentation {
     static var controlSize: NSControl.ControlSize { .small }
@@ -746,7 +748,10 @@ enum ScholiumNativeToolbarPresentation {
         button.imageScaling = .scaleProportionallyDown
         button.isEnabled = isEnabled
         button.isBordered = true
-        button.showsBorderOnlyWhileMouseInside = true
+        // A rebuilt macOS 26+ toolbar button resolves this always-present
+        // native bezel as Liquid Glass. The borderless NSToolbarItem wrapper
+        // above prevents a second enclosing material or altered item geometry.
+        button.showsBorderOnlyWhileMouseInside = false
         button.setAccessibilityLabel(label)
         button.setAccessibilityValue(accessibilityValue)
     }

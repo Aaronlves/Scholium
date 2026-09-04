@@ -329,11 +329,9 @@ extension ScholiumUITests {
         add(screenshot)
     }
 
-    /// A retained visual checkpoint for stable native-toolbar Sidebar and
-    /// Inspector visibility controls. This is intentionally a narrow proof
+    /// A retained visual checkpoint for native Liquid Glass toolbar controls
+    /// above continuous semantic planes. This is intentionally a narrow proof
     /// rather than a claim that the complete UI acceptance matrix has passed.
-
-
     @MainActor
     func testInspectorToolbarItemOpensAndClosesInspector() throws {
         // Keep the trailing toolbar item inside the active display. The
@@ -378,7 +376,7 @@ extension ScholiumUITests {
 
             let sidebarToggle = sidebarVisibilityControl()
             let documentIdentity = documentTitleElement(in: app.windows.firstMatch)
-            let documentCommands = app.toolbars.firstMatch.buttons["Search"]
+            let documentCommands = app.toolbars.firstMatch.buttons["Document Mode"]
             XCTAssertTrue(
                 sidebarToggle.isHittable,
                 "Hiding Inspector must preserve the fixed leading toolbar zone."
@@ -416,7 +414,7 @@ extension ScholiumUITests {
                 withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55)
             ).hover()
             let screenshot = XCTAttachment(screenshot: window.screenshot())
-            screenshot.name = "\(appearance.displayName) — borderless Show Inspector"
+            screenshot.name = "\(appearance.displayName) — Glass Show Inspector"
             screenshot.lifetime = .keepAlways
             add(screenshot)
         }

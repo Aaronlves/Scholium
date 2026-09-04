@@ -384,10 +384,9 @@ struct ScholiumPropertyGroup<Content: View>: View {
 }
 
 /// The single presentation owner for matching icon controls in a content-owned
-/// header. Its native Button or Menu child retains only activation, focus,
-/// menu tracking, and accessibility semantics; this component owns the exact
-/// target, ink, rounded-rectangle hover, focus and press surface, and control
-/// style.
+/// header. Its native Button or Menu child owns Liquid Glass interaction and
+/// accessibility semantics; this component preserves the exact 28pt target,
+/// Scholium ink, visibility, and active-state emphasis.
 struct ScholiumEditorialIconControl<NativeControl: View>: View {
     @FocusState private var isFocused: Bool
 
@@ -411,18 +410,16 @@ struct ScholiumEditorialIconControl<NativeControl: View>: View {
     var body: some View {
         nativeControl
             .menuStyle(.button)
-            .buttonStyle(.borderless)
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
+            .controlSize(.regular)
             .menuIndicator(.hidden)
-            .fixedSize()
-            .scholiumContentControlPointerFeedback(
-                isActive: isActive,
-                isFocused: isFocused,
-                in: RoundedRectangle(
-                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                    style: .continuous
-                )
+            .frame(
+                width: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                height: ScholiumMetrics.Accessibility.preferredCustomTarget
             )
-            .scholiumActivationFocus($isFocused)
+            .focused($isFocused)
+            .environment(\.scholiumContentControlIsEmphasized, isActive)
             .opacity(isVisuallyRevealed || isFocused ? 1 : 0)
     }
 }
@@ -435,8 +432,8 @@ struct ScholiumEditorialIconControlLabel: View {
     var body: some View {
         Image(systemName: systemImage)
             .frame(
-                width: ScholiumMetrics.Accessibility.preferredCustomTarget,
-                height: ScholiumMetrics.Accessibility.preferredCustomTarget
+                width: ScholiumMetrics.Accessibility.minimumCustomTarget,
+                height: ScholiumMetrics.Accessibility.minimumCustomTarget
             )
             .contentShape(Rectangle())
             .scholiumForeground(
@@ -465,7 +462,6 @@ enum SidebarTriptychAttentionState: Equatable {
 struct SidebarTriptychAttentionEntry: View {
     @Environment(\.locale) private var locale
     @Environment(\.scholiumAttentionPopoverIsPresented) private var isPresented
-    @FocusState private var isFocused: Bool
 
     let state: SidebarTriptychAttentionState
     let open: () -> Void
@@ -479,19 +475,18 @@ struct SidebarTriptychAttentionEntry: View {
                         .controlSize(.mini)
                         .accessibilityHidden(true)
                         .frame(
-                            width: ScholiumMetrics.Accessibility.preferredCustomTarget,
-                            height: ScholiumMetrics.Accessibility.preferredCustomTarget
+                            width: ScholiumMetrics.Accessibility.minimumCustomTarget,
+                            height: ScholiumMetrics.Accessibility.minimumCustomTarget
                         )
                 } else {
                     Text(Image(systemName: "bell"))
                         .font(ScholiumTypography.interface(.rowTitle))
-                        .scholiumContentControlInk(
-                            resting: symbolRestingRole,
-                            emphasized: symbolEmphasizedRole
+                        .scholiumForeground(
+                            isPresented ? .primaryText : symbolRestingRole
                         )
                         .frame(
-                            width: ScholiumMetrics.Accessibility.preferredCustomTarget,
-                            height: ScholiumMetrics.Accessibility.preferredCustomTarget
+                            width: ScholiumMetrics.Accessibility.minimumCustomTarget,
+                            height: ScholiumMetrics.Accessibility.minimumCustomTarget
                         )
                         .accessibilityHidden(true)
                 }
@@ -519,19 +514,13 @@ struct SidebarTriptychAttentionEntry: View {
             .contentShape(Rectangle())
         }
         .scholiumActivationPointer()
-        .buttonStyle(
-            ScholiumContentControlButtonStyle(
-                isSelected: isPresented,
-                isFocused: isFocused,
-                pressedOpacity: 0.76,
-                in: RoundedRectangle(
-                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                    style: .continuous
-                )
-            )
+        .buttonStyle(.glass)
+        .buttonBorderShape(.circle)
+        .controlSize(.regular)
+        .frame(
+            width: ScholiumMetrics.Accessibility.preferredCustomTarget,
+            height: ScholiumMetrics.Accessibility.preferredCustomTarget
         )
-        .scholiumActivationFocus($isFocused)
-        .fixedSize()
         .help(actionLabel)
         .accessibilityLabel(actionLabel)
         .accessibilityValue(accessibilityValue)
@@ -572,15 +561,6 @@ struct SidebarTriptychAttentionEntry: View {
             .primaryText
         case .zero, .checking:
             .secondaryText
-        }
-    }
-
-    private var symbolEmphasizedRole: ScholiumColorRole {
-        switch state {
-        case .unavailable:
-            .attention
-        case .active, .zero, .checking:
-            .primaryText
         }
     }
 }

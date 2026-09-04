@@ -938,21 +938,6 @@ extension ScholiumUITests {
                 """ + "\n",
                 to: topics.appendingPathComponent("Agent Review.md")
             )
-        } else {
-            try seedManagedTopicAliases(
-                relativePath: "QA Topic.md",
-                aliases: [
-                    "Synthetic Topic Alias 001",
-                    "Fixture Concept 001",
-                    "Normative QA Nexus",
-                ]
-            )
-        }
-        if name.contains("testOverviewRoutesZoteroOnlyFromCurrentAnalysis") {
-            try seedAnalysisZoteroBinding(
-                relativePath: "QA Autosave A.md",
-                itemKey: "QAITEM01"
-            )
         }
         if name.contains("testInspectorToolbarSelectsFlatLinkProjections") {
             let analysisURL = analyses.appendingPathComponent("QA Autosave A.md")
@@ -1043,10 +1028,6 @@ extension ScholiumUITests {
                 "# Agency Structure\n\nA concise account.\n",
                 to: topics.appendingPathComponent("QA Topic.md")
             )
-            try seedManagedTopicAliases(
-                relativePath: "QA Topic.md",
-                aliases: ["Deliberative Autonomy"]
-            )
             try write(
                 "# Normative Architecture\n\n## Deliberative Autonomy\n\nA concise account.\n",
                 to: analyses.appendingPathComponent("Ranking Heading.md")
@@ -1092,6 +1073,75 @@ extension ScholiumUITests {
             """ + "\n",
             to: critiques.appendingPathComponent("QA Critique.md")
         )
+    }
+
+    /// A fresh staged fixture intentionally has no portable control directory;
+    /// the production fixture route creates it. Only the three journeys that
+    /// need identity-keyed state before their final launch pay for a preflight
+    /// launch, then add that state against the real generated identities.
+    @MainActor
+    func prepareIdentityBoundFixturesIfNeeded(
+        initialWorkspaceWidth: Int,
+        initialOpenNote: String?,
+        readyTimeout: TimeInterval
+    ) throws {
+        let needsDefaultAliases = name.contains(
+            "testSharedSearchMatchesAnAliasAcrossTheTriptych"
+        )
+        let needsRankingAlias = name.contains(
+            "testSearchExplainsTitleAliasHeadingAndBodyRanking"
+        )
+        let needsZoteroBinding = name.contains(
+            "testOverviewRoutesZoteroOnlyFromCurrentAnalysis"
+        )
+        guard needsDefaultAliases || needsRankingAlias || needsZoteroBinding else {
+            return
+        }
+
+        app = configuredApplication(
+            sessionID: sessionID,
+            initialWorkspaceWidth: initialWorkspaceWidth,
+            openNote: initialOpenNote
+        )
+        terminateRunningQAApplications()
+        app.launch()
+        guard app.windows.firstMatch.waitForExistence(timeout: 15),
+              waitUntil(timeout: readyTimeout, condition: {
+                  self.documentSurfaceIsUsable()
+              }) else {
+            throw NSError(
+                domain: "ScholiumUITests.Configuration",
+                code: 4,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "The fixture preflight did not create current portable identities.",
+                ]
+            )
+        }
+        app.terminate()
+
+        if needsDefaultAliases {
+            try seedManagedTopicAliases(
+                relativePath: "QA Topic.md",
+                aliases: [
+                    "Synthetic Topic Alias 001",
+                    "Fixture Concept 001",
+                    "Normative QA Nexus",
+                ]
+            )
+        }
+        if needsRankingAlias {
+            try seedManagedTopicAliases(
+                relativePath: "QA Topic.md",
+                aliases: ["Deliberative Autonomy"]
+            )
+        }
+        if needsZoteroBinding {
+            try seedAnalysisZoteroBinding(
+                relativePath: "QA Autosave A.md",
+                itemKey: "QAITEM01"
+            )
+        }
     }
 
     func write(_ string: String, to url: URL) throws {

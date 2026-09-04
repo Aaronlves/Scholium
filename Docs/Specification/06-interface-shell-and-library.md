@@ -40,9 +40,12 @@ Each configured window contains one native split view:
 The native window and split controller own frame, dividers, collapse,
 compression, fullscreen, and toolbar geometry. Scholium owns semantic order,
 readable peripheral thresholds, and the one initial Inspector reveal request.
-It never continuously reasserts divider positions. All planes are opaque and
-the system separator is the sole interactive boundary. Design §19 owns the
-single decorative Sidebar-edge depth cue.
+It never continuously reasserts divider positions. Each plane keeps one
+continuous opaque semantic background through the transparent titlebar, and
+the system separator is the sole interactive boundary. The toolbar paints no
+separate full-width band; its native controls use regular system Liquid Glass
+above the three planes. Design §19 owns that material boundary and the single
+decorative Sidebar-edge depth cue.
 
 New windows show Library, hide Inspector, and begin in Analyses/Overview.
 Visibility and workspace session state are installed before first presentation,

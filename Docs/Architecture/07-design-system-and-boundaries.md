@@ -6,7 +6,8 @@ implementation, component boundaries, and executable enforcement.
 ## Design-system implementation
 
 [Design §19](../../Design.md#19-scholarly-editorialism-and-design-variables)
-owns palette meanings, typography, opaque surface language, motion, the
+owns palette meanings, typography, continuous content-plane and native-control
+material language, motion, the
 adaptive editorial grid, component and pattern presentation, and the shared
 cross-functional state language. Section 20 remains the complete accessibility
 and adaptation authority. The app implements the design contract in
@@ -151,24 +152,27 @@ The Research Inspector's icon-only projection group remains a native AppKit
 toolbar control because its placement and icon semantics differ from bounded
 text choices in content.
 `ScholiumEditorialIconControl` is the single presentation owner for Filter,
-disclosure, and Add in the Library header. It gives all three one exact 28pt target,
-semantic ink, and one rounded-rectangle hover, focus, and press surface. Its Button or
-Menu child retains only activation, focus, accessibility, and menu tracking;
-the component applies one plain button presentation so Menu hosts cannot add a
-second circular hover enclosure. The visible symbol remains available to the
-native control so an icon-only Menu stays in the accessibility tree; each
-callsite replaces its inferred symbol name with the complete action label and
-value. The presentation adds no raw radius, animation, scale, or shadow. The Debug Editorial
+disclosure, and Add in the Library header. It gives all three one exact 28pt
+target and semantic ink while a regular circular Glass Button or Menu owns
+hover, focus, press, active-window, and accessibility adaptation. The 20pt label
+inside the native regular control preserves the established 28pt outer size;
+callers add no padding or second hover enclosure. The visible symbol remains
+available to the native control so an icon-only Menu stays in the accessibility
+tree; each callsite replaces its inferred symbol name with the complete action
+label and value. The presentation adds no raw radius, animation, scale, or
+shadow. The Debug Editorial
 Parchment acceptance board consumes these production components and resolved
 roles; it is not a second design-system source.
 
 Workspace toolbar hosts bridge live window observations into native AppKit
-toolbar-bezel buttons and pull-downs. `NSButton` and `NSPopUpButton` own their
-small control-size geometry, hover, press, focus, menu tracking, and disabled
-rendering. The same semantic recipe pairs that geometry with the system body
-font and body-medium SF Symbol scale that the original SwiftUI toolbar used;
-SwiftUI does not reconstruct a
-toolbar interaction surface or persistent active state.
+toolbar-bezel buttons and pull-downs. Each `NSToolbarItem` wrapper stays
+borderless while its nested `NSButton` keeps an always-present system toolbar
+bezel, which macOS 26+ resolves as Liquid Glass without a second enclosing
+material. The host retains its exact 28 × 28 target. The Inspector projection
+uses automatic native segmented-control styling and retains its 70 × 20 fitting
+size. AppKit owns hover, press, focus, active-window, Reduce Transparency, menu
+tracking, and disabled rendering; SwiftUI does not reconstruct those states or
+paint a toolbar band.
 
 `MCPAgentChangesView` uses one continuous semantic Document surface and a flat
 machine-local change list. Each row distinguishes operation, stable Note

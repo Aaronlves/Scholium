@@ -120,9 +120,9 @@ struct ContentView: View {
                 alignment: .topLeading
             )
         }
-        // The native split and each opaque semantic background fill the complete
-        // titlebar frame. Each container keeps its actual content inside the
-        // live toolbar safe area.
+        // The native split and each semantic background fill the complete
+        // titlebar frame. Native Liquid Glass controls float above those planes;
+        // the toolbar contributes no competing full-width material band.
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background {

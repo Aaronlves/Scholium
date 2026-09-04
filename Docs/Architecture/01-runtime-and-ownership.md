@@ -567,9 +567,10 @@ Each configured scene constructs one `ScholiumWorkspaceSplitView`: one
 `NSSplitViewController` with three direct `NSSplitViewItem` siblings for
 Library, Document, and Apparatus. The split and each item's one opaque semantic
 background fill the frame beneath AppKit's transparent titlebar. The standard
-SwiftUI toolbar background is hidden, with no background-extension effect or
-duplicate color source. Native titlebar behavior remains, and each content
-controller is a foreground sibling inside the system safe area. The Library
+SwiftUI toolbar background is hidden, with no background-extension effect,
+full-width material band, or duplicate color source. Native Liquid Glass
+controls float above those continuous planes. Native titlebar behavior remains,
+and each content controller is a foreground sibling inside the system safe area. The Library
 container alone adds one full-bounds, noninteractive structural-depth host above
 its content. That host clips the Document-owned shadow to the Library plane and
 contains no split geometry, visibility, toolbar, or semantic state; collapsing
@@ -587,8 +588,11 @@ without changing toolbar item topology or adding a persistent active enclosure.
 Pane content contains no duplicate visibility control. No
 split-content titlebar host remains: under full-size content that host rendered
 beneath the toolbar's pointer hit-testing layer even when accessibility could
-still discover it. Stable native toolbar controls satisfy §18.2 without adding
-a geometry owner or painted titlebar layer.
+still discover it. Stable native toolbar controls satisfy §18.2 with an
+always-present system toolbar bezel inside the existing 28 × 28 hosts, without
+adding a geometry owner or painted titlebar layer. The Inspector projection
+retains its native 70 × 20 fitting size while automatic styling adopts the
+current system material.
 
 Search and Notifications are native SwiftUI controls at the logical trailing
 edge of the Sidebar header. The toolbar's Agent Changes item observes the

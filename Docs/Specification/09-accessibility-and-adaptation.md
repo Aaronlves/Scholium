@@ -19,6 +19,10 @@
   soft elevation. Structural depth cues are decorative, noninteractive,
   accessibility-hidden, logical-edge-based, and removable without losing
   hierarchy.
+- Native Liquid Glass controls retain complete labels, state, focus, and target
+  geometry when system appearance, window activity, Increase Contrast, or
+  Reduce Transparency changes. Glass is never the sole boundary around research
+  content or the sole indication of state.
 - Text and controls grow or reflow instead of clipping. Enlarged prose has no
   page-level horizontal reading scroll; intrinsically wide technical objects
   keep bounded local overflow or scaling.

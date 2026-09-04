@@ -3032,13 +3032,12 @@ private struct ScholiumContentFittingWidthLayout: Layout {
     }
 }
 
-/// A borderless Scholium icon control for permanent commands, including custom
-/// content hosted by the native macOS toolbar. It retains pointer, keyboard,
-/// focus, help, and accessibility activation while leaving geometry to the
-/// owning native container and expressing immediate states through ink.
+/// A native Liquid Glass icon control for permanent commands in content-owned
+/// chrome. The label keeps Scholium's semantic ink while the system owns shape,
+/// hover, press, focus, active-window, and transparency adaptation. The outer
+/// 28pt frame preserves the established target and neighboring layout.
 struct ScholiumInkIconControl: View {
     @Environment(\.isEnabled) private var isEnabled
-    @FocusState private var isFocused: Bool
     let title: String
     let systemImage: String
     let identifier: String
@@ -3054,8 +3053,8 @@ struct ScholiumInkIconControl: View {
             Image(systemName: systemImage)
                 .offset(y: symbolVerticalOffset)
                 .frame(
-                    width: ScholiumMetrics.Accessibility.preferredCustomTarget,
-                    height: ScholiumMetrics.Accessibility.preferredCustomTarget
+                    width: ScholiumMetrics.Accessibility.minimumCustomTarget,
+                    height: ScholiumMetrics.Accessibility.minimumCustomTarget
                 )
                 .contentShape(Rectangle())
                 .scholiumContentControlInk(
@@ -3065,48 +3064,30 @@ struct ScholiumInkIconControl: View {
                 .opacity(isEnabled ? 1 : 0.42)
         }
         .scholiumActivationPointer()
-        .buttonStyle(
-            ScholiumContentControlButtonStyle(
-                isActive: isActive,
-                isFocused: hasFocus,
-                in: RoundedRectangle(
-                    cornerRadius: ScholiumShape.editorialControlCornerRadius,
-                    style: .continuous
-                )
-            )
+        .buttonStyle(.glass)
+        .buttonBorderShape(.circle)
+        .controlSize(.regular)
+        .frame(
+            width: ScholiumMetrics.Accessibility.preferredCustomTarget,
+            height: ScholiumMetrics.Accessibility.preferredCustomTarget
         )
-        .modifier(
-            ScholiumInkIconFocusModifier(
-                externalFocus: focus,
-                localFocus: $isFocused
-            )
-        )
+        .environment(\.scholiumContentControlIsEmphasized, isActive)
+        .modifier(ScholiumInkIconFocusModifier(externalFocus: focus))
         .help(title)
         .accessibilityLabel(title)
         .accessibilityIdentifier(identifier)
-    }
-
-    private var hasFocus: Bool {
-        focus?.wrappedValue ?? isFocused
     }
 }
 
 private struct ScholiumInkIconFocusModifier: ViewModifier {
     let externalFocus: FocusState<Bool>.Binding?
-    let localFocus: FocusState<Bool>.Binding
 
     @ViewBuilder
     func body(content: Content) -> some View {
         if let externalFocus {
-            content
-                .focusable()
-                .focusEffectDisabled()
-                .focused(externalFocus)
+            content.focused(externalFocus)
         } else {
             content
-                .focusable()
-                .focusEffectDisabled()
-                .focused(localFocus)
         }
     }
 }

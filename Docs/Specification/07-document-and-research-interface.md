@@ -163,7 +163,10 @@ trailing Inspector. Search belongs beside Notifications in the Sidebar header.
 Agent Changes appears in the toolbar only while at least one confirmed local
 change exists. Source remains available through the Document Mode menu; the
 toolbar button prioritizes Review/Edit and reports its current value. Document
-Text Size is per-window and source-neutral.
+Text Size is per-window and source-neutral. These toolbar and compact
+Sidebar-header controls use native regular Liquid Glass above the continuous
+semantic planes; adopting the material changes neither their established target
+sizes nor split, toolbar-section, or Document geometry.
 
 About directly edits one current-Note field at a time. Plain values activate an
 inline control; structured contributors retain their ordered structured editor.

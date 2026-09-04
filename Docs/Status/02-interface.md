@@ -14,6 +14,11 @@
   owns window, toolbar, divider, collapse, resize, fullscreen, and focus
   behavior. Each workspace window retains its own Library, document tabs,
   Document mode, Inspector mode, Search, and Attention presentation.
+- The three semantic content planes remain continuous through the transparent
+  titlebar with no separate toolbar band. Native regular Liquid Glass owns
+  toolbar and compact Sidebar-header control feedback while existing 28pt icon
+  targets, the 70 × 20 Inspector projection control, and split geometry remain
+  unchanged.
 - The Sidebar header places Search and Notifications at the logical trailing
   edge of the Scholium wordmark. A nonzero queue uses one Accent dot on the
   bell, keeps its exact count accessible, and never prints a numeric counter.
