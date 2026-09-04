@@ -303,7 +303,8 @@ struct ScholiumColorResolver: Sendable {
                 : (increasedContrast ? 0.54 : 0.62),
             chromaLimit: increasedContrast ? 0.13 : 0.10
         )
-        let comparisonBackgroundLightness = isDark
+        let comparisonBackgroundLightness =
+            isDark
             ? (increasedContrast ? 0.43 : 0.35)
             : (increasedContrast ? 0.86 : 0.91)
         let comparisonBackgroundChroma = increasedContrast ? 0.065 : 0.045
@@ -1822,6 +1823,16 @@ enum ScholiumMetrics {
         static let popoverHeight: CGFloat = 480
     }
 
+    enum DocumentInformation {
+        /// A bounded native popover keeps navigation and derived statistics
+        /// near the Document without creating a persistent fourth plane.
+        static let maximumPopoverWidth = ScholiumGrid.foundationUnit * 64
+        static let outlineRowHeight = ScholiumGrid.Dimension.preferredCustomTarget
+        static let emptyOutlineHeight = ScholiumGrid.foundationUnit * 11
+        static let minimumOutlineHeight = ScholiumGrid.foundationUnit * 14
+        static let maximumOutlineHeight = ScholiumGrid.foundationUnit * 70
+    }
+
     enum ActivityNotificationStack {
         /// The exact count remains textual; these layers only make plurality
         /// visible before the researcher reads or focuses the control.
@@ -1997,8 +2008,8 @@ enum ScholiumCornerRole: CaseIterable, Hashable, Sendable {
     var radius: CGFloat {
         switch self {
         case .inlineStatus, .editorialControl, .workspaceNavigation,
-             .boundedPanel,
-             .documentCalloutSurface, .documentEmbeddedNote:
+            .boundedPanel,
+            .documentCalloutSurface, .documentEmbeddedNote:
             8
         case .editorialPanel, .segmentedControl, .loadingSurface, .documentCodeBlock:
             10
@@ -2043,8 +2054,9 @@ enum ScholiumCornerRole: CaseIterable, Hashable, Sendable {
             "--scholium-corner-selection-split-control"
         case .calloutDisclosureFocus:
             "--scholium-corner-callout-disclosure-focus"
-        case .editorialControl, .segmentedControl, .workspaceNavigation, .editorialPanel, .loadingSurface,
-             .searchOverlay:
+        case .editorialControl, .segmentedControl, .workspaceNavigation, .editorialPanel,
+            .loadingSurface,
+            .searchOverlay:
             nil
         }
     }
@@ -2168,16 +2180,18 @@ enum ScholiumContentInteractionSurface {
     }
 
     private static func webCSSDeclarations(increasedContrast: Bool) -> String {
-        let hoverPercentage = cssPercentage(opacity(
-            isHovering: true,
-            isFocused: false,
-            increasedContrast: increasedContrast
-        ))
-        let focusPercentage = cssPercentage(opacity(
-            isHovering: false,
-            isFocused: true,
-            increasedContrast: increasedContrast
-        ))
+        let hoverPercentage = cssPercentage(
+            opacity(
+                isHovering: true,
+                isFocused: false,
+                increasedContrast: increasedContrast
+            ))
+        let focusPercentage = cssPercentage(
+            opacity(
+                isHovering: false,
+                isFocused: true,
+                increasedContrast: increasedContrast
+            ))
         return """
             --scholium-content-hover-surface: color-mix(
               in srgb,
@@ -2638,7 +2652,8 @@ private struct ScholiumContentControlButtonFeedbackModifier<S: Shape>: ViewModif
             isEnabled && (effectiveIsHovering || isFocused || isPressed)
         let isEmphasized = isActive || isSelected || hasTransientEmphasis
 
-        let feedback = content
+        let feedback =
+            content
             .environment(\.scholiumContentControlIsEmphasized, isEmphasized)
             .scholiumContentInteractionSurface(
                 isSelected: isSelected,
@@ -3243,10 +3258,11 @@ extension View {
         _ focus: FocusState<Bool>.Binding,
         presentation: ScholiumActivationFocusPresentation = .contentSurface
     ) -> some View {
-        modifier(ScholiumBooleanActivationFocusModifier(
-            focus: focus,
-            presentation: presentation
-        ))
+        modifier(
+            ScholiumBooleanActivationFocusModifier(
+                focus: focus,
+                presentation: presentation
+            ))
     }
 
     /// Applies the same policy to one value in a focusable control group.

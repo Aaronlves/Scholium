@@ -743,14 +743,15 @@ struct MarkdownEditorProtocolTests {
         let source = "Hello world 价值"
         session.loadDocument(source, documentID: "statistics-test", mode: .livePreview)
         let bodyStatistics = DocumentStatistics(
-            englishWords: 2,
-            chineseCharacters: 2,
-            characters: 14,
+            words: 3,
+            charactersWithSpaces: 14,
+            charactersWithoutSpaces: 12,
+            hanCharacters: 2,
             scope: .body
         )
         await waitForDocumentStatistics(session, matching: bodyStatistics)
-        #expect(session.documentStatistics.englishWords == 2)
-        #expect(session.documentStatistics.chineseCharacters == 2)
+        #expect(session.documentStatistics.words == 3)
+        #expect(session.documentStatistics.hanCharacters == 2)
         #expect(session.documentStatistics.scope == .body)
 
         session.updateInteraction(
@@ -762,9 +763,10 @@ struct MarkdownEditorProtocolTests {
             context: nil
         )
         let selectionStatistics = DocumentStatistics(
-            englishWords: 0,
-            chineseCharacters: 2,
-            characters: 2,
+            words: 1,
+            charactersWithSpaces: 2,
+            charactersWithoutSpaces: 2,
+            hanCharacters: 2,
             scope: .selection
         )
         await waitForDocumentStatistics(session, matching: selectionStatistics)

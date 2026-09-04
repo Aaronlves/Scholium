@@ -986,7 +986,6 @@ struct ScholiumFocusedEditorActions {
     let findNext: () -> Void
     let findPrevious: () -> Void
     let useSelectionForFind: () -> Void
-    let announceDocumentStatistics: () -> Void
     let importImage: () -> Void
     let indexImage: () -> Void
     let canAttachDocument: Bool
@@ -1178,11 +1177,6 @@ private struct ScholiumPasteboardCommandContent: View {
         }
         .scholiumActivationPointer()
         .disabled(appState?.currentNote == nil)
-        Button("Document Statistics") {
-            editorActions?.announceDocumentStatistics()
-        }
-        .scholiumActivationPointer()
-        .disabled(editorActions == nil || appState?.currentNote == nil)
         Button("Edit Metadata…") { appState?.showMetadataEditor = true }
             .scholiumActivationPointer()
             .disabled(appState?.canEditCurrentNote != true)
@@ -1430,31 +1424,11 @@ private struct ScholiumSidebarCommandContent: View {
         }
         .scholiumActivationPointer()
         .disabled(workspaceWindowActions == nil)
-        Menu("Heading Outline") {
-            let headings = appState?.currentNote?.workspaceSnapshot?.headings ?? []
-            if headings.isEmpty {
-                Button("No Headings") {}
-                    .scholiumActivationPointer()
-                    .disabled(true)
-            } else {
-                ForEach(headings.indices, id: \.self) { index in
-                    let heading = headings[index]
-                    Button {
-                        appState?.pendingSourceLine = heading.span.start.line
-                    } label: {
-                        Text(
-                            verbatim: String(
-                                repeating: "  ",
-                                count: max(0, heading.level - 1)
-                            ) + heading.text
-                        )
-                    }
-                    .scholiumActivationPointer()
-                }
-            }
+        Button("Document Information") {
+            workspaceWindowActions?.showDocumentInformation()
         }
         .scholiumActivationPointer()
-        .disabled(appState?.currentNote == nil)
+        .disabled(workspaceWindowActions == nil || appState?.currentNote == nil)
         Button(
             ScholiumL10n.dynamicString(
                 appState?.researchInspectorVisible == true
@@ -1871,6 +1845,7 @@ final class WindowModel: ObservableObject {
     lazy var documentController = DocumentController { [weak self] intent in
         self?.handleWindowIntent(intent)
     }
+    let documentInformation = DocumentInformationProjection()
     lazy var libraryMutationController = WindowLibraryMutationController(
         dependencies: WindowLibraryMutationDependencies(
             context: { [weak self] in

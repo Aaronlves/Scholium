@@ -1,4 +1,5 @@
 import AppKit
+import ScholiumContracts
 import Testing
 
 @testable import ScholiumApp
@@ -27,6 +28,37 @@ struct WorkspaceToolbarTests {
             ScholiumWorkspaceToolbarController.Item.apparatusDivider
                 != .inspectorTrackingSeparator
         )
+    }
+
+    @Test("Document Information ignores stale document teardown")
+    func documentInformationProjectionIsDocumentScoped() {
+        let projection = DocumentInformationProjection()
+        let first = DocumentInformationDocumentID(
+            vaultID: UUID(),
+            relativePath: "First.md"
+        )
+        let second = DocumentInformationDocumentID(
+            vaultID: UUID(),
+            relativePath: "Second.md"
+        )
+        let statistics = DocumentStatistics(
+            words: 12,
+            charactersWithSpaces: 41,
+            charactersWithoutSpaces: 34,
+            hanCharacters: 3,
+            scope: .selection
+        )
+
+        projection.activate(second)
+        projection.publish(statistics, for: second)
+        projection.publish(.emptyBody, for: first)
+        projection.clear(ifCurrent: first)
+        #expect(projection.statistics(for: second) == statistics)
+        #expect(projection.statistics(for: first) == .emptyBody)
+
+        projection.clear(ifCurrent: second)
+        #expect(projection.documentID == nil)
+        #expect(projection.statistics == .emptyBody)
     }
 
     @Test("A visible Inspector without a Document has an explicit content state")
@@ -77,22 +109,23 @@ struct WorkspaceToolbarTests {
         let toolbar = try #require(window.toolbar)
         #expect(toolbar.itemIdentifiers == ScholiumWorkspaceToolbarController.itemIdentifiers)
 
-        let heading = try #require(item(
-            ScholiumWorkspaceToolbarController.Item.headingOutline,
+        let documentInformation = try #require(item(
+            ScholiumWorkspaceToolbarController.Item.documentInformation,
             in: toolbar
         ))
-        #expect(heading.visibilityPriority == .high)
-        #expect(heading.label == "Heading Outline")
-        #expect(heading.isBordered)
-        #expect(heading.style == .plain)
-        #expect(heading.isNavigational)
-        #expect(heading.view == nil)
-        #expect((heading as? NSMenuToolbarItem)?.menu != nil)
+        #expect(documentInformation.visibilityPriority == .high)
+        #expect(documentInformation.label == "Document Information")
+        #expect(documentInformation.isBordered)
+        #expect(documentInformation.style == .plain)
+        #expect(documentInformation.isNavigational)
+        #expect(documentInformation.view == nil)
+        #expect(!(documentInformation is NSMenuToolbarItem))
 
         for identifier in [
             ScholiumWorkspaceToolbarController.Item.sidebar,
             ScholiumWorkspaceToolbarController.Item.back,
             ScholiumWorkspaceToolbarController.Item.forward,
+            ScholiumWorkspaceToolbarController.Item.documentInformation,
             ScholiumWorkspaceToolbarController.Item.documentMode,
             ScholiumWorkspaceToolbarController.Item.inspector,
         ] {
@@ -191,6 +224,7 @@ struct WorkspaceToolbarTests {
         WorkspaceWindowActions(
             setLibraryVisible: { _ in },
             setResearchInspectorVisible: { _ in },
+            showDocumentInformation: {},
             showResearchRecords: {},
             showAttention: { _ in },
             showPreferredAttention: {},

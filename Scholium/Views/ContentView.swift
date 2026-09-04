@@ -1017,6 +1017,7 @@ struct ContentView: View {
         if appState.currentNote != nil {
             DocumentFeatureView(
                 controller: appState.documentController,
+                documentInformation: appState.documentInformation,
                 state: documentFeatureState,
                 actions: documentFeatureActions,
                 critiqueProvenanceContext: critiqueProvenanceContext

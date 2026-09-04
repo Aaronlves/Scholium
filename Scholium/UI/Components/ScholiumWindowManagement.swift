@@ -377,6 +377,7 @@ final class ScholiumWindowLifecycleRegistry: ObservableObject {
 struct WorkspaceWindowActions {
     let setLibraryVisible: @MainActor (Bool) -> Void
     let setResearchInspectorVisible: @MainActor (Bool) -> Void
+    let showDocumentInformation: @MainActor () -> Void
     let showResearchRecords: @MainActor () -> Void
     let showAttention: @MainActor (AttentionPresentationRequest) -> Void
     let showPreferredAttention: @MainActor () -> Void
@@ -476,6 +477,9 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             },
             setResearchInspectorVisible: { [weak self] visible in
                 self?.setResearchInspectorVisible(visible)
+            },
+            showDocumentInformation: { [weak self] in
+                self?.toolbarController?.showDocumentInformation()
             },
             showResearchRecords: { [weak self] in
                 self?.showResearchRecords()
@@ -762,6 +766,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             toolbarController.install(in: window)
             return
         }
+        toolbarController?.invalidate()
         let controller = ScholiumWorkspaceToolbarController(
             appState: appState,
             windowActions: actions,
@@ -782,12 +787,14 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     }
 
     private func replaceConfiguredToolbarWithLoadingToolbar() {
+        toolbarController?.invalidate()
         toolbarController = nil
         installLoadingToolbarIfNeeded()
     }
 
     private func removeToolbar() {
         guard let window else {
+            toolbarController?.invalidate()
             toolbarController = nil
             return
         }
@@ -796,6 +803,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         if window.toolbar === loadingToolbar || isConfiguredToolbar {
             window.toolbar = nil
         }
+        toolbarController?.invalidate()
         toolbarController = nil
     }
 

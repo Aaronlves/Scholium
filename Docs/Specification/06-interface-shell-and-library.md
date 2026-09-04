@@ -102,7 +102,7 @@ Menus follow task ownership:
 - **File**: Triptych/window, New Note, Import, Duplicate, Rename, Move, Reveal,
   and system-Trash actions.
 - **Edit**: editing, Find, formatting, and Edit Metadata.
-- **View**: Back/Forward, Heading Outline, Search, Document mode/text size,
+- **View**: Back/Forward, Document Information, Search, Document mode/text size,
   Sidebar, and Inspector.
 - **Research**: Research Records, Settle, and Agent Changes when present.
 - **Window**: standard windows plus Notifications.

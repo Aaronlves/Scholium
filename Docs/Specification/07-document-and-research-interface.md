@@ -11,8 +11,8 @@ across its Note/tab changes. Switching workspace restores that workspace's
 selection. Mode state never becomes a Note, vault, or Markdown fact.
 
 Review owns read selection; Edit owns formatting. Selection remains available
-to document statistics without creating a separate annotation or collaboration
-object.
+to Document Information statistics without creating a separate annotation or
+collaboration object.
 
 Managed New Note opens Edit at the exact body start after durable commit.
 Editor failure retains the Note and offers **Retry Edit** and **Source**. An
@@ -158,8 +158,20 @@ with errors. Rendering failure enters persistent CSS Safe Mode until the
 researcher disables or selectively re-enables managed copies.
 
 The Document toolbar keeps Sidebar and Back/Forward leading, identity and
-outline in the Document region, then Document Mode, Research Records, and
-trailing Inspector. Search belongs beside Notifications in the Sidebar header.
+Document Information in the Document region, then Document Mode, Research
+Records, and trailing Inspector. Document Information is one native transient
+popover: its scrollable Heading Outline remains the primary region and its
+current statistics remain fixed below. Body scope is implicit; `Selection`
+appears only while a nonempty selection owns the count. Statistics show one
+researcher-selected number at a time; the native selector remembers the last
+machine-local choice among language-aware Words, Characters with Spaces,
+Characters without Spaces, and Han Characters. Its closed label uses the short
+measure name, while the open menu shows every exact measure beside its value
+and marks the current choice with the native checkmark. The popover sizes to
+localized content within a bounded maximum. Choosing a heading closes the
+popover and returns focus to that document location; Escape or an outside click
+dismisses it without losing the editor selection. Search belongs beside
+Notifications in the Sidebar header.
 Agent Changes appears in the toolbar only while at least one confirmed local
 change exists. Source remains available through the Document Mode menu; the
 toolbar button prioritizes Review/Edit and reports its current value. Document

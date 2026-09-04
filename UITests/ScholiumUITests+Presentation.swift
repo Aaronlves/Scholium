@@ -1,17 +1,90 @@
-@preconcurrency import XCTest
 import AppKit
 import CryptoKit
+@preconcurrency import XCTest
 import notify
 
 extension ScholiumUITests {
     @MainActor
+    func testDocumentInformationCombinesOutlineAndStatistics() {
+        let documentInformation = app.toolbars.firstMatch.buttons[
+            "Document Information"
+        ].firstMatch
+        XCTAssertTrue(documentInformation.waitForExistence(timeout: 8))
+        XCTAssertTrue(documentInformation.isHittable)
+        documentInformation.click()
+
+        let popover = app.popovers.firstMatch
+        XCTAssertTrue(popover.waitForExistence(timeout: 5))
+        XCTAssertTrue(popover.staticTexts["Heading Outline"].exists)
+        XCTAssertFalse(popover.staticTexts["Body"].exists)
+        let compactWidth = popover.frame.width
+        XCTAssertLessThan(compactWidth, 280)
+        XCTAssertEqual(
+            popover.frame.midX,
+            documentInformation.frame.midX,
+            accuracy: 3,
+            "The native popover should be centered beneath its toolbar item."
+        )
+        let statisticPicker = popover.descendants(matching: .any)[
+            "scholium.documentStatisticPicker"
+        ]
+        XCTAssertTrue(statisticPicker.exists)
+        XCTAssertTrue(accessibilityText(of: statisticPicker).contains("Words"))
+
+        statisticPicker.click()
+        let charactersWithoutSpaces = app.menuItems[
+            "163 Characters without Spaces"
+        ].firstMatch
+        XCTAssertTrue(charactersWithoutSpaces.waitForExistence(timeout: 3))
+        charactersWithoutSpaces.click()
+        XCTAssertTrue(
+            accessibilityText(of: statisticPicker).contains(
+                "Characters without Spaces"
+            )
+        )
+        XCTAssertTrue(accessibilityText(of: statisticPicker).contains("163"))
+        XCTAssertLessThanOrEqual(popover.frame.width, compactWidth + 2)
+        XCTAssertLessThanOrEqual(popover.frame.width, 284)
+
+        let screenshot = XCTAttachment(screenshot: popover.screenshot())
+        screenshot.name = "Document Information — outline and body statistics"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 3) { !popover.exists })
+
+        documentInformation.click()
+        let reopenedPopover = app.popovers.firstMatch
+        XCTAssertTrue(reopenedPopover.waitForExistence(timeout: 3))
+        let rememberedPicker = reopenedPopover.descendants(matching: .any)[
+            "scholium.documentStatisticPicker"
+        ]
+        XCTAssertTrue(
+            accessibilityText(of: rememberedPicker).contains(
+                "Characters without Spaces"
+            )
+        )
+        app.typeKey(.escape, modifierFlags: [])
+
+        app.menuBars.menuBarItems["View"].click()
+        let menuRoute = app.menuItems["Document Information"].firstMatch
+        XCTAssertTrue(menuRoute.waitForExistence(timeout: 3))
+        menuRoute.click()
+        XCTAssertTrue(app.popovers.firstMatch.waitForExistence(timeout: 3))
+        app.typeKey(.escape, modifierFlags: [])
+    }
+
+    @MainActor
     func testFixtureLaunchWithoutExplicitSessionIDUsesOneWindowSession() throws {
-        XCTAssertTrue(app.descendants(matching: .any)[
-            "scholium.librarySurface"
-        ].waitForExistence(timeout: 20))
-        XCTAssertTrue(app.descendants(matching: .any)[
-            "scholium.noteRow.QA Autosave A.md"
-        ].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            app.descendants(matching: .any)[
+                "scholium.librarySurface"
+            ].waitForExistence(timeout: 20))
+        XCTAssertTrue(
+            app.descendants(matching: .any)[
+                "scholium.noteRow.QA Autosave A.md"
+            ].waitForExistence(timeout: 5))
         let wordmark = app.descendants(matching: .any)["scholium.wordmark"]
         let search = app.buttons["scholium.sidebarSearch"]
         let notifications = app.buttons["scholium.triptychNotifications"]
@@ -29,7 +102,8 @@ extension ScholiumUITests {
         XCTAssertFalse(app.toolbars.firstMatch.buttons["Agent Changes"].exists)
         XCTAssertEqual(app.windows.count, 1)
 
-        let sessionsURL = homeDirectory
+        let sessionsURL =
+            homeDirectory
             .appendingPathComponent("ApplicationSupport", isDirectory: true)
             .appendingPathComponent("Window Sessions", isDirectory: true)
         let sessions = try FileManager.default.contentsOfDirectory(
@@ -119,7 +193,6 @@ extension ScholiumUITests {
         XCTAssertTrue(waitUntil(timeout: 3) { !warning.exists })
         XCTAssertTrue(document.exists)
     }
-
 
     @MainActor
     func testNotificationsEmptyStateKeepsIndicatorWithCopy() {
@@ -231,8 +304,10 @@ extension ScholiumUITests {
     func testWorkspaceInitialDefaultPreservesNativeReachability() throws {
         waitForCurrentDocumentSurface()
         let window = app.windows.firstMatch
-        guard abs(window.frame.width - QAWorkspaceMetricContract.preferredWidth)
-            <= QAWorkspaceMetricContract.frameTolerance else {
+        guard
+            abs(window.frame.width - QAWorkspaceMetricContract.preferredWidth)
+                <= QAWorkspaceMetricContract.frameTolerance
+        else {
             throw XCTSkip(
                 "AppKit restored a test-owned frame; rerun this first-presentation journey from a clean QA preference domain."
             )
@@ -310,16 +385,18 @@ extension ScholiumUITests {
         hideSidebar.coordinate(
             withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
         ).click()
-        XCTAssertTrue(waitUntil(timeout: 5) {
-            !self.app.descendants(matching: .any)["scholium.librarySurface"].exists
-        })
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                !self.app.descendants(matching: .any)["scholium.librarySurface"].exists
+            })
         let showSidebar = app.buttons["Show Sidebar"]
         XCTAssertTrue(showSidebar.waitForExistence(timeout: 5))
         XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 5))
         showSidebar.coordinate(
             withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
         ).click()
-        XCTAssertTrue(app.descendants(matching: .any)["scholium.librarySurface"].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            app.descendants(matching: .any)["scholium.librarySurface"].waitForExistence(timeout: 5))
         XCTAssertEqual(window.frame.width, originalFrame.width, accuracy: 1)
         XCTAssertEqual(window.frame.height, originalFrame.height, accuracy: 1)
 
@@ -581,10 +658,11 @@ extension ScholiumUITests {
                         CGVector(dx: -requiredShift - 12, dy: 0)
                     )
                 )
-                XCTAssertTrue(waitUntil(timeout: 5) {
-                    self.app.windows.firstMatch.frame.minX
-                        < currentFrame.minX - requiredShift / 2
-                })
+                XCTAssertTrue(
+                    waitUntil(timeout: 5) {
+                        self.app.windows.firstMatch.frame.minX
+                            < currentFrame.minX - requiredShift / 2
+                    })
                 currentFrame = window.frame
             }
 
@@ -596,10 +674,11 @@ extension ScholiumUITests {
                 forDuration: 0.15,
                 thenDragTo: resizeCorner.withOffset(CGVector(dx: widthDelta, dy: 0))
             )
-            XCTAssertTrue(waitUntil(timeout: 5) {
-                abs(self.app.windows.firstMatch.frame.width - CGFloat(width))
-                    <= QAWorkspaceMetricContract.frameTolerance
-            })
+            XCTAssertTrue(
+                waitUntil(timeout: 5) {
+                    abs(self.app.windows.firstMatch.frame.width - CGFloat(width))
+                        <= QAWorkspaceMetricContract.frameTolerance
+                })
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         }
 
@@ -665,9 +744,10 @@ extension ScholiumUITests {
         )
         lineWidth.click()
         lineWidth.typeKey(.rightArrow, modifierFlags: [])
-        XCTAssertTrue(waitUntil(timeout: 3) {
-            self.sliderNumericValue(lineWidth) == 73
-        })
+        XCTAssertTrue(
+            waitUntil(timeout: 3) {
+                self.sliderNumericValue(lineWidth) == 73
+            })
 
         let form = app.descendants(matching: .any)["scholium.appearance.form"]
         XCTAssertTrue(form.waitForExistence(timeout: 5))
@@ -680,10 +760,11 @@ extension ScholiumUITests {
         let manifest = homeDirectory.appendingPathComponent(
             "ApplicationSupport/Workspace/Styles/appearances.json"
         )
-        XCTAssertTrue(waitUntil(timeout: 10) {
-            (try? String(contentsOf: manifest, encoding: .utf8))?
-                .contains("\"lineWidthCharacterUnits\" : 73") == true
-        })
+        XCTAssertTrue(
+            waitUntil(timeout: 10) {
+                (try? String(contentsOf: manifest, encoding: .utf8))?
+                    .contains("\"lineWidthCharacterUnits\" : 73") == true
+            })
         let settingsWindow = settingsWindow()
         XCTAssertTrue(settingsWindow.waitForExistence(timeout: 5))
         scrollUntilHittable(lineWidth, in: form)
@@ -696,7 +777,8 @@ extension ScholiumUITests {
 
     @MainActor
     func testDocumentHeadingStudyWrapsLongMixedTitleUsingAcceptedBodyRhythm() throws {
-        let expectedTitle = "在长期论证中保持证据边界：Reasons, Values, and the Practical Option Space Across Competing Interpretations"
+        let expectedTitle =
+            "在长期论证中保持证据边界：Reasons, Values, and the Practical Option Space Across Competing Interpretations"
         let workspace = app.windows.matching(
             NSPredicate(format: "identifier BEGINSWITH %@", "scholium-main-")
         ).firstMatch
@@ -723,7 +805,8 @@ extension ScholiumUITests {
             "The first Document-heading proof keeps the Inspector hidden."
         )
 
-        let noteURL = triptychDirectory
+        let noteURL =
+            triptychDirectory
             .appendingPathComponent("01-analyses", isDirectory: true)
             .appendingPathComponent("QA Document Heading Study.md")
         let sourceBefore = try Data(contentsOf: noteURL)
@@ -794,10 +877,11 @@ extension ScholiumUITests {
                         return abs(updated - current) >= step / 2
                     }
                 }
-                XCTAssertTrue(waitUntil(timeout: 5) {
-                    guard let value = self.sliderNumericValue(slider) else { return false }
-                    return abs(value - target) <= step / 10
-                })
+                XCTAssertTrue(
+                    waitUntil(timeout: 5) {
+                        guard let value = self.sliderNumericValue(slider) else { return false }
+                        return abs(value - target) <= step / 10
+                    })
             }
 
             setSlider("Line spacing", target: lineHeight, step: 0.05)
@@ -861,7 +945,8 @@ extension ScholiumUITests {
             "The long mixed-script H1 must wrap instead of truncating to one line."
         )
         let ordinaryScreenshot = XCTAttachment(screenshot: workspace.screenshot())
-        ordinaryScreenshot.name = "Heading Study — accepted A — long mixed H1 — 1180×760 — Review — native window title"
+        ordinaryScreenshot.name =
+            "Heading Study — accepted A — long mixed H1 — 1180×760 — Review — native window title"
         ordinaryScreenshot.lifetime = .keepAlways
         add(ordinaryScreenshot)
 
@@ -875,7 +960,8 @@ extension ScholiumUITests {
         XCTAssertGreaterThanOrEqual(documentTitle.frame.minX, renderedDocument.frame.minX)
         XCTAssertLessThanOrEqual(documentTitle.frame.maxX, renderedDocument.frame.maxX)
         let narrowScreenshot = XCTAttachment(screenshot: workspace.screenshot())
-        narrowScreenshot.name = "Heading Study — accepted A — long mixed H1 — 900×760 — Review — native window title"
+        narrowScreenshot.name =
+            "Heading Study — accepted A — long mixed H1 — 900×760 — Review — native window title"
         narrowScreenshot.lifetime = .keepAlways
         add(narrowScreenshot)
 
@@ -908,22 +994,27 @@ extension ScholiumUITests {
         let mode = documentModeControl()
         XCTAssertTrue(mode.waitForExistence(timeout: 5))
         selectDocumentMode("Edit")
-        XCTAssertTrue(app.descendants(matching: .any)["Markdown editor, Edit mode"].waitForExistence(timeout: 8))
+        XCTAssertTrue(
+            app.descendants(matching: .any)["Markdown editor, Edit mode"].waitForExistence(
+                timeout: 8))
 
         selectDocumentMode("Source")
-        XCTAssertTrue(app.descendants(matching: .any)["Markdown source editor"].waitForExistence(timeout: 8))
+        XCTAssertTrue(
+            app.descendants(matching: .any)["Markdown source editor"].waitForExistence(timeout: 8))
 
         selectDocumentMode("Review")
         waitForCurrentDocumentSurface()
 
         let sessionFile = homeDirectory.appendingPathComponent("ApplicationSupport/Window Sessions")
             .appendingPathComponent(sessionID.uuidString + ".json")
-        XCTAssertTrue(waitUntil(timeout: 5) {
-            guard let data = try? Data(contentsOf: sessionFile),
-                  let snapshot = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let scale = snapshot["documentTextScale"] as? NSNumber else { return false }
-            return scale.doubleValue == 2.0
-        })
+        XCTAssertTrue(
+            waitUntil(timeout: 5) {
+                guard let data = try? Data(contentsOf: sessionFile),
+                    let snapshot = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                    let scale = snapshot["documentTextScale"] as? NSNumber
+                else { return false }
+                return scale.doubleValue == 2.0
+            })
 
         app.terminate()
         app = configuredApplication(sessionID: sessionID, initialWorkspaceWidth: 900)
@@ -943,13 +1034,5 @@ extension ScholiumUITests {
         )
         app.typeKey(.escape, modifierFlags: [])
     }
-
-
-
-
-
-
-
-
 
 }

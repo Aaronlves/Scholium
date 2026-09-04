@@ -1226,7 +1226,7 @@ struct FrontendArchitectureTests {
             ScholiumWorkspaceToolbarController.Item.back,
             ScholiumWorkspaceToolbarController.Item.forward,
             ScholiumWorkspaceToolbarController.Item.libraryDivider,
-            ScholiumWorkspaceToolbarController.Item.headingOutline,
+            ScholiumWorkspaceToolbarController.Item.documentInformation,
             .flexibleSpace,
             ScholiumWorkspaceToolbarController.Item.documentMode,
             ScholiumWorkspaceToolbarController.Item.researchRecords,
@@ -1239,7 +1239,7 @@ struct FrontendArchitectureTests {
         #expect(!sidebarSource.contains(".ignoresSafeArea(.container, edges: .leading)"))
         #expect(sidebarSource.contains("private var brandHeader"))
         #expect(sidebarSource.contains("Text(\"Scholium\")"))
-        #expect(toolbarSource.contains("item.menu = headingMenu()"))
+        #expect(toolbarSource.contains("systemImage: \"info.circle\""))
         #expect(appSource.contains(".navigationTitle(workspaceWindowTitle)"))
         #expect(appSource.contains(".navigationSubtitle(workspaceWindowSubtitle)"))
         #expect(appSource.contains("showsTriptychSubtitle(in: route.windowID)"))
@@ -1277,7 +1277,8 @@ struct FrontendArchitectureTests {
         #expect(!toolbarSource.contains("glassEffect"))
         #expect(toolbarSource.contains("item.isBordered = true"))
         #expect(toolbarSource.contains("item.style = .plain"))
-        #expect(toolbarSource.contains("NSMenuToolbarItem"))
+        #expect(toolbarSource.contains("NSPopover"))
+        #expect(!toolbarSource.contains("NSMenuToolbarItem"))
         #expect(!toolbarSource.contains("ScholiumToolbarControlHost"))
         #expect(toolbarSource.contains("control.segmentStyle = .automatic"))
         #expect(!noteSource.contains("ScholiumInspectorModeIndex("))
@@ -1365,8 +1366,8 @@ struct FrontendArchitectureTests {
         let sidebarIndex = try #require(identifiers.firstIndex(of: Item.sidebar))
         let backIndex = try #require(identifiers.firstIndex(of: Item.back))
         let forwardIndex = try #require(identifiers.firstIndex(of: Item.forward))
-        let headingIndex = try #require(
-            identifiers.firstIndex(of: Item.headingOutline)
+        let documentInformationIndex = try #require(
+            identifiers.firstIndex(of: Item.documentInformation)
         )
         let modeIndex = try #require(identifiers.firstIndex(of: Item.documentMode))
         let inspectorIndex = try #require(identifiers.firstIndex(of: Item.inspector))
@@ -1379,8 +1380,8 @@ struct FrontendArchitectureTests {
         #expect(sidebarIndex < backIndex)
         #expect(backIndex < forwardIndex)
         #expect(forwardIndex < libraryDividerIndex)
-        #expect(libraryDividerIndex < headingIndex)
-        #expect(headingIndex < documentFlexibleSpaceIndex)
+        #expect(libraryDividerIndex < documentInformationIndex)
+        #expect(documentInformationIndex < documentFlexibleSpaceIndex)
         #expect(documentFlexibleSpaceIndex < modeIndex)
         #expect(modeIndex < apparatusDividerIndex)
         #expect(apparatusDividerIndex < inspectorModesIndex)
@@ -2449,8 +2450,8 @@ struct FrontendArchitectureTests {
             encoding: .utf8
         )
         #expect(
-            ScholiumWorkspaceToolbarController.Item.headingOutline.rawValue
-                == "scholium.toolbar.headingOutline"
+            ScholiumWorkspaceToolbarController.Item.documentInformation.rawValue
+                == "scholium.toolbar.documentInformation"
         )
         #expect(!toolbar.contains("scholium.toolbar.search"))
         #expect(sidebarSource.contains("scholium.sidebarSearch"))
@@ -3439,8 +3440,8 @@ struct FrontendArchitectureTests {
         #expect(tabs.contains("ScholiumGrid.Spacing.regionContentInset"))
     }
 
-    @Test("Heading Outline toolbar navigation has a matching View-menu route")
-    func headingOutlineHasViewMenuRoute() throws {
+    @Test("Document Information toolbar presentation has a matching View-menu route")
+    func documentInformationHasViewMenuRoute() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -3462,13 +3463,12 @@ struct FrontendArchitectureTests {
             viewCommandsStart.lowerBound..<viewCommandsEnd.lowerBound
         ]
 
-        #expect(viewCommands.contains("Menu(\"Heading Outline\")"))
+        #expect(viewCommands.contains("Button(\"Document Information\")"))
         #expect(
             viewCommands.contains(
-                "appState?.pendingSourceLine = heading.span.start.line"
+                "workspaceWindowActions?.showDocumentInformation()"
             )
         )
-        #expect(viewCommands.contains("Button(\"No Headings\")"))
     }
 
     @Test("Live Preview omits Source chrome and consumes shared document layout")
@@ -3858,7 +3858,7 @@ struct FrontendArchitectureTests {
         )
         #expect(
             toolbarSource.contains(
-                "appState.currentNote?.workspaceSnapshot?.headings ?? []"
+                "note.workspaceSnapshot?.headings ?? []"
             )
         )
         #expect(!toolbarSource.contains("MarkdownSemanticDocument("))

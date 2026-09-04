@@ -143,17 +143,20 @@ struct DocumentFeatureActions {
 
 struct DocumentFeatureView: View {
     @ObservedObject private var controller: DocumentController
+    let documentInformation: DocumentInformationProjection
     let state: DocumentFeatureState
     let actions: DocumentFeatureActions
     let critiqueProvenanceContext: CritiqueProvenanceContext
 
     init(
         controller: DocumentController,
+        documentInformation: DocumentInformationProjection,
         state: DocumentFeatureState,
         actions: DocumentFeatureActions,
         critiqueProvenanceContext: CritiqueProvenanceContext
     ) {
         self.controller = controller
+        self.documentInformation = documentInformation
         self.state = state
         self.actions = actions
         self.critiqueProvenanceContext = critiqueProvenanceContext
@@ -175,6 +178,7 @@ struct DocumentFeatureView: View {
             if let key = selectedWorkspaceKey ?? projectedWorkspaceKey {
                 NoteContentView(
                     controller: controller,
+                    documentInformation: documentInformation,
                     target: .workspace(key),
                     note: note,
                     documentSession: controller.session(for: key),
@@ -187,6 +191,7 @@ struct DocumentFeatureView: View {
                 DocumentSessionFallback(
                     note: note,
                     controller: controller,
+                    documentInformation: documentInformation,
                     target: .unavailable(
                         vaultID: note.vaultID,
                         relativePath: note.relativePath
@@ -204,6 +209,7 @@ struct DocumentFeatureView: View {
 private struct DocumentSessionFallback: View {
     let note: WindowDocumentLocation
     let controller: DocumentController
+    let documentInformation: DocumentInformationProjection
     let target: DocumentEditingTarget
     let state: DocumentFeatureState
     let actions: DocumentFeatureActions
@@ -212,6 +218,7 @@ private struct DocumentSessionFallback: View {
     var body: some View {
         NoteContentView(
             controller: controller,
+            documentInformation: documentInformation,
             target: target,
             note: note,
             documentSession: controller.session(for: target),
@@ -294,6 +301,7 @@ struct NoteContentView: View {
     @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
     @ObservedObject private var controller: DocumentController
     @ObservedObject private var documentSession: DocumentSessionModel
+    let documentInformation: DocumentInformationProjection
     let target: DocumentEditingTarget
     let note: WindowDocumentLocation
     let state: DocumentFeatureState
@@ -310,6 +318,7 @@ struct NoteContentView: View {
 
     init(
         controller: DocumentController,
+        documentInformation: DocumentInformationProjection,
         target: DocumentEditingTarget,
         note: WindowDocumentLocation,
         documentSession: DocumentSessionModel,
@@ -318,6 +327,7 @@ struct NoteContentView: View {
         critiqueProvenanceContext: CritiqueProvenanceContext
     ) {
         self.controller = controller
+        self.documentInformation = documentInformation
         _documentSession = ObservedObject(wrappedValue: documentSession)
         self.target = target
         self.note = note
@@ -440,8 +450,6 @@ struct NoteContentView: View {
             documentBodySurface
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
-
-            DocumentStatisticsStatus(statistics: currentDocumentStatistics)
         }
         .scholiumSurface(.document)
         .focusedSceneValue(\.scholiumSearchActions, ScholiumSearchActions { invocation in
@@ -478,7 +486,6 @@ struct NoteContentView: View {
                 findNext: documentFind.next,
                 findPrevious: documentFind.previous,
                 useSelectionForFind: useSelectionForDocumentFind,
-                announceDocumentStatistics: announceDocumentStatistics,
                 importImage: requestImageImport,
                 indexImage: requestImageIndex,
                 canAttachDocument: documentAttachmentTarget != nil
@@ -527,6 +534,19 @@ struct NoteContentView: View {
             applyPreparedPresentationModeIfAvailable()
             consumePendingPresentationRequest()
             updateReviewDocumentStatistics(selection: nil)
+            documentInformation.activate(documentInformationDocumentID)
+            publishDocumentInformation()
+        }
+        .onChange(of: currentDocumentStatistics) { _, _ in
+            publishDocumentInformation()
+        }
+        .onChange(of: documentInformationDocumentID) { previous, _ in
+            documentInformation.clear(ifCurrent: previous)
+            documentInformation.activate(documentInformationDocumentID)
+            publishDocumentInformation()
+        }
+        .onDisappear {
+            documentInformation.clear(ifCurrent: documentInformationDocumentID)
         }
         .onChange(of: editingIsAvailable) { _, available in
             // Window restoration publishes the selected note before stable
@@ -1065,6 +1085,13 @@ struct NoteContentView: View {
             : reviewDocumentStatistics.value
     }
 
+    private var documentInformationDocumentID: DocumentInformationDocumentID {
+        DocumentInformationDocumentID(
+            vaultID: note.vaultID,
+            relativePath: note.relativePath
+        )
+    }
+
     private var indexedImageAvailabilityTaskIdentity: String {
         "\(note.relativePath):\(noteFingerprint.sha256):\(indexedImageAvailabilityGeneration)"
     }
@@ -1255,10 +1282,11 @@ struct NoteContentView: View {
         )
     }
 
-    private func announceDocumentStatistics() {
-        AccessibilityNotification.Announcement(
-            DocumentStatisticsFormatter.accessibilityValue(currentDocumentStatistics)
-        ).post()
+    private func publishDocumentInformation() {
+        documentInformation.publish(
+            currentDocumentStatistics,
+            for: documentInformationDocumentID
+        )
     }
 
     private func handleDocumentFindShortcut(_ shortcut: DocumentFindShortcut) {
@@ -1944,6 +1972,7 @@ private extension CritiqueFindingDispositionDecision {
     )
     NoteContentView(
         controller: controller,
+        documentInformation: DocumentInformationProjection(),
         target: .unavailable(
             vaultID: note.vaultID,
             relativePath: note.relativePath

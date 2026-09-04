@@ -2517,6 +2517,22 @@
         }
       }
     },
+    "Characters" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Characters"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "字符"
+          }
+        }
+      }
+    },
     "Characters %lld" : {
       "localizations" : {
         "en" : {
@@ -2529,6 +2545,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "字符 %lld"
+          }
+        }
+      }
+    },
+    "Characters with Spaces" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Characters with Spaces"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "字符数（含空格）"
+          }
+        }
+      }
+    },
+    "Characters without Spaces" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Characters without Spaces"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "字符数（不含空格）"
           }
         }
       }
@@ -4891,6 +4939,22 @@
         }
       }
     },
+    "Document Information" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Document Information"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文档信息"
+          }
+        }
+      }
+    },
     "Document Mode" : {
       "localizations" : {
         "en" : {
@@ -4919,6 +4983,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "文档模式，%@"
+          }
+        }
+      }
+    },
+    "Document Statistic" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Document Statistic"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文档统计指标"
           }
         }
       }
@@ -6091,6 +6171,22 @@
         }
       }
     },
+    "Han Characters" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Han Characters"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "汉字数"
+          }
+        }
+      }
+    },
     "Heading" : {
       "localizations" : {
         "en" : {
@@ -6136,6 +6232,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "标题 %lld"
+          }
+        }
+      }
+    },
+    "Heading level %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Heading level %lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld 级标题"
           }
         }
       }
@@ -16650,6 +16762,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "词距"
+          }
+        }
+      }
+    },
+    "Words" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Words"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "词数"
           }
         }
       }

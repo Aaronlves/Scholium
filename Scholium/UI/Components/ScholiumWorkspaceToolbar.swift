@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import Foundation
 import ScholiumContracts
+import SwiftUI
 
 /// The configured window has one native toolbar. Tracking separators establish
 /// Library, Document, and Apparatus sections. Sidebar and document-history
@@ -9,7 +10,7 @@ import ScholiumContracts
 /// control begins the Apparatus section and its visibility control ends it;
 /// collapsing either pane changes no item topology.
 @MainActor
-final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
+final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSPopoverDelegate {
     static let toolbarIdentifier = NSToolbar.Identifier("scholium.workspaceToolbar")
 
     enum Item {
@@ -22,8 +23,8 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         )
         // These identifiers are structural bounds for the Document toolbar.
         static let libraryDivider = NSToolbarItem.Identifier.sidebarTrackingSeparator
-        static let headingOutline = NSToolbarItem.Identifier(
-            "scholium.toolbar.headingOutline"
+        static let documentInformation = NSToolbarItem.Identifier(
+            "scholium.toolbar.documentInformation"
         )
         static let documentMode = NSToolbarItem.Identifier(
             "scholium.toolbar.documentMode"
@@ -48,6 +49,10 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
     private let windowActions: WorkspaceWindowActions
     private let splitViewController: NSSplitViewController
     private let toolbar: NSToolbar
+    private let documentInformationPopover: NSPopover
+    private weak var window: NSWindow?
+    private weak var responderBeforeDocumentInformation: NSResponder?
+    private var documentInformationHostingController: DocumentInformationHostingController?
     private var presentationCancellables: Set<AnyCancellable> = []
 
     init(
@@ -59,16 +64,20 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         self.windowActions = windowActions
         self.splitViewController = splitViewController
         toolbar = NSToolbar(identifier: Self.toolbarIdentifier)
+        documentInformationPopover = NSPopover()
         super.init()
         toolbar.delegate = self
         toolbar.allowsUserCustomization = false
         toolbar.autosavesConfiguration = false
         toolbar.displayMode = .iconOnly
+        documentInformationPopover.behavior = .transient
+        documentInformationPopover.delegate = self
         observePresentation()
     }
 
     func install(in window: NSWindow) {
         guard splitViewController.splitView.window === window else { return }
+        self.window = window
         if window.toolbar !== toolbar {
             window.toolbar = toolbar
         }
@@ -78,6 +87,10 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
 
     func controls(_ candidate: NSSplitViewController) -> Bool {
         splitViewController === candidate
+    }
+
+    func invalidate() {
+        documentInformationPopover.close()
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -91,7 +104,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             Item.back,
             Item.forward,
             Item.libraryDivider,
-            Item.headingOutline,
+            Item.documentInformation,
             Item.documentMode,
             Item.researchRecords,
             Item.agentChanges,
@@ -107,7 +120,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             Item.back,
             Item.forward,
             Item.libraryDivider,
-            Item.headingOutline,
+            Item.documentInformation,
             .flexibleSpace,
             Item.documentMode,
             Item.researchRecords,
@@ -161,20 +174,17 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             )
             item.visibilityPriority = .user
             return item
-        case Item.headingOutline:
-            let item = NSMenuToolbarItem(itemIdentifier: itemIdentifier)
-            configure(
-                item,
-                label: ScholiumL10n.string("Heading Outline"),
-                systemImage: "list.bullet.indent",
-                visibilityPriority: .high
+        case Item.documentInformation:
+            let item = actionItem(
+                identifier: itemIdentifier,
+                label: ScholiumL10n.string("Document Information"),
+                systemImage: "info.circle",
+                action: #selector(toggleDocumentInformation(_:))
             )
-            item.menu = headingMenu()
             // This is the one Document-leading item AppKit may position next
             // to the system-owned title. Sidebar and history controls must
             // remain in their declared section before the tracking separator.
             item.isNavigational = true
-            item.menuFormRepresentation = headingMenuFormRepresentation()
             return item
         case Item.documentMode:
             let item = actionItem(
@@ -183,10 +193,11 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
                 systemImage: NotePresentationMode.livePreview.symbol,
                 action: #selector(toggleDocumentMode(_:))
             )
-            item.possibleLabels = Set(NotePresentationMode.allCases.map {
-                ScholiumDocumentModeToolbarButtonPresentation(mode: $0)
-                    .accessibilityLabel
-            })
+            item.possibleLabels = Set(
+                NotePresentationMode.allCases.map {
+                    ScholiumDocumentModeToolbarButtonPresentation(mode: $0)
+                        .accessibilityLabel
+                })
             return item
         case Item.agentChanges:
             return actionItem(
@@ -389,16 +400,20 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
             )
         }
 
-        if let item = toolbarItem(Item.headingOutline) as? NSMenuToolbarItem {
-            item.isHidden = appState.currentNote == nil
+        if let item = toolbarItem(Item.documentInformation) {
+            let hasDocument = appState.currentNote != nil
+            item.isHidden = !hasDocument
             update(
                 item,
-                label: ScholiumL10n.dynamicString("Heading Outline"),
-                systemImage: "list.bullet.indent",
-                isEnabled: true
+                label: ScholiumL10n.dynamicString("Document Information"),
+                systemImage: "info.circle",
+                isEnabled: hasDocument
             )
-            item.menu = headingMenu()
-            item.menuFormRepresentation = headingMenuFormRepresentation()
+            if hasDocument, documentInformationPopover.isShown {
+                updateDocumentInformationPopoverContent()
+            } else if !hasDocument {
+                documentInformationPopover.close()
+            }
         }
 
         if let item = toolbarItem(Item.documentMode) {
@@ -428,14 +443,16 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         }
 
         if let item = toolbarItem(Item.inspectorModes),
-           let control = item.view as? NSSegmentedControl {
+            let control = item.view as? NSSegmentedControl
+        {
             let hasDocument = appState.documentController.selectedDocument != nil
             let isAvailable = shellState.inspector.isVisible && hasDocument
             item.isHidden = !isAvailable
             control.isEnabled = isAvailable
-            control.selectedSegment = ResearchInspectorMode.allCases.firstIndex(
-                of: shellState.inspector.mode
-            ) ?? 0
+            control.selectedSegment =
+                ResearchInspectorMode.allCases.firstIndex(
+                    of: shellState.inspector.mode
+                ) ?? 0
             control.setAccessibilityValue(
                 ScholiumL10n.localized(
                     shellState.inspector.mode.interfaceTitleResource
@@ -486,45 +503,58 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         toolbar.items.first { $0.itemIdentifier == identifier }
     }
 
-    private func headingMenu() -> NSMenu {
-        let menu = NSMenu(title: ScholiumL10n.dynamicString("Heading Outline"))
-        menu.autoenablesItems = false
-        let headings = appState.currentNote?.workspaceSnapshot?.headings ?? []
-        if headings.isEmpty {
-            let item = NSMenuItem(
-                title: ScholiumL10n.dynamicString("No Headings"),
-                action: nil,
-                keyEquivalent: ""
-            )
-            item.isEnabled = false
-            menu.addItem(item)
-            return menu
-        }
-        for heading in headings {
-            let item = NSMenuItem(
-                title: String(repeating: "  ", count: max(0, heading.level - 1))
-                    + heading.text,
-                action: #selector(openHeading(_:)),
-                keyEquivalent: ""
-            )
-            item.target = self
-            item.representedObject = heading.span.start.line
-            menu.addItem(item)
-        }
-        return menu
+    func showDocumentInformation() {
+        guard !documentInformationPopover.isShown else { return }
+        presentDocumentInformation()
     }
 
-    private func headingMenuFormRepresentation() -> NSMenuItem {
-        let item = NSMenuItem(
-            title: ScholiumL10n.dynamicString("Heading Outline"),
-            action: nil,
-            keyEquivalent: ""
+    private func presentDocumentInformation() {
+        guard appState.currentNote != nil,
+            let item = toolbarItem(Item.documentInformation)
+        else { return }
+        updateDocumentInformationPopoverContent()
+        responderBeforeDocumentInformation = window?.firstResponder
+        documentInformationPopover.show(relativeTo: item)
+        documentInformationHostingController?.focusForKeyboardDismissal()
+    }
+
+    private func updateDocumentInformationPopoverContent() {
+        guard let note = appState.currentNote else { return }
+        let documentID = DocumentInformationDocumentID(
+            vaultID: note.vaultID,
+            relativePath: note.relativePath
         )
-        item.image = ScholiumNativeToolbarPresentation.symbol(
-            named: "list.bullet.indent"
+        let headings = (note.workspaceSnapshot?.headings ?? []).map {
+            DocumentOutlineEntry(
+                level: $0.level,
+                text: $0.text,
+                sourceLine: $0.span.start.line
+            )
+        }
+        let rootView = DocumentInformationPopoverView(
+            projection: appState.documentInformation,
+            documentID: documentID,
+            headings: headings,
+            openHeading: { [weak self] line in
+                self?.openHeading(at: line)
+            }
         )
-        item.submenu = headingMenu()
-        return item
+        if let documentInformationHostingController {
+            documentInformationHostingController.rootView = rootView
+        } else {
+            let hostingController = DocumentInformationHostingController(
+                rootView: rootView
+            )
+            hostingController.sizingOptions = [
+                .preferredContentSize,
+                .intrinsicContentSize,
+            ]
+            hostingController.dismiss = { [weak self] in
+                self?.documentInformationPopover.performClose(nil)
+            }
+            documentInformationHostingController = hostingController
+            documentInformationPopover.contentViewController = hostingController
+        }
     }
 
     private func inspectorModeMenu() -> NSMenuItem {
@@ -579,9 +609,26 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
         appState.navigateDocumentHistory(.forward)
     }
 
-    @objc private func openHeading(_ sender: NSMenuItem) {
-        guard let line = sender.representedObject as? Int else { return }
+    @objc private func toggleDocumentInformation(_ sender: Any?) {
+        if documentInformationPopover.isShown {
+            documentInformationPopover.performClose(sender)
+        } else {
+            presentDocumentInformation()
+        }
+    }
+
+    private func openHeading(at line: Int) {
+        documentInformationPopover.performClose(nil)
         appState.pendingSourceLine = line
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        defer { responderBeforeDocumentInformation = nil }
+        guard let window,
+            let responder = responderBeforeDocumentInformation
+        else { return }
+        if let view = responder as? NSView, view.window !== window { return }
+        window.makeFirstResponder(responder)
     }
 
     @objc private func toggleDocumentMode(_ sender: Any?) {
@@ -605,9 +652,11 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
     }
 
     @objc private func selectInspectorMode(_ sender: NSSegmentedControl) {
-        guard ResearchInspectorMode.allCases.indices.contains(
-            sender.selectedSegment
-        ) else {
+        guard
+            ResearchInspectorMode.allCases.indices.contains(
+                sender.selectedSegment
+            )
+        else {
             return
         }
         appState.researchController.selectInspectorMode(
@@ -618,9 +667,29 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate {
 
     @objc private func selectInspectorModeFromMenu(_ sender: NSMenuItem) {
         guard let rawValue = sender.representedObject as? String,
-              let mode = ResearchInspectorMode(rawValue: rawValue) else { return }
+            let mode = ResearchInspectorMode(rawValue: rawValue)
+        else { return }
         appState.researchController.selectInspectorMode(mode)
         refreshPresentation()
+    }
+}
+
+@MainActor
+private final class DocumentInformationHostingController:
+    NSHostingController<DocumentInformationPopoverView>
+{
+    var dismiss: (() -> Void)?
+
+    override var acceptsFirstResponder: Bool { true }
+
+    func focusForKeyboardDismissal() {
+        guard let window = view.window else { return }
+        window.makeKey()
+        window.makeFirstResponder(self)
+    }
+
+    override func cancelOperation(_ sender: Any?) {
+        dismiss?()
     }
 }
 
@@ -637,10 +706,11 @@ enum ScholiumNativeToolbarPresentation {
         NSImage(
             systemSymbolName: name,
             accessibilityDescription: accessibilityDescription
-        )?.withSymbolConfiguration(NSImage.SymbolConfiguration(
-            textStyle: .body,
-            scale: .medium
-        ))
+        )?.withSymbolConfiguration(
+            NSImage.SymbolConfiguration(
+                textStyle: .body,
+                scale: .medium
+            ))
     }
 }
 
@@ -653,10 +723,11 @@ struct ScholiumDocumentModeToolbarButtonPresentation: Equatable {
 
     init(mode: NotePresentationMode) {
         self.mode = mode
-        destination = switch mode {
-        case .read: .livePreview
-        case .livePreview, .source: .read
-        }
+        destination =
+            switch mode {
+            case .read: .livePreview
+            case .livePreview, .source: .read
+            }
     }
 
     var symbol: String { mode.symbol }

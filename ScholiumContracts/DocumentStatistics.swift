@@ -1,5 +1,6 @@
 import Foundation
 import Markdown
+import NaturalLanguage
 
 public enum DocumentStatisticsScope: String, Codable, Hashable, Sendable {
     case body
@@ -7,27 +8,31 @@ public enum DocumentStatisticsScope: String, Codable, Hashable, Sendable {
 }
 
 public struct DocumentStatistics: Codable, Hashable, Sendable {
-    public let englishWords: Int
-    public let chineseCharacters: Int
-    public let characters: Int
+    public let words: Int
+    public let charactersWithSpaces: Int
+    public let charactersWithoutSpaces: Int
+    public let hanCharacters: Int
     public let scope: DocumentStatisticsScope
 
     public init(
-        englishWords: Int,
-        chineseCharacters: Int,
-        characters: Int,
+        words: Int,
+        charactersWithSpaces: Int,
+        charactersWithoutSpaces: Int,
+        hanCharacters: Int,
         scope: DocumentStatisticsScope
     ) {
-        self.englishWords = max(0, englishWords)
-        self.chineseCharacters = max(0, chineseCharacters)
-        self.characters = max(0, characters)
+        self.words = max(0, words)
+        self.charactersWithSpaces = max(0, charactersWithSpaces)
+        self.charactersWithoutSpaces = max(0, charactersWithoutSpaces)
+        self.hanCharacters = max(0, hanCharacters)
         self.scope = scope
     }
 
     public static let emptyBody = DocumentStatistics(
-        englishWords: 0,
-        chineseCharacters: 0,
-        characters: 0,
+        words: 0,
+        charactersWithSpaces: 0,
+        charactersWithoutSpaces: 0,
+        hanCharacters: 0,
         scope: .body
     )
 }
@@ -81,16 +86,26 @@ public enum DocumentStatisticsCalculator {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         let range = NSRange(location: 0, length: (text as NSString).length)
         return DocumentStatistics(
-            englishWords: englishWordPattern.numberOfMatches(in: text, range: range),
-            chineseCharacters: hanPattern.numberOfMatches(in: text, range: range),
-            characters: text.count,
+            words: wordCount(in: text),
+            charactersWithSpaces: text.count,
+            charactersWithoutSpaces: text.filter { !$0.isWhitespace }.count,
+            hanCharacters: hanPattern.numberOfMatches(in: text, range: range),
             scope: scope
         )
     }
 
-    private static let englishWordPattern = try! NSRegularExpression(
-        pattern: #"(?<![\p{Latin}\p{N}])[\p{Latin}\p{N}]+(?:['’\-‐-―][\p{Latin}\p{N}]+)*(?![\p{Latin}\p{N}])"#
-    )
+    private static func wordCount(in text: String) -> Int {
+        guard !text.isEmpty else { return 0 }
+        let tokenizer = NLTokenizer(unit: .word)
+        tokenizer.string = text
+        var count = 0
+        tokenizer.enumerateTokens(in: text.startIndex..<text.endIndex) { _, _ in
+            count += 1
+            return true
+        }
+        return count
+    }
+
     private static let hanPattern = try! NSRegularExpression(pattern: #"\p{Han}"#)
 }
 

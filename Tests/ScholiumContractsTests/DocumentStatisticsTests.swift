@@ -16,9 +16,10 @@ struct DocumentStatisticsTests {
         """
         let result = DocumentStatisticsCalculator.calculate(markdownSource: source)
         let visible = "Hello-world 价值！\nA visible and diagram, code."
-        #expect(result.englishWords == 6)
-        #expect(result.chineseCharacters == 2)
-        #expect(result.characters == visible.count)
+        #expect(result.words == 8)
+        #expect(result.hanCharacters == 2)
+        #expect(result.charactersWithSpaces == visible.count)
+        #expect(result.charactersWithoutSpaces == 38)
         #expect(result.scope == .body)
     }
 
@@ -31,9 +32,10 @@ struct DocumentStatisticsTests {
             selectedUTF16Ranges: [range.location..<(range.location + range.length)]
         )
         #expect(result == DocumentStatistics(
-            englishWords: 1,
-            chineseCharacters: 0,
-            characters: 7,
+            words: 1,
+            charactersWithSpaces: 7,
+            charactersWithoutSpaces: 7,
+            hanCharacters: 0,
             scope: .selection
         ))
     }
@@ -43,9 +45,10 @@ struct DocumentStatisticsTests {
         let result = DocumentStatisticsCalculator.calculate(
             markdownSource: "[[Target|Alias]] %%hidden%%"
         )
-        #expect(result.englishWords == 1)
-        #expect(result.chineseCharacters == 0)
-        #expect(result.characters == 5)
+        #expect(result.words == 1)
+        #expect(result.hanCharacters == 0)
+        #expect(result.charactersWithSpaces == 5)
+        #expect(result.charactersWithoutSpaces == 5)
     }
 
     @Test("Multiline comments and math delimiters do not enter visible counts")
@@ -53,19 +56,21 @@ struct DocumentStatisticsTests {
         let result = DocumentStatisticsCalculator.calculate(
             markdownSource: "Visible %%hidden\nmore hidden%% $x$"
         )
-        #expect(result.englishWords == 2)
-        #expect(result.chineseCharacters == 0)
-        #expect(result.characters == "Visible  x".count)
+        #expect(result.words == 2)
+        #expect(result.hanCharacters == 0)
+        #expect(result.charactersWithSpaces == "Visible  x".count)
+        #expect(result.charactersWithoutSpaces == "Visiblex".count)
     }
 
-    @Test("Characters use extended grapheme clusters without labeling other scripts English")
+    @Test("Words are language-aware and characters use extended grapheme clusters")
     func graphemeClusters() {
         let result = DocumentStatisticsCalculator.calculateVisibleText(
             "e\u{301} العربية",
             scope: .selection
         )
-        #expect(result.englishWords == 1)
-        #expect(result.chineseCharacters == 0)
-        #expect(result.characters == 9)
+        #expect(result.words == 2)
+        #expect(result.hanCharacters == 0)
+        #expect(result.charactersWithSpaces == 9)
+        #expect(result.charactersWithoutSpaces == 8)
     }
 }

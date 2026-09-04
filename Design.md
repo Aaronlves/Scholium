@@ -129,6 +129,20 @@ share the following text column. The Library's 4-unit hierarchy step is passed
 to AppKit's native outline indentation rather than reconstructed in row
 content. Disclosure and Folder symbol have distinct state and type roles.
 
+Document Information uses the system `info.circle` toolbar symbol and one
+native transient popover rather than a persistent status strip or another
+Inspector mode. Heading Outline is the primary, bounded scrolling region;
+derived statistics sit below one rule and remain visible while the outline
+scrolls. Body is implicit; `Selection` appears only while a nonempty selection
+owns the count. A compact native selector shows one number at a time and
+remembers the researcher's last machine-local choice. Its closed label uses the
+short measure name, while the open menu keeps each exact counting rule beside
+its value and uses the native checkmark. The popover derives its width from
+localized content inside a bounded maximum. It keeps native dismissal, focus,
+contrast, transparency, and toolbar-overflow behavior. Its heading rows use
+restrained hierarchy indentation and ordinary button semantics; neither the
+symbol nor the statistics adds Accent or a custom Glass container.
+
 Document Appearance owns document measure, Body, headings, and Callout
 typography. The default is a readable Alegreya body with a compact scholarly
 line and paragraph rhythm, natural start alignment, a start-aligned first-level
