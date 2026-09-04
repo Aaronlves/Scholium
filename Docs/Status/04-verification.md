@@ -236,7 +236,8 @@ Completed automated checks in this worktree:
   Documentation authority and `git diff --check` passed. Increase Contrast,
   Reduce Transparency, VoiceOver, Full Keyboard Access, and human visual
   acceptance remain unverified for this slice.
-- On 2026-09-04 the Sidebar input-modality and hierarchy-grid correction passed
+- Earlier on 2026-09-04 the now-superseded Sidebar input-modality and
+  hierarchy-grid correction passed
   26 Library-tree tests plus 88 frontend-architecture and five
   interface-presentation-ownership tests under Xcode 27.0 (27A5218g), Swift
   6.4, and the macOS 27 SDK. Two focused XCUITest journeys passed in 30.102
@@ -247,6 +248,35 @@ Completed automated checks in this worktree:
   emphasized selection with system selected-content ink, and the 16pt Library
   hierarchy step applied through `NSOutlineView`. This remains automated and
   exploratory evidence, not human visual or Full Keyboard Access acceptance.
+- Later on 2026-09-04 the Sidebar native-focus and identity cutover passed 125
+  focused App tests across Library-tree, frontend-architecture,
+  presentation-ownership, and localization suites. Four focused XCUITest
+  journeys passed across isolated invocations: startup identity, Folder
+  disclosure, Triptych workspace navigation, and the complete Triptych and
+  Library menu journey. The last journey confirmed that Organize and Add remain
+  accessible native menu buttons after replacing the persistent control-group
+  capsule with muted borderless symbols; its Organize menu opened and exposed
+  global Folder disclosure. Exploratory Computer Use on the disposable QA app
+  confirmed the resting Muted Text presentation, shallow circular hover
+  surface, and successful native menu activation. AppKit now owns active and
+  inactive selection without a pointer-versus-keyboard adapter. Documentation
+  authority, localization JSON parsing, and `git diff --check` passed. Increase
+  Contrast, Reduce Transparency, VoiceOver, Full Keyboard Access, and human
+  acceptance remain unverified.
+- Finally on 2026-09-04 the Sidebar brand-header cutover passed 147 focused App
+  tests across Library-tree, frontend-architecture, window-lifecycle,
+  presentation-ownership, and localization suites. Two isolated XCUITest
+  journeys passed in 47.958 seconds. They confirmed that the header presents
+  Scholium followed by Search and Notifications with no persistent Triptych
+  control, while the native File menu still exposes **New Triptych…** and
+  **Open Triptych**. The lifecycle suite covered one Triptych, multiple windows
+  over the same Triptych, multiple distinct Triptychs, close, and
+  assignment-before-registration ordering for the conditional native window
+  subtitle. The retained QA screenshot was inspected against those boundaries.
+  Documentation authority, localization JSON parsing, and `git diff --check`
+  passed.
+  Increase Contrast, Reduce Transparency, VoiceOver, Full Keyboard Access, and
+  human acceptance were not rerun for this final header slice.
 
 ## Evidence boundary
 

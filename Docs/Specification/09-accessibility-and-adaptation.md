@@ -73,11 +73,16 @@
   disclosure, Add, file actions, and hierarchy remain named and reachable
   without hover. The nonzero Notifications dot has an exact accessible count;
   bell and dot geometry preserve the visible distinction without color alone.
+- Triptych opening and creation remain named keyboard- and accessibility-
+  reachable commands in the native File menu; the Window menu exposes open
+  windows, and Settings manages registrations. When concurrently open
+  Workspace windows belong to distinct Triptychs, the native window subtitle
+  visibly distinguishes them without duplicating the name in the Sidebar.
 - Library rows preserve native selected, focused, inactive, disclosed,
   drop-target, disabled, loading, stale, empty, and failure distinctions.
-  Pointer selection remains visibly selected without taking on keyboard-only
-  emphasis; keyboard focus entry and navigation use the emphasized native
-  selection. Up/Down moves selection and Left/Right owns Folder disclosure. Note/Folder
+  AppKit emphasizes selection when its source list is focused in the key window
+  and retains inactive selection otherwise, independent of input device.
+  Up/Down moves selection and Left/Right owns Folder disclosure. Note/Folder
   Move, root placement, system-Trash deletion, and contextual creation have
   non-drag accessibility actions. Native Folder disclosure carries expanded or
   collapsed state; the adjacent Folder symbol identifies type and stays hidden

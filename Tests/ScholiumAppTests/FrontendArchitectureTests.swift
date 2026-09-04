@@ -1217,10 +1217,9 @@ struct FrontendArchitectureTests {
         #expect(appSource.contains("defaultValue: { TriptychWindowRoute() }"))
         #expect(!contentSource.contains("ToolbarItem(placement:"))
         #expect(!contentSource.contains("TriptychActionsMenu"))
-        #expect(
-            sidebarSource.contains(
-                ".accessibilityIdentifier(\"scholium.triptychManagement\")"
-            ))
+        #expect(!sidebarSource.contains("scholium.triptychManagement"))
+        #expect(appSource.contains("Menu(\"Open Triptych\")"))
+        #expect(appSource.contains("Button(\"New Triptych…\")"))
         #expect(!toolbarSource.contains("private var desiredItemIdentifiers"))
         #expect(ScholiumWorkspaceToolbarController.itemIdentifiers == [
             ScholiumWorkspaceToolbarController.Item.sidebar,
@@ -1239,8 +1238,11 @@ struct FrontendArchitectureTests {
         ])
         #expect(!sidebarSource.contains(".ignoresSafeArea(.container, edges: .leading)"))
         #expect(sidebarSource.contains("private var brandHeader"))
+        #expect(sidebarSource.contains("Text(\"Scholium\")"))
         #expect(toolbarSource.contains("item.menu = headingMenu()"))
         #expect(appSource.contains(".navigationTitle(workspaceWindowTitle)"))
+        #expect(appSource.contains(".navigationSubtitle(workspaceWindowSubtitle)"))
+        #expect(appSource.contains("showsTriptychSubtitle(in: route.windowID)"))
         #expect(appSource.contains("@ObservedObject private var commandObservation"))
         #expect(!toolbarSource.contains("window?.title ="))
         #expect(!toolbarSource.contains("NSHostingView"))
@@ -1848,14 +1850,25 @@ struct FrontendArchitectureTests {
         #expect(componentsSource.contains(".menuStyle(.button)"))
         #expect(componentsSource.contains(".buttonStyle(.glass)"))
         #expect(componentsSource.contains(".buttonBorderShape(.circle)"))
-        #expect(sidebarSource.contains("ControlGroup {"))
-        #expect(sidebarSource.contains(".controlGroupStyle(.automatic)"))
+        #expect(!sidebarSource.contains("ControlGroup {"))
         #expect(
             sidebarSource.components(
                 separatedBy: "ScholiumEditorialIconControl("
-            ).count == 3)
-        #expect(filterMenuSource.contains("ScholiumEditorialIconControl("))
-        #expect(!filterMenuSource.contains(".menuStyle(.borderlessButton)"))
+            ).count == 1)
+        #expect(!filterMenuSource.contains("ScholiumEditorialIconControl("))
+        #expect(
+            sidebarSource.components(separatedBy: ".buttonStyle(.glass)").count
+                == 1
+        )
+        #expect(!filterMenuSource.contains(".buttonStyle(.glass)"))
+        #expect(sidebarSource.contains(".menuStyle(.borderlessButton)"))
+        #expect(filterMenuSource.contains(".menuStyle(.borderlessButton)"))
+        #expect(sidebarSource.contains(".menuIndicator(.hidden)"))
+        #expect(filterMenuSource.contains(".menuIndicator(.hidden)"))
+        #expect(sidebarSource.contains(".scholiumForeground(.mutedText)"))
+        #expect(filterMenuSource.contains(".scholiumForeground(.mutedText)"))
+        #expect(sidebarSource.contains(".tint(ScholiumColorRole.mutedText.color)"))
+        #expect(filterMenuSource.contains(".tint(ScholiumColorRole.mutedText.color)"))
         #expect(componentsSource.contains("struct ScholiumQuietRowButtonStyle"))
         #expect(!componentsSource.contains(".menuStyle(.borderlessButton)"))
         #expect(!componentsSource.contains(".accessibilityRepresentation"))
@@ -1903,8 +1916,8 @@ struct FrontendArchitectureTests {
         #expect(!componentsSource.contains("SidebarAttentionAlertSurface"))
         #expect(componentsSource.contains(".buttonStyle(.glass)"))
         #expect(ScholiumMetrics.Library.leadingSlotWidth == 16)
-        #expect(sidebarSource.contains("\"chevron.up.2\""))
-        #expect(sidebarSource.contains("\"chevron.down.2\""))
+        #expect(filterMenuSource.contains("Collapse All Folders"))
+        #expect(filterMenuSource.contains("Expand All Folders"))
         #expect(!sidebarSource.contains("rectangle.compress.vertical"))
         #expect(!sidebarSource.contains("rectangle.expand.vertical"))
         #expect(!sidebarSource.contains(".tracking(0.7)"))
@@ -1919,11 +1932,19 @@ struct FrontendArchitectureTests {
                 ".padding(.horizontal, ScholiumMetrics.Library.contentInset)"
             ))
         #expect(!sidebarSource.contains("attentionHorizontalInset"))
-        let brandLabel = try #require(sidebarSource.range(of: "Text(\"Scholium\")"))
+        let headerStart = try #require(
+            sidebarSource.range(of: "private var brandHeader")
+        )
+        let brandIdentity = try #require(
+            sidebarSource.range(
+                of: "Text(\"Scholium\")",
+                range: headerStart.upperBound..<sidebarSource.endIndex
+            )
+        )
         let sidebarSearch = try #require(
             sidebarSource.range(
                 of: "identifier: \"scholium.sidebarSearch\"",
-                range: brandLabel.upperBound..<sidebarSource.endIndex
+                range: brandIdentity.upperBound..<sidebarSource.endIndex
             )
         )
         let notifications = try #require(
@@ -1932,14 +1953,10 @@ struct FrontendArchitectureTests {
                 range: sidebarSearch.upperBound..<sidebarSource.endIndex
             )
         )
-        let triptychMenu = try #require(
-            sidebarSource.range(
-                of: "Menu {",
-                range: notifications.upperBound..<sidebarSource.endIndex
-            ))
-        #expect(brandLabel.lowerBound < sidebarSearch.lowerBound)
+        #expect(brandIdentity.lowerBound < sidebarSearch.lowerBound)
         #expect(sidebarSearch.lowerBound < notifications.lowerBound)
-        #expect(brandLabel.lowerBound < triptychMenu.lowerBound)
+        #expect(!sidebarSource.contains("rectangle.split.3x1"))
+        #expect(!sidebarSource.contains("Section(\"Open Triptych\")"))
         let sidebarBody = try #require(sidebarSource.range(of: "var body: some View"))
         let sidebarSectionsEnd = try #require(
             sidebarSource.range(
@@ -1958,7 +1975,7 @@ struct FrontendArchitectureTests {
         #expect(workspaceNavigator.lowerBound < library.lowerBound)
         #expect(library.lowerBound < sourceRegion.lowerBound)
         #expect(sidebarSource.contains("SidebarTriptychAttentionEntry("))
-        #expect(sidebarSource.contains(".tint(ScholiumColorRole.primaryText.color)"))
+        #expect(!sidebarSource.contains(".tint(ScholiumColorRole.primaryText.color)"))
         #expect(sidebarSource.contains("let workspaceNoteCounts: SidebarWorkspaceNoteCounts"))
         #expect(!sidebarSource.contains("sourceRevealProgress"))
         #expect(!sidebarSource.contains("SidebarWorkspaceSourceReveal"))
@@ -1991,7 +2008,7 @@ struct FrontendArchitectureTests {
         )
         #expect(!treeProjectionSource.contains("folderMap.keys.compactMap"))
 
-        #expect(sidebarSource.contains("libraryDisclosureButton"))
+        #expect(!sidebarSource.contains("libraryDisclosureButton"))
         #expect(sidebarSource.contains("SidebarLibraryFilterMenu("))
         #expect(sidebarSource.contains("let filterOptions: SidebarLibraryFilterOptions"))
         #expect(sidebarSource.contains("let canMutateLibrary: Bool"))
@@ -2096,9 +2113,10 @@ struct FrontendArchitectureTests {
         #expect(nativeDropSource.contains("override func draggingEntered("))
         #expect(nativeDropSource.contains("override func performDragOperation("))
         #expect(nativeDropSource.contains("commitSidebarNativeDrop("))
-        #expect(sidebarSource.contains("scholium.libraryDisclosureToggle"))
-        #expect(sidebarSource.contains("\"chevron.up.2\""))
-        #expect(sidebarSource.contains("\"chevron.down.2\""))
+        #expect(!sidebarSource.contains("scholium.libraryDisclosureToggle"))
+        #expect(filterMenuSource.contains("Section(\"Folders\")"))
+        #expect(filterMenuSource.contains("Collapse All Folders"))
+        #expect(filterMenuSource.contains("Expand All Folders"))
         #expect(!sidebarSource.contains("rectangle.compress.vertical"))
         #expect(!sidebarSource.contains("rectangle.expand.vertical"))
         #expect(workspaceNavigatorSource.contains("SidebarWorkspaceTableView"))
@@ -2114,8 +2132,8 @@ struct FrontendArchitectureTests {
         #expect(
             sidebarSource.components(
                 separatedBy: "ScholiumEditorialIconControl("
-            ).count == 3)
-        #expect(filterMenuSource.contains("ScholiumEditorialIconControl("))
+            ).count == 1)
+        #expect(!filterMenuSource.contains("ScholiumEditorialIconControl("))
         #expect(!sidebarSource.contains("ScholiumEditorialIconControlLabel("))
         #expect(!filterMenuSource.contains("ScholiumEditorialIconControlLabel("))
         #expect(componentsSource.contains("struct ScholiumEditorialIconControlLabel"))
@@ -2142,8 +2160,16 @@ struct FrontendArchitectureTests {
             designSystemSource.contains(
                 ".environment(\\.scholiumContentControlIsEmphasized, isEmphasized)"
             ))
-        #expect(!sidebarSource.contains(".scholiumContentControlPointerFeedback("))
-        #expect(!filterMenuSource.contains(".scholiumContentControlPointerFeedback("))
+        #expect(
+            sidebarSource.components(
+                separatedBy: ".scholiumContentControlPointerFeedback("
+            ).count == 2
+        )
+        #expect(
+            filterMenuSource.components(
+                separatedBy: ".scholiumContentControlPointerFeedback("
+            ).count == 2
+        )
         #expect(!sidebarSource.contains("@State private var createControlIsHovering"))
         #expect(!sidebarSource.contains("@State private var disclosureControlIsHovering"))
         #expect(!sidebarSource.contains(".scholiumEditorialIconControlSurface("))
@@ -2152,7 +2178,7 @@ struct FrontendArchitectureTests {
         #expect(!outlineRowsSource.contains("ScholiumContentInteractionSurface"))
         #expect(!sidebarSource.contains("Hide Sidebar"))
 
-        for section in ["Integrity", "Metadata", "Order", "Actions"] {
+        for section in ["Folders", "Integrity", "Metadata", "Order", "Actions"] {
             #expect(filterMenuSource.contains("Section(\"\(section)\")"))
         }
         #expect(!sidebarSource.contains("Section(\"Integrity\")"))
@@ -2165,14 +2191,24 @@ struct FrontendArchitectureTests {
         #expect(!sidebarSource.contains("SidebarLiteratureSection("))
         #expect(!sidebarSource.contains(".safeAreaInset(edge: .bottom, spacing: 0)"))
 
-        let brandStart = try #require(sidebarSource.range(of: "private var brandHeader"))
-        let brandEnd = try #require(
+        let headerDefinitionStart = try #require(
+            sidebarSource.range(of: "private var brandHeader")
+        )
+        let headerDefinitionEnd = try #require(
             sidebarSource.range(
                 of: "// MARK: Library source region",
-                range: brandStart.upperBound..<sidebarSource.endIndex
+                range: headerDefinitionStart.upperBound..<sidebarSource.endIndex
             ))
-        let brandHeader = sidebarSource[brandStart.lowerBound..<brandEnd.lowerBound]
-        #expect(brandHeader.contains("Menu {"))
+        let brandHeader = sidebarSource[
+            headerDefinitionStart.lowerBound..<headerDefinitionEnd.lowerBound
+        ]
+        #expect(brandHeader.contains("Text(\"Scholium\")"))
+        #expect(brandHeader.contains("ScholiumTypography.Brand.wordmark"))
+        #expect(!brandHeader.contains("Menu {"))
+        #expect(!brandHeader.contains("rectangle.split.3x1"))
+        #expect(brandHeader.contains("identifier: \"scholium.sidebarSearch\""))
+        #expect(brandHeader.contains("SidebarTriptychAttentionEntry("))
+        #expect(!brandHeader.contains("Text(verbatim: context.triptychName)"))
         #expect(!brandHeader.contains("Image(systemName: \"chevron.down\")"))
         #expect(sidebarSource.contains("ScholiumTriptychWorkspaceNavigator("))
         #expect(

@@ -40,11 +40,6 @@ extension SidebarOutlineSourceList {
         func attach(outlineView: NSOutlineView, scrollView: NSScrollView) {
             self.outlineView = outlineView
             self.scrollView = scrollView
-            (outlineView as? SidebarOutlineView)?.selectionPresentationDidChange = {
-                [weak self, weak outlineView] in
-                guard let self, let outlineView else { return }
-                self.refreshAvailableRows(in: outlineView)
-            }
             (scrollView as? SidebarOutlineScrollView)?.rootMenuProvider = { [weak self] in
                 self?.makeRootMenu()
             }
@@ -52,7 +47,6 @@ extension SidebarOutlineSourceList {
 
         func detach(from scrollView: NSScrollView) {
             (scrollView as? SidebarOutlineScrollView)?.rootMenuProvider = nil
-            (outlineView as? SidebarOutlineView)?.selectionPresentationDidChange = nil
             self.outlineView = nil
             self.scrollView = nil
         }
@@ -247,7 +241,11 @@ extension SidebarOutlineSourceList {
             for item: SidebarOutlineItem,
             in outlineView: NSOutlineView
         ) -> SidebarTreeNodeRow {
-            SidebarTreeNodeRow(
+            let itemRow = outlineView.row(forItem: item)
+            let nativeRow = itemRow >= 0
+                ? outlineView.rowView(atRow: itemRow, makeIfNecessary: false)
+                : nil
+            return SidebarTreeNodeRow(
                 node: item.node,
                 expandedFolders: configuration.$expandedFolders,
                 context: configuration.context,
@@ -255,9 +253,7 @@ extension SidebarOutlineSourceList {
                     effectiveRowSizeStyle: outlineView.effectiveRowSizeStyle
                 ),
                 usesEmphasizedSelectionForeground:
-                    (outlineView as? SidebarOutlineView)?
-                        .usesEmphasizedSelectionForeground == true
-                        && outlineView.selectedRow == outlineView.row(forItem: item)
+                    nativeRow?.isSelected == true && nativeRow?.isEmphasized == true
             )
         }
 
@@ -596,6 +592,11 @@ extension SidebarOutlineSourceList {
                 owner: self
             ) as? SidebarOutlineRowView ?? SidebarOutlineRowView()
             row.identifier = Self.rowIdentifier
+            row.nativeSelectionPresentationDidChange = {
+                [weak self, weak outlineView] in
+                guard let self, let outlineView else { return }
+                self.refreshAvailableRows(in: outlineView)
+            }
             row.configure(
                 item: item,
                 isExpanded: outlineView.isItemExpanded(item),

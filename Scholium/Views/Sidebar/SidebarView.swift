@@ -138,64 +138,36 @@ struct SidebarView: View {
     // MARK: Fixed identity and navigation
 
     private var brandHeader: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                Text("Scholium")
-                    .font(ScholiumTypography.Brand.wordmark)
-                    .scholiumForeground(.primaryText)
-                    .accessibilityAddTraits(.isHeader)
-                    .accessibilityIdentifier("scholium.wordmark")
+        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Text("Scholium")
+                .font(ScholiumTypography.Brand.wordmark)
+                .scholiumForeground(.primaryText)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("scholium.wordmark")
 
-                Spacer(minLength: 0)
+            Spacer(minLength: 0)
 
-                ScholiumInkIconControl(
-                    title: ScholiumL10n.dynamicString("Search"),
-                    systemImage: "magnifyingglass",
-                    identifier: "scholium.sidebarSearch",
-                    isActive: context.searchIsPresented,
-                    action: context.openSearch
-                )
+            ScholiumInkIconControl(
+                title: ScholiumL10n.dynamicString("Search"),
+                systemImage: "magnifyingglass",
+                identifier: "scholium.sidebarSearch",
+                isActive: context.searchIsPresented,
+                action: context.openSearch
+            )
 
-                SidebarTriptychAttentionEntry(
-                    state: triptychAttentionState,
-                    open: context.openAttention,
-                    retry: context.retryAttention
-                )
-                .scholiumAttentionPopover(
-                    anchor: .sidebar,
-                    session: context.attentionPopoverSession
-                )
-            }
-
-            triptychMenu
+            SidebarTriptychAttentionEntry(
+                state: triptychAttentionState,
+                open: context.openAttention,
+                retry: context.retryAttention
+            )
+            .scholiumAttentionPopover(
+                anchor: .sidebar,
+                session: context.attentionPopoverSession
+            )
         }
         .padding(.horizontal, ScholiumMetrics.Library.contentInset)
         .padding(.top, ScholiumGrid.Spacing.sectionSeparation)
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var triptychMenu: some View {
-        Menu {
-            Button(action: context.openSettings) {
-                Label("Manage Triptychs…", systemImage: "folder.badge.gearshape")
-            }
-            Button(action: context.revealCurrentVault) {
-                Label("Reveal Current Vault in Finder", systemImage: "folder")
-            }
-        } label: {
-            Text(verbatim: context.triptychName)
-                .font(ScholiumTypography.interface(.body, emphasis: .strong))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(minHeight: ScholiumMetrics.Accessibility.minimumCustomTarget)
-                .contentShape(Rectangle())
-        }
-        .menuStyle(.borderlessButton)
-        .tint(ScholiumColorRole.primaryText.color)
-        .fixedSize(horizontal: false, vertical: true)
-        .help("Triptych management")
-        .accessibilityLabel("Triptych: \(context.triptychName)")
-        .accessibilityIdentifier("scholium.triptychManagement")
     }
 
     // MARK: Library source region
@@ -268,29 +240,39 @@ struct SidebarView: View {
     private var libraryHeader: some View {
         HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Text("Library")
-                .font(ScholiumTypography.interface(.body, emphasis: .strong))
+                .font(ScholiumTypography.interface(.sectionTitle))
+                .scholiumForeground(.mutedText)
                 .accessibilityAddTraits(.isHeader)
 
             Spacer(minLength: 0)
 
-            ControlGroup {
+            HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                 libraryFilterMenu
 
-                libraryDisclosureButton
-
-                ScholiumEditorialIconControl(systemImage: "plus") { label in
-                    Menu {
-                        rootCreationActions
-                    } label: {
-                        label
-                    }
+                Menu {
+                    rootCreationActions
+                } label: {
+                    Image(systemName: "plus")
+                        .scholiumForeground(.mutedText)
+                        .frame(
+                            width: ScholiumMetrics.Accessibility.minimumCustomTarget,
+                            height: ScholiumMetrics.Accessibility.minimumCustomTarget
+                        )
+                        .accessibilityHidden(true)
                 }
+                .frame(
+                    width: ScholiumMetrics.Accessibility.preferredCustomTarget,
+                    height: ScholiumMetrics.Accessibility.preferredCustomTarget
+                )
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .tint(ScholiumColorRole.mutedText.color)
+                .scholiumContentControlPointerFeedback(in: Circle())
                 .disabled(!context.canMutateLibrary)
                 .help("Create New")
                 .accessibilityLabel("Create New")
                 .accessibilityIdentifier("scholium.libraryCreate")
             }
-            .controlGroupStyle(.automatic)
         }
         .frame(
             maxWidth: .infinity,
@@ -310,32 +292,6 @@ struct SidebarView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.libraryHeader")
-    }
-
-    private var libraryDisclosureButton: some View {
-        let shouldCollapse = !visibleExpandedFolderIDs.isEmpty
-        let title: LocalizedStringKey = shouldCollapse
-            ? "Collapse All Folders"
-            : "Expand All Folders"
-        let symbol = shouldCollapse
-            ? "chevron.up.2"
-            : "chevron.down.2"
-
-        return ScholiumEditorialIconControl(systemImage: symbol) { label in
-            Button {
-                if shouldCollapse {
-                    collapseAllFolders()
-                } else {
-                    expandAllFolders()
-                }
-            } label: {
-                label
-            }
-        }
-        .disabled(expandableFolderIDs.isEmpty)
-        .help(title)
-        .accessibilityLabel(title)
-        .accessibilityIdentifier("scholium.libraryDisclosureToggle")
     }
 
     private var expandableFolderIDs: Set<String> {
@@ -525,6 +481,15 @@ struct SidebarView: View {
             filters: controller.library.filters,
             sortOrder: controller.library.sortOrder,
             options: context.filterOptions,
+            canChangeFolderDisclosure: !expandableFolderIDs.isEmpty,
+            shouldCollapseFolders: !visibleExpandedFolderIDs.isEmpty,
+            toggleAllFolders: {
+                if visibleExpandedFolderIDs.isEmpty {
+                    expandAllFolders()
+                } else {
+                    collapseAllFolders()
+                }
+            },
             replaceFilters: controller.replaceFilters,
             selectSortOrder: context.selectSortOrder,
             clearFilters: clearAllFilters

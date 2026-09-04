@@ -144,7 +144,7 @@ func withScholiumLifecycleDeadline(
 /// never searches AppKit's global window list and never owns a window or split
 /// controller; each scene explicitly registers and unregisters its capability.
 @MainActor
-final class ScholiumWindowLifecycleRegistry {
+final class ScholiumWindowLifecycleRegistry: ObservableObject {
     typealias Flusher = @MainActor () async throws -> Void
 
     private enum Readiness {
@@ -155,6 +155,7 @@ final class ScholiumWindowLifecycleRegistry {
 
     private final class Entry {
         var isRegistered = false
+        var triptychID: UUID?
         var readiness: Readiness = .pending
         var flusher: Flusher?
         var waiters: [
@@ -165,6 +166,7 @@ final class ScholiumWindowLifecycleRegistry {
     private var entries: [UUID: Entry] = [:]
     private var activeWorkspaceWindowID: UUID?
     private let policy: ScholiumLifecyclePolicy
+    @Published private(set) var workspaceContextRevision: UInt64 = 0
 
     init(policy: ScholiumLifecyclePolicy = ScholiumLifecyclePolicy()) {
         self.policy = policy
@@ -172,6 +174,24 @@ final class ScholiumWindowLifecycleRegistry {
 
     var hasRegisteredWindows: Bool {
         entries.values.contains(where: \.isRegistered)
+    }
+
+    /// Window identity remains lifecycle-owned. A subtitle is needed only when
+    /// the currently open Workspace windows belong to several distinct
+    /// Triptychs; multiple windows over one Triptych remain unambiguous.
+    func showsTriptychSubtitle(in windowID: UUID) -> Bool {
+        guard entries[windowID]?.triptychID != nil else { return false }
+        let openTriptychIDs = Set(entries.values.compactMap { entry in
+            entry.isRegistered ? entry.triptychID : nil
+        })
+        return openTriptychIDs.count > 1
+    }
+
+    func updateWorkspaceTriptych(id: UUID, triptychID: UUID?) {
+        let entry = entry(for: id)
+        guard entry.triptychID != triptychID else { return }
+        entry.triptychID = triptychID
+        advanceWorkspaceContextRevision()
     }
 
     /// Returns true only when focus moved from a different Scholium Workspace
@@ -185,12 +205,17 @@ final class ScholiumWindowLifecycleRegistry {
 
     func register(id: UUID, flusher: @escaping Flusher) {
         let entry = entry(for: id)
+        let publishesExistingWorkspaceContext =
+            !entry.isRegistered && entry.triptychID != nil
         if !entry.isRegistered,
            case .failed(.unregisteredBeforeReady) = entry.readiness {
             entry.readiness = .pending
         }
         entry.isRegistered = true
         entry.flusher = flusher
+        if publishesExistingWorkspaceContext {
+            advanceWorkspaceContextRevision()
+        }
     }
 
     func markReady(id: UUID) {
@@ -258,8 +283,13 @@ final class ScholiumWindowLifecycleRegistry {
 
     func unregister(id: UUID) {
         guard let entry = entries[id] else { return }
+        let publishedWorkspaceContext = entry.triptychID != nil
         entry.isRegistered = false
+        entry.triptychID = nil
         entry.flusher = nil
+        if publishedWorkspaceContext {
+            advanceWorkspaceContextRevision()
+        }
         switch entry.readiness {
         case .failed:
             return
@@ -268,6 +298,12 @@ final class ScholiumWindowLifecycleRegistry {
             entry.readiness = .failed(error)
             resumeWaiters(in: entry, with: .failure(error))
         }
+    }
+
+    private func advanceWorkspaceContextRevision() {
+        workspaceContextRevision = workspaceContextRevision == .max
+            ? 0
+            : workspaceContextRevision + 1
     }
 
     func flushAll() async throws {

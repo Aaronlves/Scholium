@@ -31,8 +31,9 @@ and Library presentation without restating those workflows.
 
 Each configured window contains one native split view:
 
-1. **Sidebar**: Scholium/Triptych identity, Analyses–Topics–Works navigation,
-   Triptych Notifications, and the selected workspace's Library.
+1. **Sidebar**: Scholium identity, Triptych selection,
+   Analyses–Topics–Works navigation, Triptych Notifications, and the selected
+   workspace's Library.
 2. **Document**: the selected Note or the restrained no-document state.
 3. **Apparatus**: the trailing Research Inspector's Overview, Outgoing, and
    Incoming projections.
@@ -61,7 +62,8 @@ The native toolbar has stable leading Sidebar and Back/Forward controls,
 Document identity/actions in the center, and an Inspector projection group plus
 trailing Inspector visibility control in the Apparatus section.
 Search and Triptych Notifications sit at the logical trailing edge of the
-Sidebar header beside the Scholium wordmark, not in the native toolbar.
+Sidebar header, not in the native toolbar. Triptych opening and creation remain
+in the native File menu; open-window switching remains in the Window menu.
 Back/Forward traverse successful document visits only. The toolbar is stable
 during loading and uses live safe areas. Pane visibility is expressed by the
 actual pane, not duplicate controls or persistent custom selection styling.
@@ -82,10 +84,16 @@ save/conflict buffer and provide Retry. Window-session persistence is
 best-effort only after source safety. Cold launch begins with no document
 selected unless the researcher explicitly opens one.
 
-The Sidebar header's first row shows the Scholium wordmark followed at its
-logical trailing edge by Search and Triptych Notifications; Triptych identity
-occupies the next row in the same native section-heading tier as Library,
-without decorative tracking. The no-document state contains only a decorative
+The Sidebar header uses one row: the Scholium wordmark is the primary brand
+title, followed at the logical trailing edge by Search and Triptych
+Notifications. It contains no persistent Triptych selector. The native File
+menu opens a registered Triptych in its own window and creates a Triptych;
+Settings manages registrations and the Window menu switches among open
+windows. The current Triptych name does not remain visible in the Sidebar.
+When open Workspace windows belong to more than one distinct Triptych, each
+native window subtitle names its Triptych; the subtitle remains absent for one
+Triptych or several windows over the same Triptych. The no-document state
+contains only a decorative
 document symbol, **No Document Selected**, and **Select a note in the Library
 to read or edit.** as one read-only accessibility group.
 
@@ -119,9 +127,9 @@ native navigation selection; rows show localized exact Note counts without
 role descriptions, progress, pipeline state, or Attention badges. Unknown
 initial count is unavailable, not zero. The native source list owns pointer
 behavior, focus, active/inactive selection, and Up/Down traversal; Scholium does
-not reproduce those states in a parallel custom control. Pointer activation
-retains AppKit's unemphasized selection; keyboard focus entry or navigation
-enables its emphasized selection without changing the selected destination.
+not reproduce or override those states according to input device. AppKit
+emphasizes selection while the list is focused in the key window and retains
+its inactive selection presentation otherwise.
 Workspace and Library rows follow the effective small, medium, or large native Source List size;
 enlarged interface text requests the native large presentation rather than a
 separate fixed row metric.
@@ -138,16 +146,20 @@ content or move focus.
 
 Library provides:
 
-- one native Filter menu for Integrity, Metadata, and Order;
-- one adaptive Expand/Collapse All control;
+- one native Organize menu for global Folder expansion/collapse, Integrity,
+  Metadata, and Order;
 - one Add menu for immediate New Note and New Folder;
 - a single scrollable hierarchy of real folders and Notes, including root Notes
   and empty folders; and
 - explicit empty, loading, stale, and recoverable error states.
 
-Filter, Expand/Collapse All, and Add form one compact native control group in
-the Library header. They retain separate roles, names, disabled states, menus,
-and focus targets; the group supplies relationship and system geometry only.
+Library is a muted section label rather than a competing page title. Organize
+and Add remain separate native menus and focus targets, but appear as quiet,
+borderless monochrome symbols without persistent glass containers or redundant
+menu chevrons. A shallow neutral circular surface appears only on hover and
+press; macOS retains activation, menu presentation, keyboard focus, disabled
+rendering, and accessibility. Folder-local Expand/Collapse remains in each
+Folder's contextual and accessibility actions.
 
 The application-owned root `Attachments` directory and everything beneath it
 remain on disk but are excluded from the Library hierarchy. Document

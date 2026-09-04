@@ -133,10 +133,9 @@ Command-armed link feedback, the same annotation-template presentation, and a
 current-buffer one-definition footnote projection. Neither creates another
 source, selection, or focus owner.
 `ScholiumTriptychWorkspaceNavigator` is a thin `NSTableView` adapter for the
-three vertical workspace rows and neutral Note totals. One shared input-modality
-adapter asks AppKit for unemphasized pointer selection and emphasized keyboard
-selection; AppKit still owns source-list geometry, color, hover, focus,
-active/inactive appearance, and Up/Down traversal. The coordinator only projects
+three vertical workspace rows and neutral Note totals. AppKit owns source-list
+geometry, color, hover, focus, active/inactive selection, and Up/Down traversal
+without a Scholium input-modality override. The coordinator only projects
 availability and publishes a selected workspace intent. Scholium semantic text
 colors adapt to AppKit's emphasized selected-row background without adding an
 Accent mark, underline, border, shadow, custom corner, or parallel transition.
@@ -149,8 +148,8 @@ or feature-owned when its semantics or interaction genuinely differ.
 The Research Inspector's icon-only projection group remains a native AppKit
 toolbar control because its placement and icon semantics differ from bounded
 text choices in content.
-`ScholiumEditorialIconControl` is the single presentation owner for Filter,
-disclosure, and Add in the Library header. It gives all three one exact 28pt
+`ScholiumEditorialIconControl` is the single presentation owner for matching
+compact icon actions in content-owned headers. It gives each one an exact 28pt
 target and semantic ink while a regular circular Glass Button or Menu owns
 hover, focus, press, active-window, and accessibility adaptation. The 20pt label
 inside the native regular control preserves the established 28pt outer size;
@@ -171,15 +170,26 @@ size. AppKit owns hover, press, focus, active-window, Reduce Transparency, menu
 tracking, and disabled rendering; SwiftUI does not reconstruct those states or
 paint a toolbar band.
 
-The Sidebar Search and Notifications Glass controls locally clear the
-workspace Accent tint. Their system material therefore remains monochrome;
-Scholium color stays limited to the explicit nonzero Notifications dot and
-other semantic states rather than staining ordinary control backgrounds.
-The Library header contains its Filter, adaptive disclosure, and Add controls
-inside one SwiftUI `ControlGroup`. Each child remains a native Button or Menu
-with its own label, disabled state, and focus target; the group owns only their
-system relationship and glass geometry. Triptych identity uses the same System
-Sans section tier as Library without a second tracking recipe. Library Folder
+The Sidebar Search and Notifications Glass controls locally clear
+the workspace Accent tint. Their system material therefore remains
+monochrome; Scholium color stays limited to the explicit nonzero Notifications
+dot and other semantic states rather than staining ordinary control
+backgrounds. Triptych opening and creation stay in the native File menu,
+registration management stays in Settings, and open-window switching stays in
+the Window menu, so the Sidebar adds no persistent context selector.
+`ScholiumWindowLifecycleRegistry` publishes only exact registered
+window-to-Triptych membership, allowing SwiftUI's native window subtitle to
+appear when those windows span more than one distinct Triptych and disappear
+again when they do not.
+The Library header contains separate borderless SwiftUI Menus for Organize and
+Add; global Folder disclosure moves into Organize beside Filter and Order. Each
+Menu retains its own label, disabled state, focus target, activation, and menu
+presentation while hiding the redundant indicator and persistent container.
+The shared zero-hit-test pointer reader supplies only the shallow circular
+hover and press surface. Their symbols and the Library section title use Muted
+Text. The Scholium wordmark owns the Sidebar's brand-title role while Library
+begins the subordinate section; the current Triptych name adds no persistent
+competing title. Library Folder
 rows supply a decorative monochrome Folder glyph in the same semantic icon slot
 as Note symbols, while AppKit's unmodified outline disclosure remains the sole
 owner of collapsed and expanded state indication. The source list does not

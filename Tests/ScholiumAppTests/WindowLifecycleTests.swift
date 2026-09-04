@@ -43,6 +43,40 @@ struct WindowLifecycleTests {
         #expect(restored.windowID == windowID)
     }
 
+    @Test("Triptych subtitle appears only across distinct open Triptychs")
+    func triptychSubtitleScope() {
+        let registry = ScholiumWindowLifecycleRegistry()
+        let firstWindowID = UUID()
+        let secondWindowID = UUID()
+        let firstTriptychID = UUID()
+        let secondTriptychID = UUID()
+
+        registry.updateWorkspaceTriptych(
+            id: firstWindowID,
+            triptychID: firstTriptychID
+        )
+        registry.register(id: firstWindowID) {}
+        #expect(!registry.showsTriptychSubtitle(in: firstWindowID))
+
+        registry.register(id: secondWindowID) {}
+        registry.updateWorkspaceTriptych(
+            id: secondWindowID,
+            triptychID: firstTriptychID
+        )
+        #expect(!registry.showsTriptychSubtitle(in: firstWindowID))
+        #expect(!registry.showsTriptychSubtitle(in: secondWindowID))
+
+        registry.updateWorkspaceTriptych(
+            id: secondWindowID,
+            triptychID: secondTriptychID
+        )
+        #expect(registry.showsTriptychSubtitle(in: firstWindowID))
+        #expect(registry.showsTriptychSubtitle(in: secondWindowID))
+
+        registry.unregister(id: secondWindowID)
+        #expect(!registry.showsTriptychSubtitle(in: firstWindowID))
+    }
+
     @Test("Readiness is resolved for one exact route identity")
     func exactReadinessIsolation() async {
         let registry = ScholiumWindowLifecycleRegistry()

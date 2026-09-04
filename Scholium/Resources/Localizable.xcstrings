@@ -5961,6 +5961,16 @@
         }
       }
     },
+    "Folders" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件夹"
+          }
+        }
+      }
+    },
     "Font size" : {
       "localizations" : {
         "en" : {
@@ -9725,6 +9735,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "打开所选搜索结果"
+          }
+        }
+      }
+    },
+    "Organize Library" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "整理资料库"
+          }
+        }
+      }
+    },
+    "Organize, filter, and sort Library notes" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "整理、筛选资料库笔记并调整排序"
           }
         }
       }

@@ -22,25 +22,29 @@
   AppKit toolbar items own their native Liquid Glass, and compact Sidebar-header
   controls retain their established 28pt targets. The 70 × 20 Inspector
   projection control and split geometry remain unchanged.
-- The Sidebar header places Search and Notifications at the logical trailing
-  edge of the Scholium wordmark. A nonzero queue uses one Accent dot on the
+- The Sidebar header presents the Scholium wordmark as its primary brand title,
+  with Search and Notifications controls at the logical trailing edge and no
+  persistent Triptych selector. File owns New/Open Triptych, Settings manages
+  registrations, and Window owns switching among open windows. Distinct
+  concurrently open Triptychs receive native window subtitles; one Triptych
+  does not. A nonzero
+  queue uses one Accent dot on the
   bell, keeps its exact count accessible, and never prints a numeric counter.
   The toolbar shows Agent Changes only while confirmed local changes exist.
 
 ## Library, Document, and Inspector
 
 - Library presents Analyses, Topics, and Works through a native source-list
-  navigator whose shared input-modality adapter keeps pointer selection
-  unemphasized and enables native emphasis for keyboard focus/navigation.
-  AppKit still owns selection drawing, focus, active/inactive appearance,
+  navigator with no input-modality presentation adapter. AppKit owns selection
+  drawing, focus, active/inactive appearance,
   pointer behavior, and Up/Down traversal. Its native outline likewise owns
   row selection, focus, disclosure, and drag feedback;
   both lists follow AppKit's effective source-list size, with the large system
   row style used for enlarged interface presentation. Scholium supplies
-  semantic text colors, exact counts, content, and valid actions. Triptych and
-  Library use one System Sans section-heading tier without decorative tracking;
-  the Library's Filter, adaptive disclosure, and Add controls form one native
-  `ControlGroup`. File-tree rows use the Finder-style native grid: AppKit owns
+  semantic text colors, exact counts, content, and valid actions. Scholium is
+  the brand title and Library is its muted subordinate section; the Library's
+  Organize and Add actions are separate borderless native menus, with global
+  Folder disclosure inside Organize. File-tree rows use the Finder-style native grid: AppKit owns
   the Folder disclosure gutter and its state, monochrome Folder and Note symbols
   share the item-type column, and their titles share the following text column.
   The 16pt Library hierarchy step is applied through AppKit's native outline

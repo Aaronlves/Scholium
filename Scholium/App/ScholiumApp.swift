@@ -654,8 +654,8 @@ private struct ScholiumWindowObservedRoot: View {
     @ObservedObject private var presentationRouter: WindowPresentationRouter
     @ObservedObject private var windowWorkspaceController: WindowWorkspaceController
     @ObservedObject private var commandObservation: WindowCommandObservation
+    @ObservedObject private var lifecycleRegistry: ScholiumWindowLifecycleRegistry
     private let route: TriptychWindowRoute
-    private let lifecycleRegistry: ScholiumWindowLifecycleRegistry
     @StateObject private var fileSelectionPresenter = ScholiumFileSelectionPresenter()
     @State private var destinationBootstrapWindowID: UUID?
     @State private var accessRecovery: WorkspaceAccessRecovery?
@@ -675,8 +675,8 @@ private struct ScholiumWindowObservedRoot: View {
             wrappedValue: appState.windowWorkspaceController
         )
         _commandObservation = ObservedObject(wrappedValue: appState.commandObservation)
+        _lifecycleRegistry = ObservedObject(wrappedValue: lifecycleRegistry)
         self.route = route
-        self.lifecycleRegistry = lifecycleRegistry
         _accessRecovery = State(
             initialValue: appState.windowWorkspaceController.state.accessRecovery
         )
@@ -691,6 +691,7 @@ private struct ScholiumWindowObservedRoot: View {
             windowCoordinator: windowCoordinator
         )
             .navigationTitle(workspaceWindowTitle)
+            .navigationSubtitle(workspaceWindowSubtitle)
             .toolbar(removing: .sidebarToggle)
             .tint(ScholiumColorRole.accent.color)
             .focusedSceneObject(appState)
@@ -731,6 +732,12 @@ private struct ScholiumWindowObservedRoot: View {
             .preferredColorScheme(shellState.colorScheme.swiftUIColorScheme)
             .onChange(of: windowWorkspaceController.state.accessRecovery) { _, recovery in
                 accessRecovery = recovery
+            }
+            .onChange(of: appState.workspaceAssignment?.id, initial: true) { _, triptychID in
+                lifecycleRegistry.updateWorkspaceTriptych(
+                    id: route.windowID,
+                    triptychID: triptychID
+                )
             }
             .task(id: presentationRouter.fileImport) {
                 await selectMarkdownFilesForImportIfRequested()
@@ -812,6 +819,13 @@ private struct ScholiumWindowObservedRoot: View {
     private var workspaceWindowTitle: String {
         let _ = commandObservation.revision
         return appState.currentNote.map { $0.title ?? $0.displayName } ?? "Scholium"
+    }
+
+    private var workspaceWindowSubtitle: String {
+        guard lifecycleRegistry.showsTriptychSubtitle(in: route.windowID) else {
+            return ""
+        }
+        return appState.workspaceAssignment?.triptych.name ?? ""
     }
 
     private func selectMarkdownFilesForImportIfRequested() async {

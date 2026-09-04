@@ -30,6 +30,9 @@ struct SidebarLibraryFilterMenu: View {
     let filters: DiscoveryFilterState
     let sortOrder: NoteSortOrder
     let options: SidebarLibraryFilterOptions
+    let canChangeFolderDisclosure: Bool
+    let shouldCollapseFolders: Bool
+    let toggleAllFolders: () -> Void
     let replaceFilters: (DiscoveryFilterState) -> Void
     let selectSortOrder: (NoteSortOrder) -> Void
     let clearFilters: () -> Void
@@ -39,98 +42,119 @@ struct SidebarLibraryFilterMenu: View {
     }
 
     var body: some View {
-        ScholiumEditorialIconControl(
-            systemImage: activeFilterCount == 0
-                ? "line.3.horizontal.decrease"
-                : "line.3.horizontal.decrease.circle.fill",
-            isActive: activeFilterCount > 0
-        ) { label in
-            Menu {
-                Section("Integrity") {
-                    Toggle("Needs Attention", isOn: filterBinding(\.needsAttention))
-                        .disabled(!options.catalogIsAvailable)
-                    Toggle(
-                        "Link Annotations",
-                        isOn: filterBinding(\.hasLinkAnnotations)
-                    )
-                    .disabled(!options.graphIsAvailable)
-                    Toggle(
-                        "Malformed Metadata",
-                        isOn: filterBinding(\.hasMalformedMetadata)
-                    )
+        Menu {
+            Section("Folders") {
+                Button(
+                    shouldCollapseFolders
+                        ? "Collapse All Folders"
+                        : "Expand All Folders",
+                    action: toggleAllFolders
+                )
+                .disabled(!canChangeFolderDisclosure)
+            }
+            Section("Integrity") {
+                Toggle("Needs Attention", isOn: filterBinding(\.needsAttention))
                     .disabled(!options.catalogIsAvailable)
+                Toggle(
+                    "Link Annotations",
+                    isOn: filterBinding(\.hasLinkAnnotations)
+                )
+                .disabled(!options.graphIsAvailable)
+                Toggle(
+                    "Malformed Metadata",
+                    isOn: filterBinding(\.hasMalformedMetadata)
+                )
+                .disabled(!options.catalogIsAvailable)
+            }
+            Section("Metadata") {
+                Menu("Keyword") {
+                    Button("All Keywords") { updateFilters { $0.tag = nil } }
+                    Divider()
+                    ForEach(options.tags, id: \.self) { tag in
+                        filterChoice(tag, selected: filters.tag == tag) {
+                            updateFilters { $0.tag = tag }
+                        }
+                    }
                 }
-                Section("Metadata") {
-                    Menu("Keyword") {
-                        Button("All Keywords") { updateFilters { $0.tag = nil } }
+                .disabled(options.tags.isEmpty)
+                if !options.authors.isEmpty {
+                    Menu("Author") {
+                        Button("Any Author") { updateFilters { $0.author = nil } }
                         Divider()
-                        ForEach(options.tags, id: \.self) { tag in
-                            filterChoice(tag, selected: filters.tag == tag) {
-                                updateFilters { $0.tag = tag }
-                            }
-                        }
-                    }
-                    .disabled(options.tags.isEmpty)
-                    if !options.authors.isEmpty {
-                        Menu("Author") {
-                            Button("Any Author") { updateFilters { $0.author = nil } }
-                            Divider()
-                            ForEach(options.authors, id: \.self) { author in
-                                filterChoice(author, selected: filters.author == author) {
-                                    updateFilters { $0.author = author }
-                                }
+                        ForEach(options.authors, id: \.self) { author in
+                            filterChoice(author, selected: filters.author == author) {
+                                updateFilters { $0.author = author }
                             }
                         }
                     }
                 }
-                if !options.propertyKeys.isEmpty {
-                    Section("Metadata") {
-                        Button("Any Metadata Field") {
-                            updateFilters {
-                                $0.propertyKey = nil
-                                $0.propertyValue = nil
-                            }
+            }
+            if !options.propertyKeys.isEmpty {
+                Section("Metadata") {
+                    Button("Any Metadata Field") {
+                        updateFilters {
+                            $0.propertyKey = nil
+                            $0.propertyValue = nil
                         }
-                        ForEach(options.propertyKeys, id: \.self) { key in
-                            Menu(propertyLabel(key)) {
-                                ForEach(options.propertyValues[key] ?? [], id: \.self) { value in
-                                    filterChoice(
-                                        value,
-                                        selected: filters.propertyKey == key
-                                            && filters.propertyValue == value
-                                    ) {
-                                        updateFilters {
-                                            $0.propertyKey = key
-                                            $0.propertyValue = value
-                                        }
+                    }
+                    ForEach(options.propertyKeys, id: \.self) { key in
+                        Menu(propertyLabel(key)) {
+                            ForEach(options.propertyValues[key] ?? [], id: \.self) { value in
+                                filterChoice(
+                                    value,
+                                    selected: filters.propertyKey == key
+                                        && filters.propertyValue == value
+                                ) {
+                                    updateFilters {
+                                        $0.propertyKey = key
+                                        $0.propertyValue = value
                                     }
                                 }
                             }
                         }
                     }
                 }
-                Section("Order") {
-                    Menu("Sort") {
-                        ForEach(NoteSortOrder.allCases) { order in
-                            filterChoice(order.title, selected: sortOrder == order) {
-                                selectSortOrder(order)
-                            }
+            }
+            Section("Order") {
+                Menu("Sort") {
+                    ForEach(NoteSortOrder.allCases) { order in
+                        filterChoice(order.title, selected: sortOrder == order) {
+                            selectSortOrder(order)
                         }
                     }
                 }
-                if activeFilterCount > 0 {
-                    Section("Actions") {
-                        Button("Clear All Filters", action: clearFilters)
-                    }
-                }
-            } label: {
-                label
             }
+            if activeFilterCount > 0 {
+                Section("Actions") {
+                    Button("Clear All Filters", action: clearFilters)
+                }
+            }
+        } label: {
+            Image(systemName: activeFilterCount == 0
+                ? "line.3.horizontal.decrease"
+                : "line.3.horizontal.decrease.circle.fill")
+                .scholiumForeground(.mutedText)
+                .frame(
+                    width: ScholiumMetrics.Accessibility.minimumCustomTarget,
+                    height: ScholiumMetrics.Accessibility.minimumCustomTarget
+                )
+                .accessibilityHidden(true)
         }
+        .frame(
+            width: ScholiumMetrics.Accessibility.preferredCustomTarget,
+            height: ScholiumMetrics.Accessibility.preferredCustomTarget
+        )
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .tint(ScholiumColorRole.mutedText.color)
+        .scholiumContentControlPointerFeedback(
+            isActive: activeFilterCount > 0,
+            in: Circle()
+        )
         .help(activeFilterCount == 0
-            ? "Filter and sort Library notes"
+            ? "Organize, filter, and sort Library notes"
             : "\(activeFilterCount) Library filters active")
-        .accessibilityLabel("Library filters")
+        .accessibilityLabel("Organize Library")
         .accessibilityValue(activeFilterCount == 0
             ? "No filters active"
             : "\(activeFilterCount) filters active")

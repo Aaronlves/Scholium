@@ -1,61 +1,6 @@
 import AppKit
 import SwiftUI
 
-enum SidebarSourceListInputModality: Equatable {
-    case pointer
-    case keyboard
-}
-
-/// One input-modality owner shared by the Sidebar's native table and outline.
-/// AppKit still draws selection and focus; this adapter only decides whether a
-/// retained selection receives the emphasized first-responder presentation.
-/// Pointer activation keeps a quiet native selection, while keyboard entry or
-/// navigation requests AppKit's emphasized selection.
-@MainActor
-final class SidebarSourceListSelectionPresentation {
-    private(set) var inputModality: SidebarSourceListInputModality = .pointer
-    private var lastAppliedEmphasis: Bool?
-
-    func recordPointerInteraction() {
-        inputModality = .pointer
-    }
-
-    func recordKeyboardInteraction() {
-        inputModality = .keyboard
-    }
-
-    func recordResponderEvent(_ eventType: NSEvent.EventType?) {
-        switch eventType {
-        case .leftMouseDown, .rightMouseDown, .otherMouseDown:
-            recordPointerInteraction()
-        case .keyDown:
-            recordKeyboardInteraction()
-        default:
-            break
-        }
-    }
-
-    func selectionIsEmphasized(in tableView: NSTableView) -> Bool {
-        guard inputModality == .keyboard,
-              let window = tableView.window else { return false }
-        return window.isKeyWindow && window.firstResponder === tableView
-    }
-
-    /// Returns true only when hosted row content must refresh its foreground.
-    @discardableResult
-    func synchronize(in tableView: NSTableView) -> Bool {
-        let isEmphasized = selectionIsEmphasized(in: tableView)
-        tableView.enumerateAvailableRowViews { rowView, _ in
-            guard rowView.isSelected,
-                  rowView.isEmphasized != isEmphasized else { return }
-            rowView.isEmphasized = isEmphasized
-        }
-        let changed = lastAppliedEmphasis != isEmphasized
-        lastAppliedEmphasis = isEmphasized
-        return changed
-    }
-}
-
 func sidebarControlSize(
     for rowSizeStyle: NSTableView.RowSizeStyle
 ) -> NSControl.ControlSize {
@@ -193,6 +138,22 @@ private final class SidebarOutlineRowHostingView: NSHostingView<SidebarTreeNodeR
 
 @MainActor
 final class SidebarOutlineRowView: NSTableRowView {
+    var nativeSelectionPresentationDidChange: (() -> Void)?
+
+    override var isSelected: Bool {
+        didSet {
+            guard oldValue != isSelected else { return }
+            nativeSelectionPresentationDidChange?()
+        }
+    }
+
+    override var isEmphasized: Bool {
+        didSet {
+            guard oldValue != isEmphasized else { return }
+            nativeSelectionPresentationDidChange?()
+        }
+    }
+
     func configure(
         item: SidebarOutlineItem,
         isExpanded: Bool,
@@ -222,44 +183,6 @@ final class SidebarOutlineRowView: NSTableRowView {
 
 @MainActor
 final class SidebarOutlineView: NSOutlineView {
-    private let selectionPresentation = SidebarSourceListSelectionPresentation()
-    var selectionPresentationDidChange: (() -> Void)?
-
-    var usesEmphasizedSelectionForeground: Bool {
-        selectionPresentation.selectionIsEmphasized(in: self)
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        selectionPresentation.recordPointerInteraction()
-        super.mouseDown(with: event)
-        synchronizeSelectionPresentation()
-    }
-
-    override func keyDown(with event: NSEvent) {
-        selectionPresentation.recordKeyboardInteraction()
-        super.keyDown(with: event)
-        synchronizeSelectionPresentation()
-    }
-
-    override func becomeFirstResponder() -> Bool {
-        let becameFirstResponder = super.becomeFirstResponder()
-        guard becameFirstResponder else { return false }
-        selectionPresentation.recordResponderEvent(NSApp.currentEvent?.type)
-        synchronizeSelectionPresentation()
-        return true
-    }
-
-    override func resignFirstResponder() -> Bool {
-        let resignedFirstResponder = super.resignFirstResponder()
-        if resignedFirstResponder { synchronizeSelectionPresentation() }
-        return resignedFirstResponder
-    }
-
-    override func viewWillDraw() {
-        super.viewWillDraw()
-        synchronizeSelectionPresentation()
-    }
-
     override func canDragRows(
         with rowIndexes: IndexSet,
         at mouseDownPoint: NSPoint
@@ -269,12 +192,6 @@ final class SidebarOutlineView: NSOutlineView {
         // native row; the data source's process-private pasteboard writer
         // remains the per-item authorization boundary.
         return rowIndexes.count == 1
-    }
-
-    private func synchronizeSelectionPresentation() {
-        if selectionPresentation.synchronize(in: self) {
-            selectionPresentationDidChange?()
-        }
     }
 }
 

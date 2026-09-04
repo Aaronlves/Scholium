@@ -21,6 +21,9 @@ extension ScholiumUITests {
         XCTAssertLessThan(wordmark.frame.maxX, search.frame.minX)
         XCTAssertLessThan(search.frame.maxX, notifications.frame.minX)
         XCTAssertFalse(
+            app.descendants(matching: .any)["scholium.triptychManagement"].exists
+        )
+        XCTAssertFalse(
             app.descendants(matching: .any)["scholium.folderRow.Attachments"].exists
         )
         XCTAssertFalse(app.toolbars.firstMatch.buttons["Agent Changes"].exists)
@@ -253,16 +256,40 @@ extension ScholiumUITests {
         waitForCurrentDocumentSurface()
         let window = app.windows.firstMatch
         let originalFrame = window.frame
-        let triptychManagement = app.menuButtons[
-            "scholium.triptychManagement"
-        ].firstMatch
-        XCTAssertTrue(triptychManagement.waitForExistence(timeout: 5))
+        let wordmark = app.descendants(matching: .any)["scholium.wordmark"]
+        XCTAssertTrue(wordmark.waitForExistence(timeout: 5))
         let hideSidebar = app.buttons["Hide Sidebar"]
         XCTAssertTrue(hideSidebar.waitForExistence(timeout: 5))
         let librarySurface = app.descendants(matching: .any)["scholium.librarySurface"]
         XCTAssertTrue(librarySurface.waitForExistence(timeout: 5))
-        XCTAssertGreaterThanOrEqual(triptychManagement.frame.minX, librarySurface.frame.minX)
-        XCTAssertLessThan(triptychManagement.frame.maxX, librarySurface.frame.maxX)
+        XCTAssertFalse(
+            app.descendants(matching: .any)["scholium.triptychManagement"].exists
+        )
+        let fileMenu = app.menuBars.menuBarItems["File"]
+        XCTAssertTrue(fileMenu.waitForExistence(timeout: 5))
+        fileMenu.click()
+        XCTAssertTrue(app.menuItems["New Triptych…"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.menuItems["Open Triptych"].exists)
+        app.typeKey(.escape, modifierFlags: [])
+
+        let organize = app.descendants(matching: .any)[
+            "scholium.libraryFilters"
+        ].firstMatch
+        let create = app.descendants(matching: .any)[
+            "scholium.libraryCreate"
+        ].firstMatch
+        XCTAssertTrue(organize.waitForExistence(timeout: 5))
+        XCTAssertTrue(create.waitForExistence(timeout: 5))
+        XCTAssertLessThanOrEqual(organize.frame.maxX, create.frame.minX)
+        XCTAssertFalse(
+            app.descendants(matching: .any)["scholium.libraryDisclosureToggle"].exists
+        )
+        organize.click()
+        let collapseAll = app.menuItems["Collapse All Folders"]
+        let expandAll = app.menuItems["Expand All Folders"]
+        XCTAssertTrue(collapseAll.exists || expandAll.exists)
+        app.typeKey(.escape, modifierFlags: [])
+
         let folderRow = app.descendants(matching: .any)[
             "scholium.folderRow.Cluster-01"
         ]
@@ -302,8 +329,8 @@ extension ScholiumUITests {
         add(shellScreenshot)
     }
 
-    /// The Triptych selector is a native source list: a pointer click retains a
-    /// quiet selection, then AppKit's Down Arrow enables keyboard emphasis and
+    /// The Triptych selector is a native source list: pointer and keyboard
+    /// selection share AppKit's key-window focus presentation and Down Arrow
     /// publishes the next workspace.
     @MainActor
     func testNativeTriptychWorkspaceNavigatorUsesSelectionAndArrowKeys() throws {

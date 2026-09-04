@@ -390,17 +390,20 @@ struct SidebarTreeTests {
     }
 
     @MainActor
-    @Test("Sidebar selection emphasis follows keyboard rather than pointer input")
-    func nativeSelectionInputModality() {
-        let presentation = SidebarSourceListSelectionPresentation()
+    @Test("Sidebar hosted content follows AppKit row selection presentation")
+    func nativeSelectionPresentationBridge() {
+        let row = SidebarOutlineRowView()
+        var presentationChanges = 0
+        row.nativeSelectionPresentationDidChange = {
+            presentationChanges += 1
+        }
 
-        #expect(presentation.inputModality == .pointer)
-        presentation.recordKeyboardInteraction()
-        #expect(presentation.inputModality == .keyboard)
-        presentation.recordResponderEvent(.leftMouseDown)
-        #expect(presentation.inputModality == .pointer)
-        presentation.recordResponderEvent(.keyDown)
-        #expect(presentation.inputModality == .keyboard)
+        row.isSelected = true
+        row.isEmphasized = true
+
+        #expect(row.isSelected)
+        #expect(row.isEmphasized)
+        #expect(presentationChanges == 2)
     }
 
     @MainActor

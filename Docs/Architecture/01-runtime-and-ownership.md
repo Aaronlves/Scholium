@@ -501,9 +501,9 @@ Populated hierarchy ownership is split by responsibility:
 `SidebarOutlineSourceList` configures the `NSOutlineView`, its coordinator owns
 data-source/delegate reconciliation, AppKit owns hierarchy, indentation,
 selection drawing, focus, disclosure, hover, and drag feedback, and the hosted
-row layer supplies content plus contextual and accessibility actions. One shared
-input-modality adapter selects AppKit's emphasized or unemphasized selection
-presentation, and the Library grid supplies only the native indentation step.
+row layer supplies content plus contextual and accessibility actions. A row
+callback mirrors AppKit's selected/emphasized result into hosted text color but
+never sets selection emphasis; the Library grid supplies only native indentation.
 The native-drop
 layer owns process-local pasteboard decoding plus the Library-header root
 target. AppKit-authored menus, tooltips, and accessibility values pass through

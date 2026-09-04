@@ -111,8 +111,16 @@ Exact provides body, strong, and small. Long scanning lists remain Sans even
 when they name scholarly objects; selection opens Scholarly detail. Native
 controls keep platform typography. Brand and onboarding hero type are bounded
 exceptions. Feature areas publish no font aliases.
-Triptych identity and Library use the same native section-heading tier; a
-researcher-authored Triptych name uses no decorative tracking. Native source
+The Scholium wordmark is the Sidebar's primary brand title; the header carries
+only Search and Notifications at its trailing edge. Triptych opening and
+creation use the native File menu, while open windows use the Window menu. The
+current Triptych appears as a native window subtitle only when concurrently
+open Workspace windows belong to distinct Triptychs. Library begins the
+subordinate source section in Muted
+Text. Its two trailing menus are quiet borderless symbols: a shallow neutral
+circle appears only on hover and press, while persistent glass containers do
+not compete with the tree.
+Native source
 lists supply the effective row size, and hosted Folder/Note labels derive their
 system type and symbol size from that native value. File-tree rows use the
 Finder pattern: AppKit owns a leading disclosure gutter for hierarchy state;
@@ -256,11 +264,10 @@ secondary to a semantic surface plus divider. Children do not compound them.
 Native controls and container-owned rows own hover, press, disabled, selection,
 focus, active/inactive presentation, and cursor behavior. Custom targets remain
 comfortably clickable and keyboard reachable. Resting controls are quiet; focus
-is stronger than hover and persistent selection stronger than both. Pointer
-activation does not leave a keyboard-only focus effect. The two native Sidebar
-source lists therefore keep a pointer-created selection in AppKit's
-unemphasized state and enable AppKit's emphasized selection only after keyboard
-focus entry or navigation; this changes presentation, never selected identity.
+is stronger than hover and persistent selection stronger than both. The two
+native Sidebar source lists use AppKit's focused-key-window and inactive-window
+selection presentations without an input-modality override; pointer and
+keyboard change selection or focus, never the visual policy itself.
 
 Scholium does not globally remap standard controls or navigation rows to the
 pointing-hand cursor. The pointing hand is reserved for links and bounded custom
@@ -277,8 +284,10 @@ semantics or interaction differ. Ordinary toolbar actions use standard bordered
 `NSToolbarItem` instances with no custom view or fixed-size host. AppKit owns
 their geometry, regular Glass, edge highlight, shadow, and adaptive states while
 the transparent toolbar background preserves the continuous semantic planes.
-Library icons share one editorial-control recipe inside one native compact
-control group. The Document Mode button
+Search and Notifications remain native Glass controls in the Sidebar identity
+row. Triptych navigation does not add persistent chrome there; native File and
+Window commands own it. Library Organize and Add instead use one shared shallow
+hover/press recipe around separate borderless native menus. The Document Mode button
 reports current Review, Edit, or Source through symbol, Help, and a state-bearing
 accessibility label without becoming a segmented control.
 
