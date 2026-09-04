@@ -200,7 +200,7 @@ identity/revision and may recur after a later change.
 
 Changed Since Settle reminders are not structural Attention. Dismiss hides the
 reminder without changing Settlement; a later source change may produce a new
-reminder under §7.1.
+reminder under §7.
 
 ## 14. Save, Agent changes, and recovery
 

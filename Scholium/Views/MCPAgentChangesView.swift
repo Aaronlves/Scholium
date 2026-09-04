@@ -1,6 +1,64 @@
 import ScholiumContracts
 import SwiftUI
 
+enum AgentChangePresentation {
+    static func path(for change: AgentChange) -> String {
+        change.finalRelativePath
+            ?? change.originalRelativePath
+            ?? change.noteID.uuidString.lowercased()
+    }
+
+    static func displayName(for change: AgentChange) -> String {
+        let path = path(for: change)
+        return path.split(separator: "/").last.map(String.init) ?? path
+    }
+
+    static func operationTitle(
+        for operation: AgentChangeOperation
+    ) -> LocalizedStringResource {
+        switch operation {
+        case .create: "Created by External Agent"
+        case .update: "Updated by External Agent"
+        case .trash: "Moved to System Trash"
+        }
+    }
+
+    static func operationSymbol(for operation: AgentChangeOperation) -> String {
+        switch operation {
+        case .create: "doc.badge.plus"
+        case .update: "pencil"
+        case .trash: "trash"
+        }
+    }
+
+    static func stateTitle(
+        for change: AgentChange,
+        endingRevisionState: AgentChangeEndingRevisionState?
+    ) -> LocalizedStringResource {
+        switch change.state {
+        case .prepared:
+            "Prepared"
+        case .outcomeUncertain:
+            "Outcome uncertain — inspect current source before retrying."
+        case .undone:
+            "This update was undone."
+        case .confirmed:
+            switch endingRevisionState {
+            case .current: "Current Revision"
+            case .earlierRevision: "Earlier Revision"
+            case .unavailable, nil: "Current Source Unavailable"
+            }
+        }
+    }
+
+    static func newestFirst(_ lhs: AgentChange, _ rhs: AgentChange) -> Bool {
+        let lhsDate = lhs.confirmedAt ?? lhs.createdAt
+        let rhsDate = rhs.confirmedAt ?? rhs.createdAt
+        if lhsDate != rhsDate { return lhsDate > rhsDate }
+        return lhs.id.uuidString < rhs.id.uuidString
+    }
+}
+
 /// Machine-local evidence for mutations made through Scholium's MCP surface.
 /// This view does not represent conversation, review, acceptance, or Settlement.
 struct AgentChangesView: View {
@@ -9,6 +67,7 @@ struct AgentChangesView: View {
     typealias Undo = @MainActor (AgentChange) async throws -> Void
 
     @Environment(\.dismiss) private var dismiss
+    let initialChangeID: UUID?
     let load: Loader
     let loadReview: ReviewLoader
     let undo: Undo
@@ -37,7 +96,7 @@ struct AgentChangesView: View {
         } footer: {
             footer
         }
-        .task { await reload() }
+        .task { await reload(preserving: initialChangeID) }
         .confirmationDialog(
             "Undo Agent Change?",
             isPresented: Binding(
@@ -396,29 +455,19 @@ private struct AgentChangeReviewContent: View {
     }
 
     private var path: String {
-        review.change.finalRelativePath
-            ?? review.change.originalRelativePath
-            ?? review.change.noteID.uuidString.lowercased()
+        AgentChangePresentation.path(for: review.change)
     }
 
     private var displayName: String {
-        path.split(separator: "/").last.map(String.init) ?? path
+        AgentChangePresentation.displayName(for: review.change)
     }
 
     private var operationTitle: LocalizedStringResource {
-        switch review.change.operation {
-        case .create: "Created by External Agent"
-        case .update: "Updated by External Agent"
-        case .trash: "Moved to System Trash"
-        }
+        AgentChangePresentation.operationTitle(for: review.change.operation)
     }
 
     private var operationSymbol: String {
-        switch review.change.operation {
-        case .create: "doc.badge.plus"
-        case .update: "pencil"
-        case .trash: "trash"
-        }
+        AgentChangePresentation.operationSymbol(for: review.change.operation)
     }
 
     private var revisionStateTitle: LocalizedStringResource? {

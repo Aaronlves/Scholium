@@ -2,421 +2,232 @@
 
 Part of the canonical set rooted at
 [SCHOLIUM_SPEC.md](Docs/SCHOLIUM_SPEC.md). This document owns Section 19:
-Scholarly Editorialism, visual language, design Variables, reusable components
-and patterns, layout, icons, motion, and interface writing. Workflow chapters
-own research meaning, authorization, and state transitions.
+Scholarly Editorialism, visual identity, semantic presentation roles, adaptive
+layout principles, reuse boundaries, icons, motion, interface writing, and
+cross-functional state language. Workflow chapters own research meaning,
+commands, navigation, authorization, focus transitions, and recovery.
 
 ## 19. Scholarly Editorialism and design variables
 
-**Scholarly Editorialism** combines humanist type, editorial hierarchy, warm
-Paper and ink, a native Liquid Glass Sidebar and controls, fine rules, marginal
-organization, deliberate whitespace, and restrained color in a contemporary
-macOS environment. It is neither antique-book imitation nor decorative
-minimalism.
+**Scholarly Editorialism** combines humanist typography, editorial hierarchy,
+warm Paper and ink, native macOS navigation and controls, fine rules, marginal
+organization, deliberate whitespace, and restrained color. It is neither an
+antique-book imitation, a productivity dashboard, nor decorative minimalism.
 
-Document remains primary across continuous Sidebar, Document, and Apparatus
-planes.
-System Sans, Alegreya, and Victor Mono distinguish interface, scholarly, and
-exact content. Hierarchy begins with type, spacing, alignment, and semantic
-color; boundaries and elevation are secondary. Native controls retain platform
-behavior and every surface follows §20.
+The research Document remains primary across Sidebar, Document, and Apparatus.
+Hierarchy begins with type, spacing, alignment, and semantic color; structural
+boundaries are secondary and decorative elevation is last. Native controls keep
+platform behavior, and every presentation follows §20.
 
-Visual values that remain provisional cannot override native behavior, create
-state owners, weaken accessibility/source safety, or block a usable core.
+This section specifies durable visual meaning, not the current implementation
+inventory. Framework types, source symbols, exact dimensions, ratios, opacity,
+animation timing, window defaults, and component names are implementation or
+acceptance evidence unless this section explicitly gives them stable semantic
+force.
 
-### 19.1 Liquid Glass and material boundary
+### 19.1 Native material and content-plane boundary
 
-Liquid Glass is Scholium's native functional layer, not its research-content
-language. AppKit's Sidebar split item owns the complete regular-Glass
-navigation plane, including its material, inset geometry, edge treatment,
-shadow, window activity, and accessibility adaptation. The warm Document Paper
-plane extends beneath that glass while the native safe area keeps readable
-Document content unobscured. Sidebar content remains transparent and adds no
-custom fill, visual-effect host, blur, tint, or parallel depth cue. Document and
-Apparatus retain continuous opaque semantic backgrounds through the transparent
-titlebar. The toolbar contributes no separate full-width material band. Native
-controls and compact control groups float above those surfaces in system
-regular Glass.
-Ordinary Glass actions remain system-monochrome; Accent tint is reserved for a
-genuine primary action or a separately identified semantic state.
+Navigation and chrome use the supported macOS version's native materials and
+controls. The Sidebar is a recessive navigation plane above the warm Document
+underlay. Document and Apparatus are continuous, opaque semantic content planes;
+Apparatus stays visually closer to Document than to navigation. Native safe
+areas keep content unobscured when system chrome or materials overlap it.
 
-Outside the system-owned Sidebar navigation plane, Glass never encloses
-research prose, metadata groups, lists, rows, fields, cards, or whole content
-planes. Clear Glass is excluded from Scholium's text-heavy interface. Native
-Button, Menu, segmented-control, toolbar, sheet, and popover
-implementations own material shape, hover, press, focus, window activity, Reduce
-Transparency, and Increase Contrast behavior. A custom Glass host is permitted
-only when a native control must bridge an existing AppKit boundary without
-changing its established geometry, hit target, menu route, or accessibility.
+Research prose, Metadata groups, Lists, Records, Agent Changes, and recovery
+content do not acquire glass, cards, tiles, chat bubbles, badges, or nested
+decorative containers merely to manufacture hierarchy. Use type, alignment,
+whitespace, semantic surfaces, and fine structural rules first. A bounded panel
+is appropriate only when its task is genuinely transient or spatially anchored.
 
-Chrome, menus, controls, focus, selection, separators, tabs, sheets, and
-popovers stay native. Research Guidance, Agent Integration, Agent Changes, and
-Records use continuous planes, editorial hierarchy, rules, and whitespace
-rather than cards, tiles, badges, avatars, chat bubbles, or nested decorative
-containers. Small capsules are reserved for finite semantic values, never
-general decoration or status walls.
+The exact system material variant and framework host belong to the selected SDK
+and implementation architecture. Feature code does not reproduce native
+material, shadow, hover, focus, inactive-window, contrast, or transparency
+behavior. A custom material host is justified only by a documented framework
+boundary that preserves native geometry, input, menus, and accessibility.
 
-The separate Records window uses a quiet collection-to-reading transition. A
-fixed, non-collapsible index keeps Record navigation continuously available;
-the detail retains the proven centered scholarly reading measure and pins the
-current question above the independently scrolling step sequence. Each step
-presents its own Note references immediately after the prose as one quiet,
-single-line attachment strip that grows to the right and scrolls horizontally
-when necessary. The question/step/Note-reference contract alone supplies
-content: no superseded Action ledger, Result, participant workflow, or
-bibliographic lead survives as presentation semantics. The question is the one
-primary title; step time and Agent attribution use compact Interface type,
-step prose uses Scholarly type, and identifiers or fingerprints use Exact type.
-Continuous navigation/document planes, structural rules, and whitespace carry
-hierarchy without a card timeline or detached evidence inspector.
-
-Records uses semantic color only where it changes interpretation or action:
-Agent attribution uses Agent Authorship, Note navigation uses Accent, an
-earlier referenced revision uses Attention, and an unavailable Note uses Muted
-text. The visible state word remains present whenever color varies. A current
-Note is the unmarked default. Each Note reference is one compact native bordered
-button containing only its document name and `Basis` or `Modified`; native
-hover, focus, and press feedback make the affordance visible without a resting
-card. It adds
-`Earlier` or `Unavailable` only for those exceptional states. It has no
-reference count, `.md` suffix, repeated current-state label, underline, trailing
-chevron, resting card, or second visual button system.
-
-Records has no toolbar or separate white chrome band. Its hidden title-bar style
-lets the navigation and document planes fill the window while preserving native
-close, minimize, zoom, drag, and resize behavior. Search remains at the top of
-the collection because it changes that collection rather than the current
-reading; visible Records refresh automatically while the window is open. The
-compact default window preserves the index and reading measure. Escape or the
-close control dismisses it; opening a Note attachment transfers focus to that
-Note in the exact originating Workspace window and dismisses Records, while
-ordinary focus loss does not. Attachment navigation never creates a second
-Workspace window or falls back to an unrelated one. No disabled write,
-evidence, share, refresh, or technical-identity action is added merely to fill
-space.
+Structural shadows never carry interaction or meaning. They use logical edges,
+remain subordinate to a semantic surface and boundary, do not compound through
+children, and may disappear under Increase Contrast, Reduce Transparency, or an
+inactive window.
 
 ### 19.2 Typography and color
 
-Family communicates content kind; size/weight communicates hierarchy.
+Family communicates content kind; size and weight communicate hierarchy.
 
-| Role | Family | Use |
+| Role | Stable requirement | Presentation freedom |
 | --- | --- | --- |
-| Interface | System Sans | windows, navigation, controls, indexes, labels |
-| Scholarly | Alegreya | research prose, judgments, content-derived values |
-| Exact | Victor Mono | source, code, paths, identifiers, revisions, diffs |
+| **Interface** | Native macOS typography for windows, navigation, controls, indexes, and labels. | System-owned; Scholium does not replace it with a brand face. |
+| **Scholarly** | A highly legible humanist reading face for research prose and judgments. | Document Appearance may choose the face, size, measure, and rhythm; the shipped default expresses Scholium's editorial character. |
+| **Exact** | Source, paths, identifiers, revisions, and diffs remain visibly distinct from ordinary prose. | The researcher may choose any installed face and size. The shipped default is monospaced; the choice changes presentation only. |
 
-Interface provides one primary title hierarchy plus section, row, compact, and
-small roles. Scholarly provides title, section, body, strong, and emphasis.
-Exact provides body, strong, and small. Long scanning lists remain Sans even
-when they name scholarly objects; selection opens Scholarly detail. Native
-controls keep platform typography. Brand and onboarding hero type are bounded
-exceptions. Feature areas publish no font aliases.
-The Scholium wordmark is the Sidebar's primary brand title; the header carries
-only Search and Notifications at its trailing edge. Triptych opening and
-creation use the native File menu, while open windows use the Window menu. The
-current Triptych appears as a native window subtitle only when concurrently
-open Workspace windows belong to distinct Triptychs. Library begins the
-subordinate source section in Muted
-Text. Its two trailing menus are quiet borderless symbols: a shallow neutral
-circle appears only on hover and press, while persistent glass containers do
-not compete with the tree.
-Native source
-lists supply the effective row size, and hosted Folder/Note labels derive their
-system type and symbol size from that native value. File-tree rows use the
-Finder pattern: AppKit owns a leading disclosure gutter for hierarchy state;
-monochrome Folder and Note symbols share the item-type column; and their titles
-share the following text column. The Library's 4-unit hierarchy step is passed
-to AppKit's native outline indentation rather than reconstructed in row
-content. Disclosure and Folder symbol have distinct state and type roles.
+Native controls retain platform typography. Long scanning lists use Interface
+type even when they name scholarly objects. Scholarly detail uses one primary
+title hierarchy plus restrained section and body roles. Scholium does not audit
+or reject a researcher-selected Exact face; source bytes and operations remain
+independent of that presentation choice.
 
-Document Information uses the system `info.circle` toolbar symbol and one
-native transient popover rather than a persistent status strip or another
-Inspector mode. Heading Outline is the primary, bounded scrolling region;
-derived statistics sit below one rule and remain visible while the outline
-scrolls. Body is implicit; `Selection` appears only while a nonempty selection
-owns the count. A compact native selector shows one number at a time and
-remembers the researcher's last machine-local choice. Its closed label uses the
-short measure name, while the open menu keeps each exact counting rule beside
-its value and uses the native checkmark. The popover derives its width from
-localized content inside a bounded maximum. It keeps native dismissal, focus,
-contrast, transparency, and toolbar-overflow behavior. Its heading rows use
-restrained hierarchy indentation and ordinary button semantics; neither the
-symbol nor the statistics adds Accent or a custom Glass container.
+The app-owned Note title is the strongest element at the top of Review and Edit.
+Authored H1 remains a first-level body section rather than a second document
+title. Review and Edit share a recognizable manuscript hierarchy and reading
+measure, while editing requirements may create bounded geometric differences.
+The target is continuity of place and hierarchy, not pixel identity between a
+reader and an active editor.
 
-Document Appearance owns document measure, Body, headings, and Callout
-typography. The default is a readable Alegreya body with a compact scholarly
-line and paragraph rhythm, natural start alignment, a start-aligned first-level
-body heading, quieter lower headings, and deliberate CJK fallback. The
-app-owned Note title is the strongest typographic element at the top of the
-Review/Edit document plane. Review keeps it inert; Edit uses the same typography
-as a borderless filename field whose whole visible region, including trailing
-space, accepts focus. No separate edit affordance or title card is added.
-Authored H1 is never styled as a second document title. Native window title
-identifies the window without competing with that in-document title. Review
-and Edit share one continuous philosophy-manuscript rhythm: readable prose,
-restrained paragraph separation, and section headings with stronger space
-before than after. Semantic blocks own their non-source spacing, and inactive
-Edit matches Review's typography, wrapping, and local visible text geometry.
-Each authored blank line remains one full, stable prose row in Edit; Review
-instead represents the same paragraph boundary with manuscript spacing. Edit
-does not add a second paragraph-end gap around that row. The resulting vertical
-difference is accepted once per authored blank line so the caret row never
-collapses, expands on first input, or overlaps its neighbors. Inactive headings
-and quotations spend no horizontal
-measure on hidden structural prefixes; entering one reveals its exact prefix
-outside the prose measure, in Exact type and at the line's full computed size,
-without moving visible text or neighboring blocks. Preserved spaces remain
-measurable but acquire no visible whitespace glyph in ordinary Edit prose.
-Ordinary prose uses language-aware editorial breaking rather than terminal-
-style arbitrary breaking, and an interactive inline locator remains attached
-to immediately following closing punctuation. Lists, blank lines, code fences,
-tables, mathematics, footnotes, and Callouts preserve their source-owned rhythm
-and object-local overflow.
+Ordinary prose uses language-aware editorial line breaking. English,
+Simplified Chinese, mixed scripts, preserved spaces, lists, code, tables,
+mathematics, footnotes, Callouts, and source markers retain legible local rhythm.
+An implementation may de-emphasize inactive syntax only when entering it exposes
+the exact source without losing the caret location, selection, composition, or
+nearby reading context.
 
-Note-level document attachments form one quiet horizontal strip immediately
-below the app-owned title in Review and Edit. A capsule reuses the bounded
-Note-reference grammar—paperclip, filename, fine border, and quiet
-hover/focus/press surface—without inheriting Record provenance or state labels.
-Its width is capped, its middle truncation preserves both identity-bearing
-ends, and its complete filename remains available through Help and
-accessibility. The strip scrolls locally instead of wrapping. The trailing Add
-control reserves its geometry at all times and changes only opacity and hit
-testing when the title/strip region is inactive; initial disclosure is brief,
-and Reduce Motion removes the transition. Source omits this projection.
-
-Research prose remains primary content without becoming visually identical to
-its structure. Body ink mixes 90% of the existing Primary Text with 10% of the
-Document Paper; the Note title and authored headings retain Primary Text. This
-is one tonal typographic hierarchy, not a new semantic color or state, and
-Review/Edit resolve it identically across appearances and Increase Contrast.
-
-Native selection is authoritative in every mode and uses the resolved Accent
-consistently. Authored `==highlight==` uses one protected high-contrast Markup
-highlight, not Accent or status color. Current Comment anchoring uses a quiet
-Accent boundary/field plus a counted margin control; stale Comment groups do
-not paint current prose.
-
-Hyperlinks and Wikilinks use Accent plus underline. Hover or keyboard focus
-strengthens the underline and adds only the shared quiet interaction surface;
-Edit applies that feedback while Command arms a projected link for preview or
-opening. An annotated Wikilink adds one small trailing superscript
-`text.bubble` disclosure marker at the link's upper inline end. The marker uses
-footnote-like zero-line-height geometry, reserves only its compact inline width,
-and reveals the annotation in the shared bounded preview surface rather than in
-document flow. Its text and accessibility name say that a source-owned
-annotation is present. The marker never classifies argumentative force, truth,
-evidence, or value.
-
-Named and inline footnotes use one print-like treatment. Their prose locator is
-a medium-weight Scholarly superscript ordinal with zero-line-height geometry,
-Accent ink, and the shared quiet hover/focus surface. The generated end section
-has no injected heading, card, or enclosing fill: one short leading rule,
-hanging Accent ordinals, compact secondary Scholarly prose, and a quiet return
-control at the content end carry the hierarchy. Footnote previews retain the
-shared bounded-panel surface, show one concise footnote title and rendered
-definition, and add no redundant metadata line. Edit adds no second end-section
-projection.
+Hyperlinks and Wikilinks use Accent plus a non-color affordance. Authored
+highlight uses a protected Markup role rather than Accent or status color.
+Footnote and link-annotation markers remain subordinate to prose, keyboard
+reachable, and visually stable within the line. §18 owns their activation,
+dismissal, and source-navigation behavior.
 
 Color has exactly two researcher inputs:
 
 - **Accent** `#A94C22`
 - **Paper** `#FEF8ED`
 
-One resolver derives every Light, Dark, Increase Contrast, text, surface,
-selection, authorship, status, and interaction output. Sidebar is a recessive
-navigation surface; Apparatus is a document-adjacent surface closer to Paper.
-Native and WebKit consume the same semantic outputs. Feature code introduces no
-raw palette, and no color alone encodes truth, support, authority, acceptance,
-or philosophical value.
+One resolver derives Light, Dark, Increase Contrast, text, surface, selection,
+authorship, status, and interaction outputs. Native and embedded-document
+presentations consume the same semantic meanings. Feature code introduces no
+parallel palette, and color alone never encodes truth, support, authority,
+acceptance, completion, or philosophical value.
 
-Onboarding illustrations use a closed parchment/ink/accent palette independent
-of Appearance. It is not a general component palette.
+Onboarding illustrations use a closed parchment, ink, and Accent palette. That
+palette is illustration identity, not a general interface palette.
 
 ### 19.3 Variable boundary
 
-The current shared Variables cover Color, Typography, Surfaces, Elevation,
-Boundaries, reusable Metrics, Motion, and provisional Document Rhythm. This is
-an extensible implementation inventory, not a closed taxonomy or a requirement
-that every local value become a Variable. Promote stable cross-component
-decisions and accessibility-critical thresholds. A bounded single-owner layout
-value may remain local when it carries no state, authority, or adaptation rule.
-Shared roles are purpose-named; do not create a numbered global scale merely to
-avoid a clear local constant.
-
-#### Corner geometry
-
-Native windows, toolbars, menus, sheets, popovers, and controls retain platform
-shapes. Shared custom components own reused or cross-runtime corner recipes.
-A bounded feature-local surface may own its local geometry; promote it only
-when responsibility or adaptation is genuinely shared. Borders do not imply
-rounding, and unbounded content remains unenclosed. Shape never carries state
-or authority alone.
+A design Variable is justified only when several consumers share its meaning,
+adaptation, and proof. Similar numbers or repeated styling do not create a
+semantic role. Bounded single-owner values remain local, and implementation
+inventories belong to the architecture set.
 
 #### Variable ownership
 
-- **Typography:** §19.2 roles; Document typography remains owned by Appearance.
-- **Color:** Accent and Paper inputs; every other color is a semantic output.
-- **Surfaces:** native regular Sidebar Glass over the extended warm Document
-  underlay; continuous opaque Document and Apparatus content planes; regular
-  system Glass for controls and compact control groups above them.
-- **Boundaries:** structural divider, subtle boundary, and floating boundary.
-- **Elevation:** native Sidebar, toolbar, and presentation elevation plus the
-  current shared custom floating-control, bounded-panel, and Search-overlay
-  recipes. Scholium adds no Sidebar–Document shadow beside AppKit's glass edge.
-- **Metrics:** reused or adaptation-critical spacing, target, row, region, and
-  readable-width roles owned by their reusable component.
-- **Motion:** shared transitions are purpose-named and always define immediate
-  Reduce Motion behavior.
-- **Document Rhythm:** the selected Appearance's measure and typography.
+- **Typography:** Interface, Scholarly, and Exact roles; Document Appearance owns
+  researcher-selected document presentation.
+- **Color:** Accent and Paper inputs; every other interface color is a semantic
+  output.
+- **Surfaces:** recessive native navigation, continuous Document, adjacent
+  Apparatus, and purpose-bounded transient presentation.
+- **Boundaries and elevation:** structural separation, focus, selection, and
+  transient presentation without decorative depth systems.
+- **Metrics:** only reused or adaptation-critical relationships, never a global
+  numeric scale adopted for convenience.
+- **Motion:** purpose-named feedback for an already-defined state change, with an
+  immediate Reduce Motion outcome.
+- **Document rhythm:** the active Appearance's measure, type, and spacing.
 
-Structural shadows are noninteractive, logical-edge-based, removed under
-Increase Contrast, weakened with reduced transparency/inactive windows, and
-secondary to a semantic surface plus divider. Children do not compound them.
+Native windows, titlebars, toolbars, menus, sheets, popovers, controls, and
+focus effects retain platform geometry. Shared custom components may own reused
+corner or inset relationships; borders do not imply rounding, unbounded content
+remains unenclosed, and shape never carries state or authority alone.
 
 #### Interaction presentation
 
-Native controls and container-owned rows own hover, press, disabled, selection,
-focus, active/inactive presentation, and cursor behavior. Custom targets remain
-comfortably clickable and keyboard reachable. Resting controls are quiet; focus
-is stronger than hover and persistent selection stronger than both. Pointer
-activation does not leave a keyboard-navigation focus effect. The two native
-Sidebar source lists therefore keep pointer-created selection in AppKit's
-unemphasized state and enable its emphasized row only after keyboard focus entry
-or navigation; this changes presentation, never selected identity or responder
-routing. The emphasized row is the list's keyboard-focus indicator, so the
-source-list container adds no second perimeter focus ring.
+Native containers and controls own hover, press, disabled, selected, focused,
+active, inactive, and cursor presentation. Section 18.3 alone defines the
+Sidebar's quiet pointer selection and keyboard-navigation emphasis; it does not
+create a general modality-styling system. The selected row remains the sole
+visible list-focus indicator without a duplicate perimeter effect.
 
-Scholium does not globally remap standard controls or navigation rows to the
-pointing-hand cursor. The pointing hand is reserved for links and bounded custom
-targets with genuinely link-equivalent semantics when the platform does not
-already own their cursor. Text insertion and selection keep the I-beam; split
-dividers, window edges, draggable regions, and other direct-manipulation
-surfaces keep their native task-specific cursors. Cursor choice never
-manufactures an activation affordance on passive content.
+Custom targets remain comfortably clickable and keyboard reachable. Focus is
+stronger than hover, persistent selection is distinguishable from both, and a
+pointer action does not manufacture a lasting keyboard-only effect. Standard
+controls retain their platform cursor. The pointing hand is reserved for links
+and genuinely link-equivalent custom targets when the platform supplies no
+better cursor.
 
-The shared segmented control is the default custom owner when a bounded
-text-only horizontal single-choice group matches its interaction contract.
-Native controls and feature-owned alternatives remain valid when their
-semantics or interaction differ. Ordinary toolbar actions use standard bordered
-`NSToolbarItem` instances with no custom view or fixed-size host. AppKit owns
-their geometry, regular Glass, edge highlight, shadow, and adaptive states while
-the transparent toolbar background preserves the continuous semantic planes.
-Settlement is one separately spaced standard `NSToolbarItem` immediately before
-Document Mode. AppKit still owns its complete button and Glass behavior;
-Scholium changes only its state-bearing SF Symbol, native item style and semantic
-background tint, plus the brief exact-success transition. Unsettled keeps the
-standard monochrome check on ordinary Glass. Settled uses AppKit's prominent
-item style with translucent Confirmed-tinted Glass and a high-contrast plain
-check, retaining the native edge light rather than painting a solid disk. Changed
-Since Settle returns to ordinary Glass with the simple Attention warning
-triangle. Enclosed inner symbols and custom Glass are excluded because the
-native toolbar item already supplies the control container. On exact-success,
-the plain check uses one brief Draw-On transition that follows its two strokes
-and ends at the unchanged system glyph; it does not bounce, wobble, loop, or
-replace the final symbol with a hand-drawn asset.
-Search and Notifications remain native Glass controls in the Sidebar identity
-row. Triptych navigation does not add persistent chrome there; native File and
-Window commands own it. Library Organize and Add instead use one shared shallow
-hover/press recipe around separate borderless native menus. The Document Mode button
-reports current Review, Edit, or Source through symbol, Help, and a state-bearing
-accessibility label without becoming a segmented control.
+Settlement is a research milestone, not task completion. Its resting presentation
+may receive restrained Confirmed reinforcement after an explicit successful
+Settle, while Changed Since Settle combines the milestone identity with
+Attention. Wording, shape, accessibility value, and the owning detail
+presentation carry the state without color or motion. A brief non-celebratory
+transition may acknowledge the researcher's explicit act; its choreography is
+an implementation choice and never replays merely because the state is shown.
 
 #### Metrics
 
-Metrics express responsibility rather than an application-wide numeric grid:
+Exact spacing, target, row, radius, window, split, readable-width, and animation
+values are implementation defaults unless §20 supplies an accessibility
+threshold or this document assigns the value stable semantic meaning. Native
+geometry and system metrics are never copied into Scholium Variables.
 
-| Scope | Owned metrics |
-| --- | --- |
-| Shared | optical alignment, inline/section/region spacing, custom target minimums |
-| Library | readable width, native row-size adaptation/inset, hierarchy step, header spacing |
-| Apparatus | readable width, section, field, occurrence, and action-row rhythm |
-| Records | collection columns/rows, reading measure, Note-reference rows, previews |
-| Document | Appearance measure, adaptive insets, top/trailing scrolling space |
-
-Native geometry, divider position, toolbar height, and window chrome are not
-design Variables. Equal values across features do not merge ownership, and a
-single-owner value does not need a catalog entry merely because it is numeric.
+Promoting a metric to the product specification requires a repeated semantic or
+adaptation need, evidence that native behavior and a local value are
+insufficient, and a proof capable of rejecting the threshold. Visual preference
+or equality across two call sites is insufficient.
 
 #### Motion
 
-Motion is purposeful, interruptible, and absent under Reduce Motion. Native
-feedback remains system-owned. AppKit source-list disclosure and workspace
-selection receive no parallel Scholium transition. Current shared motion covers
-custom disclosure, search, document reveal, transient feedback, the Agent Change
-notification stack, exact-success Settlement confirmation, and onboarding
-steps. A bounded feature-local transition
-may remain local when it communicates continuity or feedback and supplies the
-same Reduce Motion behavior. Motion never changes authority or becomes the sole
-state signal; decorative pulsing, looping, parallax scrolling, and row cascades
-remain excluded.
+Motion communicates continuity or feedback for a real state change. It remains
+interruptible where the action is, preserves object identity and focus, and has
+a non-motion cue. Reduce Motion produces the final state immediately.
 
-### 19.4 Provisional layout defaults
+Frequent navigation, list selection, disclosure, window changes, and research
+maturity judgments receive no parallel decorative transition. Pulsing, looping,
+bounce, wobble, parallax, blur animation, press scaling, row cascades, and
+celebratory confirmation remain excluded from the research workspace.
 
-Native containers own chrome, window resizing, and split geometry. Scholium
-owns semantic region order, readable peripheral boundaries, content insets, and
-the rule that Document receives remaining space. Initial window sizes are
-implementation defaults, not minimums or acceptance gates.
+### 19.4 Adaptive layout
 
-Document uses CSS-native units without point conversion. Prose reflows without
-page-level horizontal scrolling; wide technical objects retain local overflow;
-Source wraps visual rows without altering logical lines. Layout remains usable
-at narrow widths, enlarged text, and mixed scripts.
+Native containers own window resizing, fullscreen, divider behavior, toolbar
+overflow, and split collapse. Scholium owns semantic region order, readable
+peripheral thresholds, content insets, and the rule that Document receives the
+remaining usable space.
 
-Settings uses one full-height native list/detail split beneath native titlebar
-geometry. Search leads its navigation; Application, This Triptych, and Research
-Guidance form concise groups. It has no card grid, icon toolbar, bottom action
-strip, or catch-all General/Advanced page.
+Every multi-region surface defines an ordinary-width composition and a narrower
+fallback. A fixed-width or permanently expanded secondary region is not a
+product requirement. Collapse, disclosure, reflow, or a transient navigator may
+preserve access, but the adaptation must retain selection, focus, context, and a
+named keyboard or menu route.
 
-Metadata settings present field definitions and the order of fields always
-shown in About without repeating the complete built-in schema. Document Appearance
-presents the selected configuration and common controls first; detailed Body,
-Heading, Callout, and CSS controls remain progressively disclosed. Unsaved
-configuration changes require Save or explicit Revert.
+Prose reflows without page-level horizontal scrolling. Ordinary controls and
+text wrap or recompose before requiring horizontal navigation. A deliberately
+single-line identity strip may instead cap and truncate each item, expose its
+complete identity accessibly, and scroll locally when its small expected set
+overflows. Intrinsically wide technical objects may retain bounded local
+overflow. Source may soft-wrap visual rows without changing logical lines.
 
-### 19.5 Icons and symbols
+Default window sizes and divider positions are implementation conveniences, not
+minimums or acceptance gates. A window must remain usable at its supported
+minimum size, enlarged interface text, and 200% document text.
 
-#### Interface symbols
+### 19.5 Icons and illustrations
 
-Standard actions and annotation disclosures use direct monochrome SF Symbols matched to
-adjacent interface text. Visible labels own meaning; otherwise controls expose a
-complete accessibility name. Native tint, disabled, focus, and selection remain
-system-owned.
+Standard actions use familiar system symbols matched optically to adjacent
+Interface type. The semantic action and accessible name are normative; an
+individual symbol name or configuration is an implementation choice unless its
+shape is required to distinguish a state. Decorative or duplicate symbols stay
+out of the accessibility tree.
 
-Passive/auxiliary glyphs use secondary or muted semantic ink; active bounded
-actions may use Accent; Attention, destructive, confirmation, authorship, and
-link direction use their named semantic output with textual/shape redundancy.
-Multicolor, gradient, or variable symbol rendering never encodes workflow
-state.
-
-The Sidebar Notifications bell uses ordinary interface ink. A nonzero pending
-state adds one small Accent dot at its upper trailing corner; it never prints a
-count beside the bell. The dot's shape, the bell, accessible exact count, and
-popover contents carry the state together.
-
-#### Bootstrap narrative illustration
+Passive symbols use secondary or muted ink. Active bounded actions may use
+Accent. Attention, destructive, confirmation, authorship, and link direction use
+their named semantic output together with text or shape redundancy. Multicolor,
+gradient, or variable rendering never carries workflow state alone.
 
 Onboarding illustrations combine the canonical hand, one simple directional
-pattern, and one solid field to support Welcome, Triptych, and Ready.
-They are decorative and absent from accessibility. Adjacent text and controls
-must fully communicate the task. No tuner or inferred readiness ships.
-
-#### Application icon
+pattern, and one solid field to support Welcome, Triptych, and Ready. They are
+decorative; adjacent text and controls communicate the complete task.
 
 The canonical application icon is the approved parchment-and-ink composition:
 a cuffed hand points right toward one marginal rule and manuscript strokes. Its
-orientation, paper field, ink character, and composition are application
-identity, not Appearance Variables.
-
-Use it only as the application icon. Do not recolor, mirror, badge, label,
-recompose, or reuse it as a control/state glyph. Debug, QA, and release derive
-from the same artwork. Replacement requires explicit researcher approval.
+orientation, Paper field, ink character, and composition are application
+identity, not Appearance Variables. Do not recolor, mirror, badge, label,
+recompose, or reuse it as a control or state glyph. Replacement requires explicit
+researcher approval.
 
 ### 19.6 Interface writing and explanatory copy
 
 Use the shortest accurate label that lets a researcher predict the immediate
 result. Prefer a direct verb or established research term. Supporting copy
 appears only for a necessary boundary, unfamiliar consequence, or first
-executable repair and should remain one short sentence or fragment.
+executable repair and remains one short sentence or fragment.
 
 One meaning has one presentation:
 
@@ -426,86 +237,66 @@ One meaning has one presentation:
 - permission, provenance, destructive consequence, conflict, failure, and
   recovery remain complete in the owning body, alert, comparison, or sheet.
 
-Agent Integration uses practical verb labels: **Copy Codex Setup Command**,
-**Copy Claude Setup Command**, and **Show Core Protocol in Finder…**. Status
-copy names only what Scholium can verify. Brevity never hides essential state,
-names, consequences, or recovery.
+Status copy names only what Scholium can verify. Brevity never hides essential
+state, identity, consequence, uncertainty, or recovery.
 
-### 19.7 Component catalog
+### 19.7 Component and pattern boundary
 
-A component owns presentation and adaptation, never document, workflow,
-authorization, navigation, or operation lifecycle.
-This catalog records current shared responsibilities; it is not an exhaustive
-permission list. A feature may use a bounded local view without first creating
-a reusable component or catalog entry.
+The product specification names researcher tasks, semantic regions, state
+distinctions, and presentation responsibilities. It does not canonize the
+current component tree, framework types, source symbols, or one composition's
+private layout recipe. The architecture set maps the target onto current
+components and framework owners.
 
-| Component | Presentation responsibility | Semantic owner |
-| --- | --- | --- |
-| `Sidebar / Document / Apparatus` | Keep Document primary beneath native Sidebar Glass and across continuous Document/Apparatus planes. | §18.2 |
-| `Native Glass Controls` | Give the Sidebar split item, standard toolbar items, and compact chrome controls system-owned regular Glass, including native edge highlight and shadow. | §§18.2, 20 |
-| `Triptych Workspace Navigator` | Present Analyses, Topics, Works with native source-list selection, focus, traversal, and exact Note totals. | §§3.2, 18.2–18.3 |
-| `Segmented Control` | Shared bounded text-only single-choice input with native-equivalent focus/traversal. | §§18.4–18.5 |
-| `Source List` | Let AppKit own hierarchical selection, focus, disclosure, indentation, and drag feedback while Scholium supplies Note/Folder content and valid actions. | §18.3 |
-| `Inspector Projection Control` | Select Overview/Outgoing/Incoming in the native toolbar without changing source or graph authority. | §§12, 18.5 |
-| `Settlement Toolbar Control` | Keep exact-revision Settle at the Document toolbar edge; use system-owned control feedback, native prominent Glass plus Confirmed only for settled state, redundant state presentation, and one Reduce-Motion-aware success transition. | §§7.1, 18.5, 20 |
-| `Triptych Notifications Entry` | Open the complete Agent Change/Settlement/Attention queue from a bell whose nonzero state uses a small Accent dot and an exact accessible count. | §§13, 18.2–18.3 |
-| `Top Notification Banner` | Give Agent Change, Settlement, permission, and persistent operation notices one concise adaptive grammar. | §§18.3–18.5, 20 |
-| `Activity Notification Stack` | Present Agent Changes and Changed Since Settle reminders without becoming the queue or changing Settlement. | §§7.1, 18.3, 18.5 |
-| `Operation Feedback` | Present transient information or persistent consequence/repair. | §§18.2–18.5, 20 |
-| `Agent Changes` | Present one temporary exact `(change_id, Note)` mutation at a time without creating review state or completing Settlement. | §§7.1, 8.4, 18.5 |
-| `Recovery Notice` | Present candidate, consequence, and safe repair from the workflow owner. | §§14, 18.6 |
-| `Document Find Bar` | Find/replace in the current unsaved buffer while preserving editor state. | §§13, 18.4 |
-| `Document Attachment Strip` | Present Note-level document files below the title with bounded identity, local overflow, Quick Look, and a non-shifting Add route. | §§5.1, 18.4, 20 |
-| `Review Comment Anchor` | Locate current Comment groups without becoming authored Markdown. | §§7.2, 18.4 |
-| `Property Group` | Group Metadata/About fields through a concise visible heading, spacing, and stable action slots. | §§5.2, 18.4–18.5 |
-| `Content State` | Present page/pane state, explanation, and first repair. | §§18.2–18.5, 19.9 |
-| `Bootstrap Illustration` | Support onboarding narrative without carrying task meaning. | §§16, 19.5 |
+A reusable component owns presentation and adaptation, never Document,
+workflow, authorization, navigation, or operation lifecycle. Promotion requires
+a distinct repeated task, one semantic owner, a shared adaptation contract, and
+rejectable proof. A bounded feature-local view needs no catalog entry.
 
-Promotion into this shared catalog requires a distinct repeated task, one
-semantic owner, an adaptation contract, and rejectable proof.
+A reusable pattern combines components around one task without copying the
+workflow authority. Pattern names do not become new modes, statuses, research
+objects, or state stores. §§18.1–18.6 own the actual Workspace, Document,
+Search, Connect, Notifications, Agent Changes, Records, Settlement, and Recovery
+contracts.
 
-### 19.8 Pattern catalog
+### 19.8 Normative boundary and defaults
 
-Patterns combine components around one task without copying workflow authority.
-The table records current shared patterns and does not prohibit a bounded
-feature-local composition.
+| Kind | Status in the product specification |
+| --- | --- |
+| Research meaning, authority, state distinctions, required routes, source/provenance separation | Normative in the owning workflow chapter. |
+| Document primacy, semantic type/color/surface roles, application icon identity, non-color meaning, adaptation principles | Normative in §§19–20. |
+| Accessibility minimums and release acceptance | Normative only where §§20–21 define them. |
+| Framework/API/type names, current component catalogs, exact SF Symbol names, generated CSS, rendering recipes | Architecture or implementation evidence, not product norms. |
+| Exact dimensions, spacing, ratios, opacity, timing, default window frames, divider positions, and local alignment corrections | Implementation defaults unless explicitly promoted through the metric rule above. |
+| Human judgments such as quietness, balance, manuscript character, motion feel, or optical alignment | Design intent until accepted against a named artifact and representative task. |
 
-| Pattern | Boundary | Owner |
-| --- | --- | --- |
-| `Workspace Shell` | Switch retained Triptych workspaces inside one native split. | §§3.2, 18.1–18.3 |
-| `New Note` | Commit exact source and enter Edit before derived refresh completes. | §§5.3, 18.3–18.4 |
-| `Review / Edit / Source` | Reversible projections over one buffer and workspace-owned mode. | §§5.1, 18.4 |
-| `Document Find` | Inline literal Find/Replace, distinct from Research Search. | §§13, 18.4 |
-| `Search` | Explicit provider/scope, explanation, freshness, and bounded results. | §§13, 18.3 |
-| `Connect` | Flat direct authored link occurrences in separate Outgoing and Incoming projections, with source anchors, local context, and source-owned annotations. | §§12, 18.5 |
-| `Notifications` | Complete queue in Sidebar/Inspector; Agent Change/Settlement subset in Document. | §§8.4, 13, 18.2–18.3 |
-| `Agent Integration` | Present verifiable local status and copy user-scope host setup without editing external configuration. | §§8.2, 16, 18.2 |
-| `Conflict / Recovery` | Retain bytes, compare exact revisions, and expose safe repair. | §§14, 18.4–18.6 |
-| `Research Records` | Present the dedicated read-only collection, centered question/step reading plane, and step-local Note-reference attachments without inheriting chat or superseded workflow semantics. | §§8.6, 13, 18.5 |
-| `Settlement Reminder` | Invite explicit Settle Again, Mark Unsettled, or no status change; dismissal changes no judgment, and exact Agent Changes open one comparison at a time. | §§7.1, 8.4, 18.3–18.5 |
+A default may change without a product decision when it preserves every
+normative meaning and passes the affected proof. A target change still updates
+its owning canonical chapter and removes the replaced rule in one patch.
 
 ### 19.9 Cross-functional state language
 
-Workflow owners supply typed state; components map it to this vocabulary. This
-is not a universal runtime enum or second state store.
+Workflow owners supply typed state; presentation maps it to this vocabulary.
+This is not a universal runtime enum or second state store.
 
 | State | Shared presentation | Not equivalent to |
 | --- | --- | --- |
 | **Ready** | Trustworthy committed representation and valid next action. | Saved, Settled, or merely loaded |
 | **Loading** | No trustworthy projection yet or an explicit refresh wait. | Empty, unavailable, stale |
 | **Empty** | Valid scope contains no items; retain scope and first next step. | Missing or failed source |
-| **Unavailable** | Required source/capability cannot serve; name repair/alternative. | Disabled styling |
+| **Unavailable** | Required source or capability cannot serve; name repair or alternative. | Disabled styling |
 | **Stale** | Older trustworthy projection retained with explicit refresh. | Conflict or failed operation |
-| **Error** | Operation failed; preserve context and expose safe retry/alternative. | Empty or silent disappearance |
+| **Error** | Operation failed; preserve context and expose safe retry or alternative. | Empty or silent disappearance |
 | **Conflict** | Expected authoritative revision diverged; retain buffer and compare. | Stale derived data |
-| **Recovery** | Consequential repair after failure/interruption with verification. | Generic toast or overwrite |
+| **Recovery** | Consequential repair after failure or interruption with verification. | Generic toast or overwrite |
 | **Disabled** | Known action lacks a prerequisite; keep discoverable when core. | Unavailable content |
 
 Every state retains owner and visible context; communicates state, consequence,
-and first repair through redundant channels; keeps exact domain meaning with
-the workflow owner; preserves focus/cancellation/source/recovery; and never
-relies solely on color, motion, hover, position, or timeout.
+and first repair through redundant channels; preserves focus, cancellation,
+source, and recovery; and never relies solely on color, motion, hover, position,
+or timeout.
 
-Settle and Dismiss remain their own workflow meanings. Page/pane states use `Content State`;
-field validation, compact rows, operation feedback, and recovery notices keep
-their purpose-owned presentations while using this vocabulary.
+Settle and Dismiss retain their workflow meanings. Page and pane states may use
+a shared Content State presentation; field validation, compact rows, operation
+feedback, and recovery notices keep purpose-owned presentations while reusing
+this vocabulary.

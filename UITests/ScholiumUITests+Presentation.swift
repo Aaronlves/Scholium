@@ -206,25 +206,80 @@ extension ScholiumUITests {
             "scholium.attentionSearch"
         ]
         XCTAssertTrue(search.waitForExistence(timeout: 3))
+
+        let notificationRow = popover.descendants(matching: .group)
+            .matching(
+                NSPredicate(
+                    format: "identifier BEGINSWITH %@ AND identifier CONTAINS %@",
+                    "scholium.attentionItem.",
+                    "QA Work.md"
+                )
+            )
+            .firstMatch
+        XCTAssertTrue(notificationRow.waitForExistence(timeout: 3))
+        XCTAssertLessThanOrEqual(notificationRow.frame.height, 40)
+        let openAction = popover.descendants(matching: .any)
+            .matching(
+                NSPredicate(
+                    format: "identifier BEGINSWITH %@ AND identifier CONTAINS %@",
+                    "scholium.attentionOpen.",
+                    "QA Work.md"
+                )
+            )
+            .firstMatch
+        XCTAssertTrue(openAction.exists)
+        let accessibleRow = accessibilityText(of: openAction)
+        XCTAssertTrue(accessibleRow.contains("Possible Orphan"))
+        XCTAssertTrue(accessibleRow.contains("QA Work"))
+        XCTAssertTrue(accessibleRow.contains("No incoming or outgoing links"))
+
+        let restingRow = notificationRow.screenshot().pngRepresentation
+        notificationRow.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.35, dy: 0.5)
+        ).hover()
+        XCTAssertTrue(
+            waitUntil(timeout: 3) {
+                notificationRow.screenshot().pngRepresentation != restingRow
+            },
+            "The primary notification action must visibly respond to pointer hover."
+        )
+        let hoverScreenshot = XCTAttachment(screenshot: popover.screenshot())
+        hoverScreenshot.name = "Native Notifications hovered row"
+        hoverScreenshot.lifetime = .keepAlways
+        add(hoverScreenshot)
+
+        notificationRow.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.96, dy: 0.5)
+        ).hover()
+        XCTAssertTrue(
+            waitUntil(timeout: 3) {
+                notificationRow.screenshot().pngRepresentation != restingRow
+            },
+            "The notification row must retain its unified hover response over More."
+        )
+        let accessoryHoverScreenshot = XCTAttachment(screenshot: popover.screenshot())
+        accessoryHoverScreenshot.name = "Native Notifications hovered More region"
+        accessoryHoverScreenshot.lifetime = .keepAlways
+        add(accessoryHoverScreenshot)
+
+        let populatedScreenshot = XCTAttachment(screenshot: popover.screenshot())
+        populatedScreenshot.name = "Native Notifications populated queue"
+        populatedScreenshot.lifetime = .keepAlways
+        add(populatedScreenshot)
+
         search.click()
         search.typeText("no-notification-can-match-this-query")
+        search.typeKey(.return, modifierFlags: [])
 
         let empty = popover.descendants(matching: .any)[
             "scholium.attentionEmpty"
         ]
         XCTAssertTrue(empty.waitForExistence(timeout: 3))
-        let copy = empty.staticTexts.firstMatch
-        XCTAssertTrue(copy.exists)
-        let accessibleCopy = accessibilityText(of: copy)
+        let accessibleCopy = accessibilityText(of: empty)
         XCTAssertTrue(accessibleCopy.contains("No Matching Notifications"))
-        XCTAssertTrue(
-            accessibleCopy.contains(
-                "No Action activity or visible derived issue needs attention in this Scope."
-            )
-        )
 
         let screenshot = XCTAttachment(screenshot: popover.screenshot())
-        screenshot.name = "Grouped Notifications empty state"
+        screenshot.name = "Native Notifications empty state"
         screenshot.lifetime = .keepAlways
         add(screenshot)
     }

@@ -10,8 +10,9 @@
   Increase Contrast; Reduce Transparency; Reduce Motion; 200% document text;
   enlarged interface text; and English, Simplified Chinese, and mixed content.
 - Ordinary small text meets at least **4.5:1** contrast; large or bold text
-  meets at least **3:1**. Important custom targets below 28 × 28pt require
-  explicit audit.
+  meets at least **3:1**. Custom macOS controls target 28 × 28pt and never fall
+  below 20 × 20pt; an important target below 28 × 28pt requires explicit audit
+  of spacing, precision, and alternative routes.
 - Important state uses at least two suitable channels. Color, motion, sound,
   location, hover, drag, secondary click, gesture, and arrow direction are
   never the sole meaning or route.
@@ -19,14 +20,14 @@
   soft elevation. Structural depth cues are decorative, noninteractive,
   accessibility-hidden, logical-edge-based, and removable without losing
   hierarchy.
-- Native Liquid Glass controls retain complete labels, state, focus, and target
-  geometry when system appearance, window activity, Increase Contrast, or
-  Reduce Transparency changes. Glass is never the sole boundary around research
+- Native macOS controls retain complete labels, state, focus, and target geometry
+  when system appearance, window activity, Increase Contrast, or Reduce
+  Transparency changes. Material is never the sole boundary around research
   content or the sole indication of state.
-- The native Sidebar material retains AppKit's complete Light/Dark,
-  active/inactive, Increase Contrast, and Reduce Transparency adaptation. Its
-  warm Paper underlay is decorative context, not the sole source of separation,
-  selection, focus, or meaning.
+- The native Sidebar material retains the supported system's complete
+  Light/Dark, active/inactive, Increase Contrast, and Reduce Transparency
+  adaptation. Its warm Paper underlay is decorative context, not the sole source
+  of separation, selection, focus, or meaning.
 - Text and controls grow or reflow instead of clipping. Enlarged prose has no
   page-level horizontal reading scroll; intrinsically wide technical objects
   keep bounded local overflow or scaling.
@@ -75,20 +76,21 @@
   bell and dot geometry preserve the visible distinction without color alone.
 - Triptych opening and creation remain named keyboard- and accessibility-
   reachable commands in the native File menu; the Window menu exposes open
-  windows, and Settings manages registrations. When concurrently open
-  Workspace windows belong to distinct Triptychs, the native window subtitle
-  visibly distinguishes them without duplicating the name in the Sidebar.
+  windows, and Settings manages registrations. The Sidebar does not repeat the
+  current Triptych name. The native window subtitle supplies it only when open
+  Workspace windows span distinct Triptychs and disambiguation is necessary.
 - Library rows preserve native selected, focused, inactive, disclosed,
   drop-target, disabled, loading, stale, empty, and failure distinctions.
-  Pointer selection remains visibly selected without taking on keyboard-focus
-  emphasis; keyboard focus entry and navigation use the emphasized native row.
-  That row is the visible list-focus indicator, so no second perimeter focus
-  ring is drawn. Up/Down moves selection and Left/Right owns Folder disclosure. Note/Folder
+  Quiet pointer selection and keyboard-navigation emphasis remain distinct
+  without changing the selected destination or creating a second focus owner.
+  The emphasized row is the sole visible list-focus indicator, so Scholium adds
+  no duplicate perimeter focus effect. Up/Down moves selection and Left/Right
+  owns Folder disclosure. Note/Folder
   Move, root placement, system-Trash deletion, and contextual creation have
   non-drag accessibility actions. Native Folder disclosure carries expanded or
   collapsed state; the adjacent Folder symbol identifies type and stays hidden
-  from assistive technologies as decorative. AppKit's disclosure gutter, the
-  shared Folder/Note icon column, and the shared title column remain distinct.
+  from assistive technologies as decorative. Disclosure, item type, and title
+  remain distinct in the row's reading order.
 - Expanded Library and Inspector remain readable or collapse natively; they do
   not remain open in an unusably compressed state.
 - Attention exposes group, issue, Note, locator, state, actions, freshness, and
@@ -112,8 +114,8 @@
   insertion point at the end of the inline Note title. Returning to a still-open
   or window-restored Note restores its last title/body focus and fingerprint-
   valid editor selection. Explicit source navigation and Managed New Note's
-  body-start insertion take precedence. Closing the tab ends that retained
-  focus history.
+  body-start insertion take precedence. Closing the tab ends that retained focus
+  history.
 - Review selection and Edit formatting remain exact and keyboard reachable.
 - Suggestion lists retain document focus and one listbox selection. They do not
   open during marked-text composition.
@@ -125,13 +127,13 @@
   and preserve source/focus on failure.
 - Note-level document attachments expose paperclip decoration separately from
   each complete filename, availability, and preview action. Middle truncation
-  is visual only; Help and accessibility retain the complete name. The local
-  strip scrolls focused off-screen attachments into view, **Add Document** is
-  reachable through keyboard focus and the File menu without hover, and the
-  copy-versus-reference choice is explicit. Quick Look returns focus to the
-  initiating title/body target without changing selection. Reduce Motion makes
-  the Add-control reveal immediate while preserving the same content and
-  layout.
+  is visual only; Help and accessibility retain the complete name. The bounded
+  single-line strip scrolls a focused off-screen attachment into view rather
+  than wrapping. **Add Document** is reachable through keyboard focus and the
+  File menu without hover; revealing or hiding it does not move the document.
+  Reduce Motion makes any reveal transition immediate. The copy-versus-reference
+  choice is explicit. Quick Look returns focus to the initiating title/body
+  target without changing selection.
 - English, Chinese, mixed content, and other Unicode source retain consistent
   visible cursor/selection within the declared support boundary. Technical
   regions are directionally isolated without changing surrounding prose.
@@ -196,12 +198,12 @@
   it open, Escape or outside activation dismisses it, and focus remains on the
   initiating context. Source editing exposes the exact delimiters without
   relying on color, hover, position, or icon alone.
-- The Settlement toolbar control exposes the state-valid Settle, Settle Again,
-  or Mark Unsettled researcher action without a parallel review milestone or
-  Agent launcher. Its ordinary-versus-prominent native surface, check-versus-
-  warning shape, state-bearing accessible label, and Help preserve state
-  without motion or color alone; Reduce Motion makes a successful confirmation
-  immediate.
+- Settlement exposes the state-valid Settle, Settle Again, or Mark Unsettled
+  researcher action as a milestone rather than task completion, without a
+  parallel review status or Agent launcher. Wording, symbol shape, state-bearing
+  accessibility value, Help, menu route, and Inspector facts preserve state
+  without motion or color. Reduce Motion presents an explicit successful Settle
+  immediately while preserving the same final milestone state.
   Opening Inspector does not alter reading or focus order.
 - Agent Integration in Settings exposes App/bridge/CLI state, the two distinct
   setup-copy actions, and the Core Protocol Finder route in one predictable
@@ -213,16 +215,17 @@
 
 ### Research Records
 
-- The Records window exposes its Triptych, collection/result count, selected
+- The Records window exposes its task title, collection/result count, selected
   Record, current question, chronological step count and position, step time,
   Agent attribution, revision relation, and current/earlier/unavailable Note
-  references in one predictable reading order.
-- Collection and reading plane remain independently named regions. Every
-  step-local Note attachment is keyboard reachable in the same reading order
-  as the step that declares it. At narrow width or enlarged text, its
-  single-line strip scrolls horizontally instead of wrapping, compressing prose,
-  or moving provenance elsewhere; focus traversal also reveals an off-screen
-  attachment.
+  references in one predictable reading order. It does not repeat its Triptych.
+- Record list and Record detail are sequential, independently named states in
+  the same compact window. Back returns from detail to the list without losing
+  selection. Every step-local Note attachment is keyboard reachable in the same
+  reading order as the step that declares it. At narrow width or enlarged text,
+  capped references remain in their single-line local strip, and focus scrolls
+  an off-screen reference into view without compressing prose or moving
+  provenance.
 - Rendered Record paragraphs, emphasis, lists, block quotations, inline code,
   and links retain semantic accessibility. Unsupported syntax remains
   selectable literal text. The current question is the sole page heading;
@@ -252,24 +255,24 @@ reachability for app commands; predictable focus for interaction; cancellation
 for interruptible work; recovery for recoverable failure or consequential
 mutation; localization; reflow; non-color meaning; and retained source and
 conflict behavior. A workflow adds no inapplicable route merely to complete
-this list. Accessibility-tree inspection, unit/integration tests, and XCUITest
-remain automated evidence even when they drive a real system service or capture
-speech.
+this list. Accessibility-tree inspection, unit/integration tests, and UI
+automation remain automated evidence even when they drive a real system service
+or capture speech.
 
 A Beta with no retained passing deterministic UI baseline for its named profile
 runs the complete current UI matrix on an isolated QA build from the exact
 release source. Each later Beta reruns repository static/unit/integration guards
 and the UI journeys affected by a changed workflow or state, accessibility
-contract, framework owner, fixture, or build environment. A new supported macOS
-baseline and 1.0 each trigger the complete matrix. A failing current guard or
-affected journey invalidates carry-forward. Exact-artifact UI journeys remain
+contract, presentation owner, fixture, or build environment. A new supported
+macOS baseline and 1.0 each trigger the complete matrix. A failing current guard
+or affected journey invalidates carry-forward. Exact-artifact UI journeys remain
 governed by §21.5.
 
 Human acceptance is selected by independent failure mode, not by multiplying
 every workflow, state, width, appearance, adaptation and input method. Reuse one
-representative journey across several native, AppKit, SwiftUI and WebKit
-surfaces; add another only for a distinct custom interaction, input-service,
-perceptual, or high-consequence recovery boundary.
+representative journey across navigation, document, transient, and embedded-
+editor surfaces; add another only for a distinct custom interaction, input-
+service, perceptual, or high-consequence recovery boundary.
 
 Core App acceptance keeps four bounded human checks:
 

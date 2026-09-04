@@ -190,11 +190,9 @@ struct WorkspaceToolbarTests {
             #expect(!(try #require(item(identifier, in: toolbar))).isNavigational)
         }
 
-        let agentChanges = try #require(item(
-            ScholiumWorkspaceToolbarController.Item.agentChanges,
-            in: toolbar
-        ))
-        #expect(agentChanges.isHidden)
+        #expect(toolbar.items.allSatisfy {
+            $0.itemIdentifier.rawValue != "scholium.toolbar.agentChanges"
+        })
     }
 
     @Test("Peripheral controls mirror their current accessible visibility state")

@@ -627,9 +627,7 @@ struct ContentView: View {
             triptychName: appState.workspaceAssignment?.triptych.name ?? "Not Selected",
             attentionTotal: sidebarAttentionTotal,
             workspaceNoteCounts: sidebarWorkspaceNoteCounts,
-            attentionError: appState.workspaceCatalog == nil
-                ? appState.workspaceCatalogError
-                : nil,
+            attentionError: sidebarNotificationError,
             treeProjection: appState.libraryTreeProjection(
                 preorderedNotes: preorderedNotes,
                 folderRelativePaths: folders
@@ -731,15 +729,36 @@ struct ContentView: View {
 
     private var sidebarAttentionTotal: Int? {
         let settlementCount = researchController.researchSnapshot?
-            .settlementRequirements.count ?? 0
+            .settlementRequirements.count
         let issueCount = AttentionPreferences.visibleTotalCount(
             catalog: appState.workspaceCatalog,
             assignment: appState.workspaceAssignment,
             dismissalLedgerData: attentionDismissalLedgerData
         )
-        if let issueCount { return issueCount + settlementCount }
-        let persistentCount = settlementCount
-        return persistentCount > 0 ? persistentCount : nil
+        let agentChangeCount = researchController.agentChanges?.count
+        let knownTotal = (settlementCount ?? 0)
+            + (issueCount ?? 0)
+            + (agentChangeCount ?? 0)
+        if knownTotal > 0 { return knownTotal }
+        guard settlementCount != nil, issueCount != nil, agentChangeCount != nil else {
+            return nil
+        }
+        return 0
+    }
+
+    private var sidebarNotificationError: String? {
+        if appState.workspaceCatalog == nil, let error = appState.workspaceCatalogError {
+            return error
+        }
+        if researchController.agentChanges == nil,
+           let error = researchController.agentChangesError {
+            return error
+        }
+        if researchController.researchSnapshot == nil,
+           let error = researchController.errorMessage {
+            return error
+        }
+        return nil
     }
 
     private var sidebarWorkspaceNoteCounts: SidebarWorkspaceNoteCounts {
@@ -897,8 +916,9 @@ struct ContentView: View {
                 },
                 dismiss: { appState.presentationRouter.dismissSheet() }
             )
-        case .agentChanges:
+        case .agentChanges(let initialChangeID):
             AgentChangesView(
+                initialChangeID: initialChangeID,
                 load: {
                     try await researchController.loadAgentChanges()
                 },

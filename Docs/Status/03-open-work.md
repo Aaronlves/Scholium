@@ -20,6 +20,18 @@
 
 ## Human interface and accessibility acceptance
 
+- Add researcher-controlled Exact-source typography without letting the choice
+  alter authoritative bytes, parsing, operations, or native application chrome.
+- Replace the fixed two-plane Records composition with the approved compact
+  list-to-detail window, narrow task title, and capped single-line Note-reference
+  strips. Preserve exact originating-window routing, Record selection, reading
+  position, keyboard access, and source authority through the cutover.
+- Refine Settlement as a visible research milestone without representing task
+  completion or replaying acknowledgement motion on ordinary state display.
+- Reproduce the reported Sidebar pointer/keyboard focus anomaly against the
+  current bounded presentation adapter. Distinguish native first-responder
+  behavior from stale or duplicate custom emphasis before changing the target
+  interaction contract.
 - Re-run the affected Agent Changes exact-comparison/Undo UI journey after its
   isolated-launch failures are resolved. On 2026-09-04 two focused attempts
   failed before Settlement because the registered QA launch did not expose the
@@ -38,7 +50,7 @@
   system Trash, conflict, and recovery where they exercise distinct human
   failure modes.
 - Add a human Records-window journey covering All/Notes/Records Search,
-  fixed-index collection-to-reading navigation, horizontal overflow and hover
+  list-to-detail navigation, horizontal overflow and hover
   for step-local Note attachments, exact originating-window attachment routing
   and dismissal, external Agent refresh without focus movement, keyboard
   traversal, enlarged text, narrow layout, and Simplified Chinese presentation.

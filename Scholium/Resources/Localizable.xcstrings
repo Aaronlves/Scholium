@@ -9058,22 +9058,22 @@
         }
       }
     },
-    "No Settlement reminder or visible derived issue needs attention for this Note." : {
+    "No Agent Change, Settlement reminder, or visible derived issue needs attention for this Note." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此笔记没有需要关注的暂定提醒或可见派生问题。"
+            "value" : "此笔记没有需要关注的 Agent 更改、暂定提醒或可见派生问题。"
           }
         }
       }
     },
-    "No Settlement reminder or visible derived issue needs attention in this Scope." : {
+    "No Agent Change, Settlement reminder, or visible derived issue needs attention in this Scope." : {
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "当前范围内没有需要关注的暂定提醒或可见派生问题。"
+            "value" : "当前范围内没有需要关注的 Agent 更改、暂定提醒或可见派生问题。"
           }
         }
       }

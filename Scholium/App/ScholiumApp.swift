@@ -1980,8 +1980,19 @@ final class WindowModel: ObservableObject {
             settlementRequirementChanges: researchController.$researchSnapshot
                 .map { $0?.settlementRequirements ?? [] }
                 .eraseToAnyPublisher(),
+            agentChangeChanges: researchController.$agentChanges
+                .eraseToAnyPublisher(),
+            agentChangeErrorChanges: researchController.$agentChangesError
+                .eraseToAnyPublisher(),
             refresh: { [weak self] in
-                await self?.refreshWorkspaceCatalog()
+                guard let self else { return }
+                await self.refreshWorkspaceCatalog()
+                _ = try? await self.researchController.loadAgentChanges()
+            },
+            showAgentChange: { [weak self] changeID in
+                self?.presentationRouter.present(
+                    .agentChanges(initialChangeID: changeID)
+                )
             }
         )
     )

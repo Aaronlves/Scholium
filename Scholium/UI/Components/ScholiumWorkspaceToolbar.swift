@@ -29,9 +29,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         static let documentMode = NSToolbarItem.Identifier(
             "scholium.toolbar.documentMode"
         )
-        static let agentChanges = NSToolbarItem.Identifier(
-            "scholium.toolbar.agentChanges"
-        )
         static let settlement = NSToolbarItem.Identifier(
             "scholium.toolbar.settlement"
         )
@@ -123,7 +120,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             .space,
             Item.documentMode,
             Item.researchRecords,
-            Item.agentChanges,
             Item.settlement,
             Item.apparatusDivider,
             Item.inspectorModes,
@@ -143,7 +139,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             .space,
             Item.documentMode,
             Item.researchRecords,
-            Item.agentChanges,
             Item.apparatusDivider,
             Item.inspectorModes,
             .flexibleSpace,
@@ -230,13 +225,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
                 ScholiumL10n.string("Settlement Unavailable"),
             ]
             return item
-        case Item.agentChanges:
-            return actionItem(
-                identifier: itemIdentifier,
-                label: ScholiumL10n.string("Agent Changes"),
-                systemImage: "sparkles.rectangle.stack",
-                action: #selector(showAgentChanges(_:))
-            )
         case Item.researchRecords:
             return actionItem(
                 identifier: itemIdentifier,
@@ -382,9 +370,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             appState.researchController.$researchSnapshot
                 .map { _ in () }
                 .eraseToAnyPublisher(),
-            appState.researchController.$agentChanges
-                .map { _ in () }
-                .eraseToAnyPublisher(),
             appState.shellState.$inspector
                 .dropFirst()
                 .receive(on: DispatchQueue.main)
@@ -460,16 +445,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
                     && (presentation.destination == .read || appState.canEditCurrentNote),
                 toolTip: presentation.toolTip,
                 accessibilityValue: presentation.mode.title
-            )
-        }
-
-        if let item = toolbarItem(Item.agentChanges) {
-            item.isHidden = !appState.researchController.hasAgentChanges
-            update(
-                item,
-                label: ScholiumL10n.dynamicString("Agent Changes"),
-                systemImage: "sparkles.rectangle.stack",
-                isEnabled: appState.researchController.hasAgentChanges
             )
         }
 
@@ -710,11 +685,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             mode: appState.documentController.chromeProjection.mode
         )
         appState.requestDocumentMode(presentation.destination)
-    }
-
-    @objc private func showAgentChanges(_ sender: Any?) {
-        guard appState.researchController.hasAgentChanges else { return }
-        appState.presentationRouter.present(.agentChanges)
     }
 
     @objc private func showResearchRecords(_ sender: Any?) {

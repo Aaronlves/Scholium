@@ -9,7 +9,7 @@ enum WindowSheetRoute: Identifiable {
     case transactionRecovery
     case identityResolution(NoteIdentityAmbiguity)
     case zoteroBinding(ZoteroBindingPanelRoute)
-    case agentChanges
+    case agentChanges(initialChangeID: UUID?)
 
     var id: String {
         switch self {

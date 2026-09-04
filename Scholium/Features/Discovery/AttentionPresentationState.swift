@@ -8,7 +8,7 @@ enum AttentionIssueGroup: String, CaseIterable, Identifiable, Sendable {
 
     var id: String { rawValue }
 
-    var title: String {
+    var titleResource: LocalizedStringResource {
         switch self {
         case .identityAndMetadata: "Identity & Metadata"
         case .structureAndConnections: "Structure & Connections"
@@ -31,29 +31,20 @@ enum AttentionIssueGroup: String, CaseIterable, Identifiable, Sendable {
 
 enum AttentionNotificationFilter: Hashable, Sendable {
     case all
+    case agentChanges
     case settlements
     case issues
-    case issue(AttentionQueueKind)
 
-    var issueKind: AttentionQueueKind? {
-        switch self {
-        case .issue(let kind): kind
-        case .all, .settlements, .issues: nil
-        }
+    var showsAgentChanges: Bool {
+        self == .all || self == .agentChanges
     }
 
     var showsIssues: Bool {
-        switch self {
-        case .all, .issues, .issue: true
-        case .settlements: false
-        }
+        self == .all || self == .issues
     }
 
     var showsSettlements: Bool {
-        switch self {
-        case .all, .settlements: true
-        case .issues, .issue: false
-        }
+        self == .all || self == .settlements
     }
 }
 
@@ -157,11 +148,11 @@ enum AttentionNotificationCopy {
     ) -> String {
         noteScoped
             ? ScholiumL10n.string(
-                "No Settlement reminder or visible derived issue needs attention for this Note.",
+                "No Agent Change, Settlement reminder, or visible derived issue needs attention for this Note.",
                 locale: locale
             )
             : ScholiumL10n.string(
-                "No Settlement reminder or visible derived issue needs attention in this Scope.",
+                "No Agent Change, Settlement reminder, or visible derived issue needs attention in this Scope.",
                 locale: locale
             )
     }

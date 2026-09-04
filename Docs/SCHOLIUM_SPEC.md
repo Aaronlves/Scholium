@@ -29,7 +29,7 @@ must not create alternative product rules.
 | [Integrations, Onboarding, and Boundaries](Specification/05-integrations-onboarding-and-boundaries.md) | §§15–17: Zotero, onboarding, permanent boundaries, and deferrals. |
 | [Interface Shell and Library](Specification/06-interface-shell-and-library.md) | §§18.1–18.3: shell, Library, and Search presentation. |
 | [Document and Research Interface](Specification/07-document-and-research-interface.md) | §§18.4–18.7: Document, Inspector, Records, states, and terminology. |
-| [Scholium Design](../Design.md) | §19: visual language, Variables, components, patterns, motion, and writing. |
+| [Scholium Design](../Design.md) | §19: visual identity, semantic presentation roles, adaptive layout, reuse boundaries, motion, writing, and state language. |
 | [Accessibility and Adaptation](Specification/09-accessibility-and-adaptation.md) | §20: cross-cutting accessibility and adaptation. |
 | [Release and Open Decisions](Specification/10-release-and-open-decisions.md) | §§21–22: release requirements and unresolved target questions. |
 | [Metadata and Critique](Specification/11-metadata-and-critique.md) | Appendices A–B: metadata catalogs and bundled Critique requirements. |

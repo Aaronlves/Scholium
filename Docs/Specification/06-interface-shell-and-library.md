@@ -31,9 +31,8 @@ and Library presentation without restating those workflows.
 
 Each configured window contains one native split view:
 
-1. **Sidebar**: Scholium identity, Triptych selection,
-   Analyses–Topics–Works navigation, Triptych Notifications, and the selected
-   workspace's Library.
+1. **Sidebar**: Scholium identity, Analyses–Topics–Works navigation, Search,
+   Triptych Notifications, and the selected workspace's Library.
 2. **Document**: the selected Note or the restrained no-document state.
 3. **Apparatus**: the trailing Research Inspector's Overview, Outgoing, and
    Incoming projections.
@@ -41,15 +40,13 @@ Each configured window contains one native split view:
 The native window and split controller own frame, dividers, collapse,
 compression, fullscreen, and toolbar geometry. Scholium owns semantic order,
 readable peripheral thresholds, and the one initial Inspector reveal request.
-It never continuously reasserts divider positions. The native Sidebar split
-item owns its regular Liquid Glass, inset edge, shadow, window activity, and
-transparency/contrast adaptation. The warm Document background extends beneath
-that glass while its safe area keeps Document content unobscured; Sidebar
-content adds no custom background, visual-effect host, or depth cue. Document
-and Apparatus keep continuous opaque semantic backgrounds through the
-transparent titlebar, and the system separator is the sole interactive
-boundary. The toolbar paints no separate full-width band; its standard native
-controls use regular system Liquid Glass. Design §19 owns this boundary.
+It never continuously reasserts divider positions. The Sidebar uses the
+supported macOS version's native navigation material above the warm Document
+underlay; native safe areas keep Document content unobscured. Sidebar content
+adds no custom material or parallel depth cue. Document and Apparatus keep
+continuous opaque semantic backgrounds, and the system separator is the sole
+interactive boundary. Design §19 owns this semantic material boundary; the
+architecture set records its current framework implementation.
 
 New windows show Library, hide Inspector, and begin in Analyses/Overview.
 Visibility and workspace session state are installed before first presentation,
@@ -58,16 +55,20 @@ disclosure, selected tab, live Document mode, and Inspector mode. A transition
 commits only after source safety succeeds; failure preserves the exact origin
 workspace and buffer.
 
-The native toolbar has stable leading Sidebar and Back/Forward controls,
-Document identity/actions in the center, a standalone Settlement control at the
-Document region's trailing edge, and an Inspector projection group plus trailing
-Inspector visibility control in the Apparatus section.
+The native toolbar remains a bounded, stable set for frequent or high-value
+commands: Sidebar and Back/Forward, current-Document information and mode,
+Settlement, Research Records, confirmed Agent Changes when present, Inspector
+projection, and Inspector visibility. Every command also exists in its owning
+menu, and native overflow preserves access at narrow widths. The current scope
+does not require toolbar customization.
+
 Search and Triptych Notifications sit at the logical trailing edge of the
-Sidebar header, not in the native toolbar. Triptych opening and creation remain
-in the native File menu; open-window switching remains in the Window menu.
-Back/Forward traverse successful document visits only. The toolbar is stable
-during loading and uses live safe areas. Pane visibility is expressed by the
-actual pane, not duplicate controls or persistent custom selection styling.
+Sidebar header rather than duplicating toolbar commands. Triptych opening and
+creation remain in the native File menu; open-window switching remains in the
+Window menu. Back/Forward traverse successful document visits only. The toolbar
+remains structurally stable during loading and uses live safe areas. Pane
+visibility is expressed by the actual pane, not duplicate custom selection
+styling.
 
 The Inspector remains hideable whenever visible and showable only with a
 Target. If an already-visible Inspector loses its Document, it presents **No
@@ -87,14 +88,12 @@ selected unless the researcher explicitly opens one.
 
 The Sidebar header uses one row: the Scholium wordmark is the primary brand
 title, followed at the logical trailing edge by Search and Triptych
-Notifications. It contains no persistent Triptych selector. The native File
-menu opens a registered Triptych in its own window and creates a Triptych;
-Settings manages registrations and the Window menu switches among open
-windows. The current Triptych name does not remain visible in the Sidebar.
-When open Workspace windows belong to more than one distinct Triptych, each
-native window subtitle names its Triptych; the subtitle remains absent for one
-Triptych or several windows over the same Triptych. The no-document state
-contains only a decorative
+Notifications. It contains no persistent Triptych title or selector. The native
+File menu opens a registered Triptych in its own window and creates a Triptych;
+Settings manages registrations and the Window menu switches among open windows.
+When open Workspace windows belong to more than one distinct Triptych, the
+native window subtitle names the Triptych; it remains absent when that
+disambiguation is unnecessary. The no-document state contains only a decorative
 document symbol, **No Document Selected**, and **Select a note in the Library
 to read or edit.** as one read-only accessibility group.
 
@@ -123,19 +122,16 @@ supports clear and restore. Standard macOS commands remain outside remapping.
 ### 18.3 Library and Search
 
 The vertical Triptych workspace navigator presents Analyses, Topics, and Works
-in stable order as peer destinations. The selected row uses one restrained
-native navigation selection; rows show localized exact Note counts without
-role descriptions, progress, pipeline state, or Attention badges. Unknown
-initial count is unavailable, not zero. The native source list owns pointer
-behavior, focus, active/inactive selection, and Up/Down traversal; Scholium does
-not reproduce those states in a parallel custom control. Pointer activation
-retains AppKit's unemphasized selection; keyboard focus entry or navigation
-enables its emphasized row without changing the selected destination or
-Up/Down responder routing. The emphasized row is the list's focus indicator;
-the source-list container draws no duplicate perimeter focus ring.
-Workspace and Library rows follow the effective small, medium, or large native Source List size;
-enlarged interface text requests the native large presentation rather than a
-separate fixed row metric.
+in stable order as peer destinations. Rows show localized exact Note counts
+without role descriptions, progress, pipeline state, or Attention badges.
+Unknown initial count is unavailable, not zero. The native source list owns
+pointer behavior, responder routing, selection, and Up/Down traversal. A bounded
+presentation adapter distinguishes quiet pointer selection from keyboard-
+navigation emphasis without changing the selected destination or creating a
+second focus owner. The emphasized row is the sole visible list-focus indicator,
+so the container draws no duplicate perimeter focus ring. Workspace and Library
+rows follow the effective native Source List size; enlarged interface text uses
+the native larger presentation rather than a separate fixed row metric.
 
 Live opening may make the selected vault's trustworthy Library usable before
 cross-vault projections are complete. Unavailable workspace rows remain
@@ -157,12 +153,10 @@ Library provides:
 - explicit empty, loading, stale, and recoverable error states.
 
 Library is a muted section label rather than a competing page title. Organize
-and Add remain separate native menus and focus targets, but appear as quiet,
-borderless monochrome symbols without persistent glass containers or redundant
-menu chevrons. A shallow neutral circular surface appears only on hover and
-press; macOS retains activation, menu presentation, keyboard focus, disabled
-rendering, and accessibility. Folder-local Expand/Collapse remains in each
-Folder's contextual and accessibility actions.
+and Add remain separate native menus and focus targets with familiar symbols;
+macOS owns their resting, hover, press, focus, disabled, menu, and accessibility
+presentation. Folder-local Expand/Collapse remains in each Folder's contextual
+and accessibility actions.
 
 The application-owned root `Attachments` directory and everything beneath it
 remain on disk but are excluded from the Library hierarchy. Document
@@ -170,19 +164,23 @@ attachments are reached only through their owning Note's attachment routes;
 this projection rule does not hide a researcher-authored file or nested folder
 that merely uses the same word elsewhere in a path.
 
-Folder and Note rows use one quiet native outline hierarchy. AppKit owns row
+Folder and Note rows use one native outline hierarchy. The native owner controls
 selection, focus, indentation, active/inactive presentation, disclosure, and
-drag feedback. Clicking a row selects it; the native disclosure control and
-Left/Right commands expand or collapse the selected Folder. Titles expose full
+drag feedback. Clicking a row selects it; the disclosure control and Left/Right
+commands expand or collapse the selected Folder. Titles expose full
 accessibility names and pointer help when visually truncated. Folder
 disclosure, selection, drop target, disabled, and focus states remain distinct.
-The native disclosure chevron is the Folder row's hierarchy-state control; the
-monochrome Folder symbol identifies its item type. AppKit owns the disclosure
-gutter, Folder and Note symbols share the next icon column, and their titles
-share the following text column at each hierarchy level. Scholium supplies one
-4-unit hierarchy step through AppKit's native outline indentation API.
-Standard controls and rows retain their macOS cursor behavior; link cursors are
-reserved according to §19.3.
+Disclosure communicates hierarchy state; Folder and Note symbols communicate
+item type, and titles retain a consistent aligned text track. Indentation
+adapts with the native Source List rather than becoming a product metric.
+
+The Library is a researcher-authored project binder, not a flat taxonomy of app
+destinations. It may therefore represent the complete on-disk Folder hierarchy
+in this one outline. Search, Expand/Collapse, Reveal, keyboard traversal, and
+native split collapse keep deep structures usable; Scholium does not add an
+intermediate content-list pane merely to flatten source organization. Standard
+controls and rows retain their macOS cursor behavior; link cursors are reserved
+according to §19.3.
 
 New Note/Folder, Rename, Move, Copy Relative Path, Reveal, Expand/Collapse, and
 system-Trash actions are available through menu and named accessibility routes;

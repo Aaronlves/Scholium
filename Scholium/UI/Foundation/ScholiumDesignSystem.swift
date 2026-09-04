@@ -1816,11 +1816,11 @@ enum ScholiumMetrics {
     }
 
     enum Attention {
-        /// Attention is intentionally a bounded, transient queue for a small
-        /// number of urgent derived issues. Native popover chrome and arrow
-        /// geometry remain system-owned.
+        /// Notifications are intentionally presented in a bounded native
+        /// popover. Native List scrolling, chrome, and arrow geometry remain
+        /// system-owned.
         static let popoverWidth: CGFloat = 420
-        static let popoverHeight: CGFloat = 480
+        static let popoverHeight: CGFloat = 360
     }
 
     enum DocumentInformation {

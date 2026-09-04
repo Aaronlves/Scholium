@@ -31,6 +31,12 @@ MARKDOWN_LINK = re.compile(r"(?<!!)\[[^\]]+\]\(([^)]+)\)")
 SECTION_ID = re.compile(
     r"^#{2,3}\s+(Appendix [A-Z]|\d+(?:\.\d+)*)(?:\.|\s)"
 )
+SECTION_REFERENCE_GROUP = re.compile(
+    r"§{1,2}\s*\d+(?:\.\d+)*"
+    r"(?:\s*(?:[–-]\s*|,\s*(?:and\s+)?|and\s+)"
+    r"(?:§{1,2}\s*)?\d+(?:\.\d+)*)*"
+)
+NUMERIC_SECTION_REFERENCE = re.compile(r"\d+(?:\.\d+)*")
 
 
 def failure(message: str) -> None:
@@ -179,7 +185,7 @@ def validate_line_lengths(paths: list[Path]) -> None:
                 )
 
 
-def validate_specification_sections(paths: list[Path]) -> None:
+def validate_specification_sections(paths: list[Path]) -> set[str]:
     seen: dict[str, Path] = {}
     top_level: list[str] = []
     expected_top_level = [*(str(number) for number in range(1, 23)), "Appendix A", "Appendix B"]
@@ -203,6 +209,22 @@ def validate_specification_sections(paths: list[Path]) -> None:
             "specification top-level order mismatch: "
             + ", ".join(top_level)
         )
+    return set(seen)
+
+
+def validate_specification_references(
+    paths: list[Path],
+    valid_section_ids: set[str],
+) -> None:
+    for path in paths:
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            for group in SECTION_REFERENCE_GROUP.findall(line):
+                for section_id in NUMERIC_SECTION_REFERENCE.findall(group):
+                    if section_id not in valid_section_ids:
+                        failure(
+                            f"{path.relative_to(REPOSITORY_ROOT)}:{number} "
+                            f"references missing section {section_id}"
+                        )
 
 
 def main() -> None:
@@ -215,7 +237,8 @@ def main() -> None:
     authority_paths = [manifest for manifest, _, _ in MANIFESTS]
     authority_paths.extend(path for declared in declared_sets for path in declared)
     validate_line_lengths(authority_paths)
-    validate_specification_sections(declared_sets[0])
+    valid_section_ids = validate_specification_sections(declared_sets[0])
+    validate_specification_references(authority_paths, valid_section_ids)
 
     link_sources = authority_paths + [
         REPOSITORY_ROOT / "README.md",

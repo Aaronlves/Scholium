@@ -23,20 +23,18 @@ editable Markdown.
 All modes share one document session, selection, Undo history, viewport,
 appearance, and line-width setting. A mode change must preserve dirty source,
 selection, focus, marked text, scroll, and recovery authority. Review and Edit
-may differ only where editing requires caret, selection, composition, or active
-syntax. Review and inactive Edit use one philosophy-manuscript rhythm: each
-semantic block preserves the same typography, wrapping, visible start, local
-line geometry, and non-source spacing. Each authored Markdown blank line remains
-one stable prose-height source row in Edit, while Review represents paragraph
-boundaries through manuscript spacing. Edit adds no duplicate paragraph-end
-spacing around those rows. A blank row neither collapses nor expands when it
-receives the caret or its first visible character, and its line box cannot
-overlap adjacent content. This source-row difference may accumulate only once
-per authored blank line. Exact
-structural prefixes revealed by the active heading or quotation hang outside
-the prose measure, retain the computed size of their line, and do not move its
-visible text or adjacent blocks. Source accepts researcher responsibility for
-protected YAML while still using targeted, byte-preserving validation.
+share one recognizable philosophy-manuscript hierarchy and measure, but may
+differ where editing requires caret placement, exact spaces, blank source rows,
+composition, or active syntax. Every authored blank line remains addressable
+and cannot collapse, overlap its neighbors, or jump when editing begins.
+
+Inactive structural syntax may be de-emphasized; entering the construct reveals
+the exact prefix at the same source location without moving the researcher to a
+different semantic block or losing selection, composition, or scroll context.
+No particular prefix track, line-box recipe, or pixel-identical Review/Edit
+geometry is part of the product contract. Source accepts researcher
+responsibility for protected YAML while still using targeted, byte-preserving
+validation.
 
 Edit activation is construct-scoped. Pointer and keyboard entry place the caret
 at the corresponding exact source location without an intermediate false

@@ -280,8 +280,6 @@ external verification; never re-sign an already accepted artifact.
 
 Only current questions that can still change the target belong here:
 
-- decide whether any provisional interface metric should become normative after
-  §20's representative adaptation and human visual-acceptance set.
 - decide whether Research Records later gain researcher-controlled deletion,
   merge, split, or write suspension before exposing any such operation; the
   first contract in §§8.6, 13, and 18.5 provides none of them.

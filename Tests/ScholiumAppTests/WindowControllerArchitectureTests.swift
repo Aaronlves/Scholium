@@ -86,6 +86,9 @@ struct WindowControllerArchitectureTests {
             throw DiscoverySearchExecutionError.workspaceUnavailable
         }
         let dismissalDays = PassthroughSubject<Int, Never>()
+        let agentChanges = PassthroughSubject<[AgentChange]?, Never>()
+        let agentChangeErrors = PassthroughSubject<String?, Never>()
+        var openedAgentChangeID: UUID?
         let session = AttentionPopoverSession(
             presentation: AttentionPresentationState(),
             discoveryController: discoveryController,
@@ -97,7 +100,10 @@ struct WindowControllerArchitectureTests {
                 settlementRequirementChanges:
                     Just<[WorkspaceSettlementRequirement]>([])
                     .eraseToAnyPublisher(),
-                refresh: {}
+                agentChangeChanges: agentChanges.eraseToAnyPublisher(),
+                agentChangeErrorChanges: agentChangeErrors.eraseToAnyPublisher(),
+                refresh: {},
+                showAgentChange: { openedAgentChangeID = $0 }
             )
         )
         var invalidations = 0
@@ -118,6 +124,37 @@ struct WindowControllerArchitectureTests {
         dismissalDays.send(14)
         #expect(session.dismissalDays == 14)
         #expect(invalidations == 2)
+        agentChanges.send([])
+        #expect(session.agentChanges == [])
+        #expect(invalidations == 3)
+        agentChangeErrors.send("Fixture Agent Change failure")
+        #expect(session.agentChangesError == "Fixture Agent Change failure")
+        #expect(invalidations == 4)
+
+        let change = AgentChange(
+            id: UUID(),
+            triptychID: UUID(),
+            operation: .update,
+            noteID: UUID(),
+            role: .topicKnowledge,
+            originalRelativePath: "Drafts/Reasons.md",
+            finalRelativePath: "Drafts/Reasons.md",
+            beforeFingerprint: nil,
+            afterFingerprint: nil,
+            state: .confirmed,
+            createdAt: Date(timeIntervalSince1970: 100),
+            confirmedAt: Date(timeIntervalSince1970: 200),
+            undoneAt: nil
+        )
+        agentChanges.send([change])
+        #expect(session.visibleAgentChanges(for: session.presentation) == [change])
+        session.presentation.notificationFilter = .settlements
+        #expect(session.visibleAgentChanges(for: session.presentation).isEmpty)
+        session.presentation.notificationFilter = .agentChanges
+        session.presentation.filter.query = "Reasons"
+        #expect(session.visibleAgentChanges(for: session.presentation) == [change])
+        session.inspect(change)
+        #expect(openedAgentChangeID == change.id)
         observation.cancel()
 
         let repositoryRoot = URL(fileURLWithPath: #filePath)
@@ -2141,13 +2178,13 @@ struct WindowControllerArchitectureTests {
         #expect(toolbarSource.contains("static var itemIdentifiers:"))
         #expect(toolbarSource.contains("appState.commandObservation.$revision"))
         #expect(toolbarSource.contains("appState.researchController.$researchSnapshot"))
-        #expect(toolbarSource.contains("appState.researchController.$agentChanges"))
+        #expect(!toolbarSource.contains("appState.researchController.$agentChanges"))
         #expect(
             researchControllerSource.contains(
                 "@Published private(set) var agentChanges: [AgentChange]?"
             )
         )
-        #expect(researchControllerSource.contains("var hasAgentChanges: Bool"))
+        #expect(!researchControllerSource.contains("var hasAgentChanges: Bool"))
         #expect(researchControllerSource.contains("func loadAgentChanges() async throws"))
         #expect(!toolbarSource.contains("ScholiumWorkspaceSidebarToolbarView"))
         #expect(!toolbarSource.contains("ScholiumWorkspaceInspectorToolbarView"))

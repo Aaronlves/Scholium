@@ -72,9 +72,12 @@ chrome/input behavior remains deferred under §17, but all Scholium-owned layout
 uses logical start/end edges.
 
 Document Appearance is machine-local. It manages named configurations for line
-width, Body, headings, and semantic Callouts while preserving protected
-structure and accessibility. Source typography and app chrome are not
-themeable. Advanced CSS is additive and optional.
+width, Body, headings, semantic Callouts, and Exact-source face and size while
+preserving protected structure and accessibility. The researcher may choose any
+installed Exact-source font; Scholium does not audit the choice. The shipped
+default is monospaced. Changing presentation never changes source bytes or
+logical lines. Native app chrome is not themeable. Advanced CSS is additive and
+optional.
 
 The app-owned filename title is the primary document title. Review and Edit
 place it at the top of the shared document plane, inside the document's
@@ -94,17 +97,19 @@ projected title.
 
 Review and Edit place the Note's document attachments in one compact,
 single-line strip immediately below that title. Existing attachments remain
-visible as paperclip-and-filename capsules; each uses bounded middle truncation,
-exposes its complete filename as Help and accessibility text, and opens native
-Quick Look without moving the document selection. Overflow scrolls locally
-rather than wrapping or narrowing the manuscript. The trailing **Add
-Document** control always retains its layout slot, appears briefly when a Note
-opens or changes, and otherwise becomes visible when pointer or keyboard focus
-enters the title/attachment region. Its menu distinguishes **Attach a Copy…**
-from **Reference Original…**; both remain available in the File menu without
-hover. Hiding the control changes opacity and hit testing only, so document
-layout never moves. Source has no attachment strip because it presents exact
-authored source only.
+visible as paperclip-and-filename controls; each caps its width, uses middle
+truncation, exposes its complete filename as Help and accessibility text, and
+opens native Quick Look without moving the document selection. The small
+expected set grows horizontally and scrolls locally when it overflows rather
+than wrapping or narrowing the manuscript.
+
+The trailing **Add Document** control retains its layout slot, appears briefly
+when a Note opens or changes, and otherwise becomes visible when pointer or
+keyboard focus enters the title/attachment region. Its menu distinguishes
+**Attach a Copy…** from **Reference Original…**; both remain available in the
+File menu without hover. When hidden it is neither visible nor interactive, and
+surrounding document layout does not move. Source has no attachment strip
+because it presents exact authored source only.
 
 When a Note enters Edit for the first time without retained window
 presentation, focus enters the inline Note title with one collapsed insertion
@@ -113,8 +118,8 @@ or body focus and exact valid editor selection; quitting and reopening Scholium
 does the same only for Notes retained in that window's open tabs. Selection
 restoration requires the same exact source fingerprint. An explicit source
 locator and Managed New Note's body-start insertion override this default.
-Closing the Note's tab ends this focus/selection retention; Scholium keeps no
-permanent vault-wide cursor history.
+Closing the Note's tab ends this focus and selection retention; Scholium keeps
+no permanent vault-wide cursor history.
 
 Quick Look owns a temporary native presentation and any required read-access
 lease. Closing it returns Edit to the title or body target and exact selection
@@ -126,22 +131,22 @@ heading's visual padding places the caret in that heading; clicking a visible
 Markdown blank line places it on that exact source line; and source-less
 spacing between projected objects resolves to the nearest explicit source
 boundary. Typography cannot create a region that merely ignores editing input.
-Review and inactive Edit use the same philosophy-manuscript rhythm for each
-semantic block's typography, wrapping, visible start, local line geometry, and
-non-source spacing. Every authored blank line remains one stable prose-height
-source row in Edit, while Review uses manuscript paragraph spacing. Edit does
-not duplicate paragraph-end spacing around the row. Entering the row or adding
-its first visible character changes neither its line box nor its position, and
-the row never overlaps adjacent content. This bounded Edit-only difference may
-accumulate once per authored blank line. An inactive ATX heading or quotation removes its
-complete structural prefix and required separator from inline measure;
-entering it reveals that exact editable source outside the prose measure at the
-line's computed size. Neither the visible text nor neighboring blocks move as
-focus changes.
-Preserved spaces take their exact width without acquiring visible whitespace
-markers in ordinary Edit prose. Ordinary prose follows language-aware
-line-breaking rules, and closing punctuation is not left alone at a visual-line
-start merely because it follows an interactive inline projection.
+Review and inactive Edit retain the same recognizable manuscript hierarchy,
+measure, wrapping intent, and visible semantic-block order. Editing may create
+bounded geometric differences needed for caret placement, marked text, exact
+spaces, blank source rows, and active syntax. Every authored blank line remains
+addressable and cannot collapse, overlap adjacent content, or jump when its
+first visible character is entered.
+
+An inactive heading or quotation may de-emphasize its structural prefix.
+Entering it reveals the exact prefix at the same source location without moving
+the researcher to another block or losing selection, composition, or scroll
+context. The product contract does not prescribe a particular prefix track,
+line-box recipe, or pixel-identical Review/Edit geometry. Preserved spaces keep
+their exact width without acquiring visible whitespace markers in ordinary
+Edit prose. Ordinary prose follows language-aware line-breaking rules, and
+closing punctuation is not left alone at a visual-line start merely because it
+follows an interactive inline projection.
 
 ### 18.4.1 Advanced CSS boundary
 
@@ -157,12 +162,9 @@ conflicts, recovery, and chrome remain app-owned. Invalid snippets stay disabled
 with errors. Rendering failure enters persistent CSS Safe Mode until the
 researcher disables or selectively re-enables managed copies.
 
-The Document toolbar keeps Sidebar and Back/Forward leading, identity and
-Document Information in the Document region, then the standalone Settlement
-control immediately before the separately spaced Document Mode, Research
-Records, Agent Changes when present, and trailing Inspector. Document
-Information is one native transient
-popover: its scrollable Heading Outline remains the primary region and its
+The Workspace toolbar follows §18.2's bounded-set, menu-parity, and overflow
+contract. Document Information is one native transient popover: its
+scrollable Heading Outline remains the primary region and its
 current statistics remain fixed below. Body scope is implicit; `Selection`
 appears only while a nonempty selection owns the count. Statistics show one
 researcher-selected number at a time; the native selector remembers the last
@@ -173,14 +175,13 @@ and marks the current choice with the native checkmark. The popover sizes to
 localized content within a bounded maximum. Choosing a heading closes the
 popover and returns focus to that document location; Escape or an outside click
 dismisses it without losing the editor selection. Search belongs beside
-Notifications in the Sidebar header.
-Agent Changes appears in the toolbar only while at least one confirmed local
-change exists. Source remains available through the Document Mode menu; the
-toolbar button prioritizes Review/Edit and reports its current value. Document
-Text Size is per-window and source-neutral. These toolbar and compact
-Sidebar-header controls use native regular Liquid Glass above the continuous
-semantic planes; adopting the material changes neither their established target
-sizes nor split, toolbar-section, or Document geometry.
+Notifications in the Sidebar header. Agent Changes may appear in the default
+toolbar only while at least one confirmed local change exists. Source remains
+available through the Document Mode menu; a retained toolbar item may prioritize
+Review/Edit while reporting its current value. Document Text Size is per-window
+and source-neutral. Native toolbar and Sidebar-header controls preserve the
+semantic content-plane boundary in §19 without adding feature-owned material or
+geometry.
 
 About directly edits one current-Note field at a time. Plain values activate an
 inline control; structured contributors retain their ordered structured editor.
@@ -201,33 +202,40 @@ and it never follows unrelated window focus. Research menu/toolbar activation
 opens the collection, while a Search result opens the same window at the exact
 Record and matched step.
 
-The collection is a quiet, fixed, non-collapsible scanning index of current
-questions and last substantive-step times with one system Search field that
-reuses §13's Record provider rather than creating a second parser or index.
-Selecting one Record opens a centered scholarly reading plane. The reading
-plane pins the current question as its sole title above an independently
-scrolling chronological step sequence. Each step shows time and Agent
-attribution followed by its rendered §8.6 Markdown; revision relationships are
-stated without turning them into acceptance or completion. Immediately beneath
-that step, one single-line horizontal Note attachment strip exposes its own
+The window opens as a quiet scanning list of current questions and last
+substantive-step times. One system Search field reuses §13's Record provider
+rather than creating a second parser or index. Selecting a Record transitions
+the same window to a centered Record reading view; Back returns to the list, and
+a Search result may open the exact Record and matched step directly. List and
+detail are sequential states, not simultaneous fixed regions, and the
+transition preserves selection and reading position.
+
+The reading view pins the current question as its sole content title above an
+independently scrolling chronological step sequence. Each step shows time and
+Agent attribution followed by its rendered §8.6 Markdown; revision relationships
+are stated without turning them into acceptance or completion. Immediately
+beneath that step, one compact, single-line Note-reference strip exposes its own
 `basis` and `modified` references plus current, earlier, or unavailable revision
-state. Attachments grow rightward, preserve native hover/focus/press feedback,
-and scroll horizontally instead of wrapping. Record identifiers and
-fingerprints remain progressively disclosed after the sequence. A Note
-reference navigates to the current Note when available but never substitutes
-current prose for the historical revision.
+state. Each control has a capped width and complete accessible name; the small
+expected set scrolls locally if it overflows. Record identifiers and
+fingerprints remain progressively disclosed after the sequence. A Note reference
+navigates to the current Note when available but never substitutes current prose
+for the historical revision.
 
 The attachment control shows only the Note name and `Basis` or `Modified` in
 the ordinary current-revision case. `Earlier` or `Unavailable` appears only
-when exceptional state changes what navigation means. Records has no toolbar;
-its hidden title-bar style preserves native window controls while allowing the
-two content planes to fill the window. Search remains collection-local, visible
-Records refresh automatically, and no unavailable write or redundant refresh
-action is advertised. The window opens at a compact default size, closes
-through Escape or its close control, and dismisses after an attachment transfers
-focus to its Note in the exact originating Workspace window. It never creates
-a second Workspace window or falls back to another open Workspace. Merely losing
-focus does not close it or discard the current reading position.
+when exceptional state changes what navigation means. The native titlebar shows
+the narrow task title **Research Records**, without repeating the owning
+Triptych, and retains standard window controls and dragging. The window has a
+compact task-sized width and height rather than a desktop-scale split layout;
+exact defaults remain implementation choices, and resizing still preserves
+legibility. Search remains collection-local, visible Records refresh
+automatically, and no unavailable write or redundant refresh action is
+advertised. The window closes through Escape or its close control and dismisses
+after an attachment transfers focus to its Note in the exact originating
+Workspace window. It never creates a second Workspace window or falls back to
+another open Workspace. Merely losing focus does not close it or discard the
+current reading position.
 
 The window is read-only. It has no rich, Markdown, or plain-text editor and no
 Action, Run, Method, Result, Reading Lead, participant ledger, chat, response,
@@ -295,22 +303,23 @@ to the source occurrence. Row titles, annotation text, and context wrap and use
 full-row native destination activation. Switching projection changes only the
 derived occurrence list and returns its sole scroll owner to the beginning.
 
-Document owns one standalone **Settlement toolbar control** at the trailing edge
-of its native toolbar region. Unsettled uses a monochrome check on ordinary
-Glass; Settled uses the same high-contrast check on a native prominent Glass
-surface translucently tinted with the Confirmed semantic color so native edge
-light and material depth remain legible; Changed Since Settle returns
-to ordinary Glass with a simple warning triangle in Attention color. Activating Settle or Settle
-Again opens one compact popover with optional rationale rather than changing the
-judgment directly. A successful exact-revision Settle alone receives one brief
-native surface transition while the final system check draws once from its
-lower-left stroke through its rising stroke; existing state,
-document switching, refresh, failure, and Mark Unsettled do not replay it.
-Reduce Motion changes the state immediately. Shape, state-bearing accessible
-label, Help, menu route, and the Inspector facts preserve meaning without color
-or motion. There is no parallel Document overlay, Agent launcher, or fixed
-research-method button. Agent Integration belongs to Settings, and the external
-conversation remains in its host.
+Document owns one **Settlement** command with a default native toolbar item and
+complete Research-menu route. It is presented as a research milestone, not task
+completion. Unsettled, Settled, and Changed Since Settle have distinct wording,
+symbol shape, Help, and state-bearing accessibility value. Settled may receive
+restrained Confirmed reinforcement; Changed Since Settle combines the milestone
+identity with Attention without implying failure.
+
+Activating Settle or Settle Again opens one compact popover with optional
+rationale rather than changing the judgment directly. Successful exact-revision
+Settlement updates the control and Inspector facts. One brief,
+non-celebratory transition may acknowledge an explicit successful Settle, but
+existing state, document switching, refresh, failure, and Mark Unsettled do not
+replay it; Reduce Motion presents the final state immediately. Exact color,
+symbol, material, and motion choreography remain implementation choices. There
+is no parallel Document overlay, Agent launcher, or fixed research-method
+button. Agent Integration belongs to Settings, and the external conversation
+remains in its host.
 
 MCP status, Search, and read calls create no persistent activity UI. A confirmed
 mutation adds its Agent Change to Notifications without activating the App,

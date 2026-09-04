@@ -40,13 +40,19 @@ final class AttentionPopoverSession: ObservableObject {
         let dismissalDaysChanges: AnyPublisher<Int, Never>
         let settlementRequirementChanges:
             AnyPublisher<[WorkspaceSettlementRequirement], Never>
+        let agentChangeChanges: AnyPublisher<[AgentChange]?, Never>
+        let agentChangeErrorChanges: AnyPublisher<String?, Never>
         let refresh: @MainActor () async -> Void
+        let showAgentChange: @MainActor (UUID) -> Void
     }
 
     @Published private(set) var presentedAnchor: AttentionPopoverAnchor?
     @Published private(set) var dismissalDays: Int
     @Published private(set) var settlementRequirements:
         [WorkspaceSettlementRequirement] = []
+    @Published private(set) var agentChanges: [AgentChange]?
+    @Published private(set) var agentChangesError: String?
+    @Published private var refreshInProgress = false
 
     let presentation: AttentionPresentationState
     private let discoveryController: DiscoveryController
@@ -94,10 +100,27 @@ final class AttentionPopoverSession: ObservableObject {
                 self?.settlementRequirements = requirements
             }
             .store(in: &observations)
+        dependencies.agentChangeChanges
+            .removeDuplicates()
+            .sink { [weak self] changes in
+                self?.agentChanges = changes
+            }
+            .store(in: &observations)
+        dependencies.agentChangeErrorChanges
+            .removeDuplicates()
+            .sink { [weak self] error in
+                self?.agentChangesError = error
+            }
+            .store(in: &observations)
     }
 
     var isRefreshing: Bool {
-        projectionController.isRefreshingCatalog
+        refreshInProgress || projectionController.isRefreshingCatalog
+    }
+
+    var isLoadingInitialContent: Bool {
+        (!catalogIsAvailable && catalogError == nil)
+            || (agentChanges == nil && agentChangesError == nil)
     }
 
     var catalogIsAvailable: Bool {
@@ -195,6 +218,43 @@ final class AttentionPopoverSession: ObservableObject {
         }
     }
 
+    func visibleAgentChanges(
+        for presentation: AttentionPresentationState,
+        locale: Locale = .current
+    ) -> [AgentChange] {
+        guard presentation.notificationFilter.showsAgentChanges else { return [] }
+        let noteID = presentation.noteScope.flatMap(stableNoteID)
+        let query = normalized(presentation.filter.query, locale: locale)
+        return (agentChanges ?? []).filter { change in
+            if let workspaceSlot = presentation.workspaceSlot,
+               change.role != workspaceSlot.vaultRole {
+                return false
+            }
+            if presentation.noteScope != nil, change.noteID != noteID {
+                return false
+            }
+            guard !query.isEmpty else { return true }
+            let searchable = [
+                ScholiumL10n.localized(
+                    AgentChangePresentation.operationTitle(for: change.operation),
+                    locale: locale
+                ),
+                ScholiumL10n.localized(
+                    AgentChangePresentation.stateTitle(
+                        for: change,
+                        endingRevisionState: endingRevisionState(for: change)
+                    ),
+                    locale: locale
+                ),
+                noteTitle(for: change),
+                AgentChangePresentation.path(for: change),
+                ScholiumL10n.dynamicString(change.role.displayName),
+            ].joined(separator: " ")
+            return normalized(searchable, locale: locale).contains(query)
+        }
+        .sorted(by: AgentChangePresentation.newestFirst)
+    }
+
     func noteTitle(for item: AttentionQueueItem) -> String {
         if let title = projectionController.catalog?.notes.first(where: {
             $0.reference.vaultID == item.note.vaultID
@@ -206,7 +266,29 @@ final class AttentionPopoverSession: ObservableObject {
             .deletingPathExtension().lastPathComponent
     }
 
+    func noteTitle(for change: AgentChange) -> String {
+        if let title = catalogNotes(for: change.noteID).first?.title,
+           !title.isEmpty {
+            return title
+        }
+        return AgentChangePresentation.displayName(for: change)
+    }
+
+    func endingRevisionState(
+        for change: AgentChange
+    ) -> AgentChangeEndingRevisionState? {
+        guard let endingFingerprint = change.afterFingerprint else { return nil }
+        let matches = catalogNotes(for: change.noteID)
+        guard matches.count == 1 else { return .unavailable }
+        return matches[0].fingerprint == endingFingerprint
+            ? .current
+            : .earlierRevision
+    }
+
     func refresh() async {
+        guard !refreshInProgress else { return }
+        refreshInProgress = true
+        defer { refreshInProgress = false }
         await dependencies.refresh()
     }
 
@@ -216,6 +298,49 @@ final class AttentionPopoverSession: ObservableObject {
             item.note,
             sourceLocator: item.locator
         )
+    }
+
+    func inspect(_ requirement: WorkspaceSettlementRequirement) {
+        guard let vault = workspaceController.state.assignment?.vaults.values.first(where: {
+            $0.id == requirement.note.vaultID
+        }) else { return }
+        dismiss()
+        discoveryController.requestOpen(
+            VaultNoteReference(
+                vaultID: requirement.note.vaultID,
+                vaultName: vault.name,
+                vaultRole: vault.role,
+                relativePath: requirement.note.relativePath,
+                stableNoteID: requirement.noteID.uuidString
+            ),
+            sourceLocator: nil
+        )
+    }
+
+    func inspect(_ change: AgentChange) {
+        dismiss()
+        dependencies.showAgentChange(change.id)
+    }
+
+    private func stableNoteID(_ note: VaultQualifiedNoteID) -> UUID? {
+        projectionController.catalog?.notes.first(where: {
+            $0.reference.vaultID == note.vaultID
+                && $0.reference.relativePath == note.relativePath
+        })?.reference.stableNoteID.flatMap(UUID.init(uuidString:))
+    }
+
+    private func catalogNotes(for noteID: UUID) -> [WorkspaceCatalogNote] {
+        projectionController.catalog?.notes.filter {
+            $0.reference.stableNoteID.flatMap(UUID.init(uuidString:)) == noteID
+        } ?? []
+    }
+
+    private func normalized(_ value: String, locale: Locale) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(
+                options: [.caseInsensitive, .diacriticInsensitive],
+                locale: locale
+            )
     }
 
 }

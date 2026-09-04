@@ -127,10 +127,6 @@ final class ResearchController: ObservableObject {
         errorMessage = nil
     }
 
-    var hasAgentChanges: Bool {
-        agentChanges?.isEmpty == false
-    }
-
     func scheduleAgentChangesRefresh() {
         agentChangesRefreshTask?.cancel()
         agentChangesRefreshTask = Task { [weak self] in

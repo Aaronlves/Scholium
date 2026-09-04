@@ -99,6 +99,25 @@ struct AttentionPresentationStateTests {
         #expect(state.selectedItemID == nil)
     }
 
+    @Test("Notification filters expose one complete or one type-specific queue")
+    func notificationFilterOwnership() {
+        #expect(AttentionNotificationFilter.all.showsAgentChanges)
+        #expect(AttentionNotificationFilter.all.showsSettlements)
+        #expect(AttentionNotificationFilter.all.showsIssues)
+
+        #expect(AttentionNotificationFilter.agentChanges.showsAgentChanges)
+        #expect(!AttentionNotificationFilter.agentChanges.showsSettlements)
+        #expect(!AttentionNotificationFilter.agentChanges.showsIssues)
+
+        #expect(!AttentionNotificationFilter.settlements.showsAgentChanges)
+        #expect(AttentionNotificationFilter.settlements.showsSettlements)
+        #expect(!AttentionNotificationFilter.settlements.showsIssues)
+
+        #expect(!AttentionNotificationFilter.issues.showsAgentChanges)
+        #expect(!AttentionNotificationFilter.issues.showsSettlements)
+        #expect(AttentionNotificationFilter.issues.showsIssues)
+    }
+
     @Test("Triptych Attention remains aggregate across workspace changes")
     func triptychScopeDoesNotRetarget() {
         let state = AttentionPresentationState()
@@ -116,7 +135,7 @@ struct AttentionPresentationStateTests {
         let note = VaultQualifiedNoteID(vaultID: UUID(), relativePath: "Topic.md")
         state.present(workspaceSlot: .topicKnowledge, noteScope: note)
         state.filter.query = "orphan"
-        state.notificationFilter = .issue(.possibleOrphan)
+        state.notificationFilter = .agentChanges
         state.select("task-1")
 
         state.resetForWorkspaceSwitch()
@@ -174,7 +193,7 @@ struct AttentionPresentationStateTests {
             AttentionNotificationCopy.emptyDescription(
                 noteScoped: false,
                 locale: locale
-            ) == "当前范围内没有需要关注的暂定提醒或可见派生问题。"
+            ) == "当前范围内没有需要关注的 Agent 更改、暂定提醒或可见派生问题。"
         )
         #expect(
             AttentionNotificationCopy.refreshing(locale: locale)

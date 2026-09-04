@@ -1232,7 +1232,6 @@ struct FrontendArchitectureTests {
             .space,
             ScholiumWorkspaceToolbarController.Item.documentMode,
             ScholiumWorkspaceToolbarController.Item.researchRecords,
-            ScholiumWorkspaceToolbarController.Item.agentChanges,
             ScholiumWorkspaceToolbarController.Item.apparatusDivider,
             ScholiumWorkspaceToolbarController.Item.inspectorModes,
             .flexibleSpace,
@@ -2300,7 +2299,10 @@ struct FrontendArchitectureTests {
         let settlementRowSource = attentionSource[
             settlementRowStart.lowerBound..<settlementRowEnd.lowerBound
         ]
-        #expect(attentionSource.contains("TextField(\"Search Notifications\""))
+        let notificationRowsSource = String(
+            attentionSource[settlementRowStart.lowerBound..<attentionSource.endIndex]
+        )
+        #expect(attentionSource.contains("TextField(\"Search\""))
         #expect(attentionSource.contains("Picker(\"Notification Type\""))
         #expect(attentionSource.contains("scholium.attentionSearch"))
         #expect(attentionSource.contains(".popover("))
@@ -2308,7 +2310,7 @@ struct FrontendArchitectureTests {
             attentionSource.contains(
                 "\\.scholiumAttentionPopoverIsPresented"
             ))
-        #expect(attentionSource.contains("AttentionPopoverContent(session: session)"))
+        #expect(attentionSource.contains("AttentionQueueView("))
         #expect(attentionSource.contains("session.dismiss()"))
         #expect(
             attentionSource.contains(
@@ -2316,10 +2318,35 @@ struct FrontendArchitectureTests {
             ))
         #expect(!attentionSource.contains(".searchable("))
         #expect(!attentionSource.contains("placement: .toolbar"))
-        #expect(attentionSource.contains("private var issueSummary"))
-        #expect(attentionSource.contains("in: Capsule(style: .continuous)"))
-        #expect(attentionSource.contains("Text(\"/\")"))
-        #expect(attentionSource.contains(".frame(maxWidth: .infinity, alignment: .trailing)"))
+        #expect(attentionSource.contains("notificationCategory(\"Agent Changes\")"))
+        #expect(attentionSource.contains("AgentChangeNotificationRow("))
+        #expect(attentionSource.contains("notificationCategory(group.titleResource)"))
+        #expect(attentionSource.contains(".scholiumForeground(.mutedText)"))
+        #expect(attentionSource.contains(".listRowBackground(Color.clear)"))
+        #expect(attentionSource.contains(".listRowSeparator(.hidden)"))
+        #expect(!attentionSource.contains(".scholiumSurface(.denseEvidence)"))
+        #expect(attentionSource.contains(".scrollContentBackground(.hidden)"))
+        #expect(!attentionSource.contains("in: Capsule(style: .continuous)"))
+        #expect(!attentionSource.contains("Text(\"/\")"))
+        #expect(attentionSource.contains(".buttonStyle(.plain)"))
+        #expect(attentionSource.contains("title: session.noteTitle(for: change)"))
+        #expect(attentionSource.contains("title: session.noteTitle(for: item)"))
+        #expect(!notificationRowsSource.contains("ScholiumTypography.exact"))
+        #expect(!notificationRowsSource.contains("VStack("))
+        #expect(
+            notificationRowsSource.components(
+                separatedBy: "ScholiumQuietRowButtonStyle("
+            ).count - 1 == 2
+        )
+        #expect(notificationRowsSource.contains(".scholiumActivationFocus($isFocused)"))
+        #expect(
+            notificationRowsSource.contains(
+                ".scholiumContentControlPointerFeedback("
+            )
+        )
+        #expect(notificationRowsSource.contains("in: notificationRowShape"))
+        #expect(!notificationRowsSource.contains("in: Circle()"))
+        #expect(notificationRowsSource.contains(".tint(ScholiumColorRole.mutedText.color)"))
         #expect(!attentionSource.contains("case .changeAttributionNeeded"))
         #expect(appSource.contains("lazy var attentionPopoverSession"))
         #expect(!appSource.contains("Window(\"Attention\", id: \"scholium-attention\")"))
@@ -2472,8 +2499,8 @@ struct FrontendArchitectureTests {
         #expect(!toolbar.contains("scholium.toolbar.search"))
         #expect(sidebarSource.contains("scholium.sidebarSearch"))
         #expect(toolbar.contains("scholium.toolbar.researchRecords"))
-        #expect(toolbar.contains("item.isHidden = !appState.researchController.hasAgentChanges"))
-        #expect(toolbar.contains("appState.researchController.$agentChanges"))
+        #expect(!toolbar.contains("scholium.toolbar.agentChanges"))
+        #expect(!toolbar.contains("appState.researchController.$agentChanges"))
         #expect(!toolbar.contains("showNoteResearchRecords"))
         #expect(!toolbar.contains("showTriptychResearchRecords"))
         #expect(!toolbar.contains("clock.arrow.circlepath"))

@@ -12,22 +12,6 @@ extension EnvironmentValues {
     }
 }
 
-private struct AttentionPopoverContent: View {
-    @ObservedObject var session: AttentionPopoverSession
-
-    var body: some View {
-        AttentionQueueView(
-            presentation: session.presentation,
-            session: session
-        )
-        .frame(
-            width: ScholiumMetrics.Attention.popoverWidth,
-            height: ScholiumMetrics.Attention.popoverHeight
-        )
-        .scholiumSurface(.denseEvidence)
-    }
-}
-
 private struct AttentionPopoverPresenter: ViewModifier {
     let anchor: AttentionPopoverAnchor
     @ObservedObject var session: AttentionPopoverSession
@@ -50,7 +34,14 @@ private struct AttentionPopoverPresenter: ViewModifier {
                 attachmentAnchor: .rect(.bounds),
                 arrowEdge: .top
             ) {
-                AttentionPopoverContent(session: session)
+                AttentionQueueView(
+                    presentation: session.presentation,
+                    session: session
+                )
+                .frame(
+                    width: ScholiumMetrics.Attention.popoverWidth,
+                    height: ScholiumMetrics.Attention.popoverHeight
+                )
             }
     }
 }
@@ -96,15 +87,14 @@ struct AttentionQueueView: View {
         let ledger = AttentionPreferences.decodeLedger(dismissalLedgerData)
         guard presentation.notificationFilter.showsIssues else { return [] }
         let visible = ledger.visible(scopedItems)
-        let typed = if let kind = presentation.notificationFilter.issueKind {
-            visible.filter { $0.kind == kind }
-        } else {
-            visible
-        }
         return AttentionStructuralNotificationSearch.apply(
-            to: typed,
+            to: visible,
             filter: presentation.filter
         )
+    }
+
+    private var visibleAgentChanges: [AgentChange] {
+        session.visibleAgentChanges(for: presentation, locale: locale)
     }
 
     private var visibleSettlementRequirements: [WorkspaceSettlementRequirement] {
@@ -115,13 +105,15 @@ struct AttentionQueueView: View {
     }
 
     private var visibleItemIDs: [String] {
-        visibleSettlementRequirements.map(settlementItemID)
+        visibleAgentChanges.map(agentChangeItemID)
+            + visibleSettlementRequirements.map(settlementItemID)
             + visibleItems.map(\.id)
     }
 
-    private var dismissedCount: Int {
-        let ledger = AttentionPreferences.decodeLedger(dismissalLedgerData)
-        return scopedItems.count(where: { ledger.isDismissed($0) })
+    private var hasVisibleNotifications: Bool {
+        !visibleAgentChanges.isEmpty
+            || !visibleSettlementRequirements.isEmpty
+            || !visibleItems.isEmpty
     }
 
     var body: some View {
@@ -129,14 +121,12 @@ struct AttentionQueueView: View {
             controls
             Divider()
 
-            if visibleSettlementRequirements.isEmpty,
-               !session.catalogIsAvailable, session.isRefreshing {
+            if !hasVisibleNotifications, session.isLoadingInitialContent {
                 loadingState
-            } else if visibleSettlementRequirements.isEmpty,
-                      !session.catalogIsAvailable, let error = session.catalogError {
+            } else if !hasVisibleNotifications,
+                      let error = completeErrorMessage {
                 completeErrorState(error)
-            } else if visibleItems.isEmpty
-                        && visibleSettlementRequirements.isEmpty {
+            } else if !hasVisibleNotifications {
                 emptyState
             } else {
                 queueList
@@ -147,7 +137,7 @@ struct AttentionQueueView: View {
         .task {
             pruneExpiredDismissals()
             presentation.reconcileVisibleItems(visibleItemIDs)
-            if !session.catalogIsAvailable {
+            if session.isLoadingInitialContent {
                 await session.refresh()
             }
         }
@@ -161,29 +151,22 @@ struct AttentionQueueView: View {
 
     private var controls: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            Text("Notifications")
-                .font(ScholiumTypography.interface(.sectionTitle))
-                .accessibilityAddTraits(.isHeader)
-
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                    scopeSummary
-                    kindPicker
-                    refreshButton
-                }
-                VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                    scopeSummary
-                    HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                        kindPicker
-                        refreshButton
-                    }
-                }
+            HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                Text("Notifications")
+                    .font(ScholiumTypography.interface(.sectionTitle))
+                    .accessibilityAddTraits(.isHeader)
+                scopeSummary
+                Spacer(minLength: 0)
             }
 
-            TextField("Search Notifications", text: filterQuery)
-                .textFieldStyle(.roundedBorder)
-                .focused($filterFocused)
-                .accessibilityIdentifier("scholium.attentionSearch")
+            HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                TextField("Search", text: filterQuery)
+                    .textFieldStyle(.roundedBorder)
+                    .controlSize(.small)
+                    .focused($filterFocused)
+                    .accessibilityIdentifier("scholium.attentionSearch")
+                kindMenu
+            }
 
             if let status = refreshStatus {
                 HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.inlineControlGap) {
@@ -196,156 +179,155 @@ struct AttentionQueueView: View {
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)
                     if status.offersRetry {
-                        Button("Retry") { Task { await session.refresh() } }
-                            .scholiumActivationPointer()
-                            .disabled(session.isRefreshing)
+                        Button {
+                            Task { await session.refresh() }
+                        } label: {
+                            Label("Retry", systemImage: "arrow.clockwise")
+                                .labelStyle(.iconOnly)
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Retry")
+                        .disabled(session.isRefreshing)
                     }
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("scholium.attentionRefreshStatus")
             }
         }
-        .padding(ScholiumGrid.Spacing.sectionSeparation)
+        .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
+        .padding(.vertical, ScholiumGrid.Spacing.nestedContentInset)
     }
 
+    @ViewBuilder
     private var scopeSummary: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment) {
+        if let scopeTitle {
             Text(scopeTitle)
-                .font(ScholiumTypography.interface(.rowTitle))
-            Text(presentation.noteScope == nil ? "All Notes" : "This Note")
                 .font(ScholiumTypography.interface(.small, emphasis: .medium))
                 .scholiumForeground(.secondaryText)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
     }
 
-    private var scopeTitle: String {
-        presentation.workspaceSlot.map {
-            ScholiumL10n.dynamicString($0.displayName)
-        } ?? ScholiumL10n.dynamicString("Triptych")
-    }
-
-    private var kindPicker: some View {
-        Picker("Notification Type", selection: notificationFilter) {
-            Text("All Notifications").tag(AttentionNotificationFilter.all)
-            Text("Settlement Reminders").tag(AttentionNotificationFilter.settlements)
-            Text("All Issues").tag(AttentionNotificationFilter.issues)
-            ForEach(AttentionIssueGroup.allCases) { group in
-                Section(ScholiumL10n.dynamicString(group.title)) {
-                    ForEach(group.kinds, id: \.self) { kind in
-                        Text(kind.localizedDisplayNameResource)
-                            .tag(AttentionNotificationFilter.issue(kind))
-                    }
-                }
-            }
+    private var scopeTitle: String? {
+        if presentation.noteScope != nil {
+            return ScholiumL10n.dynamicString("This Note")
         }
-        .scholiumActivationPointer()
-        .labelsHidden()
-        .frame(maxWidth: 190)
+        return presentation.workspaceSlot.map {
+            ScholiumL10n.dynamicString($0.displayName)
+        }
+    }
+
+    private var kindMenu: some View {
+        Menu {
+            Picker("Notification Type", selection: notificationFilter) {
+                Text("All Notifications").tag(AttentionNotificationFilter.all)
+                Text("Agent Changes").tag(AttentionNotificationFilter.agentChanges)
+                Text("Settlement Reminders").tag(AttentionNotificationFilter.settlements)
+                Text("All Issues").tag(AttentionNotificationFilter.issues)
+            }
+        } label: {
+            Image(
+                systemName: presentation.notificationFilter == .all
+                    ? "line.3.horizontal.decrease"
+                    : "line.3.horizontal.decrease.circle.fill"
+            )
+            .frame(
+                width: ScholiumGrid.Dimension.preferredCustomTarget,
+                height: ScholiumGrid.Dimension.preferredCustomTarget
+            )
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .frame(minWidth: ScholiumGrid.Dimension.preferredCustomTarget)
+        .help("Filter Notifications")
+        .accessibilityLabel("Notification Type")
+        .accessibilityValue(Text(notificationFilterTitle))
         .accessibilityIdentifier("scholium.attentionKindFilter")
     }
 
-    private var refreshButton: some View {
-        Button {
-            Task { await session.refresh() }
-        } label: {
-            Label("Refresh", systemImage: "arrow.clockwise")
-                .labelStyle(.iconOnly)
+    private var notificationFilterTitle: LocalizedStringResource {
+        switch presentation.notificationFilter {
+        case .all: "All Notifications"
+        case .agentChanges: "Agent Changes"
+        case .settlements: "Settlement Reminders"
+        case .issues: "All Issues"
         }
-        .scholiumActivationPointer()
-        .help("Refresh Notifications")
-        .disabled(session.isRefreshing)
-        .accessibilityIdentifier("scholium.attentionRefresh")
     }
 
     private var queueList: some View {
         List(selection: selectedItem) {
+            if !visibleAgentChanges.isEmpty {
+                notificationCategory("Agent Changes")
+                ForEach(visibleAgentChanges) { change in
+                    AgentChangeNotificationRow(
+                        change: change,
+                        title: session.noteTitle(for: change),
+                        endingRevisionState: session.endingRevisionState(for: change),
+                        inspect: { inspect(change) }
+                    )
+                    .tag(agentChangeItemID(change))
+                }
+            }
             if !visibleSettlementRequirements.isEmpty {
-                Section {
-                    ForEach(visibleSettlementRequirements) { requirement in
-                        SettlementRequirementNotificationRow(
-                            requirement: requirement
-                        )
-                        .tag(settlementItemID(requirement))
-                        .scholiumActivationPointer()
-                    }
-                } header: {
-                    Text("Settlement Reminders")
-                        .textCase(.uppercase)
+                notificationCategory("Settlement Reminders")
+                ForEach(visibleSettlementRequirements) { requirement in
+                    SettlementRequirementNotificationRow(
+                        requirement: requirement,
+                        inspect: { inspect(requirement) }
+                    )
+                    .tag(settlementItemID(requirement))
                 }
             }
             ForEach(AttentionIssueGroup.allCases) { group in
                 let items = visibleItems.filter(group.contains)
                 if !items.isEmpty {
-                    Section {
-                        ForEach(items) { item in
-                            AttentionQueueRow(
-                                item: item,
-                                noteTitle: noteTitle(for: item),
-                                locator: locatorDescription(for: item),
-                                dismissalDays: normalizedDismissalDays,
-                                inspect: { inspect(item) },
-                                dismiss: { dismiss(item, forDays: $0) }
-                            )
-                            .tag(item.id)
-                            .scholiumActivationPointer()
-                        }
-                    } header: {
-                        HStack(alignment: .firstTextBaseline) {
-                            Text(ScholiumL10n.dynamicString(group.title))
-                            Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
-                            Text(items.count.formatted())
-                                .monospacedDigit()
-                                .scholiumForeground(.mutedText)
-                        }
-                        .accessibilityElement(children: .combine)
+                    notificationCategory(group.titleResource)
+                    ForEach(items) { item in
+                        AttentionQueueRow(
+                            item: item,
+                            title: session.noteTitle(for: item),
+                            locator: locatorDescription(for: item),
+                            dismissalDays: normalizedDismissalDays,
+                            inspect: { inspect(item) },
+                            dismiss: { dismiss(item, forDays: $0) }
+                        )
+                        .tag(item.id)
                     }
                 }
             }
         }
-        .listStyle(.inset)
+        .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .accessibilityIdentifier("scholium.attentionList")
     }
 
     private var loadingState: some View {
-        ScholiumContentStateView(
-            "Loading Notifications…",
-            indicator: .progress,
-            density: .compact
-        )
+        ProgressView("Loading Notifications…")
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityIdentifier("scholium.attentionLoading")
     }
 
     private func completeErrorState(_ message: String) -> some View {
-        ScholiumContentStateView(
-            "Could Not Load Notifications",
-            detail: Text(message),
-            indicator: .symbol("exclamationmark.triangle", role: .attention),
-            density: .compact
-        ) {
-            Button("Retry") { Task { await session.refresh() } }
-                .scholiumActivationPointer()
-                .disabled(session.isRefreshing)
+        ContentUnavailableView {
+            Label("Could Not Load Notifications", systemImage: "exclamationmark.triangle")
+        } description: {
+            Text(message)
+        } actions: {
+            Button {
+                Task { await session.refresh() }
+            } label: {
+                Label("Retry", systemImage: "arrow.clockwise")
+                    .labelStyle(.iconOnly)
+            }
+            .help("Retry")
+            .disabled(session.isRefreshing)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityIdentifier("scholium.attentionError")
     }
 
     private var emptyState: some View {
-        ScholiumContentStateView(
-            emptyTitle,
-            detail: Text(emptyDescription),
-            indicator: .symbol("checkmark.circle"),
-            density: .compact
-        ) {
-            if dismissedCount > 0 {
-                Text("\(dismissedCount) dismissed")
-                    .font(ScholiumTypography.interface(.small, emphasis: .medium))
-            }
-        }
+        ContentUnavailableView(emptyTitle, systemImage: "checkmark.circle")
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityIdentifier("scholium.attentionEmpty")
     }
@@ -355,13 +337,6 @@ struct AttentionQueueView: View {
         return query.isEmpty && presentation.notificationFilter == .all
             ? "No Notifications"
             : "No Matching Notifications"
-    }
-
-    private var emptyDescription: String {
-        AttentionNotificationCopy.emptyDescription(
-            noteScoped: presentation.noteScope != nil,
-            locale: locale
-        )
     }
 
     private var selectedItem: Binding<String?> {
@@ -381,12 +356,31 @@ struct AttentionQueueView: View {
     private var filterQuery: Binding<String> {
         Binding(
             get: { presentation.filter.query },
-            set: { presentation.filter.query = $0 }
+            set: { presentation.filter = AttentionQueueFilter(query: $0) }
         )
     }
 
     private var normalizedDismissalDays: Int {
         session.dismissalDays
+    }
+
+    private func notificationCategory(
+        _ title: LocalizedStringResource
+    ) -> some View {
+        Text(title)
+            .font(ScholiumTypography.interface(.small))
+            .scholiumForeground(.mutedText)
+            .padding(
+                .leading,
+                ScholiumGrid.Dimension.iconTrackWidth
+                    + ScholiumGrid.Spacing.inlineControlGap
+                    + ScholiumGrid.Spacing.labelAccessoryGap
+            )
+            .padding(.top, ScholiumGrid.Spacing.labelAccessoryGap)
+            .padding(.bottom, ScholiumGrid.Spacing.opticalAlignmentAdjustment)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .accessibilityAddTraits(.isHeader)
     }
 
     private func settlementItemID(
@@ -395,8 +389,8 @@ struct AttentionQueueView: View {
         "settlement:\(requirement.noteID.uuidString.lowercased())"
     }
 
-    private func noteTitle(for item: AttentionQueueItem) -> String {
-        session.noteTitle(for: item)
+    private func agentChangeItemID(_ change: AgentChange) -> String {
+        "agent-change:\(change.id.uuidString.lowercased())"
     }
 
     private func locatorDescription(for item: AttentionQueueItem) -> String {
@@ -406,6 +400,16 @@ struct AttentionQueueView: View {
     private func inspect(_ item: AttentionQueueItem) {
         presentation.select(item.id)
         session.inspect(item)
+    }
+
+    private func inspect(_ requirement: WorkspaceSettlementRequirement) {
+        presentation.select(settlementItemID(requirement))
+        session.inspect(requirement)
+    }
+
+    private func inspect(_ change: AgentChange) {
+        presentation.select(agentChangeItemID(change))
+        session.inspect(change)
     }
 
     private func dismiss(_ item: AttentionQueueItem, forDays days: Int) {
@@ -422,6 +426,12 @@ struct AttentionQueueView: View {
         dismissalLedgerData = AttentionPreferences.encodeLedger(ledger)
     }
 
+    private var completeErrorMessage: String? {
+        let messages = [session.agentChangesError, session.catalogError]
+            .compactMap { $0 }
+        return messages.isEmpty ? nil : messages.joined(separator: "\n")
+    }
+
     private struct RefreshStatus {
         let symbol: String
         let message: String
@@ -430,7 +440,7 @@ struct AttentionQueueView: View {
     }
 
     private var refreshStatus: RefreshStatus? {
-        if session.isRefreshing, session.catalogIsAvailable {
+        if session.isRefreshing, hasVisibleNotifications {
             return RefreshStatus(
                 symbol: "arrow.triangle.2.circlepath",
                 message: AttentionNotificationCopy.refreshing(locale: locale),
@@ -467,6 +477,17 @@ struct AttentionQueueView: View {
                 offersRetry: true
             )
         case .current, nil:
+            if let error = session.agentChangesError {
+                return RefreshStatus(
+                    symbol: "exclamationmark.triangle",
+                    message: ScholiumL10n.string(
+                        "Agent Changes Unavailable",
+                        locale: locale
+                    ) + ". " + error,
+                    colorRole: .destructive,
+                    offersRetry: true
+                )
+            }
             if let error = session.catalogError, session.catalogIsAvailable {
                 return RefreshStatus(
                     symbol: "exclamationmark.triangle",
@@ -488,60 +509,144 @@ struct AttentionQueueView: View {
 /// successful Settle of the exact current revision removes it.
 struct SettlementRequirementNotificationRow: View {
     let requirement: WorkspaceSettlementRequirement
+    let inspect: () -> Void
+
+    @FocusState private var isFocused: Bool
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(
-                alignment: .center,
-                spacing: ScholiumGrid.Spacing.nestedContentInset
-            ) {
-                identity
+        Button(action: inspect) {
+            HStack(alignment: .center, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                Image(systemName: "exclamationmark.circle")
+                    .scholiumForeground(.attention)
+                    .frame(width: ScholiumGrid.Dimension.iconTrackWidth)
+                    .accessibilityHidden(true)
+                HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                    Text(verbatim: requirement.title)
+                        .font(ScholiumTypography.interface(.rowTitle))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .layoutPriority(1)
+                    Text("·")
+                        .accessibilityHidden(true)
+                    Text("Current Revision Not Settled")
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.secondaryText)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
             }
-            VStack(
-                alignment: .leading,
-                spacing: ScholiumGrid.Spacing.inlineControlGap
-            ) {
-                identity
-            }
+            .contentShape(Rectangle())
         }
-        .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
-        .accessibilityElement(children: .contain)
+        .buttonStyle(
+            ScholiumQuietRowButtonStyle(
+                isFocused: isFocused,
+                minimumHeight: ScholiumGrid.Dimension.preferredCustomTarget,
+                horizontalInset: ScholiumGrid.Spacing.labelAccessoryGap,
+                verticalInset: ScholiumGrid.Spacing.opticalAlignmentAdjustment
+            )
+        )
+        .scholiumActivationFocus($isFocused)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilitySummary)
+        .accessibilityHint("Open Note")
         .accessibilityIdentifier(
             "scholium.notification.settlement.\(requirement.noteID.uuidString)"
         )
-    }
-
-    private var identity: some View {
-        HStack(
-            alignment: .center,
-            spacing: ScholiumGrid.Spacing.labelAccessoryGap
-        ) {
-            Image(systemName: "exclamationmark.circle")
-                .font(ScholiumTypography.interface(.body))
-                .scholiumForeground(.attention)
-                .accessibilityHidden(true)
-            Text("Current Revision Not Settled")
-                .font(ScholiumTypography.interface(.rowTitle))
-                .fixedSize(horizontal: true, vertical: false)
-            Text("—")
-                .font(ScholiumTypography.interface(.small))
-                .scholiumForeground(.mutedText)
-                .accessibilityHidden(true)
-            Text(verbatim: requirement.title)
-                .font(ScholiumTypography.interface(.body))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .layoutPriority(-1)
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilitySummary)
+        .listRowSeparator(.hidden)
     }
 
     private var accessibilitySummary: String {
-        return String.localizedStringWithFormat(
+        String.localizedStringWithFormat(
             String(localized: "Current Revision Not Settled, %@"),
             requirement.title
+        ) + ", " + requirement.note.relativePath
+    }
+}
+
+struct AgentChangeNotificationRow: View {
+    @Environment(\.locale) private var locale
+
+    let change: AgentChange
+    let title: String
+    let endingRevisionState: AgentChangeEndingRevisionState?
+    let inspect: () -> Void
+
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        Button(action: inspect) {
+            HStack(alignment: .center, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                Image(
+                    systemName: AgentChangePresentation.operationSymbol(
+                        for: change.operation
+                    )
+                )
+                .scholiumForeground(.agentAuthorship)
+                .frame(width: ScholiumGrid.Dimension.iconTrackWidth)
+                .accessibilityHidden(true)
+
+                HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                    Text(verbatim: title)
+                        .font(ScholiumTypography.interface(.rowTitle))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .layoutPriority(1)
+                    Text("·")
+                        .accessibilityHidden(true)
+                    Text(
+                        AgentChangePresentation.stateTitle(
+                            for: change,
+                            endingRevisionState: endingRevisionState
+                        )
+                    )
+                    .font(ScholiumTypography.interface(.small))
+                    .scholiumForeground(.secondaryText)
+                    .lineLimit(1)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(
+            ScholiumQuietRowButtonStyle(
+                isFocused: isFocused,
+                minimumHeight: ScholiumGrid.Dimension.preferredCustomTarget,
+                horizontalInset: ScholiumGrid.Spacing.labelAccessoryGap,
+                verticalInset: ScholiumGrid.Spacing.opticalAlignmentAdjustment
+            )
         )
+        .scholiumActivationFocus($isFocused)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilitySummary)
+        .accessibilityHint("Inspect Agent Change")
+        .accessibilityIdentifier(
+            "scholium.notification.agentChange.\(change.id.uuidString.lowercased())"
+        )
+        .listRowSeparator(.hidden)
+    }
+
+    private var accessibilitySummary: String {
+        let date = (change.confirmedAt ?? change.createdAt).formatted(
+            Date.FormatStyle(date: .abbreviated, time: .shortened)
+                .locale(locale)
+        )
+        return [
+            ScholiumL10n.localized(
+                AgentChangePresentation.operationTitle(for: change.operation),
+                locale: locale
+            ),
+            title,
+            AgentChangePresentation.path(for: change),
+            ScholiumL10n.localized(
+                AgentChangePresentation.stateTitle(
+                    for: change,
+                    endingRevisionState: endingRevisionState
+                ),
+                locale: locale
+            ),
+            date,
+        ].joined(separator: ", ")
     }
 }
 
@@ -549,87 +654,109 @@ struct AttentionQueueRow: View {
     @Environment(\.locale) private var locale
 
     let item: AttentionQueueItem
-    let noteTitle: String
+    let title: String
     let locator: String
     let dismissalDays: Int
     let inspect: () -> Void
     let dismiss: (Int) -> Void
 
+    @FocusState private var isFocused: Bool
+
     var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            issueSummary
+        HStack(alignment: .center, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+            Button(action: inspect) {
+                HStack(alignment: .center, spacing: ScholiumGrid.Spacing.inlineControlGap) {
+                    Image(
+                        systemName: item.severity == .warning
+                            ? "exclamationmark.triangle"
+                            : "info.circle"
+                    )
+                    .scholiumForeground(severityColorRole)
+                    .frame(width: ScholiumGrid.Dimension.iconTrackWidth)
+                    .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment) {
-                Text(noteTitle)
-                    .font(ScholiumTypography.interface(.rowTitle))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Text(locator)
-                    .font(ScholiumTypography.exact(.small))
-                    .scholiumForeground(.secondaryText)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
+                    HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                        Text(verbatim: title)
+                            .font(ScholiumTypography.interface(.rowTitle))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .layoutPriority(1)
+                        Text("·")
+                            .accessibilityHidden(true)
+                        Text(verbatim: AttentionIssueCopy.message(for: item, locale: locale))
+                            .font(ScholiumTypography.interface(.small))
+                            .scholiumForeground(.secondaryText)
+                            .lineLimit(1)
+                    }
 
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                     Spacer(minLength: 0)
-                    actions
                 }
-                VStack(alignment: .trailing, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                    actions
-                }
+                .contentShape(Rectangle())
             }
-            .controlSize(.small)
-            .frame(maxWidth: .infinity, alignment: .trailing)
+            .buttonStyle(.plain)
+            .scholiumActivationFocus($isFocused)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilitySummary)
+            .accessibilityHint("Open Note")
+            .accessibilityIdentifier("scholium.attentionOpen.\(item.id)")
+
+            dismissalMenu
         }
-        .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
+        .padding(.horizontal, ScholiumGrid.Spacing.labelAccessoryGap)
+        .padding(.vertical, ScholiumGrid.Spacing.opticalAlignmentAdjustment)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: ScholiumGrid.Dimension.preferredCustomTarget
+        )
+        .contentShape(Rectangle())
+        .scholiumContentControlPointerFeedback(
+            isFocused: isFocused,
+            in: notificationRowShape
+        )
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.attentionItem.\(item.id)")
+        .listRowSeparator(.hidden)
     }
 
-    private var issueSummary: some View {
-        HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-            Text(item.kind.localizedDisplayNameResource)
-                .font(ScholiumTypography.interface(.small, emphasis: .medium))
-                .scholiumForeground(severityColorRole)
-                .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
-                .padding(.vertical, ScholiumGrid.Spacing.opticalAlignmentAdjustment)
-                .background(
-                    ScholiumColorRole.raisedSurfaceBackground.color,
-                    in: Capsule(style: .continuous)
-                )
-                .scholiumBoundary(
-                    .subtleBoundary,
-                    in: Capsule(style: .continuous)
-                )
-                .fixedSize(horizontal: true, vertical: false)
-
-            Text("/")
-                .font(ScholiumTypography.interface(.small))
-                .scholiumForeground(.mutedText)
-                .accessibilityHidden(true)
-
-            Text(verbatim: AttentionIssueCopy.message(for: item, locale: locale))
-                .font(ScholiumTypography.interface(.compact))
-                .scholiumForeground(.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    @ViewBuilder
-    private var actions: some View {
-        Button("Inspect", action: inspect)
-        .scholiumActivationPointer()
-        Menu("Dismiss…") {
+    private var dismissalMenu: some View {
+        Menu {
             ForEach(dismissalDurations, id: \.self) { days in
                 Button(days == 1 ? "For 1 Day" : "For \(days) Days") {
                     dismiss(days)
                 }
-                .scholiumActivationPointer()
             }
+        } label: {
+            Image(systemName: "ellipsis")
+                .scholiumForeground(.mutedText)
+                .frame(
+                    width: ScholiumGrid.Dimension.preferredCustomTarget,
+                    height: ScholiumGrid.Dimension.preferredCustomTarget
+                )
+                .accessibilityHidden(true)
         }
-        .scholiumActivationPointer()
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .tint(ScholiumColorRole.mutedText.color)
+        .fixedSize()
+        .help("Dismiss…")
+        .accessibilityLabel("Dismiss…")
+        .accessibilityIdentifier("scholium.attentionDismiss.\(item.id)")
+    }
+
+    private var notificationRowShape: RoundedRectangle {
+        RoundedRectangle(
+            cornerRadius: ScholiumShape.editorialControlCornerRadius,
+            style: .continuous
+        )
+    }
+
+    private var accessibilitySummary: String {
+        [
+            item.kind.localizedDisplayName(locale: locale),
+            title,
+            AttentionIssueCopy.message(for: item, locale: locale),
+            locator,
+        ].joined(separator: ", ")
     }
 
     private var dismissalDurations: [Int] {
