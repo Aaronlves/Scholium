@@ -410,12 +410,11 @@ before requesting the minimum scroll needed to expose the row. The adjacent
 adaptive expand/collapse button mutates only the current `WindowShellState`
 disclosure scope and does not own a second reveal route.
 Folder disclosure and subtree expansion remain `DiscoveryController` state. A
-disclosure commits its flat visible-row projection without a list-wide layout
-animation; the row's
-single chevron alone consumes the shared, Reduce-Motion-aware
-`ScholiumMotion.disclosure` recipe also used by Connect. This prevents departing
-Note labels from interpolating through their owning Folder while retaining one
-stable row identity and one controller-owned disclosure set. Core enumerates real
+native `NSOutlineView` disclosure commits that state through its delegate;
+AppKit owns the disclosure control, Left/Right commands, indentation, and row
+presentation without a second SwiftUI gesture or animation owner. This prevents
+departing Note labels from interpolating through their owning Folder while
+retaining one stable row identity and one controller-owned disclosure set. Core enumerates real
 directories so empty classifications survive projection, but folder paths never
 enter the portable identity store. Direct New Folder creation atomically claims
 one default directory name. Empty-folder creation and empty-folder moves publish
@@ -500,14 +499,24 @@ the shared create/move/drop gate as Library mutation capability, so parallel
 immutable inputs cannot disagree about the active vault or authority.
 Populated hierarchy ownership is split by responsibility:
 `SidebarOutlineSourceList` configures the `NSOutlineView`, its coordinator owns
-data-source/delegate reconciliation, the row layer owns native reuse and hover,
-and the native-drop layer owns process-local pasteboard decoding plus the
-Library-header root target. AppKit-authored menus, tooltips, and accessibility
-values pass through one explicit locale projection; researcher Folder and Note
-titles remain verbatim. Library-only filtering is rendered by one stateless
+data-source/delegate reconciliation, AppKit owns hierarchy, indentation,
+selection drawing, focus, disclosure, hover, and drag feedback, and the hosted
+row layer supplies content plus contextual and accessibility actions. One shared
+input-modality adapter selects AppKit's emphasized or unemphasized selection
+presentation, and the Library grid supplies only the native indentation step.
+The native-drop
+layer owns process-local pasteboard decoding plus the Library-header root
+target. AppKit-authored menus, tooltips, and accessibility values pass through
+one explicit locale projection; researcher Folder and Note titles remain
+verbatim. Library-only filtering is rendered by one stateless
 `SidebarLibraryFilterMenu` from an immutable options value plus the current
 `DiscoveryFilterState`; every change returns one complete replacement intent
 to `DiscoveryController`, which remains the sole filter and ordering owner.
+Both native Sidebar lists use the effective system source-list row size. The
+outline coordinator switches only enlarged interface presentations to AppKit's
+large row style; hosted Folder and Note content derives its system font and
+symbol point size from `effectiveRowSizeStyle` instead of publishing a fixed
+Library row height.
 An ordinary Note move flushes the registered editor only when that exact Note
 is active. Every identity-dependent interface command first captures one
 `NoteMutationTarget`: its vault-qualified document ID, stable Note ID, and
@@ -565,16 +574,16 @@ decoder.
 
 Each configured scene constructs one `ScholiumWorkspaceSplitView`: one
 `NSSplitViewController` with three direct `NSSplitViewItem` siblings for
-Library, Document, and Apparatus. The split and each item's one opaque semantic
-background fill the frame beneath AppKit's transparent titlebar. The standard
-SwiftUI toolbar background is hidden, with no background-extension effect,
-full-width material band, or duplicate color source. Native Liquid Glass
-controls float above those continuous planes. Native titlebar behavior remains,
-and each content controller is a foreground sibling inside the system safe area. The Library
-container alone adds one full-bounds, noninteractive structural-depth host above
-its content. That host clips the Document-owned shadow to the Library plane and
-contains no split geometry, visibility, toolbar, or semantic state; collapsing
-the native Sidebar removes the complete container projection with it.
+Library, Document, and Apparatus. Library is installed directly through
+`NSSplitViewItem(sidebarWithViewController:)`; its SwiftUI and source-list
+content remains transparent so AppKit's regular Sidebar Glass, inset edge,
+shadow, and adaptation stay visible. The Document item enables
+`automaticallyAdjustsSafeAreaInsets`, extending its opaque Paper background
+beneath the floating Sidebar while constraining readable content to the native
+safe area. Apparatus retains its opaque semantic background. The standard
+SwiftUI toolbar background is hidden, with no custom visual-effect view,
+Sidebar fill or shadow, full-width material band, or duplicate color source.
+Native titlebar and split behavior remain authoritative.
 
 The one `NSWindow.toolbar` is divided into Library, Document, and Apparatus
 sections by native tracking separators. Ordinary actions are standard bordered

@@ -40,13 +40,15 @@ Each configured window contains one native split view:
 The native window and split controller own frame, dividers, collapse,
 compression, fullscreen, and toolbar geometry. Scholium owns semantic order,
 readable peripheral thresholds, and the one initial Inspector reveal request.
-It never continuously reasserts divider positions. Each plane keeps one
-continuous opaque semantic background through the transparent titlebar, and
-the system separator is the sole interactive boundary. The toolbar paints no
-separate full-width band; its standard native controls use regular system
-Liquid Glass, including system-managed edge highlight and shadow, above the
-three planes. Design §19 owns that material boundary and the single decorative
-Sidebar-edge depth cue.
+It never continuously reasserts divider positions. The native Sidebar split
+item owns its regular Liquid Glass, inset edge, shadow, window activity, and
+transparency/contrast adaptation. The warm Document background extends beneath
+that glass while its safe area keeps Document content unobscured; Sidebar
+content adds no custom background, visual-effect host, or depth cue. Document
+and Apparatus keep continuous opaque semantic backgrounds through the
+transparent titlebar, and the system separator is the sole interactive
+boundary. The toolbar paints no separate full-width band; its standard native
+controls use regular system Liquid Glass. Design §19 owns this boundary.
 
 New windows show Library, hide Inspector, and begin in Analyses/Overview.
 Visibility and workspace session state are installed before first presentation,
@@ -82,7 +84,8 @@ selected unless the researcher explicitly opens one.
 
 The Sidebar header's first row shows the Scholium wordmark followed at its
 logical trailing edge by Search and Triptych Notifications; Triptych identity
-occupies the next row. The no-document state contains only a decorative
+occupies the next row in the same native section-heading tier as Library,
+without decorative tracking. The no-document state contains only a decorative
 document symbol, **No Document Selected**, and **Select a note in the Library
 to read or edit.** as one read-only accessibility group.
 
@@ -114,7 +117,14 @@ The vertical Triptych workspace navigator presents Analyses, Topics, and Works
 in stable order as peer destinations. The selected row uses one restrained
 native navigation selection; rows show localized exact Note counts without
 role descriptions, progress, pipeline state, or Attention badges. Unknown
-initial count is unavailable, not zero.
+initial count is unavailable, not zero. The native source list owns pointer
+behavior, focus, active/inactive selection, and Up/Down traversal; Scholium does
+not reproduce those states in a parallel custom control. Pointer activation
+retains AppKit's unemphasized selection; keyboard focus entry or navigation
+enables its emphasized selection without changing the selected destination.
+Workspace and Library rows follow the effective small, medium, or large native Source List size;
+enlarged interface text requests the native large presentation rather than a
+separate fixed row metric.
 
 Live opening may make the selected vault's trustworthy Library usable before
 cross-vault projections are complete. Unavailable workspace rows remain
@@ -135,16 +145,29 @@ Library provides:
   and empty folders; and
 - explicit empty, loading, stale, and recoverable error states.
 
+Filter, Expand/Collapse All, and Add form one compact native control group in
+the Library header. They retain separate roles, names, disabled states, menus,
+and focus targets; the group supplies relationship and system geometry only.
+
 The application-owned root `Attachments` directory and everything beneath it
 remain on disk but are excluded from the Library hierarchy. Document
 attachments are reached only through their owning Note's attachment routes;
 this projection rule does not hide a researcher-authored file or nested folder
 that merely uses the same word elsewhere in a path.
 
-Folder and Note rows use one quiet hierarchy. Selection stays visible when
-inactive; hover is weaker than selection. Titles expose full accessibility
-names and pointer help when visually truncated. Folder disclosure, selection,
-drop target, disabled, and focus states remain distinct.
+Folder and Note rows use one quiet native outline hierarchy. AppKit owns row
+selection, focus, indentation, active/inactive presentation, disclosure, and
+drag feedback. Clicking a row selects it; the native disclosure control and
+Left/Right commands expand or collapse the selected Folder. Titles expose full
+accessibility names and pointer help when visually truncated. Folder
+disclosure, selection, drop target, disabled, and focus states remain distinct.
+The native disclosure chevron is the Folder row's hierarchy-state control; the
+monochrome Folder symbol identifies its item type. AppKit owns the disclosure
+gutter, Folder and Note symbols share the next icon column, and their titles
+share the following text column at each hierarchy level. Scholium supplies one
+4-unit hierarchy step through AppKit's native outline indentation API.
+Standard controls and rows retain their macOS cursor behavior; link cursors are
+reserved according to §19.3.
 
 New Note/Folder, Rename, Move, Copy Relative Path, Reveal, Expand/Collapse, and
 system-Trash actions are available through menu and named accessibility routes;

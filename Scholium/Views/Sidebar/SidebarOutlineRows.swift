@@ -1,18 +1,84 @@
 import AppKit
 import SwiftUI
 
-func sidebarOutlineRowHeight(usesAccessibilitySize: Bool) -> CGFloat {
-    usesAccessibilitySize
-        ? ScholiumMetrics.Library.accessibilityHierarchyRowHeight
-        : ScholiumMetrics.Library.hierarchyRowHeight
+enum SidebarSourceListInputModality: Equatable {
+    case pointer
+    case keyboard
 }
 
-func sidebarOutlineDocumentIsSelected(
-    notePath: String?,
-    selectedDocumentPath: String?
-) -> Bool {
-    guard let notePath, let selectedDocumentPath else { return false }
-    return notePath == selectedDocumentPath
+/// One input-modality owner shared by the Sidebar's native table and outline.
+/// AppKit still draws selection and focus; this adapter only decides whether a
+/// retained selection receives the emphasized first-responder presentation.
+/// Pointer activation keeps a quiet native selection, while keyboard entry or
+/// navigation requests AppKit's emphasized selection.
+@MainActor
+final class SidebarSourceListSelectionPresentation {
+    private(set) var inputModality: SidebarSourceListInputModality = .pointer
+    private var lastAppliedEmphasis: Bool?
+
+    func recordPointerInteraction() {
+        inputModality = .pointer
+    }
+
+    func recordKeyboardInteraction() {
+        inputModality = .keyboard
+    }
+
+    func recordResponderEvent(_ eventType: NSEvent.EventType?) {
+        switch eventType {
+        case .leftMouseDown, .rightMouseDown, .otherMouseDown:
+            recordPointerInteraction()
+        case .keyDown:
+            recordKeyboardInteraction()
+        default:
+            break
+        }
+    }
+
+    func selectionIsEmphasized(in tableView: NSTableView) -> Bool {
+        guard inputModality == .keyboard,
+              let window = tableView.window else { return false }
+        return window.isKeyWindow && window.firstResponder === tableView
+    }
+
+    /// Returns true only when hosted row content must refresh its foreground.
+    @discardableResult
+    func synchronize(in tableView: NSTableView) -> Bool {
+        let isEmphasized = selectionIsEmphasized(in: tableView)
+        tableView.enumerateAvailableRowViews { rowView, _ in
+            guard rowView.isSelected,
+                  rowView.isEmphasized != isEmphasized else { return }
+            rowView.isEmphasized = isEmphasized
+        }
+        let changed = lastAppliedEmphasis != isEmphasized
+        lastAppliedEmphasis = isEmphasized
+        return changed
+    }
+}
+
+func sidebarControlSize(
+    for rowSizeStyle: NSTableView.RowSizeStyle
+) -> NSControl.ControlSize {
+    switch rowSizeStyle {
+    case .small:
+        .small
+    case .large:
+        .large
+    case .default, .custom, .medium:
+        .regular
+    @unknown default:
+        .regular
+    }
+}
+
+struct SidebarSourceListRowPresentation: Equatable {
+    let textPointSize: CGFloat
+
+    init(effectiveRowSizeStyle: NSTableView.RowSizeStyle) {
+        textPointSize = NSFont.systemFontSize(
+            for: sidebarControlSize(for: effectiveRowSizeStyle)
+        )
+    }
 }
 
 func sidebarOutlineStructure(
@@ -64,22 +130,8 @@ final class SidebarOutlineItem: NSObject {
 @MainActor
 final class SidebarOutlineHostingCell: NSTableCellView {
     private var hostingView: SidebarOutlineRowHostingView?
-    private var disclosureButton: NSButton?
-    private var disclosureDepth = 0
-    private var onDisclosure: (() -> Void)?
-    private var pointerHovered = false
 
-    func configure(
-        with row: SidebarTreeNodeRow,
-        isHovered: Bool,
-        disclosureLabel: String?,
-        disclosureIsExpanded: Bool,
-        disclosureDepth: Int,
-        onDisclosure: (() -> Void)?
-    ) {
-        self.disclosureDepth = disclosureDepth
-        self.onDisclosure = onDisclosure
-        pointerHovered = isHovered
+    func configure(with row: SidebarTreeNodeRow) {
         if let hostingView {
             hostingView.rootView = row
         } else {
@@ -90,37 +142,11 @@ final class SidebarOutlineHostingCell: NSTableCellView {
             addSubview(hostingView)
             self.hostingView = hostingView
         }
-        let button = disclosureButton ?? makeDisclosureButton()
-        button.isHidden = disclosureLabel == nil
-        button.state = disclosureIsExpanded ? .on : .off
-        button.toolTip = disclosureLabel
-        button.setAccessibilityLabel(disclosureLabel)
-        positionDisclosureButton()
-    }
-
-    func setHovered(_ hovering: Bool) {
-        guard pointerHovered != hovering else { return }
-        pointerHovered = hovering
-    }
-
-    private func makeDisclosureButton() -> NSButton {
-        let button = ScholiumPointingHandButton()
-        button.bezelStyle = .disclosure
-        button.setButtonType(.pushOnPushOff)
-        button.controlSize = .small
-        button.title = ""
-        button.target = self
-        button.action = #selector(activateDisclosure)
-        addSubview(button, positioned: .above, relativeTo: hostingView)
-        disclosureButton = button
-        positionDisclosureButton()
-        return button
     }
 
     override func layout() {
         super.layout()
         hostingView?.frame = bounds
-        positionDisclosureButton()
     }
 
     /// Populated rows are native outline interactions. SwiftUI renders the
@@ -129,9 +155,6 @@ final class SidebarOutlineHostingCell: NSTableCellView {
     /// from the start of a drag without a second gesture recognizer.
     override func hitTest(_ point: NSPoint) -> NSView? {
         let nativeHit = super.hitTest(point)
-        if nativeHit === disclosureButton {
-            return nativeHit
-        }
         guard NSApp.currentEvent?.type == .leftMouseDown else {
             return nativeHit
         }
@@ -144,26 +167,6 @@ final class SidebarOutlineHostingCell: NSTableCellView {
             return
         }
         super.mouseDown(with: event)
-    }
-
-    private func positionDisclosureButton() {
-        guard let button = disclosureButton else { return }
-        let side = ScholiumMetrics.Library.leadingSlotWidth
-        button.frame = NSRect(
-            x: sidebarLibraryRowLeadingInset(depth: disclosureDepth),
-            y: max(0, (bounds.height - side) / 2),
-            width: side,
-            height: side
-        )
-    }
-
-    @objc private func activateDisclosure() {
-        onDisclosure?()
-    }
-
-    override func prepareForReuse() {
-        super.prepareForReuse()
-        pointerHovered = false
     }
 
     private var enclosingOutlineView: NSOutlineView? {
@@ -190,25 +193,11 @@ private final class SidebarOutlineRowHostingView: NSHostingView<SidebarTreeNodeR
 
 @MainActor
 final class SidebarOutlineRowView: NSTableRowView {
-    private var isSelectedDocument = false
-    private var isHovering = false
-    private var isNativeFocused = false
-
     func configure(
         item: SidebarOutlineItem,
         isExpanded: Bool,
-        isHovered: Bool,
-        isNativeFocused: Bool,
-        selectedDocumentPath: String?,
         nativeStrings: SidebarNativeStrings
     ) {
-        isHovering = isHovered
-        self.isNativeFocused = isNativeFocused
-        isSelectedDocument = sidebarOutlineDocumentIsSelected(
-            notePath: item.node.note?.relativePath,
-            selectedDocumentPath: selectedDocumentPath
-        )
-        needsDisplay = true
         let label = item.node.note?.title
             ?? item.node.note?.displayName
             ?? item.node.name
@@ -218,7 +207,6 @@ final class SidebarOutlineRowView: NSTableRowView {
                 ? "scholium.folderRow.\(item.id)"
                 : "scholium.noteRow.\(item.id)"
         )
-        setAccessibilitySelected(isSelectedDocument || isNativeFocused)
         if item.node.isFolder {
             setAccessibilityValue(
                 nativeStrings.folderAccessibilityValue(
@@ -230,240 +218,63 @@ final class SidebarOutlineRowView: NSTableRowView {
             setAccessibilityValue(nil)
         }
     }
-
-    override func drawBackground(in dirtyRect: NSRect) {
-        if isSelectedDocument {
-            let opacity: CGFloat = window?.isKeyWindow == false ? 0.56 : 0.82
-            NSColor(ScholiumColorRole.raisedSurfaceBackground.color)
-                .withAlphaComponent(opacity)
-                .setFill()
-            bounds.fill()
-        } else if isNativeFocused {
-            NSColor(ScholiumColorRole.raisedSurfaceBackground.color)
-                .withAlphaComponent(0.42)
-                .setFill()
-            bounds.fill()
-        } else if isHovering {
-            ScholiumContentInteractionSurface.nsColor(
-                isHovering: true,
-                isFocused: false,
-                increasedContrast:
-                    NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
-            )
-                .setFill()
-            bounds.fill()
-        }
-    }
-
-    func setHovering(_ hovering: Bool) {
-        guard isHovering != hovering else { return }
-        isHovering = hovering
-        needsDisplay = true
-    }
-
-    override func prepareForReuse() {
-        super.prepareForReuse()
-        isHovering = false
-        isSelectedDocument = false
-        isNativeFocused = false
-        needsDisplay = true
-    }
-
-    override func drawDraggingDestinationFeedback(in dirtyRect: NSRect) {
-        NSColor(ScholiumColorRole.raisedSurfaceBackground.color)
-            .withAlphaComponent(0.48)
-            .setFill()
-        bounds.fill()
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-        if isSelectedDocument {
-            NSColor(ScholiumColorRole.accent.color).setFill()
-            NSRect(
-                x: bounds.minX,
-                y: bounds.minY,
-                width: ScholiumMetrics.Library.selectionBoundaryWidth,
-                height: bounds.height
-            ).fill()
-        }
-    }
 }
 
 @MainActor
 final class SidebarOutlineView: NSOutlineView {
-    private var hoverTrackingArea: NSTrackingArea?
-    private var hoveredItemID: String?
-    private weak var hoveredRowView: SidebarOutlineRowView?
-    private weak var hoveredCell: SidebarOutlineHostingCell?
-    private var hoverReconciliationIsScheduled = false
-    var activationHandler: (() -> Void)?
-    var focusPresentationHandler: (() -> Void)?
+    private let selectionPresentation = SidebarSourceListSelectionPresentation()
+    var selectionPresentationDidChange: (() -> Void)?
 
-    func isHovering(_ item: SidebarOutlineItem) -> Bool {
-        hoveredItemID == item.id
+    var usesEmphasizedSelectionForeground: Bool {
+        selectionPresentation.selectionIsEmphasized(in: self)
     }
 
-    func scheduleHoverReconciliation() {
-        guard !hoverReconciliationIsScheduled else { return }
-        hoverReconciliationIsScheduled = true
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.hoverReconciliationIsScheduled = false
-            self.reconcileHoverWithCurrentPointer()
-        }
+    override func mouseDown(with event: NSEvent) {
+        selectionPresentation.recordPointerInteraction()
+        super.mouseDown(with: event)
+        synchronizeSelectionPresentation()
     }
 
-    func invalidateHoverForReload() {
-        setHoveredItem(nil, rowView: nil, cell: nil)
+    override func keyDown(with event: NSEvent) {
+        selectionPresentation.recordKeyboardInteraction()
+        super.keyDown(with: event)
+        synchronizeSelectionPresentation()
     }
 
-    override func resetCursorRects() {
-        super.resetCursorRects()
-        let visibleRows = rows(in: visibleRect)
-        guard visibleRows.location != NSNotFound else { return }
-        for row in visibleRows.location..<(visibleRows.location + visibleRows.length) {
-            addCursorRect(rect(ofRow: row), cursor: .pointingHand)
-        }
+    override func becomeFirstResponder() -> Bool {
+        let becameFirstResponder = super.becomeFirstResponder()
+        guard becameFirstResponder else { return false }
+        selectionPresentation.recordResponderEvent(NSApp.currentEvent?.type)
+        synchronizeSelectionPresentation()
+        return true
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let resignedFirstResponder = super.resignFirstResponder()
+        if resignedFirstResponder { synchronizeSelectionPresentation() }
+        return resignedFirstResponder
+    }
+
+    override func viewWillDraw() {
+        super.viewWillDraw()
+        synchronizeSelectionPresentation()
     }
 
     override func canDragRows(
         with rowIndexes: IndexSet,
         at mouseDownPoint: NSPoint
     ) -> Bool {
-        // The hosted row contains SwiftUI buttons for accessibility and menu
-        // parity. NSTableView otherwise treats that hit as a trackable control
-        // and declines to start its own drag. The data source's process-private
-        // pasteboard writer remains the per-item authorization boundary.
+        // The hosted row retains SwiftUI context-menu and accessibility
+        // surfaces. Let NSTableView keep drag recognition for the containing
+        // native row; the data source's process-private pasteboard writer
+        // remains the per-item authorization boundary.
         return rowIndexes.count == 1
     }
 
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        if let hoverTrackingArea {
-            removeTrackingArea(hoverTrackingArea)
+    private func synchronizeSelectionPresentation() {
+        if selectionPresentation.synchronize(in: self) {
+            selectionPresentationDidChange?()
         }
-        let trackingArea = NSTrackingArea(
-            rect: .zero,
-            options: [
-                .mouseEnteredAndExited,
-                .mouseMoved,
-                .activeInKeyWindow,
-                .inVisibleRect,
-            ],
-            owner: self
-        )
-        addTrackingArea(trackingArea)
-        hoverTrackingArea = trackingArea
-    }
-
-    override func mouseEntered(with event: NSEvent) {
-        super.mouseEntered(with: event)
-        reconcileHover(atWindowPoint: event.locationInWindow)
-    }
-
-    override func mouseMoved(with event: NSEvent) {
-        super.mouseMoved(with: event)
-        reconcileHover(atWindowPoint: event.locationInWindow)
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        super.mouseExited(with: event)
-        setHoveredItem(nil, rowView: nil, cell: nil)
-    }
-
-    private func reconcileHoverWithCurrentPointer() {
-        guard let window else {
-            setHoveredItem(nil, rowView: nil, cell: nil)
-            return
-        }
-        reconcileHover(atWindowPoint: window.mouseLocationOutsideOfEventStream)
-    }
-
-    private func reconcileHover(atWindowPoint windowPoint: NSPoint) {
-        guard window?.isKeyWindow == true else {
-            setHoveredItem(nil, rowView: nil, cell: nil)
-            return
-        }
-        let point = convert(windowPoint, from: nil)
-        guard visibleRect.contains(point) else {
-            setHoveredItem(nil, rowView: nil, cell: nil)
-            return
-        }
-
-        var candidate = hitTest(point)
-        while let view = candidate, view !== self {
-            if let rowView = view as? SidebarOutlineRowView {
-                let row = row(for: rowView)
-                let item = row >= 0
-                    ? item(atRow: row) as? SidebarOutlineItem
-                    : nil
-                let cell = row >= 0
-                    ? self.view(
-                        atColumn: 0,
-                        row: row,
-                        makeIfNecessary: false
-                    ) as? SidebarOutlineHostingCell
-                    : nil
-                setHoveredItem(item, rowView: rowView, cell: cell)
-                return
-            }
-            candidate = view.superview
-        }
-        setHoveredItem(nil, rowView: nil, cell: nil)
-    }
-
-    private func setHoveredItem(
-        _ item: SidebarOutlineItem?,
-        rowView: SidebarOutlineRowView?,
-        cell: SidebarOutlineHostingCell?
-    ) {
-        let itemID = item?.id
-        guard hoveredItemID != itemID
-                || hoveredRowView !== rowView
-                || hoveredCell !== cell else { return }
-        hoveredRowView?.setHovering(false)
-        hoveredCell?.setHovered(false)
-        hoveredItemID = itemID
-        hoveredRowView = rowView
-        hoveredCell = cell
-        rowView?.setHovering(item != nil)
-        cell?.setHovered(item != nil)
-    }
-
-    override func keyDown(with event: NSEvent) {
-        let disallowedModifiers: NSEvent.ModifierFlags = [.command, .control, .option]
-        if event.modifierFlags.intersection(disallowedModifiers).isEmpty,
-           event.keyCode == 36 || event.keyCode == 49 {
-            activationHandler?()
-            return
-        }
-        super.keyDown(with: event)
-    }
-
-    override func becomeFirstResponder() -> Bool {
-        let accepted = super.becomeFirstResponder()
-        if accepted { focusPresentationHandler?() }
-        return accepted
-    }
-
-    override func resignFirstResponder() -> Bool {
-        let accepted = super.resignFirstResponder()
-        if accepted {
-            DispatchQueue.main.async { [weak self] in
-                self?.focusPresentationHandler?()
-            }
-        }
-        return accepted
-    }
-
-    override func frameOfOutlineCell(atRow row: Int) -> NSRect {
-        guard row >= 0,
-              let item = item(atRow: row) as? SidebarOutlineItem,
-              item.isExpandable else {
-            return super.frameOfOutlineCell(atRow: row)
-        }
-        return .zero
     }
 }
 

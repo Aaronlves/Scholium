@@ -23,6 +23,10 @@
   geometry when system appearance, window activity, Increase Contrast, or
   Reduce Transparency changes. Glass is never the sole boundary around research
   content or the sole indication of state.
+- The native Sidebar material retains AppKit's complete Light/Dark,
+  active/inactive, Increase Contrast, and Reduce Transparency adaptation. Its
+  warm Paper underlay is decorative context, not the sole source of separation,
+  selection, focus, or meaning.
 - Text and controls grow or reflow instead of clipping. Enlarged prose has no
   page-level horizontal reading scroll; intrinsically wide technical objects
   keep bounded local overflow or scaling.
@@ -59,17 +63,26 @@
 
 - The no-document state is one read-only VoiceOver group with no duplicate
   creation action.
-- Triptych navigation is one vertical single-choice group with Up/Down
-  traversal, selected state, localized Note totals, and unavailable-state
-  semantics. Progressive loading preserves available Library routes and focus.
+- Triptych navigation is one native vertical single-choice group with Up/Down
+  traversal, selected and inactive-window state, localized Note totals, and
+  unavailable-state semantics. Progressive loading preserves available Library
+  routes and focus. Workspace and Library rows follow the effective system
+  Source List size; enlarged interface text uses the native large row
+  presentation without clipping labels or symbols.
 - Back/Forward, Sidebar, Inspector, Search, Notifications, filters, folder
   disclosure, Add, file actions, and hierarchy remain named and reachable
   without hover. The nonzero Notifications dot has an exact accessible count;
   bell and dot geometry preserve the visible distinction without color alone.
-- Library rows preserve selected, focused, inactive, disclosed, drop-target,
-  disabled, loading, stale, empty, and failure distinctions. Note/Folder Move,
-  root placement, system-Trash deletion, and contextual creation have non-drag
-  accessibility actions.
+- Library rows preserve native selected, focused, inactive, disclosed,
+  drop-target, disabled, loading, stale, empty, and failure distinctions.
+  Pointer selection remains visibly selected without taking on keyboard-only
+  emphasis; keyboard focus entry and navigation use the emphasized native
+  selection. Up/Down moves selection and Left/Right owns Folder disclosure. Note/Folder
+  Move, root placement, system-Trash deletion, and contextual creation have
+  non-drag accessibility actions. Native Folder disclosure carries expanded or
+  collapsed state; the adjacent Folder symbol identifies type and stays hidden
+  from assistive technologies as decorative. AppKit's disclosure gutter, the
+  shared Folder/Note icon column, and the shared title column remain distinct.
 - Expanded Library and Inspector remain readable or collapse natively; they do
   not remain open in an unusably compressed state.
 - Attention exposes group, issue, Note, locator, state, actions, freshness, and

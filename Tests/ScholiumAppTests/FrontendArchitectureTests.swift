@@ -1120,7 +1120,11 @@ struct FrontendArchitectureTests {
         #expect(splitSource.contains("NSSplitViewController"))
         #expect(
             splitSource.contains(
-                "sidebarWithViewController: libraryBackgroundController"
+                "sidebarWithViewController: libraryHost"
+            ))
+        #expect(
+            splitSource.contains(
+                "documentItem.automaticallyAdjustsSafeAreaInsets = true"
             ))
         #expect(!splitSource.contains("libraryItem.canCollapseFromWindowResize = false"))
         #expect(
@@ -1301,12 +1305,8 @@ struct FrontendArchitectureTests {
                 ".toolbarBackgroundVisibility(.hidden, for: .windowToolbar)"
             ))
         #expect(!appSource.contains("Collapse Note"))
-        #expect(sidebarTreeRowsSource.contains("ScholiumTypography.interface(.body)"))
+        #expect(sidebarTreeRowsSource.contains("ScholiumTypography.nativeSourceList("))
         #expect(sidebarSource.contains("ScholiumTypography.interface(.small, emphasis: .medium)"))
-        #expect(
-            ScholiumMetrics.Library.hierarchyRowHeight
-                >= ScholiumMetrics.Accessibility.minimumCustomTarget
-        )
         #expect(ScholiumMetrics.Library.contentInset == ScholiumGrid.Peripheral.contentInset)
         #expect(ScholiumMetrics.Library.minimumReadableWidth == 300)
     }
@@ -1523,31 +1523,10 @@ struct FrontendArchitectureTests {
         #expect(contentController.view.superview === controller.view)
         #expect(controller.view.subviews.first === background)
         #expect(controller.view.subviews.last === contentController.view)
-        #expect(controller.structuralDepthView == nil)
-
     }
 
-    @Test("Document-navigation depth is one full-height noninteractive Library projection")
-    func documentNavigationDepthContainer() throws {
-        let contentController = NSViewController()
-        contentController.view = NSView()
-        let controller = ScholiumSurfaceContainerViewController(
-            contentViewController: contentController,
-            backgroundRole: .navigation,
-            structuralDepthRole: .documentNavigationBoundary
-        )
-
-        controller.view.frame = NSRect(x: 0, y: 0, width: 300, height: 760)
-        controller.view.layoutSubtreeIfNeeded()
-        let depthView = try #require(controller.structuralDepthView)
-
-        #expect(depthView.superview === controller.view)
-        #expect(controller.view.subviews.first === controller.backgroundView)
-        #expect(controller.view.subviews.last === depthView)
-        #expect(depthView.frame == controller.view.bounds)
-        #expect(depthView.hitTest(NSPoint(x: 299, y: 380)) == nil)
-        #expect(depthView.isAccessibilityElement() == false)
-
+    @Test("Native Sidebar owns glass above the extended Document Paper plane")
+    func nativeSidebarMaterialOwnership() throws {
         let splitController = ScholiumWorkspaceSplitView<EmptyView, EmptyView, EmptyView>
             .Controller(
                 initialLibraryVisible: true,
@@ -1568,11 +1547,12 @@ struct FrontendArchitectureTests {
 
         #expect(splitController.splitView.dividerStyle == .thin)
         #expect(splitController.splitViewItems.count == 3)
-        let depthCounts = splitController.splitViewItems.map { item in
-            (item.viewController as? ScholiumSurfaceContainerViewController)?
-                .structuralDepthView == nil ? 0 : 1
-        }
-        #expect(depthCounts == [1, 0, 0])
+        let libraryItem = try #require(splitController.splitViewItems.first)
+        let documentItem = splitController.splitViewItems[1]
+        #expect(libraryItem.behavior == .sidebar)
+        #expect(!(libraryItem.viewController is ScholiumSurfaceContainerViewController))
+        #expect(documentItem.automaticallyAdjustsSafeAreaInsets)
+        #expect(documentItem.viewController is ScholiumSurfaceContainerViewController)
     }
 
     @Test("Research Inspector separates divider resizing from explicit visibility")
@@ -1799,6 +1779,12 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
+        let workspaceNavigatorSource = try String(
+            contentsOf: repository.appendingPathComponent(
+                "Scholium/Views/Sidebar/SidebarWorkspaceNavigator.swift"
+            ),
+            encoding: .utf8
+        )
         let nativeDropSource = try String(
             contentsOf: repository.appendingPathComponent(
                 "Scholium/Views/Sidebar/SidebarNativeDropDestination.swift"
@@ -1853,7 +1839,7 @@ struct FrontendArchitectureTests {
                 "spacing: ScholiumGrid.Spacing.labelAccessoryGap"
             ))
         #expect(!sidebarSource.contains(".focusEffectDisabled()"))
-        #expect(sidebarSource.contains("ScholiumColorRole.navigationSurfaceBackground.color"))
+        #expect(!sidebarSource.contains("ScholiumColorRole.navigationSurfaceBackground.color"))
         #expect(!sidebarSource.contains(".pickerStyle(.segmented)"))
         #expect(
             componentsSource.contains(
@@ -1862,6 +1848,8 @@ struct FrontendArchitectureTests {
         #expect(componentsSource.contains(".menuStyle(.button)"))
         #expect(componentsSource.contains(".buttonStyle(.glass)"))
         #expect(componentsSource.contains(".buttonBorderShape(.circle)"))
+        #expect(sidebarSource.contains("ControlGroup {"))
+        #expect(sidebarSource.contains(".controlGroupStyle(.automatic)"))
         #expect(
             sidebarSource.components(
                 separatedBy: "ScholiumEditorialIconControl("
@@ -1873,38 +1861,25 @@ struct FrontendArchitectureTests {
         #expect(!componentsSource.contains(".accessibilityRepresentation"))
         #expect(!componentsSource.contains("Image(systemName: \"chevron"))
         #expect(componentsSource.contains(".menuIndicator(.hidden)"))
-        #expect(treeRowsSource.contains("ScholiumTypography.interface(.body)"))
-        #expect(treeRowsSource.contains("ScholiumTypography.interface(.body, emphasis: .strong)"))
+        #expect(treeRowsSource.contains("ScholiumTypography.nativeSourceList("))
+        #expect(treeRowsSource.contains("Image(systemName: \"folder\")"))
+        #expect(treeRowsSource.contains("Image(systemName: \"doc.text\")"))
+        #expect(!treeRowsSource.contains("isActive ?"))
         #expect(!componentsSource.contains("ScholiumEditorialIndexUnderline"))
-        let workspaceButtonStart = try #require(
-            componentsSource.range(
-                of: "private struct ScholiumTriptychWorkspaceButton"
-            ))
-        let workspaceButtonEnd = try #require(
-            componentsSource.range(
-                of: "/// Page-level Library content",
-                range: workspaceButtonStart.upperBound..<componentsSource.endIndex
-            ))
-        let workspaceButton = componentsSource[
-            workspaceButtonStart.lowerBound..<workspaceButtonEnd.lowerBound
-        ]
-        #expect(!workspaceButton.contains(".onHover"))
-        #expect(workspaceButton.contains("Button(action: select)"))
-        #expect(
-            workspaceButton.contains(
-                ".scholiumActivationFocus(focusedSlot, equals: slot)"
-            ))
-        #expect(workspaceButton.contains("ScholiumContentControlButtonStyle("))
-        #expect(workspaceButton.contains(".scholiumContentControlInk()"))
-        #expect(!workspaceButton.contains("ScholiumControlActivation"))
-        #expect(workspaceButton.contains(".scholiumForeground(.mutedText)"))
-        #expect(
-            workspaceButton.contains(
-                "ScholiumShape.workspaceNavigationCornerRadius"
-            ))
-        #expect(workspaceButton.contains("RoundedRectangle"))
-        #expect(!workspaceButton.contains("ScholiumEditorialIndexUnderline"))
-        #expect(!workspaceButton.contains("ScholiumColorRole.accent"))
+        #expect(workspaceNavigatorSource.contains("NSViewRepresentable"))
+        #expect(workspaceNavigatorSource.contains("NSTableViewDataSource"))
+        #expect(workspaceNavigatorSource.contains("NSTableViewDelegate"))
+        #expect(workspaceNavigatorSource.contains("tableView.style = .sourceList"))
+        #expect(workspaceNavigatorSource.contains("tableView.rowSizeStyle = .default"))
+        #expect(workspaceNavigatorSource.contains("tableViewSelectionDidChange"))
+        #expect(!workspaceNavigatorSource.contains("@FocusState"))
+        #expect(!workspaceNavigatorSource.contains("Button(action:"))
+        #expect(!workspaceNavigatorSource.contains(".onMoveCommand"))
+        #expect(!workspaceNavigatorSource.contains("DragGesture"))
+        #expect(!workspaceNavigatorSource.contains("scholiumActivationPointer"))
+        #expect(!workspaceNavigatorSource.contains("ScholiumContentControlButtonStyle"))
+        #expect(!workspaceNavigatorSource.contains("ScholiumShape.workspaceNavigationCornerRadius"))
+        #expect(!workspaceNavigatorSource.contains("ScholiumColorRole.accent"))
         #expect(!treeRowsSource.contains("rotationEffect(.degrees(isExpanded"))
         #expect(
             !treeRowsSource.contains(
@@ -1925,10 +1900,16 @@ struct FrontendArchitectureTests {
             componentsSource.components(separatedBy: ".tint(nil as Color?)").count
                 == 2
         )
-        #expect(componentsSource.contains("ScholiumContentControlButtonStyle("))
         #expect(!componentsSource.contains("SidebarAttentionAlertSurface"))
+        #expect(componentsSource.contains(".buttonStyle(.glass)"))
         #expect(ScholiumMetrics.Library.leadingSlotWidth == 16)
-        #expect(ScholiumMetrics.Library.hierarchyRowHeight == 28)
+        #expect(sidebarSource.contains("\"chevron.up.2\""))
+        #expect(sidebarSource.contains("\"chevron.down.2\""))
+        #expect(!sidebarSource.contains("rectangle.compress.vertical"))
+        #expect(!sidebarSource.contains("rectangle.expand.vertical"))
+        #expect(!sidebarSource.contains(".tracking(0.7)"))
+        #expect(outlineSource.contains("outlineView.rowSizeStyle = usesAccessibilitySize ? .large : .default"))
+        #expect(!outlineSource.contains("outlineView.rowSizeStyle = .custom"))
         #expect(
             designSystemSource.components(separatedBy: ".tint(nil as Color?)").count
                 == 2
@@ -1979,10 +1960,9 @@ struct FrontendArchitectureTests {
         #expect(sidebarSource.contains("SidebarTriptychAttentionEntry("))
         #expect(sidebarSource.contains(".tint(ScholiumColorRole.primaryText.color)"))
         #expect(sidebarSource.contains("let workspaceNoteCounts: SidebarWorkspaceNoteCounts"))
-        #expect(sidebarSource.contains("progress: sourceRevealProgress"))
-        #expect(sidebarSource.contains(".clipped()"))
-        #expect(sidebarSource.contains("sourceRevealTask?.cancel()"))
-        #expect(sidebarSource.contains("ScholiumMotion.triptychWorkspaceSourceReveal("))
+        #expect(!sidebarSource.contains("sourceRevealProgress"))
+        #expect(!sidebarSource.contains("SidebarWorkspaceSourceReveal"))
+        #expect(!sidebarSource.contains("triptychWorkspaceSourceReveal"))
         #expect(!sidebarSource.contains(".transition(.move"))
         #expect(sidebarSource.contains("SidebarOutlineSourceList("))
         #expect(
@@ -2046,6 +2026,16 @@ struct FrontendArchitectureTests {
         #expect(outlineSource.contains("struct SidebarOutlineSourceList: NSViewRepresentable"))
         #expect(outlineSource.contains("let outlineView = SidebarOutlineView()"))
         #expect(outlineSource.contains("outlineView.style = .sourceList"))
+        #expect(!outlineSource.contains("selectionHighlightStyle = .none"))
+        #expect(!outlineSource.contains("focusRingType = .none"))
+        #expect(outlineCoordinatorSource.contains("shouldShowOutlineCellForItem"))
+        #expect(
+            outlineSource.contains(
+                "outlineView.indentationPerLevel = ScholiumMetrics.Library.hierarchyIndent"
+            )
+        )
+        #expect(!outlineSource.contains("indentationPerLevel = 0"))
+        #expect(!outlineSource.contains("indentationMarkerFollowsCell = false"))
         #expect(outlineSource.contains("outlineView.floatsGroupRows = false"))
         #expect(outlineSource.contains("outlineView.usesAutomaticRowHeights = false"))
         #expect(outlineSource.contains("static func dismantleNSView("))
@@ -2065,10 +2055,10 @@ struct FrontendArchitectureTests {
         #expect(outlineCoordinatorSource.contains("acceptDrop info: NSDraggingInfo"))
         #expect(outlineCoordinatorSource.contains("NSOutlineViewDropOnItemIndex"))
         #expect(outlineCoordinatorSource.contains("func outlineViewSelectionDidChange"))
-        #expect(
-            outlineCoordinatorSource.contains(
-                "outlineView.action = #selector(activateOutlineClick(_:))"
-            ))
+        #expect(!outlineCoordinatorSource.contains("outlineView.target = self"))
+        #expect(!outlineCoordinatorSource.contains("activateOutlineClick"))
+        #expect(!outlineCoordinatorSource.contains("activateNativeSelection"))
+        #expect(!outlineCoordinatorSource.contains("toggleDisclosure"))
         #expect(
             !outlineCoordinatorSource.contains(
                 "} else if NSApp.currentEvent?.type == .leftMouseDown"
@@ -2077,19 +2067,23 @@ struct FrontendArchitectureTests {
         #expect(outlineRowsSource.contains("final class SidebarOutlineHostingCell"))
         #expect(outlineRowsSource.contains("final class SidebarOutlineRowView"))
         #expect(outlineRowsSource.contains("final class SidebarOutlineView"))
-        #expect(outlineRowsSource.contains("private var hoverTrackingArea: NSTrackingArea?"))
-        #expect(outlineRowsSource.components(separatedBy: "NSTrackingArea(").count == 2)
-        #expect(outlineRowsSource.contains("override func mouseMoved(with event: NSEvent)"))
-        #expect(outlineRowsSource.contains("private var hoveredItemID: String?"))
-        #expect(!outlineRowsSource.contains("for row in 0..<numberOfRows"))
-        #expect(outlineRowsSource.contains("visibleRect.contains(point)"))
-        #expect(outlineRowsSource.contains("window.mouseLocationOutsideOfEventStream"))
-        #expect(outlineRowsSource.contains("private var isSelectedDocument = false"))
-        #expect(outlineRowsSource.contains("sidebarOutlineDocumentIsSelected("))
-        #expect(outlineRowsSource.contains("width: ScholiumMetrics.Library.selectionBoundaryWidth"))
+        #expect(!outlineRowsSource.contains("NSTrackingArea("))
+        #expect(!outlineRowsSource.contains("override func mouseMoved"))
+        #expect(!outlineRowsSource.contains("hoveredItemID"))
+        #expect(!outlineRowsSource.contains("isSelectedDocument"))
+        #expect(!outlineRowsSource.contains("isNativeFocused"))
+        #expect(!outlineRowsSource.contains("drawBackground"))
+        #expect(!outlineRowsSource.contains("drawDraggingDestinationFeedback"))
+        #expect(!outlineRowsSource.contains("override func draw("))
+        #expect(!outlineRowsSource.contains("resetCursorRects"))
+        #expect(!outlineRowsSource.contains("frameOfOutlineCell"))
+        #expect(!outlineRowsSource.contains("ScholiumPointingHandButton"))
         #expect(!outlineRowsSource.contains("NSViewRepresentable"))
 
-        #expect(treeRowsSource.contains("sidebarLibraryRowLeadingInset(depth:"))
+        #expect(!treeRowsSource.contains("sidebarLibraryRowLeadingInset"))
+        #expect(!treeRowsSource.contains("Button(action: toggleFolder)"))
+        #expect(!treeRowsSource.contains("Button { onSelect(note)"))
+        #expect(!treeRowsSource.contains("scholiumActivationPointer"))
         #expect(!treeRowsSource.contains("SidebarPointerHoverBackground("))
         #expect(!sidebarSource.contains("NSTrackingArea("))
         #expect(!treeRowsSource.contains("@State private var rowIsHovering"))
@@ -2103,13 +2097,13 @@ struct FrontendArchitectureTests {
         #expect(nativeDropSource.contains("override func performDragOperation("))
         #expect(nativeDropSource.contains("commitSidebarNativeDrop("))
         #expect(sidebarSource.contains("scholium.libraryDisclosureToggle"))
-        #expect(sidebarSource.contains("\"rectangle.compress.vertical\""))
-        #expect(sidebarSource.contains("\"rectangle.expand.vertical\""))
-        #expect(!sidebarSource.contains("shouldCollapse ? \"chevron"))
-        #expect(
-            componentsSource.contains(
-                "VStack(spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment)"
-            ))
+        #expect(sidebarSource.contains("\"chevron.up.2\""))
+        #expect(sidebarSource.contains("\"chevron.down.2\""))
+        #expect(!sidebarSource.contains("rectangle.compress.vertical"))
+        #expect(!sidebarSource.contains("rectangle.expand.vertical"))
+        #expect(workspaceNavigatorSource.contains("SidebarWorkspaceTableView"))
+        #expect(workspaceNavigatorSource.contains("NSFont.systemFontSize"))
+        #expect(workspaceNavigatorSource.contains("effectiveRowSizeStyle"))
         #expect(sidebarSource.contains("visibleExpandedFolderIDs"))
         #expect(!sidebarSource.contains("Reveal Current Note"))
         #expect(!sidebarSource.contains("Library Navigation"))
@@ -2155,10 +2149,7 @@ struct FrontendArchitectureTests {
         #expect(!sidebarSource.contains(".scholiumEditorialIconControlSurface("))
         #expect(!filterMenuSource.contains("@State private var isControlHovering"))
         #expect(!filterMenuSource.contains(".scholiumEditorialIconControlSurface("))
-        #expect(
-            outlineRowsSource.contains(
-                "ScholiumContentInteractionSurface.nsColor("
-            ))
+        #expect(!outlineRowsSource.contains("ScholiumContentInteractionSurface"))
         #expect(!sidebarSource.contains("Hide Sidebar"))
 
         for section in ["Integrity", "Metadata", "Order", "Actions"] {
@@ -2168,7 +2159,7 @@ struct FrontendArchitectureTests {
         #expect(!sidebarSource.contains("Section(\"Review\")"))
 
         #expect(
-            sidebarSource.contains(
+            !sidebarSource.contains(
                 ".background(ScholiumColorRole.navigationSurfaceBackground.color)"
             ))
         #expect(!sidebarSource.contains("SidebarLiteratureSection("))
@@ -2185,14 +2176,11 @@ struct FrontendArchitectureTests {
         #expect(!brandHeader.contains("Image(systemName: \"chevron.down\")"))
         #expect(sidebarSource.contains("ScholiumTriptychWorkspaceNavigator("))
         #expect(
-            componentsSource.contains(
-                "struct ScholiumTriptychWorkspaceNavigator: View"
+            workspaceNavigatorSource.contains(
+                "struct ScholiumTriptychWorkspaceNavigator: NSViewRepresentable"
             ))
-        #expect(componentsSource.contains("ScholiumTypography.interface(.body)"))
-        #expect(componentsSource.contains("@FocusState private var focusedSlot"))
-        #expect(componentsSource.contains(".onMoveCommand(perform: move)"))
-        #expect(componentsSource.contains("case .up:"))
-        #expect(componentsSource.contains("case .down:"))
+        #expect(workspaceNavigatorSource.contains("allowsMultipleSelection = false"))
+        #expect(workspaceNavigatorSource.contains("backgroundStyle == .emphasized"))
         #expect(!sidebarSource.contains("private var scopeIndex"))
         #expect(!sidebarSource.contains(".font(.system(size: 12"))
     }
@@ -2366,7 +2354,7 @@ struct FrontendArchitectureTests {
         #expect(noteSource.contains("documentPresentation.css + \"\\n\" + state.appearanceCSS"))
     }
 
-    @Test("Continuous content planes reserve Liquid Glass for native chrome controls")
+    @Test("Native Sidebar Glass remains distinct from research content planes")
     func scholarlyEditorialWorkspaceSurfaceContract() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -2399,7 +2387,8 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        #expect(content.contains(".scholiumSurface(.navigation)"))
+        #expect(!content.contains(".scholiumSurface(.navigation)"))
+        #expect(!sidebarSource.contains(".background(ScholiumColorRole.navigationSurfaceBackground.color)"))
         #expect(content.contains("ScholiumNoDocumentDetailView()"))
         #expect(content.contains("ScholiumContentStateView("))
         #expect(content.contains("\"No Document Selected\""))
@@ -2448,7 +2437,6 @@ struct FrontendArchitectureTests {
             ScholiumMetrics.Apparatus.sectionContentSpacing
                 == ScholiumGrid.Apparatus.headingToContentGap
         )
-        #expect(ScholiumMetrics.Library.hierarchyRowHeight == 28)
 
         let productionRoot = repository.appendingPathComponent("Scholium")
         let allowedGlassButtonOwners = Set([
@@ -2953,7 +2941,11 @@ struct FrontendArchitectureTests {
 
         #expect(
             splitSource.contains(
-                "sidebarWithViewController: libraryBackgroundController"
+                "sidebarWithViewController: libraryHost"
+            ))
+        #expect(
+            splitSource.contains(
+                "documentItem.automaticallyAdjustsSafeAreaInsets = true"
             ))
         #expect(
             !splitSource.contains(
@@ -3375,7 +3367,6 @@ struct FrontendArchitectureTests {
         #expect(ScholiumGrid.Spacing.sourceShellInsetCSSPixels == 40)
         #expect(ScholiumGrid.Peripheral.contentInset == 28)
         #expect(ScholiumGrid.Dimension.compactHierarchyRowHeight == 24)
-        #expect(ScholiumGrid.Dimension.libraryHierarchyRowHeight == 28)
         #expect(ScholiumGrid.Dimension.documentTabStripHeight == 40)
         #expect(ScholiumGrid.Dimension.regionHeaderHeight == 48)
         #expect(ScholiumGrid.Document.narrowWidthThresholdRootEms == 44)
@@ -3387,10 +3378,6 @@ struct FrontendArchitectureTests {
                 == ScholiumGrid.Spacing.nestedContentInset
         )
         #expect(ScholiumMetrics.Library.sectionSpacing == ScholiumGrid.Spacing.sectionSeparation)
-        #expect(
-            ScholiumMetrics.Library.hierarchyRowHeight
-                == ScholiumGrid.Dimension.libraryHierarchyRowHeight
-        )
         #expect(ScholiumMetrics.Search.responsiveMargin == ScholiumGrid.Spacing.regionContentInset)
 
         let repository = URL(fileURLWithPath: #filePath)
@@ -4105,7 +4092,6 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMotion.searchExpansion(reduceMotion: true) == nil)
         #expect(ScholiumMotion.disclosure(reduceMotion: true) == nil)
         #expect(ScholiumMotion.symbolReplacement(reduceMotion: true) == nil)
-        #expect(ScholiumMotion.triptychWorkspaceSourceReveal(reduceMotion: true) == nil)
         #expect(ScholiumMotion.transientStatus(reduceMotion: true) == nil)
 
         #expect(ScholiumMotion.bootstrapStep(reduceMotion: false) != nil)
@@ -4114,9 +4100,7 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMotion.searchExpansion(reduceMotion: false) != nil)
         #expect(ScholiumMotion.disclosure(reduceMotion: false) != nil)
         #expect(ScholiumMotion.symbolReplacement(reduceMotion: false) != nil)
-        #expect(ScholiumMotion.triptychWorkspaceSourceReveal(reduceMotion: false) != nil)
         #expect(ScholiumMotion.transientStatus(reduceMotion: false) != nil)
-        #expect(ScholiumMotion.triptychWorkspaceSourceOffset == 6)
     }
 
     @Test("Bootstrap step motion keeps one semantic recipe owner")
@@ -4194,55 +4178,6 @@ struct FrontendArchitectureTests {
         #expect(environment.scholiumReduceMotion)
         #expect(!environment.scholiumAppearsActive)
 
-        #expect(
-            ScholiumStructuralDepthRole.documentNavigationBoundary.style(
-                isDark: false,
-                increasedContrast: false,
-                reduceTransparency: false,
-                appearsActive: true,
-                layoutDirection: .leftToRight
-            ) == .init(opacity: 0.04, radius: 8, x: -2, y: 0))
-        #expect(
-            ScholiumStructuralDepthRole.documentNavigationBoundary.style(
-                isDark: false,
-                increasedContrast: false,
-                reduceTransparency: false,
-                appearsActive: true,
-                layoutDirection: .rightToLeft
-            ) == .init(opacity: 0.04, radius: 8, x: 2, y: 0))
-        for quietStyle in [
-            ScholiumStructuralDepthRole.documentNavigationBoundary.style(
-                isDark: true,
-                increasedContrast: false,
-                reduceTransparency: false,
-                appearsActive: true,
-                layoutDirection: .leftToRight
-            ),
-            ScholiumStructuralDepthRole.documentNavigationBoundary.style(
-                isDark: false,
-                increasedContrast: false,
-                reduceTransparency: true,
-                appearsActive: true,
-                layoutDirection: .leftToRight
-            ),
-            ScholiumStructuralDepthRole.documentNavigationBoundary.style(
-                isDark: false,
-                increasedContrast: false,
-                reduceTransparency: false,
-                appearsActive: false,
-                layoutDirection: .leftToRight
-            ),
-        ] {
-            #expect(quietStyle.opacity == 0.02)
-        }
-        #expect(
-            ScholiumStructuralDepthRole.documentNavigationBoundary.style(
-                isDark: true,
-                increasedContrast: true,
-                reduceTransparency: true,
-                appearsActive: false,
-                layoutDirection: .rightToLeft
-            ).opacity == 0)
         #expect(
             ScholiumElevationRole.floatingControl.style(
                 increasedContrast: false,

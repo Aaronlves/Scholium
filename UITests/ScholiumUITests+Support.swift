@@ -296,11 +296,13 @@ extension ScholiumUITests {
 
     @MainActor
     func documentSurfaceIsUsable(for relativePath: String? = nil) -> Bool {
-        if let relativePath,
-           !app.descendants(matching: .any)[
-               "scholium.noteRow.\(relativePath)"
-           ].isSelected {
-            return false
+        if let relativePath {
+            let identifier = "scholium.noteRow.\(relativePath)"
+            let selectedNativeRow = app.outlines["scholium.noteList"]
+                .descendants(matching: .outlineRow)
+                .containing(.any, identifier: identifier)
+                .firstMatch
+            if !selectedNativeRow.isSelected { return false }
         }
         let usableSurface = app.descendants(matching: .any).matching(
             NSPredicate(
@@ -481,12 +483,12 @@ extension ScholiumUITests {
         _ identifier: String,
         waitingFor rowIdentifier: String
     ) {
-        let button = app.buttons[identifier].firstMatch
-        XCTAssertTrue(button.waitForExistence(timeout: 10))
+        let destination = app.descendants(matching: .any)[identifier].firstMatch
+        XCTAssertTrue(destination.waitForExistence(timeout: 10))
         let row = app.descendants(matching: .any)[rowIdentifier]
         let deadline = Date().addingTimeInterval(20)
         repeat {
-            button.click()
+            destination.click()
             if row.waitForExistence(timeout: 5) { return }
         } while Date() < deadline
         XCTFail("The selected vault did not publish its expected Library content.")
@@ -937,6 +939,23 @@ extension ScholiumUITests {
                     NSLocalizedDescriptionKey:
                         "The static TestVault anchor is missing: \(staticAnchor.lastPathComponent)",
                 ]
+            )
+        }
+        if name.contains("testNativeFolderSelectionAndArrowKeysOwnDisclosure")
+            || name.contains(
+                "testNativeSidebarToggleAndLibraryTriptychIdentityRemainAvailable"
+            ) {
+            let cluster = analyses.appendingPathComponent(
+                "Cluster-01",
+                isDirectory: true
+            )
+            try FileManager.default.createDirectory(
+                at: cluster,
+                withIntermediateDirectories: true
+            )
+            try write(
+                "# Native Outline Child\n\nSynthetic QA fixture only.\n",
+                to: cluster.appendingPathComponent("analysis-007.md")
             )
         }
         if name.contains("testAgentChangesShowsExactUpdateAndRestoresSettledBytes") {

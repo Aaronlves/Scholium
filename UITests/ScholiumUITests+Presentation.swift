@@ -269,10 +269,11 @@ extension ScholiumUITests {
         let noteRow = app.descendants(matching: .any)["scholium.noteRow.QA Autosave B.md"]
         XCTAssertTrue(folderRow.waitForExistence(timeout: 5))
         XCTAssertTrue(noteRow.waitForExistence(timeout: 5))
-        XCTAssertLessThanOrEqual(
+        XCTAssertEqual(
             noteRow.frame.minX,
-            folderRow.frame.minX + 30,
-            "Top-level note rows must remain aligned with the Library outline."
+            folderRow.frame.minX,
+            accuracy: 2,
+            "Top-level Folder and Note titles must share one Library text column."
         )
         XCTAssertFalse(app.buttons["Collapse Note"].exists)
         app.menuBars.menuBarItems["View"].click()
@@ -301,6 +302,47 @@ extension ScholiumUITests {
         add(shellScreenshot)
     }
 
+    /// The Triptych selector is a native source list: a pointer click retains a
+    /// quiet selection, then AppKit's Down Arrow enables keyboard emphasis and
+    /// publishes the next workspace.
+    @MainActor
+    func testNativeTriptychWorkspaceNavigatorUsesSelectionAndArrowKeys() throws {
+        waitForCurrentDocumentSurface()
+
+        let analyses = app.descendants(matching: .any)[
+            "scholium.vault.paper_analysis"
+        ].firstMatch
+        let topics = app.descendants(matching: .any)[
+            "scholium.vault.topic_knowledge"
+        ].firstMatch
+        let workspaceTable = app.tables["scholium.workspaceNavigator"].firstMatch
+        let analysesRow = workspaceTable.descendants(matching: .tableRow)
+            .containing(.any, identifier: "scholium.vault.paper_analysis")
+            .firstMatch
+        let topicsRow = workspaceTable.descendants(matching: .tableRow)
+            .containing(.any, identifier: "scholium.vault.topic_knowledge")
+            .firstMatch
+        XCTAssertTrue(analyses.waitForExistence(timeout: 5))
+        XCTAssertTrue(topics.waitForExistence(timeout: 5))
+        XCTAssertTrue(analysesRow.waitForExistence(timeout: 5))
+        XCTAssertTrue(topicsRow.waitForExistence(timeout: 5))
+
+        analyses.click()
+        XCTAssertTrue(analysesRow.isSelected)
+        app.typeKey(.downArrow, modifierFlags: [])
+
+        XCTAssertTrue(waitUntil(timeout: 8) { topicsRow.isSelected })
+        XCTAssertTrue(
+            app.descendants(matching: .any)["scholium.noteRow.QA Topic.md"]
+                .waitForExistence(timeout: 8)
+        )
+
+        let screenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        screenshot.name = "Native Triptych workspace source-list selection"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+    }
+
     @MainActor
     func testLibraryRemainsReadableAtItsNativeMinimum() throws {
         waitForCurrentDocumentSurface()
@@ -313,8 +355,12 @@ extension ScholiumUITests {
             "An expanded Library must not remain below its content-tested readable width."
         )
 
-        for scope in ["Analyses", "Topics", "Works"] {
-            let control = app.buttons[scope]
+        for (scope, identifier) in [
+            ("Analyses", "scholium.vault.paper_analysis"),
+            ("Topics", "scholium.vault.topic_knowledge"),
+            ("Works", "scholium.vault.output"),
+        ] {
+            let control = app.descendants(matching: .any)[identifier]
             XCTAssertTrue(control.waitForExistence(timeout: 3))
             XCTAssertLessThanOrEqual(
                 control.frame.height,

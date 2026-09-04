@@ -14,11 +14,14 @@
   owns window, toolbar, divider, collapse, resize, fullscreen, and focus
   behavior. Each workspace window retains its own Library, document tabs,
   Document mode, Inspector mode, Search, and Attention presentation.
-- The three semantic content planes remain continuous through the transparent
-  titlebar with no separate toolbar band. Standard AppKit toolbar items own
-  their native Liquid Glass, edge highlight, shadow, and system geometry;
-  compact Sidebar-header controls retain their established 28pt targets. The
-  70 × 20 Inspector projection control and split geometry remain unchanged.
+- AppKit's Sidebar split item now owns the complete regular Liquid Glass
+  navigation plane. The adjacent Document Paper surface extends beneath it
+  through the native safe-area contract; Sidebar content adds no custom fill,
+  visual-effect host, or edge shadow. Document and Apparatus remain continuous
+  through the transparent titlebar with no separate toolbar band. Standard
+  AppKit toolbar items own their native Liquid Glass, and compact Sidebar-header
+  controls retain their established 28pt targets. The 70 × 20 Inspector
+  projection control and split geometry remain unchanged.
 - The Sidebar header places Search and Notifications at the logical trailing
   edge of the Scholium wordmark. A nonzero queue uses one Accent dot on the
   bell, keeps its exact count accessible, and never prints a numeric counter.
@@ -26,13 +29,29 @@
 
 ## Library, Document, and Inspector
 
-- Library presents Analyses, Topics, and Works as peer destinations with stable
-  selection, keyboard navigation, filters, ordering, disclosure, and source
-  mutation routes. Its projection omits the application-owned root
-  `Attachments` directory and descendants without altering their stored files.
-- Enabled discrete activation targets use the system pointing hand throughout
-  SwiftUI, AppKit, and retained WebKit surfaces. Disabled, text, drag, divider,
-  resize, and passive surfaces preserve their native cursor semantics.
+- Library presents Analyses, Topics, and Works through a native source-list
+  navigator whose shared input-modality adapter keeps pointer selection
+  unemphasized and enables native emphasis for keyboard focus/navigation.
+  AppKit still owns selection drawing, focus, active/inactive appearance,
+  pointer behavior, and Up/Down traversal. Its native outline likewise owns
+  row selection, focus, disclosure, and drag feedback;
+  both lists follow AppKit's effective source-list size, with the large system
+  row style used for enlarged interface presentation. Scholium supplies
+  semantic text colors, exact counts, content, and valid actions. Triptych and
+  Library use one System Sans section-heading tier without decorative tracking;
+  the Library's Filter, adaptive disclosure, and Add controls form one native
+  `ControlGroup`. File-tree rows use the Finder-style native grid: AppKit owns
+  the Folder disclosure gutter and its state, monochrome Folder and Note symbols
+  share the item-type column, and their titles share the following text column.
+  The 16pt Library hierarchy step is applied through AppKit's native outline
+  indentation property rather than custom row positioning.
+  The projection omits the application-owned root `Attachments` directory and
+  descendants without altering their stored files.
+- Standard Sidebar controls and navigation rows retain their native macOS
+  cursors. The Sidebar adds no global pointing-hand remapping, custom row-hover
+  tracker, parallel selection painter, or custom disclosure gesture. Existing
+  custom and WebKit link-equivalent surfaces outside this slice retain their
+  bounded cursor adapters.
 - Document retains Review, Edit, and Source over one exact source buffer.
   Markdown is the sole written annotation authority; there is no separate
   Review Comment or passage Discussion UI.

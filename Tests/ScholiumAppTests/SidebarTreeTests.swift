@@ -215,14 +215,6 @@ struct SidebarTreeTests {
         #expect(window.notesAreOrdered(alphaTie, older))
     }
 
-    @Test("Every hierarchy level advances one shared Folder and Note leading axis")
-    func hierarchyRowTitleAxes() {
-        #expect(sidebarLibraryRowLeadingInset(depth: 0) == 12)
-        #expect(sidebarLibraryRowLeadingInset(depth: 1) == 28)
-        #expect(sidebarLibraryRowLeadingInset(depth: 2) == 44)
-        #expect(sidebarLibraryRowLeadingInset(depth: 3) == 60)
-    }
-
     @Test("A created Note reveals only its folder ancestors")
     func createdNoteFolderAncestors() {
         #expect(libraryFolderAncestors(forDocumentPath: "Untitled.md").isEmpty)
@@ -362,8 +354,14 @@ struct SidebarTreeTests {
             "Arguments/Overview.md",
             "Loose.md",
         ])
-        #expect(sidebarOutlineRowHeight(usesAccessibilitySize: false) == 28)
-        #expect(sidebarOutlineRowHeight(usesAccessibilitySize: true) == 44)
+        #expect(sidebarControlSize(for: .small) == .small)
+        #expect(sidebarControlSize(for: .medium) == .regular)
+        #expect(sidebarControlSize(for: .large) == .large)
+        #expect(
+            SidebarSourceListRowPresentation(
+                effectiveRowSizeStyle: .large
+            ).textPointSize == NSFont.systemFontSize(for: .large)
+        )
     }
 
     @Test("Native expansion synchronization runs only for changed disclosure or structure")
@@ -391,6 +389,54 @@ struct SidebarTreeTests {
         ))
     }
 
+    @MainActor
+    @Test("Sidebar selection emphasis follows keyboard rather than pointer input")
+    func nativeSelectionInputModality() {
+        let presentation = SidebarSourceListSelectionPresentation()
+
+        #expect(presentation.inputModality == .pointer)
+        presentation.recordKeyboardInteraction()
+        #expect(presentation.inputModality == .keyboard)
+        presentation.recordResponderEvent(.leftMouseDown)
+        #expect(presentation.inputModality == .pointer)
+        presentation.recordResponderEvent(.keyDown)
+        #expect(presentation.inputModality == .keyboard)
+    }
+
+    @MainActor
+    @Test("Triptych workspace navigation delegates selection and traversal to AppKit")
+    func nativeTriptychWorkspaceSelection() throws {
+        let counts = SidebarWorkspaceNoteCounts(values: [
+            .paperAnalysis: 4,
+            .output: 2,
+        ])
+        var requestedSlot: WorkspaceVaultSlot?
+        let coordinator = ScholiumTriptychWorkspaceNavigator.Coordinator(
+            selectedSlot: .paperAnalysis,
+            noteCounts: counts,
+            locale: Locale(identifier: "en_US"),
+            select: { requestedSlot = $0 }
+        )
+        let tableView = SidebarWorkspaceTableView(
+            frame: NSRect(x: 0, y: 0, width: 280, height: 90)
+        )
+        tableView.style = .sourceList
+        tableView.dataSource = coordinator
+        tableView.delegate = coordinator
+        tableView.addTableColumn(NSTableColumn(
+            identifier: ScholiumTriptychWorkspaceNavigator.Coordinator.columnIdentifier
+        ))
+
+        coordinator.attach(tableView)
+
+        #expect(tableView.selectedRow == 0)
+        #expect(!coordinator.tableView(tableView, shouldSelectRow: 1))
+        #expect(coordinator.tableView(tableView, shouldSelectRow: 2))
+        tableView.selectRowIndexes(IndexSet(integer: 2), byExtendingSelection: false)
+        #expect(requestedSlot == .output)
+        #expect(tableView.intrinsicContentSize.height == tableView.rowHeight * 3)
+    }
+
     @Test("An empty root Folder remains visible when disclosure state contains it")
     func emptyRootRemainsVisible() throws {
         let tree = buildTree(
@@ -407,30 +453,6 @@ struct SidebarTreeTests {
         #expect(projected.map(\.id) == ["Empty Archive"])
         #expect(empty.isFolder)
         #expect(empty.children.isEmpty)
-    }
-
-    @Test("An absent Note never becomes selected when no document is selected")
-    func outlineSelectionRequiresTwoConcretePaths() {
-        #expect(!sidebarOutlineDocumentIsSelected(
-            notePath: nil,
-            selectedDocumentPath: nil
-        ))
-        #expect(!sidebarOutlineDocumentIsSelected(
-            notePath: "papers/Argument.md",
-            selectedDocumentPath: nil
-        ))
-        #expect(!sidebarOutlineDocumentIsSelected(
-            notePath: nil,
-            selectedDocumentPath: "papers/Argument.md"
-        ))
-        #expect(sidebarOutlineDocumentIsSelected(
-            notePath: "papers/Argument.md",
-            selectedDocumentPath: "papers/Argument.md"
-        ))
-        #expect(!sidebarOutlineDocumentIsSelected(
-            notePath: "papers/Argument.md",
-            selectedDocumentPath: "papers/Reply.md"
-        ))
     }
 
     @Test("Only visibly expanded Folders request the Collapse All presentation")
@@ -1081,7 +1103,7 @@ private func makeSidebarCoordinatorConfiguration(
         locale: Locale(identifier: "en_US"),
         expandedFolders: .constant(expandedFolderIDs),
         expandedFolderIDs: expandedFolderIDs,
-        rowHeight: 24,
+        usesAccessibilitySize: false,
         selectedDocumentPath: nil,
         context: context,
         dropInventory: dropInventory,
@@ -1112,7 +1134,7 @@ private func makeSidebarCoordinatorOutline(
     outlineView.style = .sourceList
     outlineView.floatsGroupRows = false
     outlineView.usesAutomaticRowHeights = false
-    outlineView.rowHeight = 24
+    outlineView.rowSizeStyle = .default
     outlineView.intercellSpacing = .zero
     let column = NSTableColumn(
         identifier: SidebarOutlineSourceList.Coordinator.columnIdentifier

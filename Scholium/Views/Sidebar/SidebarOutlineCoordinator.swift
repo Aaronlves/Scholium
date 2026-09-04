@@ -40,44 +40,19 @@ extension SidebarOutlineSourceList {
         func attach(outlineView: NSOutlineView, scrollView: NSScrollView) {
             self.outlineView = outlineView
             self.scrollView = scrollView
-            outlineView.target = self
-            outlineView.action = #selector(activateOutlineClick(_:))
-            scrollView.contentView.postsBoundsChangedNotifications = true
-            NotificationCenter.default.addObserver(
-                self,
-                selector: #selector(scrollBoundsDidChange),
-                name: NSView.boundsDidChangeNotification,
-                object: scrollView.contentView
-            )
+            (outlineView as? SidebarOutlineView)?.selectionPresentationDidChange = {
+                [weak self, weak outlineView] in
+                guard let self, let outlineView else { return }
+                self.refreshAvailableRows(in: outlineView)
+            }
             (scrollView as? SidebarOutlineScrollView)?.rootMenuProvider = { [weak self] in
                 self?.makeRootMenu()
-            }
-            if let outlineView = outlineView as? SidebarOutlineView {
-                outlineView.activationHandler = { [weak self] in
-                    self?.activateNativeSelection()
-                }
-                outlineView.focusPresentationHandler = { [weak self, weak outlineView] in
-                    guard let self, let outlineView else { return }
-                    self.refreshAvailableRows(in: outlineView)
-                }
             }
         }
 
         func detach(from scrollView: NSScrollView) {
-            NotificationCenter.default.removeObserver(
-                self,
-                name: NSView.boundsDidChangeNotification,
-                object: scrollView.contentView
-            )
             (scrollView as? SidebarOutlineScrollView)?.rootMenuProvider = nil
-            if outlineView?.target as AnyObject? === self {
-                outlineView?.target = nil
-                outlineView?.action = nil
-            }
-            if let outlineView = outlineView as? SidebarOutlineView {
-                outlineView.activationHandler = nil
-                outlineView.focusPresentationHandler = nil
-            }
+            (outlineView as? SidebarOutlineView)?.selectionPresentationDidChange = nil
             self.outlineView = nil
             self.scrollView = nil
         }
@@ -93,11 +68,12 @@ extension SidebarOutlineSourceList {
             let activeDocumentChanged = !hasSynchronizedActiveDocument
                 || lastActiveDocumentPath != configuration.selectedDocumentPath
             var structureChanged = false
-            if outlineView.rowHeight != configuration.rowHeight {
-                outlineView.rowHeight = configuration.rowHeight
-                outlineView.noteHeightOfRows(withIndexesChanged: IndexSet(
-                    integersIn: 0..<outlineView.numberOfRows
-                ))
+            let desiredRowSizeStyle: NSTableView.RowSizeStyle =
+                configuration.usesAccessibilitySize ? .large : .default
+            if outlineView.rowSizeStyle != desiredRowSizeStyle {
+                outlineView.rowSizeStyle = desiredRowSizeStyle
+                outlineView.reloadData()
+                structureChanged = true
             }
 
             if lastProjectionRevision != configuration.projectionRevision {
@@ -105,7 +81,6 @@ extension SidebarOutlineSourceList {
                 reconcile(configuration.roots)
                 if structure != newStructure {
                     structure = newStructure
-                    (outlineView as? SidebarOutlineView)?.invalidateHoverForReload()
                     outlineView.reloadData()
                     structureChanged = true
                 }
@@ -129,7 +104,6 @@ extension SidebarOutlineSourceList {
             handleRevealRequest(in: outlineView)
             handleFocusRequest(in: outlineView)
             handleSourceListFocus(in: outlineView)
-            (outlineView as? SidebarOutlineView)?.scheduleHoverReconciliation()
         }
 
         private func reconcile(_ nodes: [TreeNode]) {
@@ -243,16 +217,9 @@ extension SidebarOutlineSourceList {
                       let item = outlineView.item(atRow: row) as? SidebarOutlineItem else {
                     return
                 }
-                let isHovered = (outlineView as? SidebarOutlineView)?
-                    .isHovering(item) == true
-                let isNativeFocused = outlineView.selectedRow == row
-                    && outlineView.window?.firstResponder === outlineView
                 (rowView as? SidebarOutlineRowView)?.configure(
                     item: item,
                     isExpanded: outlineView.isItemExpanded(item),
-                    isHovered: isHovered,
-                    isNativeFocused: isNativeFocused,
-                    selectedDocumentPath: self.configuration.selectedDocumentPath,
                     nativeStrings: self.configuration.nativeStrings
                 )
                 guard let cell = outlineView.view(
@@ -263,8 +230,7 @@ extension SidebarOutlineSourceList {
                 self.configure(
                     cell: cell,
                     for: item,
-                    isHovered: isHovered,
-                    isNativeFocused: isNativeFocused
+                    in: outlineView
                 )
             }
         }
@@ -272,52 +238,27 @@ extension SidebarOutlineSourceList {
         private func configure(
             cell: SidebarOutlineHostingCell,
             for item: SidebarOutlineItem,
-            isHovered: Bool,
-            isNativeFocused: Bool
+            in outlineView: NSOutlineView
         ) {
-            let isExpanded = configuration.expandedFolderIDs.contains(item.id)
-            let strings = configuration.nativeStrings
-            cell.configure(
-                with: hostedRow(for: item),
-                isHovered: isHovered,
-                disclosureLabel: item.isExpandable
-                    ? strings.disclosureLabel(
-                        isExpanded: isExpanded,
-                        title: item.node.name
-                    )
-                    : nil,
-                disclosureIsExpanded: isExpanded,
-                disclosureDepth: item.node.depth,
-                onDisclosure: item.isExpandable ? { [weak self] in
-                    self?.toggleDisclosure(item)
-                } : nil
-            )
-        }
-
-        private func toggleDisclosure(_ item: SidebarOutlineItem) {
-            var disclosure = configuration.expandedFolders
-            if disclosure.contains(item.id) {
-                disclosure.remove(item.id)
-            } else {
-                disclosure.insert(item.id)
-            }
-            configuration.expandedFolders = disclosure
+            cell.configure(with: hostedRow(for: item, in: outlineView))
         }
 
         private func hostedRow(
-            for item: SidebarOutlineItem
+            for item: SidebarOutlineItem,
+            in outlineView: NSOutlineView
         ) -> SidebarTreeNodeRow {
             SidebarTreeNodeRow(
                 node: item.node,
                 expandedFolders: configuration.$expandedFolders,
-                selectedDocumentPath: configuration.selectedDocumentPath,
                 context: configuration.context,
-                onSelect: configuration.onSelect
+                presentation: SidebarSourceListRowPresentation(
+                    effectiveRowSizeStyle: outlineView.effectiveRowSizeStyle
+                ),
+                usesEmphasizedSelectionForeground:
+                    (outlineView as? SidebarOutlineView)?
+                        .usesEmphasizedSelectionForeground == true
+                        && outlineView.selectedRow == outlineView.row(forItem: item)
             )
-        }
-
-        @objc private func scrollBoundsDidChange(_ notification: Notification) {
-            (outlineView as? SidebarOutlineView)?.scheduleHoverReconciliation()
         }
 
         private func handleRevealRequest(in outlineView: NSOutlineView) {
@@ -455,33 +396,6 @@ extension SidebarOutlineSourceList {
 
         @objc private func createRootFolder() {
             configuration.context.createUntitledFolder(nil)
-        }
-
-        private func activateNativeSelection() {
-            guard let outlineView,
-                  outlineView.selectedRow >= 0,
-                  let item = outlineView.item(
-                      atRow: outlineView.selectedRow
-                  ) as? SidebarOutlineItem else { return }
-            if let note = item.node.note {
-                configuration.onSelect(note)
-            } else if item.isExpandable {
-                toggleDisclosure(item)
-            }
-        }
-
-        /// NSTableView's native single-click action is delivered on a
-        /// completed click, including when the clicked Folder is already the
-        /// native selection. A drag does not send this action. Keep Folder
-        /// disclosure here instead of inferring activation from a selection
-        /// notification and the process-wide current event.
-        @objc private func activateOutlineClick(_ sender: NSOutlineView) {
-            guard sender.clickedRow >= 0,
-                  let item = sender.item(
-                      atRow: sender.clickedRow
-                  ) as? SidebarOutlineItem,
-                  item.isExpandable else { return }
-            toggleDisclosure(item)
         }
 
         private func dropFolderTarget(
@@ -659,13 +573,6 @@ extension SidebarOutlineSourceList {
 
         func outlineView(
             _ outlineView: NSOutlineView,
-            heightOfRowByItem item: Any
-        ) -> CGFloat {
-            configuration.rowHeight
-        }
-
-        func outlineView(
-            _ outlineView: NSOutlineView,
             viewFor tableColumn: NSTableColumn?,
             item: Any
         ) -> NSView? {
@@ -675,14 +582,7 @@ extension SidebarOutlineSourceList {
                 owner: self
             ) as? SidebarOutlineHostingCell ?? SidebarOutlineHostingCell()
             cell.identifier = Self.cellIdentifier
-            configure(
-                cell: cell,
-                for: item,
-                isHovered: (outlineView as? SidebarOutlineView)?
-                    .isHovering(item) == true,
-                isNativeFocused: outlineView.selectedRow == outlineView.row(forItem: item)
-                    && outlineView.window?.firstResponder === outlineView
-            )
+            configure(cell: cell, for: item, in: outlineView)
             return cell
         }
 
@@ -699,11 +599,6 @@ extension SidebarOutlineSourceList {
             row.configure(
                 item: item,
                 isExpanded: outlineView.isItemExpanded(item),
-                isHovered: (outlineView as? SidebarOutlineView)?
-                    .isHovering(item) == true,
-                isNativeFocused: outlineView.selectedRow == outlineView.row(forItem: item)
-                    && outlineView.window?.firstResponder === outlineView,
-                selectedDocumentPath: configuration.selectedDocumentPath,
                 nativeStrings: configuration.nativeStrings
             )
             return row

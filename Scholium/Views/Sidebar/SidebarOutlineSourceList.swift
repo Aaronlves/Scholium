@@ -13,13 +13,6 @@ struct SidebarNativeStrings {
     var newNote: String { ScholiumL10n.string("New Note", locale: locale) }
     var newFolder: String { ScholiumL10n.string("New Folder", locale: locale) }
 
-    func disclosureLabel(isExpanded: Bool, title: String) -> String {
-        let format = isExpanded
-            ? ScholiumL10n.string("Collapse %@", locale: locale)
-            : ScholiumL10n.string("Expand %@", locale: locale)
-        return String(format: format, locale: locale, title)
-    }
-
     func folderAccessibilityValue(isEmpty: Bool, isExpanded: Bool) -> String {
         if isEmpty {
             return ScholiumL10n.string("Empty folder", locale: locale)
@@ -43,7 +36,7 @@ struct SidebarOutlineSourceList: NSViewRepresentable {
     /// A value snapshot makes disclosure changes observable to
     /// `updateNSView`; the Binding remains the sole write path.
     let expandedFolderIDs: Set<String>
-    let rowHeight: CGFloat
+    let usesAccessibilitySize: Bool
     let selectedDocumentPath: String?
     let context: SidebarTreeContext
     let dropInventory: SidebarTreeDropInventory
@@ -83,16 +76,12 @@ struct SidebarOutlineSourceList: NSViewRepresentable {
         outlineView.dataSource = context.coordinator
         outlineView.delegate = context.coordinator
         outlineView.headerView = nil
-        outlineView.backgroundColor = .clear
         outlineView.style = .sourceList
         outlineView.floatsGroupRows = false
         outlineView.usesAutomaticRowHeights = false
-        outlineView.rowSizeStyle = .custom
-        outlineView.rowHeight = rowHeight
+        outlineView.rowSizeStyle = usesAccessibilitySize ? .large : .default
+        outlineView.indentationPerLevel = ScholiumMetrics.Library.hierarchyIndent
         outlineView.intercellSpacing = .zero
-        outlineView.indentationPerLevel = 0
-        outlineView.indentationMarkerFollowsCell = false
-        outlineView.selectionHighlightStyle = .none
         outlineView.draggingDestinationFeedbackStyle = .sourceList
         outlineView.allowsEmptySelection = true
         outlineView.allowsMultipleSelection = false
@@ -101,7 +90,6 @@ struct SidebarOutlineSourceList: NSViewRepresentable {
         outlineView.allowsColumnResizing = false
         outlineView.verticalMotionCanBeginDrag = true
         outlineView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
-        outlineView.focusRingType = .none
         outlineView.setAccessibilityIdentifier("scholium.noteList")
         outlineView.setAccessibilityLabel(accessibilityLocationName)
         outlineView.registerForDraggedTypes(sidebarNativeDraggingTypes)

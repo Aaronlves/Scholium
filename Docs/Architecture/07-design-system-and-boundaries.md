@@ -19,9 +19,11 @@ permission list for every bounded feature-local layout value.
 
 Accent and Paper are the only configurable inputs. Section 19.2's Paper is the exact
 Light Document anchor; one resolver derives every other appearance role for
-native and generated WebKit CSS. The complete Sidebar uses the Navigation
-surface; Inspector uses a distinct Apparatus role whose tone is deliberately
-much closer to Document than Navigation. Sticky Inspector headers and
+native and generated WebKit CSS. The Workspace `NSSplitViewItem` supplies the
+complete native Sidebar material while the adjacent Document surface extends
+its Paper background beneath that glass. Sidebar SwiftUI and source-list
+content stays transparent. Inspector uses a distinct Apparatus role whose tone
+is deliberately much closer to Document than Navigation. Sticky Inspector headers and
 sticky-header occlusion and link-annotation disclosure reuse that exact Apparatus role rather than a
 floating-control surface. `ScholiumWebDesignTokens` injects the resolved role
 declarations and fixed Markup syntax exception into every document HTML
@@ -45,20 +47,16 @@ Repository inventory tests reject raw Swift inputs outside those owners,
 direct AppKit palette access, leaf semantic-color opacity recipes, and authored
 WebKit color declarations or literals.
 
-`ScholiumSurfaceRole` maps a Scholium-owned surface to its default semantic
-boundary and, where applicable, one purpose-named `ScholiumElevationRole`.
-The current shared custom transient roles are `floatingControl`, `boundedPanel`,
-and `searchOverlay`; ordinary structural surfaces resolve to none. The current
-native-only `ScholiumStructuralDepthRole` covers the
-`documentNavigationBoundary` plane relationship and is not exported to WebKit.
-The Workspace Library host clips a Document-
-color caster just outside the logical edge, leaving only the shadow inside
-Library while AppKit's thin divider stays visible and interactive. The host
-covers the complete receiving split-item bounds beneath the native toolbar, is
-excluded from hit testing and accessibility, and mirrors in right-to-left
-presentation. The native modifiers consume the named structural-shadow exception, while
-`ScholiumWebDesignTokens` exports only the transient role names as CSS shadow
-declarations without converting points to CSS pixels.
+`ScholiumSurfaceRole` maps a Scholium-owned content surface to its default
+semantic boundary and, where applicable, one purpose-named
+`ScholiumElevationRole`. The current shared custom transient roles are
+`floatingControl`, `boundedPanel`, and `searchOverlay`; ordinary structural
+surfaces resolve to none. Sidebar elevation has no Scholium renderer: AppKit's
+Sidebar split-item behavior owns its glass edge and shadow, while the Document
+item's `automaticallyAdjustsSafeAreaInsets` extends Paper beneath it and keeps
+readable content in the unobscured safe area. `ScholiumWebDesignTokens` exports
+only the transient role names as CSS shadow declarations without converting
+points to CSS pixels.
 Selection bars and the shared segmented selection plate consume
 `floatingControl`; custom selection menus, the shared
 link preview, and Edit input-suggestion lists consume `boundedPanel`; Search
@@ -72,7 +70,7 @@ compounding these adaptations. Native menus, popovers, sheets, panels, alerts,
 and windows retain their system-owned elevation and are never double-shadowed.
 
 Repository ownership tests treat authored shadow syntax as a closed inventory.
-The two native renderers are the only `.shadow` owners; generated WebKit
+The shared native elevation modifier is the only `.shadow` owner; generated WebKit
 elevation consumes only the three purpose-named CSS variables. The remaining
 inset `box-shadow` declarations are classified as editor boundaries or focus
 rings rather than elevation. Adding a raw shadow, a direct SwiftUI hover site
@@ -100,25 +98,22 @@ not add unconditional `FocusState` assignments after native presentation
 dismissal, which prevents pointer interactions from manufacturing keyboard
 focus rings while retaining native keyboard traversal and return behavior.
 
-Discrete activation cursors have one cross-runtime boundary.
-`scholiumActivationPointer` maps enabled SwiftUI activation targets to the
-system link pointer and disabled targets to the arrow;
-`ScholiumPointingHandButton` provides the equivalent AppKit button behavior;
-and generated document CSS applies the same cursor to enabled WebKit buttons,
-links, menus, and options. The native Library outline adds cursor rectangles to
-its clickable rows through its existing pointer owner. Text, drag, divider,
-resize, disabled, and passive surfaces retain their task-specific cursors, so
-this boundary adds no general hover tracker or alternate activation state.
+Custom link-equivalent cursors have one cross-runtime boundary.
+`scholiumActivationPointer` and `ScholiumPointingHandButton` are adapters for
+bounded custom targets whose semantics require the link pointer and whose host
+does not already own cursor behavior; generated document CSS provides the
+corresponding WebKit link behavior. Standard SwiftUI/AppKit controls and native
+table or outline rows do not consume these adapters. The Library outline adds
+no cursor rectangles or pointer tracker. Text, drag, divider, resize, disabled,
+and passive surfaces retain their task-specific cursors.
 
 `ScholiumContentControlButtonFeedbackModifier` is the single transient-state
 owner for custom SwiftUI Buttons. The generic
 `ScholiumContentControlButtonStyle` and geometry-owning quiet-row style both
 delegate to it. It normally owns one lightweight SwiftUI hover state, consumes
 `ButtonStyle.Configuration.isPressed`, and resolves semantic ink, one
-continuous surface, and immediate press dimming. A Button hosted inside the
-native Source List suppresses that SwiftUI hover tracker while retaining the
-shared press path, so the AppKit row remains the sole hover and selection
-owner. Borderless native Menus
+continuous surface, and immediate press dimming. Native Source List rows do not
+consume this custom Button path. Borderless native Menus
 instead use `scholiumContentControlPointerFeedback`: a zero-hit-test AppKit
 adapter observes the complete Menu frame because the host does not reliably
 forward pointer state into its label. The enclosing Button or Menu retains
@@ -137,11 +132,14 @@ activation, or window blur. Edit's corresponding controller additionally owns
 Command-armed link feedback, the same annotation-template presentation, and a
 current-buffer one-definition footnote projection. Neither creates another
 source, selection, or focus owner.
-`ScholiumTriptychWorkspaceNavigator` owns
-the three vertical workspace rows, neutral Note totals, selection/hover
-surfaces, focus, and Up/Down traversal without owning the selected workspace. Its continuous
-surface consumes the purpose-named workspace-navigation corner recipe and has
-no Accent mark, underline, border, or shadow.
+`ScholiumTriptychWorkspaceNavigator` is a thin `NSTableView` adapter for the
+three vertical workspace rows and neutral Note totals. One shared input-modality
+adapter asks AppKit for unemphasized pointer selection and emphasized keyboard
+selection; AppKit still owns source-list geometry, color, hover, focus,
+active/inactive appearance, and Up/Down traversal. The coordinator only projects
+availability and publishes a selected workspace intent. Scholium semantic text
+colors adapt to AppKit's emphasized selected-row background without adding an
+Accent mark, underline, border, shadow, custom corner, or parallel transition.
 `ScholiumSegmentedControl` owns the current bounded text-only horizontal
 single-choice groups that match its contract. It receives only a binding and
 finite option labels, then owns equal layout, the Paper-derived track, adaptive
@@ -177,6 +175,18 @@ The Sidebar Search and Notifications Glass controls locally clear the
 workspace Accent tint. Their system material therefore remains monochrome;
 Scholium color stays limited to the explicit nonzero Notifications dot and
 other semantic states rather than staining ordinary control backgrounds.
+The Library header contains its Filter, adaptive disclosure, and Add controls
+inside one SwiftUI `ControlGroup`. Each child remains a native Button or Menu
+with its own label, disabled state, and focus target; the group owns only their
+system relationship and glass geometry. Triptych identity uses the same System
+Sans section tier as Library without a second tracking recipe. Library Folder
+rows supply a decorative monochrome Folder glyph in the same semantic icon slot
+as Note symbols, while AppKit's unmodified outline disclosure remains the sole
+owner of collapsed and expanded state indication. The source list does not
+override `frameOfOutlineCell(atRow:)` or replace the native disclosure button.
+Its 16pt grid-owned hierarchy step is supplied through
+`NSOutlineView.indentationPerLevel`; AppKit continues to position disclosure,
+cell, and selection.
 
 `MCPAgentChangesView` uses one continuous semantic Document surface and a flat
 machine-local change list. Each row distinguishes operation, stable Note

@@ -63,15 +63,12 @@ struct SidebarView: View {
     @ObservedObject private var controller: DiscoveryController
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.locale) private var locale
-    @Environment(\.scholiumReduceMotion) private var reduceMotion
     let context: SidebarContext
 
     @FocusState private var sourceListFocused: Bool
     @State private var requestedRowFocusPath: String?
     @State private var noteDragMovesInProgress: Set<SidebarNoteDragID> = []
     @State private var folderDragMovesInProgress: Set<SidebarFolderDragID> = []
-    @State private var sourceRevealProgress: CGFloat = 1
-    @State private var sourceRevealTask: Task<Void, Never>?
 
     init(controller: DiscoveryController, context: SidebarContext) {
         self.controller = controller
@@ -116,13 +113,8 @@ struct SidebarView: View {
                 .padding(.bottom, ScholiumGrid.Spacing.labelAccessoryGap)
 
             sourceRegion
-                .modifier(SidebarWorkspaceSourceReveal(
-                    progress: sourceRevealProgress
-                ))
-                .clipped()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(ScholiumColorRole.navigationSurfaceBackground.color)
         .overlay(alignment: .topLeading) {
             if PerformanceProbe.shared.measuresWarmLibraryLaunch,
                sourceListUsesOutlineView,
@@ -138,19 +130,8 @@ struct SidebarView: View {
                 .accessibilityHidden(true)
             }
         }
-        .onChange(of: context.currentWorkspaceSlot) { oldSlot, newSlot in
-            guard oldSlot != nil, newSlot != nil, oldSlot != newSlot else { return }
-            revealSourceRegion()
-        }
-        .onChange(of: reduceMotion) { _, shouldReduceMotion in
-            guard shouldReduceMotion else { return }
-            finishSourceRevealWithoutAnimation()
-        }
         .onChange(of: context.libraryFocusRequestGeneration) { _, _ in
             sourceListFocused = true
-        }
-        .onDisappear {
-            sourceRevealTask?.cancel()
         }
     }
 
@@ -198,54 +179,23 @@ struct SidebarView: View {
             Button(action: context.openSettings) {
                 Label("Manage Triptychs…", systemImage: "folder.badge.gearshape")
             }
-            .scholiumActivationPointer()
             Button(action: context.revealCurrentVault) {
                 Label("Reveal Current Vault in Finder", systemImage: "folder")
             }
-            .scholiumActivationPointer()
         } label: {
             Text(verbatim: context.triptychName)
-                .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                .tracking(0.7)
+                .font(ScholiumTypography.interface(.body, emphasis: .strong))
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .frame(minHeight: ScholiumMetrics.Accessibility.minimumCustomTarget)
                 .contentShape(Rectangle())
         }
-        .scholiumActivationPointer()
         .menuStyle(.borderlessButton)
         .tint(ScholiumColorRole.primaryText.color)
         .fixedSize(horizontal: false, vertical: true)
         .help("Triptych management")
         .accessibilityLabel("Triptych: \(context.triptychName)")
         .accessibilityIdentifier("scholium.triptychManagement")
-    }
-
-    private func revealSourceRegion() {
-        sourceRevealTask?.cancel()
-        guard let animation = ScholiumMotion.triptychWorkspaceSourceReveal(
-            reduceMotion: reduceMotion
-        ) else {
-            finishSourceRevealWithoutAnimation()
-            return
-        }
-        withTransaction(Transaction(animation: nil)) {
-            sourceRevealProgress = 0
-        }
-        sourceRevealTask = Task { @MainActor in
-            await Task.yield()
-            guard !Task.isCancelled else { return }
-            withAnimation(animation) {
-                sourceRevealProgress = 1
-            }
-        }
-    }
-
-    private func finishSourceRevealWithoutAnimation() {
-        sourceRevealTask?.cancel()
-        withTransaction(Transaction(animation: nil)) {
-            sourceRevealProgress = 1
-        }
     }
 
     // MARK: Library source region
@@ -266,9 +216,7 @@ struct SidebarView: View {
                     locale: locale,
                     expandedFolders: expandedFolders,
                     expandedFolderIDs: expandedFolders.wrappedValue,
-                    rowHeight: sidebarOutlineRowHeight(
-                        usesAccessibilitySize: dynamicTypeSize.isAccessibilitySize
-                    ),
+                    usesAccessibilitySize: dynamicTypeSize.isAccessibilitySize,
                     selectedDocumentPath: context.selectedDocumentPath,
                     context: treeContext,
                     dropInventory: dropInventory,
@@ -325,22 +273,24 @@ struct SidebarView: View {
 
             Spacer(minLength: 0)
 
-            libraryFilterMenu
+            ControlGroup {
+                libraryFilterMenu
 
-            libraryDisclosureButton
+                libraryDisclosureButton
 
-            ScholiumEditorialIconControl(systemImage: "plus") { label in
-                Menu {
-                    rootCreationActions
-                } label: {
-                    label
+                ScholiumEditorialIconControl(systemImage: "plus") { label in
+                    Menu {
+                        rootCreationActions
+                    } label: {
+                        label
+                    }
                 }
-                .scholiumActivationPointer()
+                .disabled(!context.canMutateLibrary)
+                .help("Create New")
+                .accessibilityLabel("Create New")
+                .accessibilityIdentifier("scholium.libraryCreate")
             }
-            .disabled(!context.canMutateLibrary)
-            .help("Create New")
-            .accessibilityLabel("Create New")
-            .accessibilityIdentifier("scholium.libraryCreate")
+            .controlGroupStyle(.automatic)
         }
         .frame(
             maxWidth: .infinity,
@@ -368,8 +318,8 @@ struct SidebarView: View {
             ? "Collapse All Folders"
             : "Expand All Folders"
         let symbol = shouldCollapse
-            ? "rectangle.compress.vertical"
-            : "rectangle.expand.vertical"
+            ? "chevron.up.2"
+            : "chevron.down.2"
 
         return ScholiumEditorialIconControl(systemImage: symbol) { label in
             Button {
@@ -381,7 +331,6 @@ struct SidebarView: View {
             } label: {
                 label
             }
-            .scholiumActivationPointer()
         }
         .disabled(expandableFolderIDs.isEmpty)
         .help(title)
@@ -414,7 +363,6 @@ struct SidebarView: View {
         } label: {
             Label("New Note", systemImage: "doc.badge.plus")
         }
-        .scholiumActivationPointer()
         .disabled(!context.canMutateLibrary)
         .accessibilityIdentifier("scholium.newNote")
 
@@ -423,7 +371,6 @@ struct SidebarView: View {
         } label: {
             Label("New Folder", systemImage: "folder.badge.plus")
         }
-        .scholiumActivationPointer()
         .disabled(!context.canMutateLibrary)
         .accessibilityIdentifier("scholium.newFolder")
     }
@@ -437,7 +384,6 @@ struct SidebarView: View {
                 .scholiumForeground(.secondaryText)
             Spacer(minLength: 0)
             Button("Clear", action: clearAllFilters)
-                .scholiumActivationPointer()
                 .buttonStyle(.link)
         }
         .frame(minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget)
@@ -471,7 +417,6 @@ struct SidebarView: View {
                             controller.library.workspaceSlot
                         )
                     }
-                    .scholiumActivationPointer()
                 }
             }
             .accessibilityIdentifier("scholium.libraryError")
@@ -592,17 +537,5 @@ struct SidebarView: View {
 
     private func clearAllFilters() {
         controller.replaceFilters(DiscoveryFilterState())
-    }
-}
-
-private struct SidebarWorkspaceSourceReveal: ViewModifier {
-    let progress: CGFloat
-
-    func body(content: Content) -> some View {
-        content
-            .opacity(Double(progress))
-            .offset(
-                y: -(1 - progress) * ScholiumMotion.triptychWorkspaceSourceOffset
-            )
     }
 }

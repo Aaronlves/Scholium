@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import ScholiumContracts
 import SwiftUI
@@ -120,9 +121,9 @@ struct SidebarTreeContext {
 struct SidebarTreeNodeRow: View {
     let node: TreeNode
     @Binding var expandedFolders: Set<String>
-    let selectedDocumentPath: String?
     let context: SidebarTreeContext
-    let onSelect: (WindowDocumentLocation) -> Void
+    let presentation: SidebarSourceListRowPresentation
+    let usesEmphasizedSelectionForeground: Bool
 
     private var isExpanded: Bool { expandedFolders.contains(node.id) }
 
@@ -135,43 +136,27 @@ struct SidebarTreeNodeRow: View {
     }
 
     private var folderRow: some View {
-        Button(action: toggleFolder) {
-            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                if node.children.isEmpty {
-                    Image(systemName: "folder")
-                        .font(ScholiumTypography.interface(.small, emphasis: .medium))
-                        .scholiumForeground(.secondaryText)
-                        .frame(width: ScholiumMetrics.Library.leadingSlotWidth)
-                        .accessibilityHidden(true)
-                } else {
-                    Color.clear
-                        .frame(width: ScholiumMetrics.Library.leadingSlotWidth)
-                        .accessibilityHidden(true)
-                }
+        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            Image(systemName: "folder")
+                .font(ScholiumTypography.nativeSourceList(
+                    pointSize: presentation.textPointSize
+                ))
+                .foregroundStyle(itemTypeForeground)
+                .frame(width: ScholiumMetrics.Library.leadingSlotWidth)
+                .accessibilityHidden(true)
 
-                Text(node.name)
-                    .font(ScholiumTypography.interface(.body))
-                    .scholiumForeground(.primaryText)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer(minLength: 0)
-            }
-            .padding(.leading, rowLeadingInset)
-            .padding(.trailing, ScholiumMetrics.Library.rowHorizontalInset)
-            .frame(
-                maxWidth: .infinity,
-                minHeight: ScholiumMetrics.Library.hierarchyRowHeight,
-                alignment: .leading
-            )
-            .contentShape(Rectangle())
+            Text(node.name)
+                .font(ScholiumTypography.nativeSourceList(
+                    pointSize: presentation.textPointSize
+                ))
+                .foregroundStyle(titleForeground)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 0)
         }
-        .scholiumActivationPointer()
-        .buttonStyle(
-            ScholiumContentControlButtonStyle(
-                tracksHover: false,
-                in: Rectangle()
-            )
-        )
+        .padding(.trailing, ScholiumMetrics.Library.rowHorizontalInset)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
         .help(node.name)
         .accessibilityLabel(node.name)
         .accessibilityValue(node.children.isEmpty ? "Empty folder" : isExpanded ? "Expanded" : "Collapsed")
@@ -181,39 +166,17 @@ struct SidebarTreeNodeRow: View {
     }
 
     private func noteRow(_ note: WindowDocumentLocation) -> some View {
-        Button { onSelect(note) } label: {
-            SidebarNoteRow(
-                note: note,
-                isActive: selectedDocumentPath == note.relativePath,
-                depth: node.depth
-            )
-            .contentShape(Rectangle())
-        }
-        .scholiumActivationPointer()
-        .buttonStyle(
-            ScholiumContentControlButtonStyle(
-                tracksHover: false,
-                in: Rectangle()
-            )
+        SidebarNoteRow(
+            note: note,
+            presentation: presentation,
+            usesEmphasizedSelectionForeground: usesEmphasizedSelectionForeground
         )
+        .contentShape(Rectangle())
         .frame(minWidth: 0, maxWidth: .infinity)
         .accessibilityLabel(note.title ?? note.displayName)
-        .accessibilityAddTraits(
-            selectedDocumentPath == note.relativePath ? .isSelected : []
-        )
         .accessibilityIdentifier("scholium.noteRow.\(note.relativePath)")
-        .frame(minHeight: ScholiumMetrics.Library.hierarchyRowHeight)
         .contextMenu { noteContextMenu(note) }
         .accessibilityActions { noteAccessibilityActions(note) }
-    }
-
-    private var rowLeadingInset: CGFloat {
-        sidebarLibraryRowLeadingInset(depth: node.depth)
-    }
-
-    private func toggleFolder() {
-        if isExpanded { expandedFolders.remove(node.id) }
-        else { expandedFolders.insert(node.id) }
     }
 
     @ViewBuilder
@@ -221,35 +184,26 @@ struct SidebarTreeNodeRow: View {
         if let path = node.folderRelativePath {
             if canMutateFolder(path) {
                 Button("New Note") { context.createUntitledNote(path) }
-                .scholiumActivationPointer()
                 Button("New Folder") { context.createUntitledFolder(path) }
-                .scholiumActivationPointer()
                 if let target = folderTarget(path) {
                     Button("Rename Folder…") { context.requestFolderFileOperation(.rename(target)) }
-                    .scholiumActivationPointer()
                     Button("Move Folder…") { context.requestFolderFileOperation(.move(target)) }
-                    .scholiumActivationPointer()
                 }
             }
             if !node.children.isEmpty {
                 Button(subtreeIsExpanded ? "Collapse All" : "Expand All", action: toggleEntireSubtree)
-                .scholiumActivationPointer()
             }
             Divider()
             Button("Copy Relative Path") { context.copyRelativePath(path) }
-            .scholiumActivationPointer()
             Button("Reveal in Finder") { context.revealNote(path) }
-            .scholiumActivationPointer()
             if canMutateFolder(path) {
                 Divider()
                 Button("Move Folder and Notes to Trash…", role: .destructive) {
                     if let target = folderTarget(path) { performFolderTrash(target) }
                 }
-                .scholiumActivationPointer()
             }
         } else if !node.children.isEmpty {
             Button(subtreeIsExpanded ? "Collapse All" : "Expand All", action: toggleEntireSubtree)
-            .scholiumActivationPointer()
         }
     }
 
@@ -258,28 +212,20 @@ struct SidebarTreeNodeRow: View {
         if let path = node.folderRelativePath {
             if canMutateFolder(path) {
                 Button("New Note") { context.createUntitledNote(path) }
-                .scholiumActivationPointer()
                 Button("New Folder") { context.createUntitledFolder(path) }
-                .scholiumActivationPointer()
                 if let target = folderTarget(path) {
                     Button("Rename Folder") { context.requestFolderFileOperation(.rename(target)) }
-                    .scholiumActivationPointer()
                     Button("Move Folder") { context.requestFolderFileOperation(.move(target)) }
-                    .scholiumActivationPointer()
                     Button("Move Folder and Notes to Trash") {
                         performFolderTrash(target)
                     }
-                    .scholiumActivationPointer()
                 }
             }
             Button("Copy Relative Path") { context.copyRelativePath(path) }
-            .scholiumActivationPointer()
             Button("Reveal in Finder") { context.revealNote(path) }
-            .scholiumActivationPointer()
         }
         if !node.children.isEmpty {
             Button(subtreeIsExpanded ? "Collapse All" : "Expand All", action: toggleEntireSubtree)
-            .scholiumActivationPointer()
         }
     }
 
@@ -328,7 +274,6 @@ struct SidebarTreeNodeRow: View {
         } label: {
             Text(title)
         }
-        .scholiumActivationPointer()
         .disabled(
             command.requiresMutationTarget && NoteMutationTarget(note) == nil
         )
@@ -403,43 +348,57 @@ struct SidebarTreeNodeRow: View {
         }
     }
 
+    private var titleForeground: Color {
+        usesEmphasizedSelectionForeground
+            ? Color(nsColor: .alternateSelectedControlTextColor)
+            : ScholiumColorRole.primaryText.color
+    }
+
+    private var itemTypeForeground: Color {
+        usesEmphasizedSelectionForeground
+            ? Color(nsColor: .alternateSelectedControlTextColor)
+            : ScholiumColorRole.secondaryText.color
+    }
+
 }
 
 struct SidebarNoteRow: View {
     let note: WindowDocumentLocation
-    let isActive: Bool
-    var depth: Int = 0
+    let presentation: SidebarSourceListRowPresentation
+    let usesEmphasizedSelectionForeground: Bool
 
     var body: some View {
         HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Image(systemName: "doc.text")
-                .font(ScholiumTypography.interface(.small))
-                .scholiumForeground(.secondaryText)
+                .font(ScholiumTypography.nativeSourceList(
+                    pointSize: presentation.textPointSize
+                ))
+                .foregroundStyle(itemTypeForeground)
                 .frame(width: ScholiumMetrics.Library.leadingSlotWidth)
                 .accessibilityHidden(true)
             Text(note.title ?? note.displayName)
-                .font(
-                    isActive
-                        ? ScholiumTypography.interface(.body, emphasis: .strong)
-                        : ScholiumTypography.interface(.body)
-                )
+                .font(ScholiumTypography.nativeSourceList(
+                    pointSize: presentation.textPointSize
+                ))
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .scholiumForeground(.primaryText)
+                .foregroundStyle(titleForeground)
             Spacer(minLength: 0)
         }
-        .padding(.leading, sidebarLibraryRowLeadingInset(depth: depth))
         .padding(.trailing, ScholiumMetrics.Library.rowHorizontalInset)
-        .frame(
-            maxWidth: .infinity,
-            minHeight: ScholiumMetrics.Library.hierarchyRowHeight,
-            alignment: .leading
-        )
+        .frame(maxWidth: .infinity, alignment: .leading)
         .help(note.title ?? note.displayName)
     }
-}
 
-func sidebarLibraryRowLeadingInset(depth: Int) -> CGFloat {
-    ScholiumMetrics.Library.rowHorizontalInset
-        + CGFloat(max(0, depth)) * ScholiumMetrics.Library.hierarchyIndent
+    private var titleForeground: Color {
+        usesEmphasizedSelectionForeground
+            ? Color(nsColor: .alternateSelectedControlTextColor)
+            : ScholiumColorRole.primaryText.color
+    }
+
+    private var itemTypeForeground: Color {
+        usesEmphasizedSelectionForeground
+            ? Color(nsColor: .alternateSelectedControlTextColor)
+            : ScholiumColorRole.secondaryText.color
+    }
 }

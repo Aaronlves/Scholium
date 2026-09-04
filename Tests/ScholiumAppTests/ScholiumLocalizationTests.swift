@@ -95,19 +95,6 @@ struct ScholiumLocalizationTests {
         )
         #expect(count == "3 篇文档")
 
-        let nativeStrings = SidebarNativeStrings(locale: simplifiedChinese)
-        #expect(
-            nativeStrings.disclosureLabel(
-                isExpanded: false,
-                title: "Cluster-01"
-            ) == "展开 Cluster-01"
-        )
-        #expect(
-            nativeStrings.disclosureLabel(
-                isExpanded: true,
-                title: "Cluster-01"
-            ) == "折叠 Cluster-01"
-        )
     }
 
     @Test("Inspector localizes projections, attention, and occurrence semantics")

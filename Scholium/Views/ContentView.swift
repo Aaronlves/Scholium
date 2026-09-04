@@ -1079,7 +1079,6 @@ private struct LibrarySurface<Content: View>: View {
 
     var body: some View {
         content
-            .scholiumSurface(.navigation)
             .accessibilityElement(children: .contain)
             .accessibilityLabel("Library")
             .accessibilityIdentifier("scholium.librarySurface")

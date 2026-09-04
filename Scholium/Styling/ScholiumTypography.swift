@@ -172,6 +172,16 @@ enum ScholiumTypography {
         return tabularDigits ? font.monospacedDigit() : font
     }
 
+    /// Preserves system-owned source-list sizing when SwiftUI content is hosted
+    /// inside an AppKit table cell. AppKit supplies the point size; this
+    /// resolver supplies only Scholium's semantic emphasis boundary.
+    static func nativeSourceList(
+        pointSize: CGFloat,
+        emphasis: Emphasis? = nil
+    ) -> Font {
+        .system(size: pointSize, weight: emphasis?.weight ?? .regular)
+    }
+
     static func scholarly(
         _ role: ScholarlyRole,
         tabularDigits: Bool = false

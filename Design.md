@@ -9,7 +9,7 @@ own research meaning, authorization, and state transitions.
 ## 19. Scholarly Editorialism and design variables
 
 **Scholarly Editorialism** combines humanist type, editorial hierarchy, warm
-opaque content planes, native Liquid Glass controls, fine rules, marginal
+Paper and ink, a native Liquid Glass Sidebar and controls, fine rules, marginal
 organization, deliberate whitespace, and restrained color in a contemporary
 macOS environment. It is neither antique-book imitation nor decorative
 minimalism.
@@ -27,17 +27,23 @@ state owners, weaken accessibility/source safety, or block a usable core.
 ### 19.1 Liquid Glass and material boundary
 
 Liquid Glass is Scholium's native functional layer, not its research-content
-language. Sidebar, Document, and Apparatus retain their warm semantic
-backgrounds as three continuous planes that extend through the transparent
+language. AppKit's Sidebar split item owns the complete regular-Glass
+navigation plane, including its material, inset geometry, edge treatment,
+shadow, window activity, and accessibility adaptation. The warm Document Paper
+plane extends beneath that glass while the native safe area keeps readable
+Document content unobscured. Sidebar content remains transparent and adds no
+custom fill, visual-effect host, blur, tint, or parallel depth cue. Document and
+Apparatus retain continuous opaque semantic backgrounds through the transparent
 titlebar. The toolbar contributes no separate full-width material band. Native
-controls and compact control groups float above those planes in system regular
-Glass, allowing each plane's color to remain legible through the material.
+controls and compact control groups float above those surfaces in system
+regular Glass.
 Ordinary Glass actions remain system-monochrome; Accent tint is reserved for a
 genuine primary action or a separately identified semantic state.
 
-Glass never encloses research prose, metadata groups, lists, rows, fields,
-cards, or whole planes. Clear Glass is excluded from Scholium's text-heavy
-interface. Native Button, Menu, segmented-control, toolbar, sheet, and popover
+Outside the system-owned Sidebar navigation plane, Glass never encloses
+research prose, metadata groups, lists, rows, fields, cards, or whole content
+planes. Clear Glass is excluded from Scholium's text-heavy interface. Native
+Button, Menu, segmented-control, toolbar, sheet, and popover
 implementations own material shape, hover, press, focus, window activity, Reduce
 Transparency, and Increase Contrast behavior. A custom Glass host is permitted
 only when a native control must bridge an existing AppKit boundary without
@@ -105,6 +111,15 @@ Exact provides body, strong, and small. Long scanning lists remain Sans even
 when they name scholarly objects; selection opens Scholarly detail. Native
 controls keep platform typography. Brand and onboarding hero type are bounded
 exceptions. Feature areas publish no font aliases.
+Triptych identity and Library use the same native section-heading tier; a
+researcher-authored Triptych name uses no decorative tracking. Native source
+lists supply the effective row size, and hosted Folder/Note labels derive their
+system type and symbol size from that native value. File-tree rows use the
+Finder pattern: AppKit owns a leading disclosure gutter for hierarchy state;
+monochrome Folder and Note symbols share the item-type column; and their titles
+share the following text column. The Library's 4-unit hierarchy step is passed
+to AppKit's native outline indentation rather than reconstructed in row
+content. Disclosure and Folder symbol have distinct state and type roles.
 
 Document Appearance owns document measure, Body, headings, and Callout
 typography. The default is a readable Alegreya body with a compact scholarly
@@ -219,14 +234,13 @@ or authority alone.
 
 - **Typography:** §19.2 roles; Document typography remains owned by Appearance.
 - **Color:** Accent and Paper inputs; every other color is a semantic output.
-- **Surfaces:** continuous opaque Navigation, Document, and Apparatus content
-  planes, with regular system Glass reserved for controls and compact control
-  groups above them.
+- **Surfaces:** native regular Sidebar Glass over the extended warm Document
+  underlay; continuous opaque Document and Apparatus content planes; regular
+  system Glass for controls and compact control groups above them.
 - **Boundaries:** structural divider, subtle boundary, and floating boundary.
-- **Elevation:** native presentation elevation plus the current shared custom
-  floating-control, bounded-panel, and Search-overlay recipes. Current
-  structural depth covers the Sidebar–Document navigation cue and Record
-  reading–evidence cue.
+- **Elevation:** native Sidebar, toolbar, and presentation elevation plus the
+  current shared custom floating-control, bounded-panel, and Search-overlay
+  recipes. Scholium adds no Sidebar–Document shadow beside AppKit's glass edge.
 - **Metrics:** reused or adaptation-critical spacing, target, row, region, and
   readable-width roles owned by their reusable component.
 - **Motion:** shared transitions are purpose-named and always define immediate
@@ -239,19 +253,22 @@ secondary to a semantic surface plus divider. Children do not compound them.
 
 #### Interaction presentation
 
-Native controls own hover, press, disabled, selection, and focus. Custom
-targets remain comfortably clickable and keyboard reachable. Resting controls
-are quiet; focus is stronger than hover and persistent selection stronger than
-both. Pointer activation does not leave a keyboard-only focus effect.
+Native controls and container-owned rows own hover, press, disabled, selection,
+focus, active/inactive presentation, and cursor behavior. Custom targets remain
+comfortably clickable and keyboard reachable. Resting controls are quiet; focus
+is stronger than hover and persistent selection stronger than both. Pointer
+activation does not leave a keyboard-only focus effect. The two native Sidebar
+source lists therefore keep a pointer-created selection in AppKit's
+unemphasized state and enable AppKit's emphasized selection only after keyboard
+focus entry or navigation; this changes presentation, never selected identity.
 
-Every enabled discrete activation target owned by Scholium uses the system
-pointing-hand cursor across SwiftUI, AppKit, and retained WebKit document
-surfaces. System-generated toolbar items retain AppKit's native cursor together
-with its native Glass, edge highlight, shadow, press, and focus behavior.
-Disabled custom targets use the arrow. Text insertion and selection keep the
-I-beam; split dividers, window edges, draggable regions, and other direct-
-manipulation surfaces keep their native task-specific cursors. A pointing hand
-never manufactures an activation affordance on passive content.
+Scholium does not globally remap standard controls or navigation rows to the
+pointing-hand cursor. The pointing hand is reserved for links and bounded custom
+targets with genuinely link-equivalent semantics when the platform does not
+already own their cursor. Text insertion and selection keep the I-beam; split
+dividers, window edges, draggable regions, and other direct-manipulation
+surfaces keep their native task-specific cursors. Cursor choice never
+manufactures an activation affordance on passive content.
 
 The shared segmented control is the default custom owner when a bounded
 text-only horizontal single-choice group matches its interaction contract.
@@ -260,7 +277,8 @@ semantics or interaction differ. Ordinary toolbar actions use standard bordered
 `NSToolbarItem` instances with no custom view or fixed-size host. AppKit owns
 their geometry, regular Glass, edge highlight, shadow, and adaptive states while
 the transparent toolbar background preserves the continuous semantic planes.
-Library icons share one editorial-control recipe. The Document Mode button
+Library icons share one editorial-control recipe inside one native compact
+control group. The Document Mode button
 reports current Review, Edit, or Source through symbol, Help, and a state-bearing
 accessibility label without becoming a segmented control.
 
@@ -271,7 +289,7 @@ Metrics express responsibility rather than an application-wide numeric grid:
 | Scope | Owned metrics |
 | --- | --- |
 | Shared | optical alignment, inline/section/region spacing, custom target minimums |
-| Library | readable width, row height/inset, hierarchy step, header spacing |
+| Library | readable width, native row-size adaptation/inset, hierarchy step, header spacing |
 | Apparatus | readable width, section, field, occurrence, and action-row rhythm |
 | Records | collection columns/rows, reading measure, Note-reference rows, previews |
 | Document | Appearance measure, adaptive insets, top/trailing scrolling space |
@@ -283,9 +301,10 @@ single-owner value does not need a catalog entry merely because it is numeric.
 #### Motion
 
 Motion is purposeful, interruptible, and absent under Reduce Motion. Native
-feedback remains system-owned. Current shared motion covers disclosure, search,
-document/workspace reveal, transient feedback, the Agent Change notification
-stack, and onboarding steps. A bounded feature-local transition
+feedback remains system-owned. AppKit source-list disclosure and workspace
+selection receive no parallel Scholium transition. Current shared motion covers
+custom disclosure, search, document reveal, transient feedback, the Agent Change
+notification stack, and onboarding steps. A bounded feature-local transition
 may remain local when it communicates continuity or feedback and supplies the
 same Reduce Motion behavior. Motion never changes authority or becomes the sole
 state signal; decorative pulsing, looping, parallax scrolling, and row cascades
@@ -382,11 +401,11 @@ a reusable component or catalog entry.
 
 | Component | Presentation responsibility | Semantic owner |
 | --- | --- | --- |
-| `Sidebar / Document / Apparatus` | Keep Document primary across three continuous semantic content planes beneath the transparent titlebar. | §18.2 |
-| `Native Glass Controls` | Give standard toolbar items and compact chrome controls system-owned regular Glass, including native edge highlight and shadow. | §§18.2, 20 |
-| `Triptych Workspace Navigator` | Present Analyses, Topics, Works as peers with one selection and Note totals. | §§3.2, 18.2–18.3 |
+| `Sidebar / Document / Apparatus` | Keep Document primary beneath native Sidebar Glass and across continuous Document/Apparatus planes. | §18.2 |
+| `Native Glass Controls` | Give the Sidebar split item, standard toolbar items, and compact chrome controls system-owned regular Glass, including native edge highlight and shadow. | §§18.2, 20 |
+| `Triptych Workspace Navigator` | Present Analyses, Topics, Works with native source-list selection, focus, traversal, and exact Note totals. | §§3.2, 18.2–18.3 |
 | `Segmented Control` | Shared bounded text-only single-choice input with native-equivalent focus/traversal. | §§18.4–18.5 |
-| `Source List` | Quiet hierarchical Note navigation with complete content states. | §18.3 |
+| `Source List` | Let AppKit own hierarchical selection, focus, disclosure, indentation, and drag feedback while Scholium supplies Note/Folder content and valid actions. | §18.3 |
 | `Inspector Projection Control` | Select Overview/Outgoing/Incoming in the native toolbar without changing source or graph authority. | §§12, 18.5 |
 | `Document Rail` | Keep Settle at the Document edge without an Agent launcher or review milestone. | §§7.1, 18.5 |
 | `Triptych Notifications Entry` | Open the complete Agent Change/Settlement/Attention queue from a bell whose nonzero state uses a small Accent dot and an exact accessible count. | §§13, 18.2–18.3 |

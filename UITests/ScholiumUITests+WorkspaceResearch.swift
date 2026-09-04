@@ -306,10 +306,11 @@ extension ScholiumUITests {
         XCTAssertTrue(incoming.waitForExistence(timeout: 8))
     }
 
-    /// A completed primary click on the Folder row—not only its disclosure
-    /// triangle—must use the native outline action and toggle every time.
+    /// AppKit owns Folder selection and disclosure independently: a row click
+    /// selects, while the standard outline Left/Right commands collapse and
+    /// expand the selected Folder.
     @MainActor
-    func testNativeFolderRowClickTogglesDisclosure() throws {
+    func testNativeFolderSelectionAndArrowKeysOwnDisclosure() throws {
         let folder = app.descendants(matching: .any)[
             "scholium.folderRow.Cluster-01"
         ].firstMatch
@@ -317,6 +318,8 @@ extension ScholiumUITests {
         XCTAssertEqual(folder.value as? String, "Collapsed")
 
         folder.click()
+        XCTAssertEqual(folder.value as? String, "Collapsed")
+        app.typeKey(.rightArrow, modifierFlags: [])
         XCTAssertTrue(waitUntil(timeout: 5) {
             (folder.value as? String) == "Expanded"
         })
@@ -325,7 +328,7 @@ extension ScholiumUITests {
         ].firstMatch
         XCTAssertTrue(child.waitForExistence(timeout: 5))
 
-        folder.click()
+        app.typeKey(.leftArrow, modifierFlags: [])
         XCTAssertTrue(waitUntil(timeout: 5) {
             (folder.value as? String) == "Collapsed"
                 && !child.exists
@@ -624,7 +627,9 @@ extension ScholiumUITests {
         XCTAssertTrue(waitUntil(timeout: 8) {
             self.documentTitle() == "QA Topic"
         })
-        XCTAssertTrue(app.buttons["scholium.vault.topic_knowledge"].exists)
+        XCTAssertTrue(
+            app.descendants(matching: .any)["scholium.vault.topic_knowledge"].exists
+        )
         XCTAssertFalse(search.exists)
     }
 
@@ -1040,7 +1045,9 @@ extension ScholiumUITests {
         XCTAssertTrue(openWorkspace.waitForExistence(timeout: 5))
         openWorkspace.click()
 
-        let analysesControl = app.buttons["Analyses"]
+        let analysesControl = app.descendants(matching: .any)[
+            "scholium.vault.paper_analysis"
+        ]
         let librarySurface = app.descendants(matching: .any)["scholium.librarySurface"]
         let loadingOverlay = app.descendants(matching: .any)["scholium.loadingOverlay"]
         XCTAssertTrue(waitUntil(timeout: 45) {
@@ -1090,7 +1097,10 @@ extension ScholiumUITests {
         app.launch()
 
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
-        XCTAssertTrue(app.buttons["Analyses"].waitForExistence(timeout: 15))
+        XCTAssertTrue(
+            app.descendants(matching: .any)["scholium.vault.paper_analysis"]
+                .waitForExistence(timeout: 15)
+        )
         XCTAssertFalse(app.descendants(matching: .any)["scholium.triptychSetup"].exists)
         XCTAssertTrue(
             app.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"]
@@ -1318,7 +1328,9 @@ extension ScholiumUITests {
             waitingFor: "scholium.folderRow.Critiques"
         )
 
-        let critiquesFolder = app.buttons["Critiques"].firstMatch
+        let critiquesFolder = app.descendants(matching: .any)[
+            "scholium.folderRow.Critiques"
+        ].firstMatch
         XCTAssertTrue(critiquesFolder.waitForExistence(timeout: 8))
         critiquesFolder.click()
 

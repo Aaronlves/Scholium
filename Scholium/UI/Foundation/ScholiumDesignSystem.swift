@@ -1463,8 +1463,6 @@ enum ScholiumGrid {
         static let minimumCustomTarget = foundationUnit * 5
         static let compactHierarchyRowHeight = foundationUnit * 6
         static let preferredCustomTarget = foundationUnit * 7
-        static let libraryHierarchyRowHeight = foundationUnit * 7
-        static let accessibilityHierarchyRowHeight = foundationUnit * 11
         static let documentTabStripHeight = foundationUnit * 10
         static let regionHeaderHeight = foundationUnit * 12
         static let iconTrackWidth = foundationUnit * 4
@@ -1801,17 +1799,12 @@ enum ScholiumMetrics {
         /// merge their row, hierarchy, or section rhythm, and it deliberately
         /// does not derive geometry from the traffic-light group.
         static let contentInset = ScholiumGrid.Peripheral.contentInset
-        /// One semantic leading slot shared by disclosure, Folder, and Note
-        /// rows. No row may render a second icon beside this track.
+        /// One semantic item-type slot shared by Folder and Note rows after
+        /// AppKit's native disclosure gutter.
         static let leadingSlotWidth = ScholiumGrid.Dimension.iconTrackWidth
-        /// Folder and Note rows use the preferred macOS custom-control target.
-        /// The value is a minimum so enlarged interface text can grow.
-        static let hierarchyRowHeight = ScholiumGrid.Dimension.libraryHierarchyRowHeight
-        /// Native outline rows remain uniform at accessibility text sizes so
-        /// AppKit retains an exact scroll extent without clipping enlarged text.
-        static let accessibilityHierarchyRowHeight =
-            ScholiumGrid.Dimension.accessibilityHierarchyRowHeight
         static let rowHorizontalInset = ScholiumGrid.Spacing.nestedContentInset
+        /// The native outline remains responsible for indentation; Scholium
+        /// supplies only its 4-unit hierarchy step.
         static let hierarchyIndent = ScholiumGrid.Dimension.iconTrackWidth
         static let selectionBoundaryWidth = ScholiumGrid.Spacing.opticalAlignmentAdjustment
         static let workspaceNavigatorTopSpacing = ScholiumGrid.Spacing.nestedContentInset
@@ -2256,36 +2249,6 @@ struct ScholiumElevationStyle: Equatable, Sendable {
     let radius: CGFloat
     let x: CGFloat
     let y: CGFloat
-}
-
-/// Native-only depth recipes for structural relationships between Workspace
-/// planes. These don't enter `ScholiumElevationRole.allCases`, because WebKit
-/// document surfaces must not receive window-container presentation tokens.
-enum ScholiumStructuralDepthRole: CaseIterable, Sendable {
-    case documentNavigationBoundary
-
-    /// The hidden one-point caster belongs to the dominant Document plane.
-    /// Workspace navigation receives the shadow from its trailing edge.
-    var castsFromTrailingEdge: Bool {
-        true
-    }
-
-    func style(
-        isDark: Bool,
-        increasedContrast: Bool,
-        reduceTransparency: Bool,
-        appearsActive: Bool,
-        layoutDirection: LayoutDirection
-    ) -> ScholiumElevationStyle {
-        let usesQuietOpacity = isDark || reduceTransparency || !appearsActive
-        let logicalDirection: CGFloat = layoutDirection == .leftToRight ? 1 : -1
-        return .init(
-            opacity: increasedContrast ? 0 : (usesQuietOpacity ? 0.02 : 0.04),
-            radius: 8,
-            x: logicalDirection * (castsFromTrailingEdge ? -2 : 2),
-            y: 0
-        )
-    }
 }
 
 enum ScholiumElevationRole: CaseIterable, Sendable {
@@ -3063,7 +3026,6 @@ struct ScholiumInkIconControl: View {
                 )
                 .opacity(isEnabled ? 1 : 0.42)
         }
-        .scholiumActivationPointer()
         .buttonStyle(.glass)
         // Ordinary toolbar actions stay system-monochrome even though the
         // workspace uses Scholium Accent for selection and semantic emphasis.
@@ -3096,8 +3058,6 @@ private struct ScholiumInkIconFocusModifier: ViewModifier {
 }
 
 enum ScholiumMotion {
-    static let triptychWorkspaceSourceOffset = ScholiumGrid.foundationUnit * 1.5
-
     static func bootstrapStep(reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : .easeInOut(duration: 0.18)
     }
@@ -3158,10 +3118,6 @@ enum ScholiumMotion {
         reduceMotion: Bool
     ) -> ContentTransition {
         reduceMotion ? .identity : .symbolEffect(.replace)
-    }
-
-    static func triptychWorkspaceSourceReveal(reduceMotion: Bool) -> Animation? {
-        reduceMotion ? nil : .easeOut(duration: 0.18)
     }
 
     static func transientStatus(reduceMotion: Bool) -> Animation? {

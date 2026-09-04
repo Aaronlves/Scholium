@@ -214,6 +214,39 @@ Completed automated checks in this worktree:
   items. Documentation authority and `git diff --check` passed. Reduce
   Transparency, Increase Contrast, VoiceOver, Full Keyboard Access, and human
   visual acceptance remain unverified.
+- On 2026-09-04 the native Sidebar-material and Library-adaptation cutover
+  passed 25 Library-tree, 88 frontend-architecture, five
+  interface-presentation-ownership, and six localization tests under Xcode
+  27.0 (27A5218g), Swift 6.4, and the macOS 27 SDK. Five focused XCUITest
+  journeys used the isolated `com.scholium.qa` Debug bundle and disposable
+  fixture copies. They verified the Triptych source-list selection and arrow
+  keys; Library outline selection and disclosure; the 300-point native readable
+  minimum; Sidebar hide and restore without window-size or identity loss; and
+  the complete shell in light and dark appearances with and without Inspector.
+  Retained screenshots showed AppKit's Sidebar material over the warm Paper
+  underlay, the compact native Library control group, source-list row sizing,
+  the Finder-style disclosure, type-icon, and aligned title columns, and native
+  selection plus keyboard-focus feedback. One
+  first run of the hide/restore journey exposed a test-fixture omission before
+  the toggle step;
+  the two journeys that require the synthetic Folder now create it in their own
+  isolated copies, and the focused rerun passed. This is automated and
+  exploratory evidence, not human visual acceptance. The QA process, bundle,
+  fixture copies, and isolated home were removed after the journey.
+  Documentation authority and `git diff --check` passed. Increase Contrast,
+  Reduce Transparency, VoiceOver, Full Keyboard Access, and human visual
+  acceptance remain unverified for this slice.
+- On 2026-09-04 the Sidebar input-modality and hierarchy-grid correction passed
+  26 Library-tree tests plus 88 frontend-architecture and five
+  interface-presentation-ownership tests under Xcode 27.0 (27A5218g), Swift
+  6.4, and the macOS 27 SDK. Two focused XCUITest journeys passed in 30.102
+  seconds: pointer selection followed by Left/Right Folder disclosure, and
+  pointer workspace selection followed by Down Arrow navigation. Exploratory
+  Computer Use on the isolated nonprivate QA build showed pointer-created rows
+  retaining AppKit's quiet unemphasized selection, keyboard navigation enabling
+  emphasized selection with system selected-content ink, and the 16pt Library
+  hierarchy step applied through `NSOutlineView`. This remains automated and
+  exploratory evidence, not human visual or Full Keyboard Access acceptance.
 
 ## Evidence boundary
 

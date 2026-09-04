@@ -3332,22 +3332,6 @@
         }
       }
     },
-    "Collapse %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Collapse %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "折叠 %@"
-          }
-        }
-      }
-    },
     "Collapse All" : {
       "localizations" : {
         "en" : {
@@ -5471,22 +5455,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "保留现有值"
-          }
-        }
-      }
-    },
-    "Expand %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Expand %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "展开 %@"
           }
         }
       }

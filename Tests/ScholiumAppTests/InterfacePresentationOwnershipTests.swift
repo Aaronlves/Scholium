@@ -11,7 +11,6 @@ struct InterfacePresentationOwnershipTests {
     )
     #expect(
       swiftShadows == [
-        "Scholium/UI/Components/ScholiumWorkspaceSplitView.swift": 1,
         "Scholium/UI/Foundation/ScholiumDesignSystem.swift": 1,
       ],
       Comment(rawValue: diagnostic(for: swiftShadows))
@@ -95,7 +94,7 @@ struct InterfacePresentationOwnershipTests {
     )
   }
 
-  @Test("Native pointer tracking has exactly two explicit owners")
+  @Test("Native pointer tracking stays outside the Library outline")
   func nativePointerTrackingInventory() throws {
     let trackingAreas = try occurrenceInventory(
       pattern: #"NSTrackingArea\s*\("#,
@@ -104,7 +103,6 @@ struct InterfacePresentationOwnershipTests {
     #expect(
       trackingAreas == [
         "Scholium/UI/Foundation/ScholiumDesignSystem.swift": 1,
-        "Scholium/Views/Sidebar/SidebarOutlineRows.swift": 1,
       ],
       Comment(rawValue: diagnostic(for: trackingAreas))
     )
@@ -121,7 +119,7 @@ struct InterfacePresentationOwnershipTests {
     )
   }
 
-  @Test("Discrete activation cursors share one cross-runtime contract")
+  @Test("Native Sidebar controls retain platform cursor ownership")
   func activationCursorContract() throws {
     let designSystem = try source(
       at: "Scholium/UI/Foundation/ScholiumDesignSystem.swift"
@@ -150,37 +148,31 @@ struct InterfacePresentationOwnershipTests {
     )
     #expect(toolbar.contains("item.isBordered = true"))
     #expect(!toolbar.contains("ScholiumPointingHandButton"))
+    for path in [
+      "Scholium/Views/Sidebar/SidebarView.swift",
+      "Scholium/Views/Sidebar/SidebarTreeRows.swift",
+      "Scholium/Views/Sidebar/SidebarLibraryFilterMenu.swift",
+      "Scholium/Views/Sidebar/SidebarOutlineRows.swift",
+      "Scholium/Views/Sidebar/SidebarWorkspaceNavigator.swift",
+    ] {
+      let sidebarSource = try source(at: path)
+      #expect(
+        !sidebarSource.contains(".scholiumActivationPointer()"),
+        "\(path) must leave standard control and row cursors to macOS"
+      )
+    }
+
     let outline = try source(
       at: "Scholium/Views/Sidebar/SidebarOutlineRows.swift"
     )
-    #expect(outline.contains("addCursorRect(rect(ofRow: row), cursor: .pointingHand)"))
+    #expect(!outline.contains("addCursorRect"))
+    #expect(!outline.contains("NSTrackingArea"))
 
-    let activationPattern =
-      #"\b(Button|DisclosureGroup|Link|Menu|NavigationLink|Picker|Toggle)\s*[\({]"#
-    let sourceRoot = repositoryRoot.appendingPathComponent(
-      "Scholium",
-      isDirectory: true
+    let workspaceNavigator = try source(
+      at: "Scholium/Views/Sidebar/SidebarWorkspaceNavigator.swift"
     )
-    let enumerator = try #require(
-      FileManager.default.enumerator(
-        at: sourceRoot,
-        includingPropertiesForKeys: [.isRegularFileKey],
-        options: [.skipsHiddenFiles]
-      )
-    )
-    for case let fileURL as URL in enumerator where fileURL.pathExtension == "swift" {
-      let contents = try String(contentsOf: fileURL, encoding: .utf8)
-      let activations = matchCount(pattern: activationPattern, in: contents)
-      guard activations > 0 else { continue }
-      let pointers = matchCount(
-        pattern: #"\.scholiumActivationPointer\s*\("#,
-        in: contents
-      )
-      #expect(
-        pointers >= activations,
-        "\(relativePath(for: fileURL)) has \(activations) direct activation controls but only \(pointers) activation cursor mappings"
-      )
-    }
+    #expect(workspaceNavigator.contains("tableView.style = .sourceList"))
+    #expect(!workspaceNavigator.contains("resetCursorRects"))
   }
 
   @Test("Custom controls do not compound pointer feedback owners")
