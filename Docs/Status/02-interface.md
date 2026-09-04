@@ -35,10 +35,13 @@
 ## Library, Document, and Inspector
 
 - Library presents Analyses, Topics, and Works through a native source-list
-  navigator with no input-modality presentation adapter. AppKit owns selection
-  drawing, focus, active/inactive appearance,
-  pointer behavior, and Up/Down traversal. Its native outline likewise owns
-  row selection, focus, disclosure, and drag feedback;
+  navigator whose shared input-modality adapter keeps pointer selection quiet
+  and enables native emphasized-row focus for keyboard entry and navigation.
+  The selected row is the sole visible focus indicator, so the source-list
+  containers suppress their duplicate perimeter rings. AppKit still owns
+  selection drawing, first-responder routing, active/inactive appearance,
+  pointer behavior, and Up/Down traversal. Its native outline likewise owns row
+  selection, focus, disclosure, and drag feedback;
   both lists follow AppKit's effective source-list size, with the large system
   row style used for enlarged interface presentation. Scholium supplies
   semantic text colors, exact counts, content, and valid actions. Scholium is

@@ -65,7 +65,6 @@ struct SidebarView: View {
     @Environment(\.locale) private var locale
     let context: SidebarContext
 
-    @FocusState private var sourceListFocused: Bool
     @State private var requestedRowFocusPath: String?
     @State private var noteDragMovesInProgress: Set<SidebarNoteDragID> = []
     @State private var folderDragMovesInProgress: Set<SidebarFolderDragID> = []
@@ -129,9 +128,6 @@ struct SidebarView: View {
                 .frame(width: 0, height: 0)
                 .accessibilityHidden(true)
             }
-        }
-        .onChange(of: context.libraryFocusRequestGeneration) { _, _ in
-            sourceListFocused = true
         }
     }
 
@@ -206,7 +202,6 @@ struct SidebarView: View {
                         performFolderDrop([item], into: targetFolder)
                     }
                 )
-                .focused($sourceListFocused)
                 .accessibilityIdentifier("scholium.noteList")
             }
         } else {
@@ -226,7 +221,6 @@ struct SidebarView: View {
             .scrollContentBackground(.hidden)
             .contentShape(Rectangle())
             .contextMenu { rootCreationActions }
-            .focused($sourceListFocused)
             .accessibilityIdentifier("scholium.noteList")
         }
     }

@@ -80,9 +80,10 @@
   visibly distinguishes them without duplicating the name in the Sidebar.
 - Library rows preserve native selected, focused, inactive, disclosed,
   drop-target, disabled, loading, stale, empty, and failure distinctions.
-  AppKit emphasizes selection when its source list is focused in the key window
-  and retains inactive selection otherwise, independent of input device.
-  Up/Down moves selection and Left/Right owns Folder disclosure. Note/Folder
+  Pointer selection remains visibly selected without taking on keyboard-focus
+  emphasis; keyboard focus entry and navigation use the emphasized native row.
+  That row is the visible list-focus indicator, so no second perimeter focus
+  ring is drawn. Up/Down moves selection and Left/Right owns Folder disclosure. Note/Folder
   Move, root placement, system-Trash deletion, and contextual creation have
   non-drag accessibility actions. Native Folder disclosure carries expanded or
   collapsed state; the adjacent Folder symbol identifies type and stays hidden

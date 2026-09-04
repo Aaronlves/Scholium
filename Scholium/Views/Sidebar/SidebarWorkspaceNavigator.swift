@@ -191,6 +191,18 @@ struct ScholiumTriptychWorkspaceNavigator: NSViewRepresentable {
 
 @MainActor
 final class SidebarWorkspaceTableView: NSTableView {
+    private let selectionPresentation = SidebarSourceListSelectionPresentation()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        focusRingType = .none
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        focusRingType = .none
+    }
+
     override var intrinsicContentSize: NSSize {
         NSSize(
             width: NSView.noIntrinsicMetric,
@@ -201,6 +213,39 @@ final class SidebarWorkspaceTableView: NSTableView {
     override func reloadData() {
         super.reloadData()
         invalidateIntrinsicContentSize()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        selectionPresentation.recordPointerInteraction()
+        super.mouseDown(with: event)
+        selectionPresentation.synchronize(in: self)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        selectionPresentation.recordKeyboardInteraction()
+        super.keyDown(with: event)
+        selectionPresentation.synchronize(in: self)
+    }
+
+    override func becomeFirstResponder() -> Bool {
+        let becameFirstResponder = super.becomeFirstResponder()
+        guard becameFirstResponder else { return false }
+        selectionPresentation.recordResponderEvent(NSApp.currentEvent?.type)
+        selectionPresentation.synchronize(in: self)
+        return true
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let resignedFirstResponder = super.resignFirstResponder()
+        if resignedFirstResponder {
+            selectionPresentation.synchronize(in: self)
+        }
+        return resignedFirstResponder
+    }
+
+    override func viewWillDraw() {
+        super.viewWillDraw()
+        selectionPresentation.synchronize(in: self)
     }
 }
 

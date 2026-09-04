@@ -406,9 +406,9 @@ extension ScholiumUITests {
         add(shellScreenshot)
     }
 
-    /// The Triptych selector is a native source list: pointer and keyboard
-    /// selection share AppKit's key-window focus presentation and Down Arrow
-    /// publishes the next workspace.
+    /// The Triptych selector is a native source list: pointer selection remains
+    /// quiet, then Down Arrow switches to its visible keyboard-focus
+    /// presentation and publishes the next workspace.
     @MainActor
     func testNativeTriptychWorkspaceNavigatorUsesSelectionAndArrowKeys() throws {
         waitForCurrentDocumentSurface()
@@ -433,6 +433,14 @@ extension ScholiumUITests {
 
         analyses.click()
         XCTAssertTrue(analysesRow.isSelected)
+
+        let pointerWorkspaceScreenshot = XCTAttachment(
+            screenshot: app.windows.firstMatch.screenshot()
+        )
+        pointerWorkspaceScreenshot.name = "Pointer-quiet Triptych selection"
+        pointerWorkspaceScreenshot.lifetime = .keepAlways
+        add(pointerWorkspaceScreenshot)
+
         app.typeKey(.downArrow, modifierFlags: [])
 
         XCTAssertTrue(waitUntil(timeout: 8) { topicsRow.isSelected })
@@ -441,10 +449,25 @@ extension ScholiumUITests {
                 .waitForExistence(timeout: 8)
         )
 
-        let screenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
-        screenshot.name = "Native Triptych workspace source-list selection"
-        screenshot.lifetime = .keepAlways
-        add(screenshot)
+        let keyboardWorkspaceScreenshot = XCTAttachment(
+            screenshot: app.windows.firstMatch.screenshot()
+        )
+        keyboardWorkspaceScreenshot.name = "Keyboard-focused Triptych selection"
+        keyboardWorkspaceScreenshot.lifetime = .keepAlways
+        add(keyboardWorkspaceScreenshot)
+
+        let topicNote = app.descendants(matching: .any)[
+            "scholium.noteRow.QA Topic.md"
+        ].firstMatch
+        topicNote.click()
+        XCTAssertTrue(waitForDocumentTitle("QA Topic", timeout: 5))
+
+        let pointerNoteScreenshot = XCTAttachment(
+            screenshot: app.windows.firstMatch.screenshot()
+        )
+        pointerNoteScreenshot.name = "Pointer-quiet Library Note selection"
+        pointerNoteScreenshot.lifetime = .keepAlways
+        add(pointerNoteScreenshot)
     }
 
     @MainActor

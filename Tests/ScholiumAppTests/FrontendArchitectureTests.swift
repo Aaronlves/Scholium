@@ -2039,6 +2039,8 @@ struct FrontendArchitectureTests {
         #expect(sidebarSource.contains("Label(\"New Note\", systemImage: \"doc.badge.plus\")"))
         #expect(sidebarSource.contains("Label(\"New Folder\", systemImage: \"folder.badge.plus\")"))
         #expect(sidebarSource.contains("dynamicTypeSize.isAccessibilitySize"))
+        #expect(!sidebarSource.contains("@FocusState private var sourceListFocused"))
+        #expect(!sidebarSource.contains(".focused($sourceListFocused)"))
         for retiredStickyPath in [
             "pinnedViews: [.sectionHeaders]",
             "SidebarRootHeaderOffsetPreference",
@@ -2055,7 +2057,11 @@ struct FrontendArchitectureTests {
         #expect(outlineSource.contains("let outlineView = SidebarOutlineView()"))
         #expect(outlineSource.contains("outlineView.style = .sourceList"))
         #expect(!outlineSource.contains("selectionHighlightStyle = .none"))
-        #expect(!outlineSource.contains("focusRingType = .none"))
+        #expect(outlineRowsSource.contains("SidebarSourceListSelectionPresentation"))
+        #expect(outlineRowsSource.contains("focusRingType = .none"))
+        #expect(workspaceNavigatorSource.contains("focusRingType = .none"))
+        #expect(outlineRowsSource.contains("override func mouseDown(with event: NSEvent)"))
+        #expect(outlineRowsSource.contains("override func keyDown(with event: NSEvent)"))
         #expect(outlineCoordinatorSource.contains("shouldShowOutlineCellForItem"))
         #expect(
             outlineSource.contains(

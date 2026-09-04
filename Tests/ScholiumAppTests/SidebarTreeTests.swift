@@ -390,20 +390,42 @@ struct SidebarTreeTests {
     }
 
     @MainActor
-    @Test("Sidebar hosted content follows AppKit row selection presentation")
-    func nativeSelectionPresentationBridge() {
-        let row = SidebarOutlineRowView()
-        var presentationChanges = 0
-        row.nativeSelectionPresentationDidChange = {
-            presentationChanges += 1
-        }
+    @Test("Sidebar selection separates pointer selection from keyboard focus")
+    func nativeSelectionInputModality() {
+        let presentation = SidebarSourceListSelectionPresentation()
 
-        row.isSelected = true
-        row.isEmphasized = true
+        #expect(presentation.inputModality == .pointer)
+        #expect(!presentation.selectionIsEmphasized(
+            isKeyWindow: true,
+            isFirstResponder: true
+        ))
 
-        #expect(row.isSelected)
-        #expect(row.isEmphasized)
-        #expect(presentationChanges == 2)
+        presentation.recordKeyboardInteraction()
+        #expect(presentation.selectionIsEmphasized(
+            isKeyWindow: true,
+            isFirstResponder: true
+        ))
+        #expect(!presentation.selectionIsEmphasized(
+            isKeyWindow: false,
+            isFirstResponder: true
+        ))
+        #expect(!presentation.selectionIsEmphasized(
+            isKeyWindow: true,
+            isFirstResponder: false
+        ))
+
+        presentation.recordResponderEvent(.leftMouseDown)
+        #expect(presentation.inputModality == .pointer)
+        #expect(!presentation.selectionIsEmphasized(
+            isKeyWindow: true,
+            isFirstResponder: true
+        ))
+        presentation.recordResponderEvent(.keyDown)
+        #expect(presentation.inputModality == .keyboard)
+
+        #expect(SidebarWorkspaceTableView(frame: .zero).focusRingType == .none)
+        #expect(SidebarOutlineView(frame: .zero).focusRingType == .none)
+        #expect(SidebarOutlineScrollView(frame: .zero).focusRingType == .none)
     }
 
     @MainActor

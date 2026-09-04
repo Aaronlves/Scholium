@@ -135,10 +135,14 @@ source, selection, or focus owner.
 `ScholiumTriptychWorkspaceNavigator` is a thin `NSTableView` adapter for the
 three vertical workspace rows and neutral Note totals. AppKit owns source-list
 geometry, color, hover, focus, active/inactive selection, and Up/Down traversal
-without a Scholium input-modality override. The coordinator only projects
-availability and publishes a selected workspace intent. Scholium semantic text
-colors adapt to AppKit's emphasized selected-row background without adding an
-Accent mark, underline, border, shadow, custom corner, or parallel transition.
+while one shared Sidebar adapter determines whether that native selection is
+pointer-quiet or keyboard-emphasized. The selected row remains the sole visible
+focus indicator, so the table and outline containers disable their redundant
+perimeter focus rings without changing keyboard traversal. The coordinator only
+projects availability and publishes a selected workspace intent. Scholium
+semantic text colors adapt to AppKit's emphasized selected-row background
+without adding an Accent mark, underline, border, shadow, custom corner, or
+parallel transition.
 `ScholiumSegmentedControl` owns the current bounded text-only horizontal
 single-choice groups that match its contract. It receives only a binding and
 finite option labels, then owns equal layout, the Paper-derived track, adaptive

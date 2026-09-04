@@ -277,6 +277,18 @@ Completed automated checks in this worktree:
   passed.
   Increase Contrast, Reduce Transparency, VoiceOver, Full Keyboard Access, and
   human acceptance were not rerun for this final header slice.
+- On 2026-09-05 the Sidebar focus-semantics correction passed 26 Library-tree,
+  88 frontend-architecture, and five interface-presentation-ownership tests
+  under Xcode 27.0 (27A5218g), Swift 6.4, and the macOS 27 SDK. Two isolated
+  XCUITest journeys passed for native Folder disclosure and Triptych/Library
+  selection; after adding retained pointer, keyboard, and Note checkpoints, the
+  final Triptych journey passed in 18.051 seconds. Inspection of its three
+  synthetic QA screenshots confirmed that pointer selection remains quiet for
+  both workspaces and Notes, keyboard Down Arrow alone enables the emphasized
+  workspace row, the duplicate perimeter focus ring is absent, and opening a
+  Note transfers visible focus to its document title. Documentation authority
+  validation and `git diff --check` passed. This is automated and exploratory
+  evidence, not VoiceOver, Full Keyboard Access, or human acceptance.
 
 ## Evidence boundary
 

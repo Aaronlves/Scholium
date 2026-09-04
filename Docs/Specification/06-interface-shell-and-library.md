@@ -128,9 +128,11 @@ native navigation selection; rows show localized exact Note counts without
 role descriptions, progress, pipeline state, or Attention badges. Unknown
 initial count is unavailable, not zero. The native source list owns pointer
 behavior, focus, active/inactive selection, and Up/Down traversal; Scholium does
-not reproduce or override those states according to input device. AppKit
-emphasizes selection while the list is focused in the key window and retains
-its inactive selection presentation otherwise.
+not reproduce those states in a parallel custom control. Pointer activation
+retains AppKit's unemphasized selection; keyboard focus entry or navigation
+enables its emphasized row without changing the selected destination or
+Up/Down responder routing. The emphasized row is the list's focus indicator;
+the source-list container draws no duplicate perimeter focus ring.
 Workspace and Library rows follow the effective small, medium, or large native Source List size;
 enlarged interface text requests the native large presentation rather than a
 separate fixed row metric.
