@@ -20,14 +20,14 @@
 
 ## Human interface and accessibility acceptance
 
-- Re-run the affected Agent Changes exact-comparison/Undo UI journey after the
-  macOS XCTest sheet-presentation failure is isolated. On 2026-09-03 the focused
-  runner entered the journey and completed Settlement plus the MCP mutation,
-  but synthetic toolbar activation left the main window disabled for an
-  attached sheet that XCTest neither rendered nor exposed; the journey failed
-  before comparison and Undo assertions. The same isolated build and fixture
-  rendered the comparison and exposed its accessibility rows under exploratory
-  Computer Use, which is not a deterministic pass or human acceptance.
+- Re-run the affected Agent Changes exact-comparison/Undo UI journey after its
+  isolated-launch failures are resolved. On 2026-09-04 two focused attempts
+  failed before Settlement because the registered QA launch did not expose the
+  requested disposable Note and instead surfaced stale Restore Access state.
+  Direct launch against a disposable repository-local fixture verified the
+  native Settlement button, popover, successful state change, and final
+  accessibility label under exploratory Computer Use, which is not a
+  deterministic journey pass or human motion acceptance.
 - Establish the retained Core human baseline: one genuine VoiceOver journey,
   one physical Full Keyboard Access journey, one installed Simplified Chinese
   IME exact-source journey, and one visual-adaptation set at supported window

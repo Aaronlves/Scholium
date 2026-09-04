@@ -59,8 +59,9 @@ commits only after source safety succeeds; failure preserves the exact origin
 workspace and buffer.
 
 The native toolbar has stable leading Sidebar and Back/Forward controls,
-Document identity/actions in the center, and an Inspector projection group plus
-trailing Inspector visibility control in the Apparatus section.
+Document identity/actions in the center, a standalone Settlement control at the
+Document region's trailing edge, and an Inspector projection group plus trailing
+Inspector visibility control in the Apparatus section.
 Search and Triptych Notifications sit at the logical trailing edge of the
 Sidebar header, not in the native toolbar. Triptych opening and creation remain
 in the native File menu; open-window switching remains in the Window menu.
@@ -213,7 +214,7 @@ operations. A Changed Since Settle reminder with Agent Changes may show
 **Review Changes**, which opens the exact temporary comparison directly. A
 non-Agent save never invents an Agent Change. Dismiss hides
 only the reminder; Settle Again and Mark Unsettled remain explicit researcher
-choices in the Document Rail. The stack excludes structural Attention and
+choices from the Settlement toolbar control. The stack excludes structural Attention and
 never becomes the complete queue.
 Reduce Motion preserves all content and controls without geometry animation.
 

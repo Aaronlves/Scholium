@@ -375,14 +375,55 @@ struct PropertyPresentationTests {
         #expect(never.settledAt == nil)
     }
 
-    @Test("Changed-since-settlement exposes Settle Again in the Document Rail")
-    func changedSettlementRailAction() {
-        #expect(DocumentSettlementRailAction.resolve(
+    @Test("Changed-since-settlement exposes Settle Again in the toolbar")
+    func changedSettlementToolbarAction() {
+        #expect(DocumentSettlementAction.resolve(
             .changedSinceSettlement
         ) == .settleAgain)
-        #expect(DocumentSettlementRailAction.resolve(.settled) == .settleAgain)
-        #expect(DocumentSettlementRailAction.resolve(.notYetSettled) == .settle)
-        #expect(DocumentSettlementRailAction.resolve(.unavailable) == .unavailable)
+        #expect(DocumentSettlementAction.resolve(.settled) == .settleAgain)
+        #expect(DocumentSettlementAction.resolve(.notYetSettled) == .settle)
+        #expect(DocumentSettlementAction.resolve(.unavailable) == .unavailable)
+        #expect(
+            DocumentSettlementToolbarPresentation.symbol(for: .settled)
+                == "checkmark"
+        )
+        #expect(
+            DocumentSettlementToolbarPresentation.symbol(for: .changedSinceSettlement)
+                == "exclamationmark.triangle"
+        )
+        #expect(
+            DocumentSettlementToolbarPresentation.symbol(for: .notYetSettled)
+                == "checkmark"
+        )
+        #expect(
+            DocumentSettlementToolbarPresentation.style(for: .settled)
+                == .prominent
+        )
+        #expect(
+            DocumentSettlementToolbarPresentation.style(for: .notYetSettled)
+                == .plain
+        )
+        #expect(
+            DocumentSettlementToolbarPresentation.backgroundColorRole(for: .settled)
+                == .confirmed
+        )
+        #expect(
+            DocumentSettlementToolbarPresentation.backgroundColorRole(for: .notYetSettled)
+                == nil
+        )
+        #expect(
+            DocumentSettlementToolbarPresentation.backgroundTintAlpha(for: .settled)
+                == 0.78
+        )
+        #expect(
+            DocumentSettlementToolbarPresentation.backgroundTintAlpha(for: .notYetSettled)
+                == nil
+        )
+        #expect(
+            DocumentSettlementToolbarPresentation.symbolColorRole(
+                for: .changedSinceSettlement
+            ) == .attention
+        )
     }
 
     @Test("About presents file creation and modification facts from the snapshot")

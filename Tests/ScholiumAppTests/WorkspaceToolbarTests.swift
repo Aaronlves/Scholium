@@ -126,6 +126,7 @@ struct WorkspaceToolbarTests {
             ScholiumWorkspaceToolbarController.Item.back,
             ScholiumWorkspaceToolbarController.Item.forward,
             ScholiumWorkspaceToolbarController.Item.documentInformation,
+            ScholiumWorkspaceToolbarController.Item.settlement,
             ScholiumWorkspaceToolbarController.Item.documentMode,
             ScholiumWorkspaceToolbarController.Item.inspector,
         ] {
@@ -153,6 +154,18 @@ struct WorkspaceToolbarTests {
         ))
         #expect(documentMode.label.hasPrefix("Document Mode,"))
         #expect(documentMode.possibleLabels.count == 3)
+
+        let settlement = try #require(item(
+            ScholiumWorkspaceToolbarController.Item.settlement,
+            in: toolbar
+        ))
+        #expect(settlement.label == "Settlement Unavailable")
+        #expect(settlement.isBordered)
+        #expect(settlement.style == .plain)
+        #expect(settlement.view == nil)
+        #expect(settlement.possibleLabels.count == 3)
+        #expect(settlement.menuFormRepresentation?.target === controller)
+        #expect(settlement.menuFormRepresentation?.action != nil)
 
         let sidebar = try #require(item(
             ScholiumWorkspaceToolbarController.Item.sidebar,

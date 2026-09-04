@@ -1030,22 +1030,6 @@ struct ContentView: View {
                     )
                 )
                 .zIndex(0)
-                .overlay(alignment: .bottomTrailing) {
-                    if let settlementTarget {
-                        DocumentSettlementControl(
-                            presentation: currentAboutSettlementPresentation,
-                            settle: { rationale in
-                                _ = try await researchController.settle(
-                                    settlementTarget.note,
-                                    expectedRevision: settlementTarget.fingerprint,
-                                    rationale: rationale
-                                )
-                                try await researchController.refreshResearchProjection()
-                            }
-                        )
-                        .padding(ScholiumGrid.Spacing.sectionSeparation)
-                    }
-                }
         } else {
             ScholiumNoDocumentDetailView()
                 .transition(
@@ -1057,18 +1041,6 @@ struct ContentView: View {
         }
     }
 
-    private var settlementTarget: (note: VaultQualifiedNoteID, fingerprint: DocumentFingerprint)? {
-        guard let note = appState.currentNote,
-              let vaultID = appState.currentDocumentVaultID,
-              currentNoteStableID != nil else { return nil }
-        return (
-            VaultQualifiedNoteID(
-                vaultID: vaultID,
-                relativePath: note.relativePath
-            ),
-            note.document.fingerprint
-        )
-    }
 }
 
 private struct LibrarySurface<Content: View>: View {
@@ -1204,128 +1176,6 @@ private struct WindowFeedbackItem: View {
             accessibilityIdentifierPrefix: "scholium.windowFeedback",
             dismiss: dismiss
         )
-    }
-}
-
-enum DocumentSettlementRailAction: Hashable {
-    case settle
-    case settleAgain
-    case unavailable
-
-    static func resolve(
-        _ state: AboutSettlementState
-    ) -> DocumentSettlementRailAction {
-        switch state {
-        case .notYetSettled:
-            .settle
-        case .settled, .changedSinceSettlement:
-            .settleAgain
-        case .unavailable:
-            .unavailable
-        }
-    }
-
-    var title: LocalizedStringResource {
-        switch self {
-        case .settle:
-            "Settle"
-        case .settleAgain:
-            "Settle Again"
-        case .unavailable:
-            "Settlement Unavailable"
-        }
-    }
-
-    var help: LocalizedStringResource {
-        switch self {
-        case .settle:
-            "Settle this note"
-        case .settleAgain:
-            "Settle this note again"
-        case .unavailable:
-            "Settlement is unavailable"
-        }
-    }
-}
-
-private struct DocumentSettlementControl: View {
-    let presentation: AboutSettlementPresentation
-    let settle: (String?) async throws -> Void
-
-    @State private var isPresented = false
-    @State private var rationale = ""
-    @State private var errorMessage: String?
-    @State private var isSettling = false
-
-    var body: some View {
-        Button {
-            isPresented = true
-        } label: {
-            Image(systemName: presentation.state == .settled
-                ? "checkmark.circle.fill"
-                : "checkmark.circle")
-                .frame(width: 24, height: 24)
-        }
-        .scholiumActivationPointer()
-        .buttonStyle(.bordered)
-        .disabled(presentation.state == .unavailable)
-        .help(actionHelp)
-        .accessibilityLabel(actionTitle)
-        .accessibilityIdentifier("scholium.document.settle")
-        .popover(isPresented: $isPresented) {
-            VStack(alignment: .leading, spacing: ScholiumMetrics.Apparatus.sectionContentSpacing) {
-                Text(actionTitle)
-                    .font(ScholiumTypography.interface(.sectionTitle))
-                Text("Record this saved revision as sufficiently stable for current research.")
-                    .font(ScholiumTypography.interface(.body))
-                    .scholiumForeground(.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                TextField("Optional rationale", text: $rationale, axis: .vertical)
-                    .lineLimit(2...4)
-                if let errorMessage {
-                    Text(errorMessage)
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.attention)
-                }
-                HStack {
-                    Button("Cancel") {
-                        rationale = ""
-                        errorMessage = nil
-                        isPresented = false
-                    }
-                    .scholiumActivationPointer()
-                    Spacer()
-                    Button(actionTitle) {
-                        isSettling = true
-                        errorMessage = nil
-                        Task {
-                            do {
-                                try await settle(rationale)
-                                rationale = ""
-                                isSettling = false
-                                isPresented = false
-                            } catch {
-                                errorMessage = error.localizedDescription
-                                isSettling = false
-                            }
-                        }
-                    }
-                    .scholiumActivationPointer()
-                    .buttonStyle(.borderedProminent)
-                    .disabled(isSettling)
-                }
-            }
-            .padding(ScholiumGrid.Spacing.sectionSeparation)
-            .frame(width: 300)
-        }
-    }
-
-    private var actionTitle: LocalizedStringResource {
-        DocumentSettlementRailAction.resolve(presentation.state).title
-    }
-
-    private var actionHelp: LocalizedStringResource {
-        DocumentSettlementRailAction.resolve(presentation.state).help
     }
 }
 

@@ -32,6 +32,9 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         static let agentChanges = NSToolbarItem.Identifier(
             "scholium.toolbar.agentChanges"
         )
+        static let settlement = NSToolbarItem.Identifier(
+            "scholium.toolbar.settlement"
+        )
         static let researchRecords = NSToolbarItem.Identifier(
             "scholium.toolbar.researchRecords"
         )
@@ -50,9 +53,15 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     private let splitViewController: NSSplitViewController
     private let toolbar: NSToolbar
     private let documentInformationPopover: NSPopover
+    private let settlementPopover: NSPopover
     private weak var window: NSWindow?
     private weak var responderBeforeDocumentInformation: NSResponder?
+    private weak var responderBeforeSettlement: NSResponder?
     private var documentInformationHostingController: DocumentInformationHostingController?
+    private var settlementPopoverHostingController: DocumentSettlementPopoverHostingController?
+    private var settlementAnimationTimer: Timer?
+    private var settlementAnimationStartedAt: TimeInterval = 0
+    private var settlementPresentationState = AboutSettlementState.unavailable
     private var presentationCancellables: Set<AnyCancellable> = []
 
     init(
@@ -65,6 +74,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         self.splitViewController = splitViewController
         toolbar = NSToolbar(identifier: Self.toolbarIdentifier)
         documentInformationPopover = NSPopover()
+        settlementPopover = NSPopover()
         super.init()
         toolbar.delegate = self
         toolbar.allowsUserCustomization = false
@@ -72,6 +82,8 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         toolbar.displayMode = .iconOnly
         documentInformationPopover.behavior = .transient
         documentInformationPopover.delegate = self
+        settlementPopover.behavior = .transient
+        settlementPopover.delegate = self
         observePresentation()
     }
 
@@ -90,7 +102,10 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     }
 
     func invalidate() {
+        settlementAnimationTimer?.invalidate()
+        settlementAnimationTimer = nil
         documentInformationPopover.close()
+        settlementPopover.close()
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -105,9 +120,11 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             Item.forward,
             Item.libraryDivider,
             Item.documentInformation,
+            .space,
             Item.documentMode,
             Item.researchRecords,
             Item.agentChanges,
+            Item.settlement,
             Item.apparatusDivider,
             Item.inspectorModes,
             Item.inspector,
@@ -122,6 +139,8 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             Item.libraryDivider,
             Item.documentInformation,
             .flexibleSpace,
+            Item.settlement,
+            .space,
             Item.documentMode,
             Item.researchRecords,
             Item.agentChanges,
@@ -193,11 +212,23 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
                 systemImage: NotePresentationMode.livePreview.symbol,
                 action: #selector(toggleDocumentMode(_:))
             )
-            item.possibleLabels = Set(
-                NotePresentationMode.allCases.map {
-                    ScholiumDocumentModeToolbarButtonPresentation(mode: $0)
-                        .accessibilityLabel
-                })
+            item.possibleLabels = Set(NotePresentationMode.allCases.map {
+                ScholiumDocumentModeToolbarButtonPresentation(mode: $0)
+                    .accessibilityLabel
+            })
+            return item
+        case Item.settlement:
+            let item = actionItem(
+                identifier: itemIdentifier,
+                label: ScholiumL10n.string("Settle"),
+                systemImage: "checkmark",
+                action: #selector(toggleSettlement(_:))
+            )
+            item.possibleLabels = [
+                ScholiumL10n.string("Settle"),
+                ScholiumL10n.string("Settle Again"),
+                ScholiumL10n.string("Settlement Unavailable"),
+            ]
             return item
         case Item.agentChanges:
             return actionItem(
@@ -237,8 +268,8 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
                 ScholiumL10n.string("Show Research Inspector"),
             ]
             return item
-        case .flexibleSpace:
-            return NSToolbarItem(itemIdentifier: .flexibleSpace)
+        case .flexibleSpace, .space:
+            return NSToolbarItem(itemIdentifier: itemIdentifier)
         default:
             return nil
         }
@@ -442,6 +473,40 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             )
         }
 
+        if let item = toolbarItem(Item.settlement) {
+            let hasDocument = appState.currentNote != nil
+            let target = currentSettlementTarget
+            let presentation =
+                target == nil
+                ? AboutSettlementPresentation.unavailable
+                : currentSettlementPresentation
+            let action = DocumentSettlementAction.resolve(presentation.state)
+            let label = ScholiumL10n.localized(action.title)
+            let help = ScholiumL10n.localized(action.help)
+            item.isHidden = !hasDocument
+            item.label = label
+            item.paletteLabel = label
+            item.toolTip = help
+            applySettlementSurface(
+                for: presentation.state,
+                to: item
+            )
+            if settlementAnimationTimer == nil {
+                item.image = settlementImage(
+                    for: presentation.state,
+                    accessibilityDescription: label
+                )
+            }
+            item.isEnabled = target != nil
+            item.menuFormRepresentation?.title = label
+            item.menuFormRepresentation?.image = item.image
+            item.menuFormRepresentation?.isEnabled = target != nil
+            settlementPresentationState = presentation.state
+            if !hasDocument || target == nil {
+                settlementPopover.close()
+            }
+        }
+
         if let item = toolbarItem(Item.inspectorModes),
             let control = item.view as? NSSegmentedControl
         {
@@ -512,6 +577,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         guard appState.currentNote != nil,
             let item = toolbarItem(Item.documentInformation)
         else { return }
+        settlementPopover.performClose(nil)
         updateDocumentInformationPopoverContent()
         responderBeforeDocumentInformation = window?.firstResponder
         documentInformationPopover.show(relativeTo: item)
@@ -623,10 +689,18 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     }
 
     func popoverDidClose(_ notification: Notification) {
-        defer { responderBeforeDocumentInformation = nil }
-        guard let window,
-            let responder = responderBeforeDocumentInformation
-        else { return }
+        guard let closedPopover = notification.object as? NSPopover else { return }
+        let responder: NSResponder?
+        if closedPopover === documentInformationPopover {
+            responder = responderBeforeDocumentInformation
+            responderBeforeDocumentInformation = nil
+        } else if closedPopover === settlementPopover {
+            responder = responderBeforeSettlement
+            responderBeforeSettlement = nil
+        } else {
+            return
+        }
+        guard let window, let responder else { return }
         if let view = responder as? NSView, view.window !== window { return }
         window.makeFirstResponder(responder)
     }
@@ -645,6 +719,276 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
 
     @objc private func showResearchRecords(_ sender: Any?) {
         windowActions.showResearchRecords()
+    }
+
+    @objc private func toggleSettlement(_ sender: Any?) {
+        if settlementPopover.isShown {
+            settlementPopover.performClose(sender)
+        } else {
+            presentSettlement()
+        }
+    }
+
+    private func presentSettlement() {
+        guard let target = currentSettlementTarget,
+            let item = toolbarItem(Item.settlement)
+        else { return }
+        documentInformationPopover.performClose(nil)
+        let presentation = currentSettlementPresentation
+        let rootView = DocumentSettlementPopoverView(
+            presentation: presentation,
+            settle: { [weak self] rationale in
+                guard let self else { return }
+                _ = try await self.appState.researchController.settle(
+                    target.note,
+                    expectedRevision: target.fingerprint,
+                    rationale: rationale
+                )
+                self.startSettlementConfirmationAnimation()
+                try await self.appState.researchController.refreshResearchProjection()
+                self.refreshPresentation()
+            },
+            dismiss: { [weak self] in
+                self?.settlementPopover.performClose(nil)
+            }
+        )
+        let hostingController = DocumentSettlementPopoverHostingController(
+            rootView: rootView
+        )
+        hostingController.sizingOptions = [
+            .preferredContentSize,
+            .intrinsicContentSize,
+        ]
+        hostingController.dismiss = { [weak self] in
+            self?.settlementPopover.performClose(nil)
+        }
+        settlementPopoverHostingController = hostingController
+        settlementPopover.contentViewController = hostingController
+        responderBeforeSettlement = window?.firstResponder
+        settlementPopover.show(relativeTo: item)
+        hostingController.focusForKeyboardDismissal()
+    }
+
+    private var currentSettlementPresentation: AboutSettlementPresentation {
+        let noteID = appState.currentNote?.workspaceSnapshot?.stableIdentity.resolvedID
+        let requirement = appState.researchController.researchSnapshot?
+            .settlementRequirements.first { $0.noteID == noteID }
+        return AboutSettlementPresentation.resolve(
+            noteID: noteID,
+            currentRevision: appState.currentNote?.document.fingerprint,
+            requirement: requirement,
+            settlements: appState.researchController.researchSnapshot?.settlements ?? []
+        )
+    }
+
+    private var currentSettlementTarget: DocumentSettlementTarget? {
+        guard let note = appState.currentNote,
+            let vaultID = appState.currentDocumentVaultID,
+            note.workspaceSnapshot?.stableIdentity.resolvedID != nil,
+            appState.currentDocumentVaultRole != .other
+        else { return nil }
+        return DocumentSettlementTarget(
+            note: VaultQualifiedNoteID(
+                vaultID: vaultID,
+                relativePath: note.relativePath
+            ),
+            fingerprint: note.document.fingerprint
+        )
+    }
+
+    private func settlementImage(
+        for state: AboutSettlementState,
+        accessibilityDescription: String
+    ) -> NSImage? {
+        let symbol = DocumentSettlementToolbarPresentation.symbol(for: state)
+        if let role = DocumentSettlementToolbarPresentation.symbolColorRole(
+            for: state
+        ) {
+            return semanticSettlementSymbol(
+                named: symbol,
+                role: role,
+                accessibilityDescription: accessibilityDescription
+            )
+        }
+        return ScholiumNativeToolbarPresentation.symbol(
+            named: symbol,
+            accessibilityDescription: accessibilityDescription
+        )
+    }
+
+    private func applySettlementSurface(
+        for state: AboutSettlementState,
+        to item: NSToolbarItem
+    ) {
+        item.style = DocumentSettlementToolbarPresentation.style(for: state)
+        if let role = DocumentSettlementToolbarPresentation.backgroundColorRole(
+            for: state
+        ), let alpha = DocumentSettlementToolbarPresentation.backgroundTintAlpha(
+            for: state
+        ) {
+            item.backgroundTintColor = role.nsColor.withAlphaComponent(alpha)
+        } else {
+            item.backgroundTintColor = nil
+        }
+    }
+
+    private func semanticSettlementSymbol(
+        named name: String,
+        role: ScholiumColorRole,
+        accessibilityDescription: String? = nil
+    ) -> NSImage? {
+        let base = NSImage.SymbolConfiguration(textStyle: .body, scale: .medium)
+        // A one-color palette collapses the distinct layers of filled symbols
+        // into a solid dot. Hierarchical rendering preserves the symbol's
+        // internal figure while still resolving the state through one dynamic
+        // semantic color.
+        let semanticColor = NSImage.SymbolConfiguration(
+            hierarchicalColor: role.nsColor
+        )
+        guard let configured = NSImage(
+            systemSymbolName: name,
+            accessibilityDescription: accessibilityDescription
+        )?.withSymbolConfiguration(base.applying(semanticColor)),
+            let image = configured.copy() as? NSImage
+        else { return nil }
+        image.isTemplate = false
+        return image
+    }
+
+    private func startSettlementConfirmationAnimation() {
+        guard let item = toolbarItem(Item.settlement) else { return }
+        settlementAnimationTimer?.invalidate()
+        settlementAnimationTimer = nil
+
+        settlementPresentationState = .settled
+        applySettlementSurface(for: .settled, to: item)
+        let duration = ScholiumMotion.settlementConfirmationInterval(
+            reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        )
+        guard duration > 0 else {
+            item.image = settlementImage(
+                for: .settled,
+                accessibilityDescription: ScholiumL10n.dynamicString("Settle Again")
+            )
+            return
+        }
+
+        settlementAnimationStartedAt = ProcessInfo.processInfo.systemUptime
+        let timer = Timer(
+            timeInterval: 1 / 60,
+            target: self,
+            selector: #selector(advanceSettlementConfirmationAnimation(_:)),
+            userInfo: nil,
+            repeats: true
+        )
+        settlementAnimationTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+        advanceSettlementConfirmationAnimation(timer)
+    }
+
+    @objc private func advanceSettlementConfirmationAnimation(_ timer: Timer) {
+        let duration = ScholiumMotion.settlementConfirmationInterval(reduceMotion: false)
+        let elapsed = ProcessInfo.processInfo.systemUptime - settlementAnimationStartedAt
+        let progress = min(max(elapsed / duration, 0), 1)
+        if let item = toolbarItem(Item.settlement),
+            let frame = settlementConfirmationFrame(progress: progress)
+        {
+            item.image = frame
+        }
+        guard progress >= 1 else { return }
+        timer.invalidate()
+        if settlementAnimationTimer === timer {
+            settlementAnimationTimer = nil
+        }
+        toolbarItem(Item.settlement)?.image = settlementImage(
+            for: .settled,
+            accessibilityDescription: ScholiumL10n.dynamicString("Settle Again")
+        )
+    }
+
+    private func settlementConfirmationFrame(progress: Double) -> NSImage? {
+        guard let target = ScholiumNativeToolbarPresentation.symbol(
+            named: DocumentSettlementToolbarPresentation.symbol(for: .settled),
+            accessibilityDescription: nil
+        ) else { return nil }
+
+        let clamped = min(max(progress, 0), 1)
+        let drawProgress = smoothStep(
+            min(max((clamped - 0.06) / 0.72, 0), 1)
+        )
+        let canvasSize = NSSize(width: 20, height: 20)
+        let targetFrame = NSRect(x: 2, y: 2, width: 16, height: 16)
+        let image = NSImage(size: canvasSize, flipped: false) { _ in
+            guard drawProgress > 0,
+                let context = NSGraphicsContext.current?.cgContext
+            else { return true }
+            context.saveGState()
+            defer { context.restoreGState() }
+
+            // Reveal the final system glyph through one continuous writing
+            // corridor: short downstroke first, then the longer rising stroke.
+            let start = CGPoint(x: 3.2, y: 10.4)
+            let turn = CGPoint(x: 8.0, y: 5.5)
+            let end = CGPoint(x: 17.0, y: 14.8)
+            let firstLength = hypot(turn.x - start.x, turn.y - start.y)
+            let secondLength = hypot(end.x - turn.x, end.y - turn.y)
+            let revealDistance = CGFloat(drawProgress) * (firstLength + secondLength)
+            let path = CGMutablePath()
+            path.move(to: start)
+            if revealDistance <= firstLength {
+                path.addLine(
+                    to: Self.interpolate(
+                        from: start,
+                        to: turn,
+                        progress: revealDistance / firstLength
+                    )
+                )
+            } else {
+                path.addLine(to: turn)
+                path.addLine(
+                    to: Self.interpolate(
+                        from: turn,
+                        to: end,
+                        progress: min(
+                            (revealDistance - firstLength) / secondLength,
+                            1
+                        )
+                    )
+                )
+            }
+            context.addPath(path)
+            context.setLineWidth(7)
+            context.setLineCap(.round)
+            context.setLineJoin(.round)
+            context.replacePathWithStrokedPath()
+            context.clip()
+            target.draw(
+                in: targetFrame,
+                from: .zero,
+                operation: .sourceOver,
+                fraction: 1
+            )
+            return true
+        }
+        // Keep animated frames templated so AppKit selects the appropriate
+        // contrasting ink for the native prominent Glass surface.
+        image.isTemplate = true
+        return image
+    }
+
+    private static func interpolate(
+        from start: CGPoint,
+        to end: CGPoint,
+        progress: CGFloat
+    ) -> CGPoint {
+        CGPoint(
+            x: start.x + (end.x - start.x) * progress,
+            y: start.y + (end.y - start.y) * progress
+        )
+    }
+
+    private func smoothStep(_ value: Double) -> Double {
+        value * value * (3 - 2 * value)
     }
 
     @objc private func toggleInspector(_ sender: Any?) {
@@ -674,6 +1018,163 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     }
 }
 
+struct DocumentSettlementTarget: Hashable, Sendable {
+    let note: VaultQualifiedNoteID
+    let fingerprint: DocumentFingerprint
+}
+
+enum DocumentSettlementAction: Hashable {
+    case settle
+    case settleAgain
+    case unavailable
+
+    static func resolve(_ state: AboutSettlementState) -> Self {
+        switch state {
+        case .notYetSettled:
+            .settle
+        case .settled, .changedSinceSettlement:
+            .settleAgain
+        case .unavailable:
+            .unavailable
+        }
+    }
+
+    var title: LocalizedStringResource {
+        switch self {
+        case .settle:
+            "Settle"
+        case .settleAgain:
+            "Settle Again"
+        case .unavailable:
+            "Settlement Unavailable"
+        }
+    }
+
+    var help: LocalizedStringResource {
+        switch self {
+        case .settle:
+            "Settle this note"
+        case .settleAgain:
+            "Settle this note again"
+        case .unavailable:
+            "Settlement is unavailable"
+        }
+    }
+}
+
+enum DocumentSettlementToolbarPresentation {
+    static func symbol(for state: AboutSettlementState) -> String {
+        switch state {
+        case .settled, .notYetSettled, .unavailable:
+            "checkmark"
+        case .changedSinceSettlement:
+            "exclamationmark.triangle"
+        }
+    }
+
+    static func style(for state: AboutSettlementState) -> NSToolbarItem.Style {
+        switch state {
+        case .settled:
+            .prominent
+        case .changedSinceSettlement, .notYetSettled, .unavailable:
+            .plain
+        }
+    }
+
+    static func backgroundColorRole(
+        for state: AboutSettlementState
+    ) -> ScholiumColorRole? {
+        state == .settled ? .confirmed : nil
+    }
+
+    static func backgroundTintAlpha(for state: AboutSettlementState) -> CGFloat? {
+        state == .settled ? 0.78 : nil
+    }
+
+    static func symbolColorRole(
+        for state: AboutSettlementState
+    ) -> ScholiumColorRole? {
+        switch state {
+        case .changedSinceSettlement:
+            .attention
+        case .settled, .notYetSettled, .unavailable:
+            nil
+        }
+    }
+
+    static func accessibilityValue(for state: AboutSettlementState) -> LocalizedStringResource {
+        switch state {
+        case .settled:
+            "Settled"
+        case .changedSinceSettlement:
+            "Changed since settlement"
+        case .notYetSettled:
+            "Not settled"
+        case .unavailable:
+            "Settlement unavailable"
+        }
+    }
+}
+
+private struct DocumentSettlementPopoverView: View {
+    let presentation: AboutSettlementPresentation
+    let settle: (String?) async throws -> Void
+    let dismiss: () -> Void
+
+    @State private var rationale = ""
+    @State private var errorMessage: String?
+    @State private var isSettling = false
+
+    var body: some View {
+        VStack(
+            alignment: .leading,
+            spacing: ScholiumMetrics.Apparatus.sectionContentSpacing
+        ) {
+            Text(actionTitle)
+                .font(ScholiumTypography.interface(.sectionTitle))
+            Text("Record this saved revision as sufficiently stable for current research.")
+                .font(ScholiumTypography.interface(.body))
+                .scholiumForeground(.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            TextField("Optional rationale", text: $rationale, axis: .vertical)
+                .lineLimit(2...4)
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(ScholiumTypography.interface(.small))
+                    .scholiumForeground(.attention)
+            }
+            HStack {
+                Button("Cancel") {
+                    dismiss()
+                }
+                Spacer()
+                Button(actionTitle) {
+                    isSettling = true
+                    errorMessage = nil
+                    Task {
+                        do {
+                            try await settle(rationale.nilIfBlank)
+                            isSettling = false
+                            dismiss()
+                        } catch {
+                            errorMessage = error.localizedDescription
+                            isSettling = false
+                        }
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isSettling)
+            }
+        }
+        .padding(ScholiumGrid.Spacing.sectionSeparation)
+        .frame(width: 300)
+    }
+
+    private var actionTitle: LocalizedStringResource {
+        DocumentSettlementAction.resolve(presentation.state).title
+    }
+}
+
 @MainActor
 private final class DocumentInformationHostingController:
     NSHostingController<DocumentInformationPopoverView>
@@ -690,6 +1191,32 @@ private final class DocumentInformationHostingController:
 
     override func cancelOperation(_ sender: Any?) {
         dismiss?()
+    }
+}
+
+@MainActor
+private final class DocumentSettlementPopoverHostingController:
+    NSHostingController<DocumentSettlementPopoverView>
+{
+    var dismiss: (() -> Void)?
+
+    override var acceptsFirstResponder: Bool { true }
+
+    func focusForKeyboardDismissal() {
+        guard let window = view.window else { return }
+        window.makeKey()
+        window.makeFirstResponder(self)
+    }
+
+    override func cancelOperation(_ sender: Any?) {
+        dismiss?()
+    }
+}
+
+extension String {
+    fileprivate var nilIfBlank: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
 

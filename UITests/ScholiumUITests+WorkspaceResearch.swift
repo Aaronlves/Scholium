@@ -11,8 +11,7 @@ extension ScholiumUITests {
             .appendingPathComponent("Agent Review.md")
         let originalBytes = try Data(contentsOf: noteURL)
 
-        let settle = app.descendants(matching: .any)["scholium.document.settle"]
-            .firstMatch
+        var settle = app.toolbars.buttons["Settle"].firstMatch
         XCTAssertTrue(settle.waitForExistence(timeout: 10))
         XCTAssertEqual(settle.label, "Settle")
         settle.click()
@@ -21,7 +20,10 @@ extension ScholiumUITests {
         let confirmSettle = settlePopover.buttons["Settle"].firstMatch
         XCTAssertTrue(confirmSettle.waitForExistence(timeout: 5))
         confirmSettle.click()
-        XCTAssertTrue(waitUntil(timeout: 10) { settle.label == "Settle Again" })
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            settle = self.app.toolbars.buttons["Settle Again"].firstMatch
+            return settle.exists
+        })
 
         if !app.scrollViews["scholium.researchInspector"].firstMatch.exists {
             app.typeKey("b", modifierFlags: [.command, .option])

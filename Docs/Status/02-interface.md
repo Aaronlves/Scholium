@@ -108,8 +108,12 @@
   Record and step.
 - System-Trash confirmation describes the exact source and any managed Critique
   moved with it. Recovery stays with the existing bounded transaction owner.
-- The Document Rail presents **Settle Again** for both Settled and Changed since
-  settlement. An external source change does not clear or rewrite Settlement;
+- One separately spaced native Settlement toolbar button sits immediately before
+  Document Mode. It presents **Settle** or **Settle Again**, keeps Unsettled
+  monochrome, uses AppKit's prominent Glass with a translucent Confirmed green
+  background only for Settled, and gives a successful exact-revision Settle one bounded
+  native-surface and Draw-On symbol confirmation; Reduce Motion is
+  immediate. An external source change does not clear or rewrite Settlement;
   only the researcher's explicit settlement action records a new revision.
 
 ## Agent Integration and Agent Changes

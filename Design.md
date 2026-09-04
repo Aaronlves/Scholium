@@ -298,6 +298,19 @@ semantics or interaction differ. Ordinary toolbar actions use standard bordered
 `NSToolbarItem` instances with no custom view or fixed-size host. AppKit owns
 their geometry, regular Glass, edge highlight, shadow, and adaptive states while
 the transparent toolbar background preserves the continuous semantic planes.
+Settlement is one separately spaced standard `NSToolbarItem` immediately before
+Document Mode. AppKit still owns its complete button and Glass behavior;
+Scholium changes only its state-bearing SF Symbol, native item style and semantic
+background tint, plus the brief exact-success transition. Unsettled keeps the
+standard monochrome check on ordinary Glass. Settled uses AppKit's prominent
+item style with translucent Confirmed-tinted Glass and a high-contrast plain
+check, retaining the native edge light rather than painting a solid disk. Changed
+Since Settle returns to ordinary Glass with the simple Attention warning
+triangle. Enclosed inner symbols and custom Glass are excluded because the
+native toolbar item already supplies the control container. On exact-success,
+the plain check uses one brief Draw-On transition that follows its two strokes
+and ends at the unchanged system glyph; it does not bounce, wobble, loop, or
+replace the final symbol with a hand-drawn asset.
 Search and Notifications remain native Glass controls in the Sidebar identity
 row. Triptych navigation does not add persistent chrome there; native File and
 Window commands own it. Library Organize and Add instead use one shared shallow
@@ -327,7 +340,8 @@ Motion is purposeful, interruptible, and absent under Reduce Motion. Native
 feedback remains system-owned. AppKit source-list disclosure and workspace
 selection receive no parallel Scholium transition. Current shared motion covers
 custom disclosure, search, document reveal, transient feedback, the Agent Change
-notification stack, and onboarding steps. A bounded feature-local transition
+notification stack, exact-success Settlement confirmation, and onboarding
+steps. A bounded feature-local transition
 may remain local when it communicates continuity or feedback and supplies the
 same Reduce Motion behavior. Motion never changes authority or becomes the sole
 state signal; decorative pulsing, looping, parallax scrolling, and row cascades
@@ -430,7 +444,7 @@ a reusable component or catalog entry.
 | `Segmented Control` | Shared bounded text-only single-choice input with native-equivalent focus/traversal. | §§18.4–18.5 |
 | `Source List` | Let AppKit own hierarchical selection, focus, disclosure, indentation, and drag feedback while Scholium supplies Note/Folder content and valid actions. | §18.3 |
 | `Inspector Projection Control` | Select Overview/Outgoing/Incoming in the native toolbar without changing source or graph authority. | §§12, 18.5 |
-| `Document Rail` | Keep Settle at the Document edge without an Agent launcher or review milestone. | §§7.1, 18.5 |
+| `Settlement Toolbar Control` | Keep exact-revision Settle at the Document toolbar edge; use system-owned control feedback, native prominent Glass plus Confirmed only for settled state, redundant state presentation, and one Reduce-Motion-aware success transition. | §§7.1, 18.5, 20 |
 | `Triptych Notifications Entry` | Open the complete Agent Change/Settlement/Attention queue from a bell whose nonzero state uses a small Accent dot and an exact accessible count. | §§13, 18.2–18.3 |
 | `Top Notification Banner` | Give Agent Change, Settlement, permission, and persistent operation notices one concise adaptive grammar. | §§18.3–18.5, 20 |
 | `Activity Notification Stack` | Present Agent Changes and Changed Since Settle reminders without becoming the queue or changing Settlement. | §§7.1, 18.3, 18.5 |

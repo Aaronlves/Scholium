@@ -1228,6 +1228,8 @@ struct FrontendArchitectureTests {
             ScholiumWorkspaceToolbarController.Item.libraryDivider,
             ScholiumWorkspaceToolbarController.Item.documentInformation,
             .flexibleSpace,
+            ScholiumWorkspaceToolbarController.Item.settlement,
+            .space,
             ScholiumWorkspaceToolbarController.Item.documentMode,
             ScholiumWorkspaceToolbarController.Item.researchRecords,
             ScholiumWorkspaceToolbarController.Item.agentChanges,
@@ -1370,6 +1372,9 @@ struct FrontendArchitectureTests {
             identifiers.firstIndex(of: Item.documentInformation)
         )
         let modeIndex = try #require(identifiers.firstIndex(of: Item.documentMode))
+        let documentControlSpaceIndex = try #require(
+            identifiers.firstIndex(of: .space)
+        )
         let inspectorIndex = try #require(identifiers.firstIndex(of: Item.inspector))
         let inspectorModesIndex = try #require(
             identifiers.firstIndex(of: Item.inspectorModes)
@@ -1377,12 +1382,17 @@ struct FrontendArchitectureTests {
         let apparatusDividerIndex = try #require(
             identifiers.firstIndex(of: Item.apparatusDivider)
         )
+        let settlementIndex = try #require(
+            identifiers.firstIndex(of: Item.settlement)
+        )
         #expect(sidebarIndex < backIndex)
         #expect(backIndex < forwardIndex)
         #expect(forwardIndex < libraryDividerIndex)
         #expect(libraryDividerIndex < documentInformationIndex)
         #expect(documentInformationIndex < documentFlexibleSpaceIndex)
-        #expect(documentFlexibleSpaceIndex < modeIndex)
+        #expect(documentFlexibleSpaceIndex < settlementIndex)
+        #expect(settlementIndex < documentControlSpaceIndex)
+        #expect(documentControlSpaceIndex < modeIndex)
         #expect(modeIndex < apparatusDividerIndex)
         #expect(apparatusDividerIndex < inspectorModesIndex)
         #expect(inspectorModesIndex < apparatusFlexibleSpaceIndex)
@@ -4128,6 +4138,7 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMotion.searchExpansion(reduceMotion: true) == nil)
         #expect(ScholiumMotion.disclosure(reduceMotion: true) == nil)
         #expect(ScholiumMotion.symbolReplacement(reduceMotion: true) == nil)
+        #expect(ScholiumMotion.settlementConfirmationInterval(reduceMotion: true) == 0)
         #expect(ScholiumMotion.transientStatus(reduceMotion: true) == nil)
 
         #expect(ScholiumMotion.bootstrapStep(reduceMotion: false) != nil)
@@ -4136,6 +4147,7 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMotion.searchExpansion(reduceMotion: false) != nil)
         #expect(ScholiumMotion.disclosure(reduceMotion: false) != nil)
         #expect(ScholiumMotion.symbolReplacement(reduceMotion: false) != nil)
+        #expect(ScholiumMotion.settlementConfirmationInterval(reduceMotion: false) > 0)
         #expect(ScholiumMotion.transientStatus(reduceMotion: false) != nil)
     }
 

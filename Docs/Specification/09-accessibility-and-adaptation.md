@@ -195,8 +195,12 @@
   it open, Escape or outside activation dismisses it, and focus remains on the
   initiating context. Source editing exposes the exact delimiters without
   relying on color, hover, position, or icon alone.
-- Document Rail exposes the state-valid Settle, Settle Again, or Mark Unsettled
-  researcher action without a parallel review milestone or Agent launcher.
+- The Settlement toolbar control exposes the state-valid Settle, Settle Again,
+  or Mark Unsettled researcher action without a parallel review milestone or
+  Agent launcher. Its ordinary-versus-prominent native surface, check-versus-
+  warning shape, state-bearing accessible label, and Help preserve state
+  without motion or color alone; Reduce Motion makes a successful confirmation
+  immediate.
   Opening Inspector does not alter reading or focus order.
 - Agent Integration in Settings exposes App/bridge/CLI state, the two distinct
   setup-copy actions, and the Core Protocol Finder route in one predictable
@@ -233,7 +237,7 @@
   focus, and accessibility equivalents. Progressive detail exposes complete
   path and fingerprints.
 - Closing Agent Changes records no review state and never changes Settlement.
-  Document Rail retains the accessible Settle route. Direct Undo states its
+  The Settlement toolbar control retains the accessible Settle route. Direct Undo states its
   current-fingerprint prerequisite and exact outcome.
 - Source deletion and Agent Change recovery use distinct labels,
   consequences, and focus restoration. Any future Record deletion interaction

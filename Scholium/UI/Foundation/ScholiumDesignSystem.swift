@@ -3135,6 +3135,14 @@ enum ScholiumMotion {
         reduceMotion ? .identity : .symbolEffect(.replace)
     }
 
+    /// The exact-revision Settle confirmation is the one bounded positive
+    /// gesture in document chrome. The native toolbar item keeps its platform
+    /// behavior while this duration bounds its symbol confirmation frames;
+    /// AppKit owns the prominent surface transition.
+    static func settlementConfirmationInterval(reduceMotion: Bool) -> TimeInterval {
+        reduceMotion ? 0 : 0.58
+    }
+
     static func transientStatus(reduceMotion: Bool) -> Animation? {
         reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.8)
     }

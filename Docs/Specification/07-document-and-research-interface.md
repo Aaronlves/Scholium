@@ -158,8 +158,10 @@ with errors. Rendering failure enters persistent CSS Safe Mode until the
 researcher disables or selectively re-enables managed copies.
 
 The Document toolbar keeps Sidebar and Back/Forward leading, identity and
-Document Information in the Document region, then Document Mode, Research
-Records, and trailing Inspector. Document Information is one native transient
+Document Information in the Document region, then the standalone Settlement
+control immediately before the separately spaced Document Mode, Research
+Records, Agent Changes when present, and trailing Inspector. Document
+Information is one native transient
 popover: its scrollable Heading Outline remains the primary region and its
 current statistics remain fixed below. Body scope is implicit; `Selection`
 appears only while a nonempty selection owns the count. Statistics show one
@@ -293,10 +295,22 @@ to the source occurrence. Row titles, annotation text, and context wrap and use
 full-row native destination activation. Switching projection changes only the
 derived occurrence list and returns its sole scroll owner to the beginning.
 
-Document owns a trailing-centered overlay **Document Rail**. Settle, Settle
-Again, or Mark Unsettled appears as the quiet state-valid researcher judgment;
-there are no Agent-launch or fixed research-method buttons. Agent Integration
-belongs to Settings, and the external conversation remains in its host.
+Document owns one standalone **Settlement toolbar control** at the trailing edge
+of its native toolbar region. Unsettled uses a monochrome check on ordinary
+Glass; Settled uses the same high-contrast check on a native prominent Glass
+surface translucently tinted with the Confirmed semantic color so native edge
+light and material depth remain legible; Changed Since Settle returns
+to ordinary Glass with a simple warning triangle in Attention color. Activating Settle or Settle
+Again opens one compact popover with optional rationale rather than changing the
+judgment directly. A successful exact-revision Settle alone receives one brief
+native surface transition while the final system check draws once from its
+lower-left stroke through its rising stroke; existing state,
+document switching, refresh, failure, and Mark Unsettled do not replay it.
+Reduce Motion changes the state immediately. Shape, state-bearing accessible
+label, Help, menu route, and the Inspector facts preserve meaning without color
+or motion. There is no parallel Document overlay, Agent launcher, or fixed
+research-method button. Agent Integration belongs to Settings, and the external
+conversation remains in its host.
 
 MCP status, Search, and read calls create no persistent activity UI. A confirmed
 mutation adds its Agent Change to Notifications without activating the App,
