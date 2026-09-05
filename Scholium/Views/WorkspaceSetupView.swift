@@ -113,6 +113,7 @@ private struct BootstrapFlowView: View {
         .scholiumForeground(.primaryText)
         .background(ScholiumColorRole.documentBackground.color)
         .tint(ScholiumColorRole.accent.color)
+        .scholiumButtonStyle(.automatic)
         .task {
             await context.refreshAssignment()
             loadCurrentValuesIfNeeded()
@@ -586,7 +587,7 @@ private struct BootstrapFooter: View {
                     Text(primaryTitle)
                 }
                 .scholiumActivationPointer()
-                .buttonStyle(.borderedProminent)
+                .scholiumButtonStyle(.bordered)
                 .keyboardShortcut(.defaultAction)
                 .disabled(primaryDisabled)
             }
@@ -800,7 +801,7 @@ private struct BootstrapSetupPathChoice: View {
             }
         }
         .scholiumActivationPointer()
-        .buttonStyle(.plain)
+        .scholiumButtonStyle(.plain)
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
     }
 }

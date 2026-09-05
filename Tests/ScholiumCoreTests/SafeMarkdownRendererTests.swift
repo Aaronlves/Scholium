@@ -407,7 +407,7 @@ struct SafeMarkdownRendererTests {
         #expect(rendered.contains("class=\"scholium-annotated-link\""))
         #expect(rendered.contains("<sup class=\"scholium-link-annotation-marker\">"))
         #expect(rendered.contains("class=\"scholium-link-annotation-button\""))
-        #expect(rendered.contains("aria-controls=\"scholium-preview-popover\""))
+        #expect(!rendered.contains("aria-controls=\"scholium-preview-popover\""))
         #expect(rendered.contains("<template id="))
         #expect(rendered.contains("<strong>reason</strong>"))
         #expect(rendered.contains("Second reason."))

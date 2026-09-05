@@ -1,6 +1,6 @@
 export interface ReviewFindRequest {
   operation?: "clear";
-  action?: "update" | "next" | "previous";
+  action?: "present" | "update" | "next" | "previous";
   query: string;
   caseSensitive: boolean;
   wholeWord: boolean;
@@ -27,7 +27,7 @@ function textNodesIn(element: Element): Text[] {
       const parent = node.parentElement;
       if (!parent || !node.textContent) return NodeFilter.FILTER_REJECT;
       if (parent.closest(
-        'script, style, [hidden], [aria-hidden="true"], #selection-actions, #scholium-preview-popover',
+        'script, style, [hidden], [aria-hidden="true"], #scholium-preview-popover',
       )) return NodeFilter.FILTER_REJECT;
       if (parent.closest('[data-scholium-protected="mermaid"]')) {
         return NodeFilter.FILTER_REJECT;
@@ -134,14 +134,16 @@ export function installReviewFind(): {
     registry?.delete(allName);
     registry?.delete(currentName);
   };
-  const present = () => {
+  const present = (scrollToMatch: boolean) => {
     clear();
     if (matches.length === 0 || !registry || current < 0) return;
     const ordinary = matches.filter((_, index) => index !== current);
     if (ordinary.length > 0) registry.set(allName, new Highlight(...ordinary));
     registry.set(currentName, new Highlight(matches[current]));
-    matches[current].startContainer.parentElement
-      ?.scrollIntoView({block: "center", behavior: "auto"});
+    if (scrollToMatch) {
+      matches[current].startContainer.parentElement
+        ?.scrollIntoView({block: "center", behavior: "auto"});
+    }
   };
 
   return {
@@ -165,7 +167,7 @@ export function installReviewFind(): {
       } else if (request.action === "previous" && matches.length > 0) {
         current = (current - 1 + matches.length) % matches.length;
       }
-      present();
+      present(request.action !== "present");
       return {current: current < 0 ? 0 : current + 1, total: matches.length};
     },
   };

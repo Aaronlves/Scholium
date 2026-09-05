@@ -1,4 +1,4 @@
-export const EDITOR_PROTOCOL_VERSION = 21;
+export const EDITOR_PROTOCOL_VERSION = 23;
 export const MAX_INBOUND_BYTES = 2_500_000;
 export const MAX_SOURCE_UTF8_BYTES = 8_000_000;
 
@@ -81,7 +81,7 @@ export interface EditorPerformanceSample {
   observed: Record<string, number>;
 }
 export type DocumentFindAction =
-  | "update" | "next" | "previous" | "replaceCurrent" | "replaceAll";
+  | "present" | "update" | "next" | "previous" | "replaceCurrent" | "replaceAll";
 export interface DocumentFindQuery {
   query: string;
   replacement: string;
@@ -352,7 +352,7 @@ function validOperation(operation: Record<string, unknown>) {
       && typeof value.replacement === "string" && value.replacement.length <= 1_000_000
       && typeof value.caseSensitive === "boolean"
       && typeof value.wholeWord === "boolean"
-      && ["update", "next", "previous", "replaceCurrent", "replaceAll"].includes(value.action ?? "");
+      && ["present", "update", "next", "previous", "replaceCurrent", "replaceAll"].includes(value.action ?? "");
   }
   case "queryText": case "querySelection": case "queryContext": case "queryScrollAnchor": case "queryPerformance": case "captureRecovery": case "showPreview": case "measureVisibleProjection": case "revealDocumentAttachmentControl":
   case "clearDocumentFind": case "markClean": case "focus": case "focusTitle": case "blur": return true;

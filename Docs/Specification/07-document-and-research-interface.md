@@ -19,13 +19,35 @@ Editor failure retains the Note and offers **Retry Edit** and **Source**. An
 exact empty body has a distinct quiet state; malformed YAML, whitespace,
 unavailable source, and render failure are not Empty.
 
-Edit's compact formatting surface presents frequent text styles, Bold, Italic,
-Strikethrough, Highlight, Link, Wikilink, Annotated Wikilink, and More. Less frequent
-code, lists, blockquote, Markdown Comment, image, and insertion actions may move
-into one bounded menu without losing menu/keyboard access. Menu labels name
-actions rather than syntax.
+Edit keeps text selection unobscured, without a floating formatting toolbar.
+Formatting and insertion remain available through native Format/Insert menus,
+keyboard shortcuts, and exact Markdown input. These routes preserve the current
+selection and share the existing source transaction and Undo behavior.
 
-Caret suggestions use one bounded panel attached to the editor caret. They keep
+Document Find is one compact nonmodal floating panel at the document's logical
+upper trailing corner. It uses the shared native Liquid Glass floating container and system-owned
+restrained elevation to distinguish temporary controls from opaque Document
+Paper. There is no full-width band, backdrop dimming, or blocked document input.
+Opening, closing, and disclosure preserve prose geometry and scroll position;
+the panel never adds document padding or reserves layout space.
+Find shows the query, match count, Previous/Next, and Close; empty input has no
+no-match message. The native search-field menu owns case and whole-word options,
+with active options also visible in quiet text. Replace expands downward inside
+the same panel with aligned input fields; Find and Replace opens it directly.
+Review has no replacement controls. Opening/closing uses a short trailing-edge
+translation and fade, while replacement disclosure changes panel height. Both
+remain reversible; Reduce Motion presents final states immediately.
+Return/Shift-Return navigate matches through normal document scrolling.
+Escape or Close returns native and embedded document focus without changing
+the current exact selection.
+Clicking the document keeps Find open. Reopening Find focuses its query even
+when already open. Drafts/options remain local to the retained document; narrow
+reflow retains the native fields and never changes source.
+
+Caret suggestions use one bounded panel attached to the editor caret. Autosave
+does not dismiss it; acceptance, explicit dismissal, loss of the editing context,
+or completion-state invalidation does. Selection changes update the retained
+list without reconstructing its container. They keep
 document focus, show only useful identity/path context, fit the viewport, and
 never introduce another text owner. Selection, menus, and suggestion panels use
 the semantic surfaces, boundaries, and elevation roles in §19.

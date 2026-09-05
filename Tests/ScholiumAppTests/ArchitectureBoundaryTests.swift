@@ -427,7 +427,7 @@ struct ArchitectureBoundaryTests {
             "protocol.ts", "projection.ts", "semantic-projection.ts", "transformations.ts", "tables.ts",
             "table-presentation.ts",
             "interaction.ts", "clipboard.ts", "state.ts", "accessibility.ts", "bootstrap.ts", "performance.ts",
-            "selection-actions.ts", "live-selection.ts", "live-projection-index.ts",
+            "live-selection.ts", "live-projection-index.ts",
             "source-direction.ts", "preview-popover.ts", "scroll-coordinator.ts",
         ] {
             #expect(
@@ -437,7 +437,6 @@ struct ArchitectureBoundaryTests {
                 Comment(rawValue: "Missing editor module: \(module)")
             )
         }
-        #expect(editor.contains("createSelectionActionsController"))
         #expect(editor.contains("createPreviewPopoverController"))
         #expect(editor.contains("createEditorScrollCoordinator"))
         #expect(!editor.contains(#"document.createElement("aside")"#))

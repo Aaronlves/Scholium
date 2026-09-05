@@ -1,9 +1,158 @@
 @preconcurrency import XCTest
 import AppKit
+import Carbon
 import CryptoKit
 import notify
 
 extension ScholiumUITests {
+    @MainActor
+    func testNativeCompletionPreservesFocusAndUndo() throws {
+        try enterLivePreviewAndAppend("\n\ncompletionprobe\n\n")
+        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
+        let viewport = app.webViews.firstMatch
+        let frame = viewport.frame
+        let inputSource = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
+        let isASCII = TISGetInputSourceProperty(inputSource, kTISPropertyInputSourceIsASCIICapable)
+            .map { Unmanaged<CFBoolean>.fromOpaque($0).takeUnretainedValue() }
+            .map(CFBooleanGetValue) ?? true
+        func typeAndCommit(_ text: String) {
+            app.typeText(text)
+            // Commit marked Latin input without changing the user's input source.
+            if !isASCII { app.typeKey(.return, modifierFlags: []) }
+        }
+        typeAndCommit("/date")
+        let suggestions = app.descendants(matching: .any)["scholium.documentSuggestions"].firstMatch
+        XCTAssertTrue(suggestions.waitForExistence(timeout: 8))
+        XCTAssertLessThan(suggestions.frame.width, 100, "A single short candidate fits its content.")
+        XCTAssertGreaterThan(suggestions.frame.width, 44)
+        XCTAssertEqual(viewport.frame, frame)
+        XCTAssertTrue((editor.value as? String ?? "").contains("/date"))
+        XCTAssertEqual(suggestions.frame.height, 40, accuracy: 1)
+        let savedNote = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        XCTAssertTrue(waitUntil(timeout: 12) {
+            (try? String(contentsOf: savedNote, encoding: .utf8))?.contains("/date") == true
+        }, "Wait for the real autosave before activating the retained completion.")
+        XCTAssertTrue(suggestions.exists, "Autosave must preserve the open candidate list.")
+        let screenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        screenshot.name = "Native Liquid Glass completion"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        // The native container exposes geometry; CodeMirror owns the single AX list.
+        suggestions.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !suggestions.exists })
+        XCTAssertFalse((editor.value as? String ?? "").contains("/date"))
+        app.typeKey("z", modifierFlags: [.command])
+        XCTAssertTrue(waitUntil(timeout: 5) { (editor.value as? String ?? "").contains("/date") })
+        app.typeKey("z", modifierFlags: [.command, .shift])
+        XCTAssertTrue(waitUntil(timeout: 5) { !(editor.value as? String ?? "").contains("/date") })
+        typeAndCommit("focusprobe")
+        app.typeKey(.return, modifierFlags: [])
+        typeAndCommit("/date")
+        XCTAssertTrue(waitUntil(timeout: 5) { (editor.value as? String ?? "").contains("focusprobe") })
+        XCTAssertTrue(suggestions.waitForExistence(timeout: 5))
+        app.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !suggestions.exists })
+        XCTAssertFalse((editor.value as? String ?? "").contains("/date"))
+        app.typeKey(.return, modifierFlags: [])
+        app.typeText("/")
+        XCTAssertTrue(suggestions.waitForExistence(timeout: 5))
+        let listFrame = suggestions.frame
+        for _ in 0..<8 {
+            app.typeKey(.downArrow, modifierFlags: [])
+            XCTAssertTrue(suggestions.exists)
+            XCTAssertEqual(suggestions.frame, listFrame)
+        }
+        let listScreenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        listScreenshot.name = "Compact stable completion list"
+        listScreenshot.lifetime = .keepAlways
+        add(listScreenshot)
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !suggestions.exists })
+        XCTAssertEqual(viewport.frame, frame)
+
+    }
+
+    @MainActor
+    func testDocumentFindDisclosesReplacementAndReturnsToExactSelection() throws {
+        try enterLivePreviewAndAppend("\n\nfindprobe findprobe.")
+        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
+        let viewport = app.webViews.firstMatch
+        let documentFrame = viewport.frame
+        app.typeKey("f", modifierFlags: [.command])
+        let query = app.descendants(matching: .any)["scholium.documentFind.query"].firstMatch
+        let replacement = app.textFields["scholium.documentFind.replacement"]
+        let count = app.staticTexts["scholium.documentFind.matches"]
+        XCTAssertTrue(query.waitForExistence(timeout: 8))
+        XCTAssertFalse(replacement.exists)
+        XCTAssertFalse(count.exists)
+        let panel = app.descendants(matching: .any)["scholium.documentFind"].firstMatch
+        XCTAssertLessThan(panel.frame.width, documentFrame.width)
+        XCTAssertEqual(viewport.frame.minY, documentFrame.minY, accuracy: 1)
+        XCTAssertEqual(viewport.frame.height, documentFrame.height, accuracy: 1)
+        // macOS can briefly show its input-source indicator beside a newly
+        // focused field. Wait for that system overlay before the pointer action.
+        XCTAssertTrue(waitUntil(timeout: 5) { !self.app.dialogs.firstMatch.exists })
+        viewport.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.7)).click()
+        XCTAssertTrue(query.exists, "Document interaction must not dismiss the floating panel.")
+        app.typeKey("f", modifierFlags: [.command])
+        typeCommittedText("findprobe", into: query, in: app)
+        XCTAssertTrue(waitUntil(timeout: 5) { (count.value as? String) == "Match 1 of 2" })
+        app.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { (count.value as? String) == "Match 2 of 2" })
+        app.typeKey(.return, modifierFlags: [.shift])
+        XCTAssertTrue(waitUntil(timeout: 5) { (count.value as? String) == "Match 1 of 2" })
+
+        let compact = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        compact.name = "Document Find — compact native query"
+        compact.lifetime = .keepAlways
+        add(compact)
+
+        app.buttons["scholium.documentFind.disclosure"].click()
+        XCTAssertTrue(replacement.waitForExistence(timeout: 3))
+        XCTAssertEqual(query.frame.minX, replacement.frame.minX, accuracy: 3)
+        XCTAssertEqual(viewport.frame.minY, documentFrame.minY, accuracy: 1)
+        XCTAssertEqual(viewport.frame.height, documentFrame.height, accuracy: 1)
+        typeCommittedText("changedprobe", into: replacement, in: app)
+        app.buttons["scholium.documentFind.replace"].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { (count.value as? String) == "Match 1 of 1" })
+        XCTAssertTrue((editor.value as? String ?? "").contains("changedprobe"))
+
+        let expanded = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        expanded.name = "Document Find — explicit replacement"
+        expanded.lifetime = .keepAlways
+        add(expanded)
+
+        app.typeKey("f", modifierFlags: [.command])
+        XCTAssertTrue(waitUntil(timeout: 3) { !replacement.exists })
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 3) { !query.exists })
+        // Send paste to the app's actual responder, without clicking the editor.
+        try setPasteboardText("focusreturned")
+        app.typeKey("v", modifierFlags: [.command])
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            let value = editor.value as? String ?? ""
+            return value.contains("changedprobe focusreturned.")
+        })
+
+        app.menuBars.menuBarItems["Edit"].click()
+        app.menuItems["Find"].firstMatch.hover()
+        let replaceMenu = app.menuItems["Find and Replace…"].firstMatch
+        XCTAssertTrue(replaceMenu.waitForExistence(timeout: 3))
+        replaceMenu.click()
+        XCTAssertTrue(replacement.waitForExistence(timeout: 5))
+        XCTAssertEqual(replacement.value as? String, "changedprobe")
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 3) { !query.exists })
+
+        selectDocumentMode("Review")
+        app.typeKey("f", modifierFlags: [.command])
+        XCTAssertTrue(query.waitForExistence(timeout: 8))
+        XCTAssertFalse(app.buttons["scholium.documentFind.disclosure"].exists)
+        XCTAssertFalse(replacement.exists)
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 3) { !query.exists })
+    }
+
     @MainActor
     func testDirtyLivePreviewSearchesThisNoteWithoutSaving() throws {
         let token = " searchunsavedtoken"

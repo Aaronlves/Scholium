@@ -1399,7 +1399,7 @@ extension ScholiumUITests {
 
 
     @MainActor
-    func testReviewOwnsFootnoteNavigationAndEditKeepsItPassive() throws {
+    func testFootnotePreviewPreservesModeSpecificNavigation() throws {
         selectDocumentMode("Review")
         let reference = app.buttons["Footnote 1"].firstMatch
         XCTAssertTrue(reference.waitForExistence(timeout: 8))
@@ -1411,6 +1411,21 @@ extension ScholiumUITests {
             app.typeKey(.pageDown, modifierFlags: [])
         }
         XCTAssertTrue(reference.isHittable)
+        reference.hover()
+        let preview = app.descendants(matching: .any)["scholium.documentPreview"].firstMatch
+        XCTAssertTrue(preview.waitForExistence(timeout: 8))
+        preview.hover()
+        XCTAssertTrue(preview.exists)
+        let previewImage = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        previewImage.name = "Native Liquid Glass footnote preview"
+        previewImage.lifetime = .keepAlways
+        add(previewImage)
+        preview.click()
+        app.typeKey("a", modifierFlags: [.command])
+        app.typeKey("c", modifierFlags: [.command])
+        XCTAssertTrue((NSPasteboard.general.string(forType: .string) ?? "").contains("Synthetic Review-only footnote"))
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !preview.exists })
         reference.click()
 
         let returnToReference = app.buttons["Return to footnote reference 1"].firstMatch
@@ -1430,7 +1445,7 @@ extension ScholiumUITests {
             app.descendants(matching: .any)["Markdown editor, Edit mode"]
                 .waitForExistence(timeout: 8)
         )
-        XCTAssertFalse(app.buttons["Footnote 1"].exists)
+        XCTAssertTrue(app.buttons["Footnote 1"].exists)
         XCTAssertFalse(app.buttons["Return to footnote reference 1"].exists)
 
         selectDocumentMode("Source")
@@ -1465,7 +1480,7 @@ extension ScholiumUITests {
         XCTAssertLessThanOrEqual(collapsedControls.height, 80)
 
         app.buttons["scholium.searchScope.thisNote"].click()
-        typeCommittedText("analysis", into: field, in: app)
+        typeCommittedText("Research", into: field, in: app)
         XCTAssertTrue(result.waitForExistence(timeout: 8))
         let expandedContentHeight = result.frame.maxY - field.frame.minY
         XCTAssertGreaterThan(expandedContentHeight, collapsedControls.height)

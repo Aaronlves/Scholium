@@ -252,7 +252,6 @@ function appendAnnotatedWikilink(
   button.dataset.linkAnnotation = "true";
   button.dataset.linkAnnotationTarget = alias || target;
   button.setAttribute("aria-expanded", "false");
-  button.setAttribute("aria-controls", "scholium-preview-popover");
   button.setAttribute("aria-label", `${localized("Show Link Annotation")} ${alias || target}`);
   button.append(systemSymbolElement("text-bubble", "scholium-link-annotation-icon", document));
   const template = document.createElement("template");

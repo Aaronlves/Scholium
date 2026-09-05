@@ -1021,7 +1021,7 @@ extension ScholiumUITests {
                 to: revisedURL
             )
         }
-        if name.contains("testReviewOwnsFootnoteNavigationAndEditKeepsItPassive") {
+        if name.contains("testFootnotePreviewPreservesModeSpecificNavigation") {
             let footnoteNoteURL = analyses.appendingPathComponent("QA Autosave A.md")
             let existingFootnoteFixture = try String(
                 contentsOf: footnoteNoteURL,

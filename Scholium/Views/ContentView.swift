@@ -96,6 +96,7 @@ struct ContentView: View {
                     context: sidebarContext
                 )
             }
+            .scholiumButtonStyle(.automatic)
             .frame(
                 maxWidth: .infinity,
                 maxHeight: .infinity,
@@ -110,9 +111,11 @@ struct ContentView: View {
                 }
             }
             .scholiumSurface(.document)
+            .scholiumButtonStyle(.automatic)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         } apparatus: {
             apparatusRegion
+            .scholiumButtonStyle(.automatic)
             .scholiumSurface(.apparatus)
             .frame(
                 maxWidth: .infinity,
@@ -130,6 +133,7 @@ struct ContentView: View {
                 topInset: ScholiumGrid.Spacing.sectionSeparation
             ) {
                 windowTopNotificationOverlay
+                    .scholiumButtonStyle(.automatic)
                     .ignoresSafeArea(.container, edges: .top)
                     .animation(
                         ScholiumMotion.transientStatus(reduceMotion: reduceMotion),
@@ -186,6 +190,7 @@ struct ContentView: View {
         )
         .sheet(item: presentedSheet) { route in
             sheetContent(for: route)
+                .scholiumButtonStyle(.automatic)
         }
         .alert(item: presentedAlert) { alert in
             switch alert {
@@ -204,46 +209,22 @@ struct ContentView: View {
     @ViewBuilder
     private var refreshStatusNotice: some View {
         if let status = appState.refreshStatusText {
-            HStack(spacing: ScholiumMetrics.Workspace.refreshStatusSpacing) {
-                Label(
-                    status,
-                    systemImage: appState.hasDerivedRefreshFailure
-                        ? "exclamationmark.triangle"
-                        : "arrow.triangle.2.circlepath"
-                )
+            ScholiumNotificationBanner(
+                systemImage: appState.hasDerivedRefreshFailure ? "exclamationmark.triangle" : "arrow.triangle.2.circlepath",
+                colorRole: appState.hasDerivedRefreshFailure ? .attention : .secondaryText,
+                title: status,
+                detail: nil,
+                maximumWidth: ScholiumMetrics.Notice.windowFeedbackMaximumWidth,
+                accessibilityIdentifier: "scholium.refreshStatus"
+            ) {
                 if appState.hasDerivedRefreshFailure {
                     Button("Retry Refresh") {
                         Task { await appState.retryDerivedRefresh() }
                     }
-                    .scholiumActivationPointer()
-                    .buttonStyle(.borderless)
-                    .font(
-                        ScholiumTypography.interface(
-                            .small,
-                            emphasis: .strong
-                        )
-                    )
+                    .scholiumButtonStyle(.borderless)
                 }
             }
-            .font(ScholiumTypography.interface(.small))
-            .padding(
-                .horizontal,
-                ScholiumMetrics.Workspace.refreshStatusHorizontalInset
-            )
-            .padding(
-                .vertical,
-                ScholiumMetrics.Workspace.refreshStatusVerticalInset
-            )
-            .scholiumEditorialSurface(
-                .floatingControl,
-                in: RoundedRectangle(
-                    cornerRadius: ScholiumShape.inlineStatusCornerRadius,
-                    style: .continuous
-                )
-            )
             .padding(ScholiumMetrics.Workspace.refreshStatusOuterInset)
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("scholium.refreshStatus")
         }
     }
 
@@ -1167,8 +1148,7 @@ private struct LoadingOverlay: View {
         ProgressView("Opening vault…")
             .controlSize(.large)
             .padding(ScholiumMetrics.Workspace.loadingOverlayInset)
-            .scholiumEditorialSurface(
-                .floatingControl,
+            .scholiumFloatingSurface(
                 in: RoundedRectangle(
                     cornerRadius: ScholiumShape.loadingSurfaceCornerRadius,
                     style: .continuous

@@ -109,7 +109,7 @@ struct CritiqueProvenanceView: View {
                             .font(ScholiumTypography.interface(.body))
                     }
                     .scholiumActivationPointer()
-                    .buttonStyle(.link)
+                    .scholiumButtonStyle(.link)
                     .disabled(targetNote == nil)
                     .help(targetNote == nil ? "The target Work is unavailable." : targetPath)
                 } else {
@@ -179,7 +179,7 @@ struct CritiqueProvenanceView: View {
                     .contentShape(Rectangle())
                 }
                 .scholiumActivationPointer()
-                .buttonStyle(.plain)
+                .scholiumButtonStyle(.plain)
                 .accessibilityLabel("Specific Findings")
                 .accessibilityValue(
                     "\(findingsAreExpanded ? "Expanded" : "Collapsed"), \(findings.count) \(findings.count == 1 ? "finding" : "findings")"
@@ -253,7 +253,7 @@ struct CritiqueProvenanceView: View {
             .contentShape(Rectangle())
         }
         .scholiumActivationPointer()
-        .buttonStyle(.plain)
+        .scholiumButtonStyle(.plain)
         .disabled(target == nil || resolvedLine == nil)
         .accessibilityLabel("\(finding.judgment.rawValue): \(finding.title)")
         .accessibilityValue(findingDestination(

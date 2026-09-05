@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 21
+let markdownEditorProtocolVersion = 23
 let markdownEditorMaximumInboundBytes = 2_500_000
 let markdownEditorMaximumSelectionRangeCount = 128
 
@@ -197,7 +197,7 @@ struct MarkdownEditorPerformanceSample: Codable, Hashable, Sendable {
 }
 
 enum DocumentFindAction: String, Codable, Hashable, Sendable {
-    case update, next, previous, replaceCurrent, replaceAll
+    case present, update, next, previous, replaceCurrent, replaceAll
 }
 
 enum DocumentFindShortcut: String, Codable, Hashable, Sendable {

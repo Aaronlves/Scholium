@@ -84,8 +84,7 @@ struct SystemTrashConfirmationView: View {
                 ProgressView()
                     .accessibilityLabel("Moving items to Trash…")
                     .padding()
-                    .background(
-                        .regularMaterial,
+                    .scholiumFloatingSurface(
                         in: RoundedRectangle(
                             cornerRadius: ScholiumShape.loadingSurfaceCornerRadius
                         )

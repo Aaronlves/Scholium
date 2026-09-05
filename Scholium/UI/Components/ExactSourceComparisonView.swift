@@ -330,7 +330,7 @@ struct ExactSourceComparisonView: View {
             .contentShape(Rectangle())
         }
         .scholiumActivationPointer()
-        .buttonStyle(.plain)
+        .scholiumButtonStyle(.plain)
         .scholiumForeground(.secondaryText)
         .accessibilityHint("Shows the folded unchanged lines")
         .accessibilityIdentifier("\(identifierPrefix).unchanged.\(id)")

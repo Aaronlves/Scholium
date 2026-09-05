@@ -91,7 +91,7 @@ describe("appendMarkdownBlocks", () => {
       ".scholium-link-annotation-button",
     )!;
     expect(annotationButton.getAttribute("aria-expanded")).toBe("false");
-    expect(annotationButton.getAttribute("aria-controls")).toBe("scholium-preview-popover");
+    expect(annotationButton.getAttribute("aria-controls")).toBeNull();
     expect(root.querySelector(".scholium-link-annotation-marker")?.tagName).toBe("SUP");
     expect(root.querySelector<HTMLTemplateElement>(".scholium-link-annotation-template")
       ?.content.querySelector(".scholium-link-annotation-content")?.textContent)

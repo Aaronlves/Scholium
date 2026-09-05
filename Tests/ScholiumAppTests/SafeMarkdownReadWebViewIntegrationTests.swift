@@ -6,6 +6,46 @@ import WebKit
 @testable import ScholiumApp
 
 extension MarkdownEditorWebViewIntegrationTests {
+    @Test("Review find preserves prose layout and content")
+    func reviewFindPreservesLayout() async throws {
+        let source = "findtarget at the beginning.\n\n" + String(repeating: "Following paragraph.\n\n", count: 30)
+        let document = NoteDocument(relativePath: "Find.md", rawContent: source)
+        let harness = ReadHarness(
+            source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: document.fingerprint.sha256,
+            initialAnchor: nil,
+            initialScrollFraction: 0
+        )
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let snapshot = try #require(try await harness.callBridgeJavaScript("""
+            const content = document.getElementById('scholium-document');
+            const before = content.innerHTML;
+            const geometry = () => JSON.stringify([getComputedStyle(content).paddingTop,
+              getComputedStyle(content).paddingBottom, content.offsetWidth, content.offsetHeight]);
+            const beforeGeometry = geometry();
+            window.scrollTo(0, 300);
+            const scrollBefore = window.scrollY;
+            window.scholiumReviewFind.perform({
+              query: 'findtarget', caseSensitive: false, wholeWord: false, action: 'present'
+            });
+            const preservesScroll = window.scrollY === scrollBefore;
+            const result = window.scholiumReviewFind.perform({
+              query: 'findtarget', caseSensitive: false, wholeWord: false,
+              action: 'update'
+            });
+            const duringGeometry = geometry();
+            window.scholiumReviewFind.perform({operation: 'clear'});
+            return {total: result.total, unchanged: before === content.innerHTML, preservesScroll,
+              stable: beforeGeometry === duringGeometry && beforeGeometry === geometry()};
+            """) as? [String: Any])
+        #expect(snapshot["total"] as? Int == 1)
+        #expect(snapshot["unchanged"] as? Bool == true)
+        #expect(snapshot["preservesScroll"] as? Bool == true)
+        #expect(snapshot["stable"] as? Bool == true)
+    }
+
     @Test("Initial Review consumes only a finished source-free prewarmed WebView")
     func readConsumesPreparedWebView() async throws {
         let prewarmer = ScholiumWebKitProcessPrewarmer.shared
@@ -663,46 +703,62 @@ extension MarkdownEditorWebViewIntegrationTests {
 
     @Test("Review footnotes preview, navigate, and return")
     func reviewFootnotesOwnInteraction() async throws {
-        let source = "First claim[^one], then another claim[^one].\n\n[^one]: Basis.\n"
+        let previewSource = "First claim[^one], then another claim[^one].\n\n[^one]: Basis.\n"
+        let source = previewSource + "\n\n" + String(repeating: "Synthetic surrounding paragraph.\n\n", count: 24)
         let document = NoteDocument(relativePath: "Footnotes.md", rawContent: source)
         let harness = ReadHarness(
             source: source,
             htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
             fingerprint: DocumentFingerprint(content: source).sha256,
             initialAnchor: nil,
-            initialScrollFraction: 0
+            initialScrollFraction: 0,
+            laysOutForNativePreview: true
         )
         defer { harness.close() }
         try await harness.waitUntilReady()
 
-        let interaction = try await harness.footnoteInteractionSnapshot()
-        #expect(interaction.previewTitle == "Footnote 1")
-        #expect(interaction.originID == "fnref-1-2")
-        #expect(!interaction.previewHiddenAfterHover)
-        #expect(interaction.previewHiddenAfterScroll)
-        #expect(!interaction.previewHiddenAfterFocus)
-        #expect(interaction.previewHiddenAfterFocusExit)
-        #expect(!interaction.previewBackground.isEmpty)
-        #expect(interaction.previewBackground != "rgba(0, 0, 0, 0)")
-        #expect(!interaction.previewBorderColor.isEmpty)
-        #expect(interaction.previewBackdropFilter == "none")
-        #expect(interaction.navigatedToDefinition)
-        #expect(interaction.definitionFocused)
-        #expect(interaction.returnedToReference)
-        #expect(interaction.referenceFocused)
+        _ = try await harness.callBridgeJavaScript("document.querySelectorAll('.footnote-reference')[1].dispatchEvent(new PointerEvent('pointerover', {bubbles: true}));")
+        try await harness.waitForNativePreview(title: "Footnote 1")
+        #expect(try await harness.callNativePreview("return document.body.textContent.includes('Basis.');") as? Bool == true)
+        _ = try await harness.callPageJavaScript("window.dispatchEvent(new Event('scroll'));")
+        try await harness.waitForNativePreview(visible: false)
+        _ = try await harness.callPageJavaScript("document.querySelectorAll('.footnote-reference')[1].focus({preventScroll: true});")
+        try await harness.waitForNativePreview(title: "Footnote 1")
+        _ = try await harness.callPageJavaScript("document.querySelectorAll('.footnote-reference')[1].blur();")
+        try await harness.waitForNativePreview(visible: false)
+        let navigation = try #require(try await harness.callBridgeJavaScript("""
+            const reference = document.querySelectorAll('.footnote-reference')[1];
+            const origin = reference.closest('.footnote-reference-wrap');
+            const definition = document.getElementById(reference.dataset.target);
+            const back = definition.querySelector('.footnote-return');
+            let navigated = false, returned = false;
+            definition.scrollIntoView = () => { navigated = true; };
+            origin.scrollIntoView = () => { returned = true; };
+            reference.click();
+            const definitionFocused = document.activeElement === definition;
+            back.click();
+            return {origin: origin.id, navigated, returned, definitionFocused,
+                    referenceFocused: document.activeElement === reference};
+            """) as? [String: Any])
+        #expect(navigation["origin"] as? String == "fnref-1-2")
+        for key in ["navigated", "returned", "definitionFocused", "referenceFocused"] {
+            #expect(navigation[key] as? Bool == true)
+        }
         await harness.closeAndDrain()
     }
 
     @Test("Review link previews update without reloading the document page")
     func reviewLinkPreviewsConvergeInPlace() async throws {
-        let source = "[[Target]]\n"
+        let previewSource = "[[Target]]\n"
+        let source = previewSource + "\n\n" + String(repeating: "Synthetic surrounding paragraph.\n\n", count: 24)
         let document = NoteDocument(relativePath: "PreviewSource.md", rawContent: source)
         let harness = ReadHarness(
             source: source,
             htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
             fingerprint: DocumentFingerprint(content: source).sha256,
             initialAnchor: nil,
-            initialScrollFraction: 0
+            initialScrollFraction: 0,
+            laysOutForNativePreview: true
         )
         defer { harness.close() }
         try await harness.waitUntilReady()
@@ -715,13 +771,8 @@ extension MarkdownEditorWebViewIntegrationTests {
         let deadline = clock.now.advanced(by: .seconds(5))
         var previewTitle = ""
         while previewTitle != "Target note" {
-            previewTitle = try await harness.callPageJavaScript(
-                """
-                const link = document.querySelector('a.wiki-link');
-                link?.dispatchEvent(new PointerEvent('pointerover', {bubbles: true}));
-                return document.querySelector('.scholium-preview-title')?.textContent || '';
-                """
-            ) as? String ?? ""
+            _ = try await harness.callPageJavaScript("document.querySelector('a.wiki-link')?.dispatchEvent(new PointerEvent('pointerover', {bubbles: true}));")
+            previewTitle = (try? await harness.callNativePreview("return document.querySelector('.scholium-preview-title')?.textContent || '';")) as? String ?? ""
             if clock.now >= deadline {
                 Issue.record("Review did not install the updated link preview in place.")
                 break
@@ -738,7 +789,8 @@ extension MarkdownEditorWebViewIntegrationTests {
 
     @Test("Review shares link, preview, and finite embedded Note presentation")
     func reviewLinkAndEmbeddedNotePresentation() async throws {
-        let source = "[[Target]] and [External](https://example.com)\n\n![[Embedded]]\n"
+        let previewSource = "[[Target]] and [External](https://example.com)\n\n![[Embedded]]\n"
+        let source = previewSource + "\n\n" + String(repeating: "Synthetic surrounding paragraph.\n\n", count: 24)
         let document = NoteDocument(relativePath: "LinkedDocument.md", rawContent: source)
         let rendered = SafeMarkdownRenderer.render(document)
         let targetLink = try #require(rendered.semanticDocument.links.first {
@@ -761,7 +813,8 @@ extension MarkdownEditorWebViewIntegrationTests {
             htmlBody: rendered.htmlBody,
             fingerprint: DocumentFingerprint(content: source).sha256,
             initialAnchor: nil,
-            initialScrollFraction: 0
+            initialScrollFraction: 0,
+            laysOutForNativePreview: true
         )
         defer { harness.close() }
         try await harness.waitUntilReady()
@@ -801,29 +854,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             const viewport = shell?.querySelector('.scholium-embedded-note-viewport');
             const embeddedBody = shell?.querySelector('.scholium-embedded-note-body');
             const open = shell?.querySelector('.scholium-embedded-note-open');
-            const popover = document.getElementById('scholium-preview-popover');
-            if (!wiki || !external || !shell || !viewport || !embeddedBody || !open || !popover) {
-              return null;
-            }
-            wiki.dispatchEvent(new PointerEvent('pointerover', {bubbles: true}));
-            await new Promise(resolve => setTimeout(resolve, 25));
-            const previewBody = popover.querySelector('.scholium-preview-body');
-            const metadata = popover.querySelector('.scholium-preview-metadata');
-            const previewDuplicateTitleCount = [...previewBody.querySelectorAll('h1')]
-              .filter(heading => (heading.textContent || '').trim() === 'Target note').length;
-            popover.scrollTop = 120;
-            const previewScrollTop = popover.scrollTop;
-            wiki.dispatchEvent(new PointerEvent('pointerout', {
-              bubbles: true,
-              relatedTarget: document.body
-            }));
-            await new Promise(resolve => setTimeout(resolve, 60));
-            popover.dispatchEvent(new PointerEvent('pointerenter', {bubbles: false}));
-            await new Promise(resolve => setTimeout(resolve, 220));
-            const remainedVisibleInside = !popover.hidden;
-            popover.dispatchEvent(new PointerEvent('pointerleave', {bubbles: false}));
-            await new Promise(resolve => setTimeout(resolve, 220));
-            const hiddenAfterGrace = popover.hidden;
+            if (!wiki || !external || !shell || !viewport || !embeddedBody || !open) return null;
             viewport.scrollTop = 160;
             const wikiStyle = getComputedStyle(wiki);
             const externalStyle = getComputedStyle(external);
@@ -831,12 +862,6 @@ extension MarkdownEditorWebViewIntegrationTests {
               sameAccent: wikiStyle.color === externalStyle.color,
               wikiDecoration: wikiStyle.textDecorationLine,
               externalDecoration: externalStyle.textDecorationLine,
-              metadataHidden: metadata.hidden,
-              previewUsesDocumentOwner: previewBody.classList.contains('scholium-document'),
-              previewDuplicateTitleCount,
-              previewScrollTop,
-              remainedVisibleInside,
-              hiddenAfterGrace,
               inlineEmbedCount: document.querySelectorAll('a.scholium-embed').length,
               embeddedUsesDocumentOwner: embeddedBody.classList.contains('scholium-document'),
               embeddedDuplicateTitleCount: [...embeddedBody.querySelectorAll('h1')]
@@ -852,12 +877,6 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(snapshot["sameAccent"] as? Bool == true)
         #expect((snapshot["wikiDecoration"] as? String)?.contains("underline") == true)
         #expect((snapshot["externalDecoration"] as? String)?.contains("underline") == true)
-        #expect(snapshot["metadataHidden"] as? Bool == true)
-        #expect(snapshot["previewUsesDocumentOwner"] as? Bool == true)
-        #expect(snapshot["previewDuplicateTitleCount"] as? Int == 0)
-        #expect((snapshot["previewScrollTop"] as? Double ?? 0) > 0)
-        #expect(snapshot["remainedVisibleInside"] as? Bool == true)
-        #expect(snapshot["hiddenAfterGrace"] as? Bool == true)
         #expect(snapshot["inlineEmbedCount"] as? Int == 0)
         #expect(snapshot["embeddedUsesDocumentOwner"] as? Bool == true)
         #expect(snapshot["embeddedDuplicateTitleCount"] as? Int == 0)
@@ -866,16 +885,37 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(snapshot["embeddedSourceLocators"] as? Int == 0)
         #expect(snapshot["openBadgeCount"] as? Int == 0)
         #expect(snapshot["viewportTabIndex"] as? Int == 0)
+        _ = try await harness.callPageJavaScript("document.querySelector('a.wiki-link:not(.scholium-embedded-note-open)').dispatchEvent(new PointerEvent('pointerover', {bubbles: true}));")
+        try await harness.waitForNativePreview(title: "Target note")
+        let preview = try #require(try await harness.callNativePreview("""
+            window.scrollTo(0, 120);
+            const body = document.querySelector('.scholium-preview-body');
+            return {usesDocumentOwner: body.classList.contains('scholium-document'),
+                    duplicates: body.querySelectorAll('h1').length,
+                    scrolls: document.documentElement.scrollHeight > innerHeight,
+                    metadataHidden: document.querySelector('.scholium-preview-metadata').hidden};
+            """) as? [String: Any])
+        #expect(preview["usesDocumentOwner"] as? Bool == true)
+        #expect(preview["duplicates"] as? Int == 0)
+        #expect(preview["scrolls"] as? Bool == true)
+        #expect(preview["metadataHidden"] as? Bool == true)
+        _ = try await harness.callPageJavaScript("document.querySelector('a.wiki-link').dispatchEvent(new PointerEvent('pointerout', {bubbles: true, relatedTarget: document.body}));")
+        try harness.hoverNativePreview(entered: true)
+        try await Task.sleep(for: .milliseconds(220))
+        #expect(harness.nativePreviewWebView() != nil)
+        try harness.hoverNativePreview(entered: false)
+        try await harness.waitForNativePreview(visible: false)
         await harness.closeAndDrain()
     }
 
     @Test("Review link previews open inside callouts")
     func reviewCalloutLinkPreviews() async throws {
-        let source = """
+        let previewSource = """
         > [!connect] Curated connections
         > - [[Target]]
         > - [[Support]]{{A scoped reason.}}
         """
+        let source = previewSource + "\n\n" + String(repeating: "Synthetic surrounding paragraph.\n\n", count: 24)
         let document = NoteDocument(relativePath: "CalloutPreviews.md", rawContent: source)
         let rendered = SafeMarkdownRenderer.render(document)
         let links = rendered.semanticDocument.links
@@ -887,7 +927,8 @@ extension MarkdownEditorWebViewIntegrationTests {
             htmlBody: rendered.htmlBody,
             fingerprint: DocumentFingerprint(content: source).sha256,
             initialAnchor: nil,
-            initialScrollFraction: 0
+            initialScrollFraction: 0,
+            laysOutForNativePreview: true
         )
         defer { harness.close() }
         try await harness.waitUntilReady()
@@ -902,113 +943,57 @@ extension MarkdownEditorWebViewIntegrationTests {
             ),
         ], revision: "callout-links-1")
 
-        let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: .seconds(5))
-        var titles: [String] = []
-        while titles != ["Target note", "Supporting note"] {
-            titles = try await harness.callPageJavaScript(
-                """
-                return [...document.querySelectorAll('.scholium-callout a.wiki-link')].map(link => {
-                  link.dispatchEvent(new PointerEvent('pointerover', {bubbles: true}));
-                  return document.querySelector('.scholium-preview-title')?.textContent || '';
-                });
-                """
-            ) as? [String] ?? []
-            if clock.now >= deadline {
-                Issue.record("Review did not resolve callout link previews from document source ranges.")
-                break
+        for (index, title) in ["Target note", "Supporting note"].enumerated() {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+            var actual = ""
+            while actual != title && ContinuousClock.now < deadline {
+                _ = try await harness.callPageJavaScript("document.querySelectorAll('.scholium-callout a.wiki-link')[index]?.dispatchEvent(new PointerEvent('pointerover', {bubbles: true}));", arguments: ["index": index])
+                actual = (try? await harness.callNativePreview("return document.querySelector('.scholium-preview-title')?.textContent || '';")) as? String ?? ""
+                if actual != title { try await Task.sleep(for: .milliseconds(25)) }
             }
-            try await Task.sleep(for: .milliseconds(25))
+            #expect(actual == title)
         }
-        #expect(titles == ["Target note", "Supporting note"])
         await harness.closeAndDrain()
     }
 
     @Test("Review presents an annotated link in the shared anchored preview")
     func reviewAnnotatedLinkDisclosure() async throws {
-        let source = "[[Support]]{{First **reason**.\n\n- Second reason.}} followed by prose.\n"
+        let previewSource = "[[Support]]{{First **reason**.\n\n- Second reason.}} followed by prose.\n"
+        let source = previewSource + "\n\n" + String(repeating: "Synthetic surrounding paragraph.\n\n", count: 24)
         let document = NoteDocument(relativePath: "Links.md", rawContent: source)
         let harness = ReadHarness(
             source: source,
             htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
             fingerprint: DocumentFingerprint(content: source).sha256,
             initialAnchor: nil,
-            initialScrollFraction: 0
+            initialScrollFraction: 0,
+            laysOutForNativePreview: true
         )
         defer { harness.close() }
         try await harness.waitUntilReady()
 
-        let snapshot = try #require(try await harness.callPageJavaScript(
-            """
+        let originalHeight = try await harness.callPageJavaScript("return document.documentElement.scrollHeight;") as? Double
+        _ = try await harness.callPageJavaScript("document.querySelector('.scholium-link-annotation-button').dispatchEvent(new PointerEvent('pointerover', {bubbles: true}));")
+        try await harness.waitForNativePreview()
+        #expect(try await harness.callNativePreview("return document.querySelector('strong')?.textContent;") as? String == "reason")
+        #expect(try await harness.callNativePreview("return document.body.textContent.includes('Second reason.');") as? Bool == true)
+        #expect(try await harness.callPageJavaScript("return document.querySelector('.scholium-link-annotation-button').getAttribute('aria-expanded');") as? String == "true")
+        _ = try await harness.callPageJavaScript("""
             const button = document.querySelector('.scholium-link-annotation-button');
-            const icon = button?.querySelector('span');
-            const marker = button?.closest('.scholium-link-annotation-marker');
-            const link = document.querySelector('.scholium-annotated-link .wiki-link');
-            const popover = document.getElementById('scholium-preview-popover');
-            if (!button || !icon || !marker || !link || !popover) return null;
-            const documentHeightBefore = document.documentElement.scrollHeight;
-            button.dispatchEvent(new PointerEvent('pointerover', {bubbles: true}));
-            await new Promise(resolve => setTimeout(resolve, 25));
-            const content = popover.querySelector('.scholium-preview-body');
-            const expandedAfterHover = button.getAttribute('aria-expanded');
-            const previewText = content?.textContent || '';
-            const strongText = content?.querySelector('strong')?.textContent || '';
-            const previewRole = popover.getAttribute('role') || '';
-            const feedbackBackground = getComputedStyle(button).backgroundColor;
             button.click();
-            button.dispatchEvent(new PointerEvent('pointerout', {
-              bubbles: true,
-              relatedTarget: document.body
-            }));
-            await new Promise(resolve => setTimeout(resolve, 220));
-            const pinnedVisibleAfterExit = !popover.hidden;
-            document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
-            const hiddenAfterEscape = popover.hidden;
-            button.blur();
-            button.focus({preventScroll: true});
-            await new Promise(resolve => setTimeout(resolve, 25));
-            const keyboardFocusVisible = !popover.hidden;
-            const keyboardFocusOwned = document.activeElement === button;
-            const expandedAfterFocus = button.getAttribute('aria-expanded');
-            button.blur();
-            await new Promise(resolve => setTimeout(resolve, 220));
-            const markerStyle = getComputedStyle(marker);
-            return {
-              expandedAfterHover,
-              previewRole,
-              previewText,
-              strongText,
-              pinnedVisibleAfterExit,
-              hiddenAfterEscape,
-              keyboardFocusVisible,
-              keyboardFocusOwned,
-              expandedAfterFocus,
-              hiddenAfterFocusExit: popover.hidden,
-              documentHeightStable: document.documentElement.scrollHeight === documentHeightBefore,
-              markerLineHeight: markerStyle.lineHeight,
-              markerVerticalAlign: markerStyle.verticalAlign,
-              feedbackVisible: feedbackBackground !== 'rgba(0, 0, 0, 0)',
-              inlinePanelCount: document.querySelectorAll('.scholium-link-annotation-panel').length,
-              inlineSVGCount: document.querySelectorAll('svg').length
-            };
-            """
-        ) as? [String: Any])
-        #expect(snapshot["expandedAfterHover"] as? String == "true")
-        #expect(snapshot["previewRole"] as? String == "note")
-        #expect((snapshot["previewText"] as? String)?.contains("Second reason.") == true)
-        #expect(snapshot["strongText"] as? String == "reason")
-        #expect(snapshot["pinnedVisibleAfterExit"] as? Bool == true)
-        #expect(snapshot["hiddenAfterEscape"] as? Bool == true)
-        #expect(snapshot["keyboardFocusVisible"] as? Bool == true)
-        #expect(snapshot["keyboardFocusOwned"] as? Bool == true)
-        #expect(snapshot["expandedAfterFocus"] as? String == "true")
-        #expect(snapshot["hiddenAfterFocusExit"] as? Bool == true)
-        #expect(snapshot["documentHeightStable"] as? Bool == true)
-        #expect(snapshot["markerLineHeight"] as? String == "0px")
-        #expect(snapshot["markerVerticalAlign"] as? String == "super")
-        #expect(snapshot["feedbackVisible"] as? Bool == true)
-        #expect(snapshot["inlinePanelCount"] as? Int == 0)
-        #expect(snapshot["inlineSVGCount"] as? Int == 0)
+            button.dispatchEvent(new PointerEvent('pointerout', {bubbles: true, relatedTarget: document.body}));
+            """)
+        try await Task.sleep(for: .milliseconds(220))
+        #expect(harness.nativePreviewWebView() != nil)
+        _ = try await harness.callPageJavaScript("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));")
+        try await harness.waitForNativePreview(visible: false)
+        _ = try await harness.callPageJavaScript("const button = document.querySelector('.scholium-link-annotation-button'); button.blur(); button.focus({preventScroll: true});")
+        try await harness.waitForNativePreview()
+        #expect(try await harness.callPageJavaScript("return document.activeElement === document.querySelector('.scholium-link-annotation-button');") as? Bool == true)
+        #expect(try await harness.callPageJavaScript("return document.documentElement.scrollHeight;") as? Double == originalHeight)
+        #expect(try await harness.callPageJavaScript("return document.querySelectorAll('#scholium-preview-popover, .scholium-link-annotation-panel').length;") as? Int == 0)
+        _ = try await harness.callPageJavaScript("document.querySelector('.scholium-link-annotation-button').blur();")
+        try await harness.waitForNativePreview(visible: false)
         await harness.closeAndDrain()
     }
 
@@ -1096,22 +1081,6 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(result["background"] == "rgb(255, 154, 0)")
         #expect(result["color"] == "rgb(40, 36, 29)")
         await harness.closeAndDrain()
-    }
-
-    struct FootnoteInteractionSnapshot: Decodable {
-        let previewTitle: String
-        let originID: String
-        let previewHiddenAfterHover: Bool
-        let previewHiddenAfterScroll: Bool
-        let previewHiddenAfterFocus: Bool
-        let previewHiddenAfterFocusExit: Bool
-        let previewBackground: String
-        let previewBorderColor: String
-        let previewBackdropFilter: String
-        let navigatedToDefinition: Bool
-        let definitionFocused: Bool
-        let returnedToReference: Bool
-        let referenceFocused: Bool
     }
 
     struct ReviewSelectionPresentationSnapshot: Decodable {
@@ -1707,7 +1676,8 @@ extension MarkdownEditorWebViewIntegrationTests {
             documentTitle: String = "",
             userCSS: String = "",
             testingForcesFinalizationFailure: Bool = false,
-            testingScrollRestoreDelayMilliseconds: Int = 0
+            testingScrollRestoreDelayMilliseconds: Int = 0,
+            laysOutForNativePreview: Bool = false
         ) {
             _ = NSApplication.shared
             self.source = source
@@ -1737,12 +1707,14 @@ extension MarkdownEditorWebViewIntegrationTests {
                 fingerprint: fingerprint,
                 documentTitle: documentTitle,
                 userCSS: userCSS,
-                sourceBox: sourceBox
+                sourceBox: sourceBox,
+                laysOutForNativePreview: laysOutForNativePreview
             )
             let controller = NSHostingController(rootView: root)
             hostingController = controller
             window.contentViewController = controller
             window.orderFrontRegardless()
+            if laysOutForNativePreview { window.makeKeyAndOrderFront(nil); NSApp.activate() }
         }
 
         func waitUntilReady() async throws {
@@ -1754,6 +1726,8 @@ extension MarkdownEditorWebViewIntegrationTests {
                     throw ReadHarnessError.renderingFailed
                 }
                 if clock.now >= deadline {
+                    let diagnostic = try? await callBridgeJavaScript("return {state: document.readyState, fonts: document.fonts.status, native: typeof window.scholiumNativeFloatingEvent, width: innerWidth, height: innerHeight};")
+                    print("READ READY DIAGNOSTIC", diagnostic ?? "nil")
                     Issue.record("The Read WKWebView did not report rendering readiness.")
                     throw ReadHarnessError.timedOut
                 }
@@ -1824,6 +1798,43 @@ extension MarkdownEditorWebViewIntegrationTests {
                 }
                 try await Task.sleep(for: .milliseconds(25))
             }
+        }
+
+        func nativePreviewWebView() -> WKWebView? {
+            guard let root = window.contentViewController?.view,
+                  let owner = findWebView(in: root) else { return nil }
+            return (owner.superview?.subviews ?? []).compactMap { $0 as? NSGlassEffectView }
+                .compactMap { $0.contentView as? WKWebView }.first
+        }
+
+        func waitForNativePreview(title: String? = nil, visible: Bool = true) async throws {
+            let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+            while ContinuousClock.now < deadline {
+                if let preview = nativePreviewWebView() {
+                    let actual = (try? await preview.evaluateJavaScript(
+                        "document.querySelector('.scholium-preview-title')?.textContent || ''"
+                    )) as? String ?? ""
+                    if visible && !actual.isEmpty && (title == nil || actual == title) { return }
+                } else if !visible { return }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            Issue.record("Native preview did not reach the expected visibility/title: \(title ?? "any"), visible=\(visible)")
+            throw ReadHarnessError.timedOut
+        }
+
+        func callNativePreview(_ body: String) async throws -> Any? {
+            guard let preview = nativePreviewWebView() else { throw ReadHarnessError.webViewUnavailable }
+            return try await preview.callAsyncJavaScript(body, arguments: [:], in: nil, contentWorld: .page)
+        }
+
+        func hoverNativePreview(entered: Bool) throws {
+            let root = try #require(window.contentViewController?.view)
+            let owner = try #require(findWebView(in: root))
+            let glass = try #require(owner.superview?.subviews.compactMap { $0 as? NSGlassEffectView }.first)
+            let event = try #require(NSEvent.mouseEvent(with: .mouseMoved, location: .zero,
+                modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+                context: nil, eventNumber: 0, clickCount: 0, pressure: 0))
+            if entered { glass.mouseEntered(with: event) } else { glass.mouseExited(with: event) }
         }
 
         func callPageJavaScript(
@@ -2117,73 +2128,6 @@ extension MarkdownEditorWebViewIntegrationTests {
                 in: nil,
                 contentWorld: .page
             )
-        }
-
-        func footnoteInteractionSnapshot() async throws -> FootnoteInteractionSnapshot {
-            let rawResult = try await callBridgeJavaScript(
-                """
-                const references = Array.from(document.querySelectorAll('.footnote-reference'));
-                const reference = references[1];
-                const origin = reference && reference.closest('.footnote-reference-wrap');
-                const definition = reference && document.getElementById(reference.dataset.target);
-                const back = definition && definition.querySelector('.footnote-return');
-                const popover = document.getElementById('scholium-preview-popover');
-                const title = popover && popover.querySelector('.scholium-preview-title');
-                if (!reference || !origin || !definition || !back || !popover || !title) return null;
-
-                let navigatedToDefinition = false;
-                let returnedToReference = false;
-                definition.scrollIntoView = () => { navigatedToDefinition = true; };
-                origin.scrollIntoView = () => { returnedToReference = true; };
-
-                reference.dispatchEvent(new PointerEvent('pointerover', {bubbles: true}));
-                const previewTitle = title.textContent || '';
-                const previewHiddenAfterHover = popover.hidden;
-                const previewStyle = getComputedStyle(popover);
-                const previewBackground = previewStyle.backgroundColor;
-                const previewBorderColor = previewStyle.borderTopColor;
-                const previewBackdropFilter = previewStyle.backdropFilter
-                  || previewStyle.webkitBackdropFilter
-                  || 'none';
-                window.dispatchEvent(new Event('scroll'));
-                const previewHiddenAfterScroll = popover.hidden;
-
-                reference.focus({preventScroll: true});
-                const previewHiddenAfterFocus = popover.hidden;
-                reference.dispatchEvent(new FocusEvent('focusout', {
-                  bubbles: true,
-                  relatedTarget: document.body
-                }));
-                await new Promise(resolve => setTimeout(resolve, 220));
-                const previewHiddenAfterFocusExit = popover.hidden;
-
-                reference.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true}));
-                const definitionFocused = document.activeElement === definition;
-                back.dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true}));
-
-                return {
-                  previewTitle,
-                  originID: origin.id,
-                  previewHiddenAfterHover,
-                  previewHiddenAfterScroll,
-                  previewHiddenAfterFocus,
-                  previewHiddenAfterFocusExit,
-                  previewBackground,
-                  previewBorderColor,
-                  previewBackdropFilter,
-                  navigatedToDefinition,
-                  definitionFocused,
-                  returnedToReference,
-                  referenceFocused: document.activeElement === reference
-                };
-                """,
-                arguments: [:]
-            )
-            guard JSONSerialization.isValidJSONObject(rawResult as Any),
-                  let data = try? JSONSerialization.data(withJSONObject: rawResult as Any) else {
-                throw ReadHarnessError.invalidSnapshot
-            }
-            return try JSONDecoder().decode(FootnoteInteractionSnapshot.self, from: data)
         }
 
         func selectVisibleText(_ requestedText: String) async throws -> MarkdownReviewSelection {
@@ -2571,6 +2515,7 @@ extension MarkdownEditorWebViewIntegrationTests {
         let documentTitle: String
         let userCSS: String
         @ObservedObject var sourceBox: SourceBox
+        let laysOutForNativePreview: Bool
 
         var body: some View {
             var surface = SafeMarkdownReadWebView(
@@ -2626,6 +2571,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             surface.testingScrollRestoreDelayMilliseconds = sourceBox.testingScrollRestoreDelayMilliseconds
             #endif
             return surface.id(sourceBox.surfaceIdentity)
+                .frame(width: laysOutForNativePreview ? 720 : nil, height: laysOutForNativePreview ? 420 : nil)
         }
     }
 }

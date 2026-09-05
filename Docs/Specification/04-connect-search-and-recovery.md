@@ -68,7 +68,7 @@ requires one complete validated Record generation; All may therefore present
 one provider while naming the other's unavailable or stale state. Completion
 replaces the limitation without moving focus or invalidating usable results.
 
-Document Find is a separate inline editor operation over the current unsaved
+Document Find is a separate document-local operation over the current unsaved
 buffer. It supports literal text, case and whole-word options, count,
 Previous/Next, and standard keyboard routes. Edit and Source add Replace
 Current/All as single Undo transactions. Find creates no Search provider,

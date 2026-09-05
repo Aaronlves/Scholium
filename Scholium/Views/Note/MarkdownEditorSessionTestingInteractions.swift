@@ -328,9 +328,6 @@ extension MarkdownEditorSession {
                 detail: 1
             }));
             const duringDragLineText = lineTextValue();
-            const toolbarHiddenDuringDrag = document.getElementById(
-                'scholium-selection-actions'
-            )?.hidden !== false;
             document.dispatchEvent(new MouseEvent('mouseup', {
                 view: window,
                 bubbles: true,
@@ -343,14 +340,9 @@ extension MarkdownEditorSession {
             }));
             await Promise.resolve();
             const afterMouseUpLineText = lineTextValue();
-            const toolbarVisibleAfterMouseUp = document.getElementById(
-                'scholium-selection-actions'
-            )?.hidden === false;
             return {
                 duringDragLineText,
-                afterMouseUpLineText,
-                toolbarHiddenDuringDrag,
-                toolbarVisibleAfterMouseUp
+                afterMouseUpLineText
             };
             """,
             arguments: [
@@ -363,16 +355,12 @@ extension MarkdownEditorSession {
         )
         guard let payload = rawResult as? [String: Any],
               let during = payload["duringDragLineText"] as? String,
-              let after = payload["afterMouseUpLineText"] as? String,
-              let hiddenDuring = payload["toolbarHiddenDuringDrag"] as? Bool,
-              let visibleAfter = payload["toolbarVisibleAfterMouseUp"] as? Bool else {
+              let after = payload["afterMouseUpLineText"] as? String else {
             throw SessionError.invalidResult
         }
         return TestingPointerProjectionResult(
             duringDragLineText: during,
-            afterMouseUpLineText: after,
-            toolbarHiddenDuringDrag: hiddenDuring,
-            toolbarVisibleAfterMouseUp: visibleAfter
+            afterMouseUpLineText: after
         )
     }
 

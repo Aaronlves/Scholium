@@ -3,6 +3,38 @@ import Testing
 
 @Suite("Interface presentation ownership")
 struct InterfacePresentationOwnershipTests {
+  @Test("Native button styling has one shared entry and no feature-owned prominent variants")
+  func nativeButtonStyleOwnership() throws {
+    let directStyles = try occurrenceInventory(
+      pattern: #"\.buttonStyle\s*\(\s*\."#,
+      extensions: ["swift"]
+    )
+    #expect(directStyles == ["Scholium/UI/Components/ScholiumButtons.swift": 1],
+            Comment(rawValue: diagnostic(for: directStyles)))
+    let menuStyles = try occurrenceInventory(
+      pattern: #"\.menuStyle\s*\(\s*\."#, extensions: ["swift"]
+    )
+    #expect(menuStyles == ["Scholium/UI/Components/ScholiumButtons.swift": 1],
+            Comment(rawValue: diagnostic(for: menuStyles)))
+    let prominentStyles = try occurrenceInventory(
+      pattern: #"\.(borderedProminent|glassProminent)\b"#,
+      extensions: ["swift"]
+    )
+    #expect(prominentStyles.isEmpty, Comment(rawValue: diagnostic(for: prominentStyles)))
+    let linkButtons = try occurrenceInventory(
+      pattern: #"\.scholiumButtonStyle\(\.link\)"#, extensions: ["swift"]
+    )
+    #expect(linkButtons == ["Scholium/Views/Note/CritiqueProvenanceView.swift": 1],
+            Comment(rawValue: diagnostic(for: linkButtons)))
+    let tintOwners = try occurrenceInventory(pattern: #"\.tint\s*\("#, extensions: ["swift"])
+    #expect(tintOwners == [
+      "Scholium/App/ScholiumApp.swift": 3,
+      "Scholium/UI/Components/ScholiumButtons.swift": 3,
+      "Scholium/Views/ResearchRecord/ResearchRecordsWindow.swift": 1,
+      "Scholium/Views/WorkspaceSetupView.swift": 1,
+    ], Comment(rawValue: diagnostic(for: tintOwners)))
+  }
+
   @Test("Authored shadow syntax stays inside the closed semantic inventory")
   func authoredShadowInventory() throws {
     let swiftShadows = try occurrenceInventory(
@@ -23,8 +55,6 @@ struct InterfacePresentationOwnershipTests {
     #expect(
       webShadows == [
         "Scholium/Resources/Editor/editor.css": 2,
-        "Scholium/Resources/Editor/previews.css": 1,
-        "Scholium/UI/Foundation/ScholiumDesignSystem.swift": 3,
       ],
       Comment(rawValue: diagnostic(for: webShadows))
     )
@@ -42,13 +72,13 @@ struct InterfacePresentationOwnershipTests {
       matchCount(
         pattern: #"box-shadow\s*:\s*var\(--scholium-elevation-"#,
         in: designSystem
-      ) == 3
+      ) == 0
     )
     #expect(
       matchCount(
         pattern: #"box-shadow\s*:\s*var\(--scholium-elevation-"#,
         in: previews
-      ) == 1
+      ) == 0
     )
     #expect(matchCount(pattern: #"box-shadow\s*:\s*inset"#, in: editor) == 2)
     #expect(matchCount(pattern: #"box-shadow\s*:\s*inset"#, in: readWebView) == 0)
@@ -75,7 +105,7 @@ struct InterfacePresentationOwnershipTests {
       webHover == [
         "Scholium/Resources/Editor/callouts.css": 1,
         "Scholium/Resources/Editor/footnotes.css": 1,
-        "Scholium/UI/Foundation/ScholiumDesignSystem.swift": 7,
+        "Scholium/UI/Foundation/ScholiumDesignSystem.swift": 4,
       ],
       Comment(rawValue: diagnostic(for: webHover))
     )
@@ -103,6 +133,7 @@ struct InterfacePresentationOwnershipTests {
     #expect(
       trackingAreas == [
         "Scholium/UI/Foundation/ScholiumDesignSystem.swift": 1,
+        "Scholium/Views/Note/DocumentFloatingSurfaceController.swift": 1,
       ],
       Comment(rawValue: diagnostic(for: trackingAreas))
     )

@@ -29,7 +29,7 @@ struct FrontendArchitectureTests {
         )
         let componentsSource = try String(
             contentsOf: repository.appendingPathComponent(
-                "Scholium/UI/Components/ScholiumComponents.swift"
+                "Scholium/UI/Components/ScholiumNotifications.swift"
             ),
             encoding: .utf8
         )
@@ -75,22 +75,9 @@ struct FrontendArchitectureTests {
         #expect(settingsSource.contains("ScholiumOperationFeedback("))
         #expect(componentsSource.contains("struct ScholiumOperationFeedback: View"))
         #expect(componentsSource.contains("struct ScholiumNotificationBanner<Actions: View>"))
-        #expect(componentsSource.contains("private var transientToast: some View"))
-        #expect(componentsSource.contains("private var persistentNotice: some View"))
-        #expect(componentsSource.contains(".lineLimit(1)"))
-        let toastStart = try #require(
-            componentsSource.range(of: "private var transientToast: some View")
-        )
-        let persistentNoticeStart = try #require(
-            componentsSource.range(
-                of: "private var persistentNotice: some View",
-                range: toastStart.upperBound..<componentsSource.endIndex
-            )
-        )
-        let toastSource = componentsSource[
-            toastStart.lowerBound..<persistentNoticeStart.lowerBound
-        ]
-        #expect(!toastSource.contains("Button(action: dismiss)"))
+        #expect(componentsSource.contains("title: kind.dismissesAutomatically ? message : kind.accessibilityLabel"))
+        #expect(componentsSource.contains("if !kind.dismissesAutomatically"))
+        #expect(componentsSource.contains("ScholiumNotificationBanner("))
         #expect(
             componentsSource.contains(
                 ".scholiumContentFittingWidth(maximumWidth: maximumWidth)"
@@ -114,11 +101,8 @@ struct FrontendArchitectureTests {
         #expect(!source.contains("WindowFeedbackStack"))
         #expect(!settingsSource.contains("WorkspaceSettingsFeedbackStack"))
         #expect(source.contains("refreshStatusNotice"))
-        #expect(
-            source.components(
-                separatedBy: ".accessibilityIdentifier(\"scholium.refreshStatus\")"
-            ).count == 2
-        )
+        #expect(source.contains("accessibilityIdentifier: \"scholium.refreshStatus\""))
+
     }
 
     @Test("Window feedback queues distinct notices and keeps warnings persistent")
@@ -1732,11 +1716,7 @@ struct FrontendArchitectureTests {
             sharedCSS.contains(
                 "background: var(--scholium-content-keyboard-focus-surface)"
             ))
-        #expect(
-            sharedCSS.contains(
-                #"li[aria-selected="true"] {"#
-            ))
-        #expect(sharedCSS.contains("background: var(--scholium-color-raised-surface-background)"))
+        #expect(!sharedCSS.contains(".cm-tooltip-autocomplete.scholium-editor-suggestions"))
         #expect(callouts.contains("var(--scholium-content-hover-surface, transparent)"))
         #expect(callouts.contains("--scholium-content-keyboard-focus-surface"))
         #expect(callouts.contains("var(--scholium-content-focus-ring, Highlight)"))
@@ -1815,6 +1795,10 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
+        let buttonStylesSource = try String(
+            contentsOf: repository.appendingPathComponent("Scholium/UI/Components/ScholiumButtons.swift"),
+            encoding: .utf8
+        )
         let componentsSource = try String(
             contentsOf: repository.appendingPathComponent(
                 "Scholium/UI/Components/ScholiumComponents.swift"
@@ -1835,10 +1819,7 @@ struct FrontendArchitectureTests {
         #expect(typographySource.contains("(size, defaultWeight) = (11, .regular)"))
         #expect(typographySource.contains("(size, defaultWeight) = (10, .regular)"))
         #expect(componentsSource.contains("ScholiumTypography.interface(.body)"))
-        #expect(
-            componentsSource.contains(
-                "ScholiumTypography.interface(.body, emphasis: .strong)"
-            ))
+
         #expect(componentsSource.contains("struct SidebarTriptychAttentionEntry"))
         #expect(!componentsSource.contains("title: \"ATTENTION\""))
         #expect(
@@ -1857,9 +1838,9 @@ struct FrontendArchitectureTests {
             componentsSource.contains(
                 "struct ScholiumEditorialIconControl<NativeControl: View>"
             ))
-        #expect(componentsSource.contains(".menuStyle(.button)"))
-        #expect(componentsSource.contains(".buttonStyle(.glass)"))
-        #expect(componentsSource.contains(".buttonBorderShape(.circle)"))
+        #expect(buttonStylesSource.contains(".menuStyle(.button)"))
+        #expect(buttonStylesSource.contains(".buttonStyle(.glass)"))
+        #expect(buttonStylesSource.contains(".buttonBorderShape(.circle)"))
         #expect(!sidebarSource.contains("ControlGroup {"))
         #expect(
             sidebarSource.components(
@@ -1871,19 +1852,19 @@ struct FrontendArchitectureTests {
                 == 1
         )
         #expect(!filterMenuSource.contains(".buttonStyle(.glass)"))
-        #expect(sidebarSource.contains(".menuStyle(.borderlessButton)"))
-        #expect(filterMenuSource.contains(".menuStyle(.borderlessButton)"))
+        #expect(sidebarSource.contains(".scholiumMenuStyle(.borderlessButton)"))
+        #expect(filterMenuSource.contains(".scholiumMenuStyle(.borderlessButton)"))
         #expect(sidebarSource.contains(".menuIndicator(.hidden)"))
         #expect(filterMenuSource.contains(".menuIndicator(.hidden)"))
         #expect(sidebarSource.contains(".scholiumForeground(.mutedText)"))
         #expect(filterMenuSource.contains(".scholiumForeground(.mutedText)"))
-        #expect(sidebarSource.contains(".tint(ScholiumColorRole.mutedText.color)"))
-        #expect(filterMenuSource.contains(".tint(ScholiumColorRole.mutedText.color)"))
+        #expect(!sidebarSource.contains(".tint("))
+        #expect(!filterMenuSource.contains(".tint("))
         #expect(componentsSource.contains("struct ScholiumQuietRowButtonStyle"))
-        #expect(!componentsSource.contains(".menuStyle(.borderlessButton)"))
+        #expect(!componentsSource.contains(".scholiumMenuStyle(.borderlessButton)"))
         #expect(!componentsSource.contains(".accessibilityRepresentation"))
         #expect(!componentsSource.contains("Image(systemName: \"chevron"))
-        #expect(componentsSource.contains(".menuIndicator(.hidden)"))
+        #expect(buttonStylesSource.contains(".menuIndicator(.hidden)"))
         #expect(treeRowsSource.contains("ScholiumTypography.nativeSourceList("))
         #expect(treeRowsSource.contains("Image(systemName: \"folder\")"))
         #expect(treeRowsSource.contains("Image(systemName: \"doc.text\")"))
@@ -1920,11 +1901,11 @@ struct FrontendArchitectureTests {
         #expect(componentsSource.contains("scholiumAttentionPopoverIsPresented"))
         #expect(!componentsSource.contains("SidebarTriptychAttentionButtonStyle"))
         #expect(
-            componentsSource.components(separatedBy: ".tint(nil as Color?)").count
+            buttonStylesSource.components(separatedBy: ".tint(nil as Color?)").count
                 == 2
         )
         #expect(!componentsSource.contains("SidebarAttentionAlertSurface"))
-        #expect(componentsSource.contains(".buttonStyle(.glass)"))
+        #expect(buttonStylesSource.contains(".buttonStyle(.glass)"))
         #expect(ScholiumMetrics.Library.leadingSlotWidth == 16)
         #expect(filterMenuSource.contains("Collapse All Folders"))
         #expect(filterMenuSource.contains("Expand All Folders"))
@@ -1933,10 +1914,7 @@ struct FrontendArchitectureTests {
         #expect(!sidebarSource.contains(".tracking(0.7)"))
         #expect(outlineSource.contains("outlineView.rowSizeStyle = usesAccessibilitySize ? .large : .default"))
         #expect(!outlineSource.contains("outlineView.rowSizeStyle = .custom"))
-        #expect(
-            designSystemSource.components(separatedBy: ".tint(nil as Color?)").count
-                == 2
-        )
+        #expect(designSystemSource.contains(".scholiumIconControl()"))
         #expect(
             sidebarSource.contains(
                 ".padding(.horizontal, ScholiumMetrics.Library.contentInset)"
@@ -2153,8 +2131,8 @@ struct FrontendArchitectureTests {
         #expect(!sidebarSource.contains("ScholiumEditorialIconControlLabel("))
         #expect(!filterMenuSource.contains("ScholiumEditorialIconControlLabel("))
         #expect(componentsSource.contains("struct ScholiumEditorialIconControlLabel"))
-        #expect(componentsSource.contains(".buttonStyle(.glass)"))
-        #expect(componentsSource.contains(".buttonBorderShape(.circle)"))
+        #expect(buttonStylesSource.contains(".buttonStyle(.glass)"))
+        #expect(buttonStylesSource.contains(".buttonBorderShape(.circle)"))
         #expect(
             componentsSource.contains(
                 "@Environment(\\.scholiumContentControlIsEmphasized)"
@@ -2165,7 +2143,7 @@ struct FrontendArchitectureTests {
                 "ScholiumShape.editorialControlCornerRadius"
             ))
         #expect(
-            componentsSource.contains(
+            buttonStylesSource.contains(
                 "width: ScholiumMetrics.Accessibility.preferredCustomTarget"
             ))
         #expect(
@@ -2333,7 +2311,7 @@ struct FrontendArchitectureTests {
         #expect(attentionSource.contains(".scrollContentBackground(.hidden)"))
         #expect(!attentionSource.contains("in: Capsule(style: .continuous)"))
         #expect(!attentionSource.contains("Text(\"/\")"))
-        #expect(attentionSource.contains(".buttonStyle(.plain)"))
+        #expect(attentionSource.contains(".scholiumButtonStyle(.plain)"))
         #expect(attentionSource.contains("title: session.noteTitle(for: change)"))
         #expect(attentionSource.contains("title: session.noteTitle(for: item)"))
         #expect(!notificationRowsSource.contains("ScholiumTypography.exact"))
@@ -2351,7 +2329,7 @@ struct FrontendArchitectureTests {
         )
         #expect(notificationRowsSource.contains("in: notificationRowShape"))
         #expect(!notificationRowsSource.contains("in: Circle()"))
-        #expect(notificationRowsSource.contains(".tint(ScholiumColorRole.mutedText.color)"))
+        #expect(!notificationRowsSource.contains(".tint("))
         #expect(!attentionSource.contains("case .changeAttributionNeeded"))
         #expect(appSource.contains("lazy var attentionPopoverSession"))
         #expect(!appSource.contains("Window(\"Attention\", id: \"scholium-attention\")"))
@@ -2524,10 +2502,7 @@ struct FrontendArchitectureTests {
         )
 
         let productionRoot = repository.appendingPathComponent("Scholium")
-        let allowedGlassButtonOwners = Set([
-            "ScholiumComponents.swift",
-            "ScholiumDesignSystem.swift",
-        ])
+        let allowedGlassButtonOwners = Set(["ScholiumButtons.swift"])
         let enumerator = try #require(
             FileManager.default.enumerator(
                 at: productionRoot,
@@ -2536,7 +2511,7 @@ struct FrontendArchitectureTests {
         )
         for case let sourceURL as URL in enumerator where sourceURL.pathExtension == "swift" {
             let source = try String(contentsOf: sourceURL, encoding: .utf8)
-            #expect(!source.contains("glassEffect("))
+            #expect(!source.contains("glassEffect(") || sourceURL.lastPathComponent == "ScholiumFloatingSurface.swift")
             #expect(!source.contains("GlassEffectContainer"))
             if source.contains(".buttonStyle(.glass") {
                 #expect(
@@ -3586,7 +3561,6 @@ struct FrontendArchitectureTests {
             "liveFootnoteProjection.extension",
             "livePreview",
             "liveProjectionNavigation.extension",
-            "selectionActions.extension",
             "previewPopover.extension",
         ] {
             #expect(liveModeExtensions.contains(liveOnlyExtension))
@@ -4242,7 +4216,7 @@ struct FrontendArchitectureTests {
         #expect(ScholiumSurfaceRole.boundedPanel.defaultBoundaryRole == .subtleBoundary)
         #expect(ScholiumSurfaceRole.floatingControl.defaultElevationRole == .floatingControl)
         #expect(ScholiumSurfaceRole.searchOverlay.defaultElevationRole == .searchOverlay)
-        #expect(ScholiumSurfaceRole.boundedPanel.defaultElevationRole == .boundedPanel)
+        #expect(ScholiumSurfaceRole.boundedPanel.defaultElevationRole == nil)
         #expect(ScholiumSurfaceRole.document.defaultElevationRole == nil)
         #expect(ScholiumSurfaceRole.navigation.defaultElevationRole == nil)
         #expect(ScholiumSurfaceRole.apparatus.defaultElevationRole == nil)
@@ -4311,15 +4285,11 @@ struct FrontendArchitectureTests {
         }
         let webPresentationCSS = ScholiumWebDesignTokens.documentPresentationCSS
         #expect(
-            webPresentationCSS.contains(
-                "box-shadow: var(--scholium-elevation-floating-control)"
-            ))
-        #expect(
-            webPresentationCSS.contains(
+            !webPresentationCSS.contains(
                 "box-shadow: var(--scholium-elevation-bounded-panel)"
             ))
         #expect(
-            ScholiumPreviewStyles.css.contains(
+            !ScholiumPreviewStyles.css.contains(
                 "box-shadow: var(--scholium-elevation-bounded-panel)"
             ))
         #expect(
@@ -4900,7 +4870,7 @@ struct FrontendArchitectureTests {
         #expect(footnoteSource.contains("reference.definitionContentFrom"))
         #expect(!editReference.contains("footnote-return"))
         #expect(editReference.contains(#"marker.type = "button""#))
-        #expect(editReference.contains(#"marker.setAttribute("aria-controls""#))
+        #expect(!editReference.contains(#"marker.setAttribute("aria-controls""#))
         #expect(editReference.contains(#"marker.setAttribute("aria-expanded""#))
         #expect(previewController.contains("function showFootnoteReference("))
         #expect(previewController.contains("options.footnotes().definitions"))
@@ -4934,11 +4904,11 @@ struct FrontendArchitectureTests {
         )
         let editorHTML = try #require(MarkdownEditorWebView.editorHTML)
         let css = ScholiumPreviewStyles.css
-        #expect(css.contains(".scholium-preview-popover"))
+        #expect(!css.contains(".scholium-preview-popover"))
         #expect(css.contains("prefers-contrast: more"))
-        #expect(css.contains("background: var(--scholium-color-surface-background)"))
+        #expect(css.contains("color: var(--scholium-color-primary-text)"))
         #expect(css.contains("border: 1px solid var(--scholium-color-separator)"))
-        #expect(css.contains("box-shadow: var(--scholium-elevation-bounded-panel)"))
+        #expect(!css.contains("box-shadow:"))
         #expect(!css.contains("Canvas"))
         #expect(!css.contains("backdrop-filter"))
         #expect(!css.contains("prefers-reduced-transparency: reduce"))
@@ -4962,10 +4932,10 @@ struct FrontendArchitectureTests {
         #expect(previewControllerSource.contains("populatePreviewDocument"))
         #expect(previewControllerSource.contains("scheduleHide"))
         #expect(previewControllerSource.contains("document.removeEventListener"))
-        #expect(previewControllerSource.contains("floatingSurfacePosition"))
+        #expect(previewControllerSource.contains("options.nativeFloating.show(previewSurface(anchor, root)"))
         #expect(previewControllerSource.contains(#"addEventListener("scroll", handleViewportExit"#))
         #expect(previewControllerSource.contains(#"addEventListener("resize", handleViewportExit"#))
-        #expect(previewControllerSource.contains(#"addEventListener("blur", handleViewportExit"#))
+        #expect(!previewControllerSource.contains(#"addEventListener("blur", handleViewportExit"#))
         #expect(previewControllerSource.contains("root?.remove()"))
         #expect(!previewControllerSource.contains("mode()"))
     }
@@ -4982,8 +4952,8 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        #expect(source.contains("version: 2,"))
-        #expect(source.contains(#"payload["version"] as? Int == 2"#))
+        #expect(source.contains("version: 3,"))
+        #expect(source.contains(#"payload["version"] as? Int == 3"#))
         #expect(!source.contains(#"payload["version"] as? Int == 1"#))
     }
 

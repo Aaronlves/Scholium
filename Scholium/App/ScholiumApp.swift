@@ -383,6 +383,7 @@ private struct ScholiumBootstrapRoot: View {
             }
         }
         .tint(ScholiumColorRole.accent.color)
+        .scholiumButtonStyle(.automatic)
         .ignoresSafeArea(.container, edges: .top)
         .background(
             BootstrapWindowAttachment(
@@ -699,6 +700,7 @@ private struct ScholiumWindowObservedRoot: View {
             .navigationSubtitle(workspaceWindowSubtitle)
             .toolbar(removing: .sidebarToggle)
             .tint(ScholiumColorRole.accent.color)
+            .scholiumButtonStyle(.automatic)
             .focusedSceneObject(appState)
             .focusedSceneObject(appState.commandObservation)
             .focusedSceneValue(\.scholiumWorkspaceWindowActions, windowCoordinator.actions)
@@ -733,6 +735,7 @@ private struct ScholiumWindowObservedRoot: View {
                         windowCoordinator.closeUnavailableWorkspaceAndTerminateApplication()
                     }
                 )
+                .scholiumButtonStyle(.automatic)
             }
             .preferredColorScheme(shellState.colorScheme.swiftUIColorScheme)
             .onChange(of: windowWorkspaceController.state.accessRecovery) { _, recovery in
@@ -948,6 +951,7 @@ private struct ScholiumSettingsRoot: View {
         ScholiumSettingsView()
             .environmentObject(settingsModel)
             .tint(ScholiumColorRole.accent.color)
+            .scholiumButtonStyle(.automatic)
             .preferredColorScheme(
                 WindowColorSchemeChoice(rawValue: storedColorScheme)?.swiftUIColorScheme
             )
@@ -988,6 +992,7 @@ struct ScholiumFocusedEditorActions {
     let perform: (MarkdownEditorCommand) -> Void
     let performWithArgument: (MarkdownEditorCommand, String) -> Void
     let presentFind: () -> Void
+    let presentReplace: () -> Void
     let findNext: () -> Void
     let findPrevious: () -> Void
     let useSelectionForFind: () -> Void
@@ -1163,7 +1168,7 @@ private struct ScholiumPasteboardCommandContent: View {
                 .scholiumActivationPointer()
                 .keyboardShortcut("f", modifiers: [.command])
                 .disabled(editorActions == nil)
-            Button("Find and Replace…") { editorActions?.presentFind() }
+            Button("Find and Replace…") { editorActions?.presentReplace() }
                 .scholiumActivationPointer()
                 .disabled(editorActions?.allowsReplace != true)
             Divider()

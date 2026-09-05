@@ -4,6 +4,12 @@
 
 ## App root and workspace shell
 
+- Ordinary command buttons share a native style adapter with neutral Ink;
+  destructive roles retain semantic tint. Window roots, independently hosted
+  split regions, and sheet/popover content install the same default; local form choices use its shared
+  entry. Icon Buttons, icon Menus, and Notifications share one native chrome
+  recipe. Feature-owned prominent styles and local tint overrides are removed;
+  selection, links, and explicit status indicators retain their semantic colors.
 - Starting, Registry Recovery, Ready, and Storage Unavailable are distinct app
   roots. Failure states retain Details, Retry, and the applicable recovery or
   Quit route while workspace commands remain disabled.
@@ -65,7 +71,24 @@
   tracker, parallel selection painter, or custom disclosure gesture. Existing
   custom and WebKit link-equivalent surfaces outside this slice retain their
   bounded cursor adapters.
+- Document Find floats at the Document's upper trailing corner with an AppKit
+  search field, native options menu, and shared native Liquid Glass. Its short slide
+  and fade leave the document viewport fixed and interactive; Reduce Motion
+  disables the transition. Replace expands downward with aligned fields and a
+  distinct menu route. The panel adds no document padding or scroll headroom.
+  Narrow reflow retains field identity, active
+  options stay visible, and dismissal restores native editor focus.
+- Search, progress overlays, and notification banners share the native floating
+  material entry. Operation feedback and derived-refresh notices use one banner
+  component; transient lifetime, persistent dismissal, and queue ownership remain
+  with their existing policies. Inline integrity/recovery content stays opaque.
+- Editor and reader previews now use native glass containers with inert local
+  WebKit content. Completion retains CodeMirror's keyboard and AX listbox while
+  native rows project the results. A native parent separates their geometry and
+  accessibility from the document WebView; no source or history is moved.
 - Document retains Review, Edit, and Source over one exact source buffer.
+  Edit selection has no floating formatting bar; native menus, shortcuts, and
+  Markdown input retain formatting and insertion commands.
   Markdown is the sole written annotation authority; there is no separate
   Review Comment or passage Discussion UI.
 - Appearance profiles include Source font and size. Settings lists installed

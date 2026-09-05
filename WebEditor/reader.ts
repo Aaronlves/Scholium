@@ -1,3 +1,4 @@
+import {createNativeFloatingBridge, previewSurface} from "./native-floating";
 import {installReviewFind, type ReviewFindRequest, type ReviewFindResult} from "./review-find";
 import {
   boundedReviewRangeText,
@@ -127,6 +128,10 @@ async function initializeReader(value: unknown): Promise<void> {
   readerWindow.scholiumRevealDocumentAttachmentControl = () =>
     revealDocumentAttachmentAddControl(document);
   const popover = requiredElement('scholium-preview-popover');
+  popover.remove();
+  const nativeFloating = createNativeFloatingBridge(surface => post('floatingSurface', {surface}));
+  let nativePreviewID = 0;
+  let nativePreviewHovered = false;
   const previewTitle = popover.querySelector<HTMLElement>('.scholium-preview-title')!;
   const previewMetadata = popover.querySelector<HTMLElement>('.scholium-preview-metadata')!;
   const previewBody = popover.querySelector<HTMLElement>('.scholium-preview-body')!;
@@ -378,6 +383,8 @@ async function initializeReader(value: unknown): Promise<void> {
     );
   }
   function hidePopover() {
+    nativePreviewHovered = false;
+    nativeFloating.hide(nativePreviewID);
     clearTimeout(popoverHideTimer);
     popoverHideTimer = undefined;
     if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
@@ -396,6 +403,7 @@ async function initializeReader(value: unknown): Promise<void> {
   }
 
   function schedulePopoverHide() {
+    if (nativePreviewHovered) return;
     if (pinnedAnnotationButton) return;
     clearTimeout(popoverHideTimer);
     popoverHideTimer = setTimeout(hidePopover, 180);
@@ -558,15 +566,11 @@ async function initializeReader(value: unknown): Promise<void> {
 
   function positionPopover(anchor: Element) {
     popover.hidden = false;
-    const rect = anchor.getBoundingClientRect();
-    const measured = popover.getBoundingClientRect();
-    const left = Math.max(12, Math.min(rect.left, window.innerWidth - measured.width - 12));
-    const below = rect.bottom + 8;
-    const top = below + measured.height <= window.innerHeight - 12
-      ? below
-      : Math.max(12, rect.top - measured.height - 8);
-    popover.style.left = left + 'px';
-    popover.style.top = top + 'px';
+    nativePreviewID = nativeFloating.show(previewSurface(anchor.getBoundingClientRect(), popover), {
+      dismiss: hidePopover,
+      enter: () => { nativePreviewHovered = true; cancelPopoverHide(); },
+      leave: () => { nativePreviewHovered = false; schedulePopoverHide(); },
+    });
   }
 
   function showFootnotePopover(button: HTMLElement) {
@@ -670,7 +674,6 @@ async function initializeReader(value: unknown): Promise<void> {
   popover.addEventListener('pointerleave', schedulePopoverHide);
   window.addEventListener('scroll', hidePopover, {passive: true});
   window.addEventListener('resize', hidePopover);
-  window.addEventListener('blur', hidePopover);
   renderEmbeddedNotes();
 
   document.addEventListener('click', event => {

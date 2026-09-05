@@ -16,6 +16,18 @@ authority. The app implements the design contract in
 These shared types are current reusable implementation inventories, not a
 permission list for every bounded feature-local layout value.
 
+`ScholiumButtons` owns native command styling through `scholiumButtonStyle`.
+Its primitive-style adapter forwards the original configuration to a native
+Button and applies neutral Ink or destructive tint, without new activation,
+focus, sizing, or role behavior. Window roots, independently hosted split
+regions, and sheet/popover content install the contextual default; bounded feature overrides use the same
+entry. `scholiumIconControl` supplies one native Glass/chrome recipe to icon
+Buttons, icon Menus, and Notifications. Custom row and segmented-selection
+styles retain their existing shared feedback owners. AppKit toolbar/tab
+controls and embedded-document controls retain their native or renderer owners.
+Menu triggers use the corresponding `scholiumMenuStyle` adapter because macOS
+MenuStyle does not inherit ButtonStyle. The command scope installs both defaults.
+
 Accent and Paper are the only configurable inputs. Section 19.2's Paper is the exact
 Light Document anchor; one resolver derives every other appearance role for
 native and generated WebKit CSS. The Workspace `NSSplitViewItem` supplies the
@@ -56,21 +68,34 @@ item's `automaticallyAdjustsSafeAreaInsets` extends Paper beneath it and keeps
 readable content in the unobscured safe area. `ScholiumWebDesignTokens` exports
 only the transient role names as CSS shadow declarations without converting
 points to CSS pixels.
-Selection bars and the shared segmented selection plate consume
-`floatingControl`; custom selection menus, the shared
-link preview, and Edit input-suggestion lists consume `boundedPanel`; Search
-consumes `searchOverlay`. The shared preview uses the complete opaque bounded-
-panel surface, separator, semantic text, and elevation roles; it owns no Canvas
-fallback, backdrop blur, or local transparency recipe. Increase
-Contrast resolves custom shadows to none while the semantic boundary
-strengthens. Reduce Transparency or an inactive native window reduces opacity;
-Dark appearance applies the same quiet structural-depth opacity without
-compounding these adaptations. Native menus, popovers, sheets, panels, alerts,
-and windows retain their system-owned elevation and are never double-shadowed.
+The shared segmented selection plate retains its control elevation. Semantic
+floats instead use `scholiumFloatingSurface` (SwiftUI) or the bounded
+`DocumentFloatingSurfaceController` (AppKit `NSGlassEffectView`). Find, Search,
+progress overlays, and `ScholiumNotificationBanner` share native Liquid Glass;
+no feature adds a second shadow or frosted-material recipe. Operation feedback
+uses the same banner for transient and persistent delivery while its existing
+policy owns announcements, dismissal, and lifetime. Inline document integrity
+and recovery notices remain opaque content surfaces.
+
+The editor and reader project inert preview HTML into a transparent, local-only
+WKWebView inside the native glass container. `DocumentWebViewContainer` keeps
+that container beside the document WebView so both remain accessible. CSS retains the document's semantic
+colors; CSP and navigation policy deny scripting, remote resources, and links.
+CodeMirror retains completion transactions, keyboard handling and its sole AX
+listbox; native rows are a non-AX visual and pointer projection. Versioned,
+identity-bound payloads and surface IDs reject stale activation. Native floating
+geometry is clamped to the originating viewport and changes no prose geometry.
+Completion width fits the intrinsic candidate labels and details plus row insets,
+with a viewport-bounded upper limit; preview prose has its own reading width.
+The native completion host persists across selection updates. Shared completion
+metrics define single-line and described rows, and shared interaction feedback
+owns their neutral selection fill without extra elevation. Autosave invalidates
+transport requests but preserves the float; activation is still bound to the
+accepted session, document, live buffer revision, and current surface ID.
+System materials own contrast, transparency, and elevation adaptation.
 
 Repository ownership tests treat authored shadow syntax as a closed inventory.
-The shared native elevation modifier is the only `.shadow` owner; generated WebKit
-elevation consumes only the three purpose-named CSS variables. The remaining
+The shared native elevation modifier is the only `.shadow` owner; WebKit previews and suggestions author no material or elevation. The remaining
 inset `box-shadow` declarations are classified as editor boundaries or focus
 rings rather than elevation. Adding a raw shadow, a direct SwiftUI hover site
 outside the design-system owner, a WebKit `:hover` site, or another AppKit
@@ -118,9 +143,7 @@ adapter observes the complete Menu frame because the host does not reliably
 forward pointer state into its label. The enclosing Button or Menu retains
 activation, focus, menu tracking, and accessibility; no leaf or compound
 wrapper adds another transient-state owner.
-WebKit selection controls use the quiet hover mix for pointer hover and press,
-the stronger mix for keyboard focus, and an Accent focus ring. CodeMirror
-suggestions keep their current listbox item on the persistent raised surface
+CodeMirror suggestions keep their current listbox item on the persistent raised surface
 while pointer hover remains transient. The protected Callout stylesheet owns
 only its disclosure geometry and selectors; its fold mark consumes the shared
 hover/focus values instead of declaring another opacity or focus color.
@@ -155,8 +178,8 @@ or feature-owned when its semantics or interaction genuinely differ.
 The Research Inspector's icon-only projection group remains a native AppKit
 toolbar control because its placement and icon semantics differ from bounded
 text choices in content.
-`ScholiumEditorialIconControl` is the single presentation owner for matching
-compact icon actions in content-owned headers. It gives each one an exact 28pt
+`ScholiumEditorialIconControl` supplies labels and focus for matching
+compact icon actions in content-owned headers. Shared icon chrome gives each a 28pt
 target and semantic ink while a regular circular Glass Button or Menu owns
 hover, focus, press, active-window, and accessibility adaptation. The 20pt label
 inside the native regular control preserves the established 28pt outer size;
@@ -177,8 +200,8 @@ size. AppKit owns hover, press, focus, active-window, Reduce Transparency, menu
 tracking, and disabled rendering; SwiftUI does not reconstruct those states or
 paint a toolbar band.
 
-The Sidebar Search and Notifications Glass controls locally clear
-the workspace Accent tint. Their system material therefore remains
+The shared icon chrome clears the workspace Accent tint for Sidebar Search,
+Notifications, and other icon actions. Their system material therefore remains
 monochrome; Scholium color stays limited to the explicit nonzero Notifications
 dot and other semantic states rather than staining ordinary control
 backgrounds. Triptych opening and creation stay in the native File menu,

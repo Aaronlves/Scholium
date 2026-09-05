@@ -427,13 +427,6 @@ struct NoteContentView: View {
                 )
             }
 
-            if documentFind.isPresented {
-                DocumentFindBar(
-                    model: documentFind,
-                    allowsReplacement: isEditing
-                )
-            }
-
             if let presentation = documentIntegrityPresentation {
                 ScholiumDocumentStatusNotice(
                     presentation.title,
@@ -450,6 +443,9 @@ struct NoteContentView: View {
             documentBodySurface
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
+            .overlay {
+                DocumentFindOverlay(model: documentFind, allowsReplacement: isEditing)
+            }
         }
         .scholiumSurface(.document)
         .focusedSceneValue(\.scholiumSearchActions, ScholiumSearchActions { invocation in
@@ -483,6 +479,7 @@ struct NoteContentView: View {
                     }
                 },
                 presentFind: documentFind.present,
+                presentReplace: documentFind.presentReplacement,
                 findNext: documentFind.next,
                 findPrevious: documentFind.previous,
                 useSelectionForFind: useSelectionForDocumentFind,
@@ -514,6 +511,7 @@ struct NoteContentView: View {
                     },
                     onReloadFromDisk: { reloadFromDisk() }
                 )
+                .scholiumButtonStyle(.automatic)
             }
         }
         .task(id: documentIntegrityPresentation) {
@@ -647,7 +645,9 @@ struct NoteContentView: View {
         .task(id: documentFind.request) {
             guard let request = documentFind.request else { return }
             if case .clear = request.operation {
-                editorSession.clearDocumentFind()
+                if isEditing {
+                    await editorSession.clearDocumentFind()
+                }
                 return
             }
             guard isEditing, let query = request.editorQuery else { return }
@@ -768,8 +768,6 @@ struct NoteContentView: View {
                 }
             },
             onRequestFind: handleDocumentFindShortcut,
-            onRequestImportImage: requestImageImport,
-            onRequestIndexImage: requestImageIndex,
             onRequestDocumentTitleRename: { expectedTitle, requestedTitle in
                 try await actions.renameNote(note, expectedTitle, requestedTitle)
             },
@@ -973,7 +971,7 @@ struct NoteContentView: View {
                     markReadPresentationReady(documentID: note.relativePath)
                 }
             },
-            findRequest: documentFind.request,
+            findRequest: isEditing ? nil : documentFind.request,
             onFindResult: { requestID, result in
                 switch result {
                 case .success(let value):
@@ -1701,7 +1699,7 @@ private struct ConflictComparisonSheet: View {
                         .contentShape(Rectangle())
                     }
                     .scholiumActivationPointer()
-                    .buttonStyle(.plain)
+                    .scholiumButtonStyle(.plain)
                     .accessibilityLabel(conflict.relativePath)
                     .accessibilityValue(
                         isDocumentExpanded ? "Expanded" : "Collapsed"
@@ -1857,7 +1855,7 @@ private struct CritiqueFindingDispositionRow: View {
                     persist()
                 }
                 .scholiumActivationPointer()
-                .buttonStyle(.bordered)
+                .scholiumButtonStyle(.bordered)
                 .disabled(
                     isSaving
                         || (decision == .accept

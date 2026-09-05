@@ -12,7 +12,7 @@ never share it.
 The store acquires destination leases before release. Dirty, conflict,
 save-in-flight, retryable-recovery, and recovery-buffer states pin a session.
 Tab close flushes before membership removal; a clean unleased, unpinned session
-immediately discards editor, source, Undo, HTML, and previews. Only an in-memory
+discards editor, source, Undo, HTML, and previews. Only an in-memory
 64-entry scroll LRU survives close; memory pressure reduces it to 16 or clears
 it, and app relaunch does not retain it. Vault-qualified keys prevent equal
 paths in different Triptych vaults from sharing state.
@@ -140,7 +140,7 @@ the Web side, `editor.ts` remains the sole composition root and source/identity
 owner. `live-projection-index` owns the semantic catalog,
 `projected-widget-registry` pointer mapping, `live-selection` selection paint,
 and bounded components semantic widgets and layout. Source direction, actions,
-previews, suggestions, and scroll remain separate around the same `EditorView`. None may
+previews, suggestions, and scroll share one `EditorView`. None may
 persist Markdown or create another `EditorState`.
 
 Secondary click follows one public event path. A CodeMirror DOM `contextmenu`
@@ -164,7 +164,7 @@ there is no regex fallback or second Markdown parser.
 Edit and Source are one atomic CodeMirror configuration boundary. One
 `Compartment` owns the mode facet, root/content accessibility attributes,
 wrapping and gutters, and every Live Preview projection field, plugin, widget
-provider, navigation keymap, formatting overlay, and cached-preview overlay.
+provider, navigation keymap, and cached-preview overlay.
 The editor initializes in fail-closed Source configuration, and an absent mode
 facet also resolves to Source; exact document bytes are therefore never loaded
 through Live Preview merely because an Edit request has not arrived yet.
@@ -394,33 +394,30 @@ read-only. Edit exposes Markdown formatting and source-owned constructs;
 Source exposes exact text. `ScholiumSystemSymbol` is the icon catalog, and
 `ScholiumWebSymbolAssets` injects its data-URI masks into WebKit surfaces.
 
-Transient surfaces do no whole-Note work. Selection observation reports only
-the bounded information needed for current document statistics and navigation;
-it creates no separately persisted research object. Edit caches document,
-selection, and Text Style;
-equivalent updates write no DOM, while geometry changes still remeasure. One
-keyed CodeMirror measure replaces earlier requests; a 50 ms same-path watchdog
-covers throttled animation frames, and the bar stays hidden until positioned.
-`floating-surface-geometry` maps anchor, surface, viewport, alignment, and
-side. The Edit bar and preview reuse it but remain separate owners: the bar
-tracks and flips; the preview resolves one pointer/focus anchor and dismisses
-on exit, scroll, resize, or blur.
-
-`NoteContentView` derives Review-surface activity from document mode.
-Deactivation hides, clears transient paint, and blurs. Empty composers cancel;
-authored or pending drafts suspend only in the retained page and resume there.
-Saving uses a read-only focused field and polite live status.
+Transient surfaces do no whole-Note work. Selection observation reports bounded
+information for document statistics and navigation; it creates no persisted
+research object. `DocumentWebViewContainer` owns viewport geometry and exposes
+WebKit and native floating siblings in one accessibility tree.
+`DocumentFloatingSurfaceController` owns Liquid Glass preview/suggestion
+containers. Versioned projections preserve source, focus, and viewport geometry;
+preview builders stay detached from the document DOM. Scroll, resize, teardown,
+and context exit dismiss through the originating controller. Completion geometry
+uses one keyed CodeMirror measure with an idle fallback when WebKit throttles
+animation frames. Review activity deactivation clears transient selection paint.
 
 `input-suggestions` owns the Edit-only CodeMirror Wikilink, slash, and chained
 Callout-role completion. Slash filtering is local. Bounded Wikilink queries use
 the typed bridge and generation-owned `EditorLinkCompletionIndex`; CodeMirror
-alone owns listbox, transaction, caret, and Undo. Superseding query, document,
+owns the sole AX listbox, transactions, caret, and Undo; native rows forward bounded activation. Superseding query, document,
 mode, WebKit termination, or teardown cancels native work; identity gates reject
 stale replies, and Source removes the extension. No catalog, registry, DOM menu
 state, or writable source is duplicated.
 
-`Command-F` opens Scholium's shared **This Note** Search;
-the embedded CodeMirror Find panel is not part of the product.
+The native `DocumentFindPanel` owns Command-F, query/options, replacement disclosure,
+and focus intent. `DocumentFindSearchField` supplies AppKit input/menu behavior;
+CodeMirror owns exact matching and replacement, and Review uses its read-only
+coordinator. The overlay reserves no document layout or scroll space.
+CodeMirror's hidden panel transports state only.
 
 **This Note** receives an immutable editor source snapshot containing note,
 session, source, and revision identifiers. Search reads that value without a
@@ -646,7 +643,7 @@ transactions update the real range without changing syntax decorations; one
 mouse-up effect commits the final range after CodeMirror's own event handler.
 Triple-click starts in an immediate phase because paragraph selection is one
 discrete projection gesture, but the same phase remains non-idle until mouse-up,
-so Edit's formatting bar cannot appear before the pointer selection completes.
+preserving the pointer-selection completion boundary.
 Review mirrors this completion boundary with one pointer-active flag around its
 native DOM Selection; selection paint may follow the gesture, while Comment is
 evaluated only after pointer-up. Keyboard selection has no pending pointer phase
@@ -744,7 +741,7 @@ Boundary verification and remaining human acceptance belong to
 [Implementation Status](../IMPLEMENTATION_STATUS.md).
 
 The editor does not introduce Milkdown, ProseMirror, a hidden rich-text model,
-HTML-to-Markdown persistence, normalization or repair, a permanent formatting
+HTML-to-Markdown persistence, normalization or repair, a floating formatting
 toolbar, arbitrary media management, embedded AI chat or suggestions,
 real-time collaboration, a new SwiftPM target, or a generic editor plugin
 framework.

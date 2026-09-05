@@ -342,6 +342,7 @@ struct ResearchRecordsWindowView: View {
         .frame(minWidth: 420, maxWidth: .infinity, minHeight: 360, maxHeight: .infinity)
         .scholiumSurface(.document)
         .tint(ScholiumColorRole.accent.color)
+        .scholiumButtonStyle(.automatic)
         .onExitCommand { dismissWindow() }
         .task { await model.load() }
         .onAppear {
@@ -720,7 +721,7 @@ struct ResearchRecordsWindowView: View {
                                 .frame(maxWidth: 260, alignment: .leading)
                             }
                             .scholiumActivationPointer()
-                            .buttonStyle(.bordered)
+                            .scholiumButtonStyle(.bordered)
                             .controlSize(.small)
                             .disabled(!evidenceIsAvailable(item))
                             .help(evidenceButtonHelp(item))

@@ -6,21 +6,10 @@ import AppKit
 /// SwiftUI, while `ScholiumWebSymbolAssets` is only a transport adapter for
 /// DOM that cannot resolve `NSImage(systemSymbolName:)` itself.
 enum ScholiumSystemSymbol: String, CaseIterable, Sendable {
-    case textFormat = "textformat"
     case bold
-    case italic
     case strikethrough
-    case highlighter
     case link
-    case ellipsis
-    case chevronDown = "chevron.down"
-    case checkmark
-    case curlyBraces = "curlybraces"
     case curlyBracesSquare = "curlybraces.square"
-    case eyeSlash = "eye.slash"
-    case listBullet = "list.bullet"
-    case listNumber = "list.number"
-    case checklist
     case textQuote = "text.quote"
     case textBubble = "text.bubble"
     case docText = "doc.text"

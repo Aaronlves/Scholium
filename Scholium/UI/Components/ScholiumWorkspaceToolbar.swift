@@ -973,12 +973,13 @@ private struct DocumentSettlementPopoverView: View {
                         }
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .scholiumButtonStyle(.bordered)
                 .disabled(isSettling)
             }
         }
         .padding(ScholiumGrid.Spacing.sectionSeparation)
         .frame(width: 300)
+        .scholiumButtonStyle(.automatic)
     }
 
     private var actionTitle: LocalizedStringResource {

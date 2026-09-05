@@ -19,8 +19,6 @@ export interface LiveSelectionController {
   readonly extension: Extension;
   selection(state: EditorState): EditorSelection;
   changed(startState: EditorState, state: EditorState): boolean;
-  interactionChanged(startState: EditorState, state: EditorState): boolean;
-  pointerSelectionIsComplete(state: EditorState): boolean;
 }
 
 const selectedTextMark = Decoration.mark({class: "cm-scholium-selected-text"});
@@ -166,22 +164,11 @@ export function createLiveSelectionController(options: {
   });
 
   const selection = (state: EditorState) => state.field(field, false)?.selection ?? state.selection;
-  const interaction = (state: EditorState) => state.field(field, false)
-    ?? {selection: state.selection, pointerPhase: "idle" as const};
   return {
     extension: [field, pointer],
     selection,
     changed(startState, state) {
       return !selection(startState).eq(selection(state));
-    },
-    interactionChanged(startState, state) {
-      const start = interaction(startState);
-      const current = interaction(state);
-      return start.pointerPhase !== current.pointerPhase
-        || !start.selection.eq(current.selection);
-    },
-    pointerSelectionIsComplete(state) {
-      return interaction(state).pointerPhase === "idle";
     },
   };
 }

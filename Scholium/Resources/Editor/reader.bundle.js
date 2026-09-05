@@ -1,5 +1,50 @@
 "use strict";
 (() => {
+  // native-floating.ts
+  function createNativeFloatingBridge(post) {
+    let serial = 0;
+    let current = null;
+    const bridge = {
+      show(surface, callbacks) {
+        if (current && current.surface.kind !== surface.kind) current.callbacks.dismiss();
+        const id = ++serial;
+        current = { surface: { ...surface, id }, callbacks };
+        post(current.surface);
+        return id;
+      },
+      hide(id) {
+        if (current?.surface.id !== id) return;
+        post({ ...current.surface, kind: "hidden", html: "", css: "", items: [], selected: -1 });
+        current = null;
+      },
+      event(id, action, index) {
+        if (current?.surface.id !== id) return false;
+        const callbacks = current.callbacks;
+        if (action === "enter") callbacks.enter?.();
+        else if (action === "leave") callbacks.leave?.();
+        else if (action === "dismiss") callbacks.dismiss();
+        else if (action === "choose" && Number.isInteger(index) && index >= 0 && index < current.surface.items.length) callbacks.choose?.(index);
+        else return false;
+        return true;
+      }
+    };
+    window.scholiumNativeFloatingEvent = bridge.event;
+    return bridge;
+  }
+  function previewSurface(anchor, root) {
+    const css = Array.from(document.querySelectorAll("style"), (node) => node.textContent ?? "").join("\n");
+    return {
+      kind: "preview",
+      left: anchor.left,
+      top: anchor.top,
+      bottom: anchor.bottom,
+      html: root.innerHTML,
+      css,
+      items: [],
+      selected: -1
+    };
+  }
+
   // review-find.ts
   function highlightRegistry() {
     return CSS.highlights ?? null;
@@ -11,7 +56,7 @@
         const parent = node.parentElement;
         if (!parent || !node.textContent) return NodeFilter.FILTER_REJECT;
         if (parent.closest(
-          'script, style, [hidden], [aria-hidden="true"], #selection-actions, #scholium-preview-popover'
+          'script, style, [hidden], [aria-hidden="true"], #scholium-preview-popover'
         )) return NodeFilter.FILTER_REJECT;
         if (parent.closest('[data-scholium-protected="mermaid"]')) {
           return NodeFilter.FILTER_REJECT;
@@ -103,13 +148,15 @@
       registry?.delete(allName);
       registry?.delete(currentName);
     };
-    const present = () => {
+    const present = (scrollToMatch) => {
       clear();
       if (matches.length === 0 || !registry || current < 0) return;
       const ordinary = matches.filter((_, index) => index !== current);
       if (ordinary.length > 0) registry.set(allName, new Highlight(...ordinary));
       registry.set(currentName, new Highlight(matches[current]));
-      matches[current].startContainer.parentElement?.scrollIntoView({ block: "center", behavior: "auto" });
+      if (scrollToMatch) {
+        matches[current].startContainer.parentElement?.scrollIntoView({ block: "center", behavior: "auto" });
+      }
     };
     return {
       perform(request) {
@@ -134,7 +181,7 @@
         } else if (request.action === "previous" && matches.length > 0) {
           current = (current - 1 + matches.length) % matches.length;
         }
-        present();
+        present(request.action !== "present");
         return { current: current < 0 ? 0 : current + 1, total: matches.length };
       }
     };
@@ -326,7 +373,7 @@
   function validatedReaderConfiguration(value) {
     if (!value || typeof value !== "object") return null;
     const config = value;
-    if (config.version !== 2 || typeof config.documentID !== "string" || !config.documentID || config.documentID.length > 4096 || typeof config.fingerprint !== "string" || !config.fingerprint || config.fingerprint.length > 256 || !Number.isSafeInteger(config.loadGeneration) || Number(config.loadGeneration) < 0 || typeof config.selectionEnabled !== "boolean" || typeof config.testingEnabled !== "boolean" || typeof config.presentationCSS !== "string" || typeof config.userCSS !== "string" || !config.localization || typeof config.localization !== "object" || !config.localization.strings || typeof config.localization.strings !== "object" || !Array.isArray(config.linkPreviews) || config.linkPreviews.length > 128 || !Array.isArray(config.documentAttachments) || config.documentAttachments.length > 100 || !config.documentAttachments.every((attachment) => Boolean(attachment) && typeof attachment === "object" && typeof attachment.id === "string" && attachment.id.length <= 128 && typeof attachment.filename === "string" && attachment.filename.length <= 1024 && typeof attachment.available === "boolean")) return null;
+    if (config.version !== 3 || typeof config.documentID !== "string" || !config.documentID || config.documentID.length > 4096 || typeof config.fingerprint !== "string" || !config.fingerprint || config.fingerprint.length > 256 || !Number.isSafeInteger(config.loadGeneration) || Number(config.loadGeneration) < 0 || typeof config.selectionEnabled !== "boolean" || typeof config.testingEnabled !== "boolean" || typeof config.presentationCSS !== "string" || typeof config.userCSS !== "string" || !config.localization || typeof config.localization !== "object" || !config.localization.strings || typeof config.localization.strings !== "object" || !Array.isArray(config.linkPreviews) || config.linkPreviews.length > 128 || !Array.isArray(config.documentAttachments) || config.documentAttachments.length > 100 || !config.documentAttachments.every((attachment) => Boolean(attachment) && typeof attachment === "object" && typeof attachment.id === "string" && attachment.id.length <= 128 && typeof attachment.filename === "string" && attachment.filename.length <= 1024 && typeof attachment.available === "boolean")) return null;
     return config;
   }
 
@@ -549,6 +596,10 @@
     };
     readerWindow.scholiumRevealDocumentAttachmentControl = () => revealDocumentAttachmentAddControl(document);
     const popover = requiredElement("scholium-preview-popover");
+    popover.remove();
+    const nativeFloating = createNativeFloatingBridge((surface) => post("floatingSurface", { surface }));
+    let nativePreviewID = 0;
+    let nativePreviewHovered = false;
     const previewTitle = popover.querySelector(".scholium-preview-title");
     const previewMetadata = popover.querySelector(".scholium-preview-metadata");
     const previewBody = popover.querySelector(".scholium-preview-body");
@@ -781,6 +832,8 @@
       );
     }
     function hidePopover() {
+      nativePreviewHovered = false;
+      nativeFloating.hide(nativePreviewID);
       clearTimeout(popoverHideTimer);
       popoverHideTimer = void 0;
       if (activeAnnotationButton) setAnnotationExpanded(activeAnnotationButton, false);
@@ -797,6 +850,7 @@
       popoverHideTimer = void 0;
     }
     function schedulePopoverHide() {
+      if (nativePreviewHovered) return;
       if (pinnedAnnotationButton) return;
       clearTimeout(popoverHideTimer);
       popoverHideTimer = setTimeout(hidePopover, 180);
@@ -949,13 +1003,17 @@
     };
     function positionPopover(anchor) {
       popover.hidden = false;
-      const rect = anchor.getBoundingClientRect();
-      const measured = popover.getBoundingClientRect();
-      const left = Math.max(12, Math.min(rect.left, window.innerWidth - measured.width - 12));
-      const below = rect.bottom + 8;
-      const top = below + measured.height <= window.innerHeight - 12 ? below : Math.max(12, rect.top - measured.height - 8);
-      popover.style.left = left + "px";
-      popover.style.top = top + "px";
+      nativePreviewID = nativeFloating.show(previewSurface(anchor.getBoundingClientRect(), popover), {
+        dismiss: hidePopover,
+        enter: () => {
+          nativePreviewHovered = true;
+          cancelPopoverHide();
+        },
+        leave: () => {
+          nativePreviewHovered = false;
+          schedulePopoverHide();
+        }
+      });
     }
     function showFootnotePopover(button) {
       const ordinal = button.dataset.footnote;
@@ -1050,7 +1108,6 @@
     popover.addEventListener("pointerleave", schedulePopoverHide);
     window.addEventListener("scroll", hidePopover, { passive: true });
     window.addEventListener("resize", hidePopover);
-    window.addEventListener("blur", hidePopover);
     renderEmbeddedNotes();
     document.addEventListener("click", (event) => {
       const eventElement = event.target instanceof Element ? event.target : null;

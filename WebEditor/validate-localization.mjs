@@ -64,7 +64,6 @@ const editorUISources = [
   "input-suggestions.ts",
   "markdown-fragment.ts",
   "preview-popover.ts",
-  "selection-actions.ts",
 ];
 for (const relativePath of editorUISources) {
   const text = fs.readFileSync(path.join(editorRoot, relativePath), "utf8");

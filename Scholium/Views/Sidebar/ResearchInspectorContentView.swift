@@ -60,7 +60,7 @@ struct ResearchProjectionFreshnessView: View {
                         Button("Retry", action: retry)
                             .scholiumActivationPointer()
                             .controlSize(.small)
-                            .buttonStyle(.borderless)
+                            .scholiumButtonStyle(.borderless)
                     }
                 }
                 .accessibilityIdentifier("scholium.researchProjectionFreshness")

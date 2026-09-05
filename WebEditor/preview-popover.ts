@@ -1,7 +1,7 @@
 import type {Extension} from "@codemirror/state";
 import {EditorView, ViewPlugin} from "@codemirror/view";
 import {announceEditorMessage} from "./accessibility";
-import {floatingSurfacePosition} from "./floating-surface-geometry";
+import {previewSurface, type NativeFloatingBridge} from "./native-floating";
 import type {
   FootnotePresentation,
   FootnoteReferencePresentation,
@@ -60,6 +60,7 @@ export interface PreviewPopoverController {
 /** Owns cached-link, footnote, and source-owned annotation previews without owning source. */
 export function createPreviewPopoverController(
   options: {
+    nativeFloating: NativeFloatingBridge;
     previews(): readonly LinkPreview[];
     footnotes(): FootnotePresentation;
     renderFootnoteContent(content: string, parent: HTMLElement): void;
@@ -69,6 +70,8 @@ export function createPreviewPopoverController(
     ): void;
   },
 ): PreviewPopoverController {
+  let nativeID = 0;
+  let nativeHovered = false;
   let editor: EditorView | null = null;
   let root: HTMLElement | null = null;
   let title: HTMLElement | null = null;
@@ -114,6 +117,8 @@ export function createPreviewPopoverController(
   }
 
   function hide(retainHoveredLink = false) {
+    nativeHovered = false;
+    options.nativeFloating.hide(nativeID);
     window.clearTimeout(showTimer);
     window.clearTimeout(hideTimer);
     showTimer = undefined;
@@ -144,52 +149,26 @@ export function createPreviewPopoverController(
   }
 
   function scheduleHide() {
-    if (hasPinnedPreview()) return;
+    if (hasPinnedPreview() || nativeHovered) return;
     window.clearTimeout(hideTimer);
     hideTimer = window.setTimeout(hide, 180);
   }
 
   function position(anchor: PreviewAnchorRect, startedAt?: number) {
     if (!editor || !root) return;
-    const activeEditor = editor;
-    const activeRoot = root;
-    activeRoot.style.visibility = "hidden";
-    activeRoot.hidden = false;
-    const inset = 12;
-    const gap = 8;
-    activeEditor.requestMeasure({
-      read: () => ({
-        measured: activeRoot.getBoundingClientRect(),
-        viewportWidth: window.innerWidth,
-        viewportHeight: window.innerHeight,
-      }),
-      write: ({measured, viewportWidth, viewportHeight}) => {
-        if (activeRoot.hidden || editor !== activeEditor || root !== activeRoot) return;
-        const resolved = floatingSurfacePosition({
-          anchor,
-          surface: measured,
-          viewport: {width: viewportWidth, height: viewportHeight},
-          horizontal: "start",
-          preferredPlacement: "below",
-          inset,
-          gap,
-        });
-        activeRoot.style.left = `${resolved.left}px`;
-        activeRoot.style.top = `${resolved.top}px`;
-        activeRoot.style.visibility = "visible";
-        if (startedAt === undefined) return;
-        scheduleAfterNextPaint(() => {
-          const durationMilliseconds = Math.max(0, performance.now() - startedAt);
-          recordEditorMetric("cached-preview", startedAt, {
-            documentLength: activeEditor.state.doc.length,
-          });
-          options.postPerformanceSample(
-            "editor_cached_preview",
-            durationMilliseconds,
-          );
-        });
-      },
+    root.hidden = false;
+    nativeID = options.nativeFloating.show(previewSurface(anchor, root), {
+      dismiss: hide,
+      enter: () => { nativeHovered = true; cancelHide(); },
+      leave: () => { nativeHovered = false; scheduleHide(); },
     });
+    if (startedAt !== undefined) {
+      const activeEditor = editor;
+      scheduleAfterNextPaint(() => {
+        recordEditorMetric("cached-preview", startedAt, {documentLength: activeEditor.state.doc.length});
+        options.postPerformanceSample("editor_cached_preview", Math.max(0, performance.now() - startedAt));
+      });
+    }
   }
 
   function showLinkPreview(preview: LinkPreview, anchor: PreviewAnchorRect, startedAt: number) {
@@ -497,7 +476,7 @@ export function createPreviewPopoverController(
     body.setAttribute("role", "group");
     body.setAttribute("aria-label", localized("Preview content"));
     root.append(title, metadata, body);
-    document.body.append(root);
+    // Detached content builder; the native floating container owns presentation.
     root.addEventListener("pointerenter", handlePreviewPointerEnter);
     root.addEventListener("pointerleave", handlePreviewPointerLeave);
     document.addEventListener("pointermove", handlePointerMove, {passive: true});
@@ -508,7 +487,6 @@ export function createPreviewPopoverController(
     document.addEventListener("keydown", handleKeyDown);
     view.scrollDOM.addEventListener("scroll", handleViewportExit, {passive: true});
     window.addEventListener("resize", handleViewportExit);
-    window.addEventListener("blur", handleViewportExit);
   }
 
   function unmount(view: EditorView) {
@@ -524,7 +502,6 @@ export function createPreviewPopoverController(
     root?.removeEventListener("pointerenter", handlePreviewPointerEnter);
     root?.removeEventListener("pointerleave", handlePreviewPointerLeave);
     window.removeEventListener("resize", handleViewportExit);
-    window.removeEventListener("blur", handleViewportExit);
     root?.remove();
     root = null;
     title = null;

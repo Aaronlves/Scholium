@@ -1,5 +1,10 @@
 import {
   CompletionContext,
+  acceptCompletion,
+  closeCompletion,
+  currentCompletions,
+  selectedCompletionIndex,
+  setSelectedCompletion,
   autocompletion,
   pickedCompletion,
   snippet,
@@ -19,6 +24,8 @@ import {
 } from "./protocol";
 import {applySourceChanges, transformMarkdown} from "./transformations";
 import {systemSymbolElement, type WebSystemSymbolKey} from "./system-symbols";
+import {EditorView, ViewPlugin, type ViewUpdate} from "@codemirror/view";
+import type {NativeFloatingBridge} from "./native-floating";
 import {localized, localizedCallout} from "./localization";
 
 export interface EditorLinkCompletionCandidate {
@@ -38,6 +45,7 @@ interface SourceRange {
 }
 
 interface InputSuggestionOptions {
+  nativeFloating: NativeFloatingBridge;
   mode(state: EditorState): EditorMode;
   dialect(): MarkdownEditingDialect | null;
   isComposing(): boolean;
@@ -499,8 +507,62 @@ export function createEditorInputSuggestions(
     };
   };
 
+  let nativeID = 0;
+  const nativePresentation = ViewPlugin.fromClass(class {
+    private signature = "";
+    private revision = 0;
+    private measureFallback: number | undefined;
+    constructor(readonly view: EditorView) { this.refresh(); }
+    update(update: ViewUpdate) {
+      if (update.docChanged || update.selectionSet) this.revision += 1;
+      this.refresh();
+    }
+    private read() {
+      return {
+        items: currentCompletions(this.view.state).slice(0, 100)
+          .map(item => ({label: item.label.slice(0, 512), detail: (item.detail ?? "").slice(0, 1024)})),
+        anchor: this.view.coordsAtPos(this.view.state.selection.main.head),
+        selected: selectedCompletionIndex(this.view.state) ?? -1,
+      };
+    }
+    private write({items, anchor, selected}: {items: Array<{label: string; detail: string}>; anchor: {left: number; top: number; bottom: number} | null; selected: number}) {
+      window.clearTimeout(this.measureFallback);
+      this.measureFallback = undefined;
+      if (!items.length || !anchor || this.view.root.activeElement !== this.view.contentDOM || this.view.composing) {
+        options.nativeFloating.hide(nativeID);
+        this.signature = "";
+        return;
+      }
+      const signature = JSON.stringify({items, anchor, selected, revision: this.revision});
+      if (signature === this.signature) return;
+      this.signature = signature;
+      nativeID = options.nativeFloating.show({
+        kind: "suggestions", left: anchor.left, top: anchor.top, bottom: anchor.bottom,
+        html: "", css: "", items, selected,
+      }, {
+        dismiss: () => { closeCompletion(this.view); },
+        choose: index => {
+          if (this.view.composing || this.view.root.activeElement !== this.view.contentDOM) return;
+          this.view.dispatch({effects: setSelectedCompletion(index)});
+          acceptCompletion(this.view);
+        },
+      });
+    }
+    refresh() {
+      window.clearTimeout(this.measureFallback);
+      // WKWebView can throttle animation frames independently of keyboard input.
+      // The same public geometry read runs once at idle if its keyed measure stalls.
+      this.measureFallback = window.setTimeout(() => this.write(this.read()), 50);
+      this.view.requestMeasure({key: this, read: () => this.read(), write: value => this.write(value)});
+    }
+    destroy() {
+      window.clearTimeout(this.measureFallback);
+      options.nativeFloating.hide(nativeID);
+    }
+  });
+
   return {
-    extension: autocompletion({
+    extension: [autocompletion({
       override: [
         calloutCompletionSource,
         wikilinkCompletionSource,
@@ -512,7 +574,13 @@ export function createEditorInputSuggestions(
       icons: false,
       tooltipClass: () => "scholium-editor-suggestions",
       addToOptions: [{render: suggestionSymbol, position: 20}],
-    }),
+    }), nativePresentation, EditorView.baseTheme({
+      // Keep CodeMirror's single accessible list and aria-activedescendant relation.
+      // Native rows are a pointer/visual projection and do not duplicate that AX tree.
+      ".cm-tooltip-autocomplete.scholium-editor-suggestions": {
+        clipPath: "inset(100%)", pointerEvents: "none",
+      },
+    })],
     wikilinkCompletionSource,
     analysisReferenceCompletionSource,
     slashCompletionSource,

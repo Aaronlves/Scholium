@@ -87,7 +87,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         return coordinator
     }
 
-    func makeNSView(context: Context) -> WKWebView {
+    func makeNSView(context: Context) -> DocumentWebViewContainer {
         let webView: WKWebView
         let contentController: WKUserContentController
         if let prepared = ScholiumWebKitProcessPrewarmer.shared.takeReadWebView() {
@@ -127,10 +127,11 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             documentAttachmentRevealRevision: documentAttachmentRevealRevision,
             in: webView
         )
-        return webView
+        return DocumentWebViewContainer(webView: webView)
     }
 
-    func updateNSView(_ webView: WKWebView, context: Context) {
+    func updateNSView(_ container: DocumentWebViewContainer, context: Context) {
+        let webView = container.webView
         #if DEBUG
         context.coordinator.testingForcesFinalizationFailure = testingForcesFinalizationFailure
         context.coordinator.testingScrollRestoreDelayMilliseconds = testingScrollRestoreDelayMilliseconds
@@ -175,7 +176,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         )
     }
 
-    static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
+    static func dismantleNSView(_ container: DocumentWebViewContainer, coordinator: Coordinator) {
+        let webView = container.webView
         Task { @MainActor [weak webView] in
             guard let webView else { return }
             _ = try? await webView.evaluateJavaScript(
@@ -206,6 +208,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var onAttachDocument: ((DocumentAttachmentSelectionMode) -> Void)?
         private var onSelectionChange: ((MarkdownReviewSelection?) -> Void)?
         private let selectionCoordinator: SafeMarkdownReadSelectionCoordinator
+        private let floatingSurfaces = DocumentFloatingSurfaceController()
         private let findCoordinator = SafeMarkdownReadFindCoordinator()
         private let runtimeCoordinator = SafeMarkdownReadRuntimeCoordinator()
         private var renderingReadinessIsAcknowledged: Bool
@@ -552,13 +555,14 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private func applyFindRequestIfNeeded(in webView: WKWebView) {
             let generation = loadGeneration
             findCoordinator.applyIfNeeded(
-                pageIsReady: pageIsReady,
+                pageIsReady: pageIsReady && selectionCoordinator.isActive,
                 in: webView,
                 isCurrent: { [weak self, weak webView] in
                     guard let self, let webView else { return false }
                     return self.activeWebView === webView
                         && self.pageIsReady
                         && self.loadGeneration == generation
+                        && self.selectionCoordinator.isActive
                 }
             )
         }
@@ -662,13 +666,27 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         ) {
             guard message.name == Self.messageHandlerName,
                   let payload = message.body as? [String: Any],
-                  payload["version"] as? Int == 2,
+                  payload["version"] as? Int == 3,
                   payload["documentID"] as? String == documentID,
                   payload["fingerprint"] as? String == fingerprint,
                   (payload["loadGeneration"] as? NSNumber)?.uint64Value == loadGeneration,
                   let type = payload["type"] as? String else { return }
 
             switch type {
+            case "floatingSurface":
+                guard let surface = DocumentFloatingSurface.decode(payload["surface"]),
+                      surface.kind != .suggestions, let webView = message.webView else { return }
+                let expectedGeneration = loadGeneration
+                floatingSurfaces.present(surface, in: webView) { [weak self, weak webView] id, action, index in
+                    guard let self, let webView, self.loadGeneration == expectedGeneration else { return }
+                    Task { @MainActor in
+                        _ = try? await webView.callAsyncJavaScript(
+                            "return window.scholiumNativeFloatingEvent?.(id, action, index)",
+                            arguments: ["id": id, "action": action, "index": index],
+                            in: nil, contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
+                        )
+                    }
+                }
             case "requestMermaidRuntime":
                 guard let webView = message.webView else { return }
                 requestMermaidRuntime(in: webView)
@@ -1098,6 +1116,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         }
 
         func cancelPendingPageWork(keepingLoadIdentity: Bool = false) {
+            floatingSurfaces.dismiss()
             loadFinalizationTask?.cancel()
             loadFinalizationTask = nil
             sourceLineNavigationTask?.cancel()
@@ -1393,7 +1412,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 )
             }
             let configuration = ReadBridgeConfiguration(
-                version: 2,
+                version: 3,
                 documentID: documentID,
                 fingerprint: fingerprint,
                 loadGeneration: loadGeneration,

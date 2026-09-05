@@ -70,6 +70,9 @@ final class SafeMarkdownReadFindCoordinator {
                       current >= 0,
                       total >= 0,
                       current <= total else { return }
+                if case .clear = request.operation {
+                    webView.window?.makeFirstResponder(webView)
+                }
                 self.report?(
                     request.id,
                     .success(DocumentFindResult(current: current, total: total))

@@ -9,6 +9,61 @@
 the older fixed-index Records and animated Settlement presentation evidence
 below; it is implementation verification, not release or human acceptance.
 
+- Completion lifecycle and density corrections passed 99 focused tests across
+  four suites. Autosave now invalidates transport requests without dismissing
+  the active projection, and activation validates the accepted live buffer
+  revision across disk-fingerprint rebasing. Selection reuses the same native
+  host and frame; single-line/described rows use shared 28/40-point metrics and
+  neutral interaction feedback. Tests cover retained view identity, narrow
+  bounds, mixed-script sizing, exact source, and saved-snapshot reconciliation.
+  The isolated completion QA journey passed in 32.531 seconds, including a real
+  autosave before pointer acceptance, eight keyboard selection changes with
+  stable geometry, Undo/Redo, subsequent keyboard acceptance, and Escape.
+  Evidence: `.build/completion-refinement/`; human adaptation acceptance remains
+  open.
+- The button consolidation passed 100 focused interface/presentation tests and
+  four isolated QA journeys: Find (47.732 seconds), Library/menu/sheet Cancel
+  (30.661 seconds), Document Information menu/state (23.905 seconds), and
+  default/disabled/destructive-cancel actions (48.559 seconds).
+  Return moves only the disposable fixture with identical bytes;
+  an empty destination stays disabled, and Escape cancels Trash without loss.
+  Window and sheet/popover roots explicitly install the shared neutral style;
+  the initial sheet screenshots exposed missing inherited styling, now fixed.
+  Menu triggers use the corresponding native MenuStyle adapter; Clear is a
+  neutral command button, while target-Document navigation retains link semantics.
+  Native icon chrome has one owner, and ownership checks prohibit feature-owned
+  native button/menu styles, prominent variants, and tint overrides. Narrow Light/High
+  Contrast Dark component snapshots retain field identity. Documentation and
+  localization validation pass. Evidence: `.build/button-consolidation/`.
+  Full-app adaptation and human assistive/input acceptance remain open.
+- The native floating-surface cutover passed 142 focused tests in six suites,
+  plus subsequent container, completion, and Edit preview checks. All 217 Web
+  tests and generated-resource reproducibility passed. Find, Search, previews,
+  completion, progress, and notifications now share native Liquid Glass;
+  persistent document integrity and recovery content retain opaque semantic
+  surfaces. Notification copy, actions, material, and narrow-layout behavior
+  have one component owner.
+  Five isolated QA journeys passed: Find (41.244 seconds), completion
+  (24.103 seconds), notification lifetime/placement (26.563 seconds), Search
+  results/empty state (21.892 seconds), and mode-specific footnote preview
+  (34.682 seconds). They verify unchanged prose geometry, replacement disclosure,
+  exact-selection return, completion pointer/keyboard acceptance and Undo,
+  native preview selection/copy/Escape, and reference/backlink navigation.
+  Completion now fits actual labels/details; three native surface tests and
+  the completion QA journey cover content sizing, narrow bounds, selection
+  stability, pointer/keyboard acceptance, and Undo after Latin IME commitment.
+  The complete gate passed Web/resources and stopped on one obsolete Core
+  assertion requiring a removed DOM preview target. That assertion is corrected;
+  the complete gate has not been rerun.
+  Evidence: `.build/liquid-glass/`. Full-app adaptation, real IME candidate
+  selection, and human assistive acceptance remain open.
+- The editor formatting-bar removal passed 42 focused Swift protocol,
+  architecture, and WKWebView tests, plus 214 Web tests in 38 files and
+  generated-resource reproducibility. Mixed-script selection stays unobscured;
+  native command dispatch retains exact Bold/Comment transforms, and pointer
+  projection and mode-transition checks pass. Protocol 22 removes the unused
+  toolbar image requests. Logs: `.build/editor-formatting-removal/`. This is
+  isolated integration evidence, not a full-app UI or human acceptance run.
 - The subsequent Library-only refinement passed 115 tests across the Library
   tree and frontend architecture suites. It covers one shared Note command list
   including Move, separated Content/Integrity filters, one Metadata group,

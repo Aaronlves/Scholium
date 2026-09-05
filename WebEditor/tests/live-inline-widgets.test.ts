@@ -18,7 +18,7 @@ describe("live inline widget presentation", () => {
     const template = dom.querySelector<HTMLTemplateElement>("template")!;
     expect(dom.tagName).toBe("SUP");
     expect(button.getAttribute("aria-expanded")).toBe("false");
-    expect(button.getAttribute("aria-controls")).toBe("scholium-preview-popover");
+    expect(button.getAttribute("aria-controls")).toBeNull();
     expect(button.dataset.linkAnnotationTarget).toBe("Target");
     expect(template.content.querySelector(".scholium-link-annotation-content")?.textContent)
       .toContain("Reason two");

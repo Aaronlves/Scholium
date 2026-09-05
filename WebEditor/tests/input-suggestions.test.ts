@@ -46,6 +46,7 @@ function controller(
   let request: {id: string; kind: string; query: string} | null = null;
   const undoLabels: string[] = [];
   const suggestions = createEditorInputSuggestions({
+    nativeFloating: {show: () => 0, hide: () => {}, event: () => true},
     mode: () => mode,
     dialect: () => dialect,
     isComposing: () => false,

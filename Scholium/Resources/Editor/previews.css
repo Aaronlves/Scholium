@@ -1,21 +1,3 @@
-.scholium-preview-popover {
-  box-sizing: border-box;
-  position: fixed;
-  z-index: 120;
-  inline-size: min(23rem, calc(100vw - 24px));
-  max-block-size: min(22rem, calc(100vh - 24px));
-  overflow: auto;
-  padding: 0.85rem 1rem;
-  border: 1px solid var(--scholium-color-separator);
-  border-radius: var(--scholium-corner-bounded-panel);
-  color: var(--scholium-color-primary-text);
-  background: var(--scholium-color-surface-background);
-  box-shadow: var(--scholium-elevation-bounded-panel);
-  overflow-wrap: anywhere;
-  overscroll-behavior: contain;
-  pointer-events: auto;
-}
-.scholium-preview-popover[hidden] { display: none; }
 .scholium-preview-title {
   margin: 0;
   color: var(--scholium-color-primary-text);
@@ -79,6 +61,5 @@
 .scholium-embedded-note-body > :first-child { margin-block-start: 0; }
 .scholium-embedded-note-body > :last-child { margin-block-end: 0; }
 @media (prefers-contrast: more) {
-  .scholium-preview-popover,
   .scholium-embedded-note { border-width: 2px; }
 }

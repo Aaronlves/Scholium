@@ -142,9 +142,8 @@ struct SidebarLibraryFilterMenu: View {
             width: ScholiumMetrics.Accessibility.preferredCustomTarget,
             height: ScholiumMetrics.Accessibility.preferredCustomTarget
         )
-        .menuStyle(.borderlessButton)
+        .scholiumMenuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .tint(ScholiumColorRole.mutedText.color)
         .scholiumContentControlPointerFeedback(
             isActive: activeFilterCount > 0,
             in: Circle()

@@ -1,6 +1,103 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Suggestions" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Suggestions"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"补全建议"}}}},
+    "Find in Document": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Find in Document"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在文档中查找"
+          }
+        }
+      }
+    },
+    "Find Options": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Find Options"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查找选项"
+          }
+        }
+      }
+    },
+    "Finding…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finding…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在查找…"
+          }
+        }
+      }
+    },
+    "Replace with": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Replace with"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "替换为"
+          }
+        }
+      }
+    },
+    "Show Replace": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show Replace"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "展开替换"
+          }
+        }
+      }
+    },
+    "Hide Replace": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide Replace"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "收起替换"
+          }
+        }
+      }
+    },
     "No Matching Notes": {
       "localizations": {
         "en": { "stringUnit": { "state": "translated", "value": "No Matching Notes" } },

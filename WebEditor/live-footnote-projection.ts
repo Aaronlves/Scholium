@@ -74,7 +74,6 @@ export function createLiveFootnoteProjection(options: {
       marker.dataset.footnoteIdentifier = this.reference.identifier;
       marker.dataset.footnoteOccurrence = String(this.reference.occurrence);
       marker.dataset.scholiumProtected = "footnote-marker";
-      marker.setAttribute("aria-controls", "scholium-preview-popover");
       marker.setAttribute("aria-expanded", "false");
       marker.setAttribute(
         "aria-label",

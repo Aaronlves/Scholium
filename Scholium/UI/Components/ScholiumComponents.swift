@@ -409,15 +409,7 @@ struct ScholiumEditorialIconControl<NativeControl: View>: View {
 
     var body: some View {
         nativeControl
-            .menuStyle(.button)
-            .buttonStyle(.glass)
-            .buttonBorderShape(.circle)
-            .controlSize(.regular)
-            .menuIndicator(.hidden)
-            .frame(
-                width: ScholiumMetrics.Accessibility.preferredCustomTarget,
-                height: ScholiumMetrics.Accessibility.preferredCustomTarget
-            )
+            .scholiumIconControl()
             .focused($isFocused)
             .environment(\.scholiumContentControlIsEmphasized, isActive)
             .opacity(isVisuallyRevealed || isFocused ? 1 : 0)
@@ -440,11 +432,6 @@ struct ScholiumEditorialIconControlLabel: View {
                 isEmphasized
                     ? .primaryText
                     : .secondaryText
-            )
-            .tint(
-                isEmphasized
-                    ? ScholiumColorRole.primaryText.color
-                    : ScholiumColorRole.secondaryText.color
             )
     }
 }
@@ -513,16 +500,7 @@ struct SidebarTriptychAttentionEntry: View {
             }
             .contentShape(Rectangle())
         }
-        .buttonStyle(.glass)
-        // This is an ordinary toolbar action. Do not let the workspace Accent
-        // turn its Glass background into a prominent, primary-action surface.
-        .tint(nil as Color?)
-        .buttonBorderShape(.circle)
-        .controlSize(.regular)
-        .frame(
-            width: ScholiumMetrics.Accessibility.preferredCustomTarget,
-            height: ScholiumMetrics.Accessibility.preferredCustomTarget
-        )
+        .scholiumIconControl()
         .help(actionLabel)
         .accessibilityLabel(actionLabel)
         .accessibilityValue(accessibilityValue)
@@ -564,120 +542,6 @@ struct SidebarTriptychAttentionEntry: View {
         case .zero, .checking:
             .secondaryText
         }
-    }
-}
-
-/// Compact Run-bound operations shared by the Document notification stack and
-/// the complete Notifications queue. The caller owns surrounding information.
-/// The shared visual grammar for top-of-window notifications. Domain owners
-/// supply state and operations; the banner owns concise copy, truncation,
-/// adaptation, surface treatment, and accessibility grouping.
-struct ScholiumNotificationBanner<Actions: View>: View {
-    let systemImage: String
-    let colorRole: ScholiumColorRole
-    let title: String
-    let detail: String?
-    let maximumWidth: CGFloat
-    let accessibilityIdentifier: String
-    @ViewBuilder let actions: () -> Actions
-
-    var body: some View {
-        HStack(
-            alignment: .center,
-            spacing: ScholiumGrid.Spacing.nestedContentInset
-        ) {
-            ScholiumNotificationBannerCopy(
-                systemImage: systemImage,
-                colorRole: colorRole,
-                title: title,
-                detail: detail
-            )
-            actions()
-                .fixedSize(horizontal: true, vertical: false)
-                .layoutPriority(1)
-        }
-        .scholiumNotificationBannerSurface(
-            maximumWidth: maximumWidth,
-            accessibilityIdentifier: accessibilityIdentifier
-        )
-    }
-}
-
-private struct ScholiumNotificationBannerCopy: View {
-    let systemImage: String
-    let colorRole: ScholiumColorRole
-    let title: String
-    let detail: String?
-
-    var body: some View {
-        HStack(
-            alignment: .center,
-            spacing: ScholiumGrid.Spacing.inlineControlGap
-        ) {
-            Image(systemName: systemImage)
-                .font(ScholiumTypography.interface(.body, emphasis: .strong))
-                .scholiumForeground(colorRole)
-                .accessibilityHidden(true)
-            VStack(
-                alignment: .leading,
-                spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment
-            ) {
-                Text(verbatim: title)
-                    .font(ScholiumTypography.interface(.rowTitle))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                if let detail, !detail.isEmpty {
-                    Text(verbatim: detail)
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.secondaryText)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-            }
-            .layoutPriority(-1)
-        }
-    }
-}
-
-private struct ScholiumNotificationBannerSurfaceModifier: ViewModifier {
-    let maximumWidth: CGFloat
-    let accessibilityIdentifier: String
-
-    func body(content: Content) -> some View {
-        content
-            .padding(
-                .horizontal,
-                ScholiumMetrics.Workspace.compactNoticeHorizontalInset
-            )
-            .padding(
-                .vertical,
-                ScholiumMetrics.Workspace.compactNoticeVerticalInset
-            )
-            .scholiumContentFittingWidth(maximumWidth: maximumWidth)
-            .scholiumEditorialSurface(.floatingControl, in: notificationShape)
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier(accessibilityIdentifier)
-    }
-
-    private var notificationShape: RoundedRectangle {
-        RoundedRectangle(
-            cornerRadius: ScholiumShape.inlineStatusCornerRadius,
-            style: .continuous
-        )
-    }
-}
-
-private extension View {
-    func scholiumNotificationBannerSurface(
-        maximumWidth: CGFloat,
-        accessibilityIdentifier: String
-    ) -> some View {
-        modifier(
-            ScholiumNotificationBannerSurfaceModifier(
-                maximumWidth: maximumWidth,
-                accessibilityIdentifier: accessibilityIdentifier
-            )
-        )
     }
 }
 
@@ -1036,107 +900,6 @@ struct ScholiumRecoveryNotice<Action: View>: View {
     }
 }
 
-/// Shared presentation for ordered operation feedback. Feature owners retain
-/// queue state and operation semantics; this component owns concise toast copy,
-/// persistent notification grammar, announcement, and bounded lifetime.
-struct ScholiumOperationFeedback: View {
-    let id: UUID
-    let message: String
-    let kind: ScholiumFeedbackKind
-    let maximumWidth: CGFloat
-    let accessibilityIdentifierPrefix: String
-    let dismiss: () -> Void
-
-    var body: some View {
-        Group {
-            if kind.dismissesAutomatically {
-                transientToast
-            } else {
-                persistentNotice
-            }
-        }
-        .task(id: id) {
-            AccessibilityNotification.Announcement(
-                "\(kind.accessibilityLabel). \(message)"
-            ).post()
-            guard kind.dismissesAutomatically else { return }
-            try? await Task.sleep(for: ScholiumFeedbackPolicy.transientLifetime)
-            guard !Task.isCancelled else { return }
-            dismiss()
-        }
-    }
-
-    private var transientToast: some View {
-        HStack(alignment: .center, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            Image(systemName: kind.symbol)
-                .font(ScholiumTypography.interface(.body))
-                .scholiumForeground(kind.colorRole)
-                .accessibilityHidden(true)
-            Text(verbatim: message)
-                .font(ScholiumTypography.interface(.small))
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .textSelection(.enabled)
-        }
-        .padding(.horizontal, ScholiumGrid.Spacing.inlineControlGap)
-        .padding(.vertical, ScholiumMetrics.Notice.verticalInset)
-        .scholiumContentFittingWidth(maximumWidth: maximumWidth)
-        .scholiumEditorialSurface(
-            .floatingControl,
-            in: RoundedRectangle(
-                cornerRadius: ScholiumShape.inlineStatusCornerRadius,
-                style: .continuous
-            )
-        )
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(kind.accessibilityLabel)
-        .accessibilityValue(message)
-        .accessibilityIdentifier(
-            "\(accessibilityIdentifierPrefix).\(kind.accessibilityIdentifierSuffix)"
-        )
-    }
-
-    private var persistentNotice: some View {
-        HStack(
-            alignment: .center,
-            spacing: ScholiumGrid.Spacing.nestedContentInset
-        ) {
-            ScholiumNotificationBannerCopy(
-                systemImage: kind.symbol,
-                colorRole: kind.colorRole,
-                title: kind.accessibilityLabel,
-                detail: message
-            )
-            Button("Dismiss", action: dismiss)
-                .scholiumActivationPointer()
-                .controlSize(.small)
-                .keyboardShortcut(.cancelAction)
-        }
-        .padding(
-            .horizontal,
-            ScholiumMetrics.Workspace.compactNoticeHorizontalInset
-        )
-        .padding(
-            .vertical,
-            ScholiumMetrics.Workspace.compactNoticeVerticalInset
-        )
-        .scholiumContentFittingWidth(maximumWidth: maximumWidth)
-        .scholiumEditorialSurface(
-            .floatingControl,
-            in: RoundedRectangle(
-                cornerRadius: ScholiumShape.inlineStatusCornerRadius,
-                style: .continuous
-            )
-        )
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(kind.accessibilityLabel)
-        .accessibilityValue(message)
-        .accessibilityIdentifier(
-            "\(accessibilityIdentifierPrefix).\(kind.accessibilityIdentifierSuffix)"
-        )
-    }
-}
-
 enum ScholiumDocumentStatusKind: Sendable {
     case attention
     case destructive
@@ -1200,7 +963,7 @@ struct ScholiumDocumentStatusNotice<Actions: View>: View {
         .padding(.vertical, ScholiumMetrics.Notice.verticalInset)
         .frame(maxWidth: 520, alignment: .leading)
         .scholiumEditorialSurface(
-            .floatingControl,
+            .boundedPanel,
             in: RoundedRectangle(
                 cornerRadius: ScholiumShape.inlineStatusCornerRadius,
                 style: .continuous

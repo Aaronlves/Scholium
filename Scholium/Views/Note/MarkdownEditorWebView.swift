@@ -25,8 +25,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
     let onDocumentActivity: () -> Void
     let onRequestSave: () -> Void
     let onRequestFind: (DocumentFindShortcut) -> Void
-    let onRequestImportImage: () -> Void
-    let onRequestIndexImage: () -> Void
     let onRequestDocumentTitleRename: @MainActor (
         String,
         String
@@ -55,8 +53,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             onDocumentActivity: onDocumentActivity,
             onRequestSave: onRequestSave,
             onRequestFind: onRequestFind,
-            onRequestImportImage: onRequestImportImage,
-            onRequestIndexImage: onRequestIndexImage,
             onPreviewDocumentAttachment: onPreviewDocumentAttachment,
             onAttachDocument: onAttachDocument,
             onRequestDocumentTitleRename: onRequestDocumentTitleRename,
@@ -67,7 +63,7 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         )
     }
 
-    func makeNSView(context: Context) -> WKWebView {
+    func makeNSView(context: Context) -> DocumentWebViewContainer {
         let attachmentSource = session.sourceForViewAttachment(
             proposedSource: source,
             documentID: documentID
@@ -171,16 +167,17 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         guard let editorHTML = Self.editorHTML(localization: interfaceLocalization),
               Self.editorScript != nil else {
             session.reportError(String(localized: "The bundled Markdown editor resources could not be found.", table: "Localizable", bundle: .module))
-            return webView
+            return DocumentWebViewContainer(webView: webView)
         }
         context.coordinator.awaitingEditorLoad = true
         webView.onFirstWindowAttachment = { [weak webView] in
             webView?.loadHTMLString(editorHTML, baseURL: nil)
         }
-        return webView
+        return DocumentWebViewContainer(webView: webView)
     }
 
-    func updateNSView(_ webView: WKWebView, context: Context) {
+    func updateNSView(_ container: DocumentWebViewContainer, context: Context) {
+        let webView = container.webView
         context.coordinator.activeWebView = webView
         if let webView = webView as? WindowAttachedWebView {
             webView.editorSession = session
@@ -190,8 +187,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         context.coordinator.onDocumentActivity = onDocumentActivity
         context.coordinator.onRequestSave = onRequestSave
         context.coordinator.onRequestFind = onRequestFind
-        context.coordinator.onRequestImportImage = onRequestImportImage
-        context.coordinator.onRequestIndexImage = onRequestIndexImage
         context.coordinator.onPreviewDocumentAttachment = onPreviewDocumentAttachment
         context.coordinator.onAttachDocument = onAttachDocument
         context.coordinator.onRequestDocumentTitleRename = onRequestDocumentTitleRename
@@ -243,7 +238,8 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         }
     }
 
-    static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
+    static func dismantleNSView(_ container: DocumentWebViewContainer, coordinator: Coordinator) {
+        let webView = container.webView
         if let webView = webView as? WindowAttachedWebView {
             webView.editorSession = nil
             webView.onPasteImage = nil
@@ -305,8 +301,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         var onDocumentActivity: () -> Void
         var onRequestSave: () -> Void
         var onRequestFind: (DocumentFindShortcut) -> Void
-        var onRequestImportImage: () -> Void
-        var onRequestIndexImage: () -> Void
         var onPreviewDocumentAttachment: (UUID) -> Void
         var onAttachDocument: (DocumentAttachmentSelectionMode) -> Void
         var onRequestDocumentTitleRename: @MainActor (
@@ -353,8 +347,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             onDocumentActivity: @escaping () -> Void,
             onRequestSave: @escaping () -> Void,
             onRequestFind: @escaping (DocumentFindShortcut) -> Void,
-            onRequestImportImage: @escaping () -> Void,
-            onRequestIndexImage: @escaping () -> Void,
             onPreviewDocumentAttachment: @escaping (UUID) -> Void,
             onAttachDocument: @escaping (DocumentAttachmentSelectionMode) -> Void,
             onRequestDocumentTitleRename: @escaping @MainActor (
@@ -374,8 +366,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             self.onDocumentActivity = onDocumentActivity
             self.onRequestSave = onRequestSave
             self.onRequestFind = onRequestFind
-            self.onRequestImportImage = onRequestImportImage
-            self.onRequestIndexImage = onRequestIndexImage
             self.onPreviewDocumentAttachment = onPreviewDocumentAttachment
             self.onAttachDocument = onAttachDocument
             self.onRequestDocumentTitleRename = onRequestDocumentTitleRename
@@ -403,6 +393,24 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             guard let payload = EditorBridgeMessageDecoder.decode(message.body) else { return }
 
             switch payload {
+            case .floatingSurface(let request):
+                guard validEnvelope(request.envelope), let webView = message.webView else { return }
+                session.floatingSurfaces.present(request.surface, in: webView) { [weak self, weak webView] id, action, index in
+                    Task { @MainActor in
+                        // Autosave rebases the disk fingerprint, not the live buffer
+                        // revision. Validate that revision at event dispatch instead.
+                        guard let self, let webView,
+                              self.session.webView === webView,
+                              request.envelope.sessionID == self.session.sessionID.uuidString,
+                              request.envelope.documentID == self.documentID,
+                              request.envelope.documentVersion == self.session.generation else { return }
+                        _ = try? await webView.callAsyncJavaScript(
+                            "return window.scholiumNativeFloatingEvent?.(id, action, index)",
+                            arguments: ["id": id, "action": action, "index": index],
+                            in: nil, contentWorld: .page
+                        )
+                    }
+                }
             case .ready:
                 signalReady()
             case .documentEnded(let editorReady):
@@ -467,12 +475,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             case .requestDocumentFind(let request):
                 guard validEnvelope(request.envelope) else { return }
                 onRequestFind(request.action)
-            case .requestImportImage(let envelope):
-                guard validEnvelope(envelope) else { return }
-                onRequestImportImage()
-            case .requestIndexImage(let envelope):
-                guard validEnvelope(envelope) else { return }
-                onRequestIndexImage()
             case .requestDocumentTitleRename(let request):
                 guard validEnvelope(request.envelope),
                       let webView = message.webView ?? activeWebView else { return }

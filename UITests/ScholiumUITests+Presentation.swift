@@ -551,7 +551,7 @@ extension ScholiumUITests {
         add(emptyScreenshot)
         XCTAssertTrue(waitForDocumentTitle("QA Autosave A"))
         let status = app.descendants(matching: .any)["scholium.libraryFilterStatus"].firstMatch
-        let clear = status.links["Clear"].firstMatch
+        let clear = status.buttons["Clear"].firstMatch
         XCTAssertTrue(clear.waitForExistence(timeout: 5))
         clear.click()
         let row = app.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"].firstMatch
@@ -567,11 +567,64 @@ extension ScholiumUITests {
         let sheet = app.sheets.firstMatch
         XCTAssertTrue(sheet.waitForExistence(timeout: 5))
         XCTAssertTrue(sheet.textFields.firstMatch.exists)
+        let buttons = XCTAttachment(screenshot: sheet.screenshot())
+        buttons.name = "Neutral native sheet buttons"
+        buttons.lifetime = .keepAlways
+        add(buttons)
         sheet.buttons["Cancel"].click()
         XCTAssertTrue(waitUntil(timeout: 5) { !sheet.exists })
         XCTAssertTrue(waitForDocumentTitle("QA Autosave A"))
         XCTAssertTrue(row.exists)
         XCTAssertEqual(try Data(contentsOf: noteURL), originalBytes)
+    }
+
+    @MainActor
+    func testNativeCommandButtonsPreserveDefaultDisabledAndCancelActions() throws {
+        waitForCurrentDocumentSurface()
+        let sourceURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let movedURL = triptychDirectory.appendingPathComponent("01-analyses/QA Button Move.md")
+        let originalBytes = try Data(contentsOf: sourceURL)
+        let row = app.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.rightClick()
+        app.menuItems["Move Note…"].firstMatch.click()
+        let sheet = app.sheets.firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 5))
+        let field = sheet.textFields.firstMatch
+        field.click()
+        app.typeKey("a", modifierFlags: [.command])
+        app.typeKey(.delete, modifierFlags: [])
+        let move = sheet.buttons["Move"].firstMatch
+        XCTAssertTrue(move.waitForExistence(timeout: 3))
+        XCTAssertTrue(waitUntil(timeout: 3) { !move.isEnabled })
+        app.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(sheet.exists)
+        XCTAssertEqual(try Data(contentsOf: sourceURL), originalBytes)
+        typeCommittedText("QA Button Move.md", into: field, in: app)
+        XCTAssertTrue(waitUntil(timeout: 3) { move.isEnabled })
+        let ready = XCTAttachment(screenshot: sheet.screenshot())
+        ready.name = "Neutral default Move button"
+        ready.lifetime = .keepAlways
+        add(ready)
+        app.typeKey(.return, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !sheet.exists })
+        XCTAssertTrue(waitUntil(timeout: 5) { FileManager.default.fileExists(atPath: movedURL.path) })
+        XCTAssertEqual(try Data(contentsOf: movedURL), originalBytes)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sourceURL.path))
+        let movedRow = app.descendants(matching: .any)["scholium.noteRow.QA Button Move.md"].firstMatch
+        XCTAssertTrue(movedRow.waitForExistence(timeout: 5))
+        movedRow.rightClick()
+        app.menuItems["Move to Trash…"].firstMatch.click()
+        let confirmation = app.sheets.firstMatch
+        XCTAssertTrue(confirmation.waitForExistence(timeout: 5))
+        XCTAssertTrue(confirmation.buttons["Move to Trash"].exists)
+        let destructive = XCTAttachment(screenshot: confirmation.screenshot())
+        destructive.name = "Destructive role stays distinct from neutral Cancel"
+        destructive.lifetime = .keepAlways
+        add(destructive)
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !confirmation.exists })
+        XCTAssertEqual(try Data(contentsOf: movedURL), originalBytes)
     }
 
     @MainActor

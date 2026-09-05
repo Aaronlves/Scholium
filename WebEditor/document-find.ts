@@ -10,7 +10,7 @@ import {
 import {EditorView} from "@codemirror/view";
 
 export type DocumentFindAction =
-  | "update" | "next" | "previous" | "replaceCurrent" | "replaceAll";
+  | "present" | "update" | "next" | "previous" | "replaceCurrent" | "replaceAll";
 
 export interface DocumentFindRequest {
   query: string;
@@ -31,7 +31,7 @@ export interface DocumentFindMatch {from: number; to: number}
 
 /**
  * CodeMirror owns matching and visible highlights, while Scholium's native
- * Document bar owns fields and focus. The required panel remains an inert,
+ * Document panel owns fields and focus. The required panel remains an inert,
  * hidden state carrier and never becomes a second interface surface.
  */
 export const documentFindExtension = search({
@@ -125,6 +125,8 @@ export function performDocumentFind(
   let sourceChanged = false;
   let undoLabel: string | undefined;
   switch (request.action) {
+  case "present":
+    break;
   case "update":
     selectMatch(view, forwardMatch(view, query, view.state.selection.main.from));
     break;

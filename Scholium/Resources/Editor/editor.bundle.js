@@ -1,5 +1,50 @@
 "use strict";
 (() => {
+  // native-floating.ts
+  function createNativeFloatingBridge(post2) {
+    let serial = 0;
+    let current = null;
+    const bridge = {
+      show(surface, callbacks) {
+        if (current && current.surface.kind !== surface.kind) current.callbacks.dismiss();
+        const id2 = ++serial;
+        current = { surface: { ...surface, id: id2 }, callbacks };
+        post2(current.surface);
+        return id2;
+      },
+      hide(id2) {
+        if (current?.surface.id !== id2) return;
+        post2({ ...current.surface, kind: "hidden", html: "", css: "", items: [], selected: -1 });
+        current = null;
+      },
+      event(id2, action, index) {
+        if (current?.surface.id !== id2) return false;
+        const callbacks = current.callbacks;
+        if (action === "enter") callbacks.enter?.();
+        else if (action === "leave") callbacks.leave?.();
+        else if (action === "dismiss") callbacks.dismiss();
+        else if (action === "choose" && Number.isInteger(index) && index >= 0 && index < current.surface.items.length) callbacks.choose?.(index);
+        else return false;
+        return true;
+      }
+    };
+    window.scholiumNativeFloatingEvent = bridge.event;
+    return bridge;
+  }
+  function previewSurface(anchor, root) {
+    const css2 = Array.from(document.querySelectorAll("style"), (node) => node.textContent ?? "").join("\n");
+    return {
+      kind: "preview",
+      left: anchor.left,
+      top: anchor.top,
+      bottom: anchor.bottom,
+      html: root.innerHTML,
+      css: css2,
+      items: [],
+      selected: -1
+    };
+  }
+
   // node_modules/@marijn/find-cluster-break/src/index.js
   var rangeFrom = [];
   var rangeTo = [];
@@ -21038,9 +21083,28 @@
     { key: "Enter", run: acceptCompletion }
   ];
   var completionKeymapExt = /* @__PURE__ */ Prec.highest(/* @__PURE__ */ keymap.computeN([completionConfig], (state) => state.facet(completionConfig).defaultKeymap ? [completionKeymap] : []));
+  var completionArrayCache = /* @__PURE__ */ new WeakMap();
+  function currentCompletions(state) {
+    var _a2;
+    let open = (_a2 = state.field(completionState, false)) === null || _a2 === void 0 ? void 0 : _a2.open;
+    if (!open || open.disabled)
+      return [];
+    let completions = completionArrayCache.get(open.options);
+    if (!completions)
+      completionArrayCache.set(open.options, completions = open.options.map((o) => o.completion));
+    return completions;
+  }
+  function selectedCompletionIndex(state) {
+    var _a2;
+    let open = (_a2 = state.field(completionState, false)) === null || _a2 === void 0 ? void 0 : _a2.open;
+    return open && !open.disabled && open.selected >= 0 ? open.selected : null;
+  }
+  function setSelectedCompletion(index) {
+    return setSelectedEffect.of(index);
+  }
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 21;
+  var EDITOR_PROTOCOL_VERSION = 23;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -21212,7 +21276,7 @@
         return typeof operation.command === "string" && commandTypes.has(operation.command) && (operation.argument === void 0 || typeof operation.argument === "string");
       case "documentFind": {
         const value = operation.value;
-        return Boolean(value) && typeof value?.query === "string" && value.query.length <= 16384 && typeof value.replacement === "string" && value.replacement.length <= 1e6 && typeof value.caseSensitive === "boolean" && typeof value.wholeWord === "boolean" && ["update", "next", "previous", "replaceCurrent", "replaceAll"].includes(value.action ?? "");
+        return Boolean(value) && typeof value?.query === "string" && value.query.length <= 16384 && typeof value.replacement === "string" && value.replacement.length <= 1e6 && typeof value.caseSensitive === "boolean" && typeof value.wholeWord === "boolean" && ["present", "update", "next", "previous", "replaceCurrent", "replaceAll"].includes(value.action ?? "");
       }
       case "queryText":
       case "querySelection":
@@ -30816,29 +30880,14 @@ ${fence}
     "The Review renderer stopped unexpectedly.",
     "No preview is available at the insertion point.",
     "Preview content",
-    "Formatting actions",
-    "Text Style",
     "Paragraph",
-    "Heading {level}",
     "Bold",
-    "Bold (\u2318B)",
     "Italic",
-    "Italic (\u2318I)",
     "Strikethrough",
     "Highlight",
-    "Link (\u2318K)",
-    "Wiki links",
-    "Wiki",
     "Annotated Wikilink",
-    "More Formatting",
-    "Import Image\u2026",
-    "Index Image\u2026",
     "Inline Code",
     "Code Block",
-    "Lists",
-    "Bullet List",
-    "Numbered List",
-    "Checkbox List",
     "Blockquote",
     "Comment",
     "Date",
@@ -31079,36 +31128,6 @@ ${fence}
     });
   }
 
-  // floating-surface-geometry.ts
-  function clamped(value, minimum, maximum) {
-    return Math.max(minimum, Math.min(value, Math.max(minimum, maximum)));
-  }
-  function floatingSurfacePosition(options) {
-    const { anchor, surface, viewport, inset, gap } = options;
-    const desiredLeft = options.horizontal === "center" ? (anchor.left + anchor.right - surface.width) / 2 : anchor.left;
-    const left = clamped(desiredLeft, inset, viewport.width - surface.width - inset);
-    const above = anchor.top - surface.height - gap;
-    const below = anchor.bottom + gap;
-    const fitsAbove = above >= inset;
-    const fitsBelow = below + surface.height <= viewport.height - inset;
-    if (options.preferredPlacement === "above") {
-      if (fitsAbove) return { left, top: above, placement: "above" };
-      if (fitsBelow) return { left, top: below, placement: "below" };
-      return {
-        left,
-        top: clamped(above, inset, viewport.height - surface.height - inset),
-        placement: "above"
-      };
-    }
-    if (fitsBelow) return { left, top: below, placement: "below" };
-    if (fitsAbove) return { left, top: above, placement: "above" };
-    return {
-      left,
-      top: clamped(below, inset, viewport.height - surface.height - inset),
-      placement: "below"
-    };
-  }
-
   // preview-popover.ts
   function normalizedTitle(value) {
     return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
@@ -31141,6 +31160,8 @@ ${fence}
     }
   }
   function createPreviewPopoverController(options) {
+    let nativeID = 0;
+    let nativeHovered = false;
     let editor2 = null;
     let root = null;
     let title = null;
@@ -31180,6 +31201,8 @@ ${fence}
       armedLink?.classList.add("scholium-link-preview-armed");
     }
     function hide(retainHoveredLink = false) {
+      nativeHovered = false;
+      options.nativeFloating.hide(nativeID);
       window.clearTimeout(showTimer);
       window.clearTimeout(hideTimer);
       showTimer = void 0;
@@ -31208,51 +31231,31 @@ ${fence}
       hideTimer = void 0;
     }
     function scheduleHide() {
-      if (hasPinnedPreview()) return;
+      if (hasPinnedPreview() || nativeHovered) return;
       window.clearTimeout(hideTimer);
       hideTimer = window.setTimeout(hide, 180);
     }
     function position(anchor, startedAt) {
       if (!editor2 || !root) return;
-      const activeEditor = editor2;
-      const activeRoot = root;
-      activeRoot.style.visibility = "hidden";
-      activeRoot.hidden = false;
-      const inset = 12;
-      const gap = 8;
-      activeEditor.requestMeasure({
-        read: () => ({
-          measured: activeRoot.getBoundingClientRect(),
-          viewportWidth: window.innerWidth,
-          viewportHeight: window.innerHeight
-        }),
-        write: ({ measured, viewportWidth, viewportHeight }) => {
-          if (activeRoot.hidden || editor2 !== activeEditor || root !== activeRoot) return;
-          const resolved = floatingSurfacePosition({
-            anchor,
-            surface: measured,
-            viewport: { width: viewportWidth, height: viewportHeight },
-            horizontal: "start",
-            preferredPlacement: "below",
-            inset,
-            gap
-          });
-          activeRoot.style.left = `${resolved.left}px`;
-          activeRoot.style.top = `${resolved.top}px`;
-          activeRoot.style.visibility = "visible";
-          if (startedAt === void 0) return;
-          scheduleAfterNextPaint(() => {
-            const durationMilliseconds = Math.max(0, performance.now() - startedAt);
-            recordEditorMetric("cached-preview", startedAt, {
-              documentLength: activeEditor.state.doc.length
-            });
-            options.postPerformanceSample(
-              "editor_cached_preview",
-              durationMilliseconds
-            );
-          });
+      root.hidden = false;
+      nativeID = options.nativeFloating.show(previewSurface(anchor, root), {
+        dismiss: hide,
+        enter: () => {
+          nativeHovered = true;
+          cancelHide();
+        },
+        leave: () => {
+          nativeHovered = false;
+          scheduleHide();
         }
       });
+      if (startedAt !== void 0) {
+        const activeEditor = editor2;
+        scheduleAfterNextPaint(() => {
+          recordEditorMetric("cached-preview", startedAt, { documentLength: activeEditor.state.doc.length });
+          options.postPerformanceSample("editor_cached_preview", Math.max(0, performance.now() - startedAt));
+        });
+      }
     }
     function showLinkPreview(preview, anchor, startedAt) {
       if (!editor2 || !root || !title || !metadata || !body) return;
@@ -31526,7 +31529,6 @@ ${fence}
       body.setAttribute("role", "group");
       body.setAttribute("aria-label", localized("Preview content"));
       root.append(title, metadata, body);
-      document.body.append(root);
       root.addEventListener("pointerenter", handlePreviewPointerEnter);
       root.addEventListener("pointerleave", handlePreviewPointerLeave);
       document.addEventListener("pointermove", handlePointerMove, { passive: true });
@@ -31537,7 +31539,6 @@ ${fence}
       document.addEventListener("keydown", handleKeyDown);
       view.scrollDOM.addEventListener("scroll", handleViewportExit, { passive: true });
       window.addEventListener("resize", handleViewportExit);
-      window.addEventListener("blur", handleViewportExit);
     }
     function unmount(view) {
       if (editor2 !== view) return;
@@ -31552,7 +31553,6 @@ ${fence}
       root?.removeEventListener("pointerenter", handlePreviewPointerEnter);
       root?.removeEventListener("pointerleave", handlePreviewPointerLeave);
       window.removeEventListener("resize", handleViewportExit);
-      window.removeEventListener("blur", handleViewportExit);
       root?.remove();
       root = null;
       title = null;
@@ -31802,7 +31802,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     button.dataset.linkAnnotation = "true";
     button.dataset.linkAnnotationTarget = alias || target;
     button.setAttribute("aria-expanded", "false");
-    button.setAttribute("aria-controls", "scholium-preview-popover");
     button.setAttribute("aria-label", `${localized("Show Link Annotation")} ${alias || target}`);
     button.append(systemSymbolElement("text-bubble", "scholium-link-annotation-icon", document2));
     const template = document2.createElement("template");
@@ -32178,7 +32177,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     let sessionLongestFrame = 0;
     let sessionDroppedFrameCount = 0;
     editor2.scrollDOM.addEventListener("scroll", () => {
-      options.onScroll();
       if (sessionStartedAt === null) sessionStartedAt = performance.now();
       if (measurementFrame === null) {
         measurementFrame = window.requestAnimationFrame(() => {
@@ -32719,8 +32717,70 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         filter: false
       };
     };
+    let nativeID = 0;
+    const nativePresentation = ViewPlugin.fromClass(class {
+      constructor(view) {
+        this.view = view;
+        this.refresh();
+      }
+      view;
+      signature = "";
+      revision = 0;
+      measureFallback;
+      update(update) {
+        if (update.docChanged || update.selectionSet) this.revision += 1;
+        this.refresh();
+      }
+      read() {
+        return {
+          items: currentCompletions(this.view.state).slice(0, 100).map((item) => ({ label: item.label.slice(0, 512), detail: (item.detail ?? "").slice(0, 1024) })),
+          anchor: this.view.coordsAtPos(this.view.state.selection.main.head),
+          selected: selectedCompletionIndex(this.view.state) ?? -1
+        };
+      }
+      write({ items, anchor, selected }) {
+        window.clearTimeout(this.measureFallback);
+        this.measureFallback = void 0;
+        if (!items.length || !anchor || this.view.root.activeElement !== this.view.contentDOM || this.view.composing) {
+          options.nativeFloating.hide(nativeID);
+          this.signature = "";
+          return;
+        }
+        const signature = JSON.stringify({ items, anchor, selected, revision: this.revision });
+        if (signature === this.signature) return;
+        this.signature = signature;
+        nativeID = options.nativeFloating.show({
+          kind: "suggestions",
+          left: anchor.left,
+          top: anchor.top,
+          bottom: anchor.bottom,
+          html: "",
+          css: "",
+          items,
+          selected
+        }, {
+          dismiss: () => {
+            closeCompletion(this.view);
+          },
+          choose: (index) => {
+            if (this.view.composing || this.view.root.activeElement !== this.view.contentDOM) return;
+            this.view.dispatch({ effects: setSelectedCompletion(index) });
+            acceptCompletion(this.view);
+          }
+        });
+      }
+      refresh() {
+        window.clearTimeout(this.measureFallback);
+        this.measureFallback = window.setTimeout(() => this.write(this.read()), 50);
+        this.view.requestMeasure({ key: this, read: () => this.read(), write: (value) => this.write(value) });
+      }
+      destroy() {
+        window.clearTimeout(this.measureFallback);
+        options.nativeFloating.hide(nativeID);
+      }
+    });
     return {
-      extension: autocompletion({
+      extension: [autocompletion({
         override: [
           calloutCompletionSource,
           wikilinkCompletionSource,
@@ -32732,7 +32792,14 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         icons: false,
         tooltipClass: () => "scholium-editor-suggestions",
         addToOptions: [{ render: suggestionSymbol, position: 20 }]
-      }),
+      }), nativePresentation, EditorView.baseTheme({
+        // Keep CodeMirror's single accessible list and aria-activedescendant relation.
+        // Native rows are a pointer/visual projection and do not duplicate that AX tree.
+        ".cm-tooltip-autocomplete.scholium-editor-suggestions": {
+          clipPath: "inset(100%)",
+          pointerEvents: "none"
+        }
+      })],
       wikilinkCompletionSource,
       analysisReferenceCompletionSource,
       slashCompletionSource,
@@ -32744,650 +32811,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         globalThis.clearTimeout(pending.timeout);
         pending.resolve(Array.isArray(value) ? value.slice(0, 100).filter(validLinkCandidate) : []);
       }
-    };
-  }
-
-  // selection-actions.ts
-  var selectionActionCommands = [
-    "paragraph",
-    "heading1",
-    "heading2",
-    "heading3",
-    "heading4",
-    "heading5",
-    "heading6",
-    "bold",
-    "emphasis",
-    "strikethrough",
-    "highlight",
-    "standardLink",
-    "wikilink",
-    "annotatedWikilink",
-    "inlineCode",
-    "fencedCode",
-    "bulletList",
-    "numberedList",
-    "taskList",
-    "blockQuotation",
-    "markdownComment"
-  ];
-  function selectionSymbol(key, className = "") {
-    return systemSymbolElement(
-      key,
-      `scholium-selection-symbol ${className}`.trim()
-    );
-  }
-  function chevronIcon(className = "") {
-    return selectionSymbol("chevron-down", className);
-  }
-  function directMenuButtons(menu) {
-    return Array.from(menu.children).filter(
-      (child) => child instanceof HTMLButtonElement
-    );
-  }
-  function createSelectionActionsController(options) {
-    let root = null;
-    let activeView = null;
-    let focusExitTimer = null;
-    let presentedDocument = null;
-    let presentedSelection = null;
-    let activeTextStyle = null;
-    const positionMeasureKey = {};
-    let positionGeneration = 0;
-    let positionWatchdog = null;
-    const menus = [];
-    const styleChecks = /* @__PURE__ */ new Map();
-    const menuByTrigger = /* @__PURE__ */ new Map();
-    function clearFocusExitTimer() {
-      if (focusExitTimer === null) return;
-      window.clearTimeout(focusExitTimer);
-      focusExitTimer = null;
-    }
-    function supersedePositionRequest() {
-      positionGeneration += 1;
-      if (positionWatchdog !== null) {
-        window.clearTimeout(positionWatchdog);
-        positionWatchdog = null;
-      }
-      return positionGeneration;
-    }
-    function hideMenu(menu) {
-      if (!menu.element.hidden) menu.element.hidden = true;
-      if (menu.trigger.getAttribute("aria-expanded") !== "false") {
-        menu.trigger.setAttribute("aria-expanded", "false");
-      }
-      for (const child of menus) {
-        if (child.parent === menu) hideMenu(child);
-      }
-    }
-    function closeMenus() {
-      for (const menu of menus) {
-        if (!menu.parent) hideMenu(menu);
-      }
-    }
-    function synchronizeKeyboardFocusFeedback(target) {
-      if (!root) return;
-      for (const element of root.querySelectorAll(".scholium-selection-keyboard-focus")) {
-        element.classList.remove("scholium-selection-keyboard-focus");
-      }
-      if (target instanceof HTMLButtonElement && root.contains(target)) {
-        target.classList.add("scholium-selection-keyboard-focus");
-      }
-    }
-    function visibleToolbarControls() {
-      if (!root) return [];
-      return Array.from(root.querySelectorAll(
-        ".scholium-selection-toolbar .scholium-selection-control"
-      )).filter((button) => button.getClientRects().length > 0);
-    }
-    function visibleMenuButtons(menu) {
-      return directMenuButtons(menu).filter((button) => button.getClientRects().length > 0);
-    }
-    function topMenu(menu) {
-      let current = menu;
-      while (current.parent) current = current.parent;
-      return current;
-    }
-    function positionMenu(menu) {
-      if (menu.element.hidden) return;
-      menu.element.style.visibility = "hidden";
-      const triggerBounds = menu.trigger.getBoundingClientRect();
-      const menuBounds = menu.element.getBoundingClientRect();
-      const viewportInset = 8;
-      let left = menu.parent ? triggerBounds.right + 4 : triggerBounds.left;
-      let top2 = menu.parent ? triggerBounds.top - 4 : triggerBounds.bottom + 5;
-      if (left + menuBounds.width > window.innerWidth - viewportInset) {
-        left = menu.parent ? triggerBounds.left - menuBounds.width - 4 : window.innerWidth - menuBounds.width - viewportInset;
-      }
-      if (top2 + menuBounds.height > window.innerHeight - viewportInset) {
-        top2 = menu.parent ? window.innerHeight - menuBounds.height - viewportInset : triggerBounds.top - menuBounds.height - 5;
-      }
-      menu.element.style.left = `${Math.max(viewportInset, left)}px`;
-      menu.element.style.top = `${Math.max(viewportInset, top2)}px`;
-      menu.element.style.visibility = "";
-    }
-    function positionOpenMenus() {
-      for (const menu of menus) positionMenu(menu);
-    }
-    function openMenu(menu, focusFirstItem) {
-      if (!menu.parent) {
-        closeMenus();
-      } else {
-        for (const sibling of menus) {
-          if (sibling.parent === menu.parent && sibling !== menu) hideMenu(sibling);
-        }
-      }
-      menu.element.hidden = false;
-      menu.trigger.setAttribute("aria-expanded", "true");
-      positionMenu(menu);
-      if (focusFirstItem) {
-        window.queueMicrotask(() => visibleMenuButtons(menu.element)[0]?.focus());
-      }
-    }
-    function apply(command2) {
-      closeMenus();
-      const view = activeView;
-      if (view) options.applyCommand(view, command2);
-    }
-    function createToolbarButton(label, title, className = "") {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = `scholium-selection-control ${className}`.trim();
-      button.setAttribute("aria-label", label);
-      if (title) button.title = title;
-      return button;
-    }
-    function bindCommand(button, command2) {
-      button.dataset.scholiumCommand = command2;
-      button.addEventListener("click", () => apply(command2));
-    }
-    function createMenu(trigger, className, parent) {
-      const element = document.createElement("div");
-      element.className = `scholium-selection-menu ${className}`;
-      element.setAttribute("role", "menu");
-      element.hidden = true;
-      const menu = { element, trigger, parent };
-      menus.push(menu);
-      menuByTrigger.set(trigger, menu);
-      trigger.setAttribute("aria-haspopup", "menu");
-      trigger.setAttribute("aria-expanded", "false");
-      trigger.addEventListener("click", (event) => {
-        if (element.hidden) openMenu(menu, event.detail === 0);
-        else hideMenu(menu);
-      });
-      trigger.addEventListener("keydown", (event) => {
-        if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-        event.preventDefault();
-        openMenu(menu, false);
-        const items = visibleMenuButtons(element);
-        (event.key === "ArrowUp" ? items.at(-1) : items[0])?.focus();
-      });
-      element.addEventListener("keydown", (event) => handleMenuKeydown(menu, event));
-      root?.append(element);
-      return menu;
-    }
-    function addMenuItem(menu, label, command2, className = "", radio = false, symbol) {
-      const item = document.createElement("button");
-      item.type = "button";
-      item.className = `scholium-selection-menu-item ${className}`.trim();
-      item.dataset.scholiumCommand = command2;
-      item.tabIndex = -1;
-      item.setAttribute("role", radio ? "menuitemradio" : "menuitem");
-      if (radio) {
-        item.setAttribute("aria-checked", "false");
-        const check = selectionSymbol("checkmark", "scholium-selection-menu-check");
-        styleChecks.set(command2, check);
-        item.append(check);
-      }
-      if (symbol) {
-        item.append(selectionSymbol(symbol, "scholium-selection-menu-symbol"));
-      }
-      const text = document.createElement("span");
-      text.className = "scholium-selection-menu-label";
-      text.textContent = label;
-      item.append(text);
-      item.addEventListener("click", () => apply(command2));
-      menu.element.append(item);
-      return item;
-    }
-    function addActionMenuItem(menu, label, action) {
-      const item = document.createElement("button");
-      item.type = "button";
-      item.className = "scholium-selection-menu-item";
-      item.tabIndex = -1;
-      item.setAttribute("role", "menuitem");
-      const text = document.createElement("span");
-      text.className = "scholium-selection-menu-label";
-      text.textContent = label;
-      item.append(text);
-      item.addEventListener("click", () => {
-        closeMenus();
-        action();
-      });
-      menu.element.append(item);
-      return item;
-    }
-    function addSubmenuItem(menu, label, symbol) {
-      const item = document.createElement("button");
-      item.type = "button";
-      item.className = "scholium-selection-menu-item scholium-selection-submenu-trigger";
-      item.tabIndex = -1;
-      item.setAttribute("role", "menuitem");
-      const text = document.createElement("span");
-      text.className = "scholium-selection-menu-label";
-      text.textContent = label;
-      const leading = document.createElement("span");
-      leading.className = "scholium-selection-menu-leading";
-      if (symbol) {
-        leading.append(selectionSymbol(symbol, "scholium-selection-menu-symbol"));
-      }
-      leading.append(text);
-      item.append(leading, chevronIcon("scholium-selection-submenu-chevron"));
-      menu.element.append(item);
-      return item;
-    }
-    function handleMenuKeydown(menu, event) {
-      const items = visibleMenuButtons(menu.element);
-      const current = event.target instanceof HTMLButtonElement ? items.indexOf(event.target) : -1;
-      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-        event.preventDefault();
-        const delta = event.key === "ArrowDown" ? 1 : -1;
-        items[(current + delta + items.length) % items.length]?.focus();
-        return;
-      }
-      if (event.key === "Home" || event.key === "End") {
-        event.preventDefault();
-        (event.key === "Home" ? items[0] : items.at(-1))?.focus();
-        return;
-      }
-      if (event.key === "ArrowRight" && event.target instanceof HTMLButtonElement) {
-        const submenu = menuByTrigger.get(event.target);
-        if (submenu) {
-          event.preventDefault();
-          openMenu(submenu, true);
-        }
-        return;
-      }
-      if (event.key === "ArrowLeft" && menu.parent) {
-        event.preventDefault();
-        hideMenu(menu);
-        menu.trigger.focus();
-        return;
-      }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        const top2 = topMenu(menu);
-        closeMenus();
-        top2.trigger.focus();
-        return;
-      }
-      if (event.key === "Tab") {
-        const controls = visibleToolbarControls();
-        const trigger = topMenu(menu).trigger;
-        const index = controls.indexOf(trigger);
-        const destination = controls[index + (event.shiftKey ? -1 : 1)];
-        closeMenus();
-        if (destination) {
-          event.preventDefault();
-          destination.focus();
-        }
-      }
-    }
-    function refreshTextStyle(view) {
-      const line = view.state.doc.lineAt(view.state.selection.main.head);
-      const heading2 = /^ {0,3}(#{1,6})[ \t]+/.exec(line.text);
-      const active = heading2 ? `heading${heading2[1].length}` : "paragraph";
-      if (active === activeTextStyle) return;
-      activeTextStyle = active;
-      for (const [command2, check] of styleChecks) {
-        const selected = command2 === active;
-        check.parentElement?.setAttribute("aria-checked", String(selected));
-        check.classList.toggle("scholium-selection-menu-check-active", selected);
-      }
-    }
-    function requestPosition(view) {
-      if (!root || root.hidden) return;
-      const generation = supersedePositionRequest();
-      let settled = false;
-      const read = () => {
-        if (settled || generation !== positionGeneration || !root || root.hidden) return null;
-        const selection = options.selectionForPresentation?.(view) ?? view.state.selection;
-        const main = selection.main;
-        const from = Math.min(main.anchor, main.head);
-        const to = Math.max(main.anchor, main.head);
-        let anchor = null;
-        for (const element of view.contentDOM.querySelectorAll(
-          ".cm-scholium-selected-text"
-        )) {
-          for (const rectangle of element.getClientRects()) {
-            if (rectangle.width <= 0 || rectangle.height <= 0) continue;
-            anchor = anchor ? {
-              left: Math.min(anchor.left, rectangle.left),
-              right: Math.max(anchor.right, rectangle.right),
-              top: Math.min(anchor.top, rectangle.top),
-              bottom: Math.max(anchor.bottom, rectangle.bottom)
-            } : {
-              left: rectangle.left,
-              right: rectangle.right,
-              top: rectangle.top,
-              bottom: rectangle.bottom
-            };
-          }
-        }
-        if (!anchor) {
-          const start = view.coordsAtPos(from, 1) ?? view.coordsAtPos(Math.min(to, from + 1), -1);
-          const end = view.coordsAtPos(to, -1) ?? view.coordsAtPos(Math.max(from, to - 1), 1) ?? start;
-          if (!start || !end) return null;
-          anchor = {
-            left: Math.min(start.left, end.left),
-            right: Math.max(start.right, end.right),
-            top: Math.min(start.top, end.top),
-            bottom: Math.max(start.bottom, end.bottom)
-          };
-        }
-        const bounds = root.getBoundingClientRect();
-        return floatingSurfacePosition({
-          anchor,
-          surface: bounds,
-          viewport: { width: window.innerWidth, height: window.innerHeight },
-          horizontal: "center",
-          preferredPlacement: "above",
-          inset: 8,
-          gap: 6
-        });
-      };
-      const write = (measured) => {
-        if (settled || generation !== positionGeneration || !root || root.hidden) return;
-        settled = true;
-        if (positionWatchdog !== null) {
-          window.clearTimeout(positionWatchdog);
-          positionWatchdog = null;
-        }
-        if (!measured) {
-          hide();
-          return;
-        }
-        const left = `${measured.left}px`;
-        const top2 = `${measured.top}px`;
-        if (root.style.left !== left) root.style.left = left;
-        if (root.style.top !== top2) root.style.top = top2;
-        root.style.visibility = "visible";
-        if (menus.some((menu) => !menu.element.hidden)) {
-          window.queueMicrotask(positionOpenMenus);
-        }
-      };
-      view.requestMeasure({
-        read,
-        write,
-        key: positionMeasureKey
-      });
-      positionWatchdog = window.setTimeout(() => write(read()), 50);
-    }
-    function scheduleFocusExit(view) {
-      clearFocusExitTimer();
-      focusExitTimer = window.setTimeout(() => {
-        focusExitTimer = null;
-        if (root?.contains(document.activeElement) || view.hasFocus || view.contentDOM.contains(document.activeElement)) return;
-        hide();
-      }, 0);
-    }
-    function handleToolbarKeydown(event) {
-      const controls = visibleToolbarControls();
-      const current = event.target instanceof HTMLButtonElement ? controls.indexOf(event.target) : -1;
-      if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
-        event.preventDefault();
-        const delta = event.key === "ArrowRight" ? 1 : -1;
-        controls[(current + delta + controls.length) % controls.length]?.focus();
-      } else if (event.key === "Home" || event.key === "End") {
-        event.preventDefault();
-        (event.key === "Home" ? controls[0] : controls.at(-1))?.focus();
-      } else if (event.key === "Escape") {
-        event.preventDefault();
-        closeMenus();
-        activeView?.focus();
-      }
-    }
-    function mount(view) {
-      if (root) return;
-      root = document.createElement("div");
-      root.id = "scholium-selection-actions";
-      root.className = "scholium-selection-actions";
-      root.hidden = true;
-      root.dataset.scholiumProtected = "selection-actions";
-      root.addEventListener("mousedown", (event) => event.preventDefault());
-      root.addEventListener("focusin", (event) => {
-        clearFocusExitTimer();
-        synchronizeKeyboardFocusFeedback(event.target);
-      });
-      root.addEventListener("focusout", () => {
-        window.queueMicrotask(() => synchronizeKeyboardFocusFeedback(document.activeElement));
-        if (activeView) scheduleFocusExit(activeView);
-      });
-      const commandBar = document.createElement("div");
-      commandBar.className = "scholium-selection-toolbar";
-      commandBar.setAttribute("role", "toolbar");
-      commandBar.setAttribute("aria-label", localized("Formatting actions"));
-      commandBar.addEventListener("keydown", handleToolbarKeydown);
-      root.append(commandBar);
-      const styleButton = createToolbarButton(
-        localized("Text Style"),
-        localized("Text Style"),
-        "scholium-selection-style-trigger"
-      );
-      styleButton.append(
-        selectionSymbol("textformat", "scholium-selection-icon-style"),
-        chevronIcon("scholium-selection-chevron")
-      );
-      commandBar.append(styleButton);
-      const styleMenu = createMenu(styleButton, "scholium-selection-style-menu");
-      addMenuItem(styleMenu, localized("Paragraph"), "paragraph", "", true);
-      for (let level = 1; level <= 6; level += 1) {
-        addMenuItem(
-          styleMenu,
-          localizedTemplate("Heading {level}", { level }),
-          `heading${level}`,
-          "",
-          true
-        );
-      }
-      const bold = createToolbarButton(localized("Bold"), localized("Bold (\u2318B)"));
-      bold.append(selectionSymbol("bold", "scholium-selection-icon-bold"));
-      bindCommand(bold, "bold");
-      commandBar.append(bold);
-      const italic = createToolbarButton(localized("Italic"), localized("Italic (\u2318I)"));
-      italic.append(selectionSymbol("italic", "scholium-selection-icon-italic"));
-      bindCommand(italic, "emphasis");
-      commandBar.append(italic);
-      const strike = createToolbarButton(
-        localized("Strikethrough"),
-        localized("Strikethrough"),
-        "scholium-selection-wide-only"
-      );
-      strike.append(selectionSymbol("strikethrough", "scholium-selection-icon-strike"));
-      bindCommand(strike, "strikethrough");
-      commandBar.append(strike);
-      const highlight = createToolbarButton(
-        localized("Highlight"),
-        localized("Highlight"),
-        "scholium-selection-wide-only"
-      );
-      highlight.append(selectionSymbol("highlighter", "scholium-selection-highlight-icon"));
-      bindCommand(highlight, "highlight");
-      commandBar.append(highlight);
-      const firstSeparator = document.createElement("span");
-      firstSeparator.className = "scholium-selection-separator";
-      firstSeparator.setAttribute("role", "separator");
-      commandBar.append(firstSeparator);
-      const link = createToolbarButton(localized("Link"), localized("Link (\u2318K)"));
-      link.append(selectionSymbol("link", "scholium-selection-link-icon"));
-      bindCommand(link, "standardLink");
-      commandBar.append(link);
-      const wikiGroup = document.createElement("div");
-      wikiGroup.className = "scholium-selection-wiki-group";
-      wikiGroup.setAttribute("role", "group");
-      wikiGroup.setAttribute("aria-label", localized("Wiki links"));
-      const wiki = createToolbarButton(localized("Wiki"), null, "scholium-selection-wiki-primary");
-      const wikiLabel = document.createElement("span");
-      wikiLabel.className = "scholium-selection-label";
-      wikiLabel.textContent = localized("Wiki");
-      wiki.append(wikiLabel);
-      bindCommand(wiki, "wikilink");
-      const annotated = createToolbarButton(
-        localized("Annotated Wikilink"),
-        localized("Annotated Wikilink"),
-        "scholium-selection-wiki-menu-trigger"
-      );
-      annotated.append(selectionSymbol("text-bubble", "scholium-selection-link-annotation-icon"));
-      bindCommand(annotated, "annotatedWikilink");
-      wikiGroup.append(wiki, annotated);
-      commandBar.append(wikiGroup);
-      const secondSeparator = document.createElement("span");
-      secondSeparator.className = "scholium-selection-separator";
-      secondSeparator.setAttribute("role", "separator");
-      commandBar.append(secondSeparator);
-      const more = createToolbarButton(localized("More Formatting"), localized("More Formatting"));
-      more.append(selectionSymbol("ellipsis", "scholium-selection-more-icon"));
-      commandBar.append(more);
-      const moreMenu = createMenu(more, "scholium-selection-more-menu");
-      addMenuItem(
-        moreMenu,
-        localized("Strikethrough"),
-        "strikethrough",
-        "scholium-selection-compact-only",
-        false,
-        "strikethrough"
-      );
-      addMenuItem(
-        moreMenu,
-        localized("Highlight"),
-        "highlight",
-        "scholium-selection-compact-only",
-        false,
-        "highlighter"
-      );
-      addMenuItem(moreMenu, localized("Inline Code"), "inlineCode", "", false, "curlybraces");
-      addMenuItem(moreMenu, localized("Code Block"), "fencedCode", "", false, "curlybraces-square");
-      const lists = addSubmenuItem(moreMenu, localized("Lists"), "list-bullet");
-      const listsMenu = createMenu(lists, "scholium-selection-lists-menu", moreMenu);
-      addMenuItem(listsMenu, localized("Bullet List"), "bulletList", "", false, "list-bullet");
-      addMenuItem(listsMenu, localized("Numbered List"), "numberedList", "", false, "list-number");
-      addMenuItem(listsMenu, localized("Checkbox List"), "taskList", "", false, "checklist");
-      addMenuItem(moreMenu, localized("Blockquote"), "blockQuotation", "", false, "text-quote");
-      addMenuItem(moreMenu, localized("Comment"), "markdownComment", "", false, "eye-slash");
-      addActionMenuItem(moreMenu, localized("Import Image\u2026"), () => options.requestImportImage?.());
-      addActionMenuItem(moreMenu, localized("Index Image\u2026"), () => options.requestIndexImage?.());
-      const handleDocumentMouseDown = (event) => {
-        if (root && event.target instanceof Node && !root.contains(event.target)) closeMenus();
-      };
-      const handleContentKeydown = (event) => {
-        if (!event.ctrlKey || event.altKey || event.metaKey || event.shiftKey || event.key !== "F5") return;
-        if (!root || root.hidden) return;
-        event.preventDefault();
-        visibleToolbarControls()[0]?.focus();
-      };
-      const handleResize = () => {
-        if (activeView) reposition(activeView);
-      };
-      const handleContentFocusOut = () => scheduleFocusExit(view);
-      const handleWindowFocus = () => {
-        if (!root || root.hidden || activeView !== view) update(view);
-      };
-      const handleWindowBlur = () => hide();
-      document.addEventListener("mousedown", handleDocumentMouseDown, true);
-      view.contentDOM.addEventListener("keydown", handleContentKeydown);
-      view.contentDOM.addEventListener("focusout", handleContentFocusOut);
-      window.addEventListener("resize", handleResize);
-      window.addEventListener("focus", handleWindowFocus);
-      window.addEventListener("blur", handleWindowBlur);
-      cleanup = () => {
-        document.removeEventListener("mousedown", handleDocumentMouseDown, true);
-        view.contentDOM.removeEventListener("keydown", handleContentKeydown);
-        view.contentDOM.removeEventListener("focusout", handleContentFocusOut);
-        window.removeEventListener("resize", handleResize);
-        window.removeEventListener("focus", handleWindowFocus);
-        window.removeEventListener("blur", handleWindowBlur);
-      };
-      document.body.append(root);
-      update(view);
-    }
-    let cleanup = null;
-    function unmount(view) {
-      clearFocusExitTimer();
-      supersedePositionRequest();
-      cleanup?.();
-      cleanup = null;
-      if (activeView === view) activeView = null;
-      root?.remove();
-      root = null;
-      menus.length = 0;
-      styleChecks.clear();
-      menuByTrigger.clear();
-      presentedDocument = null;
-      presentedSelection = null;
-      activeTextStyle = null;
-    }
-    function hide() {
-      clearFocusExitTimer();
-      supersedePositionRequest();
-      if (!root || root.hidden && activeView === null) return;
-      closeMenus();
-      synchronizeKeyboardFocusFeedback(null);
-      root.hidden = true;
-      activeView = null;
-      presentedDocument = null;
-      presentedSelection = null;
-    }
-    function reposition(view) {
-      if (activeView !== view || !root || root.hidden) return;
-      requestPosition(view);
-    }
-    function update(view) {
-      if (!root) return;
-      const selection = options.selectionForPresentation?.(view) ?? view.state.selection;
-      const main = selection.main;
-      if (view.composing || selection.ranges.length !== 1 || main.empty || options.pointerSelectionIsComplete?.(view) === false || options.selectionIsAvailable?.(view) === false) {
-        hide();
-        return;
-      }
-      if (!view.hasFocus && !view.contentDOM.contains(document.activeElement) && !root.contains(document.activeElement)) {
-        scheduleFocusExit(view);
-        return;
-      }
-      if (!root.hidden && activeView === view && presentedDocument === view.state.doc && presentedSelection?.eq(selection)) {
-        reposition(view);
-        return;
-      }
-      clearFocusExitTimer();
-      activeView = view;
-      presentedDocument = view.state.doc;
-      presentedSelection = selection;
-      if (root.hidden) {
-        root.style.visibility = "hidden";
-        root.hidden = false;
-      }
-      refreshTextStyle(view);
-      requestPosition(view);
-    }
-    const extension = ViewPlugin.define((view) => {
-      mount(view);
-      return {
-        update(updateEvent) {
-          if (updateEvent.docChanged || updateEvent.focusChanged || (options.presentationInteractionChanged?.(updateEvent) ?? updateEvent.selectionSet)) {
-            update(updateEvent.view);
-          } else if (updateEvent.geometryChanged || updateEvent.viewportChanged) {
-            reposition(updateEvent.view);
-          }
-        },
-        destroy() {
-          unmount(view);
-        }
-      };
-    });
-    return {
-      extension,
-      hide,
-      reposition,
-      update
     };
   }
 
@@ -33713,20 +33136,11 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       }
     });
     const selection = (state) => state.field(field, false)?.selection ?? state.selection;
-    const interaction = (state) => state.field(field, false) ?? { selection: state.selection, pointerPhase: "idle" };
     return {
       extension: [field, pointer],
       selection,
       changed(startState, state) {
         return !selection(startState).eq(selection(state));
-      },
-      interactionChanged(startState, state) {
-        const start = interaction(startState);
-        const current = interaction(state);
-        return start.pointerPhase !== current.pointerPhase || !start.selection.eq(current.selection);
-      },
-      pointerSelectionIsComplete(state) {
-        return interaction(state).pointerPhase === "idle";
       }
     };
   }
@@ -34782,7 +34196,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         marker.dataset.footnoteIdentifier = this.reference.identifier;
         marker.dataset.footnoteOccurrence = String(this.reference.occurrence);
         marker.dataset.scholiumProtected = "footnote-marker";
-        marker.setAttribute("aria-controls", "scholium-preview-popover");
         marker.setAttribute("aria-expanded", "false");
         marker.setAttribute(
           "aria-label",
@@ -35109,7 +34522,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         button.dataset.linkAnnotation = "true";
         button.dataset.linkAnnotationTarget = this.target;
         button.setAttribute("aria-expanded", "false");
-        button.setAttribute("aria-controls", "scholium-preview-popover");
         button.setAttribute("aria-label", `${localized("Show Link Annotation")} ${this.target}`);
         button.append(systemSymbolElement("text-bubble", "scholium-link-annotation-icon"));
         const template = document.createElement("template");
@@ -36604,6 +36016,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     let sourceChanged = false;
     let undoLabel;
     switch (request.action) {
+      case "present":
+        break;
       case "update":
         selectMatch(view, forwardMatch(view, query, view.state.selection.main.from));
         break;
@@ -37923,40 +37337,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     projections: liveProjectionIndex,
     mermaidPresentations: (state) => liveMermaidProjection.presentations(state)
   });
-  function applySelectionAction(view, command2) {
-    const transformed = transformMarkdown(
-      view.state.doc.toString(),
-      view.state.selection.ranges.map((range) => ({ anchor: range.anchor, head: range.head })),
-      command2,
-      { protectedRanges: protectedCommandRanges() }
-    );
-    if (!transformed) return;
-    const transformedSource = applySourceChanges(view.state.doc.toString(), transformed.changes);
-    if (new TextEncoder().encode(transformedSource).byteLength > MAX_SOURCE_UTF8_BYTES) return;
-    view.dispatch({
-      changes: transformed.changes,
-      selection: EditorSelection.create(
-        transformed.selections.map((range) => EditorSelection.range(range.anchor, range.head))
-      ),
-      annotations: Transaction.userEvent.of(`input.scholium.${command2}`)
-    });
-    lastUndoLabel = transformed.undoLabel;
-    lastRedoLabel = transformed.undoLabel;
-    view.focus();
-  }
-  var selectionActions = createSelectionActionsController({
-    applyCommand: applySelectionAction,
-    requestImportImage: () => post({ type: "requestImportImage" }),
-    requestIndexImage: () => post({ type: "requestIndexImage" }),
-    selectionForPresentation: (view) => liveSelection.selection(view.state),
-    presentationInteractionChanged: (update) => liveSelection.interactionChanged(
-      update.startState,
-      update.state
-    ),
-    pointerSelectionIsComplete: (view) => liveSelection.pointerSelectionIsComplete(view.state),
-    selectionIsAvailable: (view) => !view.state.selection.ranges.some((selection) => projectionSelectionOverlaps(protectedCommandRanges(), selection))
-  });
+  var nativeFloating = createNativeFloatingBridge((surface) => post({ type: "floatingSurface", surface }));
   var previewPopover = createPreviewPopoverController({
+    nativeFloating,
     previews: () => linkPreviews,
     footnotes: () => liveProjectionIndex.index(editor.state).footnotes,
     renderFootnoteContent: (content2, parent) => appendMarkdownBlocks(content2, parent, {
@@ -37982,6 +37365,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     ))
   ];
   var inputSuggestions = createEditorInputSuggestions({
+    nativeFloating,
     mode: configuredEditorMode,
     dialect: () => editingDialect,
     isComposing: () => editor.composing,
@@ -38013,7 +37397,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     liveFootnoteProjection.extension,
     livePreview,
     Prec.high(liveProjectionNavigation.extension),
-    selectionActions.extension,
     previewPopover.extension,
     EditorView.lineWrapping
   ];
@@ -38096,7 +37479,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       scrollFraction: scrollAnchor.fallbackFraction,
       scrollAnchor
     }),
-    onScroll: () => selectionActions.reposition(editor),
     flushPresentationGeometry: flushPresentationStyleAndGeometry
   });
   for (const mediaQuery of [
@@ -38106,7 +37488,27 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     mediaQuery.addEventListener("change", refreshMermaidTheme);
   }
   var allCommands = [
-    ...selectionActionCommands,
+    "paragraph",
+    "heading1",
+    "heading2",
+    "heading3",
+    "heading4",
+    "heading5",
+    "heading6",
+    "bold",
+    "emphasis",
+    "strikethrough",
+    "highlight",
+    "standardLink",
+    "wikilink",
+    "annotatedWikilink",
+    "inlineCode",
+    "fencedCode",
+    "bulletList",
+    "numberedList",
+    "taskList",
+    "blockQuotation",
+    "markdownComment",
     "thematicBreak",
     "calloutOrient",
     "calloutCite",
@@ -38464,6 +37866,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         return successfulResult(request.requestID, true, transformed.undoLabel);
       }
       case "documentFind": {
+        previewPopover.hide();
         const result = performDocumentFind(editor, operation.value);
         if (result.undoLabel) {
           lastUndoLabel = result.undoLabel;
@@ -38714,7 +38117,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         ]
       });
       const appliedMode = configuredEditorMode(editor.state);
-      selectionActions.update(editor);
       updateEditorAccessibility(editor.contentDOM, appliedMode, currentEditorContext());
       scheduleEditorInteractionReport(true);
       recordEditorMetric("mode-toggle-work", startedAt, {

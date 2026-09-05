@@ -101,8 +101,7 @@ struct IdentityResolutionView: View {
             if isResolving {
                 ProgressView("Migrating app-owned records…")
                     .padding()
-                    .scholiumEditorialSurface(
-                        .floatingControl,
+                    .scholiumFloatingSurface(
                         in: RoundedRectangle(
                             cornerRadius: ScholiumShape.loadingSurfaceCornerRadius,
                             style: .continuous

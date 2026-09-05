@@ -39,6 +39,16 @@ decorative containers merely to manufacture hierarchy. Use type, alignment,
 whitespace, semantic surfaces, and fine structural rules first. A bounded panel
 is appropriate only when its task is genuinely transient or spatially anchored.
 
+Semantic floating containers use native Liquid Glass: contextual Find, Search,
+previews, suggestions, and transient notifications sit above their originating
+content without reflowing it. Reading, editing, settings, forms, and persistent
+operation or recovery regions use Scholium's opaque semantic colors. Glass
+belongs to the floating container; text, state, and controls inside retain their
+semantic colors. Clickability alone does not grant a control a glass surface.
+System-owned navigation, toolbars, menus, and popovers keep native treatment.
+There is no separate feature-authored frosted-glass style. The system owns
+transparency and contrast adaptation; do not simulate Liquid Glass in WebKit.
+
 The exact system material variant and framework host belong to the selected SDK
 and implementation architecture. Feature code does not reproduce native
 material, shadow, hover, focus, inactive-window, contrast, or transparency
@@ -134,7 +144,20 @@ Native containers and controls own hover, press, disabled, selected, focused,
 active, inactive, and cursor presentation. Section 18.3 alone defines the
 Sidebar's quiet pointer selection and keyboard-navigation emphasis; it does not
 create a general modality-styling system. The selected row remains the sole
-visible list-focus indicator without a duplicate perimeter effect.
+visible list-focus indicator without a duplicate perimeter effect. Caret
+completion uses compact 28-point single-line rows and 40-point rows with a
+secondary description, with shared insets and neutral selection feedback. The
+selected row adds no shadow or second glass layer; the floating container owns
+system material and elevation.
+
+Ordinary command buttons use neutral Ink and native surfaces. Default-action
+status retains native keyboard behavior without introducing brand Accent.
+Destructive and cancel actions retain their native semantic roles. Shared
+presentation owns ordinary command styling, icon-control chrome, and custom
+row/selection feedback; feature views do not define button colors or competing
+button styles. Native menus, groups, and toolbar controls retain their distinct
+platform forms. Accent remains available for meaningful state and authored
+links, not as a general indication that a control is clickable.
 
 Custom targets remain comfortably clickable and keyboard reachable. Focus is
 stronger than hover, persistent selection is distinguishable from both, and a
@@ -206,8 +229,8 @@ individual symbol name or configuration is an implementation choice unless its
 shape is required to distinguish a state. Decorative or duplicate symbols stay
 out of the accessibility tree.
 
-Passive symbols use secondary or muted ink. Active bounded actions may use
-Accent. Attention, destructive, confirmation, authorship, and link direction use
+Passive symbols use secondary or muted ink; ordinary active actions use primary
+Ink. Attention, destructive, confirmation, authorship, and link direction use
 their named semantic output together with text or shape redundancy. Multicolor,
 gradient, or variable rendering never carries workflow state alone.
 

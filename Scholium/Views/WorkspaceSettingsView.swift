@@ -487,7 +487,7 @@ private struct AttentionSettingsView: View {
     private var saveAttentionButton: some View {
         Button("Save Notification Settings") { save() }
             .scholiumActivationPointer()
-            .buttonStyle(.borderedProminent)
+            .scholiumButtonStyle(.bordered)
             .disabled(
                 isSaving
                     || dismissalDays
@@ -902,7 +902,7 @@ private struct MetadataSettingsView: View {
                             .keyboardShortcut(.escape)
                         Button("Add Field") { addFieldDefinition() }
                             .scholiumActivationPointer()
-                            .buttonStyle(.borderedProminent)
+                            .scholiumButtonStyle(.bordered)
                             .disabled(newFieldValidationMessage != nil)
                             .accessibilityIdentifier("scholium.metadataSettings.commitField")
                     }
@@ -1214,7 +1214,7 @@ private struct MetadataSettingsView: View {
                                             .scholiumForeground(.secondaryText)
                                     }
                                     .scholiumActivationPointer()
-                                    .buttonStyle(.borderless)
+                                    .scholiumButtonStyle(.borderless)
                                     .disabled(index == 0)
                                     .help("Move \(displayName(for: key)) up")
                                     .accessibilityLabel("Move \(displayName(for: key)) up")
@@ -1226,7 +1226,7 @@ private struct MetadataSettingsView: View {
                                             .scholiumForeground(.secondaryText)
                                     }
                                     .scholiumActivationPointer()
-                                    .buttonStyle(.borderless)
+                                    .scholiumButtonStyle(.borderless)
                                     .disabled(index == group.keys.count - 1)
                                     .help("Move \(displayName(for: key)) down")
                                     .accessibilityLabel("Move \(displayName(for: key)) down")
@@ -1238,7 +1238,7 @@ private struct MetadataSettingsView: View {
                                             .scholiumForeground(.secondaryText)
                                     }
                                     .scholiumActivationPointer()
-                                    .buttonStyle(.borderless)
+                                    .scholiumButtonStyle(.borderless)
                                     .help("Show \(displayName(for: key)) only when it has a value")
                                     .accessibilityLabel("Show \(displayName(for: key)) only when it has a value")
                                 }
@@ -1294,7 +1294,7 @@ private struct MetadataSettingsView: View {
                 .disabled(!isDirty)
             Button("Save Metadata Settings") { save() }
                 .scholiumActivationPointer()
-                .buttonStyle(.borderedProminent)
+                .scholiumButtonStyle(.bordered)
                     .disabled(
                         isSaving || !isDirty || validationMessage != nil
                             || revisionConflict
@@ -1981,7 +1981,7 @@ private struct AppearanceSettingsView: View {
                     store.updateAppearance(draft)
                 }
                 .scholiumActivationPointer()
-                .buttonStyle(.borderedProminent)
+                .scholiumButtonStyle(.bordered)
                 .disabled(!hasUnsavedChanges || !store.canModify)
                 .accessibilityLabel("Save Appearance")
 
@@ -2047,7 +2047,7 @@ private struct AppearanceSettingsView: View {
                     Label("More", systemImage: "ellipsis.circle")
                 }
                 .scholiumActivationPointer()
-                .menuStyle(.borderlessButton)
+                .scholiumMenuStyle(.borderlessButton)
                 .fixedSize()
             }
         }
@@ -2092,7 +2092,7 @@ private struct AppearanceSettingsView: View {
             Label("Manage", systemImage: "ellipsis.circle")
         }
         .scholiumActivationPointer()
-        .menuStyle(.borderlessButton)
+        .scholiumMenuStyle(.borderlessButton)
         .fixedSize()
         .accessibilityIdentifier("scholium.appearance.manage")
     }
@@ -2650,7 +2650,7 @@ private struct CSSSnippetRow: View {
             }
             .scholiumActivationPointer()
             .labelStyle(.iconOnly)
-            .menuStyle(.borderlessButton)
+            .scholiumMenuStyle(.borderlessButton)
         }
         .padding(.vertical, ScholiumMetrics.Settings.rowVerticalInset)
         .alert("Rename CSS Snippet", isPresented: $showRename) {
@@ -2781,7 +2781,7 @@ private struct WorkspacePathEditor: View {
                 Spacer()
                 Button(completionTitle) { save() }
                     .scholiumActivationPointer()
-                    .buttonStyle(.borderedProminent)
+                    .scholiumButtonStyle(.bordered)
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canSave || isSaving)
             }

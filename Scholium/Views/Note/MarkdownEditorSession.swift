@@ -143,6 +143,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private(set) var startingFingerprint = ""
     private(set) var generation = 0
 
+    let floatingSurfaces = DocumentFloatingSurfaceController()
     var webView: WKWebView?
     private var pendingSource: String?
     private var pendingDocumentID = ""
@@ -306,6 +307,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
 
     func attach(_ webView: WKWebView) {
+        floatingSurfaces.dismiss()
         invalidateRequestQueue(clearingRecoveryReport: false)
         cancelModeTransition()
         self.webView = webView
@@ -324,6 +326,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     func detach(_ webView: WKWebView) {
         guard self.webView === webView else { return }
+        floatingSurfaces.dismiss()
         invalidateRequestQueue(clearingRecoveryReport: false)
         cancelModeTransition()
         startupTask?.cancel()
@@ -355,6 +358,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     /// recovery pin. Closed documents intentionally do not retain undo state.
     func shutdownDetachedSession() {
         precondition(webView == nil)
+        floatingSurfaces.dismiss()
         invalidateRequestQueue(clearingRecoveryReport: false)
         startupTask?.cancel()
         startupTask = nil
@@ -465,6 +469,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         mode: MarkdownEditorMode,
         initialSourceRange: Range<Int>? = nil
     ) {
+        floatingSurfaces.dismiss()
         let isFirstDocumentLoad = self.documentID != documentID
         let publishesLoadingState = isReady
         invalidateRequestQueue()
@@ -1226,9 +1231,20 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         return find
     }
 
-    func clearDocumentFind() {
+    func clearDocumentFind() async {
         guard isReady, isLoaded, let webView else { return }
-        Task { _ = try? await send(.clearDocumentFind, in: webView) }
+        let currentDocumentID = documentID
+        do {
+            _ = try await send(.clearDocumentFind, in: webView)
+            guard !Task.isCancelled, self.webView === webView,
+                  documentID == currentDocumentID,
+                  let window = webView.window,
+                  window.makeFirstResponder(webView) else { return }
+            try await focusAndWait(.editor)
+        } catch {
+            // Find is already dismissed; the retained document owns any editor
+            // failure. A failed clear must not transfer focus to another page.
+        }
     }
 
     func acceptEditorChanges(
@@ -1362,6 +1378,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     }
 
     func webContentProcessTerminated() {
+        floatingSurfaces.dismiss()
         invalidateRequestQueue()
         cancelModeTransition()
         cancelScheduledRecoveryCapture()

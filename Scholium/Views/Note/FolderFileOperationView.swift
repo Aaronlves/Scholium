@@ -58,7 +58,7 @@ struct FolderFileOperationView: View {
                 Spacer()
                 Button(actionTitle) { perform() }
                     .scholiumActivationPointer()
-                    .buttonStyle(.borderedProminent)
+                    .scholiumButtonStyle(.bordered)
                     .disabled(destinationRelativePath == nil || isWorking)
                     .keyboardShortcut(.defaultAction)
             }

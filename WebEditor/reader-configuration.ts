@@ -18,7 +18,7 @@ export interface ReadDocumentAttachment {
 }
 
 export interface ReaderConfiguration {
-  version: 2;
+  version: 3;
   documentID: string;
   fingerprint: string;
   loadGeneration: number;
@@ -34,7 +34,7 @@ export interface ReaderConfiguration {
 export function validatedReaderConfiguration(value: unknown): ReaderConfiguration | null {
   if (!value || typeof value !== "object") return null;
   const config = value as Partial<ReaderConfiguration>;
-  if (config.version !== 2
+  if (config.version !== 3
       || typeof config.documentID !== "string" || !config.documentID
       || config.documentID.length > 4_096
       || typeof config.fingerprint !== "string" || !config.fingerprint

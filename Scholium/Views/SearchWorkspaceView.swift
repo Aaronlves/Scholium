@@ -252,13 +252,11 @@ struct SpotlightSearchPanelView: View {
                 : ScholiumMetrics.Search.collapsedHeight,
             alignment: .top
         )
-        .scholiumEditorialSurface(
-            .searchOverlay,
+        .scholiumFloatingSurface(
             in: RoundedRectangle(
                 cornerRadius: ScholiumShape.searchOverlayCornerRadius,
                 style: .continuous
-            ),
-            elevation: .searchOverlay
+            )
         )
         .animation(
             ScholiumMotion.searchExpansion(reduceMotion: reduceMotion),
@@ -408,7 +406,7 @@ struct SpotlightSearchPanelView: View {
                         .scholiumForeground(.secondaryText)
                 }
                 .scholiumActivationPointer()
-                .buttonStyle(.plain)
+                .scholiumButtonStyle(.plain)
                 .frame(
                     minWidth: ScholiumMetrics.Accessibility.preferredCustomTarget,
                     minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget
@@ -427,7 +425,7 @@ struct SpotlightSearchPanelView: View {
                     .scholiumForeground(.secondaryText)
             }
             .scholiumActivationPointer()
-            .buttonStyle(.borderless)
+            .scholiumButtonStyle(.borderless)
             .frame(
                 minWidth: ScholiumMetrics.Accessibility.preferredCustomTarget,
                 minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget
@@ -508,7 +506,7 @@ struct SpotlightSearchPanelView: View {
                     .contentShape(Rectangle())
                 }
                 .scholiumActivationPointer()
-                .buttonStyle(.plain)
+                .scholiumButtonStyle(.plain)
                 .accessibilityLabel("\(completion.displayText), \(completion.detail)")
                 .accessibilityAddTraits(
                     completionSelection == index ? .isSelected : []
@@ -762,7 +760,7 @@ struct SpotlightSearchPanelView: View {
                 .scholiumForeground(.secondaryText)
         }
         .scholiumActivationPointer()
-        .buttonStyle(.borderless)
+        .scholiumButtonStyle(.borderless)
         .frame(
             minWidth: ScholiumMetrics.Accessibility.preferredCustomTarget,
             minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget
@@ -855,7 +853,7 @@ struct SpotlightSearchPanelView: View {
             )
         }
         .scholiumActivationPointer()
-        .buttonStyle(.plain)
+        .scholiumButtonStyle(.plain)
         .id(resultID)
         .listRowInsets(searchResultInsets)
         .listRowBackground(resultRowBackground(resultID))
@@ -900,7 +898,7 @@ struct SpotlightSearchPanelView: View {
             .frame(minHeight: ScholiumMetrics.Search.resultRowHeight)
         }
         .scholiumActivationPointer()
-        .buttonStyle(.plain)
+        .scholiumButtonStyle(.plain)
         .id(resultID)
         .listRowInsets(searchResultInsets)
         .listRowBackground(resultRowBackground(resultID))

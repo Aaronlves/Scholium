@@ -186,7 +186,7 @@ struct MetadataEditorView: View {
                 HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                     Button("Cancel") { closeEditor() }
                         .scholiumActivationPointer()
-                        .buttonStyle(.bordered)
+                        .scholiumButtonStyle(.bordered)
                         .controlSize(.small)
                         .keyboardShortcut(.escape)
                     Button {
@@ -201,9 +201,8 @@ struct MetadataEditorView: View {
                         }
                     }
                     .scholiumActivationPointer()
-                    .buttonStyle(.borderedProminent)
+                    .scholiumButtonStyle(.bordered)
                     .controlSize(.small)
-                    .tint(ScholiumColorRole.accent.color)
                     .keyboardShortcut(.return, modifiers: [.command])
                     .disabled(isSaving || !canSaveDraft || revisionConflict)
                 }
@@ -261,6 +260,7 @@ struct MetadataEditorView: View {
                 excludedKeys: selectedNewFieldKeys,
                 select: selectNewField
             )
+            .scholiumButtonStyle(.automatic)
         }
         .alert("Could Not Save", isPresented: Binding(
             get: { saveError != nil },
@@ -542,13 +542,13 @@ struct MetadataEditorView: View {
                     removedFieldKeys.remove(field.key)
                 }
                 .scholiumActivationPointer()
-                .buttonStyle(.borderless)
+                .scholiumButtonStyle(.borderless)
             } else if field.isReadOnly {
                 Button("Remove Field", role: .destructive) {
                     removeField(field)
                 }
                 .scholiumActivationPointer()
-                .buttonStyle(.borderless)
+                .scholiumButtonStyle(.borderless)
             } else {
                 ScholiumEditorialIconControl(
                     systemImage: "ellipsis",
@@ -821,7 +821,7 @@ struct MetadataEditorView: View {
                     }
                 }
                 .scholiumActivationPointer()
-                .buttonStyle(.borderless)
+                .scholiumButtonStyle(.borderless)
             }
         }
     }
@@ -907,7 +907,7 @@ struct MetadataEditorView: View {
                 .contentShape(Rectangle())
         }
         .scholiumActivationPointer()
-        .buttonStyle(.borderless)
+        .scholiumButtonStyle(.borderless)
         .accessibilityLabel("Remove creator \(index + 1)")
     }
 
@@ -960,7 +960,7 @@ struct MetadataEditorView: View {
                             )
                         }
                         .scholiumActivationPointer()
-                        .buttonStyle(.plain)
+                        .scholiumButtonStyle(.plain)
                         .help("Remove tag \(tag)")
                         .accessibilityLabel("Remove tag \(tag)")
                     }
@@ -980,10 +980,10 @@ struct MetadataEditorView: View {
                 } label: {
                     Image(systemName: "plus.circle.fill")
                         .scholiumSymbolStyle(.prominent)
-                        .scholiumForeground(.accent)
+                        .scholiumForeground(.secondaryText)
                 }
                 .scholiumActivationPointer()
-                .buttonStyle(.plain)
+                .scholiumButtonStyle(.plain)
                 .frame(
                     minWidth: ScholiumMetrics.Accessibility.preferredCustomTarget,
                     minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget
@@ -1037,7 +1037,7 @@ struct MetadataEditorView: View {
                             .scholiumForeground(.secondaryText)
                     }
                     .scholiumActivationPointer()
-                    .buttonStyle(.plain)
+                    .scholiumButtonStyle(.plain)
                     .frame(
                         minWidth: ScholiumMetrics.Accessibility.preferredCustomTarget,
                         minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget
@@ -1055,7 +1055,7 @@ struct MetadataEditorView: View {
                     .font(ScholiumTypography.interface(.small))
             }
             .scholiumActivationPointer()
-            .buttonStyle(.borderless)
+            .scholiumButtonStyle(.borderless)
         }
         .disabled(field.isReadOnly)
     }
@@ -1299,7 +1299,7 @@ private struct PropertyChooserView: View {
                 Spacer()
                 Button("Add Selected Field") { addSelectedField() }
                     .scholiumActivationPointer()
-                    .buttonStyle(.borderedProminent)
+                    .scholiumButtonStyle(.bordered)
                     .keyboardShortcut(.defaultAction)
                     .disabled(selectedField == nil)
             }

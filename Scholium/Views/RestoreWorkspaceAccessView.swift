@@ -72,7 +72,7 @@ struct RestoreWorkspaceAccessView: View {
                     }
                 }
                     .scholiumActivationPointer()
-                    .buttonStyle(.borderedProminent)
+                    .scholiumButtonStyle(.bordered)
                     .keyboardShortcut(.defaultAction)
                     .disabled(isBusy)
             }

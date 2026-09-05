@@ -177,7 +177,7 @@ struct DocumentInformationPopoverView: View {
                                         )
                                         .contentShape(Rectangle())
                                 }
-                                .buttonStyle(.borderless)
+                                .scholiumButtonStyle(.borderless)
                                 .scholiumActivationPointer()
                                 .accessibilityLabel(Text(verbatim: heading.text))
                                 .accessibilityValue("Heading level \(heading.level)")
@@ -213,8 +213,8 @@ struct DocumentInformationPopoverView: View {
                         .lineLimit(1)
                         .monospacedDigit()
                 }
-                .menuStyle(.button)
-                .buttonStyle(.bordered)
+                .scholiumMenuStyle(.button)
+                .scholiumButtonStyle(.bordered)
                 .controlSize(.small)
                 .font(ScholiumTypography.interface(.small))
                 .accessibilityIdentifier("scholium.documentStatisticPicker")
@@ -228,6 +228,7 @@ struct DocumentInformationPopoverView: View {
             alignment: .leading
         )
         .fixedSize(horizontal: true, vertical: false)
+        .scholiumButtonStyle(.automatic)
     }
 
     private var selectedStatisticAccessibilityValue: String {

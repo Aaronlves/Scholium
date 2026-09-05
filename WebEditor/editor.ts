@@ -1,3 +1,4 @@
+import {createNativeFloatingBridge} from "./native-floating";
 import {
   Annotation,
   Compartment,
@@ -118,11 +119,6 @@ import {appendMarkdownBlocks} from "./markdown-fragment";
 import {createEditorScrollCoordinator} from "./scroll-coordinator";
 import {createEditorContextMenuExtension} from "./context-menu";
 import {boundedUUID, createEditorInputSuggestions} from "./input-suggestions";
-import {
-  createSelectionActionsController,
-  selectionActionCommands,
-  type SelectionActionCommand,
-} from "./selection-actions";
 import {
   AnimationFrameCoalescer,
   interactionAvailabilitySignature,
@@ -1744,43 +1740,10 @@ const liveProjectionNavigation = createLiveProjectionNavigation({
   mermaidPresentations: (state) => liveMermaidProjection.presentations(state),
 });
 
-function applySelectionAction(view: EditorView, command: SelectionActionCommand) {
-  const transformed = transformMarkdown(
-    view.state.doc.toString(),
-    view.state.selection.ranges.map((range) => ({anchor: range.anchor, head: range.head})),
-    command,
-    {protectedRanges: protectedCommandRanges()},
-  );
-  if (!transformed) return;
-  const transformedSource = applySourceChanges(view.state.doc.toString(), transformed.changes);
-  if (new TextEncoder().encode(transformedSource).byteLength > MAX_SOURCE_UTF8_BYTES) return;
-  view.dispatch({
-    changes: transformed.changes,
-    selection: EditorSelection.create(
-      transformed.selections.map((range) => EditorSelection.range(range.anchor, range.head)),
-    ),
-    annotations: Transaction.userEvent.of(`input.scholium.${command}`),
-  });
-  lastUndoLabel = transformed.undoLabel;
-  lastRedoLabel = transformed.undoLabel;
-  view.focus();
-}
-
-const selectionActions = createSelectionActionsController({
-  applyCommand: applySelectionAction,
-  requestImportImage: () => post({type: "requestImportImage"}),
-  requestIndexImage: () => post({type: "requestIndexImage"}),
-  selectionForPresentation: (view) => liveSelection.selection(view.state),
-  presentationInteractionChanged: (update) => liveSelection.interactionChanged(
-    update.startState,
-    update.state,
-  ),
-  pointerSelectionIsComplete: (view) => liveSelection.pointerSelectionIsComplete(view.state),
-  selectionIsAvailable: (view) => !view.state.selection.ranges.some((selection) =>
-    projectionSelectionOverlaps(protectedCommandRanges(), selection)),
-});
+const nativeFloating = createNativeFloatingBridge(surface => post({type: "floatingSurface", surface}));
 
 const previewPopover = createPreviewPopoverController({
+  nativeFloating,
   previews: () => linkPreviews,
   footnotes: () => liveProjectionIndex.index(editor.state).footnotes,
   renderFootnoteContent: (content, parent) => appendMarkdownBlocks(content, parent, {
@@ -1819,6 +1782,7 @@ const sourceCollapsedActiveLine = [
 ];
 
 const inputSuggestions = createEditorInputSuggestions({
+  nativeFloating,
   mode: configuredEditorMode,
   dialect: () => editingDialect,
   isComposing: () => editor.composing,
@@ -1834,7 +1798,7 @@ const inputSuggestions = createEditorInputSuggestions({
 
 // One CodeMirror compartment is the complete presentation-mode boundary.
 // Source contains no Live Preview state field, view plugin, widget provider,
-// navigation keymap, formatting overlay, preview overlay, or semantic class.
+// navigation keymap, preview overlay, or semantic class.
 const livePreviewMode = [
   editorModeFacet.of("livePreview"),
   EditorView.editorAttributes.of({class: "scholium-live-mode"}),
@@ -1854,7 +1818,6 @@ const livePreviewMode = [
   liveFootnoteProjection.extension,
   livePreview,
   Prec.high(liveProjectionNavigation.extension),
-  selectionActions.extension,
   previewPopover.extension,
   EditorView.lineWrapping,
 ];
@@ -1945,7 +1908,6 @@ const scrollCoordinator = createEditorScrollCoordinator(editor, {
     scrollFraction: scrollAnchor.fallbackFraction,
     scrollAnchor,
   }),
-  onScroll: () => selectionActions.reposition(editor),
   flushPresentationGeometry: flushPresentationStyleAndGeometry,
 });
 for (const mediaQuery of [
@@ -1956,7 +1918,10 @@ for (const mediaQuery of [
 }
 
 const allCommands = [
-  ...selectionActionCommands,
+  "paragraph", "heading1", "heading2", "heading3", "heading4", "heading5", "heading6",
+  "bold", "emphasis", "strikethrough", "highlight", "standardLink", "wikilink",
+  "annotatedWikilink", "inlineCode", "fencedCode",
+  "bulletList", "numberedList", "taskList", "blockQuotation", "markdownComment",
   "thematicBreak",
   "calloutOrient", "calloutCite", "calloutConnect", "calloutState", "calloutIllustrate", "calloutQuote", "calloutFlag",
   "insertFootnote", "insertInlineFootnote", "insertTable", "toggleTask", "tableInsertRowBefore", "tableInsertRowAfter", "tableDeleteRow",
@@ -2282,6 +2247,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     return successfulResult(request.requestID, true, transformed.undoLabel);
   }
   case "documentFind": {
+    previewPopover.hide();
     const result = performDocumentFind(editor, operation.value);
     if (result.undoLabel) {
       lastUndoLabel = result.undoLabel;
@@ -2561,7 +2527,6 @@ const editorOperations = {
       ],
     });
     const appliedMode = configuredEditorMode(editor.state);
-    selectionActions.update(editor);
     updateEditorAccessibility(editor.contentDOM, appliedMode, currentEditorContext());
     scheduleEditorInteractionReport(true);
     recordEditorMetric("mode-toggle-work", startedAt, {

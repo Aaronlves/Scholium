@@ -362,16 +362,16 @@ struct AboutEditablePropertyRow: View {
                         commit(nil)
                     }
                     .scholiumActivationPointer()
-                    .buttonStyle(.borderless)
+                    .scholiumButtonStyle(.borderless)
                 }
                 Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
                 Button("Cancel") { cancel() }
                     .scholiumActivationPointer()
-                    .buttonStyle(.borderless)
+                    .scholiumButtonStyle(.borderless)
                     .keyboardShortcut(.escape)
                 Button("Save") { commit(candidateValue) }
                     .scholiumActivationPointer()
-                    .buttonStyle(.borderedProminent)
+                    .scholiumButtonStyle(.bordered)
                     .controlSize(.small)
                     .keyboardShortcut(.return, modifiers: [.command])
                     .disabled(operationState.isSaving || candidateValue == descriptor.value)
@@ -463,7 +463,7 @@ struct AboutEditablePropertyRow: View {
                         Image(systemName: "minus.circle")
                     }
                     .scholiumActivationPointer()
-                    .buttonStyle(.borderless)
+                    .scholiumButtonStyle(.borderless)
                     .help("Remove value")
                     .accessibilityLabel("Remove \(descriptor.label) value")
                 }
@@ -472,7 +472,7 @@ struct AboutEditablePropertyRow: View {
                 listItems.append(AboutListItemDraft())
             }
             .scholiumActivationPointer()
-            .buttonStyle(.borderless)
+            .scholiumButtonStyle(.borderless)
         }
     }
 
@@ -496,7 +496,7 @@ struct AboutEditablePropertyRow: View {
                             Image(systemName: "minus.circle")
                         }
                         .scholiumActivationPointer()
-                        .buttonStyle(.borderless)
+                        .scholiumButtonStyle(.borderless)
                         .help("Remove creator")
                         .accessibilityLabel("Remove creator")
                     }
@@ -529,7 +529,7 @@ struct AboutEditablePropertyRow: View {
                 creators.append(AboutCreatorDraft())
             }
             .scholiumActivationPointer()
-            .buttonStyle(.borderless)
+            .scholiumButtonStyle(.borderless)
         }
     }
 

@@ -107,7 +107,13 @@ struct EditorScrollMessage: Equatable, Sendable {
     let anchor: MarkdownEditorWireScrollAnchor?
 }
 
+struct EditorFloatingSurfaceMessage: Equatable, Sendable {
+    let envelope: EditorBridgeEnvelope
+    let surface: DocumentFloatingSurface
+}
+
 enum EditorBridgeMessage: Equatable, Sendable {
+    case floatingSurface(EditorFloatingSurfaceMessage)
     case ready
     case documentEnded(editorReady: Bool)
     case editorError(EditorErrorMessage)
@@ -116,8 +122,6 @@ enum EditorBridgeMessage: Equatable, Sendable {
     case performanceSample(EditorPerformanceMessage)
     case requestSave(EditorBridgeEnvelope)
     case requestDocumentFind(EditorFindShortcutMessage)
-    case requestImportImage(EditorBridgeEnvelope)
-    case requestIndexImage(EditorBridgeEnvelope)
     case requestDocumentTitleRename(EditorDocumentTitleRenameMessage)
     case requestImagePaste(EditorBridgeEnvelope)
     case requestMermaidRuntime(EditorBridgeEnvelope)
@@ -131,14 +135,13 @@ enum EditorBridgeMessage: Equatable, Sendable {
 
     var envelope: EditorBridgeEnvelope? {
         switch self {
+        case .floatingSurface(let message): message.envelope
         case .ready, .documentEnded: nil
         case .editorError(let message): message.envelope
         case .interactionChanged(let message): message.envelope
         case .documentChanged(let message): message.envelope
         case .performanceSample(let message): message.envelope
         case .requestSave(let envelope),
-             .requestImportImage(let envelope),
-             .requestIndexImage(let envelope),
              .requestImagePaste(let envelope),
              .requestMermaidRuntime(let envelope),
              .requestMathRuntime(let envelope): envelope
@@ -198,6 +201,10 @@ enum EditorBridgeMessageDecoder {
         envelope: EditorBridgeEnvelope
     ) -> EditorBridgeMessage? {
         switch type {
+        case "floatingSurface":
+            guard hasOnlyKeys(object, additional: ["type", "surface"]),
+                  let surface = DocumentFloatingSurface.decode(object["surface"]) else { return nil }
+            return .floatingSurface(EditorFloatingSurfaceMessage(envelope: envelope, surface: surface))
         case "editorError":
             guard hasOnlyKeys(object, additional: ["type", "message"]),
                   let message = optionalBoundedString(
@@ -257,10 +264,6 @@ enum EditorBridgeMessageDecoder {
             ))
         case "requestSave":
             return exactEnvelopeMessage(object, envelope: envelope, case: .requestSave)
-        case "requestImportImage":
-            return exactEnvelopeMessage(object, envelope: envelope, case: .requestImportImage)
-        case "requestIndexImage":
-            return exactEnvelopeMessage(object, envelope: envelope, case: .requestIndexImage)
         case "requestDocumentTitleRename":
             guard hasOnlyKeys(object, additional: [
                 "type", "requestID", "expectedTitle", "requestedTitle",
@@ -383,8 +386,6 @@ enum EditorBridgeMessageDecoder {
 
     private enum EnvelopeOnlyCase {
         case requestSave
-        case requestImportImage
-        case requestIndexImage
         case requestImagePaste
         case requestMermaidRuntime
         case requestMathRuntime
@@ -398,8 +399,6 @@ enum EditorBridgeMessageDecoder {
         guard hasOnlyKeys(object, additional: ["type"]) else { return nil }
         return switch messageCase {
         case .requestSave: .requestSave(envelope)
-        case .requestImportImage: .requestImportImage(envelope)
-        case .requestIndexImage: .requestIndexImage(envelope)
         case .requestImagePaste: .requestImagePaste(envelope)
         case .requestMermaidRuntime: .requestMermaidRuntime(envelope)
         case .requestMathRuntime: .requestMathRuntime(envelope)

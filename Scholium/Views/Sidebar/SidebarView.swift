@@ -259,9 +259,8 @@ struct SidebarView: View {
                     width: ScholiumMetrics.Accessibility.preferredCustomTarget,
                     height: ScholiumMetrics.Accessibility.preferredCustomTarget
                 )
-                .menuStyle(.borderlessButton)
+                .scholiumMenuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
-                .tint(ScholiumColorRole.mutedText.color)
                 .scholiumContentControlPointerFeedback(in: Circle())
                 .disabled(!context.canMutateLibrary)
                 .help("Create New")
@@ -335,7 +334,7 @@ struct SidebarView: View {
                 .scholiumForeground(.secondaryText)
             Spacer(minLength: 0)
             Button("Clear", action: clearAllFilters)
-                .buttonStyle(.link)
+                .scholiumButtonStyle(.borderless)
         }
         .frame(minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget)
         .accessibilityElement(children: .contain)

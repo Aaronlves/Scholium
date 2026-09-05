@@ -77,6 +77,7 @@ struct HotkeySettingsView: View {
                     in: preferencesData
                 )
             }
+            .scholiumButtonStyle(.automatic)
         }
         .confirmationDialog(
             "Restore Default Hotkeys?",
@@ -170,7 +171,7 @@ struct HotkeySettingsView: View {
                     .frame(minWidth: 64)
             }
             .scholiumActivationPointer()
-            .menuStyle(.button)
+            .scholiumMenuStyle(.button)
             .controlSize(.small)
             .accessibilityLabel(Text("Hotkey for \(String(localized: command.title))"))
             .accessibilityValue(Text(binding(for: command)?.displayName ?? "None"))
@@ -258,7 +259,7 @@ private struct HotkeyRecordingSheet: View {
                     dismiss()
                 }
                 .scholiumActivationPointer()
-                .buttonStyle(.borderedProminent)
+                .scholiumButtonStyle(.bordered)
                 .disabled(validationIssue != nil)
             }
         }
