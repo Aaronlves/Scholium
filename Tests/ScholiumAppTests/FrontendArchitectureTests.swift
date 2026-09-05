@@ -790,7 +790,13 @@ struct FrontendArchitectureTests {
                 in: source,
                 range: NSRange(source.startIndex..<source.endIndex, in: source)
             )
-            #expect(match == nil, "\(path) contains a raw functional color")
+            if path == "Scholium/Views/Note/DocumentFindPanel.swift" {
+                #expect(source.contains(".foregroundStyle(.red)"))
+                #expect(rawFunctionalColor.numberOfMatches(
+                    in: source, range: NSRange(source.startIndex..<source.endIndex, in: source)) == 1)
+            } else {
+                #expect(match == nil, "\(path) contains a raw functional color")
+            }
         }
 
         let applicationRoot = repository.appendingPathComponent("Scholium")
@@ -849,13 +855,15 @@ struct FrontendArchitectureTests {
                     "\(path) owns a numeric semantic-color opacity recipe"
                 )
             }
-            #expect(
-                directSystemForeground.firstMatch(
-                    in: source,
-                    range: sourceRange
-                ) == nil,
-                "\(path) bypasses Scholium foreground roles"
-            )
+            if path == "Scholium/Views/Note/DocumentFindPanel.swift" {
+                // Editor auxiliary controls deliberately restore system semantics.
+                #expect(directSystemForeground.numberOfMatches(in: source, range: sourceRange) == 2)
+            } else {
+                #expect(
+                    directSystemForeground.firstMatch(in: source, range: sourceRange) == nil,
+                    "\(path) bypasses Scholium foreground roles"
+                )
+            }
 
             let directRoleMatches = directRoleForeground.matches(
                 in: source,
@@ -1207,10 +1215,10 @@ struct FrontendArchitectureTests {
         #expect(!toolbarSource.contains("private var desiredItemIdentifiers"))
         #expect(ScholiumWorkspaceToolbarController.itemIdentifiers == [
             ScholiumWorkspaceToolbarController.Item.sidebar,
+            ScholiumWorkspaceToolbarController.Item.libraryDivider,
             ScholiumWorkspaceToolbarController.Item.back,
             ScholiumWorkspaceToolbarController.Item.forward,
-            ScholiumWorkspaceToolbarController.Item.libraryDivider,
-            ScholiumWorkspaceToolbarController.Item.documentInformation,
+            ScholiumWorkspaceToolbarController.Item.documentTitle,
             .flexibleSpace,
             ScholiumWorkspaceToolbarController.Item.settlement,
             .space,
@@ -1224,7 +1232,7 @@ struct FrontendArchitectureTests {
         #expect(!sidebarSource.contains(".ignoresSafeArea(.container, edges: .leading)"))
         #expect(sidebarSource.contains("private var brandHeader"))
         #expect(sidebarSource.contains("Text(\"Scholium\")"))
-        #expect(toolbarSource.contains("systemImage: \"info.circle\""))
+        #expect(toolbarSource.contains("title.textColor = ScholiumColorRole.mutedText.nsColor"))
         #expect(appSource.contains(".navigationTitle(workspaceWindowTitle)"))
         #expect(appSource.contains(".navigationSubtitle(workspaceWindowSubtitle)"))
         #expect(appSource.contains("showsTriptychSubtitle(in: route.windowID)"))
@@ -1246,7 +1254,7 @@ struct FrontendArchitectureTests {
             toolbarSource.contains(
                 "appState.documentController.selectedDocument != nil"
             ))
-        #expect(toolbarSource.contains("Hide Sidebar"))
+        #expect(toolbarSource.contains("activateSidebar"))
         #expect(toolbarSource.contains("Hide Research Inspector"))
         #expect(!sidebarSource.contains("Hide Sidebar"))
         #expect(!noteSource.contains("Hide Research Inspector"))
@@ -1352,7 +1360,7 @@ struct FrontendArchitectureTests {
         let backIndex = try #require(identifiers.firstIndex(of: Item.back))
         let forwardIndex = try #require(identifiers.firstIndex(of: Item.forward))
         let documentInformationIndex = try #require(
-            identifiers.firstIndex(of: Item.documentInformation)
+            identifiers.firstIndex(of: Item.documentTitle)
         )
         let modeIndex = try #require(identifiers.firstIndex(of: Item.documentMode))
         let documentControlSpaceIndex = try #require(
@@ -1370,8 +1378,8 @@ struct FrontendArchitectureTests {
         )
         #expect(sidebarIndex < backIndex)
         #expect(backIndex < forwardIndex)
-        #expect(forwardIndex < libraryDividerIndex)
-        #expect(libraryDividerIndex < documentInformationIndex)
+        #expect(libraryDividerIndex < backIndex)
+        #expect(forwardIndex < documentInformationIndex)
         #expect(documentInformationIndex < documentFlexibleSpaceIndex)
         #expect(documentFlexibleSpaceIndex < settlementIndex)
         #expect(settlementIndex < documentControlSpaceIndex)
@@ -2476,8 +2484,8 @@ struct FrontendArchitectureTests {
             encoding: .utf8
         )
         #expect(
-            ScholiumWorkspaceToolbarController.Item.documentInformation.rawValue
-                == "scholium.toolbar.documentInformation"
+            ScholiumWorkspaceToolbarController.Item.documentTitle.rawValue
+                == "scholium.toolbar.documentTitle"
         )
         #expect(!toolbar.contains("scholium.toolbar.search"))
         #expect(sidebarSource.contains("scholium.sidebarSearch"))
@@ -3208,13 +3216,15 @@ struct FrontendArchitectureTests {
                 ) == nil,
                 "Custom typeface escaped the semantic typography owner: \(sourceURL.path)"
             )
-            #expect(
-                rawSemanticStylePattern.firstMatch(
-                    in: source,
-                    range: sourceRange
-                ) == nil,
-                "Raw SwiftUI text style escaped the semantic typography owner: \(sourceURL.path)"
-            )
+            if sourceURL == applicationRoot.appendingPathComponent("Views/Note/DocumentFindPanel.swift") {
+                #expect(rawSemanticStylePattern.numberOfMatches(in: source, range: sourceRange) == 3)
+
+            } else {
+                #expect(
+                    rawSemanticStylePattern.firstMatch(in: source, range: sourceRange) == nil,
+                    "Raw SwiftUI text style escaped the semantic typography owner: \(sourceURL.path)"
+                )
+            }
             #expect(
                 !source.contains(".fontWeight("),
                 "Leaf-owned font weight escaped the semantic typography owner: \(sourceURL.path)"
@@ -3461,8 +3471,8 @@ struct FrontendArchitectureTests {
         #expect(tabs.contains("ScholiumGrid.Spacing.regionContentInset"))
     }
 
-    @Test("Document Information toolbar presentation has a matching View-menu route")
-    func documentInformationHasViewMenuRoute() throws {
+    @Test("Outline sidebar has a matching View-menu route")
+    func outlineHasViewMenuRoute() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -3484,10 +3494,10 @@ struct FrontendArchitectureTests {
             viewCommandsStart.lowerBound..<viewCommandsEnd.lowerBound
         ]
 
-        #expect(viewCommands.contains("Button(\"Document Information\")"))
+        #expect(viewCommands.contains("Button(\"Outline\")"))
         #expect(
             viewCommands.contains(
-                "workspaceWindowActions?.showDocumentInformation()"
+                "workspaceWindowActions?.activateSidebar(.outline)"
             )
         )
     }

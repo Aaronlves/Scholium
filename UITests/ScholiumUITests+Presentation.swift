@@ -5,74 +5,45 @@ import notify
 
 extension ScholiumUITests {
     @MainActor
-    func testDocumentInformationCombinesOutlineAndStatistics() {
-        let documentInformation = app.toolbars.firstMatch.buttons[
-            "Document Information"
-        ].firstMatch
-        XCTAssertTrue(documentInformation.waitForExistence(timeout: 8))
-        XCTAssertTrue(documentInformation.isHittable)
-        documentInformation.click()
-
-        let popover = app.popovers.firstMatch
-        XCTAssertTrue(popover.waitForExistence(timeout: 5))
-        XCTAssertTrue(popover.staticTexts["Heading Outline"].exists)
-        XCTAssertFalse(popover.staticTexts["Body"].exists)
-        let compactWidth = popover.frame.width
-        XCTAssertLessThan(compactWidth, 280)
-        XCTAssertEqual(
-            popover.frame.midX,
-            documentInformation.frame.midX,
-            accuracy: 3,
-            "The native popover should be centered beneath its toolbar item."
-        )
-        let statisticPicker = popover.descendants(matching: .any)[
-            "scholium.documentStatisticPicker"
-        ]
-        XCTAssertTrue(statisticPicker.exists)
-        XCTAssertTrue(accessibilityText(of: statisticPicker).contains("Words"))
-
-        statisticPicker.click()
-        let charactersWithoutSpaces = app.menuItems[
-            "163 Characters without Spaces"
-        ].firstMatch
-        XCTAssertTrue(charactersWithoutSpaces.waitForExistence(timeout: 3))
-        charactersWithoutSpaces.click()
-        XCTAssertTrue(
-            accessibilityText(of: statisticPicker).contains(
-                "Characters without Spaces"
-            )
-        )
-        XCTAssertTrue(accessibilityText(of: statisticPicker).contains("163"))
-        XCTAssertLessThanOrEqual(popover.frame.width, compactWidth + 2)
-        XCTAssertLessThanOrEqual(popover.frame.width, 284)
-
-        let screenshot = XCTAttachment(screenshot: popover.screenshot())
-        screenshot.name = "Document Information — outline and body statistics"
+    func testOutlineSidebarNavigationAndStatistics() {
+        waitForCurrentDocumentSurface()
+        let outlineButton = sidebarModeControl("Outline")
+        let triptychButton = sidebarModeControl("Triptych")
+        XCTAssertTrue(outlineButton.waitForExistence(timeout: 5))
+        let document = app.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
+        let originalDocumentFrame = document.frame
+        outlineButton.click()
+        let outline = app.outlines["scholium.documentOutline"].firstMatch
+        XCTAssertTrue(outline.waitForExistence(timeout: 5))
+        XCTAssertEqual(document.frame.minX, originalDocumentFrame.minX, accuracy: 2)
+        XCTAssertEqual(document.frame.width, originalDocumentFrame.width, accuracy: 2)
+        let picker = app.descendants(matching: .any)["scholium.documentStatisticPicker"].firstMatch
+        XCTAssertTrue(picker.exists)
+        XCTAssertGreaterThan(picker.frame.midY, outline.frame.midY)
+        XCTAssertEqual(picker.frame.midX, outline.frame.midX, accuracy: 4)
+        picker.click()
+        let characters = app.menuItems["163 Characters without Spaces"].firstMatch
+        XCTAssertTrue(characters.waitForExistence(timeout: 3))
+        characters.click()
+        XCTAssertTrue(accessibilityText(of: picker).contains("163"))
+        let heading = outline.staticTexts["Qualification"].firstMatch
+        XCTAssertTrue(heading.waitForExistence(timeout: 3))
+        heading.click()
+        XCTAssertTrue(outline.exists)
+        triptychButton.click()
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.wordmark"].waitForExistence(timeout: 3))
+        outlineButton.click()
+        XCTAssertTrue(outline.waitForExistence(timeout: 3))
+        XCTAssertTrue(accessibilityText(of: picker).contains("163"))
+        outlineButton.click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !outline.exists })
+        XCTAssertTrue(app.toolbars.firstMatch.buttons["Back"].exists)
+        triptychButton.click()
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.wordmark"].waitForExistence(timeout: 3))
+        let screenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        screenshot.name = "Persistent sidebar modes and document navigation"
         screenshot.lifetime = .keepAlways
         add(screenshot)
-
-        app.typeKey(.escape, modifierFlags: [])
-        XCTAssertTrue(waitUntil(timeout: 3) { !popover.exists })
-
-        documentInformation.click()
-        let reopenedPopover = app.popovers.firstMatch
-        XCTAssertTrue(reopenedPopover.waitForExistence(timeout: 3))
-        let rememberedPicker = reopenedPopover.descendants(matching: .any)[
-            "scholium.documentStatisticPicker"
-        ]
-        XCTAssertTrue(
-            accessibilityText(of: rememberedPicker).contains(
-                "Characters without Spaces"
-            )
-        )
-        app.typeKey(.escape, modifierFlags: [])
-
-        app.menuBars.menuBarItems["View"].click()
-        let menuRoute = app.menuItems["Document Information"].firstMatch
-        XCTAssertTrue(menuRoute.waitForExistence(timeout: 3))
-        menuRoute.click()
-        XCTAssertTrue(app.popovers.firstMatch.waitForExistence(timeout: 3))
-        app.typeKey(.escape, modifierFlags: [])
     }
 
     @MainActor
@@ -371,7 +342,7 @@ extension ScholiumUITests {
             app.descendants(matching: .any)["Markdown editor, Edit mode"].exists
         )
         XCTAssertTrue(
-            app.toolbars.firstMatch.buttons["Hide Sidebar"]
+            sidebarModeControl("Triptych")
                 .waitForExistence(timeout: 5)
         )
         let inspectorButton = app.toolbars.firstMatch.buttons[
@@ -388,7 +359,7 @@ extension ScholiumUITests {
         let originalFrame = window.frame
         let wordmark = app.descendants(matching: .any)["scholium.wordmark"]
         XCTAssertTrue(wordmark.waitForExistence(timeout: 5))
-        let hideSidebar = app.buttons["Hide Sidebar"]
+        let hideSidebar = sidebarModeControl("Triptych")
         XCTAssertTrue(hideSidebar.waitForExistence(timeout: 5))
         let librarySurface = app.descendants(matching: .any)["scholium.librarySurface"]
         XCTAssertTrue(librarySurface.waitForExistence(timeout: 5))
@@ -444,7 +415,7 @@ extension ScholiumUITests {
             waitUntil(timeout: 5) {
                 !self.app.descendants(matching: .any)["scholium.librarySurface"].exists
             })
-        let showSidebar = app.buttons["Show Sidebar"]
+        let showSidebar = sidebarModeControl("Triptych")
         XCTAssertTrue(showSidebar.waitForExistence(timeout: 5))
         XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 5))
         showSidebar.coordinate(

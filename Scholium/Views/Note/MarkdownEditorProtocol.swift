@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 23
+let markdownEditorProtocolVersion = 25
 let markdownEditorMaximumInboundBytes = 2_500_000
 let markdownEditorMaximumSelectionRangeCount = 128
 
@@ -235,7 +235,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     case measureVisibleProjection
     case showPreviewAt(x: Double, y: Double)
     case announceStatus(String)
-    case goToLine(Int)
+    case goToLine(Int, focusesEditor: Bool)
     case revealSourceRange(fromUTF16: Int, toUTF16: Int)
     case setScrollFraction(Double)
     case setScrollAnchor(MarkdownEditorWireScrollAnchor)
@@ -262,7 +262,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case type, text, mode, dialect, initialSelection, value, line, fromUTF16, toUTF16, fraction, anchor, snapshot, x, y
+        case type, text, mode, dialect, initialSelection, value, line, focusesEditor, fromUTF16, toUTF16, fraction, anchor, snapshot, x, y
         case expectedText, committedText, committedFingerprint, command, argument
     }
     private enum Kind: String, Codable {
@@ -305,7 +305,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
                 y: container.decode(Double.self, forKey: .y)
             )
         case .announceStatus: self = try .announceStatus(container.decode(String.self, forKey: .value))
-        case .goToLine: self = try .goToLine(container.decode(Int.self, forKey: .line))
+        case .goToLine: self = try .goToLine(container.decode(Int.self, forKey: .line), focusesEditor: container.decode(Bool.self, forKey: .focusesEditor))
         case .revealSourceRange:
             self = try .revealSourceRange(
                 fromUTF16: container.decode(Int.self, forKey: .fromUTF16),
@@ -370,7 +370,9 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
             try container.encode(x, forKey: .x)
             try container.encode(y, forKey: .y)
         case let .announceStatus(value): try pair(.announceStatus, value, .value, into: &container)
-        case let .goToLine(line): try pair(.goToLine, line, .line, into: &container)
+        case let .goToLine(line, focusesEditor):
+            try pair(.goToLine, line, .line, into: &container)
+            try container.encode(focusesEditor, forKey: .focusesEditor)
         case let .revealSourceRange(fromUTF16, toUTF16):
             try container.encode(Kind.revealSourceRange, forKey: .type)
             try container.encode(fromUTF16, forKey: .fromUTF16)

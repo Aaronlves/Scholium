@@ -9,6 +9,28 @@
 the older fixed-index Records and animated Settlement presentation evidence
 below; it is implementation verification, not release or human acceptance.
 
+- Outline is now a persistent native tree sharing the Sidebar with Triptych.
+  The icon selector switches in place and repeating the active mode collapses
+  the native split item; the collapsed state has no selected segment. AppKit's
+  view-switch role and single-selection tracking provide neutral feedback on
+  macOS 27, with native textured toolbar styling on macOS 26. Statistics remain
+  centered in the Outline footer. Back/Forward precede the Muted Text document
+  name in the Document toolbar; SwiftUI's duplicate visual title is removed.
+  Editor protocol 25 adds explicit focus ownership to heading jumps; live source
+  headings and current section are derived without writing or saving source.
+  All 219 Web tests/resource reproducibility passed. Focused native runs cover
+  47 protocol, toolbar, focus, and presentation checks, plus native tree/disclosure
+  and shell-placement checks. Final-state reruns cover changed owners.
+  Isolated Computer Use confirmed both icons and neutral selection, in-place
+  sidebar switching, heading activation with editor focus, repeated-click collapse,
+  restored Sidebar width, and retained document navigation while collapsed.
+  Evidence: `.build/outline-sidebar/`; the QA Debug bundle is available for the
+  researcher's testing. Complete keyboard, IME, accessibility/adaptation, and
+  full XCUITest acceptance remain separate from this bounded evidence.
+- Completion retains its original native glass and CodeMirror source, keyboard,
+  and sole AX owner. Pointer and keyboard update one candidate; AppKit draws the
+  selection. The persistent Outline no longer shares that transient interaction
+  model. Earlier candidate verification remains under `.build/floating-choices/`.
 - Syntax visibility uses one activation rule for construct rendering,
   navigation, and refresh signatures: an insertion point at either boundary
   keeps source visible, and nonempty selections require overlap. Parser-owned

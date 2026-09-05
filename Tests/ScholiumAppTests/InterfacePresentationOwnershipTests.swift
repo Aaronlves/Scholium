@@ -3,18 +3,22 @@ import Testing
 
 @Suite("Interface presentation ownership")
 struct InterfacePresentationOwnershipTests {
-  @Test("Native button styling has one shared entry and no feature-owned prominent variants")
+  @Test("Native editor assistance is system-owned; other command styling retains its shared entry")
   func nativeButtonStyleOwnership() throws {
     let directStyles = try occurrenceInventory(
       pattern: #"\.buttonStyle\s*\(\s*\."#,
       extensions: ["swift"]
     )
-    #expect(directStyles == ["Scholium/UI/Components/ScholiumButtons.swift": 1],
+    #expect(directStyles == ["Scholium/UI/Components/ScholiumButtons.swift": 1,
+                             "Scholium/Views/Note/DocumentFindPanel.swift": 3,
+                             "Scholium/Views/Sidebar/DocumentOutlineSidebar.swift": 1],
             Comment(rawValue: diagnostic(for: directStyles)))
     let menuStyles = try occurrenceInventory(
       pattern: #"\.menuStyle\s*\(\s*\."#, extensions: ["swift"]
     )
-    #expect(menuStyles == ["Scholium/UI/Components/ScholiumButtons.swift": 1],
+    #expect(menuStyles == ["Scholium/UI/Components/ScholiumButtons.swift": 1,
+                           "Scholium/Views/Note/DocumentFindPanel.swift": 1,
+                           "Scholium/Views/Sidebar/DocumentOutlineSidebar.swift": 1],
             Comment(rawValue: diagnostic(for: menuStyles)))
     let prominentStyles = try occurrenceInventory(
       pattern: #"\.(borderedProminent|glassProminent)\b"#,
@@ -31,6 +35,8 @@ struct InterfacePresentationOwnershipTests {
       "Scholium/App/ScholiumApp.swift": 3,
       "Scholium/UI/Components/ScholiumButtons.swift": 3,
       "Scholium/Views/ResearchRecord/ResearchRecordsWindow.swift": 1,
+      "Scholium/Views/Note/DocumentFindPanel.swift": 1,
+      "Scholium/Views/Sidebar/DocumentOutlineSidebar.swift": 1,
       "Scholium/Views/WorkspaceSetupView.swift": 1,
     ], Comment(rawValue: diagnostic(for: tintOwners)))
   }
@@ -134,6 +140,7 @@ struct InterfacePresentationOwnershipTests {
       trackingAreas == [
         "Scholium/UI/Foundation/ScholiumDesignSystem.swift": 1,
         "Scholium/Views/Note/DocumentFloatingSurfaceController.swift": 1,
+        "Scholium/UI/Components/NativeFloatingChoiceList.swift": 1,
       ],
       Comment(rawValue: diagnostic(for: trackingAreas))
     )

@@ -58,7 +58,7 @@ struct DocumentFloatingSurfaceTests {
             .init(label: "Date", detail: ""), .init(label: "研究笔记", detail: "Insert a linked research note")]
         let detailed = try show(items)
         let glass = try #require(viewport.subviews.compactMap { $0 as? NSGlassEffectView }.first)
-        let content = try #require(glass.contentView)
+        let content = try #require(glass.contentView as? NativeFloatingChoiceList)
         let frame = glass.frame
         #expect(detailed > short)
         #expect(try show(items, selected: 1) == detailed)
@@ -75,6 +75,44 @@ struct DocumentFloatingSurfaceTests {
         window.setContentSize(NSSize(width: 180, height: 400))
         viewport.layoutSubtreeIfNeeded()
         #expect(try show(long) <= 156)
+    }
+
+    @Test("Pointer and keyboard share one native choice while acceptance remains explicit")
+    func unifiedChoice() throws {
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 240, height: 180),
+                              styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        let list = NativeFloatingChoiceList(acceptsKeyboard: true)
+        window.contentView = list
+        window.makeKeyAndOrderFront(nil)
+        defer { window.close() }
+        list.update(items: [.init(label: "First"), .init(label: "第二节"), .init(label: "Third")], selected: 0)
+        list.layoutSubtreeIfNeeded()
+        window.makeFirstResponder(list.table)
+        var accepted: [Int] = []
+        list.choose = { accepted.append($0) }
+        func pointer(_ type: NSEvent.EventType, row: Int) throws -> NSEvent {
+            let rect = list.table.rect(ofRow: row)
+            return try #require(NSEvent.mouseEvent(with: type,
+                location: list.table.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil),
+                modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+                context: nil, eventNumber: 0, clickCount: 1, pressure: 0))
+        }
+        list.table.mouseMoved(with: try pointer(.mouseMoved, row: 1))
+        #expect(list.table.selectedRow == 1)
+        #expect(accepted.isEmpty)
+        let down = try #require(NSEvent.keyEvent(with: .keyDown, location: .zero,
+            modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil,
+            characters: "\u{F701}", charactersIgnoringModifiers: "\u{F701}", isARepeat: false, keyCode: 125))
+        list.table.keyDown(with: down)
+        #expect(list.table.selectedRow == 2)
+        #expect(accepted.isEmpty)
+        list.table.mouseMoved(with: try pointer(.mouseMoved, row: 0))
+        #expect(list.table.selectedRow == 0)
+        list.table.mouseDown(with: try pointer(.leftMouseDown, row: 0))
+        #expect(accepted == [0])
+        #expect(list.table.selectedRowIndexes == IndexSet(integer: 0))
     }
 
     @Test("Native preview preserves viewport and focus, clamps to narrow bounds, and rejects stale dismissal")

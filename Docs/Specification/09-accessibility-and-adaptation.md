@@ -70,6 +70,11 @@
   routes and focus. Workspace and Library rows follow the effective system
   Source List size; enlarged interface text uses the native large row
   presentation without clipping labels or symbols.
+- Triptych/Outline toolbar controls expose their sidebar presentation and the
+  collapsed state without requiring pointer input. Outline uses native tree
+  hierarchy, disclosure and current-section semantics; navigation preserves
+  source, composition, and focus. Statistics remain after the tree in reading
+  order. Back/Forward remain in the Document toolbar when Sidebar is hidden.
 - Back/Forward, Sidebar, Inspector, Search, Notifications, filters, folder
   disclosure, Add, file actions, and hierarchy remain named and reachable
   without hover. The nonzero Notifications dot has an exact accessible count;

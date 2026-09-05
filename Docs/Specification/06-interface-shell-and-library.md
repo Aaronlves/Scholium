@@ -31,8 +31,10 @@ and Library presentation without restating those workflows.
 
 Each configured window contains one native split view:
 
-1. **Sidebar**: Scholium identity, Analyses–Topics–Works navigation, Search,
-   Triptych Notifications, and the selected workspace's Library.
+1. **Sidebar**: one region with **Triptych** and **Outline** presentations.
+   Triptych contains Scholium identity, Analyses–Topics–Works navigation,
+   Search, Triptych Notifications, and Library. Outline contains the current
+   Document's persistent heading hierarchy and bottom-centered statistics.
 2. **Document**: the selected Note or the restrained no-document state.
 3. **Apparatus**: the trailing Research Inspector's Overview, Outgoing, and
    Incoming projections.
@@ -49,6 +51,16 @@ interactive boundary. Design §19 owns this semantic material boundary; the
 architecture set records its current framework implementation.
 
 New windows show Library, hide Inspector, and begin in Analyses/Overview.
+The toolbar's leading native icon selector, labelled Triptych / Outline in Help
+and accessibility, shows the chosen sidebar
+presentation. Choosing the other item switches content at the same width;
+choosing the visible item again collapses the sidebar, leaving neither item
+selected. Selecting either item while collapsed reveals it. Both presentations
+retain their independent scrolling and disclosure while switching. Native split
+visibility remains authoritative, including menu and window-resize changes.
+Back/Forward begin the Document toolbar region, after the sidebar tracking
+boundary and before its Muted Text document name. They remain available with
+the sidebar collapsed and traverse document visits, not heading jumps.
 Visibility and workspace session state are installed before first presentation,
 then native state is authoritative. Each workspace retains Library filters and
 disclosure, selected tab, live Document mode, and Inspector mode. A transition
@@ -56,7 +68,8 @@ commits only after source safety succeeds; failure preserves the exact origin
 workspace and buffer.
 
 The native toolbar remains a bounded, stable set for frequent or high-value
-commands: Sidebar and Back/Forward, current-Document information and mode,
+commands: the native **Triptych / Outline** sidebar selector, Back/Forward,
+current-Document identity and mode,
 Settlement, Research Records, confirmed Agent Changes when present, Inspector
 projection, and Inspector visibility. Every command also exists in its owning
 menu, and native overflow preserves access at narrow widths. The current scope
@@ -102,7 +115,7 @@ Menus follow task ownership:
 - **File**: Triptych/window, New Note, Import, Duplicate, Rename, Move, Reveal,
   and system-Trash actions.
 - **Edit**: editing, Find, formatting, and Edit Metadata.
-- **View**: Back/Forward, Document Information, Search, Document mode/text size,
+- **View**: Back/Forward, Triptych, Outline, Sidebar visibility, Search, Document mode/text size,
   Sidebar, and Inspector.
 - **Research**: Research Records, Settle, and Agent Changes when present.
 - **Window**: standard windows plus Notifications.

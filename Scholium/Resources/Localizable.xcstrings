@@ -10375,6 +10375,22 @@
         }
       }
     },
+    "Outline" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Outline"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "大纲"
+          }
+        }
+      }
+    },
     "Overview" : {
       "localizations" : {
         "en" : {

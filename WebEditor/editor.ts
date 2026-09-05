@@ -2121,7 +2121,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   }
   case "showPreviewAt": previewPopover.showAtPoint(operation.x, operation.y); break;
   case "announceStatus": announceEditorMessage(editor.contentDOM, operation.value); break;
-  case "goToLine": editorOperations.goToLine(operation.line); break;
+  case "goToLine": editorOperations.goToLine(operation.line, operation.focusesEditor); break;
   case "revealSourceRange": editorOperations.revealSourceRange(operation.fromUTF16, operation.toUTF16); break;
   case "setScrollFraction": editorOperations.setScrollFraction(operation.fraction); break;
   case "setScrollAnchor": editorOperations.setScrollAnchor(operation.anchor); break;
@@ -2583,14 +2583,14 @@ const editorOperations = {
   },
 
   /** @param {number} requestedLine */
-  goToLine(requestedLine: number) {
+  goToLine(requestedLine: number, focusesEditor: boolean) {
     const lineNumber = Math.max(1, Math.min(Math.trunc(requestedLine), editor.state.doc.lines));
     const line = editor.state.doc.line(lineNumber);
     editor.dispatch({
       selection: { anchor: line.from },
       effects: EditorView.scrollIntoView(line.from, { y: "center" }),
     });
-    editor.focus();
+    if (focusesEditor) editor.focus();
   },
 
   /** Selects an exact source range without changing Markdown or undo history. */

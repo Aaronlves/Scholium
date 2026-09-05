@@ -23,8 +23,10 @@
         if (action === "enter") callbacks.enter?.();
         else if (action === "leave") callbacks.leave?.();
         else if (action === "dismiss") callbacks.dismiss();
-        else if (action === "choose" && Number.isInteger(index) && index >= 0 && index < current.surface.items.length) callbacks.choose?.(index);
-        else return false;
+        else if ((action === "select" || action === "choose") && Number.isInteger(index) && current.surface.kind === "suggestions" && index >= 0 && index < current.surface.items.length) {
+          if (action === "select") callbacks.select?.(index);
+          else callbacks.choose?.(index);
+        } else return false;
         return true;
       }
     };
@@ -21104,7 +21106,7 @@
   }
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 23;
+  var EDITOR_PROTOCOL_VERSION = 25;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var operationTypes = /* @__PURE__ */ new Set([
@@ -21259,7 +21261,7 @@
       case "showPreviewAt":
         return typeof operation.x === "number" && Number.isFinite(operation.x) && typeof operation.y === "number" && Number.isFinite(operation.y);
       case "goToLine":
-        return Number.isSafeInteger(operation.line) && Number(operation.line) >= 1;
+        return Number.isSafeInteger(operation.line) && Number(operation.line) >= 1 && typeof operation.focusesEditor === "boolean";
       case "revealSourceRange":
         return Number.isSafeInteger(operation.fromUTF16) && Number.isSafeInteger(operation.toUTF16) && Number(operation.fromUTF16) >= 0 && Number(operation.toUTF16) >= Number(operation.fromUTF16);
       case "setScrollFraction":
@@ -31234,6 +31236,10 @@ ${fence}
     }
     function position(anchor, startedAt) {
       if (!editor2 || !root) return;
+      if (editor2.composing) {
+        hide();
+        return;
+      }
       root.hidden = false;
       nativeID = options.nativeFloating.show(previewSurface(anchor, root), {
         dismiss: hide,
@@ -31330,7 +31336,7 @@ ${fence}
     }
     function showAtSelection() {
       const startedAt = performance.now();
-      if (!editor2) return false;
+      if (!editor2 || editor2.composing) return false;
       const head = editor2.state.selection.main.head;
       const coords = editor2.coordsAtPos(head);
       if (!coords) return false;
@@ -31353,7 +31359,7 @@ ${fence}
     }
     function showAtPoint(x, y) {
       const startedAt = performance.now();
-      if (!editor2) return false;
+      if (!editor2 || editor2.composing) return false;
       const anchor = linkAnchorAt(document.elementFromPoint(x, y));
       const footnote = footnoteButtonAt(document.elementFromPoint(x, y));
       if (footnote) {
@@ -31442,7 +31448,9 @@ ${fence}
       setArmedLink(null);
       if (activeKind === "link") hide(true);
     };
+    const handleCompositionStart = () => hide();
     const handleKeyDown = (event) => {
+      if (event.isComposing || event.keyCode === 229) return;
       if (event.key === "Escape" && root && !root.hidden) {
         hide();
         return;
@@ -31534,6 +31542,7 @@ ${fence}
       document.addEventListener("click", handleClick);
       document.addEventListener("keyup", handleKeyUp);
       document.addEventListener("keydown", handleKeyDown);
+      document.addEventListener("compositionstart", handleCompositionStart);
       view.scrollDOM.addEventListener("scroll", handleViewportExit, { passive: true });
       window.addEventListener("resize", handleViewportExit);
     }
@@ -31546,6 +31555,7 @@ ${fence}
       document.removeEventListener("click", handleClick);
       document.removeEventListener("keyup", handleKeyUp);
       document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("compositionstart", handleCompositionStart);
       view.scrollDOM.removeEventListener("scroll", handleViewportExit);
       root?.removeEventListener("pointerenter", handlePreviewPointerEnter);
       root?.removeEventListener("pointerleave", handlePreviewPointerLeave);
@@ -32759,6 +32769,12 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           dismiss: () => {
             closeCompletion(this.view);
           },
+          select: (index) => {
+            if (this.view.composing || this.view.root.activeElement !== this.view.contentDOM) return;
+            if (selectedCompletionIndex(this.view.state) !== index) {
+              this.view.dispatch({ effects: setSelectedCompletion(index) });
+            }
+          },
           choose: (index) => {
             if (this.view.composing || this.view.root.activeElement !== this.view.contentDOM) return;
             this.view.dispatch({ effects: setSelectedCompletion(index) });
@@ -32771,9 +32787,23 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         this.measureFallback = window.setTimeout(() => this.write(this.read()), 50);
         this.view.requestMeasure({ key: this, read: () => this.read(), write: (value) => this.write(value) });
       }
-      destroy() {
+      suspend() {
         window.clearTimeout(this.measureFallback);
+        this.measureFallback = void 0;
         options.nativeFloating.hide(nativeID);
+        this.signature = "";
+      }
+      destroy() {
+        this.suspend();
+      }
+    }, {
+      eventHandlers: {
+        compositionstart() {
+          this.suspend();
+        },
+        compositionend() {
+          this.refresh();
+        }
       }
     });
     return {
@@ -37730,7 +37760,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         announceEditorMessage(editor.contentDOM, operation.value);
         break;
       case "goToLine":
-        editorOperations.goToLine(operation.line);
+        editorOperations.goToLine(operation.line, operation.focusesEditor);
         break;
       case "revealSourceRange":
         editorOperations.revealSourceRange(operation.fromUTF16, operation.toUTF16);
@@ -38160,14 +38190,14 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       }
     },
     /** @param {number} requestedLine */
-    goToLine(requestedLine) {
+    goToLine(requestedLine, focusesEditor) {
       const lineNumber = Math.max(1, Math.min(Math.trunc(requestedLine), editor.state.doc.lines));
       const line = editor.state.doc.line(lineNumber);
       editor.dispatch({
         selection: { anchor: line.from },
         effects: EditorView.scrollIntoView(line.from, { y: "center" })
       });
-      editor.focus();
+      if (focusesEditor) editor.focus();
     },
     /** Selects an exact source range without changing Markdown or undo history. */
     revealSourceRange(requestedFromUTF16, requestedToUTF16, focusesEditor = true) {

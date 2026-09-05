@@ -91,10 +91,23 @@ struct ContentView: View {
             }
         ) {
             LibrarySurface {
-                SidebarView(
-                    controller: appState.discoveryController,
-                    context: sidebarContext
-                )
+                ZStack {
+                    SidebarView(controller: appState.discoveryController, context: sidebarContext)
+                        .opacity(shellState.sidebarContent == .triptych ? 1 : 0)
+                        .allowsHitTesting(shellState.sidebarContent == .triptych)
+                        .accessibilityHidden(shellState.sidebarContent != .triptych)
+                    DocumentOutlineSidebar(projection: appState.documentInformation) { line, focusesEditor in
+                        if let descriptor = appState.currentDocumentDescriptor,
+                           appState.documentController.chromeProjection.mode != .read {
+                            appState.documentController.session(for: descriptor).editorSession.goToLine(line, focusesEditor: focusesEditor)
+                        } else {
+                            appState.pendingSourceLine = line
+                        }
+                    }
+                    .opacity(shellState.sidebarContent == .outline ? 1 : 0)
+                    .allowsHitTesting(shellState.sidebarContent == .outline)
+                    .accessibilityHidden(shellState.sidebarContent != .outline)
+                }
             }
             .scholiumButtonStyle(.automatic)
             .frame(

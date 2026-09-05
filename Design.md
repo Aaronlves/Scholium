@@ -43,8 +43,8 @@ Semantic floating containers use native Liquid Glass: contextual Find, Search,
 previews, suggestions, and transient notifications sit above their originating
 content without reflowing it. Reading, editing, settings, forms, and persistent
 operation or recovery regions use Scholium's opaque semantic colors. Glass
-belongs to the floating container; text, state, and controls inside retain their
-semantic colors. Clickability alone does not grant a control a glass surface.
+belongs to the floating container. Embedded document previews retain document
+semantics; editor assistance controls and candidates use system presentation. Clickability alone does not grant a control a glass surface.
 System-owned navigation, toolbars, menus, and popovers keep native treatment.
 There is no separate feature-authored frosted-glass style. The system owns
 transparency and contrast adaptation; do not simulate Liquid Glass in WebKit.
@@ -140,15 +140,32 @@ remains unenclosed, and shape never carries state or authority alone.
 
 #### Interaction presentation
 
+The persistent Outline follows Sidebar material and native tree presentation,
+with no floating container or candidate-menu treatment. Its current section and
+transient hover have distinct meanings. The Triptych/Outline toolbar selector uses native neutral navigation feedback,
+without an Accent-filled selected segment. Toolbar document identity uses Muted
+Text; the in-document filename title retains its primary heading role.
+
 Native containers and controls own hover, press, disabled, selected, focused,
 active, inactive, and cursor presentation. Section 18.3 alone defines the
 Sidebar's quiet pointer selection and keyboard-navigation emphasis; it does not
 create a general modality-styling system. The selected row remains the sole
 visible list-focus indicator without a duplicate perimeter effect. Caret
 completion uses compact 28-point single-line rows and 40-point rows with a
-secondary description, with shared insets and neutral selection feedback. The
+secondary description, with native control feedback. The
 selected row adds no shadow or second glass layer; the floating container owns
-system material and elevation.
+system material and elevation. Liquid Glass is rendered only by native framework
+components; candidate lists use native selection rendering without custom
+drawing. Pointer movement and keyboard navigation update one current candidate;
+click or Return accepts it. There is no separate hover fill or activated row.
+The editor owns source-facing candidate state. Editing assistance follows the input-method
+candidate-window pattern: compact, anchored, nonmodal, and outside document
+layout. Completion keeps the editor as keyboard owner; Find takes query focus
+and restores document focus on dismissal. During marked-text composition,
+application suggestions and previews yield to the input method; Find fields
+retain uncommitted text without issuing partial queries. System typography,
+selection, control tint, and accessibility adaptation govern these auxiliary
+controls; they do not inherit product navigation's quiet gray treatment.
 
 Revealed editable Markdown delimiters use Muted Text; authored content retains
 its semantic text color and formatting. Syntax color never changes source.
@@ -157,8 +174,9 @@ Ordinary command buttons use neutral Ink and native surfaces. Default-action
 status retains native keyboard behavior without introducing brand Accent.
 Destructive and cancel actions retain their native semantic roles. Shared
 presentation owns ordinary command styling, icon-control chrome, and custom
-row/selection feedback; feature views do not define button colors or competing
-button styles. Native menus, groups, and toolbar controls retain their distinct
+row/selection feedback outside editing assistance. The latter explicitly
+restores native control defaults, including system accent behavior; feature
+views do not author button colors or selection fills. Native menus, groups, and toolbar controls retain their distinct
 platform forms. Accent remains available for meaningful state and authored
 links, not as a general indication that a control is clickable.
 

@@ -7,6 +7,22 @@ import Testing
 @Suite("Workspace toolbar")
 @MainActor
 struct WorkspaceToolbarTests {
+    @Test("Sidebar modes switch in place and repeating the visible mode collapses it")
+    func sidebarModes() {
+        let state = WindowShellState()
+        #expect(state.sidebarContent == .triptych && state.libraryVisible)
+        #expect(state.activateSidebar(.outline))
+        state.recordLibraryVisibility(true)
+        #expect(state.sidebarContent == .outline)
+        #expect(!state.activateSidebar(.outline))
+        state.recordLibraryVisibility(false)
+        #expect(state.activateSidebar(.triptych))
+        state.recordLibraryVisibility(true)
+        #expect(!state.activateSidebar(.triptych))
+        state.recordLibraryVisibility(false)
+        #expect(state.activateSidebar(.outline))
+    }
+
     @Test("Window appearance keeps native toolbar chrome aligned with the selected scheme")
     func nativeToolbarAppearanceFollowsWindowChoice() {
         let window = testWindow()
@@ -110,22 +126,18 @@ struct WorkspaceToolbarTests {
         #expect(toolbar.itemIdentifiers == ScholiumWorkspaceToolbarController.itemIdentifiers)
 
         let documentInformation = try #require(item(
-            ScholiumWorkspaceToolbarController.Item.documentInformation,
+            ScholiumWorkspaceToolbarController.Item.documentTitle,
             in: toolbar
         ))
         #expect(documentInformation.visibilityPriority == .high)
-        #expect(documentInformation.label == "Document Information")
-        #expect(documentInformation.isBordered)
-        #expect(documentInformation.style == .plain)
-        #expect(documentInformation.isNavigational)
-        #expect(documentInformation.view == nil)
-        #expect(!(documentInformation is NSMenuToolbarItem))
+        let title = try #require(documentInformation.view as? NSTextField)
+        #expect(title.stringValue == "Scholium")
+        #expect(title.textColor?.usingColorSpace(.deviceRGB) == ScholiumColorRole.mutedText.nsColor.usingColorSpace(.deviceRGB))
+        #expect(window.titleVisibility == .hidden)
 
         for identifier in [
-            ScholiumWorkspaceToolbarController.Item.sidebar,
             ScholiumWorkspaceToolbarController.Item.back,
             ScholiumWorkspaceToolbarController.Item.forward,
-            ScholiumWorkspaceToolbarController.Item.documentInformation,
             ScholiumWorkspaceToolbarController.Item.settlement,
             ScholiumWorkspaceToolbarController.Item.documentMode,
             ScholiumWorkspaceToolbarController.Item.inspector,
@@ -174,7 +186,15 @@ struct WorkspaceToolbarTests {
             ScholiumWorkspaceToolbarController.Item.sidebar,
             in: toolbar
         ))
-        #expect(sidebar.possibleLabels == ["Hide Sidebar", "Show Sidebar"])
+        let selector = try #require(sidebar.view as? NSSegmentedControl)
+        if #available(macOS 27.0, *) { #expect(selector.role == .tabs) }
+        #expect(selector.selectedSegmentBezelColor == nil)
+        #expect(selector.trackingMode == .selectOne)
+        #expect(selector.segmentCount == 2)
+        #expect(selector.image(forSegment: 0) != nil)
+        #expect(selector.image(forSegment: 1) != nil)
+        #expect(selector.isSelected(forSegment: 0))
+        #expect(!selector.isSelected(forSegment: 1))
 
         let inspector = try #require(item(
             ScholiumWorkspaceToolbarController.Item.inspector,
@@ -190,7 +210,7 @@ struct WorkspaceToolbarTests {
             ScholiumWorkspaceToolbarController.Item.back,
             ScholiumWorkspaceToolbarController.Item.forward,
         ] {
-            #expect(!(try #require(item(identifier, in: toolbar))).isNavigational)
+            #expect((try #require(item(identifier, in: toolbar))).isNavigational == (identifier != ScholiumWorkspaceToolbarController.Item.sidebar))
         }
 
         #expect(toolbar.items.allSatisfy {
@@ -222,7 +242,7 @@ struct WorkspaceToolbarTests {
             ScholiumWorkspaceToolbarController.Item.sidebar,
             in: toolbar
         ))
-        #expect(sidebar.label == "Hide Sidebar")
+        #expect((sidebar.view as? NSSegmentedControl)?.isSelected(forSegment: 0) == true)
 
         model.shellState.recordLibraryVisibility(false)
         await withCheckedContinuation { continuation in
@@ -231,14 +251,14 @@ struct WorkspaceToolbarTests {
             }
         }
 
-        #expect(sidebar.label == "Show Sidebar")
+        #expect((sidebar.view as? NSSegmentedControl)?.isSelected(forSegment: 0) == false)
     }
 
     private var inertWindowActions: WorkspaceWindowActions {
         WorkspaceWindowActions(
             setLibraryVisible: { _ in },
             setResearchInspectorVisible: { _ in },
-            showDocumentInformation: {},
+            activateSidebar: { _ in },
             showResearchRecords: {},
             showAttention: { _ in },
             showPreferredAttention: {},

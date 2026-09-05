@@ -65,6 +65,52 @@ struct DocumentFindPresentationTests {
         }
     }
 
+    @Test("Native find fields retain marked text across result updates and yield IME commands", arguments: [false, true])
+    func markedTextSurvivesUpdates(replacement: Bool) async throws {
+        _ = NSApplication.shared
+        let model = DocumentFindPresentationModel()
+        model.presentReplacement()
+        model.setQuery("original")
+        model.setReplacement("original")
+        let host = NSHostingView(rootView: DocumentFindPanel(model: model, allowsReplacement: true))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 180),
+                              styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        window.makeKeyAndOrderFront(nil)
+        defer { window.close() }
+        let identifier = replacement ? "scholium.documentFind.replacement" : "scholium.documentFind.query"
+        func findField(_ view: NSView) -> NSTextField? {
+            if let field = view as? NSTextField, field.accessibilityIdentifier() == identifier { return field }
+            return view.subviews.lazy.compactMap { findField($0) }.first
+        }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while findField(host) == nil && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let field = try #require(findField(host))
+        window.makeFirstResponder(field)
+        let editor = try #require(field.currentEditor() as? NSTextView)
+        editor.setMarkedText("zhong", selectedRange: NSRange(location: 5, length: 0),
+                             replacementRange: NSRange(location: 0, length: editor.string.utf16.count))
+        let coordinator = try #require(field.delegate as? DocumentFindSearchField.Coordinator)
+        coordinator.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+        #expect(model.query == "original" && model.replacement == "original")
+        for command in [#selector(NSResponder.insertNewline(_:)), #selector(NSResponder.cancelOperation(_:))] {
+            #expect(!coordinator.control(field, textView: editor, doCommandBy: command))
+        }
+        model.accept(.init(current: 1, total: 2), for: try #require(model.request?.id))
+        try await Task.sleep(for: .milliseconds(80))
+        host.layoutSubtreeIfNeeded()
+        #expect(editor.hasMarkedText())
+        #expect(editor.string == "zhong")
+        #expect(model.isPresented)
+        editor.insertText("中", replacementRange: editor.markedRange())
+        coordinator.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
+        #expect(!editor.hasMarkedText())
+        #expect(replacement ? model.replacement == "中" : model.query == "中")
+    }
+
     @Test("Find and replacement entry retain drafts but choose distinct presentations")
     func entryAndDisclosure() throws {
         let model = DocumentFindPresentationModel()

@@ -23,8 +23,10 @@
         if (action === "enter") callbacks.enter?.();
         else if (action === "leave") callbacks.leave?.();
         else if (action === "dismiss") callbacks.dismiss();
-        else if (action === "choose" && Number.isInteger(index) && index >= 0 && index < current.surface.items.length) callbacks.choose?.(index);
-        else return false;
+        else if ((action === "select" || action === "choose") && Number.isInteger(index) && current.surface.kind === "suggestions" && index >= 0 && index < current.surface.items.length) {
+          if (action === "select") callbacks.select?.(index);
+          else callbacks.choose?.(index);
+        } else return false;
         return true;
       }
     };

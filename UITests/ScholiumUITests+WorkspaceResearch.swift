@@ -246,7 +246,7 @@ extension ScholiumUITests {
         XCTAssertTrue(toolbar.waitForExistence(timeout: 5))
         XCTAssertTrue(library.waitForExistence(timeout: 5))
 
-        let hideSidebar = toolbar.buttons["Hide Sidebar"].firstMatch
+        let hideSidebar = sidebarVisibilityControl()
         XCTAssertTrue(hideSidebar.waitForExistence(timeout: 5))
         hideSidebar.coordinate(
             withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
@@ -266,7 +266,7 @@ extension ScholiumUITests {
             abs($0 - stableInspectorFrame.width) <= 2
         })
 
-        let showSidebar = toolbar.buttons["Show Sidebar"].firstMatch
+        let showSidebar = sidebarModeControl("Triptych")
         XCTAssertTrue(showSidebar.waitForExistence(timeout: 5))
         showSidebar.coordinate(
             withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)

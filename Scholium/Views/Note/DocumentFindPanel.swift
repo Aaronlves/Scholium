@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 enum DocumentFindPresentationOperation: Hashable, Sendable {
     case execute(DocumentFindAction)
@@ -183,7 +184,7 @@ struct DocumentFindPanel: View {
                             .frame(width: 28, height: 28)
                             .contentShape(Rectangle())
                     }
-                    .scholiumButtonStyle(.borderless)
+                    .buttonStyle(.borderless)
                     .help(model.replacementIsPresented ? "Hide Replace" : "Show Replace")
                     .accessibilityLabel("Replace")
                     .accessibilityValue(model.replacementIsPresented ? "Expanded" : "Collapsed")
@@ -194,13 +195,8 @@ struct DocumentFindPanel: View {
                         DocumentFindSearchField(model: model)
                             .frame(minWidth: 120, minHeight: 28)
                         if allowsReplacement && model.replacementIsPresented {
-                            TextField("Replace with", text: Binding(
-                                get: { model.replacement }, set: model.setReplacement
-                            ))
-                            .textFieldStyle(.roundedBorder)
-                            .frame(minHeight: 28)
-                            .accessibilityLabel("Replace with")
-                            .accessibilityIdentifier("scholium.documentFind.replacement")
+                            DocumentFindReplacementField(model: model)
+                                .frame(minHeight: 28)
                         }
                     }
                     .layoutPriority(1)
@@ -222,19 +218,21 @@ struct DocumentFindPanel: View {
             }
             if model.caseSensitive || model.wholeWord {
                 Text(activeOptions)
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             if let errorMessage = model.errorMessage {
                 Text(errorMessage)
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.destructive)
+                    .font(.caption)
+                    .foregroundStyle(.red)
                     .textSelection(.enabled)
                     .accessibilityIdentifier("scholium.documentFind.error")
             }
         }
         .onGeometryChange(for: Bool.self) { $0.size.width < 420 } action: { usesCompactLayout = $0 }
-        .scholiumButtonStyle(.automatic)
+        .buttonStyle(.automatic)
+        .menuStyle(.automatic)
+        .tint(nil as Color?)
         .controlSize(.regular)
         .padding(12)
         .scholiumFloatingSurface(in: panelShape)
@@ -247,7 +245,10 @@ struct DocumentFindPanel: View {
         .onChange(of: allowsReplacement) { _, allowed in
             if !allowed { model.setReplacementPresented(false) }
         }
-        .onExitCommand(perform: model.dismiss)
+        .onExitCommand {
+            guard !((NSApp.keyWindow?.firstResponder as? NSTextView)?.hasMarkedText() ?? false) else { return }
+            model.dismiss()
+        }
     }
 
     private var panelShape: RoundedRectangle {
@@ -258,8 +259,8 @@ struct DocumentFindPanel: View {
         HStack(spacing: 8) {
             if !model.query.isEmpty {
                 Text(matchDescription)
-                    .font(ScholiumTypography.interface(.small).monospacedDigit())
-                    .scholiumForeground(.secondaryText)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .accessibilityLabel(matchAccessibilityLabel)
                     .accessibilityIdentifier("scholium.documentFind.matches")
@@ -276,7 +277,7 @@ struct DocumentFindPanel: View {
             Button(action: model.dismiss) {
                 Image(systemName: "xmark").frame(width: 28, height: 28).contentShape(Rectangle())
             }
-            .scholiumButtonStyle(.borderless)
+            .buttonStyle(.borderless)
             .help("Close Find").accessibilityLabel("Close Find")
             .accessibilityIdentifier("scholium.documentFind.close")
         }

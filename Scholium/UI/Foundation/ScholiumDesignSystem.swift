@@ -1518,9 +1518,6 @@ enum ScholiumMetrics {
     enum Completion {
         static let rowHeight: CGFloat = 28
         static let detailedRowHeight: CGFloat = 40
-        static let rowHorizontalInset: CGFloat = 10
-        static let containerInset: CGFloat = 6
-        static let rowCornerRadius: CGFloat = 6
         static let maximumVisibleRows = 7
     }
 
@@ -1565,16 +1562,6 @@ enum ScholiumMetrics {
         /// system-owned.
         static let popoverWidth: CGFloat = 420
         static let popoverHeight: CGFloat = 360
-    }
-
-    enum DocumentInformation {
-        /// A bounded native popover keeps navigation and derived statistics
-        /// near the Document without creating a persistent fourth plane.
-        static let maximumPopoverWidth = ScholiumGrid.foundationUnit * 64
-        static let outlineRowHeight = ScholiumGrid.Dimension.preferredCustomTarget
-        static let emptyOutlineHeight = ScholiumGrid.foundationUnit * 11
-        static let minimumOutlineHeight = ScholiumGrid.foundationUnit * 14
-        static let maximumOutlineHeight = ScholiumGrid.foundationUnit * 70
     }
 
     enum ActivityNotificationStack {

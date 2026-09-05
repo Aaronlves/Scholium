@@ -535,9 +535,11 @@ struct NoteContentView: View {
             documentInformation.activate(documentInformationDocumentID)
             publishDocumentInformation()
         }
-        .onChange(of: currentDocumentStatistics) { _, _ in
-            publishDocumentInformation()
-        }
+        .onChange(of: currentDocumentStatistics) { _, _ in publishDocumentInformation() }
+        .onChange(of: isEditing) { _, _ in publishDocumentInformation() }
+        .onChange(of: note.rawContent) { _, _ in publishDocumentInformation() }
+        .onChange(of: editorSession.outlineHeadings) { _, _ in publishDocumentInformation() }
+        .onChange(of: editorSession.currentHeadingLine) { _, _ in publishDocumentInformation() }
         .onChange(of: documentInformationDocumentID) { previous, _ in
             documentInformation.clear(ifCurrent: previous)
             documentInformation.activate(documentInformationDocumentID)
@@ -996,6 +998,7 @@ struct NoteContentView: View {
             onScrollAnchorChange: {
                 guard !isEditing else { return }
                 documentSession.observeScrollAnchor($0)
+                publishDocumentInformation()
             },
             targetSourceLine: isEditing ? nil : state.pendingSourceLine,
             onSourceLineReached: {
@@ -1281,10 +1284,17 @@ struct NoteContentView: View {
     }
 
     private func publishDocumentInformation() {
-        documentInformation.publish(
-            currentDocumentStatistics,
-            for: documentInformationDocumentID
-        )
+        documentInformation.publish(currentDocumentStatistics, for: documentInformationDocumentID)
+        if isEditing {
+            documentInformation.publishOutline(editorSession.outlineHeadings,
+                currentLine: editorSession.currentHeadingLine, for: documentInformationDocumentID)
+        } else {
+            let headings = note.workspaceSnapshot?.headings ?? []
+            let offset = documentSession.observedScrollPosition.anchor?.sourceUTF16Offset ?? 0
+            documentInformation.publishOutline(headings,
+                currentLine: headings.last { $0.span.utf16LowerBound <= offset }?.span.start.line,
+                for: documentInformationDocumentID)
+        }
     }
 
     private func handleDocumentFindShortcut(_ shortcut: DocumentFindShortcut) {

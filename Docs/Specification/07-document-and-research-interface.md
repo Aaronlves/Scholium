@@ -11,7 +11,7 @@ across its Note/tab changes. Switching workspace restores that workspace's
 selection. Mode state never becomes a Note, vault, or Markdown fact.
 
 Review owns read selection; Edit owns formatting. Selection remains available
-to Document Information statistics without creating a separate annotation or
+to Outline sidebar statistics without creating a separate annotation or
 collaboration object.
 
 Managed New Note opens Edit at the exact body start after durable commit.
@@ -42,15 +42,22 @@ Escape or Close returns native and embedded document focus without changing
 the current exact selection.
 Clicking the document keeps Find open. Reopening Find focuses its query even
 when already open. Drafts/options remain local to the retained document; narrow
-reflow retains the native fields and never changes source.
+reflow retains the native fields and never changes source. Query and replacement
+use native field editors. Marked text remains local until committed; incoming
+results cannot overwrite composition or consume its Return/Escape commands.
 
 Caret suggestions use one bounded panel attached to the editor caret. Autosave
 does not dismiss it; acceptance, explicit dismissal, loss of the editing context,
 or completion-state invalidation does. Selection changes update the retained
-list without reconstructing its container. They keep
+list without reconstructing its container. Pointer movement and keyboard
+navigation update the same current candidate, shown with native emphasized
+selection; click or Return accepts it. There is no independent hovered choice. They keep
 document focus, show only useful identity/path context, fit the viewport, and
-never introduce another text owner. Selection, menus, and suggestion panels use
-the semantic surfaces, boundaries, and elevation roles in §19.
+never introduce another text owner. These editing auxiliaries follow the
+input-method candidate-window pattern: native system text, controls, selection,
+and elevation above the document. During composition, application suggestions
+and previews yield to the input method immediately; candidate navigation and
+acceptance resume only outside composition. §19 governs the material boundary.
 
 Insert presents Footnote and Inline Footnote as neighboring commands. Their
 default shortcuts are Option-Command-N and Option-Shift-Command-N respectively;
@@ -192,18 +199,22 @@ with errors. Rendering failure enters persistent CSS Safe Mode until the
 researcher disables or selectively re-enables managed copies.
 
 The Workspace toolbar follows §18.2's bounded-set, menu-parity, and overflow
-contract. Document Information is one native transient popover: its
-scrollable Heading Outline remains the primary region and its
-current statistics remain fixed below. Body scope is implicit; `Selection`
-appears only while a nonempty selection owns the count. Statistics show one
-researcher-selected number at a time; the native selector remembers the last
-machine-local choice among language-aware Words, Characters with Spaces,
-Characters without Spaces, and Han Characters. Its closed label uses the short
-measure name, while the open menu shows every exact measure beside its value
-and marks the current choice with the native checkmark. The popover sizes to
-localized content within a bounded maximum. Choosing a heading closes the
-popover and returns focus to that document location; Escape or an outside click
-dismisses it without losing the editor selection. Search belongs beside
+contract. Outline is a persistent native heading tree in the shared Sidebar.
+Its hierarchy comes from the current source, including unsaved edits; changing
+headings refreshes the projection without rewriting Markdown. Clicking a heading
+locates it while keeping the sidebar open. Up/Down selects and locates a section
+without taking focus from the outline; Left/Right controls disclosure, and Return
+enters the located document position. Hover never changes the current section.
+Current-section presentation follows the caret in Edit/Source and the reading
+anchor in Review. It never defaults to the first heading before that heading.
+No Document and No Headings remain distinct. There is no second outline popover.
+Statistics stay centered at the bottom of the Outline sidebar while its tree
+scrolls independently. Body scope is implicit; `Selection` appears only for a
+nonempty selection. One number is shown using the remembered machine-local
+choice among Words, Characters with Spaces, Characters without Spaces, and Han
+Characters. The native menu shows exact measures and values, with a checkmark
+for the current choice. It has no separate statistics heading or decorative card.
+Search belongs beside
 Notifications in the Sidebar header. Agent Changes may appear in the default
 toolbar only while at least one confirmed local change exists. Source remains
 available through the Document Mode menu; a retained toolbar item may prioritize

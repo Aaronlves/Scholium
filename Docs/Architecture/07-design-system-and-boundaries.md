@@ -88,8 +88,21 @@ geometry is clamped to the originating viewport and changes no prose geometry.
 Completion width fits the intrinsic candidate labels and details plus row insets,
 with a viewport-bounded upper limit; preview prose has its own reading width.
 The native completion host persists across selection updates. Shared completion
-metrics define single-line and described rows, and shared interaction feedback
-owns their neutral selection fill without extra elevation. Autosave invalidates
+metrics define single-line and described rows. `NativeFloatingChoiceList` uses
+an inset `NSTableView` whose row views draw system selection. One pointer tracker
+translates movement into the same selection used by keyboard navigation, with
+no independent hover state or custom fill. Completion projects the editor's
+selection through the versioned `select` intent and retains editor first
+responder; native row emphasis reflects that active candidate session.
+The completion glass container and sole CodeMirror AX list remain; no menu loop,
+popover migration, or keyboard interceptor is used. Outline has its own persistent
+`NSOutlineView` with native disclosure and selection; it does not consume the
+completion tracker. `DocumentInformationProjection` publishes exact-document
+headings, current section, and statistics to its sidebar. Find
+restores native control defaults within its own scope; both query and replacement
+use AppKit field editors. Their marked-text guard prevents partial model updates
+and incoming presentation refreshes from overwriting composition. Editor
+composition events immediately hide application suggestions and previews. Autosave invalidates
 transport requests but preserves the float; activation is still bound to the
 accepted session, document, live buffer revision, and current surface ID.
 System materials own contrast, transparency, and elevation adaptation.
@@ -143,8 +156,8 @@ adapter observes the complete Menu frame because the host does not reliably
 forward pointer state into its label. The enclosing Button or Menu retains
 activation, focus, menu tracking, and accessibility; no leaf or compound
 wrapper adds another transient-state owner.
-CodeMirror suggestions keep their current listbox item on the persistent raised surface
-while pointer hover remains transient. The protected Callout stylesheet owns
+CodeMirror suggestions project one current listbox item on the persistent raised
+surface; native pointer movement updates that item without a second hover fill. The protected Callout stylesheet owns
 only its disclosure geometry and selectors; its fold mark consumes the shared
 hover/focus values instead of declaring another opacity or focus color.
 Review preview delegation resolves one footnote, link-annotation marker, or link
@@ -192,8 +205,9 @@ Parchment acceptance board consumes these production components and resolved
 roles; it is not a second design-system source.
 
 Workspace toolbar observations update standard bordered `NSToolbarItem`
-instances and one `NSMenuToolbarItem`; no custom button view or fixed-size host
-intervenes. AppKit therefore owns regular Glass, edge highlight, shadow, hover,
+actions, native sidebar/Inspector segmented controls, and a bounded Muted Text
+identity field. The system window title remains available to window management
+but its duplicate visual title is hidden. AppKit therefore owns regular Glass, edge highlight, shadow, hover,
 press, focus, geometry, and adaptive appearance. The Inspector projection
 uses automatic native segmented-control styling and retains its 70 × 20 fitting
 size. AppKit owns hover, press, focus, active-window, Reduce Transparency, menu

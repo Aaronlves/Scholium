@@ -9,14 +9,21 @@ describe("native floating projection", () => {
   };
   it("rejects stale and out-of-range pointer activation", () => {
     vi.stubGlobal("window", {});
-    const choose = vi.fn(), dismiss = vi.fn();
+    const choose = vi.fn(), select = vi.fn(), dismiss = vi.fn();
     const bridge = createNativeFloatingBridge(() => {});
-    const oldID = bridge.show(suggestions, {choose, dismiss});
-    const newID = bridge.show(suggestions, {choose, dismiss});
+    const oldID = bridge.show(suggestions, {choose, select, dismiss});
+    const newID = bridge.show(suggestions, {choose, select, dismiss});
     expect(bridge.event(oldID, "choose", 0)).toBe(false);
     expect(bridge.event(newID, "choose", 1)).toBe(false);
     expect(bridge.event(newID, "choose", 0)).toBe(true);
     expect(choose).toHaveBeenCalledExactlyOnceWith(0);
+    expect(bridge.event(oldID, "select", 0)).toBe(false);
+    for (const index of [-1, 1, 0.5, NaN]) expect(bridge.event(newID, "select", index)).toBe(false);
+    expect(bridge.event(newID, "select", 0)).toBe(true);
+    expect(select).toHaveBeenCalledExactlyOnceWith(0);
+    // Pointing changes only the candidate; it never accepts or dismisses it.
+    expect(choose).toHaveBeenCalledTimes(1);
+    expect(dismiss).not.toHaveBeenCalled();
   });
   it("closes only the current projection with a bounded empty payload", () => {
     vi.stubGlobal("window", {});

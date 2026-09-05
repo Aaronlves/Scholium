@@ -699,6 +699,7 @@ private struct ScholiumWindowObservedRoot: View {
             .navigationTitle(workspaceWindowTitle)
             .navigationSubtitle(workspaceWindowSubtitle)
             .toolbar(removing: .sidebarToggle)
+            .toolbar(removing: .title)
             .tint(ScholiumColorRole.accent.color)
             .scholiumButtonStyle(.automatic)
             .focusedSceneObject(appState)
@@ -1434,8 +1435,12 @@ private struct ScholiumSidebarCommandContent: View {
         }
         .scholiumActivationPointer()
         .disabled(workspaceWindowActions == nil)
-        Button("Document Information") {
-            workspaceWindowActions?.showDocumentInformation()
+        Button("Triptych") {
+            workspaceWindowActions?.activateSidebar(.triptych)
+        }
+        .disabled(workspaceWindowActions == nil)
+        Button("Outline") {
+            workspaceWindowActions?.activateSidebar(.outline)
         }
         .scholiumActivationPointer()
         .disabled(workspaceWindowActions == nil || appState?.currentNote == nil)

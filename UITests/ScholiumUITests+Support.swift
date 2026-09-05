@@ -329,7 +329,7 @@ extension ScholiumUITests {
 
         let library = app.descendants(matching: .any)["scholium.librarySurface"]
         if !library.exists {
-            let showSidebar = toolbar.buttons["Show Sidebar"].firstMatch
+            let showSidebar = sidebarModeControl("Triptych")
             XCTAssertTrue(showSidebar.waitForExistence(timeout: 5))
             showSidebar.coordinate(
                 withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
@@ -337,13 +337,11 @@ extension ScholiumUITests {
             XCTAssertTrue(library.waitForExistence(timeout: 5))
         }
 
-        let hideSidebar = toolbar.buttons["Hide Sidebar"].firstMatch
+        let hideSidebar = sidebarVisibilityControl()
         XCTAssertTrue(hideSidebar.waitForExistence(timeout: 5))
         XCTAssertTrue(hideSidebar.isHittable)
         XCTAssertEqual(
-            toolbar.buttons.matching(
-                NSPredicate(format: "label IN %@", ["Show Sidebar", "Hide Sidebar"])
-            ).count,
+            toolbar.descendants(matching: .any).matching(identifier: "scholium.sidebarMode").count,
             1
         )
         hideSidebar.coordinate(
@@ -351,13 +349,11 @@ extension ScholiumUITests {
         ).click()
         XCTAssertTrue(waitUntil(timeout: 5) { !library.exists })
 
-        let showSidebar = toolbar.buttons["Show Sidebar"].firstMatch
+        let showSidebar = sidebarModeControl("Triptych")
         XCTAssertTrue(showSidebar.waitForExistence(timeout: 5))
         XCTAssertTrue(showSidebar.isHittable)
         XCTAssertEqual(
-            toolbar.buttons.matching(
-                NSPredicate(format: "label IN %@", ["Show Sidebar", "Hide Sidebar"])
-            ).count,
+            toolbar.descendants(matching: .any).matching(identifier: "scholium.sidebarMode").count,
             1
         )
         showSidebar.coordinate(
@@ -597,10 +593,16 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func sidebarVisibilityControl(in root: XCUIElement? = nil) -> XCUIElement {
+    func sidebarModeControl(_ name: String, in root: XCUIElement? = nil) -> XCUIElement {
         let toolbar = root?.toolbars.firstMatch ?? app.toolbars.firstMatch
-        let show = toolbar.buttons["Show Sidebar"].firstMatch
-        return show.exists ? show : toolbar.buttons["Hide Sidebar"].firstMatch
+        return toolbar.descendants(matching: .any).matching(identifier: name).firstMatch
+    }
+
+    @MainActor
+    func sidebarVisibilityControl(in root: XCUIElement? = nil) -> XCUIElement {
+        let outline = sidebarModeControl("Outline", in: root)
+        return outline.isSelected || (outline.value as? String) == "1"
+            ? outline : sidebarModeControl("Triptych", in: root)
     }
 
 

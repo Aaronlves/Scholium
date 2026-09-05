@@ -541,6 +541,12 @@ export function createEditorInputSuggestions(
         html: "", css: "", items, selected,
       }, {
         dismiss: () => { closeCompletion(this.view); },
+        select: index => {
+          if (this.view.composing || this.view.root.activeElement !== this.view.contentDOM) return;
+          if (selectedCompletionIndex(this.view.state) !== index) {
+            this.view.dispatch({effects: setSelectedCompletion(index)});
+          }
+        },
         choose: index => {
           if (this.view.composing || this.view.root.activeElement !== this.view.contentDOM) return;
           this.view.dispatch({effects: setSelectedCompletion(index)});
@@ -555,10 +561,18 @@ export function createEditorInputSuggestions(
       this.measureFallback = window.setTimeout(() => this.write(this.read()), 50);
       this.view.requestMeasure({key: this, read: () => this.read(), write: value => this.write(value)});
     }
-    destroy() {
+    suspend() {
       window.clearTimeout(this.measureFallback);
+      this.measureFallback = undefined;
       options.nativeFloating.hide(nativeID);
+      this.signature = "";
     }
+    destroy() { this.suspend(); }
+  }, {
+    eventHandlers: {
+      compositionstart() { this.suspend(); },
+      compositionend() { this.refresh(); },
+    },
   });
 
   return {

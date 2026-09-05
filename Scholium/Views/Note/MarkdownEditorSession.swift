@@ -132,6 +132,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private(set) var lineCount = 1
     @Published private(set) var interactionAvailability: EditorInteractionAvailability?
     @Published private(set) var documentStatistics = DocumentStatistics.emptyBody
+    @Published private(set) var outlineHeadings: [HeadingNode] = []
+    @Published private(set) var currentHeadingLine: Int?
+    private var outlineGeneration: Int?
     private(set) var context: MarkdownEditorContext?
     private(set) var sessionID = UUID()
     private(set) var documentID = ""
@@ -152,7 +155,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var pendingMode: MarkdownEditorMode = .livePreview
     private var pendingPresentationCSS = ""
     private var pendingUserCSS = ""
-    private var pendingLine: Int?
+    private var pendingLine: (line: Int, focusesEditor: Bool)?
     private var pendingSourceRange: Range<Int>?
     private var pendingLinkPreviews: [MarkdownEditorLinkPreview] = []
     var pendingScrollFraction: Double?
@@ -394,6 +397,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         updatePresentation { $0.reset() }
         updatePublished(\.isDirty, to: false)
         updatePublished(\.documentStatistics, to: .emptyBody)
+        updatePublished(\.outlineHeadings, to: [])
+        updatePublished(\.currentHeadingLine, to: nil)
+        outlineGeneration = nil
     }
 
     func editorBecameReady() {
@@ -436,6 +442,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         self.line = max(1, line)
         self.column = max(1, column)
         self.lineCount = max(1, lineCount)
+        updateOutlinePosition(selections: selections)
         scheduleDocumentStatistics(selections: selections)
 
         if let semanticContext {
@@ -529,6 +536,9 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         sourceOffsetMap = EditorSourceOffsetMap(source: source)
         checkedEditorUTF16Length = sourceOffsetMap.editorUTF16Length
         generation = 0
+        updatePublished(\.outlineHeadings, to: [])
+        updatePublished(\.currentHeadingLine, to: nil)
+        outlineGeneration = nil
         documentStatisticsIdentity = nil
         scheduleDocumentStatistics(selections: [])
         pendingMode = mode
@@ -684,10 +694,12 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         }
     }
 
-    func goToLine(_ line: Int) {
-        preferredDocumentFocusTarget = .editor
-        automaticFocusTarget = .editor
-        pendingLine = max(1, line)
+    func goToLine(_ line: Int, focusesEditor: Bool = true) {
+        if focusesEditor {
+            preferredDocumentFocusTarget = .editor
+            automaticFocusTarget = .editor
+        }
+        pendingLine = (max(1, line), focusesEditor)
         flushPendingLine()
     }
 
@@ -1675,8 +1687,17 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private func flushPendingLine() {
         guard isReady, isLoaded, let line = pendingLine, let webView else { return }
         pendingLine = nil
+        let documentID = self.documentID
         Task {
-            _ = try? await send(.goToLine(line), in: webView)
+            do {
+                _ = try await send(.goToLine(line.line, focusesEditor: line.focusesEditor), in: webView)
+                guard line.focusesEditor, self.webView === webView,
+                      self.documentID == documentID, !Task.isCancelled,
+                      webView.window?.makeFirstResponder(webView) == true else { return }
+                try await focusAndWait(.editor)
+            } catch {
+                // Failed or replaced navigation cannot transfer focus elsewhere.
+            }
         }
     }
 
@@ -1943,6 +1964,12 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         self[keyPath: keyPath] = value
     }
 
+    private func updateOutlinePosition(selections: [MarkdownEditorSelectionRange]) {
+        let offset = selections.first.flatMap { sourceOffsetMap.sourceUTF16Offset(forEditorUTF16Offset: $0.head) }
+        let heading = offset.flatMap { offset in outlineHeadings.last { $0.span.utf16LowerBound <= offset } }
+        updatePublished(\.currentHeadingLine, to: heading?.span.start.line)
+    }
+
     private func scheduleDocumentStatistics(
         selections: [MarkdownEditorSelectionRange]
     ) {
@@ -1970,6 +1997,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         documentStatisticsIdentity = identity
         documentStatisticsRequestID &+= 1
         let requestID = documentStatisticsRequestID
+        let retainedHeadings = outlineGeneration == generation ? outlineHeadings : nil
         documentStatisticsTask?.cancel()
         documentStatisticsTask = Task { @MainActor [weak self] in
             do {
@@ -1977,16 +2005,20 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
             } catch {
                 return
             }
-            let statistics = await Task.detached(priority: .utility) {
-                DocumentStatisticsCalculator.calculate(
-                    markdownSource: source,
-                    selectedUTF16Ranges: sourceRanges
-                )
+            let (statistics, headings) = await Task.detached(priority: .utility) {
+                let statistics = DocumentStatisticsCalculator.calculate(
+                    markdownSource: source, selectedUTF16Ranges: sourceRanges)
+                let headings = retainedHeadings ?? MarkdownSemanticParser.parse(
+                    NoteDocument(relativePath: "Outline.md", rawContent: source)).headings
+                return (statistics, headings)
             }.value
             guard let self,
                   !Task.isCancelled,
                   self.documentStatisticsRequestID == requestID else { return }
             self.updatePublished(\.documentStatistics, to: statistics)
+            self.updatePublished(\.outlineHeadings, to: headings)
+            self.outlineGeneration = identity.generation
+            self.updateOutlinePosition(selections: self.context?.selections ?? [])
         }
     }
 

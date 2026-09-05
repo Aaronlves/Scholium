@@ -594,15 +594,17 @@ The one `NSWindow.toolbar` is divided into Library, Document, and Apparatus
 sections by native tracking separators. Ordinary actions are standard bordered
 `NSToolbarItem` instances with no custom view or fixed-size host; AppKit owns
 their regular Glass, edge highlight, shadow, adaptive appearance, and geometry.
-Heading Outline is an `NSMenuToolbarItem`; the Inspector projection remains a
-native `NSSegmentedControl`. Before split attachment,
-`WorkspaceWindowCoordinator` installs an inert toolbar and later replaces its
-items in place. Sidebar retains one native toolbar item at the logical trailing
-edge of the Library section immediately before its tracking separator;
-Inspector retains its matching item immediately before the Apparatus separator.
-The items observe `WindowShellState` and switch their accessible Show/Hide
-action labels without changing toolbar topology or adding a persistent active
-enclosure.
+A native sidebar-view segmented control projects the window-owned Triptych/Outline
+mode and native split visibility, including the all-off collapsed state.
+`WorkspaceWindowCoordinator` installs toolbar state after split attachment.
+Back/Forward sit after the Sidebar boundary, followed by a native label rendering
+Muted Text document identity. The duplicate system title is visually hidden;
+SwiftUI still owns the window's title/subtitle metadata. `ContentView` retains
+both sidebar presentations and switches their visibility and accessibility.
+The Outline uses source-derived headings in a native `NSOutlineView`, with a
+fixed native statistics menu beneath it. Its keyboard navigation uses the
+versioned editor jump command's explicit focus flag; no heading visit enters
+document history. Inspector retains its native projection and visibility controls.
 Pane content contains no duplicate visibility control. No
 split-content titlebar host remains: under full-size content that host rendered
 beneath the toolbar's pointer hit-testing layer even when accessibility could

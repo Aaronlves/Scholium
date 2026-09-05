@@ -14,6 +14,49 @@ struct MarkdownEditorWebViewIntegrationTests {
         return Double(cssValue.dropLast(2))
     }
 
+    @Test("Outline follows unsaved headings and navigates without taking sidebar focus")
+    func outlineNavigationPreservesFocusAndSource() async throws {
+        let source = "# First\n\nParagraph.\n\n## Second\n\nMore.\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.waitUntilFocused()
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while harness.session.outlineHeadings.count != 2 && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(harness.session.outlineHeadings.map(\.text) == ["First", "Second"])
+        let owner = try #require(harness.session.webView)
+        let sidebar = NSTextField(string: "")
+        owner.superview?.addSubview(sidebar)
+        owner.window?.makeFirstResponder(sidebar)
+        let responder = owner.window?.firstResponder
+        harness.session.goToLine(5, focusesEditor: false)
+        let navigationDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while harness.session.currentHeadingLine != 5 && ContinuousClock.now < navigationDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(harness.session.currentHeadingLine == 5)
+        #expect(owner.window?.firstResponder === responder)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        harness.session.goToLine(5)
+        let focusDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while owner.window?.firstResponder === responder && ContinuousClock.now < focusDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(owner.window?.firstResponder !== responder)
+        sidebar.removeFromSuperview()
+        try await harness.session.focusAndWait()
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, 'New ');")
+        let editDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while harness.session.outlineHeadings.count == 2 && ContinuousClock.now < editDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        // Inserting before ## turns that line into prose, before any save.
+        #expect(harness.session.outlineHeadings.map(\.text) == ["First"])
+        await harness.closeAndDrain()
+    }
+
     @Test("Native completion displays the current CodeMirror list")
     func nativeCompletionProjection() async throws {
         let harness = EditorHarness(source: "\n", laysOutForPointerTesting: true)
@@ -23,13 +66,13 @@ struct MarkdownEditorWebViewIntegrationTests {
         let owner = try #require(harness.session.webView)
         owner.window?.makeKeyAndOrderFront(nil)
         NSApp.activate()
-        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, '/da');")
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, '/');")
         let deadline = ContinuousClock.now.advanced(by: .seconds(3))
         while owner.superview?.subviews.contains(where: { $0 is NSGlassEffectView }) != true && ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(25))
         }
         #expect(owner.superview?.subviews.contains { $0 is NSGlassEffectView } == true)
-        let source = "/da\n"
+        let source = "/\n"
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         let glass = try #require(owner.superview?.subviews.first { $0 is NSGlassEffectView })
         let content = try #require((glass as? NSGlassEffectView)?.contentView)
@@ -39,6 +82,40 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(glass.superview === owner.superview)
         #expect((glass as? NSGlassEffectView)?.contentView === content)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        let list = try #require(content as? NativeFloatingChoiceList)
+        list.layoutSubtreeIfNeeded()
+        let focus = owner.window?.firstResponder
+        let selection = harness.session.context?.selections
+        let undo = harness.session.context?.undoLabel
+        let rect = list.table.rect(ofRow: 1)
+        let movement = try #require(NSEvent.mouseEvent(with: .mouseMoved,
+            location: list.table.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil),
+            modifierFlags: [], timestamp: 0, windowNumber: owner.window?.windowNumber ?? 0,
+            context: nil, eventNumber: 0, clickCount: 0, pressure: 0))
+        list.table.mouseMoved(with: movement)
+        let selectionDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while list.table.selectedRow != 1 && ContinuousClock.now < selectionDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(list.table.selectedRow == 1)
+        #expect(owner.window?.firstResponder === focus)
+        #expect(harness.session.context?.selections == selection)
+        #expect(harness.session.context?.undoLabel == undo)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        let nativeRow = try #require(list.table.rowView(atRow: 1, makeIfNecessary: true))
+        #expect(nativeRow.window === owner.window)
+        // The command-line test host need not own the desktop's key window.
+        // Emphasis follows the originating window, not the table's responder.
+        #expect(nativeRow.isEmphasized == (owner.window?.isKeyWindow == true))
+        _ = try await harness.callPageJavaScript("document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowDown', code: 'ArrowDown', keyCode: 40, bubbles: true}));")
+        let keyboardDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while list.table.selectedRow != 2 && ContinuousClock.now < keyboardDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(list.table.selectedRow == 2)
+        #expect(list.table.selectedRowIndexes == IndexSet(integer: 2))
+        #expect(glass.superview === owner.superview)
+        #expect((glass as? NSGlassEffectView)?.contentView === list)
         await harness.closeAndDrain()
     }
 
@@ -70,6 +147,17 @@ struct MarkdownEditorWebViewIntegrationTests {
             try await Task.sleep(for: .milliseconds(20))
         }
         #expect(harness.session.floatingSurfaces.previewWebView == nil)
+        harness.session.showPreview()
+        _ = try await harness.waitUntilPresentation(stage: "preview before composition") {
+            !$0.previewPopoverHidden
+        }
+        try await harness.session.testingDispatchCompositionEvent("compositionstart")
+        let compositionDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while harness.session.floatingSurfaces.previewWebView != nil && ContinuousClock.now < compositionDeadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(harness.session.floatingSurfaces.previewWebView == nil)
+        try await harness.session.testingDispatchCompositionEvent("compositionend")
         #expect(harness.session.context?.selections == selection)
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()

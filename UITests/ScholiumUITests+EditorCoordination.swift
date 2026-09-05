@@ -130,6 +130,11 @@ extension ScholiumUITests {
         app.typeText("/")
         XCTAssertTrue(suggestions.waitForExistence(timeout: 5))
         let listFrame = suggestions.frame
+        suggestions.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4)).hover()
+        let hover = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        hover.name = "Unified native candidate selection"
+        hover.lifetime = .keepAlways
+        add(hover)
         for _ in 0..<8 {
             app.typeKey(.downArrow, modifierFlags: [])
             XCTAssertTrue(suggestions.exists)

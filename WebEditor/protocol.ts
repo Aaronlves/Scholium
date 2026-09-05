@@ -1,4 +1,4 @@
-export const EDITOR_PROTOCOL_VERSION = 23;
+export const EDITOR_PROTOCOL_VERSION = 25;
 export const MAX_INBOUND_BYTES = 2_500_000;
 export const MAX_SOURCE_UTF8_BYTES = 8_000_000;
 
@@ -117,7 +117,7 @@ export type EditorOperation =
   | {type: "measureVisibleProjection"}
   | {type: "showPreviewAt"; x: number; y: number}
   | {type: "announceStatus"; value: string}
-  | {type: "goToLine"; line: number}
+  | {type: "goToLine"; line: number; focusesEditor: boolean}
   | {type: "revealSourceRange"; fromUTF16: number; toUTF16: number}
   | {type: "setScrollFraction"; fraction: number}
   | {type: "setScrollAnchor"; anchor: EditorScrollAnchor}
@@ -318,7 +318,7 @@ function validOperation(operation: Record<string, unknown>) {
   case "showPreviewAt":
     return typeof operation.x === "number" && Number.isFinite(operation.x)
       && typeof operation.y === "number" && Number.isFinite(operation.y);
-  case "goToLine": return Number.isSafeInteger(operation.line) && Number(operation.line) >= 1;
+  case "goToLine": return Number.isSafeInteger(operation.line) && Number(operation.line) >= 1 && typeof operation.focusesEditor === "boolean";
   case "revealSourceRange":
     return Number.isSafeInteger(operation.fromUTF16)
       && Number.isSafeInteger(operation.toUTF16)

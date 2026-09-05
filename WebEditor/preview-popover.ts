@@ -156,6 +156,7 @@ export function createPreviewPopoverController(
 
   function position(anchor: PreviewAnchorRect, startedAt?: number) {
     if (!editor || !root) return;
+    if (editor.composing) { hide(); return; }
     root.hidden = false;
     nativeID = options.nativeFloating.show(previewSurface(anchor, root), {
       dismiss: hide,
@@ -261,7 +262,7 @@ export function createPreviewPopoverController(
 
   function showAtSelection() {
     const startedAt = performance.now();
-    if (!editor) return false;
+    if (!editor || editor.composing) return false;
     const head = editor.state.selection.main.head;
     const coords = editor.coordsAtPos(head);
     if (!coords) return false;
@@ -286,7 +287,7 @@ export function createPreviewPopoverController(
 
   function showAtPoint(x: number, y: number) {
     const startedAt = performance.now();
-    if (!editor) return false;
+    if (!editor || editor.composing) return false;
     const anchor = linkAnchorAt(document.elementFromPoint(x, y));
     const footnote = footnoteButtonAt(document.elementFromPoint(x, y));
     if (footnote) {
@@ -389,7 +390,9 @@ export function createPreviewPopoverController(
     setArmedLink(null);
     if (activeKind === "link") hide(true);
   };
+  const handleCompositionStart = () => hide();
   const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.isComposing || event.keyCode === 229) return;
     if (event.key === "Escape" && root && !root.hidden) {
       hide();
       return;
@@ -485,6 +488,7 @@ export function createPreviewPopoverController(
     document.addEventListener("click", handleClick);
     document.addEventListener("keyup", handleKeyUp);
     document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("compositionstart", handleCompositionStart);
     view.scrollDOM.addEventListener("scroll", handleViewportExit, {passive: true});
     window.addEventListener("resize", handleViewportExit);
   }
@@ -498,6 +502,7 @@ export function createPreviewPopoverController(
     document.removeEventListener("click", handleClick);
     document.removeEventListener("keyup", handleKeyUp);
     document.removeEventListener("keydown", handleKeyDown);
+    document.removeEventListener("compositionstart", handleCompositionStart);
     view.scrollDOM.removeEventListener("scroll", handleViewportExit);
     root?.removeEventListener("pointerenter", handlePreviewPointerEnter);
     root?.removeEventListener("pointerleave", handlePreviewPointerLeave);

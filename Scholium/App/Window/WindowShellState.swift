@@ -40,6 +40,10 @@ struct WindowFeedback: Equatable, Identifiable {
     }
 }
 
+enum SidebarContent: Int, CaseIterable {
+    case triptych, outline
+}
+
 /// Presentation state owned by one complete configured window.
 ///
 /// Documents and feature controllers borrow this state instead of copying
@@ -53,6 +57,7 @@ final class WindowShellState: ObservableObject {
     @Published private(set) var selectedWorkspace: WorkspaceVaultSlot = .paperAnalysis
     @Published private var inspectorModesByWorkspace: [WorkspaceVaultSlot: ResearchInspectorMode]
     @Published private(set) var libraryVisible = true
+    @Published private(set) var sidebarContent: SidebarContent = .triptych
     @Published private(set) var hasCompletedInitialRestore = false
     @Published var colorScheme: WindowColorSchemeChoice {
         didSet {
@@ -97,6 +102,13 @@ final class WindowShellState: ObservableObject {
         } else {
             expandedFoldersByScope[scope] = folders
         }
+    }
+
+    /// Returns the visibility requested from the native split owner.
+    func activateSidebar(_ content: SidebarContent) -> Bool {
+        let shouldShow = !libraryVisible || sidebarContent != content
+        sidebarContent = content
+        return shouldShow
     }
 
     func recordLibraryVisibility(_ isVisible: Bool) {

@@ -68,7 +68,7 @@ Inline Footnote inserts `^[…]` at each selection and retains selected text as
 its content. Each invocation is one source transaction and one Undo event.
 
 Statistics are derived from the current unsaved body or selection, appear in
-the toolbar's Document Information popover, and are never stored. They report
+the fixed footer of the Outline sidebar, and are never stored. They report
 language-aware word tokens, Han characters, and Unicode grapheme clusters with
 and without whitespace while excluding YAML, delimiters, and link destinations.
 Word counts use the platform tokenizer rather than treating every script as

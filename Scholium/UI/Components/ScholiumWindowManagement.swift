@@ -377,7 +377,7 @@ final class ScholiumWindowLifecycleRegistry: ObservableObject {
 struct WorkspaceWindowActions {
     let setLibraryVisible: @MainActor (Bool) -> Void
     let setResearchInspectorVisible: @MainActor (Bool) -> Void
-    let showDocumentInformation: @MainActor () -> Void
+    let activateSidebar: @MainActor (SidebarContent) -> Void
     let showResearchRecords: @MainActor () -> Void
     let showAttention: @MainActor (AttentionPresentationRequest) -> Void
     let showPreferredAttention: @MainActor () -> Void
@@ -478,8 +478,8 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
             setResearchInspectorVisible: { [weak self] visible in
                 self?.setResearchInspectorVisible(visible)
             },
-            showDocumentInformation: { [weak self] in
-                self?.toolbarController?.showDocumentInformation()
+            activateSidebar: { [weak self] content in
+                self?.toolbarController?.activateSidebar(content)
             },
             showResearchRecords: { [weak self] in
                 self?.showResearchRecords()
