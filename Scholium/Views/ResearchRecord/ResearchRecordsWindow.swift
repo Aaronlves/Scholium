@@ -110,6 +110,7 @@ final class ResearchRecordsModel: ObservableObject {
     @Published private(set) var issues: [ResearchRecordStoreIssue] = []
     @Published var selectedRecordID: UUID?
     @Published var selectedStepID: UUID?
+    @Published private(set) var showsDetail = false
     @Published var query = ""
     @Published private(set) var isLoading = true
     @Published private(set) var errorMessage: String?
@@ -208,6 +209,15 @@ final class ResearchRecordsModel: ObservableObject {
         selectedStepID = stepID
     }
 
+    func showRecord(_ revision: ResearchRecordRevision) {
+        select(revision)
+        showsDetail = true
+    }
+
+    func showCollection() {
+        showsDetail = false
+    }
+
     func selectPreviousRecord() {
         guard let selectedVisibleIndex else { return }
         selectVisibleRecord(at: selectedVisibleIndex - 1)
@@ -219,8 +229,9 @@ final class ResearchRecordsModel: ObservableObject {
     }
 
     func open(_ request: ResearchRecordsWindowRequest) {
-        guard request.triptychID == triptychID,
-              let revision = records.first(where: { $0.id == request.recordID }) else {
+        guard request.triptychID == triptychID else { return }
+        showsDetail = true
+        guard let revision = records.first(where: { $0.id == request.recordID }) else {
             selectedRecordID = request.recordID
             selectedStepID = request.stepID
             return
@@ -273,7 +284,7 @@ final class ResearchRecordsModel: ObservableObject {
 
     private func preserveSelection() {
         if let selectedRecordID,
-           visibleRecordIDs.contains(selectedRecordID) {
+           showsDetail || visibleRecordIDs.contains(selectedRecordID) {
             if let selectedStepID,
                selectedRecord?.record.steps.contains(where: {
                    $0.id == selectedStepID
@@ -295,6 +306,7 @@ struct ResearchRecordsWindowView: View {
     @State private var searchTask: Task<Void, Never>?
     @State private var routeToken: UUID?
     @FocusState private var focusedRecordID: UUID?
+    @State private var readingPositions: [UUID: UUID] = [:]
 
     init(
         route: ResearchRecordsWindowRoute,
@@ -309,19 +321,27 @@ struct ResearchRecordsWindowView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            collection
-                .padding(.top, ScholiumMetrics.ResearchRecords.windowDragInset)
-                .frame(width: ScholiumMetrics.ResearchRecords.collectionWidth)
-                .scholiumSurface(.navigation)
-            ScholiumStructuralRule(orientation: .vertical)
-            detail
-                .padding(.top, ScholiumMetrics.ResearchRecords.windowDragInset)
+        VStack(spacing: 0) {
+            if model.showsDetail {
+                HStack {
+                    Button {
+                        model.showCollection()
+                    } label: {
+                        Label("Back", systemImage: "chevron.backward")
+                    }
+                    .keyboardShortcut("[", modifiers: .command)
+                    .accessibilityIdentifier("scholium.researchRecords.back")
+                    Spacer()
+                }
+                .padding(ScholiumGrid.Spacing.inlineControlGap)
+                detail
+            } else {
+                collection
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(minWidth: 420, maxWidth: .infinity, minHeight: 360, maxHeight: .infinity)
         .scholiumSurface(.document)
         .tint(ScholiumColorRole.accent.color)
-        .ignoresSafeArea(.container, edges: .top)
         .onExitCommand { dismissWindow() }
         .task { await model.load() }
         .onAppear {
@@ -344,6 +364,9 @@ struct ResearchRecordsWindowView: View {
                 guard !Task.isCancelled else { return }
                 await model.search()
             }
+        }
+        .onChange(of: model.showsDetail) { _, showsDetail in
+            if !showsDetail { focusedRecordID = model.selectedRecordID }
         }
         .onDisappear {
             searchTask?.cancel()
@@ -392,9 +415,10 @@ struct ResearchRecordsWindowView: View {
                 }
                 .onChange(of: model.selectedRecordID) { _, id in
                     guard let id else { return }
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        proxy.scrollTo(id, anchor: .center)
-                    }
+                    proxy.scrollTo(id, anchor: .center)
+                }
+                .onAppear {
+                    if let id = model.selectedRecordID { proxy.scrollTo(id) }
                 }
             }
 
@@ -409,7 +433,7 @@ struct ResearchRecordsWindowView: View {
     ) -> some View {
         let isSelected = model.selectedRecordID == revision.id
         return Button {
-            model.select(revision)
+            model.showRecord(revision)
         } label: {
             VStack(
                 alignment: .leading,
@@ -571,12 +595,24 @@ struct ResearchRecordsWindowView: View {
                             ScholiumMetrics.ResearchRecords.readingVerticalInset
                         )
                         .frame(maxWidth: .infinity, alignment: .top)
+                        .scrollTargetLayout()
+                    }
+                    .scrollPosition(id: Binding(
+                        get: { readingPositions[revision.id] },
+                        set: { position in
+                            // Dismantling the detail clears SwiftUI's current
+                            // target; it must not erase the retained location.
+                            if let position { readingPositions[revision.id] = position }
+                        }
+                    ))
+                    .onAppear {
+                        if let stepID = model.selectedStepID ?? readingPositions[revision.id] {
+                            proxy.scrollTo(stepID, anchor: .top)
+                        }
                     }
                     .onChange(of: model.selectedStepID) { _, stepID in
                         guard let stepID else { return }
-                        withAnimation(.easeInOut(duration: 0.18)) {
-                            proxy.scrollTo(stepID, anchor: .center)
-                        }
+                        proxy.scrollTo(stepID, anchor: .top)
                     }
                 }
             }
@@ -672,7 +708,7 @@ struct ResearchRecordsWindowView: View {
                                     Text(evidenceTitle(item))
                                         .lineLimit(1)
                                         .truncationMode(.middle)
-                                        .frame(maxWidth: 220, alignment: .leading)
+                                        .frame(maxWidth: 140, alignment: .leading)
                                     Text(referenceRelation(item.reference.relation))
                                         .scholiumForeground(.secondaryText)
                                     if let exceptionalState = exceptionalEvidenceState(item) {
@@ -681,13 +717,14 @@ struct ResearchRecordsWindowView: View {
                                     }
                                 }
                                 .font(ScholiumTypography.interface(.compact))
-                                .frame(maxWidth: 340, alignment: .leading)
+                                .frame(maxWidth: 260, alignment: .leading)
                             }
                             .scholiumActivationPointer()
                             .buttonStyle(.bordered)
                             .controlSize(.small)
                             .disabled(!evidenceIsAvailable(item))
                             .help(evidenceButtonHelp(item))
+                            .accessibilityLabel(evidenceTitle(item))
                             .accessibilityValue(evidenceAccessibilityValue(item))
                             .accessibilityIdentifier(
                                 "scholium.researchRecords.reference."

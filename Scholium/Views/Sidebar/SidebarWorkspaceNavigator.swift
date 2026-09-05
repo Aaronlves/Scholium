@@ -11,6 +11,7 @@ struct ScholiumTriptychWorkspaceNavigator: NSViewRepresentable {
 
     let selectedSlot: WorkspaceVaultSlot?
     let noteCounts: SidebarWorkspaceNoteCounts
+    let usesAccessibilitySize: Bool
     let select: (WorkspaceVaultSlot) -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -26,7 +27,7 @@ struct ScholiumTriptychWorkspaceNavigator: NSViewRepresentable {
         let tableView = SidebarWorkspaceTableView()
         tableView.headerView = nil
         tableView.style = .sourceList
-        tableView.rowSizeStyle = .default
+        tableView.rowSizeStyle = usesAccessibilitySize ? .large : .default
         tableView.intercellSpacing = .zero
         tableView.allowsEmptySelection = false
         tableView.allowsMultipleSelection = false
@@ -56,6 +57,7 @@ struct ScholiumTriptychWorkspaceNavigator: NSViewRepresentable {
             selectedSlot: selectedSlot,
             noteCounts: noteCounts,
             locale: locale,
+            usesAccessibilitySize: usesAccessibilitySize,
             select: select
         )
         tableView.setAccessibilityLabel(
@@ -101,14 +103,19 @@ struct ScholiumTriptychWorkspaceNavigator: NSViewRepresentable {
             selectedSlot: WorkspaceVaultSlot?,
             noteCounts: SidebarWorkspaceNoteCounts,
             locale: Locale,
+            usesAccessibilitySize: Bool,
             select: @escaping (WorkspaceVaultSlot) -> Void
         ) {
+            let desiredRowSizeStyle: NSTableView.RowSizeStyle =
+                usesAccessibilitySize ? .large : .default
             let contentChanged = self.noteCounts != noteCounts || self.locale != locale
+                || tableView?.rowSizeStyle != desiredRowSizeStyle
             self.selectedSlot = selectedSlot
             self.noteCounts = noteCounts
             self.locale = locale
             self.select = select
             guard let tableView else { return }
+            tableView.rowSizeStyle = desiredRowSizeStyle
             if contentChanged { tableView.reloadData() }
             synchronizeSelection(in: tableView)
         }
@@ -146,6 +153,12 @@ struct ScholiumTriptychWorkspaceNavigator: NSViewRepresentable {
                 return false
             }
             return noteCounts.count(for: WorkspaceVaultSlot.allCases[row]) != nil
+        }
+
+        func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
+            let rowView = SidebarSourceListRowView()
+            (tableView as? SidebarWorkspaceTableView)?.configureSelectionPresentation(for: rowView)
+            return rowView
         }
 
         func tableViewSelectionDidChange(_ notification: Notification) {
@@ -193,6 +206,12 @@ struct ScholiumTriptychWorkspaceNavigator: NSViewRepresentable {
 final class SidebarWorkspaceTableView: NSTableView {
     private let selectionPresentation = SidebarSourceListSelectionPresentation()
 
+    func configureSelectionPresentation(for row: SidebarSourceListRowView) {
+        row.allowsKeyboardEmphasis = { [weak self] in
+            self?.selectionPresentation.inputModality == .keyboard
+        }
+    }
+
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         focusRingType = .none
@@ -238,15 +257,11 @@ final class SidebarWorkspaceTableView: NSTableView {
     override func resignFirstResponder() -> Bool {
         let resignedFirstResponder = super.resignFirstResponder()
         if resignedFirstResponder {
-            selectionPresentation.synchronize(in: self)
+            enumerateAvailableRowViews { row, _ in row.isEmphasized = false }
         }
         return resignedFirstResponder
     }
 
-    override func viewWillDraw() {
-        super.viewWillDraw()
-        selectionPresentation.synchronize(in: self)
-    }
 }
 
 @MainActor

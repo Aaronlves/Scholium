@@ -2158,6 +2158,9 @@ private struct AppearanceSettingsView: View {
 private struct AppearanceProfileEditor: View {
     @Binding var profile: DocumentAppearanceProfile
     @State private var showsAdvancedAppearance = false
+    private let sourceFontFamilies = NSFontManager.shared.availableFontFamilies.sorted {
+        $0.localizedStandardCompare($1) == .orderedAscending
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
@@ -2188,6 +2191,18 @@ private struct AppearanceProfileEditor: View {
                 .scholiumActivationPointer()
                 AppearanceDoubleControl("Font size", value: $profile.settings.body.fontSizePoints, range: 9...24, step: 0.5, suffix: "pt")
                 AppearanceDoubleControl("Line spacing", value: $profile.settings.body.lineHeight, range: 1.2...2.4, step: 0.05, suffix: "×")
+            }
+
+            Divider()
+
+            settingsEditorSection("Source") {
+                Picker("Typeface", selection: $profile.settings.source.fontFamily) {
+                    ForEach(Array(Set(sourceFontFamilies + [profile.settings.source.fontFamily])).sorted(), id: \.self) { family in
+                        Text(verbatim: family).tag(family)
+                    }
+                }
+                .accessibilityIdentifier("scholium.appearance.sourceFont")
+                AppearanceDoubleControl("Font size", value: $profile.settings.source.fontSizePoints, range: 6...72, step: 0.5, suffix: "pt")
             }
 
             Divider()

@@ -4,6 +4,66 @@
 
 ## Current verification snapshot
 
+**Environment:** 2026-09-05 approved interface corrections, Xcode 27 beta
+(`DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer`). This supersedes
+the older fixed-index Records and animated Settlement presentation evidence
+below; it is implementation verification, not release or human acceptance.
+
+- The subsequent Library-only refinement passed 115 tests across the Library
+  tree and frontend architecture suites. It covers one shared Note command list
+  including Move, separated Content/Integrity filters, one Metadata group,
+  direct sorting choices, and live native large/default row-size changes with
+  retained selection and no navigation callback. The isolated QA organization
+  journey passed in 27.819 seconds: filtered empty copy retains Clear and the
+  current Document, clearing restores the Note row, and the exact row's contextual
+  Move Note opens its sheet; Cancel preserves the original path and source bytes.
+  The initial assertion incorrectly expected separate title text instead of the
+  native combined accessible copy; the corrected test follows that structure
+  and the Clear link role. Documentation/localization checks and `git diff
+  --check` passed. Logs are in `.build/sidebar-refinement-logs/`; this bounded
+  slice did not rerun the full repository gate or claim human adaptation
+  acceptance.
+- The complete gate passed frontend typechecking, all 214 Web tests in 38
+  files, generated-resource and RDF-1 reproducibility, shipped-Skill and boundary
+  guards, Core 351 tests plus 3 performance tests, Contracts 65, Application
+  128, and its separate architecture measurement. It stopped at four App
+  assertions that still required superseded specification prose. Those
+  assertions were replaced or removed while retaining semantic and runtime
+  coverage; the complete App suite then passed 591 tests in 44 suites. The
+  remaining public-symbol boundary and Release build passed separately.
+  This is not a clean single-invocation gate pass.
+- Focused coverage proves pointer-mode native emphasis writeback is suppressed
+  without changing selection, retained/native focus ownership, first Edit body
+  entry after CRLF YAML, unrestricted Source-font persistence, and live WebKit
+  typography changes without source or selection mutation. Record tests cover
+  list/detail transitions, retained selection, exact step requests, and rejection
+  of requests for another Triptych. Settlement tests require distinct available
+  native symbols, state-valid actions, and an unfilled native toolbar surface.
+  After final state-label and Records appearance adjustments, all 32 owning
+  presentation/toolbar/Records tests passed and the incremental Release build
+  passed. Localization and documentation authority validation also passed.
+- The focused native Triptych navigator XCUITest passed selection and Up/Down
+  navigation. Its result bundle is retained under
+  `.build/qa-ui-derived-data/Logs/Test/`; this does not replace physical keyboard
+  or VoiceOver acceptance.
+- Exploratory Computer Use with disposable Notes and two five-step Records
+  verified the compact task-titled list/detail window, Back restoring selection,
+  and return to the retained step after scrolling. The first reading-position
+  attempt exposed teardown clearing its retained target; ignoring that nil
+  teardown and explicitly revealing the retained step fixed the observed reset.
+  Attachment activation closed Records and returned to the exact originating
+  workspace window. Empty collection, external Record refresh, Escape dismissal,
+  saving a proportional Source font, and successful Settlement were also
+  exercised without accessing a real research vault.
+  Final QA also verified dark Records list/detail presentation and a native
+  Settlement accessibility label containing both its state and next action.
+- Complete logs are retained under `.build/interface-repair-logs/`. Genuine
+  VoiceOver, physical Full Keyboard Access, Simplified Chinese IME, enlarged
+  text, minimum window size, and the complete Increase Contrast/Reduce Transparency/Reduce Motion
+  adaptation matrix remain open.
+
+## Earlier verification snapshots
+
 **Environment:** 2026-09-03 final fixed-index Research Records redesign and
 originating-window attachment-routing snapshot, Xcode 27 beta toolchain
 (`DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer`).

@@ -118,7 +118,7 @@ final class DocumentSessionModel: ObservableObject {
         managedCreationBodyStartUTF16 = nil
     }
 
-    /// A first activation begins at the filename title. A retained or restored
+    /// A first activation begins in the body. A retained or restored
     /// session reuses its last title/body focus target and exact valid editor
     /// selection; managed creation keeps its explicit body-start contract.
     func prepareForDocumentActivation() {
@@ -126,9 +126,9 @@ final class DocumentSessionModel: ObservableObject {
         if isEnteringManagedCreation {
             target = .editor
         } else if hasBeenActivated {
-            target = editorSession.preferredDocumentFocusTarget ?? .title
+            target = editorSession.preferredDocumentFocusTarget ?? .editor
         } else {
-            target = .title
+            target = .editor
         }
         hasBeenActivated = true
         editorSession.authorizeAutomaticFocus(target: target)

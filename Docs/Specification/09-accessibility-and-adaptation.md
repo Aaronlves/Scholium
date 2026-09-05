@@ -110,12 +110,9 @@
 - Review, Edit, and Source expose current mode, content state, and one coherent
   focus order. Mode, window, external-change, conflict, and recovery transitions
   preserve dirty buffer, composition, selection, Undo, scroll, and recovery.
-- First Edit activation without retained presentation places a collapsed
-  insertion point at the end of the inline Note title. Returning to a still-open
-  or window-restored Note restores its last title/body focus and fingerprint-
-  valid editor selection. Explicit source navigation and Managed New Note's
-  body-start insertion take precedence. Closing the tab ends that retained focus
-  history.
+- Edit entry follows §18.4's retained-selection, exact Review mapping, and body-
+  start order. It exposes the resulting insertion or selection without stealing
+  focus for Rename; direct title activation remains keyboard reachable.
 - Review selection and Edit formatting remain exact and keyboard reachable.
 - Suggestion lists retain document focus and one listbox selection. They do not
   open during marked-text composition.

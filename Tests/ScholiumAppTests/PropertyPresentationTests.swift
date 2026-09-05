@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import ScholiumApplication
 import ScholiumContracts
@@ -375,55 +376,26 @@ struct PropertyPresentationTests {
         #expect(never.settledAt == nil)
     }
 
-    @Test("Changed-since-settlement exposes Settle Again in the toolbar")
+    @Test("Settlement milestone retains distinct native symbols and state-valid actions")
+    @MainActor
     func changedSettlementToolbarAction() {
-        #expect(DocumentSettlementAction.resolve(
-            .changedSinceSettlement
-        ) == .settleAgain)
+        #expect(DocumentSettlementAction.resolve(.changedSinceSettlement) == .settleAgain)
         #expect(DocumentSettlementAction.resolve(.settled) == .settleAgain)
         #expect(DocumentSettlementAction.resolve(.notYetSettled) == .settle)
         #expect(DocumentSettlementAction.resolve(.unavailable) == .unavailable)
-        #expect(
-            DocumentSettlementToolbarPresentation.symbol(for: .settled)
-                == "checkmark"
-        )
-        #expect(
-            DocumentSettlementToolbarPresentation.symbol(for: .changedSinceSettlement)
-                == "exclamationmark.triangle"
-        )
-        #expect(
-            DocumentSettlementToolbarPresentation.symbol(for: .notYetSettled)
-                == "checkmark"
-        )
-        #expect(
-            DocumentSettlementToolbarPresentation.style(for: .settled)
-                == .prominent
-        )
-        #expect(
-            DocumentSettlementToolbarPresentation.style(for: .notYetSettled)
-                == .plain
-        )
-        #expect(
-            DocumentSettlementToolbarPresentation.backgroundColorRole(for: .settled)
-                == .confirmed
-        )
-        #expect(
-            DocumentSettlementToolbarPresentation.backgroundColorRole(for: .notYetSettled)
-                == nil
-        )
-        #expect(
-            DocumentSettlementToolbarPresentation.backgroundTintAlpha(for: .settled)
-                == 0.78
-        )
-        #expect(
-            DocumentSettlementToolbarPresentation.backgroundTintAlpha(for: .notYetSettled)
-                == nil
-        )
-        #expect(
-            DocumentSettlementToolbarPresentation.symbolColorRole(
-                for: .changedSinceSettlement
-            ) == .attention
-        )
+        let states: [AboutSettlementState] = [.notYetSettled, .settled, .changedSinceSettlement]
+        let symbols = states.map { DocumentSettlementToolbarPresentation.symbol(for: $0) }
+        #expect(Set(symbols).count == states.count)
+        let labels = states.map {
+            ScholiumL10n.localized(DocumentSettlementToolbarPresentation.accessibilityLabel(for: $0))
+        }
+        #expect(Set(labels).count == states.count)
+        for (state, symbol) in zip(states, symbols) {
+            #expect(NSImage(systemSymbolName: symbol, accessibilityDescription: nil) != nil)
+            #expect(DocumentSettlementToolbarPresentation.style(for: state) == .plain)
+        }
+        #expect(DocumentSettlementToolbarPresentation.symbolColorRole(for: .settled) == .confirmed)
+        #expect(DocumentSettlementToolbarPresentation.symbolColorRole(for: .changedSinceSettlement) == .attention)
     }
 
     @Test("About presents file creation and modification facts from the snapshot")

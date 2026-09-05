@@ -24,6 +24,8 @@ enum DocumentAppearanceStyles {
           --scholium-document-line-width: \(number(settings.lineWidthCharacterUnits))ch;
           --scholium-document-half-line-width: \(number(settings.lineWidthCharacterUnits / 2))ch;
           --scholium-document-prose-font-size: \(number(body.fontSizePoints))pt;
+          --scholium-document-source-font-family: \(quotedCSSString(settings.source.fontFamily)), ui-monospace, monospace;
+          --scholium-document-source-font-size: \(number(settings.source.fontSizePoints))pt;
           --scholium-rhythm-prose-line-height: \(number(body.lineHeight));
           --scholium-rhythm-paragraph-gap: \(number(body.paragraphSpacingEm))em;
           --scholium-document-h1-size: \(number(level1.scale * 100))%;
@@ -239,5 +241,13 @@ enum DocumentAppearanceStyles {
 
     private static func number(_ value: Double) -> String {
         String(format: "%.4g", locale: Locale(identifier: "en_US_POSIX"), value)
+    }
+
+    /// Font names are CSS string data, including quotes, slashes, and controls.
+    /// Hex escapes also prevent a font name from terminating an inline style.
+    private static func quotedCSSString(_ value: String) -> String {
+        "\"" + value.unicodeScalars.map {
+            "\\" + String($0.value, radix: 16) + " "
+        }.joined() + "\""
     }
 }

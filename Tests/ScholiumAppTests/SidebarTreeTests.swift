@@ -126,23 +126,9 @@ struct SidebarTreeTests {
     @Test("Context menus and accessibility actions share one file-command projection")
     func noteCommandProjection() {
         let workspaceMenu = sidebarNoteCommandGroups(
-            isManagedCritique: false,
-            surface: .contextMenu
+            isManagedCritique: false
         ).flatMap(\.commands)
         #expect(workspaceMenu == [
-            .openInNewTab,
-            .duplicate,
-            .rename,
-            .moveToSystemTrash,
-            .copyRelativePath,
-            .revealInFinder,
-        ])
-
-        let workspaceAccessibility = sidebarNoteCommandGroups(
-            isManagedCritique: false,
-            surface: .accessibility
-        ).flatMap(\.commands)
-        #expect(workspaceAccessibility == [
             .openInNewTab,
             .duplicate,
             .rename,
@@ -153,8 +139,7 @@ struct SidebarTreeTests {
         ])
 
         let managedCritique = sidebarNoteCommandGroups(
-            isManagedCritique: true,
-            surface: .accessibility
+            isManagedCritique: true
         ).flatMap(\.commands)
         #expect(!managedCritique.contains(.duplicate))
     }
@@ -428,6 +413,29 @@ struct SidebarTreeTests {
         #expect(SidebarOutlineScrollView(frame: .zero).focusRingType == .none)
     }
 
+    @Test("Native emphasis updates cannot repaint pointer selection as keyboard focus")
+    @MainActor
+    func nativeRowEmphasisRespectsModality() {
+        let presentation = SidebarSourceListSelectionPresentation()
+        let row = SidebarSourceListRowView()
+        row.allowsKeyboardEmphasis = { presentation.inputModality == .keyboard }
+        row.isSelected = true
+        row.isEmphasized = true
+        #expect(!row.isEmphasized)
+        #expect(row.isSelected)
+
+        presentation.recordKeyboardInteraction()
+        row.isEmphasized = true
+        #expect(row.isEmphasized)
+        row.isEmphasized = false // Native inactive-window/responder update.
+        #expect(!row.isEmphasized)
+
+        presentation.recordPointerInteraction()
+        row.isEmphasized = true // A later AppKit update must still stay quiet.
+        #expect(!row.isEmphasized)
+        #expect(row.isSelected)
+    }
+
     @MainActor
     @Test("Triptych workspace navigation delegates selection and traversal to AppKit")
     func nativeTriptychWorkspaceSelection() throws {
@@ -460,6 +468,26 @@ struct SidebarTreeTests {
         tableView.selectRowIndexes(IndexSet(integer: 2), byExtendingSelection: false)
         #expect(requestedSlot == .output)
         #expect(tableView.intrinsicContentSize.height == tableView.rowHeight * 3)
+
+        // A live size change updates native rows without emitting navigation.
+        requestedSlot = nil
+        for enlarged in [true, false] {
+            coordinator.apply(
+                selectedSlot: .output,
+                noteCounts: counts,
+                locale: Locale(identifier: "en_US"),
+                usesAccessibilitySize: enlarged,
+                select: { requestedSlot = $0 }
+            )
+            #expect(tableView.rowSizeStyle == (enlarged ? .large : .default))
+            #expect(tableView.selectedRow == 2)
+            #expect(requestedSlot == nil)
+            #expect(tableView.intrinsicContentSize.height == tableView.rowHeight * 3)
+            let cell = try #require(coordinator.tableView(tableView, viewFor: nil, row: 2) as? NSTableCellView)
+            #expect(cell.textField?.font?.pointSize == SidebarSourceListRowPresentation(
+                effectiveRowSizeStyle: tableView.effectiveRowSizeStyle
+            ).textPointSize)
+        }
     }
 
     @Test("An empty root Folder remains visible when disclosure state contains it")

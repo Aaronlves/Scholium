@@ -199,8 +199,26 @@ private final class SidebarOutlineRowHostingView: NSHostingView<SidebarTreeNodeR
 
 }
 
+/// AppKit continues to set row emphasis as responder/window state changes.
+/// The only custom rule is to suppress that emphasis for pointer activation.
 @MainActor
-final class SidebarOutlineRowView: NSTableRowView {
+class SidebarSourceListRowView: NSTableRowView {
+    var allowsKeyboardEmphasis: (() -> Bool)?
+    var emphasisDidChange: (() -> Void)?
+
+    override var isEmphasized: Bool {
+        get { super.isEmphasized }
+        set {
+            let emphasized = newValue && (allowsKeyboardEmphasis?() ?? false)
+            guard super.isEmphasized != emphasized else { return }
+            super.isEmphasized = emphasized
+            emphasisDidChange?()
+        }
+    }
+}
+
+@MainActor
+final class SidebarOutlineRowView: SidebarSourceListRowView {
     func configure(
         item: SidebarOutlineItem,
         isExpanded: Bool,
@@ -247,6 +265,15 @@ final class SidebarOutlineView: NSOutlineView {
         selectionPresentation.selectionIsEmphasized(in: self)
     }
 
+    func configureSelectionPresentation(for row: SidebarSourceListRowView) {
+        row.allowsKeyboardEmphasis = { [weak self] in
+            self?.selectionPresentation.inputModality == .keyboard
+        }
+        row.emphasisDidChange = { [weak self] in
+            self?.selectionPresentationDidChange?()
+        }
+    }
+
     func requestKeyboardFocus() {
         selectionPresentation.recordKeyboardInteraction()
         window?.makeFirstResponder(self)
@@ -275,13 +302,11 @@ final class SidebarOutlineView: NSOutlineView {
 
     override func resignFirstResponder() -> Bool {
         let resignedFirstResponder = super.resignFirstResponder()
-        if resignedFirstResponder { synchronizeSelectionPresentation() }
+        if resignedFirstResponder {
+            enumerateAvailableRowViews { row, _ in row.isEmphasized = false }
+            selectionPresentationDidChange?()
+        }
         return resignedFirstResponder
-    }
-
-    override func viewWillDraw() {
-        super.viewWillDraw()
-        synchronizeSelectionPresentation()
     }
 
     override func canDragRows(

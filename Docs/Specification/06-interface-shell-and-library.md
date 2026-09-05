@@ -145,8 +145,8 @@ content or move focus.
 
 Library provides:
 
-- one native Organize menu for global Folder expansion/collapse, Integrity,
-  Metadata, and Order;
+- one native Organize menu for global Folder expansion/collapse, content and
+  Integrity filters, Metadata, and Order;
 - one Add menu for immediate New Note and New Folder;
 - a single scrollable hierarchy of real folders and Notes, including root Notes
   and empty folders; and
@@ -157,6 +157,10 @@ and Add remain separate native menus and focus targets with familiar symbols;
 macOS owns their resting, hover, press, focus, disabled, menu, and accessibility
 presentation. Folder-local Expand/Collapse remains in each Folder's contextual
 and accessibility actions.
+
+Content presence, including link annotations, is not an Integrity problem.
+A filtered empty result names the absence of matches and retains Clear; it
+does not claim the Library contains no Notes or invite creation as the remedy.
 
 The application-owned root `Attachments` directory and everything beneath it
 remain on disk but are excluded from the Library hierarchy. Document

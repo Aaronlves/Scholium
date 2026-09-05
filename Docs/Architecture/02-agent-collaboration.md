@@ -95,8 +95,9 @@ fabricated source restore.
 ## App presentation and setup
 
 Research Records use one read-only, Triptych-bound window. Its collection uses
-the Record provider; its fixed index stays visible while the detail pins the
-question above chronological attributed steps, bounded Markdown projection,
+the Record provider; selecting a row opens detail in the same compact window,
+with Back to the retained list. Detail pins the question above attributed steps,
+bounded Markdown projection,
 and each step's single-line horizontal Note-reference attachments in the same
 reading flow. A coordinator keyed by Triptych and originating Workspace routes
 Search selections to the existing Records window and attachment selections back

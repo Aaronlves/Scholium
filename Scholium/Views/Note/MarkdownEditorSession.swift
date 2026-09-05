@@ -465,6 +465,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         mode: MarkdownEditorMode,
         initialSourceRange: Range<Int>? = nil
     ) {
+        let isFirstDocumentLoad = self.documentID != documentID
         let publishesLoadingState = isReady
         invalidateRequestQueue()
         cancelScheduledRecoveryCapture()
@@ -532,6 +533,11 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 lowerBound,
                 initialSourceRange.upperBound
             )
+        } else if isFirstDocumentLoad, !canRestoreWindowPresentation,
+                  !preservesRecovery, pendingSourceRange == nil,
+                  mode == .livePreview {
+            let bodyStart = NoteDocument(relativePath: "", rawContent: source).bodyUTF16Offset
+            pendingSourceRange = bodyStart..<bodyStart
         }
         committedTextSynchronizer?(source, startingFingerprint)
         cancelModeTransition()
@@ -1111,6 +1117,11 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     func focusTitle() {
         requestFocus(.title)
+    }
+
+    func prepareReadSelection(_ range: Range<Int>) {
+        guard pendingSourceRange == nil, lastKnownSelectionSnapshot == nil else { return }
+        revealSourceRange(fromUTF16: range.lowerBound, toUTF16: range.upperBound)
     }
 
     func focusPreferred() {

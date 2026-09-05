@@ -141,8 +141,8 @@ struct ScholiumApp: App {
                 )
             }
         )
-        .defaultSize(width: 980, height: 720)
-        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 560, height: 580)
+        .windowStyle(.titleBar)
         .windowResizability(.automatic)
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
@@ -305,6 +305,8 @@ private struct ScholiumResearchRecordsWindowEnvironmentContent: View {
 @MainActor
 private struct ScholiumResearchRecordsWindowReadyContent: View {
     @EnvironmentObject private var workspaceStore: WorkspaceStore
+    @AppStorage(WindowColorSchemeChoice.defaultsKey)
+    private var storedColorScheme = WindowColorSchemeChoice.system.rawValue
     let route: ResearchRecordsWindowRoute
 
     var body: some View {
@@ -315,6 +317,9 @@ private struct ScholiumResearchRecordsWindowReadyContent: View {
                     id: route.triptychID
                 )
             }
+        )
+        .preferredColorScheme(
+            WindowColorSchemeChoice(rawValue: storedColorScheme)?.swiftUIColorScheme
         )
     }
 }

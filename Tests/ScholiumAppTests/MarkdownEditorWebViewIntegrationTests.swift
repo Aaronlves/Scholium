@@ -596,6 +596,32 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(snapshot.visibleLineClassSummary.contains("*italic source*"))
         #expect(snapshot.visibleLineClassSummary.contains("~~struck source~~"))
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        let before = harness.session.context?.selections
+        var profile = DocumentAppearanceProfile(name: "Source font fixture")
+        profile.settings.source = .init(fontFamily: "Helvetica Neue", fontSizePoints: 18)
+        harness.setPresentationCSS(
+            ScholiumDocumentPresentationConfiguration(textScale: 1).css
+                + "\n" + DocumentAppearanceStyles.css(for: profile)
+        )
+        let changed = try await harness.waitUntilPresentation(stage: "researcher-selected Source font") {
+            $0.presentation.documentFontFamily.contains("Helvetica Neue")
+        }
+        #expect(changed.sourceSemanticTypographyCount == 0)
+        #expect(harness.session.context?.selections == before)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        await harness.closeAndDrain()
+    }
+
+    @Test("Ordinary Edit begins at the exact body boundary without a supplied locator")
+    func ordinaryEditStartsAtBody() async throws {
+        let source = "---\r\ncustom: preserved\r\n---\r\nBody text.\r\n"
+        let harness = EditorHarness(source: source)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let normalized = source.replacingOccurrences(of: "\r\n", with: "\n")
+        let bodyStart = NoteDocument(relativePath: "Fixture.md", rawContent: normalized).bodyUTF16Offset
+        try await harness.waitUntilSelection(head: bodyStart)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
 

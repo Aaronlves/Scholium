@@ -51,17 +51,14 @@ document session. Review is mounted continuously; after first editor allocation,
 the retained CodeMirror surface is also mounted continuously. Review, Edit,
 and Source transitions change opacity, stacking, hit testing,
 accessibility exposure, and first-responder focus rather than view identity.
-`MarkdownEditorSession.presentedMode` advances only after the typed bridge
-acknowledges initialization or a mode request. Initial Review-to-editor entry
-therefore keeps Review visible until the acknowledged mode equals the requested
-Edit or Source mode; an earlier retained Source frame cannot satisfy Edit
-readiness merely because the WebView was loaded previously. After that editor
-surface has been presented for the current editing run, Edit/Source
-reconfiguration keeps the same CodeMirror surface visible while the bridge
-converges instead of routing through Review. After acknowledgement, first
-ordinary Edit focuses the filename title's end; a retained/restored open Note
-returns to its valid title/body target and selection. An explicit locator wins,
-and Source uses the body.
+`MarkdownEditorSession.presentedMode` advances after typed acknowledgement.
+Review remains visible until the requested Edit/Source mode is acknowledged;
+a retained Source frame cannot satisfy Edit readiness. Subsequent Edit/Source
+reconfiguration retains CodeMirror without routing through Review. First
+ordinary Edit focuses the exact body start after YAML, or an exactly mapped
+Review selection. A retained/restored open Note returns to its valid title/body
+target and selection; an explicit locator takes precedence. Source retains its
+exact-source selection.
 Managed New Note skips Review-first presentation. `DocumentController`
 installs its snapshot, exact source, active Edit phase, and body-start offset in
 one MainActor transaction. Until typed acknowledgement, the host exposes
@@ -552,6 +549,8 @@ Read and Live Preview consume one presentation contract:
 - `StyleOperations` persists typed, named Appearance configurations under
   Application Support and the frontend projects the selected configuration to
   deterministic CSS without placing configuration in a research vault;
+- `DocumentSourceAppearance` stores the unrestricted installed font and size;
+  escaped CSS transports them to Source without replacing the editor;
 - protected render-component CSS owns common callout, link, table, footnote,
   and mathematics roles;
 - Read emits static semantic DOM from the committed semantic document; and

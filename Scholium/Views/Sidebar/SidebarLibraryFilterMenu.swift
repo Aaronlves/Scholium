@@ -56,15 +56,17 @@ struct SidebarLibraryFilterMenu: View {
                 Toggle("Needs Attention", isOn: filterBinding(\.needsAttention))
                     .disabled(!options.catalogIsAvailable)
                 Toggle(
-                    "Link Annotations",
-                    isOn: filterBinding(\.hasLinkAnnotations)
-                )
-                .disabled(!options.graphIsAvailable)
-                Toggle(
                     "Malformed Metadata",
                     isOn: filterBinding(\.hasMalformedMetadata)
                 )
                 .disabled(!options.catalogIsAvailable)
+            }
+            Section("Content") {
+                Toggle(
+                    "Link Annotations",
+                    isOn: filterBinding(\.hasLinkAnnotations)
+                )
+                .disabled(!options.graphIsAvailable)
             }
             Section("Metadata") {
                 Menu("Keyword") {
@@ -88,9 +90,7 @@ struct SidebarLibraryFilterMenu: View {
                         }
                     }
                 }
-            }
-            if !options.propertyKeys.isEmpty {
-                Section("Metadata") {
+                if !options.propertyKeys.isEmpty {
                     Button("Any Metadata Field") {
                         updateFilters {
                             $0.propertyKey = nil
@@ -116,11 +116,9 @@ struct SidebarLibraryFilterMenu: View {
                 }
             }
             Section("Order") {
-                Menu("Sort") {
-                    ForEach(NoteSortOrder.allCases) { order in
-                        filterChoice(order.title, selected: sortOrder == order) {
-                            selectSortOrder(order)
-                        }
+                ForEach(NoteSortOrder.allCases) { order in
+                    filterChoice(order.title, selected: sortOrder == order) {
+                        selectSortOrder(order)
                     }
                 }
             }

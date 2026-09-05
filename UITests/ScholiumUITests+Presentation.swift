@@ -526,6 +526,55 @@ extension ScholiumUITests {
     }
 
     @MainActor
+    func testLibraryOrganizationPreservesDocumentAndCancelsMove() throws {
+        waitForCurrentDocumentSurface()
+        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        let originalBytes = try Data(contentsOf: noteURL)
+        let organize = app.descendants(matching: .any)["scholium.libraryFilters"].firstMatch
+        XCTAssertTrue(organize.waitForExistence(timeout: 5))
+        organize.click()
+        XCTAssertTrue(app.menuItems["Title, A to Z"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.menuItems["Sort"].firstMatch.exists)
+        let annotations = app.menuItems["Link Annotations"].firstMatch
+        XCTAssertTrue(annotations.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitUntil(timeout: 10) { annotations.isEnabled })
+        annotations.click()
+
+        let emptyState = app.descendants(matching: .any)["scholium.libraryEmpty"].firstMatch
+        XCTAssertTrue(emptyState.waitForExistence(timeout: 5))
+        let emptyCopy = emptyState.staticTexts.firstMatch
+        XCTAssertTrue(accessibilityText(of: emptyCopy).contains("No Matching Notes"))
+        XCTAssertFalse(accessibilityText(of: emptyCopy).contains("Create a Note to begin."))
+        let emptyScreenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        emptyScreenshot.name = "Filtered Library retains Document and Clear"
+        emptyScreenshot.lifetime = .keepAlways
+        add(emptyScreenshot)
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A"))
+        let status = app.descendants(matching: .any)["scholium.libraryFilterStatus"].firstMatch
+        let clear = status.links["Clear"].firstMatch
+        XCTAssertTrue(clear.waitForExistence(timeout: 5))
+        clear.click()
+        let row = app.descendants(matching: .any)["scholium.noteRow.QA Autosave A.md"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertFalse(status.exists)
+        row.rightClick()
+        let contextMenu = app.menus["scholium.noteRow.QA Autosave A.md"].firstMatch
+        XCTAssertTrue(contextMenu.waitForExistence(timeout: 5))
+        let move = contextMenu.menuItems["Move Note…"].firstMatch
+        XCTAssertTrue(move.waitForExistence(timeout: 5))
+        XCTAssertTrue(move.isEnabled)
+        move.click()
+        let sheet = app.sheets.firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 5))
+        XCTAssertTrue(sheet.textFields.firstMatch.exists)
+        sheet.buttons["Cancel"].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !sheet.exists })
+        XCTAssertTrue(waitForDocumentTitle("QA Autosave A"))
+        XCTAssertTrue(row.exists)
+        XCTAssertEqual(try Data(contentsOf: noteURL), originalBytes)
+    }
+
+    @MainActor
     func testLibraryRemainsReadableAtItsNativeMinimum() throws {
         waitForCurrentDocumentSurface()
 

@@ -27,6 +27,7 @@ struct StyleOperationsTests {
         var edited = original
         edited.settings.lineWidthCharacterUnits = 84
         edited.settings.body.fontSizePoints = 14.5
+        edited.settings.source = .init(fontFamily: "Helvetica Neue", fontSizePoints: 16)
         edited.settings.headings.weight = 600
         let orientationIndex = try #require(
             edited.settings.callouts.firstIndex(where: { $0.role == .orientation })
@@ -50,6 +51,8 @@ struct StyleOperationsTests {
         #expect(persisted.selectedAppearanceProfileID == copyID)
         #expect(persistedCopy.settings.lineWidthCharacterUnits == 84)
         #expect(persistedCopy.settings.body.fontSizePoints == 14.5)
+        #expect(persistedCopy.settings.source.fontFamily == "Helvetica Neue")
+        #expect(persistedCopy.settings.source.fontSizePoints == 16)
         #expect(persistedCopy.settings.headings.weight == 600)
         #expect(persistedCopy.settings.callout(.orientation).startInsetEm == 4.25)
 
@@ -86,8 +89,8 @@ struct StyleOperationsTests {
         }
     }
 
-    @Test("Appearance manifests require the canonical line width field")
-    func appearanceManifestRequiresLineWidth() async throws {
+    @Test("Incomplete appearance manifests are rejected without rewriting bytes", arguments: ["lineWidthCharacterUnits", "source"])
+    func appearanceManifestRequiresCanonicalSettings(missingField: String) async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(
             "ScholiumAppearanceLineWidthContract-\(UUID().uuidString)",
             isDirectory: true
@@ -105,7 +108,7 @@ struct StyleOperationsTests {
             JSONSerialization.jsonObject(with: profileData) as? [String: Any]
         )
         var settings = try #require(profileObject["settings"] as? [String: Any])
-        settings.removeValue(forKey: "lineWidthCharacterUnits")
+        settings.removeValue(forKey: missingField)
         profileObject["settings"] = settings
         let manifest = [
             "selectedProfileID": profile.id.uuidString,
@@ -120,6 +123,7 @@ struct StyleOperationsTests {
         #expect(loaded.selectedAppearanceProfileID == nil)
         #expect(!loaded.canModify)
         #expect(loaded.storeError != nil)
+        #expect(try Data(contentsOf: styles.appendingPathComponent("appearances.json")) == manifestData)
     }
 
     @Test("CSS import and persistence stay behind StyleUseCases")

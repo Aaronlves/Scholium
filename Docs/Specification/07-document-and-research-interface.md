@@ -111,15 +111,13 @@ File menu without hover. When hidden it is neither visible nor interactive, and
 surrounding document layout does not move. Source has no attachment strip
 because it presents exact authored source only.
 
-When a Note enters Edit for the first time without retained window
-presentation, focus enters the inline Note title with one collapsed insertion
-point at its end. Returning to a Note that remains open restores its last title
-or body focus and exact valid editor selection; quitting and reopening Scholium
-does the same only for Notes retained in that window's open tabs. Selection
-restoration requires the same exact source fingerprint. An explicit source
-locator and Managed New Note's body-start insertion override this default.
-Closing the Note's tab ends this focus and selection retention; Scholium keeps
-no permanent vault-wide cursor history.
+Ordinary Edit entry restores retained, fingerprint-valid title/body focus and
+selection when available. Otherwise it uses an exactly mapped Review selection,
+or places a collapsed insertion point at the first authored body position after
+YAML. Direct title activation and Rename remain explicit title-focus routes.
+An explicit source locator and Managed New Note's body-start insertion take
+precedence. Window restoration retains this state only for still-open tabs;
+closing a tab ends it, without permanent vault-wide cursor history.
 
 Quick Look owns a temporary native presentation and any required read-access
 lease. Closing it returns Edit to the title or body target and exact selection

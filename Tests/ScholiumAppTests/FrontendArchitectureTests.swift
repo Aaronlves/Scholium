@@ -1893,7 +1893,7 @@ struct FrontendArchitectureTests {
         #expect(workspaceNavigatorSource.contains("NSTableViewDataSource"))
         #expect(workspaceNavigatorSource.contains("NSTableViewDelegate"))
         #expect(workspaceNavigatorSource.contains("tableView.style = .sourceList"))
-        #expect(workspaceNavigatorSource.contains("tableView.rowSizeStyle = .default"))
+        #expect(workspaceNavigatorSource.contains("tableView.rowSizeStyle = usesAccessibilitySize ? .large : .default"))
         #expect(workspaceNavigatorSource.contains("tableViewSelectionDidChange"))
         #expect(!workspaceNavigatorSource.contains("@FocusState"))
         #expect(!workspaceNavigatorSource.contains("Button(action:"))
@@ -2194,9 +2194,14 @@ struct FrontendArchitectureTests {
         #expect(!outlineRowsSource.contains("ScholiumContentInteractionSurface"))
         #expect(!sidebarSource.contains("Hide Sidebar"))
 
-        for section in ["Folders", "Integrity", "Metadata", "Order", "Actions"] {
+        for section in ["Folders", "Integrity", "Content", "Metadata", "Order", "Actions"] {
             #expect(filterMenuSource.contains("Section(\"\(section)\")"))
         }
+        #expect(filterMenuSource.components(separatedBy: "Section(\"Metadata\")").count == 2)
+        #expect(!filterMenuSource.contains("Menu(\"Sort\")"))
+        let integrityStart = try #require(filterMenuSource.range(of: "Section(\"Integrity\")"))
+        let contentStart = try #require(filterMenuSource.range(of: "Section(\"Content\")"))
+        #expect(!filterMenuSource[integrityStart.lowerBound..<contentStart.lowerBound].contains("Link Annotations"))
         #expect(!sidebarSource.contains("Section(\"Integrity\")"))
         #expect(!sidebarSource.contains("Section(\"Review\")"))
 
@@ -3323,8 +3328,6 @@ struct FrontendArchitectureTests {
             ScholiumMetrics.Library.workspaceNavigatorTopSpacing
                 == ScholiumGrid.Spacing.nestedContentInset
         )
-        #expect(ScholiumMetrics.ResearchRecords.windowDragInset == 32)
-        #expect(ScholiumMetrics.ResearchRecords.collectionWidth == 288)
         #expect(ScholiumMetrics.ResearchRecords.collectionRowSpacing == 4)
         #expect(ScholiumMetrics.ResearchRecords.readingMeasure == 720)
         #expect(ScholiumMetrics.ResearchRecords.stepVerticalInset == 24)
@@ -4171,7 +4174,6 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMotion.searchExpansion(reduceMotion: true) == nil)
         #expect(ScholiumMotion.disclosure(reduceMotion: true) == nil)
         #expect(ScholiumMotion.symbolReplacement(reduceMotion: true) == nil)
-        #expect(ScholiumMotion.settlementConfirmationInterval(reduceMotion: true) == 0)
         #expect(ScholiumMotion.transientStatus(reduceMotion: true) == nil)
 
         #expect(ScholiumMotion.bootstrapStep(reduceMotion: false) != nil)
@@ -4180,7 +4182,6 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMotion.searchExpansion(reduceMotion: false) != nil)
         #expect(ScholiumMotion.disclosure(reduceMotion: false) != nil)
         #expect(ScholiumMotion.symbolReplacement(reduceMotion: false) != nil)
-        #expect(ScholiumMotion.settlementConfirmationInterval(reduceMotion: false) > 0)
         #expect(ScholiumMotion.transientStatus(reduceMotion: false) != nil)
     }
 

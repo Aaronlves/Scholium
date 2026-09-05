@@ -163,7 +163,10 @@ struct WorkspaceToolbarTests {
         #expect(settlement.isBordered)
         #expect(settlement.style == .plain)
         #expect(settlement.view == nil)
-        #expect(settlement.possibleLabels.count == 3)
+        #expect(settlement.possibleLabels == [
+            "Settle", "Settled — Settle Again",
+            "Changed since settlement — Settle Again", "Settlement Unavailable",
+        ])
         #expect(settlement.menuFormRepresentation?.target === controller)
         #expect(settlement.menuFormRepresentation?.action != nil)
 

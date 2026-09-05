@@ -6,6 +6,37 @@ import Testing
 @Suite("Research Records window")
 @MainActor
 struct ResearchRecordsWindowTests {
+    @Test("Record navigation starts at the list and Back retains the selected record")
+    func sequentialNavigation() throws {
+        let triptychID = UUID()
+        let model = ResearchRecordsModel(triptychID: triptychID) {
+            throw CocoaError(.fileReadNoSuchFile)
+        }
+        let record = try ResearchRecord(
+            triptychID: triptychID,
+            question: "What changed in the argument?",
+            steps: [ResearchRecordStep(
+                submittedBy: ResearchRecordSubmitter(displayName: "Fixture Agent"),
+                bodyMarkdown: "Clarified the premise."
+            )]
+        )
+        let revision = ResearchRecordRevision(record: record, fingerprint: .init(content: "fixture"))
+        #expect(!model.showsDetail)
+        model.select(revision)
+        #expect(!model.showsDetail) // Arrow navigation selects without opening.
+        model.showRecord(revision)
+        #expect(model.showsDetail)
+        model.showCollection()
+        #expect(!model.showsDetail)
+        #expect(model.selectedRecordID == record.id)
+        model.open(.init(triptychID: UUID(), sourceWindowID: UUID(), recordID: UUID(), stepID: nil))
+        #expect(!model.showsDetail)
+        #expect(model.selectedRecordID == record.id)
+        model.open(.init(triptychID: triptychID, sourceWindowID: UUID(), recordID: record.id, stepID: record.steps[0].id))
+        #expect(model.showsDetail)
+        #expect(model.selectedStepID == record.steps[0].id)
+    }
+
     @Test("Basic Markdown projects while headings and unsupported structures stay literal")
     func boundedMarkdownProjection() {
         let projection = ResearchRecordMarkdownProjection("""
@@ -111,7 +142,8 @@ struct ResearchRecordsWindowTests {
         )
         #expect(source.contains("Search records"))
         #expect(source.contains("ResearchRecordsSearchField"))
-        #expect(source.contains(".frame(width: ScholiumMetrics.ResearchRecords.collectionWidth)"))
+        #expect(source.contains("if model.showsDetail"))
+        #expect(source.contains("model.showCollection()"))
         #expect(source.contains("noteReferences(step)"))
         #expect(source.contains("openEvidence(item)"))
         #expect(source.contains("openReference("))
@@ -123,8 +155,8 @@ struct ResearchRecordsWindowTests {
         #expect(source.contains(".onExitCommand { dismissWindow() }"))
         #expect(source.contains("dismissWindow()"))
         #expect(sceneSource.contains(
-            ".defaultSize(width: 980, height: 720)\n"
-                + "        .windowStyle(.hiddenTitleBar)"
+            ".defaultSize(width: 560, height: 580)\n"
+                + "        .windowStyle(.titleBar)"
         ))
         #expect(source.contains(".tint(ScholiumColorRole.accent.color)"))
         #expect(source.contains("ScholiumContentStateView"))

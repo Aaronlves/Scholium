@@ -54,6 +54,12 @@
   indentation property rather than custom row positioning.
   The projection omits the application-owned root `Attachments` directory and
   descendants without altering their stored files.
+- Library distinguishes a filtered empty result from a genuinely empty tree,
+  retaining its existing Clear route. Organize separates link-annotation presence
+  from Integrity, combines Metadata into one group, and exposes sorting choices
+  directly. Note context menus and accessibility actions share the same file
+  command list, including Move Note. Both native lists receive enlarged-interface
+  row sizing on creation and subsequent presentation updates.
 - Standard Sidebar controls and navigation rows retain their native macOS
   cursors. The Sidebar adds no global pointing-hand remapping, custom row-hover
   tracker, parallel selection painter, or custom disclosure gesture. Existing
@@ -62,6 +68,12 @@
 - Document retains Review, Edit, and Source over one exact source buffer.
   Markdown is the sole written annotation authority; there is no separate
   Review Comment or passage Discussion UI.
+- Appearance profiles include Source font and size. Settings lists installed
+  font families without restricting them to monospaced choices; saved changes
+  update the retained Source presentation without changing source or selection.
+  Profiles missing the required Source settings fail the existing manifest
+  validation and remain byte-unchanged and nonmodifiable; this pre-production
+  cutover adds no automatic conversion of older appearance profiles.
 - Review and inactive Edit show a link annotation from one trailing superscript
   marker in the shared bounded preview surface, never as a block inserted into
   prose. Hover or focus reveals it, click keeps it open, and Escape or outside
@@ -74,7 +86,8 @@
   inline range without adding another end section or writable text owner.
   Insert exposes neighboring Footnote and Inline Footnote commands with
   configurable Option-Command-N and Option-Shift-Command-N defaults.
-- First ordinary Edit activation focuses the inline Note title at its end.
+- First ordinary Edit activation focuses the authored body start after YAML,
+  or an exactly mapped Review selection when no retained editor selection exists.
   Returning to an open Note restores its title/body focus and exact valid
   selection; final window persistence retains this lightweight state only for
   tabs that remain open, while explicit source locations and Managed New Note
@@ -113,10 +126,11 @@
   moved with it. Recovery stays with the existing bounded transaction owner.
 - One separately spaced native Settlement toolbar button sits immediately before
   Document Mode. It presents **Settle** or **Settle Again**, keeps Unsettled
-  monochrome, uses AppKit's prominent Glass with a translucent Confirmed green
-  background only for Settled, and gives a successful exact-revision Settle one bounded
-  native-surface and Draw-On symbol confirmation; Reduce Motion is
-  immediate. An external source change does not clear or rewrite Settlement;
+  monochrome, uses a filled Confirmed bookmark for Settled, and a distinct
+  Attention bookmark for Changed Since Settle. It keeps ordinary native material
+  and updates immediately without a custom animation timer. Its accessible label
+  distinguishes the retained state as well as the next action. An external source
+  change does not clear or rewrite Settlement;
   only the researcher's explicit settlement action records a new revision.
 
 ## Agent Integration and Agent Changes
@@ -126,16 +140,18 @@
   route to the bundled Core Protocol Skill.
 - Agent conversation remains in the external host. Scholium shows no chat,
   Agent picker, session, task, activity stack, or result-review workflow.
-- **Research Records** opens a compact separate read-only window. Its fixed,
-  non-collapsible left index scans current questions and last substantive times
-  with system Record Search. The centered reading plane pins the question above
+- **Research Records** opens a compact separate read-only window. Its list
+  scans current questions and last substantive times with system Record Search.
+  Its task-only native titlebar and content follow the selected light/dark scheme.
+  Selecting a Record opens its detail; Back returns to the retained selection.
+  The centered reading plane pins the question above
   independently scrolling chronological attributed steps. Each step presents
   its basis/modified Notes in one right-growing horizontal attachment strip;
   overflow scrolls, while each compact native button retains hover/focus/press
   feedback and adds Earlier/Unavailable only when needed. Step prose renders
   bounded basic Markdown; headings and unsupported constructs remain literal.
-  A hidden title-bar style removes the separate toolbar band while preserving
-  native window controls; Records refreshes automatically while visible.
+  The native titlebar names Research Records without a Triptych subtitle;
+  Records refreshes automatically while visible.
   Escape closes the window, and opening an attachment dismisses Records after
   opening the Note in the exact originating Workspace window; it never creates
   another Workspace window. There is no Record content editor or detached

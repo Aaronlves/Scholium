@@ -138,20 +138,20 @@ struct DocumentSessionLifecycleTests {
         #expect(!session.isEnteringManagedCreation)
     }
 
-    @Test("First activation starts at the title and a retained session returns to its body position")
+    @Test("First activation starts in the body and a retained session returns to its exact position")
     func activationFocusPolicy() {
         let session = DocumentSessionModel(key: nil)
         let source = "# Section\n\nArgument."
 
         session.prepareForDocumentActivation()
-        #expect(session.editorSession.preferredDocumentFocusTarget == .title)
+        #expect(session.editorSession.preferredDocumentFocusTarget == .editor)
 
         session.editorSession.loadDocument(
             source,
             documentID: "focus-policy",
             mode: .livePreview
         )
-        #expect(session.editorSession.preferredDocumentFocusTarget == .title)
+        #expect(session.editorSession.preferredDocumentFocusTarget == .editor)
         session.editorSession.updateInteraction(
             selections: [MarkdownEditorSelectionRange(anchor: 12, head: 12)],
             line: 3,
@@ -170,7 +170,7 @@ struct DocumentSessionLifecycleTests {
         ])
     }
 
-    @Test("Managed creation overrides first-activation title focus")
+    @Test("Managed creation keeps explicit body focus")
     func managedCreationFocusPolicy() {
         let session = DocumentSessionModel(key: nil)
         session.beginManagedCreationEntry(bodyStartUTF16: 24)
@@ -202,7 +202,7 @@ struct DocumentSessionLifecycleTests {
         let stale = DocumentSessionModel(key: nil)
         stale.restoreWindowPresentation(presentation, source: "Changed argument.")
         stale.prepareForDocumentActivation()
-        #expect(stale.editorSession.preferredDocumentFocusTarget == .title)
+        #expect(stale.editorSession.preferredDocumentFocusTarget == .editor)
         #expect(stale.windowPresentationSnapshot.selections.isEmpty)
     }
 

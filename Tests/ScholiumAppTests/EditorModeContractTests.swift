@@ -16,7 +16,7 @@ struct EditorModeContractTests {
         let requiredSourceTokens: [String]
     }
 
-    @Test("The fixed catalog classifies every permitted and forbidden mode difference")
+    @Test("The implementation fixture covers mode differences under the source contract")
     func fixedCatalogIsCompleteAndAuthorityBound() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -42,7 +42,7 @@ struct EditorModeContractTests {
 
         #expect(
             contract.authority
-                == "Docs/Specification/02-notes-and-file-operations.md section 5.1"
+                == "Docs/Architecture/06-documents-and-editor.md"
         )
         #expect(contract.referenceMode == "Review")
         #expect(sourceData.starts(with: [0xEF, 0xBB, 0xBF]))
@@ -70,17 +70,8 @@ struct EditorModeContractTests {
         #expect(normalizedSpecification.contains(
             "**Source** edits complete Markdown and YAML with logical source-line numbers and exact-source typography."
         ))
-        #expect(normalizedSpecification.contains(
-            "Review and Edit may differ only where editing requires caret, selection, composition, or active syntax."
-        ))
-        #expect(normalizedSpecification.contains(
-            "Review and inactive Edit use one philosophy-manuscript rhythm: each semantic block preserves the same typography, wrapping, visible start, local line geometry, and non-source spacing."
-        ))
-        #expect(normalizedSpecification.contains(
-            "Each authored Markdown blank line remains one stable prose-height source row in Edit, while Review represents paragraph boundaries through manuscript spacing."
-        ))
-        #expect(normalizedSpecification.contains(
-            "Exact structural prefixes revealed by the active heading or quotation hang outside the prose measure, retain the computed size of their line"
-        ))
+        // Geometry probes below the product boundary protect the current
+        // implementation. They do not freeze a line-box or font recipe into
+        // the product specification.
     }
 }

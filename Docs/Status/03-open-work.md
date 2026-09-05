@@ -20,18 +20,14 @@
 
 ## Human interface and accessibility acceptance
 
-- Add researcher-controlled Exact-source typography without letting the choice
-  alter authoritative bytes, parsing, operations, or native application chrome.
-- Replace the fixed two-plane Records composition with the approved compact
-  list-to-detail window, narrow task title, and capped single-line Note-reference
-  strips. Preserve exact originating-window routing, Record selection, reading
-  position, keyboard access, and source authority through the cutover.
-- Refine Settlement as a visible research milestone without representing task
-  completion or replaying acknowledgement motion on ordinary state display.
-- Reproduce the reported Sidebar pointer/keyboard focus anomaly against the
-  current bounded presentation adapter. Distinguish native first-responder
-  behavior from stale or duplicate custom emphasis before changing the target
-  interaction contract.
+- The approved Source-font controls, compact list-to-detail Records window,
+  Settlement milestone presentation, ordinary Edit body entry, and native-row
+  emphasis correction are implemented. Human acceptance remains open; the
+  2026-09-05 evidence is recorded in the verification chapter.
+- Exercise the original intermittent Sidebar symptom under physical mixed
+  pointer/keyboard use and window reactivation. Native row emphasis now rejects
+  pointer-mode writeback and no longer resynchronizes during drawing; unit and
+  focused XCUITest coverage do not establish every timing-sensitive sequence.
 - Re-run the affected Agent Changes exact-comparison/Undo UI journey after its
   isolated-launch failures are resolved. On 2026-09-04 two focused attempts
   failed before Settlement because the registered QA launch did not expose the

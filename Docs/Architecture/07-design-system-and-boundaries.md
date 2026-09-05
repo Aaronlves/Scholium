@@ -142,6 +142,10 @@ projects availability and publishes a selected workspace intent. Scholium
 semantic text colors adapt to AppKit's emphasized selected-row background
 without adding an Accent mark, underline, border, shadow, custom corner, or
 parallel transition.
+`SidebarSourceListRowView` filters native emphasis setters by the shared input
+modality, so a later AppKit repaint cannot re-emphasize pointer selection. Native
+responder/window changes still drive the row; no drawing-cycle synchronization
+is installed.
 `ScholiumSegmentedControl` owns the current bounded text-only horizontal
 single-choice groups that match its contract. It receives only a binding and
 finite option labels, then owns equal layout, the Paper-derived track, adaptive
@@ -185,7 +189,8 @@ window-to-Triptych membership, allowing SwiftUI's native window subtitle to
 appear when those windows span more than one distinct Triptych and disappear
 again when they do not.
 The Library header contains separate borderless SwiftUI Menus for Organize and
-Add; global Folder disclosure moves into Organize beside Filter and Order. Each
+Add. Organize separates Integrity from Content presence, uses one Metadata
+group, and exposes Order choices directly. Each
 Menu retains its own label, disabled state, focus target, activation, and menu
 presentation while hiding the redundant indicator and persistent container.
 The shared zero-hit-test pointer reader supplies only the shallow circular
@@ -320,10 +325,10 @@ violation.
 - `ScholiumMetrics.Document` names the explicit CSS-pixel top inset and
   per-window text-scale range; and
 - `DocumentAppearanceSettings.defaultSettings` is the sole built-in owner of
-  Review/Edit Body, heading, Callout, and line-width values. The generated
+  Review/Edit Body, heading, Callout, Source typography, and line-width values. The generated
   `ScholiumWebDesignTokens` transport derives those values rather than keeping
   a second typography table. `ScholiumDocumentRhythm` retains only
-  renderer-specific Source and layout values; the unit-explicit
+  renderer-specific layout values; the unit-explicit
   `ScholiumDocumentPresentationConfiguration` supplies scale and minimum
   insets without overriding Appearance semantics. The normalized **48–96ch**
   line width has a **66ch** default; generated CSS exports it as

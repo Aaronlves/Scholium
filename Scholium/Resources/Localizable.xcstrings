@@ -1,6 +1,212 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "No Matching Notes": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "No Matching Notes" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "没有匹配的笔记" } }
+      }
+    },
+    "No notes match the current filters.": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "No notes match the current filters." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "没有符合当前筛选条件的笔记。" } }
+      }
+    },
+    "Content": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Content" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "内容" } }
+      }
+    },
+    "Settled — Settle Again": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Settled — Settle Again" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已暂定 — 再次暂定" } }
+      }
+    },
+    "Changed since settlement — Settle Again": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Changed since settlement — Settle Again" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "暂定后已更改 — 再次暂定" } }
+      }
+    },
+    "%lld clerical correction(s)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld clerical correction(s)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 处文字修正"
+          }
+        }
+      }
+    },
+    "%@, Research Record": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@, Research Record"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@，研究记录"
+          }
+        }
+      }
+    },
+    "%lld.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld."
+          }
+        }
+      }
+    },
+    "Filter Notifications": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filter Notifications"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "筛选通知"
+          }
+        }
+      }
+    },
+    "Inspect Agent Change": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inspect Agent Change"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查看代理更改"
+          }
+        }
+      }
+    },
+    "Open Note": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Note"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开笔记"
+          }
+        }
+      }
+    },
+    "Opens the selected Research Record": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opens the selected Research Record"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开所选研究记录"
+          }
+        }
+      }
+    },
+    "Revises %lld earlier step(s)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revises %lld earlier step(s)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "修订前面的 %lld 个步骤"
+          }
+        }
+      }
+    },
+    "Step %lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Step %lld"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "步骤 %lld"
+          }
+        }
+      }
+    },
+    "·": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "·"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "·"
+          }
+        }
+      }
+    },
+    "•": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "•"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "•"
+          }
+        }
+      }
+    },
     "" : {
       "localizations" : {
         "en" : {
@@ -13581,7 +13787,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "定稿状态不可用"
+            "value" : "暂定状态不可用"
           }
         }
       }
@@ -13591,7 +13797,7 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "定稿状态不可用"
+            "value" : "暂定状态不可用"
           }
         }
       }

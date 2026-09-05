@@ -551,7 +551,8 @@ enum ScholiumWebDesignTokens {
             --scholium-document-line-width: \(number(defaults.lineWidthCharacterUnits))ch;
             --scholium-document-half-line-width: \(number(defaults.lineWidthCharacterUnits / 2))ch;
             --scholium-document-prose-font-size: \(number(body.fontSizePoints))pt;
-            --scholium-document-source-font-size: \(ScholiumDocumentRhythm.sourceFontSizePixels)px;
+            --scholium-document-source-font-size: \(number(defaults.source.fontSizePoints))pt;
+            --scholium-document-source-font-family: "Victor Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
             --scholium-document-title-size: 180%;
             --scholium-document-title-line-height: 1.15;
             --scholium-document-title-after: 0.65em;
@@ -1515,11 +1516,8 @@ enum ScholiumGrid {
     }
 
     /// The separate Records window owns a quiet collection-to-reading
-    /// transition. A fixed index keeps navigation stable while the reading
-    /// plane and step-local attachment strips own their scrolling axes.
+    /// transition within a compact window; step-local attachments scroll locally.
     enum ResearchRecords {
-        static let windowDragInset = foundationUnit * 8
-        static let collectionWidth = foundationUnit * 72
         static let collectionRowVerticalInset = foundationUnit * 2
         static let collectionRowSpacing = foundationUnit
         static let readingMeasure = foundationUnit * 180
@@ -1649,8 +1647,6 @@ enum ScholiumMetrics {
     }
 
     enum ResearchRecords {
-        static let windowDragInset = ScholiumGrid.ResearchRecords.windowDragInset
-        static let collectionWidth = ScholiumGrid.ResearchRecords.collectionWidth
         static let collectionRowVerticalInset =
             ScholiumGrid.ResearchRecords.collectionRowVerticalInset
         static let collectionRowSpacing = ScholiumGrid.ResearchRecords.collectionRowSpacing
@@ -2432,7 +2428,6 @@ struct ScholiumDocumentContentInsets: Equatable, Sendable {
 /// Provisional values shared by Read and editor renderers. They remain
 /// renderer-aware until the visual comparison freezes the rhythm contract.
 enum ScholiumDocumentRhythm {
-    static let sourceFontSizePixels = 15
     static let narrowWidthThresholdRootEms = ScholiumGrid.Document.narrowWidthThresholdRootEms
     static let sourceLineHeight = 1.5
     static let codeBlockInset: CGFloat = 16
@@ -3133,14 +3128,6 @@ enum ScholiumMotion {
         reduceMotion: Bool
     ) -> ContentTransition {
         reduceMotion ? .identity : .symbolEffect(.replace)
-    }
-
-    /// The exact-revision Settle confirmation is the one bounded positive
-    /// gesture in document chrome. The native toolbar item keeps its platform
-    /// behavior while this duration bounds its symbol confirmation frames;
-    /// AppKit owns the prominent surface transition.
-    static func settlementConfirmationInterval(reduceMotion: Bool) -> TimeInterval {
-        reduceMotion ? 0 : 0.58
     }
 
     static func transientStatus(reduceMotion: Bool) -> Animation? {

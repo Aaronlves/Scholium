@@ -1,5 +1,5 @@
 {
-  "authority": "Docs/Specification/02-notes-and-file-operations.md section 5.1",
+  "authority": "Docs/Architecture/06-documents-and-editor.md",
   "referenceMode": "Review",
   "comparisons": [
     {
@@ -36,7 +36,7 @@
       "surface": "Source",
       "classification": "requiredSourceDifference",
       "properties": [
-        "Victor Mono exact-source typography",
+        "researcher-selected exact-source typography, defaulting to Victor Mono",
         "logical source-line numbers",
         "visible YAML",
         "visible exact Markdown markers"

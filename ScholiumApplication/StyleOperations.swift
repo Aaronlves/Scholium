@@ -448,6 +448,9 @@ public actor StyleOperations: StyleUseCases {
             )
             : DocumentAppearanceSettings.defaultLineWidthCharacterUnits
         profile.settings.body.fontSizePoints = profile.settings.body.fontSizePoints.clamped(to: 9...24)
+        profile.settings.source.fontSizePoints = profile.settings.source.fontSizePoints.isFinite
+            ? profile.settings.source.fontSizePoints.clamped(to: 6...72)
+            : DocumentSourceAppearance().fontSizePoints
         profile.settings.body.lineHeight = profile.settings.body.lineHeight.clamped(to: 1.2...2.4)
         profile.settings.body.paragraphSpacingEm = profile.settings.body.paragraphSpacingEm.clamped(to: 0...2)
         profile.settings.body.firstLineIndentEm = profile.settings.body.firstLineIndentEm.clamped(to: 0...4)

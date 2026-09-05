@@ -102,6 +102,7 @@ struct SidebarView: View {
             ScholiumTriptychWorkspaceNavigator(
                 selectedSlot: context.currentWorkspaceSlot,
                 noteCounts: context.workspaceNoteCounts,
+                usesAccessibilitySize: dynamicTypeSize.isAccessibilitySize,
                 select: context.selectTriptychWorkspace
             )
                 .padding(.horizontal, ScholiumMetrics.Library.contentInset)
@@ -373,8 +374,11 @@ struct SidebarView: View {
         } else if folderTree.isEmpty {
             ScholiumLibrarySourceState {
                 ScholiumContentStateView(
-                    "No Notes",
-                    detail: Text("Create a Note to begin."),
+                    title: activeLibraryMenuFilterCount > 0
+                        ? Text("No Matching Notes") : Text("No Notes"),
+                    detail: activeLibraryMenuFilterCount > 0
+                        ? Text("No notes match the current filters.")
+                        : Text("Create a Note to begin."),
                     indicator: .symbol("doc.text"),
                     placement: .leading,
                     density: .compact

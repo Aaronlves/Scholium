@@ -596,6 +596,7 @@ extension SidebarOutlineSourceList {
                 owner: self
             ) as? SidebarOutlineRowView ?? SidebarOutlineRowView()
             row.identifier = Self.rowIdentifier
+            (outlineView as? SidebarOutlineView)?.configureSelectionPresentation(for: row)
             row.configure(
                 item: item,
                 isExpanded: outlineView.isItemExpanded(item),

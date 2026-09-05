@@ -56,9 +56,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     private weak var responderBeforeSettlement: NSResponder?
     private var documentInformationHostingController: DocumentInformationHostingController?
     private var settlementPopoverHostingController: DocumentSettlementPopoverHostingController?
-    private var settlementAnimationTimer: Timer?
-    private var settlementAnimationStartedAt: TimeInterval = 0
-    private var settlementPresentationState = AboutSettlementState.unavailable
     private var presentationCancellables: Set<AnyCancellable> = []
 
     init(
@@ -99,8 +96,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     }
 
     func invalidate() {
-        settlementAnimationTimer?.invalidate()
-        settlementAnimationTimer = nil
         documentInformationPopover.close()
         settlementPopover.close()
     }
@@ -216,12 +211,13 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             let item = actionItem(
                 identifier: itemIdentifier,
                 label: ScholiumL10n.string("Settle"),
-                systemImage: "checkmark",
+                systemImage: "bookmark",
                 action: #selector(toggleSettlement(_:))
             )
             item.possibleLabels = [
                 ScholiumL10n.string("Settle"),
-                ScholiumL10n.string("Settle Again"),
+                ScholiumL10n.string("Settled — Settle Again"),
+                ScholiumL10n.string("Changed since settlement — Settle Again"),
                 ScholiumL10n.string("Settlement Unavailable"),
             ]
             return item
@@ -456,7 +452,9 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
                 ? AboutSettlementPresentation.unavailable
                 : currentSettlementPresentation
             let action = DocumentSettlementAction.resolve(presentation.state)
-            let label = ScholiumL10n.localized(action.title)
+            let label = ScholiumL10n.localized(
+                DocumentSettlementToolbarPresentation.accessibilityLabel(for: presentation.state)
+            )
             let help = ScholiumL10n.localized(action.help)
             item.isHidden = !hasDocument
             item.label = label
@@ -466,17 +464,14 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
                 for: presentation.state,
                 to: item
             )
-            if settlementAnimationTimer == nil {
-                item.image = settlementImage(
-                    for: presentation.state,
-                    accessibilityDescription: label
-                )
-            }
+            item.image = settlementImage(
+                for: presentation.state,
+                accessibilityDescription: label
+            )
             item.isEnabled = target != nil
-            item.menuFormRepresentation?.title = label
+            item.menuFormRepresentation?.title = ScholiumL10n.localized(action.title)
             item.menuFormRepresentation?.image = item.image
             item.menuFormRepresentation?.isEnabled = target != nil
-            settlementPresentationState = presentation.state
             if !hasDocument || target == nil {
                 settlementPopover.close()
             }
@@ -714,7 +709,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
                     expectedRevision: target.fingerprint,
                     rationale: rationale
                 )
-                self.startSettlementConfirmationAnimation()
+                self.refreshPresentation()
                 try await self.appState.researchController.refreshResearchProjection()
                 self.refreshPresentation()
             },
@@ -791,15 +786,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         to item: NSToolbarItem
     ) {
         item.style = DocumentSettlementToolbarPresentation.style(for: state)
-        if let role = DocumentSettlementToolbarPresentation.backgroundColorRole(
-            for: state
-        ), let alpha = DocumentSettlementToolbarPresentation.backgroundTintAlpha(
-            for: state
-        ) {
-            item.backgroundTintColor = role.nsColor.withAlphaComponent(alpha)
-        } else {
-            item.backgroundTintColor = nil
-        }
+        item.backgroundTintColor = nil
     }
 
     private func semanticSettlementSymbol(
@@ -825,141 +812,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         return image
     }
 
-    private func startSettlementConfirmationAnimation() {
-        guard let item = toolbarItem(Item.settlement) else { return }
-        settlementAnimationTimer?.invalidate()
-        settlementAnimationTimer = nil
-
-        settlementPresentationState = .settled
-        applySettlementSurface(for: .settled, to: item)
-        let duration = ScholiumMotion.settlementConfirmationInterval(
-            reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        )
-        guard duration > 0 else {
-            item.image = settlementImage(
-                for: .settled,
-                accessibilityDescription: ScholiumL10n.dynamicString("Settle Again")
-            )
-            return
-        }
-
-        settlementAnimationStartedAt = ProcessInfo.processInfo.systemUptime
-        let timer = Timer(
-            timeInterval: 1 / 60,
-            target: self,
-            selector: #selector(advanceSettlementConfirmationAnimation(_:)),
-            userInfo: nil,
-            repeats: true
-        )
-        settlementAnimationTimer = timer
-        RunLoop.main.add(timer, forMode: .common)
-        advanceSettlementConfirmationAnimation(timer)
-    }
-
-    @objc private func advanceSettlementConfirmationAnimation(_ timer: Timer) {
-        let duration = ScholiumMotion.settlementConfirmationInterval(reduceMotion: false)
-        let elapsed = ProcessInfo.processInfo.systemUptime - settlementAnimationStartedAt
-        let progress = min(max(elapsed / duration, 0), 1)
-        if let item = toolbarItem(Item.settlement),
-            let frame = settlementConfirmationFrame(progress: progress)
-        {
-            item.image = frame
-        }
-        guard progress >= 1 else { return }
-        timer.invalidate()
-        if settlementAnimationTimer === timer {
-            settlementAnimationTimer = nil
-        }
-        toolbarItem(Item.settlement)?.image = settlementImage(
-            for: .settled,
-            accessibilityDescription: ScholiumL10n.dynamicString("Settle Again")
-        )
-    }
-
-    private func settlementConfirmationFrame(progress: Double) -> NSImage? {
-        guard let target = ScholiumNativeToolbarPresentation.symbol(
-            named: DocumentSettlementToolbarPresentation.symbol(for: .settled),
-            accessibilityDescription: nil
-        ) else { return nil }
-
-        let clamped = min(max(progress, 0), 1)
-        let drawProgress = smoothStep(
-            min(max((clamped - 0.06) / 0.72, 0), 1)
-        )
-        let canvasSize = NSSize(width: 20, height: 20)
-        let targetFrame = NSRect(x: 2, y: 2, width: 16, height: 16)
-        let image = NSImage(size: canvasSize, flipped: false) { _ in
-            guard drawProgress > 0,
-                let context = NSGraphicsContext.current?.cgContext
-            else { return true }
-            context.saveGState()
-            defer { context.restoreGState() }
-
-            // Reveal the final system glyph through one continuous writing
-            // corridor: short downstroke first, then the longer rising stroke.
-            let start = CGPoint(x: 3.2, y: 10.4)
-            let turn = CGPoint(x: 8.0, y: 5.5)
-            let end = CGPoint(x: 17.0, y: 14.8)
-            let firstLength = hypot(turn.x - start.x, turn.y - start.y)
-            let secondLength = hypot(end.x - turn.x, end.y - turn.y)
-            let revealDistance = CGFloat(drawProgress) * (firstLength + secondLength)
-            let path = CGMutablePath()
-            path.move(to: start)
-            if revealDistance <= firstLength {
-                path.addLine(
-                    to: Self.interpolate(
-                        from: start,
-                        to: turn,
-                        progress: revealDistance / firstLength
-                    )
-                )
-            } else {
-                path.addLine(to: turn)
-                path.addLine(
-                    to: Self.interpolate(
-                        from: turn,
-                        to: end,
-                        progress: min(
-                            (revealDistance - firstLength) / secondLength,
-                            1
-                        )
-                    )
-                )
-            }
-            context.addPath(path)
-            context.setLineWidth(7)
-            context.setLineCap(.round)
-            context.setLineJoin(.round)
-            context.replacePathWithStrokedPath()
-            context.clip()
-            target.draw(
-                in: targetFrame,
-                from: .zero,
-                operation: .sourceOver,
-                fraction: 1
-            )
-            return true
-        }
-        // Keep animated frames templated so AppKit selects the appropriate
-        // contrasting ink for the native prominent Glass surface.
-        image.isTemplate = true
-        return image
-    }
-
-    private static func interpolate(
-        from start: CGPoint,
-        to end: CGPoint,
-        progress: CGFloat
-    ) -> CGPoint {
-        CGPoint(
-            x: start.x + (end.x - start.x) * progress,
-            y: start.y + (end.y - start.y) * progress
-        )
-    }
-
-    private func smoothStep(_ value: Double) -> Double {
-        value * value * (3 - 2 * value)
-    }
 
     @objc private func toggleInspector(_ sender: Any?) {
         windowActions.setResearchInspectorVisible(!appState.shellState.inspector.isVisible)
@@ -1035,30 +887,17 @@ enum DocumentSettlementAction: Hashable {
 enum DocumentSettlementToolbarPresentation {
     static func symbol(for state: AboutSettlementState) -> String {
         switch state {
-        case .settled, .notYetSettled, .unavailable:
-            "checkmark"
+        case .settled:
+            "bookmark.fill"
+        case .notYetSettled, .unavailable:
+            "bookmark"
         case .changedSinceSettlement:
-            "exclamationmark.triangle"
+            "bookmark.circle"
         }
     }
 
     static func style(for state: AboutSettlementState) -> NSToolbarItem.Style {
-        switch state {
-        case .settled:
-            .prominent
-        case .changedSinceSettlement, .notYetSettled, .unavailable:
-            .plain
-        }
-    }
-
-    static func backgroundColorRole(
-        for state: AboutSettlementState
-    ) -> ScholiumColorRole? {
-        state == .settled ? .confirmed : nil
-    }
-
-    static func backgroundTintAlpha(for state: AboutSettlementState) -> CGFloat? {
-        state == .settled ? 0.78 : nil
+        .plain
     }
 
     static func symbolColorRole(
@@ -1067,21 +906,23 @@ enum DocumentSettlementToolbarPresentation {
         switch state {
         case .changedSinceSettlement:
             .attention
-        case .settled, .notYetSettled, .unavailable:
+        case .settled:
+            .confirmed
+        case .notYetSettled, .unavailable:
             nil
         }
     }
 
-    static func accessibilityValue(for state: AboutSettlementState) -> LocalizedStringResource {
+    static func accessibilityLabel(for state: AboutSettlementState) -> LocalizedStringResource {
         switch state {
         case .settled:
-            "Settled"
+            "Settled — Settle Again"
         case .changedSinceSettlement:
-            "Changed since settlement"
+            "Changed since settlement — Settle Again"
         case .notYetSettled:
-            "Not settled"
+            "Settle"
         case .unavailable:
-            "Settlement unavailable"
+            "Settlement Unavailable"
         }
     }
 }

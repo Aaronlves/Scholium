@@ -1169,6 +1169,12 @@ final class DocumentController: ObservableObject {
         session.originalEditingSource = source
         session.editingSource = source
         session.editingRevision = revision
+        if mode == .livePreview,
+           session.renderedReadFingerprint == DocumentFingerprint(content: source).sha256,
+           let range = session.readSelection?.exactUTF16Range,
+           range.lowerBound >= 0, range.upperBound <= source.utf16.count {
+            session.editorSession.prepareReadSelection(range)
+        }
         session.editorSession.authorizeAutomaticFocus()
         session.beginEditing(in: mode)
         editingDocumentPath = relativePath(for: target)

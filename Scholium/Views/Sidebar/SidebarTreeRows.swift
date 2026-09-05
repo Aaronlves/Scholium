@@ -74,8 +74,7 @@ struct SidebarNoteCommandGroup: Hashable, Identifiable {
 }
 
 func sidebarNoteCommandGroups(
-    isManagedCritique: Bool,
-    surface: SidebarNoteCommandSurface
+    isManagedCritique: Bool
 ) -> [SidebarNoteCommandGroup] {
     var groups = [SidebarNoteCommandGroup(
         kind: .opening,
@@ -85,7 +84,7 @@ func sidebarNoteCommandGroups(
     var editing: [SidebarNoteCommand] = []
     if !isManagedCritique { editing.append(.duplicate) }
     editing.append(.rename)
-    if surface == .accessibility { editing.append(.move) }
+    editing.append(.move)
     groups.append(SidebarNoteCommandGroup(
         kind: .editing,
         commands: editing
@@ -234,8 +233,7 @@ struct SidebarTreeNodeRow: View {
         let groups = sidebarNoteCommandGroups(
             isManagedCritique: CritiquePlacement.isManagedCritiquePath(
                 note.relativePath
-            ),
-            surface: .contextMenu
+            )
         )
         ForEach(groups.indices, id: \.self) { index in
             if index > groups.startIndex { Divider() }
@@ -250,8 +248,7 @@ struct SidebarTreeNodeRow: View {
         let groups = sidebarNoteCommandGroups(
             isManagedCritique: CritiquePlacement.isManagedCritiquePath(
                 note.relativePath
-            ),
-            surface: .accessibility
+            )
         )
         ForEach(groups) { group in
             ForEach(group.commands) { command in

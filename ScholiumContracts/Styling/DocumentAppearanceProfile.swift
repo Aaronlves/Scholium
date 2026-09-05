@@ -198,23 +198,36 @@ public struct DocumentCalloutAppearance: Codable, Hashable, Identifiable, Sendab
     }
 }
 
+public struct DocumentSourceAppearance: Codable, Hashable, Sendable {
+    public var fontFamily: String
+    public var fontSizePoints: Double
+
+    public init(fontFamily: String = "Victor Mono", fontSizePoints: Double = 11.25) {
+        self.fontFamily = fontFamily
+        self.fontSizePoints = fontSizePoints
+    }
+}
+
 public struct DocumentAppearanceSettings: Codable, Hashable, Sendable {
     public static let defaultLineWidthCharacterUnits: Double = 66
     public static let lineWidthCharacterUnitsRange: ClosedRange<Double> = 48...96
 
     public var lineWidthCharacterUnits: Double
     public var body: DocumentBodyAppearance
+    public var source: DocumentSourceAppearance
     public var headings: DocumentHeadingAppearance
     public var callouts: [DocumentCalloutAppearance]
 
     public init(
         lineWidthCharacterUnits: Double = Self.defaultLineWidthCharacterUnits,
         body: DocumentBodyAppearance = .init(),
+        source: DocumentSourceAppearance = .init(),
         headings: DocumentHeadingAppearance = .init(),
         callouts: [DocumentCalloutAppearance] = Self.defaultCallouts
     ) {
         self.lineWidthCharacterUnits = lineWidthCharacterUnits
         self.body = body
+        self.source = source
         self.headings = headings
         self.callouts = callouts
     }

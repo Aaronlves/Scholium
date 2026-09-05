@@ -89,15 +89,16 @@ per `(Triptych, originating Workspace window)`. `ResearchRecordsWindowCoordinato
 routes an exact Record/step selection to the existing Records scene and routes
 Note attachments back through the explicitly registered originating Workspace;
 it retains no research data and never opens or searches for a Workspace window.
-The window uses
-a fixed, non-collapsible scanning index beside a centered scholarly reading
-plane with a pinned question header and independently scrolling steps. Its only
+The window uses sequential list and detail states in `ResearchRecordsModel`;
+Back retains the selected Record, and view-owned scroll positions retain each
+Record's reading location. Detail pins the question above scrolling steps. Its only
 text input is the system Record-provider Search field; step content is a
 read-only bounded Markdown projection followed by that step's single-line,
 horizontally scrolling Note-reference strip. Paragraphs, emphasis, strong text,
 inline code, lists, blockquotes, and ordinary links render semantically.
 Headings and unsupported constructs remain visible literal source.
-The scene uses a hidden title-bar window style and installs no toolbar; periodic
+The scene uses a native task titlebar, defaults to 560 × 580 points, and has a
+420 × 360 minimum content size. It installs no toolbar; periodic
 store observation supplies refresh while native window controls and dragging
 remain AppKit-owned. The originating `WorkspaceWindowCoordinator` performs exact
 window focus after its window-scoped research controller receives the attachment

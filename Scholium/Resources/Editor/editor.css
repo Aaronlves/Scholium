@@ -30,7 +30,7 @@ body,
 }
 
 #editor .cm-editor.scholium-source-mode .cm-scroller {
-  font-family: "Victor Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-family: var(--scholium-document-source-font-family);
   font-size: var(--scholium-document-source-font-size);
   line-height: var(--scholium-rhythm-source-line-height);
 }
