@@ -53,6 +53,9 @@ for vault_root in 01-analyses 02-topics 03-works; do
   }
   cp -R "${FIXTURE_SOURCE}/${vault_root}" "${FIXTURE_COPY}/${vault_root}"
 done
+for fixture_support in README.md fixture-manifest.json attachment-samples; do
+  cp -R "${FIXTURE_SOURCE}/${fixture_support}" "${FIXTURE_COPY}/${fixture_support}"
+done
 if [[ -d "${FIXTURE_SOURCE}/.scholium" ]]; then
   cp -R "${FIXTURE_SOURCE}/.scholium" "${FIXTURE_COPY}/.scholium"
 fi

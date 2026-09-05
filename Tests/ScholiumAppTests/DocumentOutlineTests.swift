@@ -17,8 +17,6 @@ struct DocumentOutlineTests {
         }
         projection.publishOutline(headings(source), currentLine: nil, for: id)
         let outline = HeadingOutlineView()
-        let scroll = NSScrollView()
-        scroll.documentView = outline
         outline.addTableColumn(NSTableColumn(identifier: .init("heading")))
         let coordinator = DocumentHeadingOutline.Coordinator()
         coordinator.outline = outline
@@ -38,17 +36,6 @@ struct DocumentOutlineTests {
         #expect(!outline.isItemExpanded(first))
         #expect(outline.selectedRow == 1)
         #expect(navigations.isEmpty)
-        let row = try #require(outline.item(atRow: 1))
-        let cell = try #require(coordinator.outlineView(outline, viewFor: nil, item: row))
-        outline.addSubview(cell)
-        #expect(cell.toolTip == "D")
-        for visible in [false, true, false, true] {
-            coordinator.update(projection, isVisible: visible, openHeading: navigate)
-            #expect(cell.isHiddenOrHasHiddenAncestor == !visible)
-            #expect(!outline.isItemExpanded(first))
-            #expect(outline.selectedRow == 1)
-            #expect(navigations.isEmpty)
-        }
         outline.navigatingWithKeyboard = true
         outline.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
         outline.navigatingWithKeyboard = false

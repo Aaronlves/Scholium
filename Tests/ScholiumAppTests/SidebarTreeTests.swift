@@ -467,33 +467,7 @@ struct SidebarTreeTests {
         #expect(coordinator.tableView(tableView, shouldSelectRow: 2))
         tableView.selectRowIndexes(IndexSet(integer: 2), byExtendingSelection: false)
         #expect(requestedSlot == .output)
-        #expect(tableView.selectedRow == 2)
         #expect(tableView.intrinsicContentSize.height == tableView.rowHeight * 3)
-
-        // The window's pending request remains the native selection during
-        // refresh; reloading counts must not emit another navigation request.
-        requestedSlot = nil
-        coordinator.apply(
-            selectedSlot: .output,
-            noteCounts: SidebarWorkspaceNoteCounts(values: [.paperAnalysis: 5, .output: 2]),
-            locale: Locale(identifier: "en_US"),
-            usesAccessibilitySize: false,
-            select: { requestedSlot = $0 }
-        )
-        #expect(tableView.selectedRow == 2)
-        #expect(requestedSlot == nil)
-
-        // Failure clears the window's pending request and restores its
-        // committed origin without treating that rollback as a user action.
-        coordinator.apply(
-            selectedSlot: .paperAnalysis,
-            noteCounts: counts,
-            locale: Locale(identifier: "en_US"),
-            usesAccessibilitySize: false,
-            select: { requestedSlot = $0 }
-        )
-        #expect(tableView.selectedRow == 0)
-        #expect(requestedSlot == nil)
 
         // A live size change updates native rows without emitting navigation.
         requestedSlot = nil

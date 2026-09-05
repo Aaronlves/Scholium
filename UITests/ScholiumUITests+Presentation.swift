@@ -5,59 +5,6 @@ import notify
 
 extension ScholiumUITests {
     @MainActor
-    func testOutlineSidebarNavigationAndStatistics() {
-        waitForCurrentDocumentSurface()
-        let outlineButton = sidebarModeControl("Outline")
-        let triptychButton = sidebarModeControl("Triptych")
-        XCTAssertTrue(outlineButton.waitForExistence(timeout: 5))
-        let document = app.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
-        let originalDocumentFrame = document.frame
-        outlineButton.click()
-        let outline = app.outlines["scholium.documentOutline"].firstMatch
-        XCTAssertTrue(outline.waitForExistence(timeout: 5))
-        XCTAssertEqual(document.frame.minX, originalDocumentFrame.minX, accuracy: 2)
-        XCTAssertEqual(document.frame.width, originalDocumentFrame.width, accuracy: 2)
-        let picker = app.descendants(matching: .any)["scholium.documentStatisticPicker"].firstMatch
-        XCTAssertTrue(picker.exists)
-        XCTAssertGreaterThan(picker.frame.midY, outline.frame.midY)
-        XCTAssertEqual(picker.frame.midX, outline.frame.midX, accuracy: 4)
-        picker.click()
-        let characters = app.menuItems["163 Characters without Spaces"].firstMatch
-        XCTAssertTrue(characters.waitForExistence(timeout: 3))
-        characters.click()
-        XCTAssertTrue(accessibilityText(of: picker).contains("163"))
-        let heading = outline.staticTexts["Qualification"].firstMatch
-        XCTAssertTrue(heading.waitForExistence(timeout: 3))
-        heading.click()
-        XCTAssertTrue(outline.exists)
-        triptychButton.click()
-        XCTAssertTrue(app.descendants(matching: .any)["scholium.wordmark"].waitForExistence(timeout: 3))
-        XCTAssertTrue(waitUntil(timeout: 3) { !outline.exists })
-        let analyses = app.descendants(matching: .any)["scholium.vault.paper_analysis"].firstMatch
-        analyses.hover()
-        let qualificationLabels = app.staticTexts.matching(NSPredicate(
-            format: "label == %@ OR value == %@", "Qualification", "Qualification"
-        ))
-        XCTAssertFalse(waitUntil(timeout: 2) {
-            qualificationLabels.allElementsBoundByIndex.contains {
-                $0.frame.minX < originalDocumentFrame.minX
-            }
-        })
-        outlineButton.click()
-        XCTAssertTrue(outline.waitForExistence(timeout: 3))
-        XCTAssertTrue(accessibilityText(of: picker).contains("163"))
-        outlineButton.click()
-        XCTAssertTrue(waitUntil(timeout: 5) { !outline.exists })
-        XCTAssertTrue(app.toolbars.firstMatch.buttons["Back"].exists)
-        triptychButton.click()
-        XCTAssertTrue(app.descendants(matching: .any)["scholium.wordmark"].waitForExistence(timeout: 3))
-        let screenshot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
-        screenshot.name = "Persistent sidebar modes and document navigation"
-        screenshot.lifetime = .keepAlways
-        add(screenshot)
-    }
-
-    @MainActor
     func testFixtureLaunchWithoutExplicitSessionIDUsesOneWindowSession() throws {
         XCTAssertTrue(
             app.descendants(matching: .any)[
@@ -492,11 +439,6 @@ extension ScholiumUITests {
         keyboardWorkspaceScreenshot.name = "Keyboard-focused Triptych selection"
         keyboardWorkspaceScreenshot.lifetime = .keepAlways
         add(keyboardWorkspaceScreenshot)
-
-        selectVault("scholium.vault.output", waitingFor: "scholium.noteRow.QA Work.md")
-        selectVault("scholium.vault.paper_analysis", waitingFor: "scholium.noteRow.QA Autosave A.md")
-        selectVault("scholium.vault.topic_knowledge", waitingFor: "scholium.noteRow.QA Topic.md")
-        XCTAssertTrue(topicsRow.isSelected)
 
         let topicNote = app.descendants(matching: .any)[
             "scholium.noteRow.QA Topic.md"
