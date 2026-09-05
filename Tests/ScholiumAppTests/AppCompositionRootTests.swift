@@ -838,9 +838,20 @@ struct AppCompositionRootTests {
                 && secondWindow.noteIdentityByPath["Shared.md"] != nil
         }
 
+        var requestedSlots: [WorkspaceVaultSlot?] = []
+        let selectionObservation = firstWindow!.$requestedWorkspaceSelection.sink {
+            requestedSlots.append($0)
+        }
+        defer { selectionObservation.cancel() }
         firstWindow!.requestTriptychWorkspace(.topicKnowledge)
+        #expect(firstWindow!.requestedWorkspaceSelection == .topicKnowledge)
+        #expect(firstWindow!.currentWorkspaceSlot == .paperAnalysis)
         firstWindow!.requestTriptychWorkspace(.paperAnalysis)
-        try await Task.sleep(for: .milliseconds(100))
+        #expect(firstWindow!.requestedWorkspaceSelection == .paperAnalysis)
+        try await waitUntil("the last workspace request finished") {
+            firstWindow?.requestedWorkspaceSelection == nil
+        }
+        #expect(requestedSlots == [nil, .topicKnowledge, .paperAnalysis, nil])
         #expect(firstWindow!.currentRegisteredVault?.id == analysesVault.id)
         #expect(firstWindow!.discoveryController.library.workspaceSlot == .paperAnalysis)
 

@@ -7,11 +7,13 @@ import SwiftUI
 struct DocumentHeadingOutline: NSViewRepresentable {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ObservedObject var projection: DocumentInformationProjection
+    let isVisible: Bool
     let openHeading: (Int, Bool) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator() }
     func makeNSView(context: Context) -> NSScrollView {
         let scroll = NSScrollView()
+        scroll.isHidden = !isVisible
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
@@ -42,7 +44,7 @@ struct DocumentHeadingOutline: NSViewRepresentable {
         if let outline = view.documentView as? NSOutlineView {
             outline.rowSizeStyle = dynamicTypeSize.isAccessibilitySize ? .large : .default
         }
-        context.coordinator.update(projection, openHeading: openHeading)
+        context.coordinator.update(projection, isVisible: isVisible, openHeading: openHeading)
     }
 
     @MainActor
@@ -64,9 +66,12 @@ struct DocumentHeadingOutline: NSViewRepresentable {
         private var currentLine: Int?
         private var openHeading: ((Int, Bool) -> Void)?
 
-        func update(_ projection: DocumentInformationProjection, openHeading: @escaping (Int, Bool) -> Void) {
+        func update(_ projection: DocumentInformationProjection, isVisible: Bool, openHeading: @escaping (Int, Bool) -> Void) {
             self.openHeading = openHeading
             guard let outline else { return }
+            // SwiftUI opacity/hit testing does not retire AppKit tooltip regions.
+            // Hide the retained native subtree without discarding disclosure or scroll.
+            outline.enclosingScrollView?.isHidden = !isVisible
             synchronizing = true
             defer { synchronizing = false }
             let changedDocument = documentID != projection.documentID

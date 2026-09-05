@@ -22,14 +22,10 @@ declared chapter set:
 4. `README.md`, live construction call sites, tests, and scripts establish what
    is implemented and reachable now.
 
-The architecture set does not define product or interface behavior, and it
-does not replace the dated evidence in the status set.
-
 When target and current behavior differ, preserve the specification's safety,
 source-fidelity, recovery, privacy, and data-preservation requirements while
-replacing the superseded behavior in one bounded cutover. Do not add a parallel
-compatibility path, and never describe target behavior as already implemented
-merely because it is canonical.
+applying the bounded-cutover rule below. Never describe target behavior as
+already implemented merely because it is canonical.
 
 After changing a documentation manifest, canonical chapter, or repository
 README link, run:
@@ -56,26 +52,22 @@ For every user-facing interface, interaction, accessibility, or visual change:
    change an open target decision.
 3. Use the `scholium-interface-design` skill when it is available for product,
    visual, HIG, interaction, SwiftUI, AppKit, state, lifecycle, layout, or
-   presentation work. Select its design-only or implementation mode according
-   to the request.
+   presentation work. Select critique, design, decision-recording, or
+   implementation mode according to the request.
 4. Verify platform-design claims against the available Apple HIG authority and
    selected SDK documentation. Apple guidance does not define Scholium's
-   Triptych, evidence, Review, Discussion, Critique, or research governance.
+   Triptych, evidence, Review, Research Records, Critique, or research governance.
 5. Apply the Accessibility and Adaptation chapter to every change affecting
    text, color, focus, keyboard, motion, custom controls, WebKit/AppKit,
-   Inspector, Discussion, Critique, conflict, graph, or spatial relationships.
-
-The closed specification set is binding for target product and interface
-behavior. Current code that diverges is migration debt, not an alternative
-product rule.
+   Inspector, Research Records, Critique, conflict, graph, or spatial relationships.
 
 ## Implementation and architecture choices
 
-- Before designing a solution, study how mature comparable products and the
-  relevant platform ecosystem solve the same problem. Prefer proven patterns
-  and conventions unless Scholium's documented requirements justify a
-  departure; do not invent a new system without first examining established
-  approaches.
+- Start with the existing owner and established project/platform patterns.
+  Research mature comparable solutions when a new mechanism, material
+  interaction, dependency, or unresolved design choice requires comparison.
+  A bounded correction following a verified pattern needs no competitor survey.
+  Prefer proven approaches unless Scholium's requirements justify a departure.
 - Build progressively in stable end-to-end slices. First deliver the smallest
   version that is usable through the complete path, then add capability to the
   working product. A minimal version must be a sound foundation, not throwaway
@@ -118,7 +110,10 @@ product rule.
 - Keep authoritative source, researcher writing, agent-generated content, review records, and derived diagnostics visibly distinct.
 - Treat neutral links and transitive paths as Connections, never as philosophical evidence.
 - Store generated state outside research vaults except for the small portable `.scholium/` structure explicitly defined by the specification.
-- Follow the specification's direct-agent-edit model. Existing-note CLI mutations require the current fingerprint; Scholium autosaves, detects conflicts, creates Before Agent Work checkpoints for write-capable Research Actions, and provides selective or complete checkpoint restore. Do not reintroduce Proposal as an authorization layer.
+- Follow the current Agent collaboration chapter for MCP-mediated Note
+  mutations, revision checks, Agent Change evidence, and recovery. Do not
+  restore retired Research Action lifecycles or approval layers from old code
+  or skill guidance.
 - Preserve menu, toolbar, keyboard, pointer, focus, accessibility, cancellation, and recovery paths.
 - Do not rely on hover, drag, color, motion, secondary click, or gesture as the only route to a core task.
 - Do not invent an unimplemented feature to satisfy a design request.
@@ -165,11 +160,26 @@ After changing canonical skills, run:
 python3 Tools/Scripts/validate-scholium-toolkit-catalog.py
 ```
 
-Run the package validator for every changed skill and start a new Codex task
-when fresh discovery metadata is required. Never recreate a personal
-`scholium-toolkit` mirror as part of repository maintenance.
+Run the package validator for every changed skill. Existing tasks may retain
+startup discovery metadata; use a new task to verify fresh discovery when
+needed, without leaving the authorized maintenance unfinished.
 
 ## Verification
+
+For app-based testing and visual QA, open a disposable copy of the standard
+500-note test Triptych at `TestVaults/`. Register its
+`01-analyses`, `02-topics`, and `03-works` directories as the three respective
+vaults; never register the parent as one vault. Read its `README.md` for
+intentional diagnostic cases and format coverage. Preserve the source fixture
+and place the test copy and isolated app state beneath `.build/`.
+If the source fixture is absent, recreate it with
+`python3 Tools/Scripts/generate-test-vaults.py TestVaults`.
+`TestVaults/` is durable repository fixture data, not a build cache: never
+delete it during build or QA cleanup, and never run mutating tests against it
+directly. Keep it and its generator under version control.
+`build-qa-app.sh` defaults to this source fixture and copies it into `.build/`.
+Focused unit tests may retain their own minimal fixtures;
+they do not require launching the app.
 
 Keep tool output context-bounded: inspect filenames, counts, or summaries before
 opening excerpts; cap verbose commands and read only relevant failures; do not
@@ -185,7 +195,7 @@ files or require repository-wide inspection. File count, broad reading scope,
 or the word “final” does not establish final integration. Do not use a complete
 gate as scoped evidence when unrelated worktree changes would enter it; isolate
 the intended integration or report the boundary instead. Run the complete UI
-suite only when a roadmap Session or release gate explicitly requires it.
+suite only when the current integration or release gate explicitly requires it.
 
 Every long UI journey must own a distinct user-boundary claim. Reuse one
 existing representative journey instead of adding or running permutations,
@@ -201,7 +211,8 @@ For material UI implementation, verify the complete task and adjacent empty, loa
 The researcher authorizes Codex to use macOS Computer Use and UI automation for Scholium development and visual QA without asking again in each task. This standing authorization is limited to:
 
 - Xcode-built Debug or QA instances of Scholium;
-- disposable copies of `TestVaults` and isolated state under temporary directories;
+- disposable copies of the standard 500-note test Triptych specified above
+  and isolated test state beneath `.build/`;
 - launching, foregrounding, operating, resizing, and quitting those test instances; and
 - capturing nonprivate screenshots and accessibility state needed to verify the interface.
 

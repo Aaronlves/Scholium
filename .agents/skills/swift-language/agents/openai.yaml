@@ -1,4 +1,4 @@
 interface:
   display_name: "Swift Language"
-  short_description: "Apply current Swift language patterns safely"
-  default_prompt: "Use $swift-language to implement or review this Swift language change."
+  short_description: "Implement Swift, concurrency, APIs, and unit tests"
+  default_prompt: "Use $swift-language to implement, review, or test this Swift change, loading only its relevant guidance."

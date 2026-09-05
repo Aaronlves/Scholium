@@ -32,6 +32,26 @@
         "Completes requested edits and owning validation without seeking the same approval again.",
         "Preserves consequential safeguards and avoids application or release-shipped skill edits."
       ]
+    },
+    {
+      "id": 3,
+      "prompt": "检查开发规则是否会要求一个遵循既有模式的按钮间距修复研究竞品；只审查规则。",
+      "expected_output": "Checks proportional research routing and leaves implementation untouched.",
+      "files": [],
+      "assertions": [
+        "Distinguishes a bounded existing-pattern correction from an unresolved material design choice.",
+        "Does not demand a competitor survey for the former."
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "审查联网规则：已经拿到锁定版本的 SDK 类型定义，能否据此回答对应 API 签名？不要声称这是最新 SDK。",
+      "expected_output": "Distinguishes version-bound local primary evidence from claims requiring current external research.",
+      "files": [],
+      "assertions": [
+        "Accepts matching version-bound primary evidence while preserving higher-level browsing requirements.",
+        "Does not claim local definitions establish latest releases, security advisories, or current recommendations."
+      ]
     }
   ]
 }

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Swift Concurrency"
-  short_description: "Implement and review safe Swift concurrency"
-  default_prompt: "Use $swift-concurrency to diagnose or implement this Swift concurrency change."

@@ -1,0 +1,57 @@
+{
+  "skill_name": "scholium-agent-collaboration",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "只诊断 MCP 连接运行中 App 后把操作路由到错误 Triptych 的问题，不修改代码。",
+      "expected_output": "Selects Agent collaboration for a read-only request trace and adds trust only for the consequential scope boundary.",
+      "files": [],
+      "assertions": [
+        "Traces current workspace selection through the App bridge.",
+        "Does not invent Run, Session, pairing, or handoff state.",
+        "Does not edit source during diagnosis."
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "修复 Research Record 追加时接受过时 Note fingerprint 的问题，保留已有历史。",
+      "expected_output": "Agent collaboration owns Record reference validation; add trust for current-revision enforcement and engineering only if the implementation crosses owners.",
+      "files": [],
+      "assertions": [
+        "Checks live Note identity and revision before Record commit.",
+        "Preserves attributed history and rejects stale references.",
+        "Does not invent task finalization or convert Record writes into Agent Changes."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "只修 Agent Changes 窗口的焦点恢复和最小宽度布局，不改变 MCP、存储或 Undo 合同。",
+      "expected_output": "Routes to native interface implementation and Xcode interaction verification without selecting Agent collaboration.",
+      "files": [],
+      "assertions": [
+        "Recognizes presentation and interaction as the affected owners.",
+        "Does not expand layout work into protocol or persistence changes."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "改写外部 Agent 使用的哲学分析方法，不改 Scholium MCP、Core Protocol 或应用代码。",
+      "expected_output": "Routes to philosophical prompt and skill design without using the developer collaboration capability for method content.",
+      "files": [],
+      "assertions": [
+        "Does not edit application code or the bundled Core Protocol.",
+        "Does not confuse method content with MCP delivery or Record storage."
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "之前的 Before Agent Work 检查点和 Run 现在在哪里？只核对当前规范，不恢复旧功能。",
+      "expected_output": "Uses current collaboration authority to explain retired terminology without restoring an old lifecycle.",
+      "files": [],
+      "assertions": [
+        "Reads current specification and distinguishes historical behavior.",
+        "Does not create a compatibility workflow or modify application source."
+      ]
+    }
+  ]
+}

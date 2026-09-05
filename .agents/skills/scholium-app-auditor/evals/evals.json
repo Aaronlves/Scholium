@@ -24,12 +24,12 @@
     },
     {
       "id": 2,
-      "prompt": "只诊断一个现有 Run 在 outcome-unknown 写入收敛前错误形成 Record 的问题；不要做全应用审计。",
-      "expected_output": "Routes the bounded lifecycle defect to scholium-research-action-collaboration rather than retaining it in the whole-app auditor.",
+      "prompt": "只诊断 Research Record 追加拒绝了当前有效 Note 引用的问题；不要做全应用审计。",
+      "expected_output": "Routes the bounded Record operation to scholium-agent-collaboration rather than the whole-app auditor.",
       "files": [],
       "assertions": [
-        "Recognizes Research Action lifecycle as a narrow functional owner.",
-        "Does not broaden one Run-to-Record defect into a whole-app audit.",
+        "Recognizes Record reference validation as a narrow functional owner.",
+        "Does not broaden one Record operation into a whole-app audit.",
         "Remains read-only because the request asks only for diagnosis."
       ]
     }

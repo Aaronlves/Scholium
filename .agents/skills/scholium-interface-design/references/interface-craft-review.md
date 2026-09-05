@@ -91,7 +91,7 @@ without manufacturing a Cartesian test matrix.
   focus continuity, inactive-window behavior, and immediate Reduce Motion
   behavior.
 - Route motion-only terminology, precedent triage, review, or survey to the
-  motion-design owner. Runtime observation is required for claims about feel.
+  interface skill’s motion guidance. Runtime observation is required for claims about feel.
 
 ### Rendering and performance
 

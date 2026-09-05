@@ -59,7 +59,8 @@ wrong.
 
 ## Fix and return quickly
 
-1. Add or update the narrowest regression test feasible.
+1. Reuse existing proof; add or update a regression test when it can detect the
+   reported failure. A small visual adjustment does not by itself require a new test.
 2. Implement the smallest complete fix under repository authority.
 3. Run the focused test.
 4. Rebuild the same QA app and return it to the user.

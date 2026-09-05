@@ -1,6 +1,6 @@
 ---
 name: scholium-interface-design
-description: "Critique, refine, design, record approved decisions for, or implement Scholium's native macOS interface. Use for SwiftUI or AppKit views, windows, state and presentation ownership, navigation, focus, layout, typography, surfaces, icons, micro-interactions, accessibility, visual polish, or reusable interface systems. Select critique, design, decision-recording, or implementation mode; route motion-only review and genuine acceptance to their specialist owners."
+description: "Critique, design, record approved decisions for, or implement Scholium's native macOS interface. Use for SwiftUI/AppKit presentation, navigation, focus, layout, visual polish, accessibility, or motion terminology and review. Select critique, design, decision-recording, or implementation; interaction verification belongs to Xcode workflow."
 ---
 
 # Scholium Interface Design
@@ -28,6 +28,10 @@ required by `AGENTS.md`; Apple HIG and selected SDKs support platform claims.
 
 ## Method
 
+For motion terminology, a recording, or a bounded transition review, start with
+[motion guidance](references/motion-review.md). A terminology-only request needs
+no complete-window inspection or implementation loop.
+
 1. Select the mode from the user's requested side effects, frame the researcher
    task, and inspect the reachable workflow in complete window context.
 2. For Critique or Design, load
@@ -50,7 +54,7 @@ required by `AGENTS.md`; Apple HIG and selected SDKs support platform claims.
    Xcode toolchain/build/diagnostic/QA orchestration to the available Xcode
    workflow capability while keeping local `AGENTS.md` and the toolkit catalog
    authoritative. Route deterministic application journeys and genuine human
-   judgment to UI verification.
+   judgment to Xcode workflow's interaction verification.
 7. Report only the selected mode's output; do not promote design inspection,
    compilation, or automation into a stronger acceptance class.
 

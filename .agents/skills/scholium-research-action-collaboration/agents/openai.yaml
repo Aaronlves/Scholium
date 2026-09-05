@@ -1,4 +1,0 @@
-interface:
-  display_name: "Scholium Research Action Collaboration"
-  short_description: "Own Research Action and local Agent lifecycles"
-  default_prompt: "Use $scholium-research-action-collaboration to implement, diagnose, or test this Research Action or local Agent lifecycle."

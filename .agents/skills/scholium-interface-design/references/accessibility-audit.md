@@ -6,7 +6,7 @@ rules; the Scholium specification owns workflow meaning.
 
 This reference derives design obligations and findings. Deterministic
 application journeys and genuine assistive-technology or input acceptance
-belong to the UI-verification owner; structure inspection alone proves neither.
+belong to the Xcode workflow's interaction-verification path; structure inspection alone proves neither.
 
 ## Procedure
 
@@ -16,7 +16,7 @@ belong to the UI-verification owner; structure inspection alone proves neither.
    scaling, appearance, motion, language, and recovery routes from live authority.
 3. Inspect semantics and accessibility structure. When the claim requires an
    actual input or assistive technology, hand that exact task to the
-   UI-verification owner rather than treating structure as proof.
+   Xcode workflow's interaction-verification path rather than treating structure as proof.
 4. Exercise only adjacent states that can change the task's meaning or
    operability, including failure or recovery when relevant.
 5. Report automated evidence, exploratory observation, and genuine human

@@ -106,6 +106,7 @@ enum DocumentStatisticKind: String, CaseIterable, Identifiable {
 
 struct DocumentOutlineSidebar: View {
     @ObservedObject var projection: DocumentInformationProjection
+    let isVisible: Bool
     let openHeading: (Int, Bool) -> Void
 
     var body: some View {
@@ -122,7 +123,11 @@ struct DocumentOutlineSidebar: View {
                         .scholiumForeground(.mutedText)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    DocumentHeadingOutline(projection: projection, openHeading: openHeading)
+                    DocumentHeadingOutline(
+                        projection: projection,
+                        isVisible: isVisible,
+                        openHeading: openHeading
+                    )
                 }
                 Divider()
                 DocumentStatisticPicker(statistics: projection.statistics)

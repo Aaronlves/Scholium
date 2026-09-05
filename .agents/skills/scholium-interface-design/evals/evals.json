@@ -100,7 +100,7 @@
       "assertions": [
         "Does not copy fixed Web values, CSS recipes, or a global button restyle into Scholium.",
         "Uses Apple guidance and the live design system for native geometry, hit regions, feedback, and appearance.",
-        "Keeps motion-only review and measured performance with their specialist owners."
+        "Uses conditional motion guidance within interface work and the performance owner for measured performance."
       ]
     },
     {
@@ -112,6 +112,57 @@
         "Resolves routine layout choices without asking for renewed approval.",
         "Preserves source, focus, accessibility, conflict and recovery boundaries.",
         "Does not equate automation with human acceptance."
+      ]
+    },
+    {
+      "id": 11,
+      "prompt": "这个展开动画应该叫什么？只告诉我准确术语，不要审查或修改实现。",
+      "expected_output": "Uses the interface motion terminology path and answers the term without repository survey or implementation.",
+      "files": [],
+      "assertions": [
+        "Loads only motion terminology guidance needed for the answer, without unrelated full-window design work.",
+        "Does not propose implementation, install dependencies, or claim that the term authorizes an effect."
+      ]
+    },
+    {
+      "id": 12,
+      "prompt": "这是一个组件网站的动效录屏。判断它能不能直接复用到 Scholium 编辑器，先不要改代码。",
+      "expected_output": "Uses interface critique and conditional precedent triage, separates media from source/license/accessibility evidence, and remains read-only.",
+      "files": [],
+      "assertions": [
+        "Treats precedent triage as read-only within interface critique; does not install or edit.",
+        "Does not issue Reuse from a recording alone and routes later editor implementation to the editor owner."
+      ]
+    },
+    {
+      "id": 13,
+      "prompt": "这个 Triptych 切换感觉拖沓，先诊断一个可达转场，不要修复其他界面。",
+      "expected_output": "Uses interface critique with motion guidance for one reachable transition and a bounded evidence-backed verdict.",
+      "files": [],
+      "assertions": [
+        "Keeps the review bounded to the named transition and remains read-only.",
+        "Checks purpose, interruption, focus, repeated input, and reduced-motion meaning instead of inferring a defect from appearance alone."
+      ]
+    },
+    {
+      "id": 14,
+      "prompt": "把 Scholium 的所有动画统一成同一个 spring，并直接实现。",
+      "expected_output": "Inspects transition purposes and product authority before a proposed global spring change; identifies material conflicts instead of applying one recipe blindly.",
+      "files": [],
+      "assertions": [
+        "Does not treat the implementation request as read-only, but resolves material conflicts with product authority before a global change.",
+        "Requires purpose, ownership, reduced-motion behavior, and runtime evidence before recommending convergence."
+      ]
+    },
+    {
+      "id": 15,
+      "prompt": "只审查这个侧栏展开动效；若确实拖沓，请顺便修好。",
+      "expected_output": "Review first; a confirmed issue continues through the native implementation owner within the same request.",
+      "files": [],
+      "assertions": [
+        "Keeps motion review itself read-only.",
+        "Does not demand a new task or approval for already requested implementation.",
+        "Uses runtime evidence for perceived feel and keeps scope at the named transition."
       ]
     }
   ]

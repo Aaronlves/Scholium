@@ -2315,7 +2315,7 @@ final class WindowModel: ObservableObject {
     let windowWorkspaceController: WindowWorkspaceController
     private var workspaceCancellables: Set<AnyCancellable> = []
     private var libraryRevealTask: Task<Void, Never>?
-    private var requestedWorkspaceSelection: WorkspaceVaultSlot?
+    @Published private(set) var requestedWorkspaceSelection: WorkspaceVaultSlot?
     private var isRestoringWindowSession = false
     private var didRestoreWindowSession = false
     private var identityRefreshGeneration: UInt64 = 0

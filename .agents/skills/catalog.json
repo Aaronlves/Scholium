@@ -31,7 +31,8 @@
       "capability": "xcode-development-workflow",
       "skill": "xcode-workflow",
       "kind": "specialist",
-      "description": "Xcode toolchain, build, test, diagnostics, QA, and release-validation workflow."
+      "description": "Xcode builds and diagnostics, isolated QA interaction verification, human acceptance setup, and release artifact checks.",
+      "modes": ["build-and-diagnose", "automated", "human-acceptance"]
     },
     {
       "capability": "app-audit",
@@ -41,10 +42,10 @@
       "modes": ["architecture-decomposition", "defect-audit", "contract-conformance", "release-acceptance"]
     },
     {
-      "capability": "research-action-collaboration",
-      "skill": "scholium-research-action-collaboration",
+      "capability": "agent-collaboration",
+      "skill": "scholium-agent-collaboration",
       "kind": "specialist",
-      "description": "Research Action and local Agent lifecycle, Context, bounded mutation, result, continuation, and recovery."
+      "description": "Local MCP/App bridge, guarded Note operations, Agent Changes, and attributed Research Records."
     },
     {
       "capability": "source-fidelity",
@@ -75,13 +76,13 @@
       "capability": "derived-index",
       "skill": "scholium-derived-index-integrity",
       "kind": "specialist",
-      "description": "Search, links, relationships, diagnostics, and derived generations."
+      "description": "Derived retrieval correctness, tokenizer and engine evaluation, and bounded backend replacement."
     },
     {
       "capability": "native-interface",
       "skill": "scholium-interface-design",
       "kind": "interface",
-      "description": "Restrained, established-solution-first Scholium native macOS critique, visual refinement, design, decision recording, reusable interface-system work, and application-layer implementation.",
+      "description": "Native interface critique, design, implementation, and bounded motion review.",
       "modes": ["critique", "design", "decision-recording", "implementation"]
     },
     {
@@ -92,32 +93,11 @@
       "modes": ["generate", "edit"]
     },
     {
-      "capability": "motion-design",
-      "skill": "scholium-motion-design",
-      "kind": "interface",
-      "description": "Established-solution-first terminology, external-precedent triage, read-only review, and survey of native or bounded WebKit motion.",
-      "modes": ["terminology", "precedent-triage", "review", "survey"]
-    },
-    {
-      "capability": "ui-verification",
-      "skill": "scholium-ui-verification",
-      "kind": "specialist",
-      "description": "Deterministic Scholium macOS interaction verification and bounded human acceptance.",
-      "modes": ["automated", "human-acceptance"]
-    },
-    {
       "capability": "performance-audit",
       "skill": "scholium-performance-audit",
       "kind": "overlay",
       "description": "Measured runtime performance diagnosis and remediation.",
       "modes": ["diagnose", "remediate"]
-    },
-    {
-      "capability": "swift-index-engine",
-      "skill": "scholium-swift-index-engine",
-      "kind": "specialist",
-      "description": "Swift-owned lexical-engine and tokenizer evaluation, prototyping, integration, and cutover.",
-      "modes": ["decision", "fixture-prototype", "integrated-shadow", "cutover"]
     },
     {
       "capability": "rust-language",
@@ -129,25 +109,7 @@
       "capability": "swift-language",
       "skill": "swift-language",
       "kind": "language",
-      "description": "Modern non-concurrency Swift language mechanics."
-    },
-    {
-      "capability": "swift-concurrency",
-      "skill": "swift-concurrency",
-      "kind": "language",
-      "description": "Swift concurrency isolation, cancellation, and data-race safety."
-    },
-    {
-      "capability": "swift-api-design",
-      "skill": "swift-api-design-guidelines",
-      "kind": "language",
-      "description": "Swift API naming, labels, and documentation conventions."
-    },
-    {
-      "capability": "swift-testing",
-      "skill": "swift-testing",
-      "kind": "language",
-      "description": "Swift Testing patterns, fixtures, conversion, and isolation."
+      "description": "Swift implementation, API naming, concurrency, and unit/integration test design."
     }
   ]
 }

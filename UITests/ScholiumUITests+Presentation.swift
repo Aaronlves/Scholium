@@ -32,6 +32,17 @@ extension ScholiumUITests {
         XCTAssertTrue(outline.exists)
         triptychButton.click()
         XCTAssertTrue(app.descendants(matching: .any)["scholium.wordmark"].waitForExistence(timeout: 3))
+        XCTAssertTrue(waitUntil(timeout: 3) { !outline.exists })
+        let analyses = app.descendants(matching: .any)["scholium.vault.paper_analysis"].firstMatch
+        analyses.hover()
+        let qualificationLabels = app.staticTexts.matching(NSPredicate(
+            format: "label == %@ OR value == %@", "Qualification", "Qualification"
+        ))
+        XCTAssertFalse(waitUntil(timeout: 2) {
+            qualificationLabels.allElementsBoundByIndex.contains {
+                $0.frame.minX < originalDocumentFrame.minX
+            }
+        })
         outlineButton.click()
         XCTAssertTrue(outline.waitForExistence(timeout: 3))
         XCTAssertTrue(accessibilityText(of: picker).contains("163"))
@@ -481,6 +492,11 @@ extension ScholiumUITests {
         keyboardWorkspaceScreenshot.name = "Keyboard-focused Triptych selection"
         keyboardWorkspaceScreenshot.lifetime = .keepAlways
         add(keyboardWorkspaceScreenshot)
+
+        selectVault("scholium.vault.output", waitingFor: "scholium.noteRow.QA Work.md")
+        selectVault("scholium.vault.paper_analysis", waitingFor: "scholium.noteRow.QA Autosave A.md")
+        selectVault("scholium.vault.topic_knowledge", waitingFor: "scholium.noteRow.QA Topic.md")
+        XCTAssertTrue(topicsRow.isSelected)
 
         let topicNote = app.descendants(matching: .any)[
             "scholium.noteRow.QA Topic.md"

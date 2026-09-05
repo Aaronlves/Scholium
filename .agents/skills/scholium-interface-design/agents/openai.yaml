@@ -1,4 +1,4 @@
 interface:
   display_name: "Scholium Interface Design"
-  short_description: "Design and refine native Scholium interfaces"
-  default_prompt: "Use $scholium-interface-design to critique, refine, design, record, or implement this Scholium interface within the mode authorized by the request."
+  short_description: "Design native interfaces and review their motion"
+  default_prompt: "Use $scholium-interface-design to critique, design, or implement this interface or bounded motion change."

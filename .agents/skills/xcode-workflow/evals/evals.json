@@ -42,6 +42,46 @@
         "Does not turn Debug acceptance into packaging authorization.",
         "Does not require repeated approval for the requested tests."
       ]
+    },
+    {
+      "id": 4,
+      "prompt": "验证这个按钮的键盘和焦点路径，只跑一个可重复的 QA journey。",
+      "expected_output": "Automated mode: select the lowest deterministic layer, reuse one representative journey, assert the visible result and focus boundary, and clean up test-owned state.",
+      "files": [],
+      "assertions": [
+        "Selects Automated mode and does not broaden the request into a complete UI suite without an independent failure mode.",
+        "Uses synthetic fixtures and semantic controls, and reports only assertions established by the exact build and journey."
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "替我验收 VoiceOver；我不懂自动化。",
+      "expected_output": "Human-acceptance mode: automate safe setup and postconditions, then provide one irreducible VoiceOver action and an observable question while leaving the human gate explicit.",
+      "files": [],
+      "assertions": [
+        "Selects Human acceptance mode and does not claim synthetic events certify VoiceOver behavior.",
+        "Uses one isolated QA process and records the environment, action, observation, restoration, and pending or completed status."
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "只运行 Markdown parser 的 unit test，不需要打开 App 或做 UI 验收。",
+      "expected_output": "Uses the owning test target and Xcode build/test execution only as needed, without interaction verification or app launch.",
+      "files": [],
+      "assertions": [
+        "Does not enter Automated interaction or Human acceptance mode for a unit-only claim.",
+        "Does not launch a QA app or claim interaction proof from a non-UI test."
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "验证签名 DMG 的首次启动和 persisted access，先不要把它当普通 Debug UI 证据。",
+      "expected_output": "Automated release-specific verification: use the exact release artifact only for the packaging and first-launch claims, and keep the evidence class explicit.",
+      "files": [],
+      "assertions": [
+        "Keeps release-artifact evidence distinct from routine Debug UI automation and human acceptance.",
+        "Does not claim more than the exact artifact, fixture, settings, and first-launch journey establish."
+      ]
     }
   ]
 }

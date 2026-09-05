@@ -15,12 +15,88 @@
     {
       "id": 1,
       "prompt": "Review a proposed Swift abstraction involving an existential return, serialization, and public naming. Decide what this skill owns and route the rest.",
-      "expected_output": "A caller-driven type decision with serialization preserved and naming routed to the API-design capability.",
+      "expected_output": "A caller-driven type decision with serialization preserved and naming handled through the conditional API-naming reference.",
       "files": [],
       "assertions": [
         "Chooses the type abstraction from caller and runtime needs rather than novelty.",
         "Treats serialization as an external contract requiring fixtures.",
-        "Routes public naming without duplicating another skill's rules."
+        "Loads only API naming guidance needed for the review; does not load unrelated concurrency or testing references."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Review this small public Swift API for unclear names and argument labels. Show representative improved call sites and preserve behavior.",
+      "expected_output": "A concise call-site-driven naming review grounded in the official Swift guidelines and current project terminology.",
+      "files": [],
+      "assertions": [
+        "Judges grammar and semantic roles at representative call sites.",
+        "Distinguishes side-effecting and value-returning operations.",
+        "Updates repository-owned callers without retaining an obsolete alias."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "A naming cleanup also touches protocol isolation and lint configuration. Keep the API review bounded and route adjacent concerns.",
+      "expected_output": "A bounded naming recommendation using concurrency guidance only if isolation is in scope; lint configuration remains with its live tooling.",
+      "files": [],
+      "assertions": [
+        "Does not invent concurrency or lint rules.",
+        "Uses live call sites and official guidance rather than copied examples.",
+        "Reports any intentional source break."
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Diagnose a strict-concurrency error around UI state and background processing. Use the repository's selected toolchain and make the smallest behavior-preserving fix.",
+      "expected_output": "A live-toolchain-grounded ownership model that keeps UI state isolated and moves only safe work across the boundary.",
+      "files": [],
+      "assertions": [
+        "Identifies the mutable owner and every crossing value before adding annotations.",
+        "Avoids unchecked conformance unless a real synchronization invariant is proven.",
+        "Preserves UI responsiveness and reports the chosen isolation invariant."
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Review an async callback bridge that may outlive its owner and can be cancelled or completed twice.",
+      "expected_output": "A bounded lifetime and cancellation repair with exactly-once completion and focused interleaving tests.",
+      "files": [],
+      "assertions": [
+        "Gives the task or stream an explicit owner and cancellation path.",
+        "Prevents double completion and stale callbacks.",
+        "Does not use sleeps or detached work as a shortcut."
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Plan focused tests for parsing, asynchronous persistence, a macOS interaction, and a performance claim. Choose the evidence layer for each without rewriting the existing suite.",
+      "expected_output": "A bounded test plan that uses direct tests for logic and preserves distinct UI and performance evidence mechanisms.",
+      "files": [],
+      "assertions": [
+        "Chooses the lowest deterministic layer for each claim.",
+        "Keeps UI and performance verification in their owning frameworks and skills.",
+        "Avoids test-framework conversion for syntax novelty."
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Write a regression test for an asynchronous event without sleeps, shared mutable fixtures, or private data in diagnostics.",
+      "expected_output": "A deterministic focused test with controlled event delivery, isolated cleanup, and a clear failure signal.",
+      "files": [],
+      "assertions": [
+        "Controls time and event delivery structurally.",
+        "Uses disposable isolated state and deterministic cleanup.",
+        "Reports the exact behavior proven and surrounding suite run."
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "把这一个 XCTest suite 转为 Swift Testing，其他 suites 保持原样；不改生产代码。",
+      "expected_output": "Uses conditional unit-testing guidance and converts only the authorized suite.",
+      "files": [],
+      "assertions": [
+        "Allows both frameworks in the target without duplicate tests or API mixing within one test.",
+        "Does not broaden migration to other suites or production code."
       ]
     }
   ]

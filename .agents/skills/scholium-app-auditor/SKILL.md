@@ -22,7 +22,7 @@ Apply the shared [development contract](../scholium-toolkit-maintenance/referenc
 - **Release acceptance:** build an evidence ledger and decision using
   [release acceptance](references/release-acceptance.md).
 
-Route a bounded Research Action, source, file, trust, editor, index, interface,
+Route a bounded Agent collaboration, source, file, trust, editor, index, interface,
 motion, performance, language, or test audit to its narrow owner. A decomposition
 opportunity, implementation divergence, superseded-path residue, open gate,
 and confirmed defect are different claims.

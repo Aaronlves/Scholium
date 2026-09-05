@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scholium Agent Collaboration"
+  short_description: "Maintain MCP, Agent Changes, and Research Records"
+  default_prompt: "Use $scholium-agent-collaboration to implement, diagnose, or test this external-Agent collaboration boundary."

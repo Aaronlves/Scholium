@@ -17,6 +17,8 @@ struct DocumentOutlineTests {
         }
         projection.publishOutline(headings(source), currentLine: nil, for: id)
         let outline = HeadingOutlineView()
+        let scroll = NSScrollView()
+        scroll.documentView = outline
         outline.addTableColumn(NSTableColumn(identifier: .init("heading")))
         let coordinator = DocumentHeadingOutline.Coordinator()
         coordinator.outline = outline
@@ -24,7 +26,7 @@ struct DocumentOutlineTests {
         outline.delegate = coordinator
         var navigations: [(Int, Bool)] = []
         let navigate: (Int, Bool) -> Void = { navigations.append(($0, $1)) }
-        coordinator.update(projection, openHeading: navigate)
+        coordinator.update(projection, isVisible: true, openHeading: navigate)
         #expect(outline.numberOfRows == 4)
         #expect(outline.level(forRow: 2) == 2)
         #expect(outline.selectedRow == -1)
@@ -32,10 +34,21 @@ struct DocumentOutlineTests {
         outline.collapseItem(first)
         #expect(outline.numberOfRows == 2)
         projection.publishOutline(headings(source + "\nMore prose."), currentLine: 7, for: id)
-        coordinator.update(projection, openHeading: navigate)
+        coordinator.update(projection, isVisible: true, openHeading: navigate)
         #expect(!outline.isItemExpanded(first))
         #expect(outline.selectedRow == 1)
         #expect(navigations.isEmpty)
+        let row = try #require(outline.item(atRow: 1))
+        let cell = try #require(coordinator.outlineView(outline, viewFor: nil, item: row))
+        outline.addSubview(cell)
+        #expect(cell.toolTip == "D")
+        for visible in [false, true, false, true] {
+            coordinator.update(projection, isVisible: visible, openHeading: navigate)
+            #expect(cell.isHiddenOrHasHiddenAncestor == !visible)
+            #expect(!outline.isItemExpanded(first))
+            #expect(outline.selectedRow == 1)
+            #expect(navigations.isEmpty)
+        }
         outline.navigatingWithKeyboard = true
         outline.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
         outline.navigatingWithKeyboard = false

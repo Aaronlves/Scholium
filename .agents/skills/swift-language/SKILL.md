@@ -1,51 +1,36 @@
 ---
 name: swift-language
-description: "Apply modern Swift idioms to non-concurrency, non-SwiftUI code. Use for generics, protocols, enums, closures, Codable, typed throws, builders, wrappers, existential or opaque types, Regex, formatting, collections, or interoperability; route naming and isolation to their dedicated capabilities."
+description: "Implement, review, or test Swift code, including API naming, type design, concurrency, and unit/integration tests. Use for compiler diagnostics, isolation, async lifetimes, serialization, refactoring, or Swift Testing. Route view layout and interaction to native interface work, and build/QA execution to Xcode workflow."
 ---
 
 # Swift Language
 
-Use the smallest language-level change that makes current code clearer or
-safer without silently changing behavior.
+Make the smallest Swift change that satisfies the request and preserves
+unaffected behavior. A language cleanup does not authorize adjacent refactoring.
 
 Apply the shared [development contract](../scholium-toolkit-maintenance/references/researcher-codex-development-contract.md).
-The repository manifest, selected toolchain, SDK, deployment target, source,
-tests, and current official Swift documentation are live authority. Do not use
-this skill as a copied Swift handbook.
+Inspect the declaration, callers, tests, serialization or ABI boundary, selected
+toolchain, and relevant official Swift/SDK evidence before changing behavior.
 
-## Method
+## Load only the affected guidance
 
-1. Read the declaration, representative callers, tests, serialization or ABI
-   boundary, and actual compiler settings.
-2. State the behavior and external contracts that remain in scope.
-3. Choose the simplest expression, control flow, type abstraction, protocol
-   boundary, or data transformation that communicates that behavior.
-4. Verify toolchain and platform availability from primary sources and by
-   compiling the focused change.
-5. Run owning tests and report any intentional source, wire-format, ordering,
-   error, or availability change.
+- API names, argument labels, or public documentation: [API naming](references/api-naming.md).
+- Isolation, Sendable, tasks, cancellation, callbacks, or shared mutable state:
+  [concurrency](references/concurrency.md).
+- Writing or converting direct unit/integration tests:
+  [unit testing](references/unit-testing.md).
 
-## Boundaries
+A synchronous helper correction needs none of these references unless it changes
+one of their contracts. Do not load all three simply because the file is Swift.
 
-- Route call-site naming and documentation to the API-design capability.
-- Route actor isolation, task lifetime, synchronization, and `Sendable` to the
-  concurrency capability.
-- Route view, scene, state, navigation, and native presentation ownership to
-  the interface capability.
-- Do not turn syntax cleanup into architecture, persistence, localization, or
-  an obsolete-path preservation task.
+## Implementation and proof
 
-## Invariants
+Choose types and abstractions from actual callers and runtime heterogeneity.
+Preserve evaluation order, errors, representation, collection ordering, and
+external contracts unless explicitly replaced. Prefer the surrounding idiom;
+use builders, wrappers, existentials, or generics only when they clarify owned
+behavior. Verify toolchain-sensitive features against the selected environment.
 
-- Prefer surrounding code idiom and obvious control flow over novelty.
-- Preserve evaluation order, error identity, data representation, collection
-  ordering, and external contracts unless the task changes them explicitly.
-- Choose generics, opaque results, or existentials from caller needs and runtime
-  heterogeneity, not fashion.
-- Use builders, wrappers, interpolation, regexes, and custom formatting only
-  when they remove repeated policy without hiding consequential effects.
-- Treat attributes, interoperability, and beta or newer syntax as
-  toolchain-sensitive; confirm exact live support instead of recording versions here.
-
-Use official Swift references and focused compiler evidence for detailed syntax.
-Do not modernize adjacent code merely because it is reachable.
+Run owning checks under `AGENTS.md`. UI interaction and performance require
+their own evidence; a direct unit test cannot establish either. Report the
+behavior changed, focused proof, and any intentional source or wire-format break.

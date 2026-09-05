@@ -1,7 +1,7 @@
 interface:
   display_name: "Xcode Workflow"
-  short_description: "Build, test, diagnose, and iterate in Xcode"
-  default_prompt: "Use $xcode-workflow to run the appropriate Xcode build, test, diagnostics, feedback, or release-validation workflow."
+  short_description: "Build, diagnose, and verify isolated macOS workflows"
+  default_prompt: "Use $xcode-workflow for this build, diagnosis, interaction verification, or human acceptance setup."
 
 policy:
   allow_implicit_invocation: true

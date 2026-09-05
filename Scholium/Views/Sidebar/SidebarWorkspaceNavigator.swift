@@ -116,7 +116,11 @@ struct ScholiumTriptychWorkspaceNavigator: NSViewRepresentable {
             self.select = select
             guard let tableView else { return }
             tableView.rowSizeStyle = desiredRowSizeStyle
-            if contentChanged { tableView.reloadData() }
+            if contentChanged {
+                isSynchronizingSelection = true
+                tableView.reloadData()
+                isSynchronizingSelection = false
+            }
             synchronizeSelection(in: tableView)
         }
 

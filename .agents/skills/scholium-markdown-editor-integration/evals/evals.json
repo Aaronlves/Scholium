@@ -4,7 +4,7 @@
     {
       "id": 0,
       "prompt": "修复 CodeMirror 与 WKWebView bridge 的丢失消息问题；验证切换、撤销、IME 和保存。",
-      "expected_output": "Editor-integration owns the bridge and session correction, with source-fidelity, trust, or UI verification added only for their distinct claims.",
+      "expected_output": "Editor-integration owns the bridge and session correction, with source-fidelity, trust, or Xcode interaction verification added only for their distinct claims.",
       "files": [],
       "assertions": [
         "Traces the active session, document, revision, message ordering, and teardown lifecycle.",

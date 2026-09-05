@@ -15,11 +15,67 @@
     {
       "id": 1,
       "prompt": "评估是否将当前 SQLite tokenizer 换成 Swift-owned tokenizer；需要比较 CJK 语义、恢复和规模。",
-      "expected_output": "Routes the mechanism decision to scholium-swift-index-engine, with derived-index integrity added only for the active contract and result-equivalence boundary.",
+      "expected_output": "Uses the same derived-index skill with its conditional engine-evaluation reference for the mechanism comparison.",
       "files": [],
       "assertions": [
         "Does not treat a backend or tokenizer decision as an ordinary current-index bug.",
         "Does not let the candidate engine own vault access, authorization, or writable source."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "比较现有 Search backend、Apple Natural Language 和 SQLite FTS5 tokenizer；先做机制决策，不写生产代码。",
+      "expected_output": "Uses engine-evaluation guidance for a decision-only comparison with applicable primary evidence and no production edits.",
+      "files": [],
+      "assertions": [
+        "Names one measurable correctness, scale, portability, or recovery gap.",
+        "Checks platform, dependency, license, packaging, privacy, and failure costs before adoption.",
+        "Does not treat feature count or an isolated benchmark as adoption proof."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "在生成的中英日韩混合 fixture 上 prototype 一个候选 tokenizer，并与当前 backend 比较。",
+      "expected_output": "Uses engine-evaluation guidance for an isolated fixture prototype without production authority.",
+      "files": [],
+      "assertions": [
+        "Uses generated disposable fixtures and compares document/query policy together.",
+        "Preserves raw fields and source ranges separately from normalized terms.",
+        "Does not give the prototype vault access or mutation authority."
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "让候选 Swift index 在单一 boundary 后 shadow 当前 backend，比较 GUI/CLI 结果、恢复和测量成本。",
+      "expected_output": "Performs explicitly requested shadow comparison; the baseline remains the production result while comparing.",
+      "files": [],
+      "assertions": [
+        "Compares clean rebuild and mutation histories over the same authorized snapshot.",
+        "Reports semantic differences before performance differences.",
+        "Does not publish the shadow candidate as the active generation."
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "候选 index 已通过合同、重建、取消、恢复、打包和 portability 证据；现在授权切换并删除旧 backend route。",
+      "expected_output": "Uses derived-index engine guidance and adds engineering for an actual architecture cutover; performs one bounded replacement.",
+      "files": [],
+      "assertions": [
+        "Updates every repository-owned consumer and the versioned index boundary.",
+        "Deletes the superseded route and does not retain a compatibility adapter or dual writer.",
+        "Uses repository engineering because the production backend lifecycle and ownership boundary change.",
+        "Keeps exact documents, access decisions, conflicts, and writes outside the engine.",
+        "Does not add a mandatory shadow stage when existing required evidence is sufficient."
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "只修改这条搜索结果的文字颜色，排名、范围和索引状态都不变。",
+      "expected_output": "Routes presentation-only work to native interface design without loading index-engine guidance.",
+      "files": [],
+      "assertions": [
+        "Does not select derived-index work solely because the surface is Search.",
+        "Preserves current search semantics."
       ]
     }
   ]

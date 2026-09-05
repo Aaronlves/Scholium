@@ -1,4 +1,0 @@
-interface:
-  display_name: "Scholium Motion Design"
-  short_description: "Review restrained, precedent-led Scholium motion"
-  default_prompt: "Use $scholium-motion-design to inspect existing and mature motion solutions first, avoid unnecessary animation, and name, review, or triage this motion for Scholium."

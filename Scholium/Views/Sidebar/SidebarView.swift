@@ -34,6 +34,7 @@ struct SidebarContext {
     let libraryFocusRequestGeneration: UInt64
     let currentVaultRole: VaultRole
     let currentWorkspaceSlot: WorkspaceVaultSlot?
+    let requestedWorkspaceSlot: WorkspaceVaultSlot?
     let canMutateLibrary: Bool
     let sourceMutationGeneration: UInt64
     let filterOptions: SidebarLibraryFilterOptions
@@ -100,7 +101,7 @@ struct SidebarView: View {
         VStack(spacing: 0) {
             brandHeader
             ScholiumTriptychWorkspaceNavigator(
-                selectedSlot: context.currentWorkspaceSlot,
+                selectedSlot: context.requestedWorkspaceSlot ?? context.currentWorkspaceSlot,
                 noteCounts: context.workspaceNoteCounts,
                 usesAccessibilitySize: dynamicTypeSize.isAccessibilitySize,
                 select: context.selectTriptychWorkspace

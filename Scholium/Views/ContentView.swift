@@ -96,7 +96,10 @@ struct ContentView: View {
                         .opacity(shellState.sidebarContent == .triptych ? 1 : 0)
                         .allowsHitTesting(shellState.sidebarContent == .triptych)
                         .accessibilityHidden(shellState.sidebarContent != .triptych)
-                    DocumentOutlineSidebar(projection: appState.documentInformation) { line, focusesEditor in
+                    DocumentOutlineSidebar(
+                        projection: appState.documentInformation,
+                        isVisible: shellState.sidebarContent == .outline
+                    ) { line, focusesEditor in
                         if let descriptor = appState.currentDocumentDescriptor,
                            appState.documentController.chromeProjection.mode != .read {
                             appState.documentController.session(for: descriptor).editorSession.goToLine(line, focusesEditor: focusesEditor)
@@ -639,6 +642,7 @@ struct ContentView: View {
             libraryFocusRequestGeneration: appState.libraryFocusRequestGeneration,
             currentVaultRole: appState.currentVaultRole,
             currentWorkspaceSlot: currentWorkspaceSlot,
+            requestedWorkspaceSlot: appState.requestedWorkspaceSelection,
             canMutateLibrary: appState.currentRegisteredVault != nil
                 && !appState.libraryMutationController.isCreatingNote
                 && !appState.libraryMutationController.isMutatingFolder,

@@ -1,6 +1,6 @@
 ---
 name: xcode-workflow
-description: "Run end-to-end Apple-platform development workflows through the intended Xcode installation: select Xcode MCP, explicit toolchain shell commands, or visual Computer Use; preflight the toolchain and active project; build, test, inspect diagnostics and logs, launch isolated QA builds, support rapid user bug feedback, and perform release-only archive, signing, sandbox, or packaging checks. Use when the user asks to use Xcode or Xcode MCP, build or test an Xcode project, inspect Xcode diagnostics, start a development feedback build, debug an Apple-platform app, search current SDK documentation, or validate Xcode-specific release behavior."
+description: "Build, test, or diagnose Apple-platform projects using Xcode MCP or the selected toolchain; run isolated QA interaction checks and stage human acceptance. Use for builds, SDK documentation, keyboard/focus/accessibility journeys, feedback builds, or authorized release-artifact checks. Direct unit-test design belongs to Swift language work."
 ---
 
 # Xcode Workflow
@@ -8,6 +8,17 @@ description: "Run end-to-end Apple-platform development workflows through the in
 Apply the shared [development contract](../scholium-toolkit-maintenance/references/researcher-codex-development-contract.md).
 Use the live repository build and QA rules. Identify the actual workspace,
 project, or `Package.swift`; do not invent a project wrapper.
+
+## Select the requested work
+
+- **Build and diagnose:** use the toolchain and execution workflow below.
+- **Automated:** verify one app interaction through
+  [interaction verification](references/interaction-verification.md).
+- **Human acceptance:** use that same reference to stage the irreducible human
+  judgment, preserving its distinction from automated evidence.
+
+Read-only verification planning does not require a build or toolchain preflight.
+Unit-only execution does not require app launch or the interaction references.
 
 ## Choose the execution surface
 

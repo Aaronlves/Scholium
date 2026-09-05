@@ -1,6 +1,6 @@
 ---
 name: scholium-derived-index-integrity
-description: "Implement, diagnose, or test Scholium's derived search, link, relationship, diagnostic, and index state. Use for lexical or federated retrieval, saved queries, ranking, scopes, CJK or Unicode, semantic projections, link resolution, incremental generations, recovery, or GUI and CLI parity."
+description: "Implement, diagnose, or test Scholium Search, links, and derived indexes; evaluate or replace tokenizers and index engines. Use for ranking, scopes, saved queries, CJK/Unicode, source locations, incremental rebuild, recovery, or GUI/CLI parity. Exclude authoritative source writes and unmeasured engine rewrites."
 ---
 
 # Scholium Derived Index Integrity
@@ -10,9 +10,9 @@ traceable to exact source revisions. Retrieval is a lead, not evidence or write
 authority.
 
 Apply the shared [development contract](../scholium-toolkit-maintenance/references/researcher-codex-development-contract.md).
-Use this skill for correctness of the active derived backend. Use the Swift
-index-engine specialist only when comparing or changing tokenizer, storage
-engine, dependency, or backend lifecycle.
+For a tokenizer, engine, dependency, or backend-lifecycle decision, load
+[engine evaluation](references/engine-evaluation.md). Ordinary active-index
+corrections use the method below without an engine comparison or shadow runtime.
 
 ## Method
 

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Swift API Design"
-  short_description: "Design clear and idiomatic Swift APIs"
-  default_prompt: "Use $swift-api-design-guidelines to review and improve these Swift API names and call sites."

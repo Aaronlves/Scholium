@@ -91,8 +91,6 @@ master and derive exact-size delivery without distortion.
   source basis and interpretation when applicable, absolute path, requested and
   measured raster facts, and explicit visual-proof or production-integrated
   status; a contact sheet is not the only deliverable.
-- Never edit, trace, recolor, crop, or reuse the exact application-icon
-  composition.
 - Product illustration does not define interface layout, semantic Variables,
   accessibility behavior, or production acceptance.
 - The depicted action or relation remains intelligible without making adjacent

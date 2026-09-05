@@ -5,15 +5,22 @@ Scholium's local development skills. Apply it whenever a task relies on an
 external fact, standard, API, toolchain or dependency behavior, security
 guidance, best practice, recommendation, benchmark method, or platform rule.
 
-## Search the live web
+## Select evidence for the claim
 
-Live web search is mandatory. Do not treat model memory, a bundled skill
-reference, a previously visited page, a search-result snippet, or the current
-implementation as evidence that an external claim is current.
+For version-bound API signatures and behavior, inspect the selected SDK,
+installed type definitions, or pinned dependency source and its matching official
+documentation. Cite the version and local evidence; it does not establish what
+is latest. Reuse evidence already inspected in this task while its applicability
+holds. Model memory, search snippets, and copied skill summaries are not primary
+evidence.
+
+Use live primary sources for current releases, maintenance, security advisories,
+platform guidance, recommendations, or unresolved external claims. Follow any
+explicit request or higher-level requirement to browse.
 
 1. State the exact claim or decision that needs external support.
-2. Search the live web for sources that are current for the selected compiler,
-   SDK, deployment target, dependency version, platform, and task.
+2. Select local version-bound evidence or live research under the criteria above,
+   matching the compiler, SDK, deployment target, dependency version, and task.
 3. Open and inspect the sources themselves. Do not rely on search snippets or
    another author's summary of a source.
 4. Prefer primary and official authorities: standards bodies, vendor
@@ -31,7 +38,7 @@ implementation as evidence that an external claim is current.
    ambiguous, contested, security-sensitive, or contradicted by observed
    behavior.
 
-Record the source title and URL, relevant date or version, the exact claim it
+Record the source title and URL or local path, relevant date or version, the claim it
 supports, its applicability limits, and any conflict or uncertainty. Keep
 source-backed claims separate from Scholium's inference or design choice.
 
@@ -45,13 +52,12 @@ product authority or prove that a local path is implemented.
 
 Skills store durable research procedure and routing only. Do not copy changing
 external facts, version tables, release status, or recommendations into skill
-prose. Refresh them through live search when the task needs them.
+prose. Refresh the applicable primary evidence when the task needs it.
 
 ## Fail honestly
 
-If network search is unavailable, a controlling source cannot be opened, or
-the current evidence is insufficient, state the limitation and the affected
-decision. Continue only with clearly labelled local inspection that does not
-depend on a current external claim. Do not describe memory, cached guidance, or
-an older source as the latest available information, and do not freeze a
-contract-critical choice until current authoritative evidence is available.
+If the required evidence is unavailable or insufficient, state the affected
+claim and continue independent work. Network failure does not invalidate an
+answer established by the selected SDK or pinned source, but it limits claims
+about current releases or external guidance. Do not describe older evidence as
+latest or settle a contract-critical choice without its required authority.
