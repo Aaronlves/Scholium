@@ -1,0 +1,7 @@
+interface:
+  display_name: "Apple HIG"
+  short_description: "Route design work to current official Apple guidance"
+  default_prompt: "Use $apple-hig to verify the relevant current official Apple Human Interface Guidelines without overriding Scholium product authority."
+
+policy:
+  allow_implicit_invocation: true

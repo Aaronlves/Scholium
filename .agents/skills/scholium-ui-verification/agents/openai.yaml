@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scholium UI Verification"
+  short_description: "Verify Scholium interactions and human acceptance"
+  default_prompt: "Use $scholium-ui-verification to choose and run the smallest trustworthy verification for this Scholium interaction."

@@ -1,0 +1,65 @@
+{
+  "skill_name": "scholium-engineering",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "把同一个新查询合同接通 Application、GUI 和 CLI，沿用现有存储与索引机制。",
+      "expected_output": "Cross-layer-integration mode: one typed vertical slice through current owners with service and end-to-end proof.",
+      "files": [],
+      "assertions": [
+        "Selects Cross-layer Integration rather than Architecture Cutover.",
+        "Uses the backend integration loop and avoids a second GUI or CLI policy owner."
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "修复当前索引实现里的一个局部排序错误；合同、存储和调用边界都不变。",
+      "expected_output": "The task routes to derived-index integrity alone rather than loading repository engineering.",
+      "files": [],
+      "assertions": [
+        "Does not select the cross-layer base for a specialist-owned bounded bug.",
+        "Does not broaden the fix into backend research or architecture work."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "把窗口级搜索 owner 合并到唯一的 Application owner，并在同一批次更新调用者、测试和架构记录。",
+      "expected_output": "Architecture-cutover mode: a classified ownership transfer with all consumers moved and the old owner deleted.",
+      "files": [],
+      "assertions": [
+        "Selects Architecture Cutover from a real ownership change.",
+        "Leaves no compatibility adapter, fallback, dual writer, or preservation-only test."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "这个文件太长，把 extension 移到另一个文件，并按架构迁移处理。",
+      "expected_output": "A classification that treats file organization as non-architectural when ownership and dependency direction remain unchanged.",
+      "files": [],
+      "assertions": [
+        "Does not select Architecture Cutover from file size or organization alone.",
+        "Keeps the change with the narrow language or owning specialist."
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "更新 Docs 内的全部文档，删除重复和历史叙述，只保留当前权威。",
+      "expected_output": "Documentation authority and its validator remain the proof boundary; broad file count does not select repository engineering or the complete gate.",
+      "files": [],
+      "assertions": [
+        "Does not select Scholium Engineering merely because every documentation chapter is in scope.",
+        "Runs documentation authority and diff validation without escalating to the complete repository gate."
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "跨层实现已经稳定，现在进行最终集成并执行仓库收口。",
+      "expected_output": "Scholium Engineering closes the explicitly identified final integration and runs the complete repository gate once after the integrated state is stable.",
+      "files": [],
+      "assertions": [
+        "Selects Scholium Engineering for explicit final integration.",
+        "Runs owning checks during correction and the complete repository gate once after stabilization."
+      ]
+    }
+  ]
+}

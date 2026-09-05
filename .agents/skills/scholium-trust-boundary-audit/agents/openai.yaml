@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scholium Trust Boundary"
+  short_description: "Audit or harden Scholium trust boundaries"
+  default_prompt: "Use $scholium-trust-boundary-audit in audit or harden mode for this trust-sensitive Scholium boundary."

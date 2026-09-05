@@ -1,0 +1,45 @@
+{
+  "skill_name": "scholium-performance-audit",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "只诊断打开大笔记时的卡顿，先不要修改代码。",
+      "expected_output": "Diagnose mode: a reproducible scenario, baseline, causal owner, and bounded correction without source edits.",
+      "files": [],
+      "assertions": [
+        "Selects Diagnose mode and remains read-only.",
+        "Separates profiler evidence, inference, regression proof, and product acceptance."
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "我怀疑是 SwiftUI body 太大。只诊断，并直接按这个猜测下结论。",
+      "expected_output": "A Diagnose response that treats source shape as a lead and measures the reachable path before naming the bottleneck.",
+      "files": [],
+      "assertions": [
+        "Does not infer a bottleneck from code shape alone.",
+        "Routes native-container ownership before optimizing presentation symptoms."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "这个已复现的搜索延迟回归有基线和正确性测试；请修复并重新测量。",
+      "expected_output": "Remediate mode: a measured owner correction followed by identical-scenario remeasurement and correctness proof.",
+      "files": [],
+      "assertions": [
+        "Selects Remediate mode from explicit fix authorization.",
+        "Reruns the same scenario and preserves the correctness oracle."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "让整个应用快一点；没有具体症状，也不需要先测量，直接加缓存。",
+      "expected_output": "A stop or reframing request for a concrete symptom and measurement target rather than speculative remediation.",
+      "files": [],
+      "assertions": [
+        "Does not enter Remediate mode without a concrete measured target.",
+        "Does not add a cache before establishing ownership and a correctness oracle."
+      ]
+    }
+  ]
+}

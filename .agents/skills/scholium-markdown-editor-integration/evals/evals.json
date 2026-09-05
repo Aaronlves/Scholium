@@ -1,0 +1,26 @@
+{
+  "skill_name": "scholium-markdown-editor-integration",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "修复 CodeMirror 与 WKWebView bridge 的丢失消息问题；验证切换、撤销、IME 和保存。",
+      "expected_output": "Editor-integration owns the bridge and session correction, with source-fidelity, trust, or UI verification added only for their distinct claims.",
+      "files": [],
+      "assertions": [
+        "Traces the active session, document, revision, message ordering, and teardown lifecycle.",
+        "Keeps the full editor buffer authoritative and verifies reconciliation before save.",
+        "Uses isolated UI automation only for runtime-only interaction claims."
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "只把 YAML 的一个 property 改名并保持其他 Markdown 字节不变；不要改编辑器 bridge。",
+      "expected_output": "Routes to scholium-markdown-yaml-fidelity rather than editor integration because the owned boundary is exact source mutation.",
+      "files": [],
+      "assertions": [
+        "Does not load the editor owner merely because the source may later be displayed in CodeMirror.",
+        "Uses targeted range mutation and exact unchanged-byte evidence."
+      ]
+    }
+  ]
+}

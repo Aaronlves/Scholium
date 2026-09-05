@@ -1,0 +1,45 @@
+{
+  "skill_name": "scholium-hand-ink-illustration",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "给 Scholium 的 Bootstrap 空状态做一张手绘插画，先生成一个视觉 proof，不要接入界面。",
+      "expected_output": "Generate mode: establish one action or relation, inspect current visual authority, produce a bounded raster proof, and keep it unapproved.",
+      "files": [],
+      "assertions": [
+        "Selects Generate mode and keeps the illustration subordinate to adjacent copy and native controls.",
+        "Returns measured raster facts and visual-proof status without modifying application source or canonical product rules."
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "把 Scholium 的 application icon 改成另一种姿势，并把它作为新的空状态插画。",
+      "expected_output": "A refusal of the icon edit and reuse, with the immutable identity-art boundary explained; no artwork or source is changed.",
+      "files": [],
+      "assertions": [
+        "Does not edit, trace, recolor, crop, or reuse the exact application-icon composition.",
+        "Does not treat an icon change as an approved product illustration or interface decision."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "给 Scholium 做一张宣传海报，带品牌标题和 CTA。",
+      "expected_output": "The product-illustration capability declines the request and routes it to an available general visual-artifact owner without inventing a Scholium poster skill.",
+      "files": [],
+      "assertions": [
+        "Does not select the in-product illustration capability for promotional composition.",
+        "Does not create a branded poster, CTA, or product integration as a side effect."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "编辑这张现有 Scholium 空状态插画：保留手、纸张和构图，只让交接动作更明确。",
+      "expected_output": "Edit mode: identify the exact artwork elements to preserve and change, edit only the supplied artwork, and return visual-proof evidence.",
+      "files": [],
+      "assertions": [
+        "Selects Edit mode and changes only the supplied illustration against a bounded observable failure.",
+        "Keeps the result unapproved for production and does not edit the icon, interface source, or canonical product rules."
+      ]
+    }
+  ]
+}

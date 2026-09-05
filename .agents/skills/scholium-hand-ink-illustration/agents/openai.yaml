@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scholium Hand-Ink Illustration"
+  short_description: "Create Scholium product illustrations"
+  default_prompt: "Use $scholium-hand-ink-illustration to determine whether this product state needs a textless illustration and create or edit a bounded visual proof."

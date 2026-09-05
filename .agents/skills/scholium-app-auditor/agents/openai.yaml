@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scholium App Auditor"
+  short_description: "Audit architecture, defects, contracts, and release gates"
+  default_prompt: "Use $scholium-app-auditor to run the appropriate architecture/decomposition, defect, conformance, or release-acceptance audit."

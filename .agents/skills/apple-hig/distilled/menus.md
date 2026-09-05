@@ -1,0 +1,91 @@
+---
+topic: menus
+tier: 3
+platforms: [ios, ipados, macos, tvos, visionos, watchos]
+category: components/presentation
+triggers:
+  - "menu"
+  - "menu item"
+  - "pull-down menu"
+  - "submenu"
+  - "NSMenu"
+  - "preferredElementSize"
+  - "BreakthroughEffect.automatic"
+  - "BreakthroughEffect.subtle"
+  - "BreakthroughEffect.prominent"
+  - "BreakthroughEffect.none"
+related:
+  - context-menus
+  - pop-up-buttons
+  - pull-down-buttons
+  - the-menu-bar
+---
+# Menus
+
+> A menu reveals its options when people interact with it - a space-efficient way to present commands in all experiences.
+
+**Platforms:** iOS, iPadOS, macOS, tvOS, visionOS, watchOS
+
+Applies to all menu types: menu bar menus, context menus, pop-up/pull-down buttons, and in-game menus.
+
+## Labels
+
+- **Verb or verb phrase** for action items (View, Close, Select). Match your app's communication style.
+- **Title-style capitalization** - capitalize every word except articles, coordinating conjunctions, and short prepositions; always capitalize the last word.
+- **No articles** (a, an, the) - "View Settings" not "View the Settings".
+- **Ellipsis (…)** - append when the action requires more input before completing.
+- **Show unavailable items dimmed** - item responds to no interactions. Keep the menu itself accessible even if all items are unavailable.
+
+## Icons
+
+- Use **familiar icons** for common actions (Copy, Share, Delete) - same icons as the system, wherever they appear.
+- Use menu-item icons **sparingly and with purpose**: highlight the most common actions, key features, locations, connected devices, clear visual operations, or user-created folders and documents.
+- **No icon if no clear match** - avoid ornamentation; don't add icons that might be confused with other actions.
+- Apply uniform visual treatment within a group: give every item an icon, or give none of them icons.
+
+## Organization
+
+- **Important/frequent items first** - people scan from the top.
+- **Group logically related items with a separator** (horizontal line or gap). Keep related items together even if some are rarely used.
+- **Limit menu length** - long menus require more time/attention. Split into separate menus or use submenus. Exception: user-defined or dynamically generated content may be long.
+
+## Submenus
+
+- A submenu item shows a chevron after its label. Functionally identical to a regular menu with hierarchical positioning.
+- **Use sparingly** - each level hides content and adds complexity. Appropriate when a term appears in more than two menu items in the same group.
+- **Max one level deep** - multiple hierarchical levels are difficult to navigate.
+- **Max ~5 items** per submenu - beyond that, create a new menu.
+- **Submenu must stay available** even when all its nested items are unavailable.
+- **Prefer submenus over indenting** - indented items don't clearly express hierarchy and are inconsistent with the platform.
+
+## Toggled Items
+
+- **Changeable label** - "Show Map" / "Hide Map" as a single item whose label changes with state.
+- **Add a verb when the changeable label is ambiguous** - "Turn HDR On" / "Turn HDR Off" is clearer than "HDR On/Off."
+- **Show both items simultaneously** when viewing both states at once helps.
+- **Checkmark** - for a group of attributes, a checkmark on the active item makes it easy to scan which are applied.
+- **"Plain" / remove-all item** - if people can apply multiple styles, consider an item that clears all at once.
+
+## In-Game Menus
+
+- **Use platform's default navigation** - touch on iOS, direct/indirect gestures on visionOS, etc.
+- **Ensure menus remain readable and tappable** at all screen sizes. Scaling game content down can make menus too small.
+
+## Platform Considerations
+
+### iOS, iPadOS
+
+Three menu layouts:
+- **Small** - 4 unlabeled icon-only items in a top row, remaining items in list below.
+- **Medium** - 3 items (icon + short label) in top row, remaining items in list below.
+- **Large** (default) - all items in a list.
+
+Use **medium** for 3 important frequently used actions. Use **small** only for closely related groups with recognizable symbols.
+
+### visionOS
+
+- Supports small and large layouts (same as iOS/iPadOS).
+- Menus can extend beyond window boundaries (as on macOS).
+- Use `presentationBreakthroughEffect(_:)`; effects include `BreakthroughEffect.automatic`, `.subtle`, `.prominent`, and `.none`.
+- **Display menu near the content it controls** - people look at items before tapping; distant content means the effect is missed.
+- **Prefer subtle breakthrough effect** - blends with surroundings and maintains depth/context. Use prominent only when critical; use none only in specific games where navigation around barriers is intentional.

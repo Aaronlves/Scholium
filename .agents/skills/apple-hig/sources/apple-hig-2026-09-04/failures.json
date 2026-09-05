@@ -1,0 +1,22 @@
+[
+  {
+    "path": "/design/human-interface-guidelines/spatial-interactions",
+    "json_endpoint": "https://developer.apple.com/tutorials/data/design/human-interface-guidelines/spatial-interactions.json",
+    "error": "HTTP Error 404: Not Found"
+  },
+  {
+    "path": "/design/human-interface-guidelines/components/layout-and-organization/tab-views",
+    "json_endpoint": "https://developer.apple.com/tutorials/data/design/human-interface-guidelines/components/layout-and-organization/tab-views.json",
+    "error": "HTTP Error 404: Not Found"
+  },
+  {
+    "path": "/design/human-interface-guidelines/components/presentation/page-controls",
+    "json_endpoint": "https://developer.apple.com/tutorials/data/design/human-interface-guidelines/components/presentation/page-controls.json",
+    "error": "HTTP Error 404: Not Found"
+  },
+  {
+    "path": "/design/human-interface-guidelines/components/system-experiences/complications",
+    "json_endpoint": "https://developer.apple.com/tutorials/data/design/human-interface-guidelines/components/system-experiences/complications.json",
+    "error": "HTTP Error 404: Not Found"
+  }
+]

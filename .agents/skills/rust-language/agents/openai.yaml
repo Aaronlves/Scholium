@@ -1,0 +1,4 @@
+interface:
+  display_name: "Rust Language"
+  short_description: "Build safe, maintainable Rust components"
+  default_prompt: "Use $rust-language to implement or review this Rust component safely."

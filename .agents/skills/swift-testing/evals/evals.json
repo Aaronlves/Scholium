@@ -1,0 +1,27 @@
+{
+  "skill_name": "swift-testing",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Plan focused tests for parsing, asynchronous persistence, a macOS interaction, and a performance claim. Choose the evidence layer for each without rewriting the existing suite.",
+      "expected_output": "A bounded test plan that uses direct tests for logic and preserves distinct UI and performance evidence mechanisms.",
+      "files": [],
+      "assertions": [
+        "Chooses the lowest deterministic layer for each claim.",
+        "Keeps UI and performance verification in their owning frameworks and skills.",
+        "Avoids test-framework conversion for syntax novelty."
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "Write a regression test for an asynchronous event without sleeps, shared mutable fixtures, or private data in diagnostics.",
+      "expected_output": "A deterministic focused test with controlled event delivery, isolated cleanup, and a clear failure signal.",
+      "files": [],
+      "assertions": [
+        "Controls time and event delivery structurally.",
+        "Uses disposable isolated state and deterministic cleanup.",
+        "Reports the exact behavior proven and surrounding suite run."
+      ]
+    }
+  ]
+}

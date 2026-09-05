@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scholium Markdown and YAML"
+  short_description: "Preserve exact Markdown and YAML source bytes"
+  default_prompt: "Use $scholium-markdown-yaml-fidelity to implement, diagnose, or test this exact-source document change."

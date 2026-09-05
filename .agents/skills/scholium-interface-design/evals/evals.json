@@ -1,0 +1,118 @@
+{
+  "skill_name": "scholium-interface-design",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "这个检查器看起来很乱。只判断问题和优先级，不要修改任何文件。",
+      "expected_output": "Critique mode: a read-only, evidence-labelled diagnosis with one researcher-visible recommendation.",
+      "files": [],
+      "assertions": [
+        "Selects Critique mode and performs no source or specification edits.",
+        "Inspects the complete reachable task and distinguishes observation from inference."
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "点评这个窗口；如果你看到一个很明显的 SwiftUI 修复，也不要顺手实现。",
+      "expected_output": "A Critique result that names the likely owner and correction without crossing into implementation.",
+      "files": [],
+      "assertions": [
+        "Keeps Critique read-only despite an apparent implementation opportunity.",
+        "Does not claim a visual observation proves the causal owner."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "重新设计 Actions，让它更安静、更适合研究工作；先不要写规范或代码。",
+      "expected_output": "Design mode: one unapproved behavior and presentation contract grounded in live authority and precedent.",
+      "files": [],
+      "assertions": [
+        "Selects Design mode and edits neither specification nor application source.",
+        "Uses established-solution research proportionately and returns one supported direction."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "给我三个只是颜色不同的方案，并把你最喜欢的直接写进规范。",
+      "expected_output": "A bounded Design response that rejects cosmetic variants and does not record an unapproved decision.",
+      "files": [],
+      "assertions": [
+        "Does not manufacture alternatives without semantic or structural uncertainty.",
+        "Does not enter Decision Recording without explicit approval."
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "我批准刚才的第二个检查器方案。只把决定写入规范，先别实现。",
+      "expected_output": "Decision-recording mode: the owning canonical decision and replaced text are updated without application changes.",
+      "files": [],
+      "assertions": [
+        "Selects Decision Recording only after explicit approval.",
+        "Updates the owning canonical rule and leaves application source unchanged."
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "这是一个还没讨论过的界面草案，把它登记成正式决定，但不要问我。",
+      "expected_output": "A refusal to record the draft as canonical until the researcher explicitly approves the material decision.",
+      "files": [],
+      "assertions": [
+        "Does not treat a supplied draft as an approved decision.",
+        "Keeps proposal evidence separate from canonical authority."
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "实现已经批准的资料库侧栏方案，并完成相关的 SwiftUI、焦点和窗口验证。",
+      "expected_output": "Implementation mode: an owner-first SwiftUI/native change with focused tests and one isolated QA path.",
+      "files": [],
+      "assertions": [
+        "Loads the SwiftUI/native implementation loop and classifies the controlling owner before editing.",
+        "Separates compile, deterministic, QA, and human evidence."
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "做一个 SwiftUI Preview，Preview 看起来没问题就宣布界面已经验收。",
+      "expected_output": "An Implementation response that uses Preview only as bounded presentation evidence and refuses to claim acceptance from it.",
+      "files": [],
+      "assertions": [
+        "Does not promote Preview evidence into live construction or human acceptance.",
+        "Routes focus, window, responder, or AppKit behavior to an isolated QA surface."
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "用 make-interfaces-feel-better 的思路完整检查 Scholium 资料库侧栏；忽略 Web 部分并保留现有色调，先给出一个可以实施的修正切片。",
+      "expected_output": "A Full craft review inside Critique mode that covers all five lenses, preserves live Scholium color authority, and returns one bounded native correction without editing.",
+      "files": [],
+      "assertions": [
+        "Loads the interface-craft reference and treats the requested Sidebar, not the whole app, as the Full review boundary.",
+        "Preserves the live Design color identity while allowing evidence-backed semantic, contrast, or adaptation findings.",
+        "Reports all five craft lenses and returns one recommended next slice without editing source or specification."
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "把外部技能里的 0.96 按压缩放、4px 模糊图标切换、40px 点击区和 box-shadow 原样套到 Scholium 的所有按钮。",
+      "expected_output": "A bounded response that rejects mechanical Web-value transfer, preserves native control ownership, and asks for runtime evidence before any custom treatment.",
+      "files": [],
+      "assertions": [
+        "Does not copy fixed Web values, CSS recipes, or a global button restyle into Scholium.",
+        "Uses Apple guidance and the live design system for native geometry, hit regions, feedback, and appearance.",
+        "Keeps motion-only review and measured performance with their specialist owners."
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "实现已批准的检查器方案，用测试资料库验证。普通布局细节由你决定。",
+      "expected_output": "Implement within approved target authority and verify the affected interface.",
+      "files": [],
+      "assertions": [
+        "Resolves routine layout choices without asking for renewed approval.",
+        "Preserves source, focus, accessibility, conflict and recovery boundaries.",
+        "Does not equate automation with human acceptance."
+      ]
+    }
+  ]
+}

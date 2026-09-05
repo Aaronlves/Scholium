@@ -1,0 +1,26 @@
+{
+  "skill_name": "scholium-vault-file-coordination",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "诊断外部编辑器在 Scholium autosave 前替换文件的竞态；保留 dirty buffer、冲突和恢复路径。",
+      "expected_output": "Vault-file-coordination owns the filesystem identity, watcher, revision, window-convergence, and race correction, with trust and source fidelity added for distinct boundaries.",
+      "files": [],
+      "assertions": [
+        "Models the event interleaving before changing code.",
+        "Treats notifications as invalidation hints and uses a fresh authorized read for current bytes.",
+        "Does not let atomic replacement bypass revision checks or silently overwrite dirty work."
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "只验证 BOM、CRLF 和 YAML comments 在 property edit 后的字节保留；不涉及外部 watcher 或多窗口。",
+      "expected_output": "Routes to scholium-markdown-yaml-fidelity rather than vault-file-coordination because no concurrent filesystem participant or watcher lifecycle changes.",
+      "files": [],
+      "assertions": [
+        "Keeps file coordination out of a source-format-only task.",
+        "Uses exact unchanged-byte and intended-semantics oracles."
+      ]
+    }
+  ]
+}

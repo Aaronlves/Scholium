@@ -1,0 +1,37 @@
+{
+  "skill_name": "scholium-app-auditor",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "审计当前 Scholium 发布是否达到要求；只报告，不修改任何文件。",
+      "expected_output": "Release-acceptance mode: follows the canonical specification manifest and declared release chapter, separates status from live evidence, and remains read-only.",
+      "files": [],
+      "assertions": [
+        "Uses Docs/SCHOLIUM_SPEC.md and its declared release route rather than an undocumented release document.",
+        "Does not claim release, signing, UI, accessibility, or performance acceptance from a repository verifier alone.",
+        "Does not edit product code or developer skills."
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "修复当前索引实现里的一个局部排序错误；合同、存储和调用边界都不变。",
+      "expected_output": "Routes to scholium-derived-index-integrity alone rather than loading the whole-app auditor or repository engineering.",
+      "files": [],
+      "assertions": [
+        "Recognizes the request as a bounded specialist-owned index issue.",
+        "Does not expand the task into architecture or whole-app release audit."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "只诊断一个现有 Run 在 outcome-unknown 写入收敛前错误形成 Record 的问题；不要做全应用审计。",
+      "expected_output": "Routes the bounded lifecycle defect to scholium-research-action-collaboration rather than retaining it in the whole-app auditor.",
+      "files": [],
+      "assertions": [
+        "Recognizes Research Action lifecycle as a narrow functional owner.",
+        "Does not broaden one Run-to-Record defect into a whole-app audit.",
+        "Remains read-only because the request asks only for diagnosis."
+      ]
+    }
+  ]
+}

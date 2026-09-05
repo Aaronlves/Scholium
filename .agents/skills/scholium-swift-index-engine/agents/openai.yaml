@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scholium Swift Index Engine"
+  short_description: "Design and verify Swift search tokenization"
+  default_prompt: "Use $scholium-swift-index-engine in decision, fixture-prototype, integrated-shadow, or cutover mode; advance only after contract, recovery, packaging, and measured evidence pass."

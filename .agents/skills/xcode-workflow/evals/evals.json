@@ -1,0 +1,47 @@
+{
+  "skill_name": "xcode-workflow",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "用项目指定的 Xcode 构建 Scholium，并只运行覆盖这次改动的最小测试。",
+      "expected_output": "Selects the Xcode workflow, binds the intended toolchain and checkout, and runs focused repository-owned verification.",
+      "files": [],
+      "assertions": [
+        "Preflights the intended Xcode toolchain and preserves unrelated worktree changes.",
+        "Does not load scholium-engineering for a bounded build or focused test owned by this workflow.",
+        "Does not promote a Debug build or focused test into release or human-acceptance evidence."
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "只重写 Scholium 的目标规范，不构建、不测试，也不要打开 Xcode。",
+      "expected_output": "Keeps the task with documentation authority and does not select or run the Xcode workflow.",
+      "files": [],
+      "assertions": [
+        "Respects the explicit no-build and no-Xcode boundary.",
+        "Does not treat documentation-only work as a toolchain task."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "用 Xcode MCP 编译当前 Scholium。环境中没有可调用 Xcode MCP，shell 可用。",
+      "expected_output": "Disclose the missing MCP capability and distinguish any valid shell fallback.",
+      "files": [],
+      "assertions": [
+        "Does not invent an MCP tool or claim an MCP build.",
+        "Uses shell only when active Xcode state is not necessary.",
+        "Does not install or reconfigure MCP without authorization."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Debug 的修复我已验收，请再检查一下相关测试。",
+      "expected_output": "Run the relevant verification under repository rules.",
+      "files": [],
+      "assertions": [
+        "Does not turn Debug acceptance into packaging authorization.",
+        "Does not require repeated approval for the requested tests."
+      ]
+    }
+  ]
+}

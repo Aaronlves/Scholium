@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scholium Engineering"
+  short_description: "Implement cross-layer Scholium changes"
+  default_prompt: "Use $scholium-engineering only for actual cross-layer implementation, architecture cutover, or explicit final integration; broad documentation and single-owner work stay with their narrow owner."

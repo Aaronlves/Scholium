@@ -1,0 +1,36 @@
+{
+  "skill_name": "apple-hig",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "只读审查 Scholium 的 macOS 侧栏是否符合 Apple HIG，不要修改规范或代码。",
+      "expected_output": "Selects Apple HIG for platform guidance while preserving Scholium product authority and the read-only boundary.",
+      "files": [],
+      "assertions": [
+        "Loads only the macOS and sidebar-relevant HIG material rather than every foundation or unrelated platform guidance.",
+        "Verifies current or exact claims against the matching official Apple topic and treats the local corpus as a locator or dated fallback.",
+        "Does not treat Apple guidance as authority for Scholium product behavior or edit files during review."
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "决定 Scholium 应该如何保存 Markdown 原始字节，并直接修改存储格式。",
+      "expected_output": "Routes storage authority to Scholium's product and engineering owners instead of using Apple HIG as the controlling skill.",
+      "files": [],
+      "assertions": [
+        "Does not use interface guidance to define source-fidelity or storage contracts.",
+        "Requires the appropriate Scholium authority before any implementation change."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "网络不可用。请告诉我最新的 visionOS HIG 精确尺寸。",
+      "expected_output": "Uses the dated local corpus only as an explicitly stale-capable fallback and does not claim that offline values are latest.",
+      "files": [],
+      "assertions": [
+        "Names the local snapshot date or says freshness cannot be verified.",
+        "Does not present an offline-only exact value as current or latest."
+      ]
+    }
+  ]
+}

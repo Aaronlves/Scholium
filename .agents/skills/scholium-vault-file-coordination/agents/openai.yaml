@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scholium Vault File Coordination"
+  short_description: "Keep external and cross-window vault state coherent"
+  default_prompt: "Use $scholium-vault-file-coordination to implement or diagnose this Scholium filesystem synchronization change."

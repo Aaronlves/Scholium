@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "capabilities": [
+    {
+      "capability": "repository-engineering",
+      "skill": "scholium-engineering",
+      "kind": "base",
+      "description": "Cross-layer Scholium implementation, architecture cutover, and explicit final integration.",
+      "modes": ["cross-layer-integration", "architecture-cutover"]
+    },
+    {
+      "capability": "toolkit-maintenance",
+      "skill": "scholium-toolkit-maintenance",
+      "kind": "specialist",
+      "description": "Audit, maintain, and evaluate canonical Scholium developer skills.",
+      "modes": ["audit", "maintain", "evaluate"]
+    },
+    {
+      "capability": "apple-platform-design-authority",
+      "skill": "apple-hig",
+      "kind": "specialist",
+      "description": "Routes Apple-platform design and review to current official HIG and SDK guidance."
+    },
+    {
+      "capability": "philosophical-workflow-design",
+      "skill": "design-philosophical-prompts-and-skills",
+      "kind": "specialist",
+      "description": "Design and audit philosophical research prompts, instructions, and reusable skills."
+    },
+    {
+      "capability": "xcode-development-workflow",
+      "skill": "xcode-workflow",
+      "kind": "specialist",
+      "description": "Xcode toolchain, build, test, diagnostics, QA, and release-validation workflow."
+    },
+    {
+      "capability": "app-audit",
+      "skill": "scholium-app-auditor",
+      "kind": "auditor",
+      "description": "Explicit read-only architecture/decomposition, defect, contract-conformance, and release-acceptance audits.",
+      "modes": ["architecture-decomposition", "defect-audit", "contract-conformance", "release-acceptance"]
+    },
+    {
+      "capability": "research-action-collaboration",
+      "skill": "scholium-research-action-collaboration",
+      "kind": "specialist",
+      "description": "Research Action and local Agent lifecycle, Context, bounded mutation, result, continuation, and recovery."
+    },
+    {
+      "capability": "source-fidelity",
+      "skill": "scholium-markdown-yaml-fidelity",
+      "kind": "specialist",
+      "description": "Exact Markdown and YAML preservation and targeted mutation."
+    },
+    {
+      "capability": "file-coordination",
+      "skill": "scholium-vault-file-coordination",
+      "kind": "specialist",
+      "description": "External edits, watchers, save races, and window convergence."
+    },
+    {
+      "capability": "trust-boundary",
+      "skill": "scholium-trust-boundary-audit",
+      "kind": "overlay",
+      "description": "Researcher control, containment, privacy, and loss prevention.",
+      "modes": ["audit", "harden"]
+    },
+    {
+      "capability": "editor-integration",
+      "skill": "scholium-markdown-editor-integration",
+      "kind": "specialist",
+      "description": "CodeMirror, WKWebView, source ranges, focus, and undo boundaries."
+    },
+    {
+      "capability": "derived-index",
+      "skill": "scholium-derived-index-integrity",
+      "kind": "specialist",
+      "description": "Search, links, relationships, diagnostics, and derived generations."
+    },
+    {
+      "capability": "native-interface",
+      "skill": "scholium-interface-design",
+      "kind": "interface",
+      "description": "Restrained, established-solution-first Scholium native macOS critique, visual refinement, design, decision recording, reusable interface-system work, and application-layer implementation.",
+      "modes": ["critique", "design", "decision-recording", "implementation"]
+    },
+    {
+      "capability": "product-illustration",
+      "skill": "scholium-hand-ink-illustration",
+      "kind": "specialist",
+      "description": "Scholium hand-ink product illustrations with intention-bearing gesture, solid pigment fields, and verified raster delivery.",
+      "modes": ["generate", "edit"]
+    },
+    {
+      "capability": "motion-design",
+      "skill": "scholium-motion-design",
+      "kind": "interface",
+      "description": "Established-solution-first terminology, external-precedent triage, read-only review, and survey of native or bounded WebKit motion.",
+      "modes": ["terminology", "precedent-triage", "review", "survey"]
+    },
+    {
+      "capability": "ui-verification",
+      "skill": "scholium-ui-verification",
+      "kind": "specialist",
+      "description": "Deterministic Scholium macOS interaction verification and bounded human acceptance.",
+      "modes": ["automated", "human-acceptance"]
+    },
+    {
+      "capability": "performance-audit",
+      "skill": "scholium-performance-audit",
+      "kind": "overlay",
+      "description": "Measured runtime performance diagnosis and remediation.",
+      "modes": ["diagnose", "remediate"]
+    },
+    {
+      "capability": "swift-index-engine",
+      "skill": "scholium-swift-index-engine",
+      "kind": "specialist",
+      "description": "Swift-owned lexical-engine and tokenizer evaluation, prototyping, integration, and cutover.",
+      "modes": ["decision", "fixture-prototype", "integrated-shadow", "cutover"]
+    },
+    {
+      "capability": "rust-language",
+      "skill": "rust-language",
+      "kind": "language",
+      "description": "Safe Rust and Swift-facing native component mechanics."
+    },
+    {
+      "capability": "swift-language",
+      "skill": "swift-language",
+      "kind": "language",
+      "description": "Modern non-concurrency Swift language mechanics."
+    },
+    {
+      "capability": "swift-concurrency",
+      "skill": "swift-concurrency",
+      "kind": "language",
+      "description": "Swift concurrency isolation, cancellation, and data-race safety."
+    },
+    {
+      "capability": "swift-api-design",
+      "skill": "swift-api-design-guidelines",
+      "kind": "language",
+      "description": "Swift API naming, labels, and documentation conventions."
+    },
+    {
+      "capability": "swift-testing",
+      "skill": "swift-testing",
+      "kind": "language",
+      "description": "Swift Testing patterns, fixtures, conversion, and isolation."
+    }
+  ]
+}

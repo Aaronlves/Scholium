@@ -1,0 +1,4 @@
+interface:
+  display_name: "Design Philosophical Prompts and Skills"
+  short_description: "Design rigorous philosophy-facing agent methods"
+  default_prompt: "Use $design-philosophical-prompts-and-skills to design or improve this philosophy-facing prompt or skill."

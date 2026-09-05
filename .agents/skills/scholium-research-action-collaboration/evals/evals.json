@@ -1,0 +1,47 @@
+{
+  "skill_name": "scholium-research-action-collaboration",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "只诊断同一个 direct Agent Run 在重启和重新配对后的 Session、Context、Result 与 recovery 是否仍然一致，不要修改代码。",
+      "expected_output": "Selects the Research Action collaboration owner for a read-only lifecycle trace, adding trust only for the credential and authorization boundary.",
+      "files": [],
+      "assertions": [
+        "Keeps Run identity and confirmed work distinct from Session authority.",
+        "Traces direct start, re-pairing, Context, Result, and recovery through the live Application owner.",
+        "Does not edit source during diagnosis."
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "修复 Result 在一个已经发起但结果未知的 Agent 写入收敛前形成 Research Record 的问题，并保持 GUI 与 CLI 使用同一生命周期。",
+      "expected_output": "Research Action collaboration owns the lifecycle correction; repository engineering is added only if live ownership proves the implementation is cross-layer.",
+      "files": [],
+      "assertions": [
+        "Finalization remains blocked until every initiated write or recovery duty is determined.",
+        "GUI and CLI remain adapters over one Application contract.",
+        "No compatibility finalization path or generic retry is retained."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "只修 Actions sheet 的焦点恢复和最小宽度布局，不改变 Run、Session、Result 或 recovery 合同。",
+      "expected_output": "Routes to native interface implementation and UI verification without selecting Research Action collaboration.",
+      "files": [],
+      "assertions": [
+        "Recognizes that presentation and interaction evidence are the only changed owners.",
+        "Does not broaden an interface correction into Agent lifecycle work."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "重写 bundled Analyze Method 的哲学分析方法和评价标准，不改 Agent 协议或应用代码。",
+      "expected_output": "Stops at the academic method and release-shipped product-skill boundary; the developer Research Action skill does not edit or evaluate philosophical content.",
+      "files": [],
+      "assertions": [
+        "Does not modify release-shipped product skills through this developer capability.",
+        "Does not treat Method content as Run, Session, or delivery mechanics."
+      ]
+    }
+  ]
+}

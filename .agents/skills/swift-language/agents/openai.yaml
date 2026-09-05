@@ -1,0 +1,4 @@
+interface:
+  display_name: "Swift Language"
+  short_description: "Apply current Swift language patterns safely"
+  default_prompt: "Use $swift-language to implement or review this Swift language change."

@@ -1,0 +1,37 @@
+{
+  "skill_name": "scholium-toolkit-maintenance",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "审计 Scholium developer skills 的重复、过时内容和 catalog 路由；只报告，不修改。",
+      "expected_output": "Toolkit Audit mode: inspects the canonical .agents/skills tree, catalog, package units, and duplicate-discovery boundary while remaining read-only.",
+      "files": [],
+      "assertions": [
+        "Does not treat a personal plugin or installed cache as canonical.",
+        "Checks triggers, responsibility, permission, side effects, output, proof, references, metadata, evaluations, and links.",
+        "Does not delete a capability merely because it is infrequently used."
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "修改 ScholiumCore/Resources/Skills 中的 Development Workflow shipped skill。",
+      "expected_output": "Stops at the release-shipped product-skill boundary and routes the request to its separately authorized workflow; toolkit maintenance does not edit it.",
+      "files": [],
+      "assertions": [
+        "Does not modify ScholiumCore/Resources/Skills.",
+        "Does not create a personal scholium-toolkit mirror or cache copy.",
+        "Keeps canonical developer-skill maintenance scoped to .agents/skills and catalog.json."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "精简本地开发技能，去掉重复规则，保留数据保护。",
+      "expected_output": "Maintain the canonical toolkit within existing authorization.",
+      "files": [],
+      "assertions": [
+        "Completes requested edits and owning validation without seeking the same approval again.",
+        "Preserves consequential safeguards and avoids application or release-shipped skill edits."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "skill_name": "scholium-derived-index-integrity",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "修复当前 Search 的一个局部排序错误；索引合同、存储和调用边界都不变。",
+      "expected_output": "Derived-index integrity owns the bounded correction, runs focused owner checks, and does not run the complete repository gate.",
+      "files": [],
+      "assertions": [
+        "Uses the active derived backend owner and its fixture matrix.",
+        "Proves the relevant semantic behavior and rebuild equivalence.",
+        "Adds the complete repository gate only if AGENTS.md identifies actual cross-layer integration."
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "评估是否将当前 SQLite tokenizer 换成 Swift-owned tokenizer；需要比较 CJK 语义、恢复和规模。",
+      "expected_output": "Routes the mechanism decision to scholium-swift-index-engine, with derived-index integrity added only for the active contract and result-equivalence boundary.",
+      "files": [],
+      "assertions": [
+        "Does not treat a backend or tokenizer decision as an ordinary current-index bug.",
+        "Does not let the candidate engine own vault access, authorization, or writable source."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "skill_name": "swift-api-design-guidelines",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Review this small public Swift API for unclear names and argument labels. Show representative improved call sites and preserve behavior.",
+      "expected_output": "A concise call-site-driven naming review grounded in the official Swift guidelines and current project terminology.",
+      "files": [],
+      "assertions": [
+        "Judges grammar and semantic roles at representative call sites.",
+        "Distinguishes side-effecting and value-returning operations.",
+        "Updates repository-owned callers without retaining an obsolete alias."
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "A naming cleanup also touches protocol isolation and lint configuration. Keep the API review bounded and route adjacent concerns.",
+      "expected_output": "A bounded naming recommendation with concurrency and linting routed to their live owners.",
+      "files": [],
+      "assertions": [
+        "Does not invent concurrency or lint rules.",
+        "Uses live call sites and official guidance rather than copied examples.",
+        "Reports any intentional source break."
+      ]
+    }
+  ]
+}

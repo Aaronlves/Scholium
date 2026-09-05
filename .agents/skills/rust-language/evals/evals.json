@@ -1,0 +1,26 @@
+{
+  "skill_name": "rust-language",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "评估一个已经测量的解析瓶颈是否值得通过窄 Rust 边界实现；先比较 Swift 基线、打包成本和失败隔离，不要直接切换生产实现。",
+      "expected_output": "Selects Rust language for a bounded adoption decision and requires a measured advantage before any production boundary changes.",
+      "files": [],
+      "assertions": [
+        "Preserves Swift-owned authorization, recovery, and authoritative writes.",
+        "Evaluates dependency, unsafe, packaging, and failure-isolation costs.",
+        "Does not promote a disposable experiment into production authority."
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "修复一个只涉及 Swift actor isolation 的编译错误；仓库没有 Rust crate、FFI 或原生依赖变化。",
+      "expected_output": "Routes to Swift concurrency without selecting Rust language.",
+      "files": [],
+      "assertions": [
+        "Recognizes a Swift-only isolation boundary.",
+        "Does not introduce Rust or an FFI boundary without a measured need."
+      ]
+    }
+  ]
+}

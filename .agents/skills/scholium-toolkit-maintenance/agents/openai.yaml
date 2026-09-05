@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scholium Toolkit Maintenance"
+  short_description: "Audit, maintain, and evaluate developer skills"
+  default_prompt: "Use $scholium-toolkit-maintenance to audit, maintain, or evaluate the canonical Scholium developer-skill toolkit."

@@ -1,0 +1,27 @@
+{
+  "skill_name": "scholium-markdown-yaml-fidelity",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "修复一个 top-level YAML property 的定向编辑；保留 BOM、CRLF、注释、未知字段、排序和 final newline。",
+      "expected_output": "Source-fidelity owns the targeted mutation and proves intended semantics plus byte preservation outside the changed range.",
+      "files": [],
+      "assertions": [
+        "Reopens the live parser, schema, writer, and focused tests.",
+        "Validates the complete proposed mapping and uses the sole transactional writer.",
+        "Does not reconstruct source from a parsed model or rendered Markdown."
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "用户编辑期间外部程序替换了同一个文件；不要静默覆盖，也不要把冲突处理写进 YAML parser。",
+      "expected_output": "Keeps source fidelity as the byte-semantics owner and routes the external participant, revision, and recovery boundary to vault-file-coordination and trust as needed.",
+      "files": [],
+      "assertions": [
+        "Does not normalize or rewrite source merely to resolve the conflict.",
+        "Preserves the starting buffer and current disk bytes as distinct recoverable values.",
+        "Does not make parsing logic an authorization or conflict owner."
+      ]
+    }
+  ]
+}

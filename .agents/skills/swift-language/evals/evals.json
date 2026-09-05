@@ -1,0 +1,27 @@
+{
+  "skill_name": "swift-language",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Refactor this bounded synchronous Swift helper for clarity without changing behavior. Inspect its callers and tests first, and do not modernize adjacent code.",
+      "expected_output": "A small idiomatic change grounded in live callers, compiler settings, and behavior-preserving tests.",
+      "files": [],
+      "assertions": [
+        "Preserves observable behavior, ordering, errors, and external representation.",
+        "Uses the selected toolchain as availability authority.",
+        "Does not broaden the task into architecture, concurrency, or unrelated modernization."
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "Review a proposed Swift abstraction involving an existential return, serialization, and public naming. Decide what this skill owns and route the rest.",
+      "expected_output": "A caller-driven type decision with serialization preserved and naming routed to the API-design capability.",
+      "files": [],
+      "assertions": [
+        "Chooses the type abstraction from caller and runtime needs rather than novelty.",
+        "Treats serialization as an external contract requiring fixtures.",
+        "Routes public naming without duplicating another skill's rules."
+      ]
+    }
+  ]
+}

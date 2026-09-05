@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scholium Derived Index Integrity"
+  short_description: "Verify derived search, links, and generations"
+  default_prompt: "Use $scholium-derived-index-integrity to implement, diagnose, or test this Scholium derived-index change."

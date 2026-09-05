@@ -1,0 +1,27 @@
+{
+  "skill_name": "swift-concurrency",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "Diagnose a strict-concurrency error around UI state and background processing. Use the repository's selected toolchain and make the smallest behavior-preserving fix.",
+      "expected_output": "A live-toolchain-grounded ownership model that keeps UI state isolated and moves only safe work across the boundary.",
+      "files": [],
+      "assertions": [
+        "Identifies the mutable owner and every crossing value before adding annotations.",
+        "Avoids unchecked conformance unless a real synchronization invariant is proven.",
+        "Preserves UI responsiveness and reports the chosen isolation invariant."
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "Review an async callback bridge that may outlive its owner and can be cancelled or completed twice.",
+      "expected_output": "A bounded lifetime and cancellation repair with exactly-once completion and focused interleaving tests.",
+      "files": [],
+      "assertions": [
+        "Gives the task or stream an explicit owner and cancellation path.",
+        "Prevents double completion and stale callbacks.",
+        "Does not use sleeps or detached work as a shortcut."
+      ]
+    }
+  ]
+}

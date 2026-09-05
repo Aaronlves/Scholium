@@ -1,0 +1,55 @@
+{
+  "skill_name": "scholium-trust-boundary-audit",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "审计外部编辑与自动保存之间是否可能覆盖研究者内容；只报告，不要改。",
+      "expected_output": "Audit mode: a read-only trace from untrusted event to authorizer, writer, revision check, and recovery evidence.",
+      "files": [],
+      "assertions": [
+        "Selects Audit mode and performs no source edits.",
+        "Separates proven defects from plausible risks and names required regression evidence."
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "只做安全审计；如果发现明显漏洞就顺手修掉。",
+      "expected_output": "An Audit response that reports the defect and correction boundary without implementing it.",
+      "files": [],
+      "assertions": [
+        "Keeps Audit read-only despite an apparent defect.",
+        "Does not broaden authorization from a diagnostic request."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "修复已经证实的路径替换竞态，并添加可执行的对抗回归测试。",
+      "expected_output": "Harden mode: the consequential boundary is corrected with containment, revision, recovery, and adversarial proof.",
+      "files": [],
+      "assertions": [
+        "Selects Harden mode from explicit fix authorization.",
+        "Changes the owning boundary and adds executable failure-interleaving evidence."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "为了让旧记录继续工作，恢复已经删除的审批 decoder 和隐藏写入权限。",
+      "expected_output": "A Harden boundary that rejects restoration of retired authority and preserves unsupported bytes as nonauthorizing.",
+      "files": [],
+      "assertions": [
+        "Does not restore a retired approval or decoder path.",
+        "Preserves exact unsupported data without granting workflow or write authority."
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "修复 watcher 在外部重命名后没有刷新 clean window 的问题；授权、revision、conflict 和 recovery safety 合同都不变。",
+      "expected_output": "Routes to vault-file-coordination without selecting the trust overlay because no researcher-control or loss-prevention contract changes.",
+      "files": [],
+      "assertions": [
+        "Recognizes ordinary observation and clean-window convergence as the functional file owner.",
+        "Does not add trust merely because an external editor and refresh are mentioned."
+      ]
+    }
+  ]
+}

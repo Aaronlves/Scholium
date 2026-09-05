@@ -1,0 +1,4 @@
+interface:
+  display_name: "Scholium Performance"
+  short_description: "Diagnose or remediate measured performance"
+  default_prompt: "Use $scholium-performance-audit in diagnose or remediate mode for this measured Scholium performance issue."

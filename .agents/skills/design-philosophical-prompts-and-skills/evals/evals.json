@@ -1,0 +1,46 @@
+{
+  "skill_name": "design-philosophical-prompts-and-skills",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "审计 Scholium 的哲学论文分析提示，重点检查来源忠实性、权限和持久化边界；先不要修改产品代码。",
+      "expected_output": "Selects the philosophy-facing design method and returns a bounded audit grounded in Scholium's live authorities.",
+      "files": [],
+      "assertions": [
+        "Separates philosophical method quality from technical completion.",
+        "Preserves the requested read-only product-code boundary and researcher authority."
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "修复 Scholium 侧栏的 SwiftUI 布局和焦点错误；不要改任何哲学提示或工作流。",
+      "expected_output": "Routes the task to the native-interface owner without selecting philosophical prompt design; adds engineering only for an actual cross-layer change.",
+      "files": [],
+      "assertions": [
+        "Recognizes that the requested outcome is technical rather than philosophy-facing method design.",
+        "Does not broaden the task into prompt or skill architecture work."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "设计一个精简的论文分析提示词，区分原文与我们补出的论证；可能只有摘录，分析后可建议主题但不要修改笔记。",
+      "expected_output": "Produce a reusable prompt with partial-source and candidate-only boundaries.",
+      "files": [],
+      "assertions": [
+        "Does not attribute reconstructed or repaired claims to the source.",
+        "Does not invent missing source details or grant note-edit permission.",
+        "Keeps topic suggestions provisional and avoids mandatory full-workflow scaffolding."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "只把这个哲学分析提示词中的错字改正，不改方法。",
+      "expected_output": "Make the narrow wording correction without reopening the whole method.",
+      "files": [],
+      "assertions": [
+        "Loads the target and necessary context, not every methodological reference.",
+        "Preserves evidence, permission, method, and output semantics."
+      ]
+    }
+  ]
+}

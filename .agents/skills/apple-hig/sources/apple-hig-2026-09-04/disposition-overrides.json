@@ -1,0 +1,847 @@
+{
+  "accessibility": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/accessibility.md"
+  },
+  "action-button": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/action-button.md"
+  },
+  "action-sheets": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/action-sheets.md"
+  },
+  "activity-rings": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/activity-rings.md"
+  },
+  "activity-views": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/activity-views.md"
+  },
+  "airplay": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/airplay.md"
+  },
+  "alerts": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/alerts.md"
+  },
+  "always-on": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/always-on.md"
+  },
+  "app-clips": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/app-clips.md"
+  },
+  "app-icons": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/app-icons.md"
+  },
+  "app-shortcuts": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/app-shortcuts.md"
+  },
+  "apple-pay": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/apple-pay.md"
+  },
+  "apple-pencil-and-scribble": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/apple-pencil-and-scribble.md"
+  },
+  "augmented-reality": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/augmented-reality.md"
+  },
+  "boxes": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/boxes.md"
+  },
+  "branding": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/branding.md"
+  },
+  "buttons": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/buttons.md"
+  },
+  "camera-control": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/camera-control.md"
+  },
+  "carekit": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/carekit.md"
+  },
+  "carplay": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/carplay.md"
+  },
+  "charting-data": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/charting-data.md"
+  },
+  "charts": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/charts.md"
+  },
+  "collaboration-and-sharing": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/collaboration-and-sharing.md"
+  },
+  "collections": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/collections.md"
+  },
+  "color": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/color.md"
+  },
+  "color-wells": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/color-wells.md"
+  },
+  "column-views": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/column-views.md"
+  },
+  "combo-boxes": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/combo-boxes.md"
+  },
+  "complications": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/complications.md"
+  },
+  "components": {
+    "disposition": "collection-only",
+    "notes": "Current crawl confirms this page is routing or collection content without an independent distilled topic."
+  },
+  "content": {
+    "disposition": "collection-only",
+    "notes": "Current crawl confirms this page is routing or collection content without an independent distilled topic."
+  },
+  "context-menus": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/context-menus.md"
+  },
+  "controls": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/controls.md"
+  },
+  "dark-mode": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/dark-mode.md"
+  },
+  "design-principles": {
+    "disposition": "verified-current-source-review",
+    "notes": "Compared with the current Apple source on 2026-09-04; see verification/current-refresh.md.",
+    "distilled_file": "distilled/design-principles.md"
+  },
+  "designing-for-games": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/designing-for-games.md"
+  },
+  "designing-for-ios": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/designing-for-ios.md"
+  },
+  "designing-for-ipados": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/designing-for-ipados.md"
+  },
+  "designing-for-macos": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/designing-for-macos.md"
+  },
+  "designing-for-tvos": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/designing-for-tvos.md"
+  },
+  "designing-for-visionos": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/designing-for-visionos.md"
+  },
+  "designing-for-watchos": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/designing-for-watchos.md"
+  },
+  "digit-entry-views": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/digit-entry-views.md"
+  },
+  "digital-crown": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/digital-crown.md"
+  },
+  "disclosure-controls": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/disclosure-controls.md"
+  },
+  "dock-menus": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/dock-menus.md"
+  },
+  "drag-and-drop": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/drag-and-drop.md"
+  },
+  "edit-menus": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/edit-menus.md"
+  },
+  "entering-data": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/entering-data.md"
+  },
+  "eyes": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/eyes.md"
+  },
+  "feedback": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/feedback.md"
+  },
+  "file-management": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/file-management.md"
+  },
+  "focus-and-selection": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/focus-and-selection.md"
+  },
+  "foundations": {
+    "disposition": "collection-only",
+    "notes": "Current crawl confirms this page is routing or collection content without an independent distilled topic."
+  },
+  "game-center": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/game-center.md"
+  },
+  "game-controls": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/game-controls.md"
+  },
+  "gauges": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/gauges.md"
+  },
+  "generative-ai": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/generative-ai.md"
+  },
+  "gestures": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/gestures.md"
+  },
+  "getting-started": {
+    "disposition": "collection-only",
+    "notes": "Current crawl confirms this page is routing or collection content without an independent distilled topic."
+  },
+  "going-full-screen": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/going-full-screen.md"
+  },
+  "gyro-and-accelerometer": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/gyro-and-accelerometer.md"
+  },
+  "healthkit": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/healthkit.md"
+  },
+  "home-screen-quick-actions": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/home-screen-quick-actions.md"
+  },
+  "homekit": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/homekit.md"
+  },
+  "icloud": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/icloud.md"
+  },
+  "icons": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/icons.md"
+  },
+  "id-verifier": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/id-verifier.md"
+  },
+  "image-views": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/image-views.md"
+  },
+  "image-wells": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/image-wells.md"
+  },
+  "images": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/images.md"
+  },
+  "imessage-apps-and-stickers": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/imessage-apps-and-stickers.md"
+  },
+  "immersive-experiences": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/immersive-experiences.md"
+  },
+  "in-app-purchase": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/in-app-purchase.md"
+  },
+  "inclusion": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/inclusion.md"
+  },
+  "inputs": {
+    "disposition": "collection-only",
+    "notes": "Current crawl confirms this page is routing or collection content without an independent distilled topic."
+  },
+  "keyboards": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/keyboards.md"
+  },
+  "labels": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/labels.md"
+  },
+  "launching": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/launching.md"
+  },
+  "layout": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/layout.md"
+  },
+  "layout-and-organization": {
+    "disposition": "collection-only",
+    "notes": "Current crawl confirms this page is routing or collection content without an independent distilled topic."
+  },
+  "lists-and-tables": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/lists-and-tables.md"
+  },
+  "live-activities": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/live-activities.md"
+  },
+  "live-photos": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/live-photos.md"
+  },
+  "live-viewing-apps": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/live-viewing-apps.md"
+  },
+  "loading": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/loading.md"
+  },
+  "lockups": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/lockups.md"
+  },
+  "mac-catalyst": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/mac-catalyst.md"
+  },
+  "machine-learning": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/machine-learning.md"
+  },
+  "managing-accounts": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/managing-accounts.md"
+  },
+  "managing-notifications": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/notifications.md"
+  },
+  "maps": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/maps.md"
+  },
+  "materials": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/materials.md"
+  },
+  "menus": {
+    "disposition": "verified-current-source-review",
+    "notes": "Compared with the current Apple source on 2026-09-04; see verification/current-refresh.md.",
+    "distilled_file": "distilled/menus.md"
+  },
+  "menus-and-actions": {
+    "disposition": "collection-only",
+    "notes": "Current crawl confirms this page is routing or collection content without an independent distilled topic."
+  },
+  "modality": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/modality.md"
+  },
+  "motion": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/motion.md"
+  },
+  "multitasking": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/multitasking.md"
+  },
+  "navigation-and-search": {
+    "disposition": "collection-only",
+    "notes": "Current crawl confirms this page is routing or collection content without an independent distilled topic."
+  },
+  "nearby-interactions": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/nearby-interactions.md"
+  },
+  "nfc": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/nfc.md"
+  },
+  "notifications": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/notifications.md"
+  },
+  "offering-help": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/offering-help.md"
+  },
+  "onboarding": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/onboarding.md"
+  },
+  "ornaments": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/ornaments.md"
+  },
+  "outline-views": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/outline-views.md"
+  },
+  "page-controls": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/page-controls.md"
+  },
+  "panels": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/panels.md"
+  },
+  "path-controls": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/path-controls.md"
+  },
+  "patterns": {
+    "disposition": "collection-only",
+    "notes": "Current crawl confirms this page is routing or collection content without an independent distilled topic."
+  },
+  "photo-editing": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/photo-editing.md"
+  },
+  "pickers": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/pickers.md"
+  },
+  "playing-audio": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/playing-audio.md"
+  },
+  "playing-haptics": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/playing-haptics.md"
+  },
+  "playing-video": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/playing-video.md"
+  },
+  "pointing-devices": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/pointing-devices.md"
+  },
+  "pop-up-buttons": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/pop-up-buttons.md"
+  },
+  "popovers": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/popovers.md"
+  },
+  "presentation": {
+    "disposition": "collection-only",
+    "notes": "Current crawl confirms this page is routing or collection content without an independent distilled topic."
+  },
+  "printing": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/printing.md"
+  },
+  "privacy": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/privacy.md"
+  },
+  "progress-indicators": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/progress-indicators.md"
+  },
+  "pull-down-buttons": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/pull-down-buttons.md"
+  },
+  "rating-indicators": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/rating-indicators.md"
+  },
+  "ratings-and-reviews": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/ratings-and-reviews.md"
+  },
+  "remotes": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/remotes.md"
+  },
+  "researchkit": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/researchkit.md"
+  },
+  "right-to-left": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/right-to-left.md"
+  },
+  "scroll-views": {
+    "disposition": "verified-current-source-review",
+    "notes": "Compared with the current Apple source on 2026-09-04; see verification/current-refresh.md.",
+    "distilled_file": "distilled/scroll-views.md"
+  },
+  "search-fields": {
+    "disposition": "verified-current-source-review",
+    "notes": "Compared with the current Apple source on 2026-09-04; see verification/current-refresh.md.",
+    "distilled_file": "distilled/search-fields.md"
+  },
+  "searching": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/searching.md"
+  },
+  "segmented-controls": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/segmented-controls.md"
+  },
+  "selection-and-input": {
+    "disposition": "collection-only",
+    "notes": "Current crawl confirms this page is routing or collection content without an independent distilled topic."
+  },
+  "settings": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/settings.md"
+  },
+  "sf-symbols": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/sf-symbols.md"
+  },
+  "shareplay": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/shareplay.md"
+  },
+  "shazamkit": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/shazamkit.md"
+  },
+  "sheets": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/sheets.md"
+  },
+  "sidebars": {
+    "disposition": "verified-current-source-review",
+    "notes": "Compared with the current Apple source on 2026-09-04; see verification/current-refresh.md.",
+    "distilled_file": "distilled/sidebars.md"
+  },
+  "sign-in-with-apple": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/sign-in-with-apple.md"
+  },
+  "siri": {
+    "disposition": "verified-current-source-review",
+    "notes": "Compared with the current Apple source on 2026-09-04; see verification/current-refresh.md.",
+    "distilled_file": "distilled/siri.md"
+  },
+  "sliders": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/sliders.md"
+  },
+  "snippets": {
+    "disposition": "verified-current-source-review",
+    "notes": "Compared with the current Apple source on 2026-09-04; see verification/current-refresh.md.",
+    "distilled_file": "distilled/snippets.md"
+  },
+  "spatial-layout": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/spatial-layout.md"
+  },
+  "split-views": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/split-views.md"
+  },
+  "status": {
+    "disposition": "collection-only",
+    "notes": "Current crawl confirms this page is routing or collection content without an independent distilled topic."
+  },
+  "status-bars": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/status-bars.md"
+  },
+  "steppers": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/steppers.md"
+  },
+  "system-experiences": {
+    "disposition": "collection-only",
+    "notes": "Current crawl confirms this page is routing or collection content without an independent distilled topic."
+  },
+  "tab-bars": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/tab-bars.md"
+  },
+  "tab-views": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/tab-views.md"
+  },
+  "tap-to-pay-on-iphone": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/tap-to-pay-on-iphone.md"
+  },
+  "technologies": {
+    "disposition": "collection-only",
+    "notes": "Current crawl confirms this page is routing or collection content without an independent distilled topic."
+  },
+  "text-fields": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/text-fields.md"
+  },
+  "text-views": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/text-views.md"
+  },
+  "the-menu-bar": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/the-menu-bar.md"
+  },
+  "toggles": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/toggles.md"
+  },
+  "token-fields": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/token-fields.md"
+  },
+  "toolbars": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/toolbars.md"
+  },
+  "top-shelf": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/top-shelf.md"
+  },
+  "typography": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/typography.md"
+  },
+  "undo-and-redo": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/undo-and-redo.md"
+  },
+  "virtual-keyboards": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/virtual-keyboards.md"
+  },
+  "voiceover": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/voiceover.md"
+  },
+  "wallet": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/wallet.md"
+  },
+  "watch-faces": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/watch-faces.md"
+  },
+  "web-views": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/web-views.md"
+  },
+  "widgets": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/widgets.md"
+  },
+  "windows": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/windows.md"
+  },
+  "workouts": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/workouts.md"
+  },
+  "writing": {
+    "disposition": "baseline-audit-carried-forward",
+    "notes": "No post-2026-06-09 page changelog entry; prior full audit carried forward without claiming a full current-source comparison.",
+    "distilled_file": "distilled/writing.md"
+  },
+  "__root__": {
+    "disposition": "collection-only",
+    "notes": "Current crawl confirms this page is routing or collection content without an independent distilled topic."
+  }
+}
