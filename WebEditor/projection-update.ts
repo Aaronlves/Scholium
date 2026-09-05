@@ -26,33 +26,16 @@ export interface ProjectionSelectionRange {
   empty: boolean;
 }
 
-/**
- * Projection ranges are half-open. A caret at the first source unit activates
- * the construct, while a caret after its closing marker belongs to adjacent
- * source. Non-empty selections activate only on real overlap.
- */
-export function selectionIntersectsProjection(
+/** Source ranges remain half-open, but an insertion point at either edge
+ * belongs to the editable syntax. Nonempty selections require actual overlap.
+ * Every live construct and its refresh signature use this same rule. */
+export function selectionActivatesSyntax(
   selection: ProjectionSelectionRange,
   projection: ProjectionSourceRange,
 ) {
   return selection.empty
-    ? selection.head >= projection.from && selection.head < projection.to
+    ? selection.head >= projection.from && selection.head <= projection.to
     : selection.from < projection.to && selection.to > projection.from;
-}
-
-/**
- * A Callout's semantic source excludes its terminal line ending, but its
- * content-end insertion point is still editable Callout content. This is the
- * one block-specific inclusive caret edge; non-empty selections continue to
- * require real half-open overlap.
- */
-export function selectionActivatesCallout(
-  selection: ProjectionSelectionRange,
-  callout: ProjectionSourceRange,
-) {
-  return selection.empty
-    ? selection.head >= callout.from && selection.head <= callout.to
-    : selection.from < callout.to && selection.to > callout.from;
 }
 
 export function activeProjectionSignature(
@@ -61,10 +44,10 @@ export function activeProjectionSignature(
 ) {
   const active = new Map<string, ProjectionSourceRange>();
   for (const selection of selections) {
-    const from = selection.empty ? selection.head : selection.from;
+    const from = selection.empty ? Math.max(0, selection.head - 1) : selection.from;
     const to = selection.empty ? selection.head + 1 : selection.to;
     for (const projection of projectionRangesIntersecting(projections, from, to)) {
-      if (!selectionIntersectsProjection(selection, projection)) continue;
+      if (!selectionActivatesSyntax(selection, projection)) continue;
       active.set(`${projection.from}:${projection.to}`, projection);
     }
   }

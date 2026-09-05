@@ -7,7 +7,7 @@ import type {
 import {localizedTemplate} from "./localization";
 import {
   activeProjectionSignature,
-  selectionIntersectsProjection,
+  selectionActivatesSyntax,
   transactionChangedSyntaxTree,
   type ProjectionSourceRange,
 } from "./projection-update";
@@ -114,7 +114,7 @@ export function createLiveFootnoteProjection(options: {
     const projectionRanges: ProjectionSourceRange[] = [];
     const active = (from: number, to: number) =>
       options.selection.selection(state).ranges.some((range) =>
-        selectionIntersectsProjection(range, {from, to}));
+        selectionActivatesSyntax(range, {from, to}));
     for (const reference of presentation.references) {
       const containedByDefinition = presentation.definitions.some((definition) =>
         !definition.isInline && definition.from <= reference.from && definition.to >= reference.to);

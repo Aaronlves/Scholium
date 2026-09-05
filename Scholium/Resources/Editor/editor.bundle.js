@@ -30549,19 +30549,16 @@ ${fence}
   }
 
   // projection-update.ts
-  function selectionIntersectsProjection(selection, projection) {
-    return selection.empty ? selection.head >= projection.from && selection.head < projection.to : selection.from < projection.to && selection.to > projection.from;
-  }
-  function selectionActivatesCallout(selection, callout) {
-    return selection.empty ? selection.head >= callout.from && selection.head <= callout.to : selection.from < callout.to && selection.to > callout.from;
+  function selectionActivatesSyntax(selection, projection) {
+    return selection.empty ? selection.head >= projection.from && selection.head <= projection.to : selection.from < projection.to && selection.to > projection.from;
   }
   function activeProjectionSignature(selections, projections) {
     const active = /* @__PURE__ */ new Map();
     for (const selection of selections) {
-      const from = selection.empty ? selection.head : selection.from;
+      const from = selection.empty ? Math.max(0, selection.head - 1) : selection.from;
       const to = selection.empty ? selection.head + 1 : selection.to;
       for (const projection of projectionRangesIntersecting(projections, from, to)) {
-        if (!selectionIntersectsProjection(selection, projection)) continue;
+        if (!selectionActivatesSyntax(selection, projection)) continue;
         active.set(`${projection.from}:${projection.to}`, projection);
       }
     }
@@ -33157,8 +33154,8 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   }
   function affectedProjectionAndCodeBlockRanges(indexController, state, previousSelections, nextSelections) {
     const changedCodeBlocks = indexController.index(state).literals.codeBlocks.filter((block) => {
-      const wasActive = previousSelections.some((selection) => selectionIntersectsProjection(selection, block));
-      const isActive = nextSelections.some((selection) => selectionIntersectsProjection(selection, block));
+      const wasActive = previousSelections.some((selection) => selectionActivatesSyntax(selection, block));
+      const isActive = nextSelections.some((selection) => selectionActivatesSyntax(selection, block));
       return wasActive !== isActive;
     });
     return immutableProjectionRanges([
@@ -33220,19 +33217,18 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       const lineQueryTo = Math.min(state.doc.length, line.to + 1);
       const active = selection.selection(state).ranges.some((range) => range.head >= line.from && range.head <= line.to || !range.empty && range.from < lineQueryTo && range.to >= line.from);
       const ownsCollapsedCaret = selection.selection(state).ranges.some((range) => range.empty && range.head >= line.from && range.head <= line.to);
+      const outsideFrontmatter = !index.frontmatterRange || line.from >= index.frontmatterRange.to;
       const blocks = projectionRangesIntersecting(index.syntax.blocks, line.from, lineQueryTo);
       const codeBlock = projectionRangesIntersecting(
         index.literals.codeBlocks,
         line.from,
         lineQueryTo
       )[0] ?? null;
-      const codeBlockActive = codeBlock !== null && selection.selection(state).ranges.some((range) => selectionIntersectsProjection(range, codeBlock));
+      const codeBlockActive = codeBlock !== null && selection.selection(state).ranges.some((range) => selectionActivatesSyntax(range, codeBlock));
       const heading2 = blocks.find((block) => block.kind === "heading") ?? null;
-      const outsideFrontmatter = !index.frontmatterRange || line.from >= index.frontmatterRange.to;
-      const pendingATXHeading = ownsCollapsedCaret && outsideFrontmatter && !codeBlock ? /^ {0,3}(#{1,6})[ \t]+$/.exec(line.text) : null;
-      const headingLevel = heading2?.headingLevel ?? pendingATXHeading?.[1].length ?? null;
+      const headingLevel = heading2?.headingLevel ?? null;
       const headingMarkers = heading2?.markerRanges.filter((range) => range.from < lineQueryTo && range.to > line.from) ?? [];
-      const headingMarkerOnly = line.length > 0 && headingMarkers.some((range) => range.from <= line.from && range.to >= line.to);
+      const setextMarkerLine = heading2?.nodeName.startsWith("SetextHeading") && headingMarkers.some((range) => range.from <= line.from && range.to >= line.to);
       const paragraph = blocks.find((block) => block.kind === "paragraph") ?? null;
       const callout = blocks.find((block) => block.kind === "callout") ?? null;
       const calloutPresentation = projectionRangesIntersecting(
@@ -33240,7 +33236,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         line.from,
         lineQueryTo
       )[0] ?? null;
-      const calloutActive = calloutPresentation !== null && selection.selection(state).ranges.some((range) => selectionActivatesCallout(range, calloutPresentation));
+      const calloutActive = calloutPresentation !== null && selection.selection(state).ranges.some((range) => selectionActivatesSyntax(range, calloutPresentation));
       const opening = calloutPresentation ? calloutHeader(calloutPresentation.source.split(/\r?\n/, 1)[0] ?? "") : null;
       const calloutIdentifier = opening ? calloutDefinition(options.editingDialect(), opening[2]).identifier : null;
       const quote = calloutPresentation ? null : blocks.find((block) => block.kind === "blockQuote") ?? null;
@@ -33317,7 +33313,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         if (line.to >= html2.to) classes.add("cm-live-raw-html-end");
       } else {
         if (headingLevel !== null) {
-          if (headingMarkerOnly) {
+          if (setextMarkerLine) {
             classes.add("cm-live-heading-marker-line");
           } else {
             classes.add("cm-live-heading");
@@ -33773,7 +33769,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     }
     function decorations2(state, presentations, themeRevision) {
       return Decoration.set(presentations.flatMap((presentation) => {
-        const active = options.selection.selection(state).ranges.some((range) => selectionIntersectsProjection(range, presentation));
+        const active = options.selection.selection(state).ranges.some((range) => selectionActivatesSyntax(range, presentation));
         if (active) return [];
         return [Decoration.replace({
           widget: new MermaidWidget(presentation, themeRevision),
@@ -33880,7 +33876,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     }
     function tableDecorations(state, presentations) {
       return Decoration.set(presentations.flatMap((presentation) => {
-        const active = options.selection.selection(state).ranges.some((range) => selectionIntersectsProjection(range, presentation));
+        const active = options.selection.selection(state).ranges.some((range) => selectionActivatesSyntax(range, presentation));
         if (active) return [];
         return [Decoration.replace({
           widget: new TableWidget(presentation),
@@ -33951,7 +33947,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     }
     function rawHTMLDecorations(state, presentations) {
       return Decoration.set(presentations.flatMap((presentation) => {
-        const active = options.selection.selection(state).ranges.some((range) => selectionIntersectsProjection(range, presentation));
+        const active = options.selection.selection(state).ranges.some((range) => selectionActivatesSyntax(range, presentation));
         if (active) return [];
         return [Decoration.replace({
           widget: new RawHTMLWidget(presentation),
@@ -34057,7 +34053,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     function calloutDecorations(state, presentations) {
       const selections = options.selection.selection(state).ranges;
       return Decoration.set(presentations.flatMap((presentation) => {
-        const active = selections.some((range) => selectionActivatesCallout(range, presentation));
+        const active = selections.some((range) => selectionActivatesSyntax(range, presentation));
         if (active) return [];
         return [Decoration.replace({
           widget: new CalloutWidget(presentation),
@@ -34075,7 +34071,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           active: false
         };
       }
-      const active = index.callouts.some((presentation) => options.selection.selection(state).ranges.some((range) => selectionActivatesCallout(range, presentation)));
+      const active = index.callouts.some((presentation) => options.selection.selection(state).ranges.some((range) => selectionActivatesSyntax(range, presentation)));
       return {
         decorations: calloutDecorations(state, index.callouts),
         hasConstructs: index.callouts.length > 0,
@@ -34109,7 +34105,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   function createLiveDisplayMathProjection(options) {
     function decorations2(state, presentations) {
       return Decoration.set(presentations.flatMap((presentation) => {
-        const active = options.selection.selection(state).ranges.some((range) => selectionIntersectsProjection(range, presentation));
+        const active = options.selection.selection(state).ranges.some((range) => selectionActivatesSyntax(range, presentation));
         if (active) return [];
         return [Decoration.replace({
           widget: options.widget(presentation),
@@ -34227,7 +34223,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       const decorationRanges = [];
       const atomicDecorationRanges = [];
       const projectionRanges = [];
-      const active = (from, to) => options.selection.selection(state).ranges.some((range) => selectionIntersectsProjection(range, { from, to }));
+      const active = (from, to) => options.selection.selection(state).ranges.some((range) => selectionActivatesSyntax(range, { from, to }));
       for (const reference of presentation.references) {
         const containedByDefinition = presentation.definitions.some((definition) => !definition.isInline && definition.from <= reference.from && definition.to >= reference.to);
         const trailing = trailingFootnotePunctuation(state, reference.to);
@@ -34340,7 +34336,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         Math.min(selection.head, moved.head),
         Math.max(selection.head, moved.head) + 1
       ).filter((candidate) => {
-        const alreadyActive = view.state.selection.ranges.some((range) => candidate.kind === "callout" ? selectionActivatesCallout(range, candidate) : selectionIntersectsProjection(range, candidate));
+        const alreadyActive = view.state.selection.ranges.some((range) => selectionActivatesSyntax(range, candidate));
         if (alreadyActive) return false;
         return forward ? selection.head <= candidate.from && moved.head >= candidate.to : selection.head >= candidate.to && moved.head <= candidate.from;
       });
@@ -34385,7 +34381,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       const selection = view.state.selection.main;
       const projection = horizontalRangeAt(view.state, selection.head, forward);
       if (!projection) return false;
-      const alreadyActive = projection.kind === "callout" ? selectionActivatesCallout(selection, projection) : selectionIntersectsProjection(selection, projection);
+      const alreadyActive = selectionActivatesSyntax(selection, projection);
       const isProjectedLink = projection.kind === "wikilink";
       if (alreadyActive && !(isProjectedLink && forward && selection.head === projection.from)) {
         return false;
@@ -35031,7 +35027,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         if (!transaction.docChanged) {
           return transactionChangedSyntaxTree(transaction) ? build(transaction.state) : previous;
         }
-        const structuralMarker = /[\r\n`~<>%$\[\]!*_|^:]/;
+        const structuralMarker = /[\r\n`~<>%$\[\]!*_|^:#=]/;
         if (previous.mutationSensitiveRanges.length === 0 && !transactionMayCreateProjection(transaction, structuralMarker)) {
           return mapLiveProjectionIndex(previous, transaction);
         }
@@ -36423,8 +36419,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   }
   function selectionAffectedProjectionAndCodeBlockRanges(state, previousSelections, nextSelections) {
     const changedCodeBlocks = liveProjectionIndex.index(state).literals.codeBlocks.filter((block) => {
-      const wasActive = previousSelections.some((selection) => selectionIntersectsProjection(selection, block));
-      const isActive = nextSelections.some((selection) => selectionIntersectsProjection(selection, block));
+      const wasActive = previousSelections.some((selection) => selectionActivatesSyntax(selection, block));
+      const isActive = nextSelections.some((selection) => selectionActivatesSyntax(selection, block));
       return wasActive !== isActive;
     });
     return immutableProjectionRanges([
@@ -36672,7 +36668,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     for (const expression of mathExpressions) {
       literals2.push({ from: expression.from, to: expression.to });
       const activeConstruct = projectionSelections.some(
-        (range) => selectionIntersectsProjection(range, expression)
+        (range) => selectionActivatesSyntax(range, expression)
       );
       if (activeConstruct) continue;
       addAtomicReplacement(Decoration.replace({
@@ -36694,7 +36690,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           (range) => range.from < lineQueryTo && range.to >= line.from
         );
         const inlineConstructIsActive = (from, to) => projectionSelections.some(
-          (range) => selectionIntersectsProjection(range, { from, to })
+          (range) => selectionActivatesSyntax(range, { from, to })
         );
         const excluded = [...projectionRangesIntersecting(literals2, scanFrom, lineQueryTo)];
         const structuralInlineExclusions = [];
@@ -36712,13 +36708,23 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
           )[0];
           if (semanticCodeBlock) {
             const fenceLine = semanticCodeBlock ? isFencedDelimiterLine2(doc2, semanticCodeBlock, line.from) : false;
-            const codeBlockActive = projectionSelections.some((range) => selectionIntersectsProjection(range, semanticCodeBlock));
+            const codeBlockActive = projectionSelections.some((range) => selectionActivatesSyntax(range, semanticCodeBlock));
             if (fenceLine && !codeBlockActive) {
               addHidden(line.from, line.to);
+            } else if (codeBlockActive) {
+              for (const marker of semanticCodeBlock.markerRanges) {
+                addMark(Math.max(scanFrom, marker.from), Math.min(scanTo, marker.to), "cm-live-syntax-marker");
+              }
             }
             if (line.to === doc2.length) break;
             line = doc2.line(line.number + 1);
             continue;
+          }
+          for (const construct of projectionRangesIntersecting(parsedProjection.inlines, scanFrom, lineQueryTo)) {
+            if (!inlineConstructIsActive(construct.from, construct.to)) continue;
+            for (const marker of construct.markerRanges) {
+              addMark(Math.max(scanFrom, marker.from), Math.min(scanTo, marker.to), "cm-live-syntax-marker");
+            }
           }
           const heading2 = semanticBlocksOnLine.find((block) => block.kind === "heading");
           if (heading2 && heading2.headingLevel !== null) {
@@ -36746,7 +36752,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             lineQueryTo
           )[0];
           const semanticCallout = semanticBlocksOnLine.find((block) => block.kind === "callout");
-          const activeCallout = parsedCallout && projectionSelections.some((range) => selectionActivatesCallout(range, parsedCallout));
+          const activeCallout = parsedCallout && projectionSelections.some((range) => selectionActivatesSyntax(range, parsedCallout));
           if (activeCallout) {
             const semanticLineMarkers = semanticCallout?.markerRanges.filter((range) => range.from < lineQueryTo && range.to > line.from) ?? [];
             const pendingPrefix = semanticLineMarkers.length === 0 ? /^\s*>[ \t]*/.exec(doc2.sliceString(line.from, line.to))?.[0] ?? "" : "";
@@ -36805,8 +36811,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             }
           }
           const rule = lineFullyScanned ? semanticBlocksOnLine.find((block) => block.kind === "thematicBreak") : null;
-          if (rule && !activeLine) {
-            addHidden(rule.from, rule.to);
+          if (rule) {
+            if (activeLine) addMark(rule.from, rule.to, "cm-live-syntax-marker");
+            else addHidden(rule.from, rule.to);
           }
           const list = semanticBlocksOnLine.filter((block) => block.kind === "listItem").filter((block) => block.markerRanges.some((range) => range.from >= line.from && range.from <= line.to)).sort((left, right) => (right.listDepth ?? 0) - (left.listDepth ?? 0))[0];
           const listMarker = list?.markerRanges.find((range) => range.from >= line.from && range.from <= line.to && range !== list.taskMarkerRange && !doc2.sliceString(range.from, range.to).startsWith("["));
@@ -36822,7 +36829,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             ).find((range) => range.from <= listMarker.from && range.to >= listMarker.to);
             const replacementFrom = listPrefix2?.from ?? listMarker.from;
             const replacementTo = listPrefix2?.to ?? (task ? list.taskMarkerRange.to : listMarker.to);
-            const prefixIsActive = projectionSelections.some((range) => selectionIntersectsProjection(range, { from: replacementFrom, to: replacementTo }));
+            const prefixIsActive = projectionSelections.some((range) => selectionActivatesSyntax(range, { from: replacementFrom, to: replacementTo }));
             if (prefixIsActive) {
               const className = [
                 "cm-live-list-source-prefix"
@@ -36859,7 +36866,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             lineQueryTo
           )[0];
           const activeTable = parsedTable && projectionSelections.some(
-            (range) => selectionIntersectsProjection(range, parsedTable)
+            (range) => selectionActivatesSyntax(range, parsedTable)
           );
           if (activeTable) {
             decorations2.push(Decoration.line({ attributes: { class: "cm-live-table" } }).range(line.from));

@@ -145,6 +145,14 @@ body,
   vertical-align: baseline;
 }
 
+/* Revealed syntax has one semantic color; authored text retains its style.
+   A descendant rule also covers nested links/highlights around delimiters. */
+.scholium-live-mode :is(.cm-live-syntax-marker, .cm-live-heading-source-marker,
+  .cm-live-quote-source-marker, .cm-live-callout-source-marker, .cm-live-list-source-prefix),
+.scholium-live-mode .cm-live-syntax-marker * {
+  color: var(--scholium-color-muted-text);
+}
+
 /* Active block prefixes remain exact editable source, but they hang outside
    the prose measure instead of entering it. The visible heading/quotation
    therefore keeps the same start, wrapping, baseline, and neighboring block
@@ -154,7 +162,6 @@ body,
 .cm-live-callout-source-marker {
   position: absolute;
   z-index: 1;
-  color: var(--scholium-color-muted-text);
   font-family: "Victor Mono", ui-monospace, monospace;
   font-size: 1em;
   font-style: normal;

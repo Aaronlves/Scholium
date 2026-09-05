@@ -477,7 +477,9 @@ Callouts, footnotes, mathematics, comments, Wikilinks with optional annotations,
 literals. Each catalog entry carries its exact half-open UTF-16 range, exact
 marker ranges, visible ranges, parent and nesting role, and, where applicable,
 heading level, list depth, task marker, link target, and alias range. Opening
-ATX-heading and quotation prefixes include their required separator. Inactive
+ATX-heading and quotation prefixes include their required separator. Heading
+style follows the live syntax catalog, including empty ATX headings; only
+Setext underlines use marker-line geometry. Inactive
 Edit gives those ranges zero measure; active Edit absolutely positions their
 exact editable glyphs outside the prose measure, preserving text geometry and
 adjacent blocks. Semantic blocks exclude terminal CR/LF; task-list prose starts
@@ -596,9 +598,9 @@ WebView, EditorState, buffer, selection, composition, or undo history.
 Inactive Live callouts share Read's `.scholium-callout` DOM and stylesheet.
 The Callout StateField derives activation from the same committed Live
 selection snapshot as every inline projection; no parallel block-activation
-field exists. The semantic range remains half-open, while an empty caret at
-its content-end boundary also activates it so text can be appended before the
-authored separator. Downward or forward entry selects `from`; upward or
+field exists. `selectionActivatesSyntax` owns visibility and refresh signatures:
+carets include both range boundaries; selections require overlap. Parser-owned
+delimiters share muted syntax styling. Downward or forward entry selects `from`; upward or
 rendered-body entry selects that content-end boundary. One subsequent ordinary
 horizontal move reaches the real separator line. The whole-line replacement
 retains CodeMirror's inclusive defaults so it consumes the source line boxes

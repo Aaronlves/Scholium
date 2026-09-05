@@ -150,6 +150,9 @@ secondary description, with shared insets and neutral selection feedback. The
 selected row adds no shadow or second glass layer; the floating container owns
 system material and elevation.
 
+Revealed editable Markdown delimiters use Muted Text; authored content retains
+its semantic text color and formatting. Syntax color never changes source.
+
 Ordinary command buttons use neutral Ink and native surfaces. Default-action
 status retains native keyboard behavior without introducing brand Accent.
 Destructive and cancel actions retain their native semantic roles. Shared

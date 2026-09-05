@@ -535,7 +535,7 @@ export function createLiveProjectionIndexController(
           ? build(transaction.state)
           : previous;
       }
-      const structuralMarker = /[\r\n`~<>%$\[\]!*_|^:]/;
+      const structuralMarker = /[\r\n`~<>%$\[\]!*_|^:#=]/;
       if (previous.mutationSensitiveRanges.length === 0
           && !transactionMayCreateProjection(transaction, structuralMarker)) {
         return mapLiveProjectionIndex(previous, transaction);

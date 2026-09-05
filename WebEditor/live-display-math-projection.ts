@@ -3,7 +3,7 @@ import {Decoration, DecorationSet, EditorView, WidgetType} from "@codemirror/vie
 import type {MathProjection} from "./math";
 import {
   activeProjectionSignature,
-  selectionIntersectsProjection,
+  selectionActivatesSyntax,
   transactionChangedSyntaxTree,
 } from "./projection-update";
 import type {LiveProjectionIndexController} from "./live-projection-index";
@@ -26,7 +26,7 @@ export function createLiveDisplayMathProjection(options: {
   ) {
     return Decoration.set(presentations.flatMap((presentation): Range<Decoration>[] => {
       const active = options.selection.selection(state).ranges.some((range) =>
-        selectionIntersectsProjection(range, presentation));
+        selectionActivatesSyntax(range, presentation));
       if (active) return [];
       return [Decoration.replace({
         widget: options.widget(presentation),

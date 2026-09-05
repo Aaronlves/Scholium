@@ -4,8 +4,7 @@ import {describe, expect, it} from "vitest";
 import {
   activeProjectionSignature,
   selectionAffectedProjectionRanges,
-  selectionActivatesCallout,
-  selectionIntersectsProjection,
+  selectionActivatesSyntax,
   selectionProjectionSignature,
   transactionCanMapProjection,
   transactionCanMapProjectionTopology,
@@ -210,27 +209,41 @@ describe("projection activation boundaries", () => {
   const projection = {from: 4, to: 12};
   const caret = (head: number) => ({from: head, to: head, head, empty: true});
 
-  it("uses half-open caret boundaries and real selection overlap", () => {
-    expect(selectionIntersectsProjection(caret(3), projection)).toBe(false);
-    expect(selectionIntersectsProjection(caret(4), projection)).toBe(true);
-    expect(selectionIntersectsProjection(caret(11), projection)).toBe(true);
-    expect(selectionIntersectsProjection(caret(12), projection)).toBe(false);
-    expect(selectionIntersectsProjection(
+  it("keeps inline syntax visible at both caret boundaries until the caret leaves", () => {
+    for (const head of [4, 5, 11, 12]) expect(selectionActivatesSyntax(caret(head), projection)).toBe(true);
+    for (const head of [3, 13]) expect(selectionActivatesSyntax(caret(head), projection)).toBe(false);
+    expect(selectionActivatesSyntax({from: 0, to: 4, head: 4, empty: false}, projection)).toBe(false);
+    expect(selectionActivatesSyntax({from: 0, to: 5, head: 5, empty: false}, projection)).toBe(true);
+    expect(activeProjectionSignature([caret(12)], [projection])).toBe("4:12");
+    expect(activeProjectionSignature([caret(13)], [projection])).toBe("");
+    const state = EditorState.create({doc: "    *marked* outside"});
+    expect(selectionProjectionSignature(state.doc, [caret(11)], [projection]))
+      .toBe(selectionProjectionSignature(state.doc, [caret(12)], [projection]));
+    expect(selectionProjectionSignature(state.doc, [caret(12)], [projection]))
+      .not.toBe(selectionProjectionSignature(state.doc, [caret(13)], [projection]));
+  });
+
+  it("keeps real selection overlap distinct from caret boundaries", () => {
+    expect(selectionActivatesSyntax(caret(3), projection)).toBe(false);
+    expect(selectionActivatesSyntax(caret(4), projection)).toBe(true);
+    expect(selectionActivatesSyntax(caret(11), projection)).toBe(true);
+    expect(selectionActivatesSyntax(caret(12), projection)).toBe(true);
+    expect(selectionActivatesSyntax(
       {from: 0, to: 4, head: 4, empty: false},
       projection,
     )).toBe(false);
-    expect(selectionIntersectsProjection(
+    expect(selectionActivatesSyntax(
       {from: 0, to: 5, head: 5, empty: false},
       projection,
     )).toBe(true);
   });
 
   it("keeps the Callout content-end insertion point editable", () => {
-    expect(selectionActivatesCallout(caret(3), projection)).toBe(false);
-    expect(selectionActivatesCallout(caret(4), projection)).toBe(true);
-    expect(selectionActivatesCallout(caret(12), projection)).toBe(true);
-    expect(selectionActivatesCallout(caret(13), projection)).toBe(false);
-    expect(selectionActivatesCallout(
+    expect(selectionActivatesSyntax(caret(3), projection)).toBe(false);
+    expect(selectionActivatesSyntax(caret(4), projection)).toBe(true);
+    expect(selectionActivatesSyntax(caret(12), projection)).toBe(true);
+    expect(selectionActivatesSyntax(caret(13), projection)).toBe(false);
+    expect(selectionActivatesSyntax(
       {from: 0, to: 4, head: 4, empty: false},
       projection,
     )).toBe(false);
@@ -239,7 +252,7 @@ describe("projection activation boundaries", () => {
   it("keeps one signature while the caret remains inside a construct", () => {
     expect(activeProjectionSignature([caret(5)], [projection])).toBe("4:12");
     expect(activeProjectionSignature([caret(10)], [projection])).toBe("4:12");
-    expect(activeProjectionSignature([caret(12)], [projection])).toBe("");
+    expect(activeProjectionSignature([caret(12)], [projection])).toBe("4:12");
   });
 
   it("distinguishes a list prefix from prose on the same physical line", () => {

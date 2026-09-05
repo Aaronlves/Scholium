@@ -5,8 +5,7 @@ import {calloutDefinition} from "./callout-presentation";
 import type {MarkdownEditingDialect} from "./protocol";
 import {
   activeProjectionSignature,
-  selectionActivatesCallout,
-  selectionIntersectsProjection,
+  selectionActivatesSyntax,
   transactionChangedSyntaxTree,
   type ProjectionSourceRange,
 } from "./projection-update";
@@ -102,7 +101,7 @@ export function createLiveStructuredBlockProjections(options: {
   ) {
     return Decoration.set(presentations.flatMap((presentation): Range<Decoration>[] => {
       const active = options.selection.selection(state).ranges.some((range) =>
-        selectionIntersectsProjection(range, presentation));
+        selectionActivatesSyntax(range, presentation));
       if (active) return [];
       return [Decoration.replace({
         widget: new TableWidget(presentation),
@@ -173,7 +172,7 @@ export function createLiveStructuredBlockProjections(options: {
   ) {
     return Decoration.set(presentations.flatMap((presentation): Range<Decoration>[] => {
       const active = options.selection.selection(state).ranges.some((range) =>
-        selectionIntersectsProjection(range, presentation));
+        selectionActivatesSyntax(range, presentation));
       if (active) return [];
       return [Decoration.replace({
         widget: new RawHTMLWidget(presentation),
@@ -291,7 +290,7 @@ export function createLiveStructuredBlockProjections(options: {
   ) {
     const selections = options.selection.selection(state).ranges;
     return Decoration.set(presentations.flatMap((presentation): Range<Decoration>[] => {
-      const active = selections.some((range) => selectionActivatesCallout(range, presentation));
+      const active = selections.some((range) => selectionActivatesSyntax(range, presentation));
       if (active) return [];
       return [Decoration.replace({
         widget: new CalloutWidget(presentation),
@@ -312,7 +311,7 @@ export function createLiveStructuredBlockProjections(options: {
     }
     const active = index.callouts.some((presentation) =>
       options.selection.selection(state).ranges.some((range) =>
-        selectionActivatesCallout(range, presentation)));
+        selectionActivatesSyntax(range, presentation)));
     return {
       decorations: calloutDecorations(state, index.callouts),
       hasConstructs: index.callouts.length > 0,

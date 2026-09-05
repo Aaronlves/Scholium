@@ -31,6 +31,25 @@ const dialect: MarkdownEditingDialect = {
 };
 
 describe("live projection index component", () => {
+  it("recognizes headings throughout incremental typing and marker deletion", () => {
+    for (const level of [1, 2, 6]) {
+      const controller = createLiveProjectionIndexController({editingDialect: () => dialect, recordMetric: () => {}});
+      let state = EditorState.create({doc: "", extensions: [scholiumNoteLanguage, controller.extension]});
+      const prefix = "#".repeat(level) + " ";
+      for (const character of prefix + "dd中文") {
+        state = state.update({changes: {from: state.doc.length, insert: character}}).state;
+        if (state.doc.length >= prefix.length) {
+          expect(controller.index(state).syntax.blocks.find(block => block.kind === "heading")?.headingLevel).toBe(level);
+        }
+      }
+      for (let remaining = level - 1; remaining >= 0; remaining--) {
+        state = state.update({changes: {from: 0, to: 1}}).state;
+        expect(controller.index(state).syntax.blocks.find(block => block.kind === "heading")?.headingLevel)
+          .toBe(remaining || undefined);
+      }
+    }
+  });
+
   it("owns catalog construction and maps only topology-safe prose edits", () => {
     const metrics: string[] = [];
     const controller = createLiveProjectionIndexController({

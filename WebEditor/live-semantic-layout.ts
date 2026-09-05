@@ -13,9 +13,8 @@ import {
   projectionRangesIntersecting,
 } from "./projection-index";
 import {
-  selectionActivatesCallout,
+  selectionActivatesSyntax,
   selectionAffectedProjectionRanges,
-  selectionIntersectsProjection,
   transactionChangedSyntaxTree,
   type ProjectionSelectionRange,
   type ProjectionSourceRange,
@@ -85,9 +84,9 @@ function affectedProjectionAndCodeBlockRanges(
 ) {
   const changedCodeBlocks = indexController.index(state).literals.codeBlocks.filter((block) => {
     const wasActive = previousSelections.some((selection) =>
-      selectionIntersectsProjection(selection, block));
+      selectionActivatesSyntax(selection, block));
     const isActive = nextSelections.some((selection) =>
-      selectionIntersectsProjection(selection, block));
+      selectionActivatesSyntax(selection, block));
     return wasActive !== isActive;
   });
   return immutableProjectionRanges([
@@ -160,6 +159,7 @@ export function createLiveSemanticLayout(options: {
         || !range.empty && range.from < lineQueryTo && range.to >= line.from);
     const ownsCollapsedCaret = selection.selection(state).ranges.some((range) =>
       range.empty && range.head >= line.from && range.head <= line.to);
+    const outsideFrontmatter = !index.frontmatterRange || line.from >= index.frontmatterRange.to;
     const blocks = projectionRangesIntersecting(index.syntax.blocks, line.from, lineQueryTo);
     const codeBlock = projectionRangesIntersecting(
       index.literals.codeBlocks,
@@ -167,16 +167,12 @@ export function createLiveSemanticLayout(options: {
       lineQueryTo,
     )[0] ?? null;
     const codeBlockActive = codeBlock !== null && selection.selection(state).ranges.some((range) =>
-      selectionIntersectsProjection(range, codeBlock));
+      selectionActivatesSyntax(range, codeBlock));
     const heading = blocks.find((block) => block.kind === "heading") ?? null;
-    const outsideFrontmatter = !index.frontmatterRange || line.from >= index.frontmatterRange.to;
-    const pendingATXHeading = ownsCollapsedCaret && outsideFrontmatter && !codeBlock
-      ? /^ {0,3}(#{1,6})[ \t]+$/.exec(line.text)
-      : null;
-    const headingLevel = heading?.headingLevel ?? pendingATXHeading?.[1].length ?? null;
+    const headingLevel = heading?.headingLevel ?? null;
     const headingMarkers = heading?.markerRanges.filter((range) =>
       range.from < lineQueryTo && range.to > line.from) ?? [];
-    const headingMarkerOnly = line.length > 0 && headingMarkers.some((range) =>
+    const setextMarkerLine = heading?.nodeName.startsWith("SetextHeading") && headingMarkers.some((range) =>
       range.from <= line.from && range.to >= line.to);
     const paragraph = blocks.find((block) => block.kind === "paragraph") ?? null;
     const callout = blocks.find((block) => block.kind === "callout") ?? null;
@@ -187,7 +183,7 @@ export function createLiveSemanticLayout(options: {
     )[0] ?? null;
     const calloutActive = calloutPresentation !== null
       && selection.selection(state).ranges.some((range) =>
-        selectionActivatesCallout(range, calloutPresentation));
+        selectionActivatesSyntax(range, calloutPresentation));
     const opening = calloutPresentation
       ? calloutHeader(calloutPresentation.source.split(/\r?\n/, 1)[0] ?? "")
       : null;
@@ -288,7 +284,7 @@ export function createLiveSemanticLayout(options: {
       if (line.to >= html.to) classes.add("cm-live-raw-html-end");
     } else {
       if (headingLevel !== null) {
-        if (headingMarkerOnly) {
+        if (setextMarkerLine) {
           classes.add("cm-live-heading-marker-line");
         } else {
           classes.add("cm-live-heading");

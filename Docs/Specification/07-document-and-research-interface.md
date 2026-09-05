@@ -158,6 +158,15 @@ spaces, blank source rows, and active syntax. Every authored blank line remains
 addressable and cannot collapse, overlap adjacent content, or jump when its
 first visible character is entered.
 
+Recognized Markdown syntax remains visible while a caret is inside its editable
+construct or immediately at either boundary; moving outside hides it. A range
+selection reveals constructs it actually overlaps. Revealed delimiters use
+Muted Text while authored content keeps its semantic styling. Unrecognized or
+incomplete inline punctuation remains ordinary source, without inferred styling.
+
+A valid heading keeps its semantic size while typing and when the caret leaves
+or re-enters it. Editing its prefix immediately updates the level or returns
+it to prose; while editing, an empty ATX heading keeps a visible marker line.
 An inactive heading or quotation may de-emphasize its structural prefix.
 Entering it reveals the exact prefix at the same source location without moving
 the researcher to another block or losing selection, composition, or scroll

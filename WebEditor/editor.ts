@@ -86,8 +86,7 @@ import {
 import {
   activeProjectionSignature,
   selectionAffectedProjectionRanges,
-  selectionActivatesCallout,
-  selectionIntersectsProjection,
+  selectionActivatesSyntax,
   selectionProjectionSignature,
   transactionChangedSyntaxTree,
   type ProjectionSelectionRange,
@@ -594,9 +593,9 @@ function selectionAffectedProjectionAndCodeBlockRanges(
 ) {
   const changedCodeBlocks = liveProjectionIndex.index(state).literals.codeBlocks.filter((block) => {
     const wasActive = previousSelections.some((selection) =>
-      selectionIntersectsProjection(selection, block));
+      selectionActivatesSyntax(selection, block));
     const isActive = nextSelections.some((selection) =>
-      selectionIntersectsProjection(selection, block));
+      selectionActivatesSyntax(selection, block));
     return wasActive !== isActive;
   });
   return immutableProjectionRanges([
@@ -929,7 +928,7 @@ function buildLiveDecorations(
   for (const expression of mathExpressions) {
     literals.push({from: expression.from, to: expression.to});
     const activeConstruct = projectionSelections.some((range) =>
-      selectionIntersectsProjection(range, expression),
+      selectionActivatesSyntax(range, expression),
     );
     if (activeConstruct) continue;
     addAtomicReplacement(Decoration.replace({
@@ -955,7 +954,7 @@ function buildLiveDecorations(
       );
       const inlineConstructIsActive = (from: number, to: number) =>
         projectionSelections.some((range) =>
-          selectionIntersectsProjection(range, {from, to}),
+          selectionActivatesSyntax(range, {from, to}),
         );
       const excluded = [...rangesIntersecting(literals, scanFrom, lineQueryTo)];
       const structuralInlineExclusions: ProjectionSourceRange[] = [];
@@ -980,13 +979,26 @@ function buildLiveDecorations(
             ? isFencedDelimiterLine(doc, semanticCodeBlock, line.from)
             : false;
           const codeBlockActive = projectionSelections.some((range) =>
-            selectionIntersectsProjection(range, semanticCodeBlock));
+            selectionActivatesSyntax(range, semanticCodeBlock));
           if (fenceLine && !codeBlockActive) {
             addHidden(line.from, line.to);
+          } else if (codeBlockActive) {
+            for (const marker of semanticCodeBlock.markerRanges) {
+              addMark(Math.max(scanFrom, marker.from), Math.min(scanTo, marker.to), "cm-live-syntax-marker");
+            }
           }
           if (line.to === doc.length) break;
           line = doc.line(line.number + 1);
           continue;
+        }
+
+        // Exact parser-owned delimiters share one presentation; unrecognized
+        // punctuation is ordinary source, never guessed by a styling regex.
+        for (const construct of rangesIntersecting(parsedProjection.inlines, scanFrom, lineQueryTo)) {
+          if (!inlineConstructIsActive(construct.from, construct.to)) continue;
+          for (const marker of construct.markerRanges) {
+            addMark(Math.max(scanFrom, marker.from), Math.min(scanTo, marker.to), "cm-live-syntax-marker");
+          }
         }
 
         const heading = semanticBlocksOnLine.find((block) => block.kind === "heading");
@@ -1018,7 +1030,7 @@ function buildLiveDecorations(
         )[0];
         const semanticCallout = semanticBlocksOnLine.find((block) => block.kind === "callout");
         const activeCallout = parsedCallout && projectionSelections.some((range) =>
-          selectionActivatesCallout(range, parsedCallout));
+          selectionActivatesSyntax(range, parsedCallout));
         if (activeCallout) {
           const semanticLineMarkers = semanticCallout?.markerRanges.filter((range) =>
             range.from < lineQueryTo && range.to > line.from) ?? [];
@@ -1095,8 +1107,9 @@ function buildLiveDecorations(
         const rule = lineFullyScanned
           ? semanticBlocksOnLine.find((block) => block.kind === "thematicBreak")
           : null;
-        if (rule && !activeLine) {
-          addHidden(rule.from, rule.to);
+        if (rule) {
+          if (activeLine) addMark(rule.from, rule.to, "cm-live-syntax-marker");
+          else addHidden(rule.from, rule.to);
         }
 
         const list = semanticBlocksOnLine
@@ -1128,7 +1141,7 @@ function buildLiveDecorations(
           const replacementTo = listPrefix?.to
             ?? (task ? list.taskMarkerRange!.to : listMarker.to);
           const prefixIsActive = projectionSelections.some((range) =>
-            selectionIntersectsProjection(range, {from: replacementFrom, to: replacementTo}));
+            selectionActivatesSyntax(range, {from: replacementFrom, to: replacementTo}));
           if (prefixIsActive) {
             const className = [
               "cm-live-list-source-prefix",
@@ -1168,7 +1181,7 @@ function buildLiveDecorations(
           lineQueryTo,
         )[0];
         const activeTable = parsedTable && projectionSelections.some((range) =>
-          selectionIntersectsProjection(range, parsedTable),
+          selectionActivatesSyntax(range, parsedTable),
         );
         if (activeTable) {
           decorations.push(Decoration.line({ attributes: { class: "cm-live-table" } }).range(line.from));

@@ -6,8 +6,7 @@ import {
   projectionRangesIntersecting,
 } from "./projection-index";
 import {
-  selectionActivatesCallout,
-  selectionIntersectsProjection,
+  selectionActivatesSyntax,
   type ProjectionSourceRange,
 } from "./projection-update";
 import type {LiveProjectionIndexController} from "./live-projection-index";
@@ -81,9 +80,7 @@ export function createLiveProjectionNavigation(options: {
       Math.max(selection.head, moved.head) + 1,
     ).filter((candidate) => {
       const alreadyActive = view.state.selection.ranges.some((range) =>
-        candidate.kind === "callout"
-          ? selectionActivatesCallout(range, candidate)
-          : selectionIntersectsProjection(range, candidate));
+        selectionActivatesSyntax(range, candidate));
       if (alreadyActive) return false;
       return forward
         ? selection.head <= candidate.from && moved.head >= candidate.to
@@ -138,9 +135,7 @@ export function createLiveProjectionNavigation(options: {
     const selection = view.state.selection.main;
     const projection = horizontalRangeAt(view.state, selection.head, forward);
     if (!projection) return false;
-    const alreadyActive = projection.kind === "callout"
-      ? selectionActivatesCallout(selection, projection)
-      : selectionIntersectsProjection(selection, projection);
+    const alreadyActive = selectionActivatesSyntax(selection, projection);
     const isProjectedLink = projection.kind === "wikilink";
     // Forward traversal treats a projected Wikilink as one object. Backward
     // traversal from its end still exposes the authored closing delimiter.

@@ -1490,8 +1490,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let projectedLink = try await harness.session.testingInlineProjectionSnapshot(
             containing: "linked note"
         )
-        #expect(projectedLink.wikiLinkTexts.contains("linked note"))
-        #expect(!projectedLink.lineText.contains("[[work-031|linked note]]"))
+        #expect(projectedLink.lineText.contains("[[work-031|linked note]]"))
 
         try await harness.session.testingPressArrow("ArrowLeft")
         try await harness.waitUntilSelection(
@@ -1510,7 +1509,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let keyboardProjectedLink = try await harness.session.testingInlineProjectionSnapshot(
             containing: "linked note"
         )
-        #expect(keyboardProjectedLink.wikiLinkTexts.contains("linked note"))
+        #expect(keyboardProjectedLink.lineText.contains("[[work-031|linked note]]"))
 
         harness.session.goToLine(1)
         _ = try await harness.waitUntilPresentation(stage: "Callout restored before modified link") {
@@ -1791,75 +1790,26 @@ struct MarkdownEditorWebViewIntegrationTests {
         _ = try await harness.waitUntilPresentation(stage: "two Edit footnote locators") {
             $0.footnoteReferenceCount == 2 && $0.footnoteDefinitionSourceCount == 1
         }
-        let preview = try #require(try await harness.callPageJavaScript(
-            """
-            const markers = Array.from(document.querySelectorAll(
-              '.cm-live-footnote-reference-widget .footnote-reference'
-            ));
-            const popover = document.getElementById('scholium-preview-popover');
-            const title = popover?.querySelector('.scholium-preview-title');
-            const metadata = popover?.querySelector('.scholium-preview-metadata');
-            const body = popover?.querySelector('.scholium-preview-body');
-            const line = markers[0]?.closest('.cm-line');
-            if (markers.length !== 2 || !popover || !title || !metadata || !body || !line) {
-              return null;
+        let owner = try #require(harness.session.webView)
+        let frame = owner.frame
+        for (index, text, tag) in [(0, "Basis for the claim", "strong"), (1, "Inline qualification", "em")] {
+            _ = try await harness.callPageJavaScript("""
+                const marker = document.querySelectorAll('.cm-live-footnote-reference-widget .footnote-reference')[index];
+                marker.dispatchEvent(new PointerEvent('pointermove', {bubbles: true, pointerType: 'mouse'}));
+                """, arguments: ["index": index])
+            _ = try await harness.waitUntilPresentation(stage: "native footnote preview") {
+                !$0.previewPopoverHidden && $0.previewTitle == "Footnote \(index + 1)"
             }
-            const before = line.getBoundingClientRect();
-            markers[0].dispatchEvent(new PointerEvent('pointermove', {
-              bubbles: true,
-              pointerType: 'mouse'
-            }));
-            await new Promise(resolve => setTimeout(resolve, 420));
-            await new Promise(resolve => setTimeout(resolve, 40));
-            const after = line.getBoundingClientRect();
-            const named = {
-              hidden: popover.hidden,
-              title: title.textContent || '',
-              body: body.textContent || '',
-              hasStrong: Boolean(body.querySelector('strong')),
-              metadataHidden: metadata.hidden,
-              lineTopDelta: Math.abs(after.top - before.top),
-              lineHeightDelta: Math.abs(after.height - before.height),
-              tag: markers[0].tagName,
-              controls: markers[0].getAttribute('aria-controls'),
-              expanded: markers[0].getAttribute('aria-expanded')
-            };
-            document.body.dispatchEvent(new PointerEvent('pointermove', {
-              bubbles: true,
-              pointerType: 'mouse'
-            }));
-            await new Promise(resolve => setTimeout(resolve, 220));
-            markers[1].focus({preventScroll: true});
-            await new Promise(resolve => setTimeout(resolve, 40));
-            const inline = {
-              hidden: popover.hidden,
-              title: title.textContent || '',
-              body: body.textContent || '',
-              hasEmphasis: Boolean(body.querySelector('em')),
-              metadataHidden: metadata.hidden,
-              expanded: markers[1].getAttribute('aria-expanded')
-            };
-            return {named, inline};
-            """
-        ) as? [String: Any])
-        let named = try #require(preview["named"] as? [String: Any])
-        let inline = try #require(preview["inline"] as? [String: Any])
-        #expect(named["hidden"] as? Bool == false)
-        #expect(named["title"] as? String == "Footnote 1")
-        #expect((named["body"] as? String)?.contains("Basis for the claim") == true)
-        #expect(named["hasStrong"] as? Bool == true)
-        #expect(named["metadataHidden"] as? Bool == true)
-        #expect((named["lineTopDelta"] as? Double ?? 1) <= 0.5)
-        #expect((named["lineHeightDelta"] as? Double ?? 1) <= 0.5)
-        #expect(named["tag"] as? String == "BUTTON")
-        #expect(named["controls"] as? String == "scholium-preview-popover")
-        #expect(named["expanded"] as? String == "true")
-        #expect(inline["hidden"] as? Bool == false)
-        #expect(inline["title"] as? String == "Footnote 2")
-        #expect((inline["body"] as? String)?.contains("Inline qualification") == true)
-        #expect(inline["hasEmphasis"] as? Bool == true)
-        #expect(inline["metadataHidden"] as? Bool == true)
-        #expect(inline["expanded"] as? String == "true")
+            let preview = try #require(harness.session.floatingSurfaces.previewWebView)
+            #expect(try await preview.evaluateJavaScript("document.body.textContent.includes('\(text)')") as? Bool == true)
+            #expect(try await preview.evaluateJavaScript("document.querySelector('\(tag)') !== null") as? Bool == true)
+            #expect(owner.frame == frame)
+            #expect(try await harness.callPageJavaScript("""
+                const marker = document.querySelectorAll('.cm-live-footnote-reference-widget .footnote-reference')[index];
+                return marker.tagName === 'BUTTON' && marker.getAttribute('aria-expanded') === 'true'
+                    && !marker.hasAttribute('aria-controls');
+                """, arguments: ["index": index]) as? Bool == true)
+        }
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         #expect(!harness.session.isDirty)
         await harness.closeAndDrain()
@@ -3195,6 +3145,95 @@ struct MarkdownEditorWebViewIntegrationTests {
             try await harness.session.currentText(for: harness.documentID)
                 == source
         )
+        await harness.closeAndDrain()
+    }
+
+    @Test("Active inline syntax is muted and stays visible through the closing caret boundary")
+    func activeInlineSyntaxPresentation() async throws {
+        let harness = EditorHarness(source: "\n", laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.waitUntilFocused()
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, '*Source-role classification')")
+        #expect(try await harness.callPageJavaScript("return document.querySelectorAll('.cm-live-syntax-marker').length") as? Int == 0)
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, '*')")
+        func checkMutedMarkers() async throws {
+            #expect(try await harness.callPageJavaScript("""
+                const markers = [...document.querySelectorAll('.cm-live-syntax-marker')];
+                const probe = document.createElement('span');
+                probe.style.color = 'var(--scholium-color-muted-text)';
+                document.body.appendChild(probe);
+                const muted = getComputedStyle(probe).color;
+                probe.remove();
+                const emphasis = document.querySelector('.cm-live-emphasis');
+                return markers.length === 2 && markers.every(marker => marker.textContent === '*'
+                    && getComputedStyle(marker).color === muted)
+                    && !!emphasis && getComputedStyle(emphasis).fontStyle === 'italic'
+                    && getComputedStyle(emphasis).color !== muted;
+                """) as? Bool == true)
+        }
+        try await checkMutedMarkers()
+        harness.session.revealSourceRange(fromUTF16: 5, toUTF16: 5)
+        try await harness.waitUntilSelection(head: 5, stage: "inside emphasized prose")
+        try await checkMutedMarkers()
+        let end = "*Source-role classification*".utf16.count
+        harness.session.revealSourceRange(fromUTF16: end, toUTF16: end)
+        try await harness.waitUntilSelection(head: end, stage: "after closing delimiter")
+        try await checkMutedMarkers()
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, ' ')")
+        #expect(try await harness.callPageJavaScript("return document.querySelectorAll('.cm-live-syntax-marker').length") as? Int == 0)
+        #expect(try await harness.session.currentText(for: harness.documentID) == "*Source-role classification* \n")
+        await harness.closeAndDrain()
+    }
+
+    @Test("Heading typing and marker deletion update one visible semantic line", arguments: [1, 2, 6])
+    func headingTypingAndDeletion(level: Int) async throws {
+        let harness = EditorHarness(source: "\n\nFollowing paragraph.\n", laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        try await harness.waitUntilFocused()
+        harness.session.revealSourceRange(fromUTF16: 0, toUTF16: 0)
+        try await harness.waitUntilSelection(head: 0, stage: "new heading")
+        func presentation() async throws -> [String: Any] {
+            try #require(try await harness.callPageJavaScript("""
+                const line = document.querySelector('.cm-content .cm-line');
+                const marker = line?.querySelector('.cm-live-heading-source-marker');
+                return {level: line?.getAttribute('aria-level') || '',
+                    fontSize: line ? getComputedStyle(line).fontSize : '',
+                    marker: marker?.textContent || '',
+                    markerVisible: !!marker && marker.getBoundingClientRect().width > 0
+                        && getComputedStyle(line).overflow !== 'hidden'};
+                """) as? [String: Any])
+        }
+        for character in String(repeating: "#", count: level) + " " {
+            _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, text)", arguments: ["text": String(character)])
+        }
+        let initial = try await presentation()
+        #expect(initial["level"] as? String == String(min(level + 1, 6)))
+        #expect(initial["markerVisible"] as? Bool == true)
+        for character in "dd中文" {
+            _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, text)", arguments: ["text": String(character)])
+            let current = try await presentation()
+            #expect(current["level"] as? String == String(min(level + 1, 6)))
+            #expect(current["fontSize"] as? String == initial["fontSize"] as? String)
+            #expect(current["markerVisible"] as? Bool == true)
+        }
+        for remaining in stride(from: level - 1, through: 0, by: -1) {
+            harness.session.revealSourceRange(fromUTF16: 0, toUTF16: 1)
+            let selectionDeadline = ContinuousClock.now.advanced(by: .seconds(3))
+            while true {
+                if let selected = try await harness.session.currentSelection(for: harness.documentID),
+                   selected.utf16LowerBound == 0 && selected.utf16UpperBound == 1 { break }
+                guard ContinuousClock.now < selectionDeadline else { throw MarkdownEditorSession.SessionError.unavailable }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            _ = try await harness.callPageJavaScript("document.execCommand('delete', false)")
+            try await harness.waitUntilSelection(head: 0, stage: "deleted heading marker")
+            let current = try await presentation()
+            #expect(current["level"] as? String == (remaining == 0 ? "" : String(min(remaining + 1, 6))))
+            if remaining > 0 { #expect(current["markerVisible"] as? Bool == true) }
+        }
+        #expect(try await harness.session.currentText(for: harness.documentID) == " dd中文\n\nFollowing paragraph.\n")
         await harness.closeAndDrain()
     }
 

@@ -6,6 +6,79 @@ import notify
 
 extension ScholiumUITests {
     @MainActor
+    func testInlineSyntaxRemainsVisibleAtClosingBoundary() throws {
+        try enterLivePreviewAndAppend("\n\n*Source-role classification")
+        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
+        app.typeText("*")
+        XCTAssertTrue(waitUntil(timeout: 5) {
+            (editor.value as? String ?? "").contains("*Source-role classification*")
+        })
+        let line = app.staticTexts.matching(NSPredicate(format: "value CONTAINS %@", "Source-role classification")).firstMatch
+        func markersAreVisible() -> Bool {
+            (line.value as? String ?? "").contains("*Source-role classification*")
+        }
+        XCTAssertTrue(waitUntil(timeout: 5) { markersAreVisible() })
+        let active = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        active.name = "Muted syntax at closing caret boundary"
+        active.lifetime = .keepAlways
+        add(active)
+        app.typeKey(.leftArrow, modifierFlags: [])
+        app.typeKey(.leftArrow, modifierFlags: [])
+        XCTAssertTrue(markersAreVisible())
+        app.typeKey(.rightArrow, modifierFlags: [.command])
+        XCTAssertTrue(markersAreVisible())
+        app.typeText(" ")
+        XCTAssertTrue(waitUntil(timeout: 5) { !markersAreVisible() })
+        let noteURL = triptychDirectory.appendingPathComponent("01-analyses/QA Autosave A.md")
+        XCTAssertTrue(waitUntil(timeout: 12) {
+            (try? String(contentsOf: noteURL, encoding: .utf8))?.contains("*Source-role classification* ") == true
+        }, "Hidden syntax must remain byte-exact in the saved Markdown.")
+        let inactive = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        inactive.name = "Syntax hidden after leaving construct"
+        inactive.lifetime = .keepAlways
+        add(inactive)
+    }
+
+    @MainActor
+    func testHeadingTypingAndMarkerDeletionPreserveLivePresentation() throws {
+        try enterLivePreviewAndAppend("\n\n")
+        let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch
+        let inputSource = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
+        let isASCII = TISGetInputSourceProperty(inputSource, kTISPropertyInputSourceIsASCIICapable)
+            .map { Unmanaged<CFBoolean>.fromOpaque($0).takeUnretainedValue() }
+            .map(CFBooleanGetValue) ?? true
+        app.typeText("# ")
+        app.typeText("headingprobe")
+        if !isASCII { app.typeKey(.return, modifierFlags: []) }
+        XCTAssertTrue(waitUntil(timeout: 5) { (editor.value as? String ?? "").contains("# headingprobe") })
+        let heading = app.staticTexts.matching(NSPredicate(
+            format: "label CONTAINS %@ OR value CONTAINS %@", "headingprobe", "headingprobe")).firstMatch
+        XCTAssertTrue(heading.waitForExistence(timeout: 5))
+        let headingHeight = heading.frame.height
+        func capture(_ name: String) {
+            let attachment = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+            attachment.name = name
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+        capture("Heading while typing")
+        app.typeKey(.return, modifierFlags: [])
+        XCTAssertEqual(heading.frame.height, headingHeight, accuracy: 1)
+        app.typeKey(.upArrow, modifierFlags: [])
+        XCTAssertEqual(heading.frame.height, headingHeight, accuracy: 1)
+        app.typeKey(.leftArrow, modifierFlags: [.command])
+        app.typeKey(.rightArrow, modifierFlags: [])
+        app.typeKey(.delete, modifierFlags: [])
+        XCTAssertTrue(waitUntil(timeout: 5) { !(editor.value as? String ?? "").contains("# headingprobe") })
+        XCTAssertTrue((editor.value as? String ?? "").contains("headingprobe"))
+        XCTAssertLessThan(heading.frame.height, headingHeight)
+        capture("Heading marker removed")
+        app.typeKey("z", modifierFlags: [.command])
+        XCTAssertTrue(waitUntil(timeout: 5) { (editor.value as? String ?? "").contains("# headingprobe") })
+        XCTAssertEqual(heading.frame.height, headingHeight, accuracy: 1)
+    }
+
+    @MainActor
     func testNativeCompletionPreservesFocusAndUndo() throws {
         try enterLivePreviewAndAppend("\n\ncompletionprobe\n\n")
         let editor = app.descendants(matching: .any)["Markdown editor, Edit mode"].firstMatch

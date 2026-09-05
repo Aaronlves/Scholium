@@ -10,7 +10,7 @@ import {localized, localizedTemplate} from "./localization";
 import {mermaidPresentation, type MermaidPresentation} from "./mermaid-presentation";
 import {
   activeProjectionSignature,
-  selectionIntersectsProjection,
+  selectionActivatesSyntax,
   transactionChangedSyntaxTree,
 } from "./projection-update";
 import type {LiveProjectionIndexController} from "./live-projection-index";
@@ -151,7 +151,7 @@ export function createLiveMermaidProjection(options: {
   ) {
     return Decoration.set(presentations.flatMap((presentation): Range<Decoration>[] => {
       const active = options.selection.selection(state).ranges.some((range) =>
-        selectionIntersectsProjection(range, presentation));
+        selectionActivatesSyntax(range, presentation));
       if (active) return [];
       return [Decoration.replace({
         widget: new MermaidWidget(presentation, themeRevision),

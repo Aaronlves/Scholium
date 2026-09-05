@@ -9,6 +9,29 @@
 the older fixed-index Records and animated Settlement presentation evidence
 below; it is implementation verification, not release or human acceptance.
 
+- Syntax visibility uses one activation rule for construct rendering,
+  navigation, and refresh signatures: an insertion point at either boundary
+  keeps source visible, and nonempty selections require overlap. Parser-owned
+  delimiters use Muted Text; unfinished inline punctuation stays ordinary text.
+  All 219 Web tests/resource reproducibility and 100 distinct focused native
+  tests passed across grouped runs. Coverage includes typed closing delimiters,
+  interior/end/outside transitions, semantic typography, pointer activation,
+  marked-text mode deferral, code/Mermaid, Callouts, footnotes, and 200% text.
+  A stale footnote test was updated to inspect the existing native preview
+  rather than a deleted DOM container. The isolated keyboard QA journey passed:
+  closing-boundary retention, movement within the construct, hiding after a
+  following space, and exact Markdown retained through real autosave.
+  Evidence: `.build/syntax-presentation/`; full adaptation acceptance remains open.
+- Heading editing now derives style and marker presentation from the live syntax
+  catalog. The incomplete-prefix font fallback is removed, structural heading
+  input invalidates the index, and empty ATX headings no longer use Setext
+  underline geometry. All 218 Web tests and resource reproducibility passed.
+  Three owning WebKit tests passed, including H1/H2/H6 incremental typing and
+  marker deletion, exact mixed-script source, and existing heading-entry and
+  filename-title focus behavior. The real keyboard QA journey passed in 22.433
+  seconds: typing, leaving/re-entering, visible marker deletion, immediate prose
+  styling, and Undo restoring the heading. Evidence: `.build/heading-editing/`.
+  This is bounded editor verification, not full adaptation or release acceptance.
 - Completion lifecycle and density corrections passed 99 focused tests across
   four suites. Autosave now invalidates transport requests without dismissing
   the active projection, and activation validates the accepted live buffer
