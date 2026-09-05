@@ -41,10 +41,18 @@ is appropriate only when its task is genuinely transient or spatially anchored.
 
 Semantic floating containers use native Liquid Glass: contextual Find, Search,
 previews, suggestions, and transient notifications sit above their originating
-content without reflowing it. Reading, editing, settings, forms, and persistent
+content without reflowing it. Reading, editing, document forms, and persistent
 operation or recovery regions use Scholium's opaque semantic colors. Glass
 belongs to the floating container. Embedded document previews retain document
 semantics; editor assistance controls and candidates use system presentation. Clickability alone does not grant a control a glass surface.
+Settings uses native macOS window backgrounds, preference toolbars, typography,
+and controls. Right-aligned group labels share one column; related controls
+start on one content axis, with necessary supporting copy directly below its
+control. Fine rules separate groups; field and shortcut collections use native
+tables with adjacent collection actions. Settings stays on one visual level:
+Appearance exposes its options directly without nested advanced disclosures;
+heading-level and Callout selectors choose the object being edited in place. Pane changes may resize the window with native animation, with an
+immediate Reduce Motion result.
 System-owned navigation, toolbars, menus, and popovers keep native treatment.
 There is no separate feature-authored frosted-glass style. The system owns
 transparency and contrast adaptation; do not simulate Liquid Glass in WebKit.

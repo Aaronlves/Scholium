@@ -40,7 +40,7 @@ extension ScholiumUITests {
     }
 
     @MainActor
-    func sliderNumericValue(_ element: XCUIElement) -> Double? {
+    func appearanceNumericValue(_ element: XCUIElement) -> Double? {
         if let number = element.value as? NSNumber {
             return number.doubleValue
         }

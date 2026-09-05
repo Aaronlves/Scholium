@@ -157,7 +157,7 @@
 
 ### Metadata and portable settings
 
-- Settings exposes search, navigation group, selected destination, scope, and
+- Settings exposes search, native toolbar selection, selected destination, scope, and
   detail in predictable order. Empty search retains the query and names the
   absence.
 - Hotkeys expose command, menu location, binding, recording state, validation,

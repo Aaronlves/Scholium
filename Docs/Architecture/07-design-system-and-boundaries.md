@@ -306,22 +306,16 @@ retains its domain values, operations, accessibility identifiers, and state.
 The shared presentation component performs no persistence, routing, or
 authorization work and does not style native controls themselves.
 
-The Settings root uses one native sidebar List with Application, This Triptych,
-and Research Guidance sections. Its native search field filters only a static
-destination metadata catalog, while Triptych selection remains in the
-Triptychs detail and continues to route the existing Settings model. Hotkey rows use native menus, and their
-AppKit recorder is a focusable `NSButton` adapter that translates one key event
-into `ScholiumHotkeyPreferences`, the versioned UserDefaults owner shared with
-`ScholiumCommands`; it owns no command execution, and Hotkeys never enter
-portable Triptych settings.
-
-Settings uses a unified, title-free toolbar style.
-`SettingsWindowAttachment` installs `fullSizeContentView` and retains the
-transparent native titlebar, traffic lights, and drag behavior. The Settings
-root is a two-column `NavigationSplitView`; its Navigation and detail columns
-own their actual full-height semantic surfaces and the native divider beneath
-that chrome. No window-level two-color background or SwiftUI divider duplicates
-those planes.
+The Settings root keeps destination selection in SwiftUI and projects it to
+`SettingsToolbarAttachment`. Its coordinator installs an AppKit preference
+`NSToolbar` with native icon-and-label selectable items; it forwards selection
+intents and owns only native window geometry. Pane changes use `NSWindow`
+frame animation anchored to the upper center, constrained to the visible
+screen, and immediate under Reduce Motion. The scene imposes no fixed size.
+Settings content uses native window backgrounds and controls. The native search
+field filters static destination metadata; Triptych selection stays in its pane.
+Hotkey rows use native menus; the AppKit recorder translates key events into
+`ScholiumHotkeyPreferences`, the machine-local owner shared with commands.
 
 The This Triptych Metadata detail consumes one candidate
 `NoteMetadataCatalog` derived from its settings draft. Its field-definition and

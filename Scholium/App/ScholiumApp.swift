@@ -151,10 +151,9 @@ struct ScholiumApp: App {
 
         Settings {
             ScholiumSettingsWindowContent()
-            .frame(width: 700, height: 560, alignment: .topLeading)
-            .background(SettingsWindowAttachment())
+            .frame(minWidth: 620, minHeight: 280)
         }
-        .windowToolbarStyle(.unified(showsTitle: false))
+        .windowResizability(.automatic)
         .environmentObject(applicationBootstrap)
         .environmentObject(applicationDelegate)
     }
@@ -951,8 +950,8 @@ private struct ScholiumSettingsRoot: View {
     var body: some View {
         ScholiumSettingsView()
             .environmentObject(settingsModel)
-            .tint(ScholiumColorRole.accent.color)
-            .scholiumButtonStyle(.automatic)
+            .tint(nil)
+            .buttonStyle(.automatic)
             .preferredColorScheme(
                 WindowColorSchemeChoice(rawValue: storedColorScheme)?.swiftUIColorScheme
             )

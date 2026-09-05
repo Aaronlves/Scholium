@@ -138,26 +138,24 @@ struct ScholiumSettingsView: View {
     @State private var didPresentQAFeedbackProof = false
 
     var body: some View {
-        NavigationSplitView {
-            settingsSidebar
-                .navigationSplitViewColumnWidth(
-                    min: ScholiumMetrics.Settings.sidebarWidth,
-                    ideal: ScholiumMetrics.Settings.sidebarWidth,
-                    max: ScholiumMetrics.Settings.sidebarWidth
-                )
-                .toolbar(removing: .sidebarToggle)
-        } detail: {
+        VStack(spacing: 0) {
+            HStack {
+                Spacer()
+                ScholiumSettingsSearchField(text: $searchQuery)
+                    .frame(width: 180)
+                    .accessibilityIdentifier("scholium.settings.search")
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 8)
+            if filteredDestinations.isEmpty {
+                ContentUnavailableView.search(text: searchQuery)
+            } else {
             settingsDetail
-                .frame(
-                    maxWidth: .infinity,
-                    maxHeight: .infinity,
-                    alignment: .topLeading
-                )
-                .scholiumSettingsPaneSurface()
-                .clipped()
         }
-        .navigationSplitViewStyle(.balanced)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .frame(minWidth: 620, maxWidth: .infinity, minHeight: 280, maxHeight: .infinity, alignment: .top)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .background(SettingsToolbarAttachment(destination: $destination))
         .background {
             ScholiumWindowTopOverlayHost(
                 topInset: ScholiumGrid.Spacing.sectionSeparation
@@ -201,6 +199,7 @@ struct ScholiumSettingsView: View {
             presentQAFeedbackProofIfNeeded()
         }
         .onChange(of: destination) { _, destination in
+            if !destination.matches(searchQuery) { searchQuery = "" }
             settingsModel.selectPane(destination.pane)
             persistedPane = destination.pane.rawValue
             if let category = destination.researchGuidanceCategory {
@@ -233,73 +232,6 @@ struct ScholiumSettingsView: View {
         #endif
     }
 
-    private var sidebarSelection: Binding<ScholiumSettingsDestination?> {
-        Binding(
-            get: { destination },
-            set: { if let value = $0 { destination = value } }
-        )
-    }
-
-    private var settingsSidebar: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ScholiumSettingsSearchField(text: $searchQuery)
-                .padding(.horizontal, ScholiumGrid.Spacing.regionContentInset)
-                .padding(.top, ScholiumMetrics.Settings.editorContentInset)
-                .padding(.bottom, ScholiumGrid.Spacing.inlineControlGap)
-                .accessibilityIdentifier("scholium.settings.search")
-
-            List(selection: sidebarSelection) {
-                if !filteredApplicationDestinations.isEmpty {
-                    Section("Application") {
-                        ForEach(filteredApplicationDestinations) { item in
-                            settingsSidebarRow(item)
-                        }
-                    }
-                }
-
-                if !filteredTriptychDestinations.isEmpty {
-                    Section("This Triptych") {
-                        ForEach(filteredTriptychDestinations) { item in
-                            settingsSidebarRow(item)
-                        }
-                    }
-                }
-
-                if !filteredResearchGuidanceDestinations.isEmpty {
-                    Section {
-                        ForEach(filteredResearchGuidanceDestinations) { item in
-                            settingsSidebarRow(item)
-                        }
-                    } header: {
-                        Text(ScholiumL10n.Settings.researchGuidance)
-                            .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                            .scholiumForeground(.secondaryText)
-                            .textCase(nil)
-                    }
-                }
-
-                if filteredDestinations.isEmpty {
-                    ContentUnavailableView.search(text: searchQuery)
-                        .listRowBackground(Color.clear)
-                        .accessibilityIdentifier("scholium.settings.search.empty")
-                }
-            }
-            .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
-            .accessibilityIdentifier("scholium.settings.sidebarList")
-        }
-        .frame(
-            minWidth: ScholiumMetrics.Settings.sidebarWidth,
-            idealWidth: ScholiumMetrics.Settings.sidebarWidth,
-            maxWidth: ScholiumMetrics.Settings.sidebarWidth,
-            maxHeight: .infinity,
-            alignment: .topLeading
-        )
-        .scholiumSettingsPaneSurface(.navigationSurfaceBackground)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("scholium.settings.sidebar")
-    }
-
     private var filteredApplicationDestinations: [ScholiumSettingsDestination] {
         ScholiumSettingsDestination.application.filter { $0.matches(searchQuery) }
     }
@@ -316,19 +248,6 @@ struct ScholiumSettingsView: View {
         filteredApplicationDestinations
             + filteredTriptychDestinations
             + filteredResearchGuidanceDestinations
-    }
-
-    private func settingsSidebarRow(
-        _ item: ScholiumSettingsDestination
-    ) -> some View {
-        Label {
-            Text(item.title)
-        } icon: {
-            Image(systemName: item.symbol)
-        }
-        .tag(item)
-        .scholiumActivationPointer()
-        .accessibilityIdentifier("scholium.settings.destination.\(item.rawValue)")
     }
 
     @ViewBuilder
@@ -363,6 +282,115 @@ struct ScholiumSettingsView: View {
     }
 }
 
+/// SwiftUI owns the selected destination; AppKit owns toolbar presentation and
+/// window geometry. The coordinator forwards selection events only.
+private struct SettingsToolbarAttachment: NSViewRepresentable {
+    @Binding var destination: ScholiumSettingsDestination
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    func makeNSView(context: Context) -> WindowAttachmentView {
+        let view = WindowAttachmentView()
+        view.onWindowAttachment = { [weak coordinator = context.coordinator] window in
+            coordinator?.attach(window)
+        }
+        return view
+    }
+
+    func updateNSView(_ view: WindowAttachmentView, context: Context) {
+        context.coordinator.parent = self
+        if let window = view.window { context.coordinator.attach(window) }
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, NSToolbarDelegate {
+        var parent: SettingsToolbarAttachment
+        private weak var window: NSWindow?
+        private var presented: ScholiumSettingsDestination?
+        private let toolbar = NSToolbar(identifier: "scholium.settings.toolbar")
+
+        init(parent: SettingsToolbarAttachment) {
+            self.parent = parent
+            super.init()
+            toolbar.delegate = self
+            toolbar.displayMode = .iconAndLabel
+            toolbar.allowsUserCustomization = false
+        }
+
+        func attach(_ window: NSWindow) {
+            if self.window !== window {
+                self.window = window
+                window.tabbingMode = .disallowed
+                window.toolbar = toolbar
+                window.toolbarStyle = .preference
+                window.titleVisibility = .visible
+                window.titlebarAppearsTransparent = false
+                window.titlebarSeparatorStyle = .automatic
+                window.backgroundColor = .windowBackgroundColor
+                window.contentMinSize = NSSize(width: 620, height: 280)
+            }
+            let destination = parent.destination
+            guard presented != destination else { return }
+            let animate = presented != nil && window.isVisible
+                && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+            presented = destination
+            toolbar.selectedItemIdentifier = NSToolbarItem.Identifier(destination.rawValue)
+            window.title = String(localized: destination.title)
+            let size: NSSize
+            switch destination {
+            case .triptychs: size = NSSize(width: 820, height: 640)
+            case .appearance: size = NSSize(width: 780, height: 700)
+            case .hotkeys: size = NSSize(width: 820, height: 600)
+            case .metadata: size = NSSize(width: 860, height: 650)
+            case .attention: size = NSSize(width: 820, height: 360)
+            case .agentIntegration: size = NSSize(width: 820, height: 440)
+            case .externalToolsCitations: size = NSSize(width: 780, height: 360)
+            }
+            var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: size))
+            frame.origin = NSPoint(x: window.frame.midX - frame.width / 2,
+                                   y: window.frame.maxY - frame.height)
+            if let screen = window.screen {
+                let visible = screen.visibleFrame
+                frame.size.width = min(frame.width, visible.width)
+                frame.size.height = min(frame.height, visible.height)
+                frame.origin.x = max(visible.minX, min(frame.minX, visible.maxX - frame.width))
+                frame.origin.y = max(visible.minY, min(frame.minY, visible.maxY - frame.height))
+            }
+            window.setFrame(frame, display: true, animate: animate)
+        }
+
+        func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+            [.flexibleSpace] + ScholiumSettingsDestination.allCases.map {
+                NSToolbarItem.Identifier($0.rawValue)
+            } + [.flexibleSpace]
+        }
+
+        func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+            toolbarDefaultItemIdentifiers(toolbar)
+        }
+
+        func toolbarSelectableItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+            ScholiumSettingsDestination.allCases.map { NSToolbarItem.Identifier($0.rawValue) }
+        }
+
+        func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier identifier: NSToolbarItem.Identifier,
+                     willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+            guard let destination = ScholiumSettingsDestination(rawValue: identifier.rawValue) else { return nil }
+            let item = NSToolbarItem(itemIdentifier: identifier)
+            item.label = String(localized: destination.title)
+            item.image = NSImage(systemSymbolName: destination.symbol, accessibilityDescription: item.label)
+            item.target = self
+            item.action = #selector(selectPane(_:))
+            return item
+        }
+
+        @objc private func selectPane(_ sender: NSToolbarItem) {
+            guard let destination = ScholiumSettingsDestination(rawValue: sender.itemIdentifier.rawValue) else { return }
+            parent.destination = destination
+        }
+    }
+}
+
 private struct AttentionSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
     @State private var dismissalDays = TriptychSettings().attentionDismissalDays
@@ -374,85 +402,32 @@ private struct AttentionSettingsView: View {
     private let durations = [1, 3, 7, 14, 30]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            settingsTitle(
-                ScholiumL10n.Settings.attention,
-                detail: LocalizedStringResource(
-                    "Set when dismissed reminders return and restore local dismissals.",
-                    table: "Localizable",
-                    bundle: .module
-                )
-            )
-            .padding(ScholiumMetrics.Settings.editorContentInset)
-
-            Divider()
-
-            ScrollView {
-                VStack(
-                    alignment: .leading,
-                    spacing: ScholiumGrid.Spacing.sectionSeparation
-                ) {
-                    settingsEditorSection("Reminder Timing for This Triptych") {
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                            reminderTimingPicker
-                            Spacer()
-                            saveAttentionButton
-                        }
-                        VStack(
-                            alignment: .leading,
-                            spacing: ScholiumGrid.Spacing.labelAccessoryGap
-                        ) {
-                            reminderTimingPicker
-                            saveAttentionButton
-                        }
-                    }
-
-                    Text("These durations apply only to derived issue reminders. Dismissing a reminder does not change any Note or researcher-authored judgment.")
-                        .font(ScholiumTypography.interface(.body))
-                        .scholiumForeground(.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    Divider()
-
-                    settingsEditorSection("Dismissed Items on This Mac") {
-                        Button("Restore All Dismissed Items on This Mac") {
-                            var ledger = AttentionPreferences.decodeLedger(
-                                dismissalLedgerData
-                            )
-                            ledger.removeAll()
-                            dismissalLedgerData = AttentionPreferences.encodeLedger(ledger)
-                        }
-                        .scholiumActivationPointer()
-                        .disabled(!hasDismissedAttention)
-
-                        Text("Restores dismissed reminders on this Mac without changing Triptych data.")
-                            .font(ScholiumTypography.interface(.body))
-                            .scholiumForeground(.secondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    Divider()
-
-                    settingsEditorSection("What Notifications Can Report") {
-                        Text("Reports structural, metadata, identity, Connection, and settled-revision issues.")
-                            .font(ScholiumTypography.interface(.body))
-                            .scholiumForeground(.secondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text("Never judges truth, evidence, philosophical quality, or appropriate use.")
-                            .font(ScholiumTypography.interface(.body))
-                            .scholiumForeground(.secondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                settingsEditorSection("Reminder Timing for This Triptych") {
+                    reminderTimingPicker
+                    saveAttentionButton
                 }
-                .padding(ScholiumGrid.Spacing.regionContentInset)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+                Divider()
+                settingsEditorSection("Dismissed Items on This Mac") {
+                    Button("Restore All Dismissed Items on This Mac") {
+                        var ledger = AttentionPreferences.decodeLedger(dismissalLedgerData)
+                        ledger.removeAll()
+                        dismissalLedgerData = AttentionPreferences.encodeLedger(ledger)
+                    }
+                    .disabled(!hasDismissedAttention)
+                    Text("Restores dismissed reminders on this Mac without changing Triptych data.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
             }
-            .scrollContentBackground(.hidden)
+            .padding(24)
+            .frame(maxWidth: 760)
+            .frame(maxWidth: .infinity)
         }
         .scholiumSettingsPaneSurface()
         .task {
+            await settingsModel.refresh()
             let stored = settingsModel.triptychSettings.attentionDismissalDays
             dismissalDays = durations.contains(stored)
                 ? stored
@@ -463,7 +438,6 @@ private struct AttentionSettingsView: View {
             set: { if !$0 { errorMessage = nil } }
         )) {
             Button("Dismiss", role: .cancel) { errorMessage = nil }
-            .scholiumActivationPointer()
         } message: {
             Text(errorMessage ?? "")
         }
@@ -486,8 +460,7 @@ private struct AttentionSettingsView: View {
 
     private var saveAttentionButton: some View {
         Button("Save Notification Settings") { save() }
-            .scholiumActivationPointer()
-            .scholiumButtonStyle(.bordered)
+            .buttonStyle(.bordered)
             .disabled(
                 isSaving
                     || dismissalDays
@@ -538,6 +511,7 @@ private struct MetadataSettingsView: View {
     @State private var newFieldChoices = ""
     @State private var newFieldKind: PropertyValueKind = .text
     @State private var choiceDrafts: [String: String] = [:]
+    @State private var selectedVisibleField: String?
 
     private var selectedProfile: SchemaProfileID {
         switch selectedSlot {
@@ -668,7 +642,10 @@ private struct MetadataSettingsView: View {
                 unavailableSettingsContent
             }
         }
-        .task { loadSavedSettingsIfNeeded() }
+        .task {
+            await settingsModel.refresh()
+            loadSavedSettingsIfNeeded()
+        }
         .onChange(of: settingsModel.snapshot) { _, snapshot in
             if isDirty {
                 if snapshot.activeTriptychID != savedTriptychID
@@ -684,14 +661,6 @@ private struct MetadataSettingsView: View {
 
     private var writableSettingsContent: some View {
         VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.sectionSpacing) {
-            settingsTitle(
-                ScholiumL10n.Settings.metadata,
-                detail: LocalizedStringResource(
-                    "Define optional managed fields for each role, then choose Agent guidance and fields that remain visible when empty in About. Existing values always appear. New Note YAML remains fixed.",
-                    table: "Localizable",
-                    bundle: .module
-                )
-            )
             if case .needsReview = settingsModel.portableSettingsState {
                 Label(
                     "These current-schema settings need review before managed creation can resume.",
@@ -710,26 +679,20 @@ private struct MetadataSettingsView: View {
                 .scholiumForeground(.attention)
                 .fixedSize(horizontal: false, vertical: true)
             }
-            ScholiumSegmentedControl(
-                selection: $selectedSlot,
-                options: [
-                    ScholiumSegmentedControlOption(
-                        .paperAnalysis,
-                        title: String(localized: "Analysis")
-                    ),
-                    ScholiumSegmentedControlOption(
-                        .topicKnowledge,
-                        title: String(localized: "Topic")
-                    ),
-                    ScholiumSegmentedControlOption(
-                        .output,
-                        title: String(localized: "Work")
-                    ),
-                ],
-                label: String(localized: "Metadata role"),
-                accessibilityIdentifier: "scholium.metadataSettings.role"
-            )
+            settingsEditorSection("Metadata role") {
+            Picker("Metadata role", selection: $selectedSlot) {
+                Text("Analysis").tag(WorkspaceVaultSlot.paperAnalysis)
+                Text("Topic").tag(WorkspaceVaultSlot.topicKnowledge)
+                Text("Work").tag(WorkspaceVaultSlot.output)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+            .accessibilityIdentifier("scholium.metadataSettings.role")
             .disabled(isAddingField)
+
+                Text("This Triptych").font(.callout).foregroundStyle(.secondary)
+            }
 
             ScrollView {
                 LazyVStack(
@@ -761,7 +724,9 @@ private struct MetadataSettingsView: View {
                 }
             }
         }
-        .padding(ScholiumMetrics.Settings.editorContentInset)
+        .padding(24)
+        .frame(maxWidth: 800)
+        .frame(maxWidth: .infinity)
         .disabled(isSaving)
     }
 
@@ -775,7 +740,6 @@ private struct MetadataSettingsView: View {
             Button("Retry Metadata Settings") {
                 Task { await settingsModel.refresh() }
             }
-            .scholiumActivationPointer()
             .disabled(settingsModel.isRefreshing)
         }
         .padding(ScholiumMetrics.Settings.editorContentInset)
@@ -816,11 +780,10 @@ private struct MetadataSettingsView: View {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                 Text("The saved metadata settings changed after this draft was loaded. The saved version and this draft were both preserved.")
                     .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
+                    .foregroundStyle(.secondary)
                 Button("Reload Saved Settings") {
                     Task { await reloadSavedSettings() }
                 }
-                .scholiumActivationPointer()
                 if let errorMessage {
                     Text(errorMessage)
                         .font(ScholiumTypography.interface(.small))
@@ -837,18 +800,17 @@ private struct MetadataSettingsView: View {
     }
 
     private var fieldDefinitionsSection: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            settingsSectionTitle("Managed Fields")
-            Text("Fields added here become optional Metadata fields for every Note in this role. A field key and value type are permanent. Labels, descriptions, and order can change; archiving is reversible and preserves every stored value.")
+        settingsEditorSection("Managed Fields") {
+            Text("Field keys and types are permanent. Archiving preserves stored values.")
                 .font(ScholiumTypography.interface(.small))
-                .scholiumForeground(.secondaryText)
+                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             let definitions = metadataFields[selectedSlot] ?? []
             if definitions.isEmpty {
                 Text("No custom fields. Built-in fields remain available.")
                     .font(ScholiumTypography.interface(.body))
-                    .scholiumForeground(.secondaryText)
+                    .foregroundStyle(.secondary)
             } else {
                 LazyVStack(
                     alignment: .leading,
@@ -877,7 +839,6 @@ private struct MetadataSettingsView: View {
                             Text(displayName(for: kind)).tag(kind)
                         }
                     }
-                    .scholiumActivationPointer()
                     .pickerStyle(.menu)
                     .accessibilityIdentifier("scholium.metadataSettings.valueType")
                     if newFieldKind == .choice {
@@ -898,11 +859,9 @@ private struct MetadataSettingsView: View {
                     }
                     HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                         Button("Cancel") { cancelAddingField() }
-                            .scholiumActivationPointer()
                             .keyboardShortcut(.escape)
                         Button("Add Field") { addFieldDefinition() }
-                            .scholiumActivationPointer()
-                            .scholiumButtonStyle(.bordered)
+                            .buttonStyle(.bordered)
                             .disabled(newFieldValidationMessage != nil)
                             .accessibilityIdentifier("scholium.metadataSettings.commitField")
                     }
@@ -912,7 +871,6 @@ private struct MetadataSettingsView: View {
                 Button("Add Field…") {
                     isAddingField = true
                 }
-                .scholiumActivationPointer()
                 .accessibilityIdentifier("scholium.metadataSettings.addField")
             }
         }
@@ -932,16 +890,16 @@ private struct MetadataSettingsView: View {
                         .accessibilityLabel("Display name for \(definition.key)")
                     Text(definition.key)
                         .font(ScholiumTypography.exact(.small))
-                        .scholiumForeground(.mutedText)
+                        .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: ScholiumMetrics.Settings.labelActionMinimumSpacing)
                 VStack(alignment: .trailing, spacing: ScholiumMetrics.Properties.headerDetailSpacing) {
                     Text(displayName(for: definition.valueKind))
                         .font(ScholiumTypography.interface(.compact))
-                        .scholiumForeground(.secondaryText)
+                        .foregroundStyle(.secondary)
                     Text(definition.lifecycle == .active ? "Active" : "Archived")
                         .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.secondaryText)
+                        .foregroundStyle(.secondary)
                 }
             }
             TextField(
@@ -956,19 +914,17 @@ private struct MetadataSettingsView: View {
                     HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                         Text(choice)
                             .font(ScholiumTypography.interface(.small))
-                            .scholiumForeground(.secondaryText)
+                            .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                         Spacer()
                         Button("Move Up") {
                             moveChoice(choice, in: definition.key, by: -1)
                         }
-                        .scholiumActivationPointer()
                         .disabled(!canMoveChoice(choice, in: definition.key, by: -1))
                         .accessibilityLabel("Move \(choice) up")
                         Button("Move Down") {
                             moveChoice(choice, in: definition.key, by: 1)
                         }
-                        .scholiumActivationPointer()
                         .disabled(!canMoveChoice(choice, in: definition.key, by: 1))
                         .accessibilityLabel("Move \(choice) down")
                     }
@@ -981,7 +937,6 @@ private struct MetadataSettingsView: View {
                     .textFieldStyle(.roundedBorder)
                     .accessibilityLabel("New controlled choice for \(definition.key)")
                     Button("Add Choice") { appendChoice(to: definition.key) }
-                        .scholiumActivationPointer()
                         .disabled(!canAppendChoice(to: definition.key))
                 }
             }
@@ -989,18 +944,16 @@ private struct MetadataSettingsView: View {
             HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Text("Used in \(metadataUsageCount(for: definition.key)) Notes")
                     .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
+                    .foregroundStyle(.secondary)
                 Spacer()
                 Button("Move Up") {
                     moveField(definition.key, by: -1)
                 }
-                .scholiumActivationPointer()
                 .disabled(!canMoveField(definition.key, by: -1))
                 .accessibilityLabel("Move \(definition.label) up")
                 Button("Move Down") {
                     moveField(definition.key, by: 1)
                 }
-                .scholiumActivationPointer()
                 .disabled(!canMoveField(definition.key, by: 1))
                 .accessibilityLabel("Move \(definition.label) down")
                 Button(definition.lifecycle == .active ? "Archive Field" : "Restore Field") {
@@ -1009,7 +962,6 @@ private struct MetadataSettingsView: View {
                         for: definition.key
                     )
                 }
-                .scholiumActivationPointer()
                 .accessibilityHint(
                     definition.lifecycle == .active
                         ? "Stops offering this field for new values without deleting stored values."
@@ -1180,74 +1132,37 @@ private struct MetadataSettingsView: View {
         choiceDrafts[key] = ""
     }
 
+    private struct VisibleFieldRow: Identifiable {
+        let key: String
+        let group: PropertyPresentationGroup
+        let peers: [String]
+        let position: Int
+        var id: String { key }
+    }
+
+    private var visibleFieldRows: [VisibleFieldRow] {
+        aboutConfigurationGroups.flatMap { group in
+            group.keys.enumerated().map { index, key in
+                VisibleFieldRow(key: key, group: group.group, peers: group.keys, position: index)
+            }
+        }
+    }
+
     private var displayOrderColumn: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            settingsSectionTitle("Always Shown in About")
-            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                if selectedConfiguration.visibleFields.isEmpty {
-                    Text("No optional managed fields are always shown. Existing values still appear in About.")
-                        .font(ScholiumTypography.interface(.body))
-                        .scholiumForeground(.secondaryText)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    LazyVStack(alignment: .leading, spacing: ScholiumGrid.Spacing.nestedContentInset) {
-                        ForEach(aboutConfigurationGroups, id: \.group) { group in
-                            VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.listRowSpacing) {
-                                Text(group.group.label)
-                                    .font(ScholiumTypography.interface(.compact, emphasis: .strong))
-                                    .scholiumForeground(.secondaryText)
-                                    .accessibilityHeading(.h3)
-                                ForEach(Array(group.keys.enumerated()), id: \.element) { index, key in
-                                HStack(spacing: ScholiumMetrics.Settings.rowControlSpacing) {
-                                    VStack(alignment: .leading, spacing: ScholiumMetrics.Properties.headerDetailSpacing) {
-                                        Text(displayName(for: key))
-                                            .font(ScholiumTypography.interface(.body))
-                                        Text(key)
-                                            .font(ScholiumTypography.exact(.small))
-                                            .scholiumForeground(.mutedText)
-                                    }
-                                    Spacer(minLength: ScholiumMetrics.Settings.labelActionMinimumSpacing)
-                                    Button {
-                                        moveVisibleField(key, within: group.keys, to: index - 1)
-                                    } label: {
-                                        Image(systemName: "chevron.up")
-                                            .scholiumForeground(.secondaryText)
-                                    }
-                                    .scholiumActivationPointer()
-                                    .scholiumButtonStyle(.borderless)
-                                    .disabled(index == 0)
-                                    .help("Move \(displayName(for: key)) up")
-                                    .accessibilityLabel("Move \(displayName(for: key)) up")
-
-                                    Button {
-                                        moveVisibleField(key, within: group.keys, to: index + 1)
-                                    } label: {
-                                        Image(systemName: "chevron.down")
-                                            .scholiumForeground(.secondaryText)
-                                    }
-                                    .scholiumActivationPointer()
-                                    .scholiumButtonStyle(.borderless)
-                                    .disabled(index == group.keys.count - 1)
-                                    .help("Move \(displayName(for: key)) down")
-                                    .accessibilityLabel("Move \(displayName(for: key)) down")
-
-                                    Button {
-                                        updateSelectedConfiguration { $0.setVisible(false, field: key) }
-                                    } label: {
-                                        Image(systemName: "minus.circle")
-                                            .scholiumForeground(.secondaryText)
-                                    }
-                                    .scholiumActivationPointer()
-                                    .scholiumButtonStyle(.borderless)
-                                    .help("Show \(displayName(for: key)) only when it has a value")
-                                    .accessibilityLabel("Show \(displayName(for: key)) only when it has a value")
-                                }
-                            }
-                        }
-                    }
+        settingsEditorSection("Always Shown in About") {
+            Table(visibleFieldRows, selection: $selectedVisibleField) {
+                TableColumn("Field") { row in
+                    Text(displayName(for: row.key)).help(row.key)
                 }
+                TableColumn("Group") { row in
+                    Text(row.group.label).foregroundStyle(.secondary)
                 }
+                .width(110)
 
+            }
+            .tableStyle(.inset)
+            .frame(height: min(280, max(100, CGFloat(visibleFieldRows.count) * 28 + 30)))
+            visibleFieldActions
                 Menu("Always Show Field") {
                     if hiddenAboutConfigurationGroups.isEmpty {
                         Text("All available fields are always shown")
@@ -1260,17 +1175,35 @@ private struct MetadataSettingsView: View {
                                             $0.setVisible(true, field: key)
                                         }
                                     }
-                                    .scholiumActivationPointer()
                                 }
                             }
                         }
                     }
                 }
-                .scholiumActivationPointer()
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var visibleFieldActions: some View {
+        let row = visibleFieldRows.first { $0.key == selectedVisibleField }
+        return ControlGroup {
+            Button {
+                guard let row else { return }
+                moveVisibleField(row.key, within: row.peers, to: row.position - 1)
+            } label: { Label("Move Up", systemImage: "chevron.up") }
+            .disabled(row == nil || row?.position == 0)
+            Button {
+                guard let row else { return }
+                moveVisibleField(row.key, within: row.peers, to: row.position + 1)
+            } label: { Label("Move Down", systemImage: "chevron.down") }
+            .disabled(row == nil || row?.position == (row?.peers.count ?? 0) - 1)
+            Button {
+                guard let row else { return }
+                updateSelectedConfiguration { $0.setVisible(false, field: row.key) }
+            } label: { Label("Show Only When Populated", systemImage: "minus") }
+            .disabled(row == nil)
+        }
+        .labelStyle(.iconOnly)
+        .fixedSize()
     }
 
     private var restoreActions: some View {
@@ -1283,18 +1216,15 @@ private struct MetadataSettingsView: View {
                 configuration.visibleFields = defaults.visibleFields
                 aboutConfigurations[selectedSlot] = configuration
             }
-            .scholiumActivationPointer()
         }
     }
 
     private var revertAndSaveActions: some View {
         HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Button("Revert to Saved") { revertToSaved() }
-                .scholiumActivationPointer()
                 .disabled(!isDirty)
             Button("Save Metadata Settings") { save() }
-                .scholiumActivationPointer()
-                .scholiumButtonStyle(.bordered)
+                .buttonStyle(.bordered)
                     .disabled(
                         isSaving || !isDirty || validationMessage != nil
                             || revisionConflict
@@ -1318,7 +1248,6 @@ private struct MetadataSettingsView: View {
                 Button("Review Invalid Setting") {
                     reveal(diagnostic)
                 }
-                .scholiumActivationPointer()
             }
         }
     }
@@ -1594,11 +1523,7 @@ struct ZoteroSettingsView: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        researchSettingsSection(LocalizedStringResource(
-            "READ-ONLY ZOTERO ON THIS MAC",
-            table: "Localizable",
-            bundle: .module
-        )) {
+        researchSettingsSection("Zotero") {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 LabeledContent("Local API") {
                     Label(statusTitle, systemImage: statusSymbol)
@@ -1606,7 +1531,7 @@ struct ZoteroSettingsView: View {
                 }
                 LabeledContent("Last Connected") {
                     Text(info.lastSuccessfulConnection?.formatted(date: .abbreviated, time: .shortened) ?? "Never")
-                        .scholiumForeground(.secondaryText)
+                        .foregroundStyle(.secondary)
                 }
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
@@ -1618,7 +1543,7 @@ struct ZoteroSettingsView: View {
                 }
                 Text("Scholium connects only to Zotero Desktop on localhost and never modifies its data. No account or API key is required.")
                     .font(ScholiumTypography.interface(.body))
-                    .scholiumForeground(.secondaryText)
+                    .foregroundStyle(.secondary)
                 if info.status == .apiDisabled {
                     Text("In Zotero Advanced settings, enable ‘Allow other applications on this computer to communicate with Zotero’, then test again.")
                         .font(ScholiumTypography.interface(.small))
@@ -1640,7 +1565,6 @@ struct ZoteroSettingsView: View {
         }
         .scholiumActivationPointer()
         Button("Check Connection") { refresh() }
-            .scholiumActivationPointer()
             .disabled(isTesting)
         Button("Clear History", role: .destructive) {
             Task {
@@ -1693,32 +1617,24 @@ struct WorkspaceSettingsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.sectionSpacing) {
-                settingsTitle(
-                    ScholiumL10n.Settings.triptychs,
-                    detail: LocalizedStringResource(
-                        "Manage registered Triptychs and their three researcher-controlled folders.",
-                        table: "Localizable",
-                        bundle: .module
-                    )
-                )
-
+            settingsEditorSection("Triptych") {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: ScholiumMetrics.Settings.rootSpacing) {
-                        triptychPicker
+                        triptychPicker.labelsHidden()
                         triptychActions
-                        Spacer(minLength: ScholiumMetrics.Settings.editorContentInset)
                     }
                     VStack(
                         alignment: .leading,
                         spacing: ScholiumGrid.Spacing.labelAccessoryGap
                     ) {
-                        triptychPicker
+                        triptychPicker.labelsHidden()
                         triptychActions
                     }
                 }
             }
-            .padding(ScholiumMetrics.Settings.editorContentInset)
+            .padding(24)
+            .frame(maxWidth: 760)
+            .frame(maxWidth: .infinity)
 
             Divider()
 
@@ -1827,23 +1743,10 @@ private struct AppearanceSettingsView: View {
     @State private var showRestoreDefaultConfirmation = false
     @State private var showDiscardChangesConfirmation = false
     @State private var pendingProfileSelection: UUID?
-    @State private var showsAdvancedCSS = false
     @State private var nameDraft = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            settingsTitle(
-                ScholiumL10n.Settings.appearance,
-                detail: LocalizedStringResource(
-                    "Choose the document appearance shared by Review, Edit, and Source.",
-                    table: "Localizable",
-                    bundle: .module
-                )
-            )
-            .padding(ScholiumMetrics.Settings.editorContentInset)
-
-            Divider()
-
             ScrollView {
                 VStack(
                     alignment: .leading,
@@ -1859,14 +1762,13 @@ private struct AppearanceSettingsView: View {
 
                     Divider()
 
-                    DisclosureGroup("Advanced CSS", isExpanded: $showsAdvancedCSS) {
-                        advancedCSSContent
-                            .padding(.top, ScholiumGrid.Spacing.inlineControlGap)
+                    settingsEditorSection("CSS Snippets") {
+                        cssSnippetsContent
                     }
-                    .scholiumActivationPointer()
                 }
-                .padding(ScholiumGrid.Spacing.regionContentInset)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .padding(24)
+                .frame(maxWidth: 760, alignment: .topLeading)
+                .frame(maxWidth: .infinity, alignment: .top)
             }
             .scrollContentBackground(.hidden)
             .accessibilityIdentifier("scholium.appearance.form")
@@ -1893,6 +1795,8 @@ private struct AppearanceSettingsView: View {
                     .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
                     .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
             }
+            Divider()
+            appearanceSaveActions
         }
         .scholiumSettingsPaneSurface()
         .onAppear { loadSelectedDraft() }
@@ -1900,23 +1804,19 @@ private struct AppearanceSettingsView: View {
         .alert("Rename Appearance", isPresented: $showRename) {
             TextField("Configuration name", text: $nameDraft)
             Button("Cancel", role: .cancel) {}
-            .scholiumActivationPointer()
             Button("Rename") {
                 guard let id = store.selectedAppearanceProfileID else { return }
                 store.renameAppearance(id, to: nameDraft)
                 draft?.name = nameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
             }
-            .scholiumActivationPointer()
             .disabled(nameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
         .alert("Delete Appearance?", isPresented: $showDeleteConfirmation) {
             Button("Cancel", role: .cancel) {}
-            .scholiumActivationPointer()
             Button("Delete", role: .destructive) {
                 guard let id = store.selectedAppearanceProfileID else { return }
                 store.removeAppearance(id)
             }
-            .scholiumActivationPointer()
         } message: {
             Text("This removes the selected configuration from this Mac. Research documents are not changed.")
         }
@@ -1928,9 +1828,7 @@ private struct AppearanceSettingsView: View {
             Button("Restore Defaults", role: .destructive) {
                 draft?.settings = DocumentAppearanceSettings.defaultSettings
             }
-            .scholiumActivationPointer()
             Button("Cancel", role: .cancel) {}
-            .scholiumActivationPointer()
         } message: {
             Text("This replaces the current draft with Scholium’s built-in document appearance. Choose Save to keep it.")
         }
@@ -1944,11 +1842,9 @@ private struct AppearanceSettingsView: View {
                 pendingProfileSelection = nil
                 selectProfile(id)
             }
-            .scholiumActivationPointer()
             Button("Cancel", role: .cancel) {
                 pendingProfileSelection = nil
             }
-            .scholiumActivationPointer()
         } message: {
             Text("The selected appearance has unsaved changes. Switching configurations will discard them.")
         }
@@ -1971,47 +1867,41 @@ private struct AppearanceSettingsView: View {
 
     private var configurationSection: some View {
         settingsEditorSection("Configuration") {
-            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+            HStack(spacing: 12) {
                 appearancePicker
-
-                Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
-
-                Button("Save") {
-                    guard let draft else { return }
-                    store.updateAppearance(draft)
-                }
-                .scholiumActivationPointer()
-                .scholiumButtonStyle(.bordered)
-                .disabled(!hasUnsavedChanges || !store.canModify)
-                .accessibilityLabel("Save Appearance")
-
-                Button("Revert to Saved") {
-                    loadSelectedDraft()
-                }
-                .scholiumActivationPointer()
-                .disabled(!hasUnsavedChanges)
-
                 appearanceManagementMenu
             }
-
-            HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                Text("Stored on this Mac")
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
-                if hasUnsavedChanges {
-                    Text("Unsaved changes")
-                        .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                        .scholiumForeground(.attention)
-                }
-            }
+            Text("Stored on this Mac")
+                .font(.callout)
+                .foregroundStyle(.secondary)
         }
     }
 
-    private var advancedCSSContent: some View {
+    private var appearanceSaveActions: some View {
+        HStack(spacing: 8) {
+            if hasUnsavedChanges {
+                Text("Unsaved changes").font(.callout).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button("Revert to Saved") { loadSelectedDraft() }
+                .disabled(!hasUnsavedChanges)
+            Button("Save") {
+                guard let draft else { return }
+                store.updateAppearance(draft)
+            }
+            .keyboardShortcut(.defaultAction)
+            .disabled(!hasUnsavedChanges || !store.canModify)
+            .accessibilityLabel("Save Appearance")
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 14)
+    }
+
+    private var cssSnippetsContent: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Text("Optional CSS snippets are additive compatibility overrides; the selected appearance remains primary.")
                 .font(ScholiumTypography.interface(.body))
-                .scholiumForeground(.secondaryText)
+                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             ForEach(store.snippets) { snippet in
@@ -2025,12 +1915,11 @@ private struct AppearanceSettingsView: View {
             if store.snippets.isEmpty {
                 Text("No snippets imported.")
                     .font(ScholiumTypography.interface(.body))
-                    .scholiumForeground(.secondaryText)
+                    .foregroundStyle(.secondary)
             }
 
             HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Button("Import CSS Snippet…") { importSnippet() }
-                    .scholiumActivationPointer()
                     .disabled(!store.canModify)
 
                 Menu {
@@ -2039,14 +1928,11 @@ private struct AppearanceSettingsView: View {
                     } label: {
                         Label("Reveal Styles in Finder", systemImage: "folder")
                     }
-                    .scholiumActivationPointer()
                     Button("Disable All Snippets") { store.disableAll() }
-                        .scholiumActivationPointer()
                         .disabled(store.enabledCount == 0 || !store.canModify)
                 } label: {
                     Label("More", systemImage: "ellipsis.circle")
                 }
-                .scholiumActivationPointer()
                 .scholiumMenuStyle(.borderlessButton)
                 .fixedSize()
             }
@@ -2061,32 +1947,27 @@ private struct AppearanceSettingsView: View {
         }
         .scholiumActivationPointer()
         .labelsHidden()
-        .frame(width: ScholiumMetrics.Settings.appearancePickerWidth)
+        .frame(width: ScholiumMetrics.Settings.appearancePickerWidth, alignment: .leading)
     }
 
     private var appearanceManagementMenu: some View {
         Menu {
             Button("New Appearance") { store.createAppearance() }
-            .scholiumActivationPointer()
             Button("Duplicate Appearance") {
                 guard let id = store.selectedAppearanceProfileID else { return }
                 store.duplicateAppearance(id)
             }
-            .scholiumActivationPointer()
             .disabled(store.selectedAppearanceProfileID == nil)
             Button("Rename Appearance…") { beginRename() }
-                .scholiumActivationPointer()
                 .disabled(store.selectedAppearanceProfileID == nil)
             Button("Restore Default Appearance…") {
                 showRestoreDefaultConfirmation = true
             }
-            .scholiumActivationPointer()
             .disabled(store.selectedAppearanceProfileID == nil)
             Divider()
             Button("Delete Appearance…", role: .destructive) {
                 showDeleteConfirmation = true
             }
-            .scholiumActivationPointer()
             .disabled(store.appearanceProfiles.count <= 1)
         } label: {
             Label("Manage", systemImage: "ellipsis.circle")
@@ -2157,141 +2038,106 @@ private struct AppearanceSettingsView: View {
 
 private struct AppearanceProfileEditor: View {
     @Binding var profile: DocumentAppearanceProfile
-    @State private var showsAdvancedAppearance = false
+    @State private var editsFirstHeading = true
+    @State private var selectedCallout = DocumentCalloutAppearanceRole.orientation
     private let sourceFontFamilies = NSFontManager.shared.availableFontFamilies.sorted {
         $0.localizedStandardCompare($1) == .orderedAscending
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
-            settingsEditorSection("Layout") {
-                AppearanceDoubleControl(
-                    "Line width",
-                    value: $profile.settings.lineWidthCharacterUnits,
-                    range: DocumentAppearanceSettings.lineWidthCharacterUnitsRange,
-                    step: 1,
-                    suffix: "ch",
-                    precision: 0,
-                    accessibilityUnit: "character-width units"
-                )
-                Text("Measured in CSS character-width units; the exact measure varies by typeface.")
-                    .font(ScholiumTypography.interface(.body))
-                    .scholiumForeground(.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
+        VStack(alignment: .leading, spacing: 20) {
+            bodyControls
             Divider()
+            sourceControls
+            Divider()
+            headingControls
+            Divider()
+            calloutControls
+        }
+        .toggleStyle(.checkbox)
+    }
 
-            settingsEditorSection("Body") {
-                Picker("Typeface", selection: $profile.settings.body.fontFamily) {
-                    ForEach(DocumentAppearanceFontFamily.allCases, id: \.self) { family in
-                        Text(family.label).tag(family)
+    private var bodyControls: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            settingsEditorSection("Body Font") {
+                Picker("Body Font", selection: $profile.settings.body.fontFamily) {
+                    ForEach(DocumentAppearanceFontFamily.allCases, id: \.self) { Text($0.label).tag($0) }
+                }.labelsHidden().frame(width: 240, alignment: .leading)
+            }
+            AppearanceDoubleControl("Font size", value: $profile.settings.body.fontSizePoints, range: 9...24, step: 0.5, suffix: "pt")
+            AppearanceDoubleControl("Line spacing", value: $profile.settings.body.lineHeight, range: 1.2...2.4, step: 0.05, suffix: "×")
+            AppearanceDoubleControl("Line width", value: $profile.settings.lineWidthCharacterUnits, range: DocumentAppearanceSettings.lineWidthCharacterUnitsRange, step: 1, suffix: "ch", precision: 0, accessibilityUnit: "character-width units")
+            AppearanceDoubleControl("Paragraph spacing", value: $profile.settings.body.paragraphSpacingEm, range: 0...2, step: 0.05, suffix: "em")
+            AppearanceDoubleControl("First-line indent", value: $profile.settings.body.firstLineIndentEm, range: 0...4, step: 0.1, suffix: "em")
+            AppearanceDoubleControl("Letter spacing", value: $profile.settings.body.letterSpacingEm, range: -0.05...0.1, step: 0.005, suffix: "em", precision: 3)
+            AppearanceDoubleControl("Word spacing", value: $profile.settings.body.wordSpacingEm, range: -0.1...0.5, step: 0.01, suffix: "em")
+            settingsEditorSection("Alignment") {
+                Picker("Alignment", selection: $profile.settings.body.alignment) {
+                    ForEach(DocumentTextAlignment.allCases, id: \.self) { Text($0.label).tag($0) }
+                }.labelsHidden()
+            }
+            settingsEditorSection("Hyphenation") {
+                Picker("Hyphenation", selection: $profile.settings.body.hyphenation) {
+                    ForEach(DocumentHyphenation.allCases, id: \.self) { Text($0.label).tag($0) }
+                }.labelsHidden()
+            }
+            settingsEditorSection("Typography") {
+                Toggle("Kerning", isOn: $profile.settings.body.kerning)
+                Toggle("Common ligatures", isOn: $profile.settings.body.ligatures)
+            }
+        }
+    }
+
+    private var sourceControls: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            settingsEditorSection("Source Font") {
+                Picker("Source Font", selection: $profile.settings.source.fontFamily) {
+                    ForEach(Array(Set(sourceFontFamilies + [profile.settings.source.fontFamily])).sorted(), id: \.self) {
+                        Text(verbatim: $0).tag($0)
                     }
                 }
-                .scholiumActivationPointer()
-                AppearanceDoubleControl("Font size", value: $profile.settings.body.fontSizePoints, range: 9...24, step: 0.5, suffix: "pt")
-                AppearanceDoubleControl("Line spacing", value: $profile.settings.body.lineHeight, range: 1.2...2.4, step: 0.05, suffix: "×")
-            }
-
-            Divider()
-
-            settingsEditorSection("Source") {
-                Picker("Typeface", selection: $profile.settings.source.fontFamily) {
-                    ForEach(Array(Set(sourceFontFamilies + [profile.settings.source.fontFamily])).sorted(), id: \.self) { family in
-                        Text(verbatim: family).tag(family)
-                    }
-                }
+                .labelsHidden().frame(width: 240, alignment: .leading)
                 .accessibilityIdentifier("scholium.appearance.sourceFont")
-                AppearanceDoubleControl("Font size", value: $profile.settings.source.fontSizePoints, range: 6...72, step: 0.5, suffix: "pt")
             }
+            AppearanceDoubleControl("Font size", value: $profile.settings.source.fontSizePoints, range: 6...72, step: 0.5, suffix: "pt")
+        }
+    }
 
-            Divider()
-
-            ScholiumDisclosureHeaderButton(
-                isExpanded: showsAdvancedAppearance,
-                accessibilityLabel: Text("Advanced Appearance"),
-                accessibilityIdentifier: "scholium.appearance.advanced",
-                action: { showsAdvancedAppearance.toggle() }
-            ) {
-                Text("Advanced Appearance")
-                    .font(ScholiumTypography.interface(.body))
+    private var headingControls: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            settingsEditorSection("Heading Font") {
+                Picker("Heading Font", selection: $profile.settings.headings.fontFamily) {
+                    ForEach(DocumentHeadingFontFamily.allCases, id: \.self) { Text($0.label).tag($0) }
+                }.labelsHidden()
             }
-            if showsAdvancedAppearance {
-                VStack(
-                    alignment: .leading,
-                    spacing: ScholiumGrid.Spacing.sectionSeparation
-                ) {
-                    settingsEditorSection("Body Details") {
-                        AppearanceDoubleControl("Paragraph spacing", value: $profile.settings.body.paragraphSpacingEm, range: 0...2, step: 0.05, suffix: "em")
-                        AppearanceDoubleControl("First-line indent", value: $profile.settings.body.firstLineIndentEm, range: 0...4, step: 0.1, suffix: "em")
-                        AppearanceDoubleControl("Letter spacing", value: $profile.settings.body.letterSpacingEm, range: -0.05...0.1, step: 0.005, suffix: "em", precision: 3)
-                        AppearanceDoubleControl("Word spacing", value: $profile.settings.body.wordSpacingEm, range: -0.1...0.5, step: 0.01, suffix: "em")
-                        Picker("Alignment", selection: $profile.settings.body.alignment) {
-                            ForEach(DocumentTextAlignment.allCases, id: \.self) { alignment in
-                                Text(alignment.label).tag(alignment)
-                            }
-                        }
-                        .scholiumActivationPointer()
-                        Picker("Hyphenation", selection: $profile.settings.body.hyphenation) {
-                            ForEach(DocumentHyphenation.allCases, id: \.self) { hyphenation in
-                                Text(hyphenation.label).tag(hyphenation)
-                            }
-                        }
-                        .scholiumActivationPointer()
-                        Toggle("Kerning", isOn: $profile.settings.body.kerning)
-                        .scholiumActivationPointer()
-                        Toggle("Common ligatures", isOn: $profile.settings.body.ligatures)
-                        .scholiumActivationPointer()
-                    }
+            settingsEditorSection("Style") {
+                Picker("Style", selection: $profile.settings.headings.style) {
+                    ForEach(DocumentHeadingStyle.allCases, id: \.self) { Text($0.label).tag($0) }
+                }.labelsHidden()
+            }
+            AppearanceWeightPicker("Weight", weight: $profile.settings.headings.weight)
+            AppearanceDoubleControl("Line spacing", value: $profile.settings.headings.lineHeight, range: 1...2.4, step: 0.05, suffix: "×")
+            AppearanceDoubleControl("Letter spacing", value: $profile.settings.headings.letterSpacingEm, range: -0.05...0.1, step: 0.005, suffix: "em", precision: 3)
+            settingsEditorSection("Heading Level") {
+                Picker("Heading Level", selection: $editsFirstHeading) {
+                    Text("First-level heading (H1)").tag(true)
+                    Text("Lower headings (H2–H6)").tag(false)
+                }.labelsHidden()
+            }
+            HeadingLevelAppearanceEditor(level: editsFirstHeading
+                ? $profile.settings.headings.level1 : $profile.settings.headings.level2)
+        }
+    }
 
-                    Divider()
-
-                    settingsEditorSection("Headings") {
-                        Picker("Typeface", selection: $profile.settings.headings.fontFamily) {
-                            ForEach(DocumentHeadingFontFamily.allCases, id: \.self) { family in
-                                Text(family.label).tag(family)
-                            }
-                        }
-                        .scholiumActivationPointer()
-                        Picker("Style", selection: $profile.settings.headings.style) {
-                            ForEach(DocumentHeadingStyle.allCases, id: \.self) { style in
-                                Text(style.label).tag(style)
-                            }
-                        }
-                        .scholiumActivationPointer()
-                        AppearanceWeightPicker("Weight", weight: $profile.settings.headings.weight)
-                        AppearanceDoubleControl("Line spacing", value: $profile.settings.headings.lineHeight, range: 1...2.4, step: 0.05, suffix: "×")
-                        AppearanceDoubleControl("Letter spacing", value: $profile.settings.headings.letterSpacingEm, range: -0.05...0.1, step: 0.005, suffix: "em", precision: 3)
-
-                        DisclosureGroup("First-level heading (H1)") {
-                            HeadingLevelAppearanceEditor(level: $profile.settings.headings.level1)
-                        }
-                        .scholiumActivationPointer()
-                        DisclosureGroup("Lower headings (H2–H6)") {
-                            HeadingLevelAppearanceEditor(level: $profile.settings.headings.level2)
-                        }
-                        .scholiumActivationPointer()
-                    }
-
-                    Divider()
-
-                    settingsEditorSection("Callouts") {
-                        Text("Callouts inherit Body typography; each role controls only spacing and composition.")
-                            .font(ScholiumTypography.interface(.body))
-                            .scholiumForeground(.secondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                        ForEach(DocumentCalloutAppearanceRole.allCases, id: \.self) { role in
-                            if let index = profile.settings.callouts.firstIndex(where: { $0.role == role }) {
-                                DisclosureGroup(role.label) {
-                                    CalloutAppearanceEditor(callout: $profile.settings.callouts[index])
-                                }
-                                .scholiumActivationPointer()
-                            }
-                        }
-                    }
-                }
-                .padding(.top, ScholiumGrid.Spacing.inlineControlGap)
-                .padding(.leading, ScholiumGrid.Spacing.nestedContentInset)
+    private var calloutControls: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            settingsEditorSection("Callout") {
+                Picker("Callout", selection: $selectedCallout) {
+                    ForEach(DocumentCalloutAppearanceRole.allCases, id: \.self) { Text($0.label).tag($0) }
+                }.labelsHidden()
+            }
+            if let index = profile.settings.callouts.firstIndex(where: { $0.role == selectedCallout }) {
+                CalloutAppearanceEditor(callout: $profile.settings.callouts[index])
             }
         }
     }
@@ -2302,12 +2148,11 @@ private struct HeadingLevelAppearanceEditor: View {
 
     var body: some View {
         AppearanceDoubleControl("Scale", value: $level.scale, range: 0.8...3, step: 0.05, suffix: "×")
-        Picker("Alignment", selection: $level.alignment) {
-            ForEach(DocumentTextAlignment.allCases, id: \.self) { alignment in
-                Text(alignment.label).tag(alignment)
-            }
+        settingsEditorSection("Alignment") {
+            Picker("Alignment", selection: $level.alignment) {
+                ForEach(DocumentTextAlignment.allCases, id: \.self) { Text($0.label).tag($0) }
+            }.labelsHidden()
         }
-        .scholiumActivationPointer()
         AppearanceDoubleControl("Space before", value: $level.spaceBeforeEm, range: 0...4, step: 0.1, suffix: "em")
         AppearanceDoubleControl("Space after", value: $level.spaceAfterEm, range: 0...4, step: 0.1, suffix: "em")
     }
@@ -2355,7 +2200,7 @@ private struct CalloutAppearanceEditor: View {
 }
 
 private struct AppearanceDoubleControl: View {
-    let title: LocalizedStringKey
+    let title: LocalizedStringResource
     @Binding var value: Double
     let range: ClosedRange<Double>
     let step: Double
@@ -2363,15 +2208,9 @@ private struct AppearanceDoubleControl: View {
     let precision: Int
     let accessibilityUnit: LocalizedStringResource?
 
-    init(
-        _ title: LocalizedStringKey,
-        value: Binding<Double>,
-        range: ClosedRange<Double>,
-        step: Double,
-        suffix: String,
-        precision: Int = 2,
-        accessibilityUnit: LocalizedStringResource? = nil
-    ) {
+    init(_ title: LocalizedStringResource, value: Binding<Double>, range: ClosedRange<Double>,
+         step: Double, suffix: String, precision: Int = 2,
+         accessibilityUnit: LocalizedStringResource? = nil) {
         self.title = title
         _value = value
         self.range = range
@@ -2381,115 +2220,30 @@ private struct AppearanceDoubleControl: View {
         self.accessibilityUnit = accessibilityUnit
     }
 
+    private var boundedValue: Binding<Double> {
+        Binding(get: { value }, set: { candidate in
+            guard candidate.isFinite else { return }
+            value = min(max(candidate, range.lowerBound), range.upperBound)
+        })
+    }
+
     var body: some View {
-        LabeledContent(title) {
-            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                AppearanceNativeSlider(
-                    value: $value,
-                    range: range,
-                    step: step
-                )
-                    .frame(minWidth: 150, idealWidth: 220, maxWidth: 260)
+        settingsEditorSection(title) {
+            HStack(spacing: 6) {
+                TextField("", value: boundedValue,
+                          format: .number.precision(.fractionLength(0...precision)))
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 64)
                     .accessibilityLabel(Text(title))
-                    .accessibilityValue(spokenValue)
-                Text(formattedValue)
-                    .font(ScholiumTypography.interface(.body, tabularDigits: true))
-                    .frame(width: 52, alignment: .trailing)
-                Text(suffix)
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
-                    .frame(width: 24, alignment: .leading)
+                Stepper("", value: boundedValue, in: range, step: step)
+                    .labelsHidden()
+                    .fixedSize()
+                    .accessibilityLabel(Text(title))
+                Text(suffix).foregroundStyle(.secondary)
             }
+            .accessibilityElement(children: .contain)
+            .help(Text(accessibilityUnit ?? title))
         }
-    }
-
-    private var formattedValue: String {
-        value.formatted(.number.precision(.fractionLength(0...precision)))
-    }
-
-    private var spokenValue: Text {
-        let unit = accessibilityUnit.map { String(localized: $0) } ?? suffix
-        return Text(verbatim: "\(formattedValue) \(unit)")
-    }
-}
-
-private struct AppearanceNativeSlider: NSViewRepresentable {
-    @Binding var value: Double
-    let range: ClosedRange<Double>
-    let step: Double
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(parent: self)
-    }
-
-    func makeNSView(context: Context) -> KeyboardAccessibleNSSlider {
-        let slider = KeyboardAccessibleNSSlider(
-            value: value,
-            minValue: range.lowerBound,
-            maxValue: range.upperBound,
-            target: context.coordinator,
-            action: #selector(Coordinator.valueChanged(_:))
-        )
-        slider.isContinuous = true
-        slider.keyboardStep = step
-        slider.trackFillColor = ScholiumColorRole.accent.nsColor
-        return slider
-    }
-
-    func updateNSView(_ slider: KeyboardAccessibleNSSlider, context: Context) {
-        context.coordinator.parent = self
-        slider.minValue = range.lowerBound
-        slider.maxValue = range.upperBound
-        slider.keyboardStep = step
-        slider.trackFillColor = ScholiumColorRole.accent.nsColor
-        if slider.doubleValue != value {
-            slider.doubleValue = value
-        }
-    }
-
-    @MainActor
-    final class Coordinator: NSObject {
-        var parent: AppearanceNativeSlider
-
-        init(parent: AppearanceNativeSlider) {
-            self.parent = parent
-        }
-
-        @objc func valueChanged(_ sender: NSSlider) {
-            let lowerBound = parent.range.lowerBound
-            let snapped = lowerBound
-                + ((sender.doubleValue - lowerBound) / parent.step).rounded() * parent.step
-            let normalized = min(max(snapped, lowerBound), parent.range.upperBound)
-            sender.doubleValue = normalized
-            parent.value = normalized
-        }
-    }
-}
-
-private final class KeyboardAccessibleNSSlider: NSSlider {
-    var keyboardStep: Double = 1
-
-    override var acceptsFirstResponder: Bool { true }
-
-    override func mouseDown(with event: NSEvent) {
-        super.mouseDown(with: event)
-        window?.makeFirstResponder(self)
-    }
-
-    override func keyDown(with event: NSEvent) {
-        switch event.specialKey {
-        case .leftArrow:
-            adjustValue(by: -keyboardStep)
-        case .rightArrow:
-            adjustValue(by: keyboardStep)
-        default:
-            super.keyDown(with: event)
-        }
-    }
-
-    private func adjustValue(by delta: Double) {
-        doubleValue = min(max(doubleValue + delta, minValue), maxValue)
-        sendAction(action, to: target)
     }
 }
 
@@ -2503,13 +2257,15 @@ private struct AppearanceWeightPicker: View {
     }
 
     var body: some View {
-        Picker(title, selection: $weight) {
+        settingsEditorSection(LocalizedStringResource(stringLiteral: title)) {
+            Picker(title, selection: $weight) {
             Text("Regular, 400").tag(400)
             Text("Medium, 500").tag(500)
             Text("Semibold, 600").tag(600)
             Text("Bold, 700").tag(700)
         }
-        .scholiumActivationPointer()
+            .labelsHidden()
+        }
     }
 }
 
@@ -2607,11 +2363,10 @@ private struct CSSSnippetRow: View {
                     } else {
                         Text(snippet.isEnabled ? "Enabled" : "Disabled")
                             .font(ScholiumTypography.interface(.small))
-                            .scholiumForeground(.secondaryText)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
-            .scholiumActivationPointer()
             .toggleStyle(.checkbox)
 
             Spacer(minLength: ScholiumMetrics.Settings.rowActionMinimumSpacing)
@@ -2619,14 +2374,12 @@ private struct CSSSnippetRow: View {
             Button { store.move(snippet.id, by: -1) } label: {
                 Label("Move Earlier", systemImage: "chevron.up")
             }
-            .scholiumActivationPointer()
             .labelStyle(.iconOnly)
             .help("Move Earlier")
 
             Button { store.move(snippet.id, by: 1) } label: {
                 Label("Move Later", systemImage: "chevron.down")
             }
-            .scholiumActivationPointer()
             .labelStyle(.iconOnly)
             .help("Move Later")
 
@@ -2635,20 +2388,14 @@ private struct CSSSnippetRow: View {
                     nameDraft = snippet.name
                     showRename = true
                 }
-                .scholiumActivationPointer()
                 Button("Duplicate") { store.duplicate(snippet.id) }
-                .scholiumActivationPointer()
                 Button("Edit Managed Copy") { store.editManagedCopy(snippet.id) }
-                .scholiumActivationPointer()
                 Button("Reload from Disk") { store.reload(snippet.id) }
-                .scholiumActivationPointer()
                 Divider()
                 Button("Remove Snippet", role: .destructive) { store.remove(snippet.id) }
-                .scholiumActivationPointer()
             } label: {
                 Label("Snippet Actions", systemImage: "ellipsis.circle")
             }
-            .scholiumActivationPointer()
             .labelStyle(.iconOnly)
             .scholiumMenuStyle(.borderlessButton)
         }
@@ -2656,9 +2403,7 @@ private struct CSSSnippetRow: View {
         .alert("Rename CSS Snippet", isPresented: $showRename) {
             TextField("Snippet name", text: $nameDraft)
             Button("Cancel", role: .cancel) {}
-            .scholiumActivationPointer()
             Button("Rename") { store.rename(snippet.id, to: nameDraft) }
-            .scholiumActivationPointer()
         }
     }
 }
@@ -2683,74 +2428,48 @@ private struct WorkspacePathEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Form {
-                Section {
+            VStack(alignment: .leading, spacing: 20) {
+                settingsEditorSection("Name") {
                     TextField("Name", text: $triptychName)
+                        .labelsHidden()
                         .accessibilityIdentifier("scholium.triptychName")
-                    Text("The name distinguishes complete research domains. Works folders remain ordinary researcher-controlled folders, not app-managed projects.")
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.secondaryText)
-                        .frame(
-                            maxWidth: ScholiumMetrics.Settings.formExplanationMaximumWidth,
-                            alignment: .leading
-                        )
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                header: {
-                    settingsSectionTitle("Triptych")
+
                 }
 
-                Section {
+                Divider()
+                settingsEditorSection("Research Folders") {
                     WorkspaceFolderRow(
                         title: "Analyses",
-                        subtitle: "Source-facing reports and evidence records",
-                        symbol: "doc.text.magnifyingglass",
                         url: $paperAnalysisURL
                     )
                     WorkspaceFolderRow(
                         title: "Topics",
-                        subtitle: "Topic-centred concepts, debates, and synthesis",
-                        symbol: "lightbulb",
                         url: $topicKnowledgeURL
                     )
                     WorkspaceFolderRow(
                         title: "Works",
-                        subtitle: "Researcher-authored papers, chapters, and prose",
-                        symbol: "square.and.pencil",
                         url: $outputURL
                     )
                 }
-                header: {
-                    settingsSectionTitle("Research Folders")
-                }
 
-                Section {
+                Divider()
+                settingsEditorSection("Portable Triptych Data") {
                     PortableControlFolderRow(
                         worksURL: outputURL,
                         containerURL: $portableContainerURL
                     )
                     Text("Scholium stores the small portable .scholium folder beside Works. macOS therefore asks once for access to the folder containing Works; it is not added as a fourth vault.")
                         .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.secondaryText)
+                        .foregroundStyle(.secondary)
                         .frame(
                             maxWidth: ScholiumMetrics.Settings.formExplanationMaximumWidth,
                             alignment: .leading
                         )
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                header: {
-                    settingsSectionTitle("Portable Triptych Data")
-                }
 
-                Section {
-                    if haveCommonParent {
-                        Label("These folders share one parent.", systemImage: "checkmark.circle.fill")
-                            .scholiumForeground(.confirmed)
-                    } else if allFoldersSelected {
-                        Label("These folders are independent. Keeping them under one parent can make the workspace easier to move and back up.", systemImage: "info.circle")
-                            .scholiumForeground(.secondaryText)
-                    }
-                }
+
+
             }
             .scholiumSettingsForm()
 
@@ -2775,13 +2494,11 @@ private struct WorkspacePathEditor: View {
             HStack {
                 if showsCancel {
                     Button("Cancel") { onCancel?() }
-                        .scholiumActivationPointer()
                         .keyboardShortcut(.cancelAction)
                 }
                 Spacer()
                 Button(completionTitle) { save() }
-                    .scholiumActivationPointer()
-                    .scholiumButtonStyle(.bordered)
+                    .buttonStyle(.bordered)
                     .keyboardShortcut(.defaultAction)
                     .disabled(!canSave || isSaving)
             }
@@ -2818,13 +2535,6 @@ private struct WorkspacePathEditor: View {
               let portableContainerURL else { return false }
         return outputURL.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL.path
             == portableContainerURL.resolvingSymlinksInPath().standardizedFileURL.path
-    }
-
-    private var haveCommonParent: Bool {
-        guard let paperAnalysisURL, let topicKnowledgeURL, let outputURL else { return false }
-        return Set([paperAnalysisURL, topicKnowledgeURL, outputURL].map {
-            $0.standardizedFileURL.deletingLastPathComponent().path
-        }).count == 1
     }
 
     private func loadCurrentValuesIfNeeded(force: Bool = false) {
@@ -2908,7 +2618,7 @@ struct PortableControlFolderRow: View {
                         .font(ScholiumTypography.interface(.rowTitle))
                     Text("Authorizes portable settings stored beside Works")
                         .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.secondaryText)
+                        .foregroundStyle(.secondary)
                     Text(containerURL?.path(percentEncoded: false) ?? "Authorization required")
                         .font(ScholiumTypography.interface(.small))
                         .scholiumForeground(
@@ -2923,7 +2633,6 @@ struct PortableControlFolderRow: View {
                 Button(containerURL == nil ? "Authorize…" : "Authorize Again…") {
                     authorizeFolder()
                 }
-                .scholiumActivationPointer()
                 .disabled(worksURL == nil)
                 .accessibilityLabel("Authorize folder containing Works")
             }
@@ -2982,26 +2691,15 @@ struct PortableControlFolderRow: View {
 struct WorkspaceFolderRow: View {
     @Environment(\.scholiumFileSelectionPresenter) private var fileSelectionPresenter
     let title: String
-    let subtitle: String
-    let symbol: String
     @Binding var url: URL?
     @State private var selectionError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.rowDetailSpacing) {
             HStack(spacing: ScholiumGrid.Spacing.nestedContentInset) {
-                Image(systemName: symbol)
-                    .scholiumSymbolStyle(.prominent)
-                    .scholiumForeground(.accent)
-                    .frame(width: 24)
-                    .accessibilityHidden(true)
-
                 VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.rowDetailSpacing) {
                     Text(ScholiumL10n.dynamicString(title))
                         .font(ScholiumTypography.interface(.rowTitle))
-                    Text(ScholiumL10n.dynamicString(subtitle))
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.secondaryText)
                     Text(url?.path(percentEncoded: false) ?? "No folder selected")
                         .font(ScholiumTypography.interface(.small))
                         .scholiumForeground(url == nil ? .secondaryText : .primaryText)
@@ -3015,7 +2713,6 @@ struct WorkspaceFolderRow: View {
                 Button(url == nil ? "Choose…" : "Change…") {
                     chooseFolder()
                 }
-                .scholiumActivationPointer()
                 .accessibilityLabel("Choose \(title) folder")
             }
             if let selectionError {

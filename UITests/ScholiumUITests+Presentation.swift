@@ -236,10 +236,10 @@ extension ScholiumUITests {
         )
 
         let root = settings.descendants(matching: .any)["scholium.settings.root"]
-        let sidebar = settings.descendants(matching: .any)["scholium.settings.sidebar"]
+        let toolbar = settings.toolbars.firstMatch
         XCTAssertTrue(root.exists)
-        XCTAssertTrue(sidebar.exists)
-        let sidebarFrame = sidebar.frame
+        XCTAssertTrue(toolbar.exists)
+        let toolbarFrame = toolbar.frame
 
         XCTAssertTrue(
             waitUntil(timeout: 8) { !confirmation.exists },
@@ -266,8 +266,8 @@ extension ScholiumUITests {
             "Settings feedback must retain only the compact top-edge inset."
         )
         XCTAssertEqual(
-            sidebar.frame,
-            sidebarFrame,
+            toolbar.frame,
+            toolbarFrame,
             "Settings feedback must not move the underlying Settings content."
         )
         let screenshot = XCTAttachment(screenshot: settings.screenshot())
@@ -836,26 +836,21 @@ extension ScholiumUITests {
         let settings = app.menuItems["Settings…"]
         XCTAssertTrue(settings.waitForExistence(timeout: 3))
         settings.click()
-        let appearance = app.descendants(matching: .any)[
-            "scholium.settings.destination.appearance"
-        ].firstMatch
+        let appearance = app.toolbars.buttons["Appearance"].firstMatch
         XCTAssertTrue(appearance.waitForExistence(timeout: 8))
         appearance.click()
 
-        let lineWidth = app.sliders["Line width"]
+        let lineWidth = app.textFields["Line width"]
         XCTAssertTrue(lineWidth.waitForExistence(timeout: 8))
         XCTAssertEqual(lineWidth.label, "Line width")
-        XCTAssertEqual(sliderNumericValue(lineWidth), 72)
-        XCTAssertTrue(
-            app.staticTexts[
-                "Measured in CSS character-width units; the exact measure varies by typeface."
-            ].exists
-        )
+        XCTAssertEqual(appearanceNumericValue(lineWidth), 72)
         lineWidth.click()
-        lineWidth.typeKey(.rightArrow, modifierFlags: [])
+        lineWidth.typeKey("a", modifierFlags: .command)
+        lineWidth.typeText("73")
+        lineWidth.typeKey(.tab, modifierFlags: [])
         XCTAssertTrue(
             waitUntil(timeout: 3) {
-                self.sliderNumericValue(lineWidth) == 73
+                self.appearanceNumericValue(lineWidth) == 73
             })
 
         let form = app.descendants(matching: .any)["scholium.appearance.form"]
@@ -877,7 +872,7 @@ extension ScholiumUITests {
         let settingsWindow = settingsWindow()
         XCTAssertTrue(settingsWindow.waitForExistence(timeout: 5))
         scrollUntilHittable(lineWidth, in: form)
-        XCTAssertEqual(sliderNumericValue(lineWidth), 73)
+        XCTAssertEqual(appearanceNumericValue(lineWidth), 73)
         let controlScreenshot = XCTAttachment(screenshot: settingsWindow.screenshot())
         controlScreenshot.name = "Appearance — Line width keyboard value 73ch"
         controlScreenshot.lifetime = .keepAlways
@@ -946,66 +941,33 @@ extension ScholiumUITests {
             let settings = app.menuItems["Settings…"]
             XCTAssertTrue(settings.waitForExistence(timeout: 3))
             settings.click()
-            let appearance = app.descendants(matching: .any)[
-                "scholium.settings.destination.appearance"
-            ].firstMatch
+            let appearance = app.toolbars.buttons["Appearance"].firstMatch
             XCTAssertTrue(appearance.waitForExistence(timeout: 8))
             appearance.click()
 
             let form = app.descendants(matching: .any)["scholium.appearance.form"]
             XCTAssertTrue(form.waitForExistence(timeout: 5))
-            let lineWidth = app.sliders["Line width"]
+            let lineWidth = app.textFields["Line width"]
             XCTAssertTrue(lineWidth.waitForExistence(timeout: 8))
-            XCTAssertEqual(sliderNumericValue(lineWidth), 72)
+            XCTAssertEqual(appearanceNumericValue(lineWidth), 72)
 
-            func setSlider(_ label: String, target: Double, step: Double) {
-                let slider = app.sliders.matching(
-                    NSPredicate(format: "label == %@", label)
-                ).firstMatch
-                for _ in 0..<8 where !slider.exists {
-                    form.swipeUp(velocity: .slow)
-                }
-                XCTAssertTrue(slider.waitForExistence(timeout: 5))
-                scrollUntilHittable(slider, in: form)
-                let currentValue = sliderNumericValue(slider)
-                XCTAssertNotNil(currentValue)
-                guard let currentValue else { return }
-                if abs(currentValue - target) <= step / 10 {
-                    return
-                }
-                slider.click()
-                for _ in 0..<64 {
-                    guard let current = sliderNumericValue(slider) else { break }
-                    if abs(current - target) <= step / 10 {
-                        break
-                    }
-                    let key: XCUIKeyboardKey = current > target ? .leftArrow : .rightArrow
-                    slider.typeKey(key, modifierFlags: [])
-                    _ = waitUntil(timeout: 1) {
-                        guard let updated = self.sliderNumericValue(slider) else { return false }
-                        return abs(updated - current) >= step / 2
-                    }
-                }
-                XCTAssertTrue(
-                    waitUntil(timeout: 5) {
-                        guard let value = self.sliderNumericValue(slider) else { return false }
-                        return abs(value - target) <= step / 10
-                    })
+            func setNumber(_ label: String, target: Double, step: Double) {
+                let field = app.textFields.matching(NSPredicate(format: "label == %@", label)).firstMatch
+                XCTAssertTrue(field.waitForExistence(timeout: 5))
+                scrollUntilHittable(field, in: form)
+                field.click()
+                field.typeKey("a", modifierFlags: .command)
+                field.typeText(String(target))
+                field.typeKey(.tab, modifierFlags: [])
+                XCTAssertTrue(waitUntil(timeout: 5) {
+                    guard let value = self.appearanceNumericValue(field) else { return false }
+                    return abs(value - target) <= step / 10
+                })
             }
 
-            setSlider("Line spacing", target: lineHeight, step: 0.05)
-            let advancedAppearance = app.buttons[
-                "scholium.appearance.advanced"
-            ]
-            XCTAssertTrue(advancedAppearance.waitForExistence(timeout: 5))
-            scrollUntilHittable(advancedAppearance, in: form)
-            advancedAppearance.click()
-            func advancedAppearanceIsExpanded() -> Bool {
-                advancedAppearance.value as? String == "Expanded"
-            }
-            XCTAssertTrue(waitUntil(timeout: 5, condition: advancedAppearanceIsExpanded))
-            setSlider("Paragraph spacing", target: paragraphSpacing, step: 0.05)
-            setSlider("Letter spacing", target: letterSpacing, step: 0.005)
+            setNumber("Line spacing", target: lineHeight, step: 0.05)
+            setNumber("Paragraph spacing", target: paragraphSpacing, step: 0.05)
+            setNumber("Letter spacing", target: letterSpacing, step: 0.005)
 
             let save = app.buttons["Save Appearance"]
             XCTAssertTrue(save.waitForExistence(timeout: 5))

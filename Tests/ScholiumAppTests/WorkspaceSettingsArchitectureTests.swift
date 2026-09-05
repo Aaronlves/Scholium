@@ -56,11 +56,9 @@ struct WorkspaceSettingsArchitectureTests {
         )
         let topLevel = String(source[..<topLevelEnd.lowerBound])
 
-        #expect(!topLevel.contains("TabView("))
-        #expect(topLevel.contains("NavigationSplitView {"))
-        #expect(topLevel.contains(
-            ".navigationSplitViewColumnWidth("
-        ))
+        #expect(topLevel.contains("SettingsToolbarAttachment(destination: $destination)"))
+        #expect(topLevel.contains("window.toolbarStyle = .preference"))
+        #expect(topLevel.contains("accessibilityDisplayShouldReduceMotion"))
         #expect(topLevel.contains("ScholiumSettingsDestination.application"))
         #expect(topLevel.contains("ScholiumSettingsDestination.triptych"))
         #expect(topLevel.contains("ScholiumSettingsDestination.researchGuidance"))
@@ -68,28 +66,6 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(topLevel.contains("ScholiumSettingsSearchField(text: $searchQuery)"))
         #expect(!topLevel.contains("Text(\"Settings\")"))
         #expect(!topLevel.contains("ZoteroSettingsView()"))
-
-        let windowManagement = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/UI/Components/ScholiumWindowManagement.swift"
-            ),
-            encoding: .utf8
-        )
-        let settingsAttachmentStart = try #require(
-            windowManagement.range(of: "struct SettingsWindowAttachment")
-        )
-        let bootstrapAttachmentStart = try #require(
-            windowManagement.range(
-                of: "struct BootstrapWindowAttachment",
-                range: settingsAttachmentStart.upperBound..<windowManagement.endIndex
-            )
-        )
-        let settingsAttachment = windowManagement[
-            settingsAttachmentStart.lowerBound..<bootstrapAttachmentStart.lowerBound
-        ]
-        #expect(settingsAttachment.contains(
-            "window.styleMask.insert(.fullSizeContentView)"
-        ))
 
         let orderedDestinations = [
             "case triptychs",
@@ -136,8 +112,6 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!source.contains("TriptychScopedSettingsView"))
         #expect(!source.contains("SettingsTriptychScopePicker"))
         #expect(!source.contains("var usesTriptychScope: Bool"))
-        #expect(source.contains("Section(\"Application\")"))
-        #expect(source.contains("Section(\"This Triptych\")"))
         #expect(source.contains("scholium.settings.triptychScope"))
         let triptychsStart = try #require(
             source.range(of: "struct WorkspaceSettingsView: View")
@@ -159,7 +133,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(source.contains("Reminder Timing for This Triptych"))
         #expect(source.contains("Dismissed Items on This Mac"))
         #expect(source.contains("Restore All Dismissed Items on This Mac"))
-        #expect(source.contains("READ-ONLY ZOTERO ON THIS MAC"))
+        #expect(source.contains("researchSettingsSection(\"Zotero\")"))
         #expect(source.contains("case agentIntegration"))
         #expect(source.contains("settingsTriptychLabel("))
         #expect(source.contains(
@@ -529,7 +503,7 @@ struct WorkspaceSettingsArchitectureTests {
 
         for section in [
             "Managed Fields",
-            "settingsSectionTitle(\"Always Shown in About\")",
+            "settingsEditorSection(\"Always Shown in About\")",
         ] {
             #expect(properties.contains(section))
         }
@@ -543,7 +517,6 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(properties.contains("description: normalizedOptionalText"))
         #expect(properties.contains("allowedValues:"))
         #expect(!properties.contains("Agent-Created Analyses"))
-        #expect(properties.contains("Existing values always appear"))
         #expect(properties.contains("Restore Always-Shown Defaults"))
         #expect(!properties.contains("Structured Editing"))
         #expect(!properties.contains("editableFields"))
@@ -773,26 +746,24 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(appearanceSource.contains("store.renameAppearance"))
         #expect(appearanceSource.contains("store.removeAppearance"))
         #expect(appearanceSource.contains("AppearanceProfileEditor"))
-        #expect(appearanceSource.contains("settingsEditorSection(\"Layout\")"))
+        #expect(appearanceSource.contains("settingsEditorSection(\"Body Font\")"))
         #expect(appearanceSource.contains("\"Line width\""))
         #expect(appearanceSource.contains("DocumentAppearanceSettings.lineWidthCharacterUnitsRange"))
         #expect(appearanceSource.contains("accessibilityUnit: \"character-width units\""))
         #expect(!appearanceSource.contains("Full width"))
         #expect(!appearanceSource.contains("Line width preset"))
         #expect(!appearanceSource.contains("Line width mode"))
-        #expect(appearanceSource.contains("settingsEditorSection(\"Body\")"))
-        #expect(appearanceSource.contains("settingsEditorSection(\"Headings\")"))
-        #expect(appearanceSource.contains("settingsEditorSection(\"Callouts\")"))
-        #expect(appearanceSource.contains("DisclosureGroup(\"Advanced CSS\""))
-        #expect(appearanceSource.contains("ScholiumDisclosureHeaderButton("))
-        #expect(appearanceSource.contains("scholium.appearance.advanced"))
-        #expect(appearanceSource.contains("showsAdvancedAppearance.toggle()"))
+        #expect(appearanceSource.contains("settingsEditorSection(\"Source Font\")"))
+        #expect(appearanceSource.contains("settingsEditorSection(\"Heading Font\")"))
+        #expect(appearanceSource.contains("settingsEditorSection(\"Callout\")"))
+        #expect(appearanceSource.contains("settingsEditorSection(\"CSS Snippets\")"))
+        #expect(!appearanceSource.contains("DisclosureGroup("))
         #expect(appearanceSource.contains("Button(\"Revert to Saved\")"))
         #expect(appearanceSource.contains("Restore Default Appearance…"))
         #expect(appearanceSource.contains("appearanceManagementMenu"))
         #expect(appearanceSource.contains("scholium.appearance.manage"))
         #expect(appearanceSource.contains(
-            "slider.trackFillColor = ScholiumColorRole.accent.nsColor"
+            "Stepper(\"\", value: boundedValue"
         ))
         #expect(
             appearanceSource.components(
@@ -802,7 +773,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!appearanceSource.contains("SafeMarkdownReadWebView"))
     }
 
-    @Test("Settings shares one continuous editorial presentation over native controls")
+    @Test("Settings uses native preferences chrome and adaptive window geometry")
     func settingsPresentationOwnership() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -832,12 +803,6 @@ struct WorkspaceSettingsArchitectureTests {
             ),
             encoding: .utf8
         )
-        let windowManagementSource = try String(
-            contentsOf: repositoryRoot.appendingPathComponent(
-                "Scholium/UI/Components/ScholiumWindowManagement.swift"
-            ),
-            encoding: .utf8
-        )
         let settingsRootSource = appSource
             .components(separatedBy: "private struct ScholiumSettingsRoot: View")
             .last?
@@ -850,55 +815,17 @@ struct WorkspaceSettingsArchitectureTests {
             .first ?? ""
 
         #expect(componentSource.contains(".formStyle(.columns)"))
-        #expect(componentSource.contains(".scrollContentBackground(.hidden)"))
-        #expect(componentSource.contains(
-            "role: ScholiumColorRole = .surfaceBackground"
-        ))
-        #expect(componentSource.contains("func settingsSectionTitle("))
-        #expect(componentSource.contains("func settingsEditorSection<"))
-        #expect(settingsSource.components(
-            separatedBy: ".scholiumSettingsForm()"
-        ).count == 2)
-        #expect(!settingsSource.contains(".formStyle(.grouped)"))
-        #expect(!settingsSource.contains("GroupBox("))
-        #expect(settingsSource.contains(
-            ".scholiumSettingsPaneSurface(.navigationSurfaceBackground)"
-        ))
-        #expect(settingsSource.contains("NavigationSplitView {"))
-        #expect(settingsSource.contains(".navigationSplitViewColumnWidth("))
-        #expect(settingsSource.contains(".toolbar(removing: .sidebarToggle)"))
+        #expect(componentSource.contains("Color(nsColor: .windowBackgroundColor)"))
+        #expect(settingsSource.contains("window.toolbarStyle = .preference"))
+        #expect(settingsSource.contains("toolbar.selectedItemIdentifier"))
+        #expect(settingsSource.contains("accessibilityDisplayShouldReduceMotion"))
+        #expect(settingsSource.contains("window.setFrame(frame, display: true, animate: animate)"))
         #expect(settingsSource.contains("ScholiumWindowTopOverlayHost("))
-        #expect(!settingsSource.contains("geometry.safeAreaInsets.top"))
-        #expect(!settingsSource.contains(".overlay(alignment: .leading)"))
         #expect(settingsSource.contains("ScholiumSettingsSearchField("))
-        #expect(!componentSource.contains("struct ScholiumSettingsWindowBackground"))
-        #expect(componentSource.contains("struct ScholiumSettingsSearchField"))
-        #expect(settingsSceneSource.contains(
-            ".frame(width: 700, height: 560, alignment: .topLeading)"
-        ))
-        #expect(settingsSceneSource.contains(
-            ".windowToolbarStyle(.unified(showsTitle: false))"
-        ))
-        #expect(!settingsSceneSource.contains(".toolbarBackgroundVisibility("))
-        #expect(!settingsSceneSource.contains(".containerBackground(for: .window)"))
-        #expect(!settingsSceneSource.contains("ScholiumSettingsWindowBackground()"))
-        #expect(settingsSceneSource.contains("SettingsWindowAttachment()"))
-        #expect(windowManagementSource.contains("struct SettingsWindowAttachment"))
-        #expect(windowManagementSource.contains("window.animationBehavior = .none"))
-        #expect(windowManagementSource.contains(
-            "window.backgroundColor = ScholiumColorRole.surfaceBackground.nsColor"
-        ))
-        #expect(!settingsSource.contains("TabView("))
+        #expect(!settingsSceneSource.contains(".frame(width: 700, height: 560"))
         #expect(guidanceSource.contains(".scholiumSettingsPaneSurface()"))
-        #expect(!settingsRootSource.isEmpty)
-        #expect(settingsRootSource.contains(
-            "@AppStorage(WindowColorSchemeChoice.defaultsKey)"
-        ))
-        #expect(settingsRootSource.contains(".tint(ScholiumColorRole.accent.color)"))
-        #expect(settingsRootSource.contains(
-            "WindowColorSchemeChoice(rawValue: storedColorScheme)"
-        ))
-        #expect(!settingsRootSource.contains(".frame(width: 700, height: 560"))
+        #expect(settingsRootSource.contains("WindowColorSchemeChoice(rawValue: storedColorScheme)"))
+
     }
 
     @Test("Settings model retains only delivery-neutral capabilities")

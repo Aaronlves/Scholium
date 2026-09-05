@@ -1,6 +1,21 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Heading Font": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Heading Font"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "标题字体"}}}},
+    "Heading Level": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Heading Level"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "标题级别"}}}},
+    "CSS Snippets": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "CSS Snippets"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "CSS 片段"}}}},
+    "Body Font": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Body Font"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正文字体"}}}},
+    "Source Font": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Source Font"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "源码字体"}}}},
+    "Typography": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Typography"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "排版"}}}},
+    "Show Only When Populated": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Show Only When Populated"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "仅有值时显示"}}}},
+    "Command": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Command"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "命令"}}}},
+    "Field": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Field"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "字段"}}}},
+    "Group": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Group"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "分组"}}}},
+    "Hotkey": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Hotkey"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "快捷键"}}}},
+    "Setup": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Setup"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "配置"}}}},
+    "Core Protocol": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Core Protocol"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "核心协议"}}}},
+    "Field keys and types are permanent. Archiving preserves stored values.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Field keys and types are permanent. Archiving preserves stored values."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "字段键和类型不可更改。归档会保留已有值。"}}}},
+    "Copies a setup command. Run it in your Agent host to connect.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Copies a setup command. Run it in your Agent host to connect."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "复制配置命令。在 Agent 宿主中运行以连接。"}}}},
     "Suggestions" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Suggestions"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"补全建议"}}}},
     "Find in Document": {
       "localizations": {

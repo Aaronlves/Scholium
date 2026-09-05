@@ -6,19 +6,12 @@ struct HotkeySettingsView: View {
     private var preferencesData = ScholiumHotkeyPreferences.defaultData
     @State private var editingCommand: ScholiumHotkeyCommand?
     @State private var pendingResetAll = false
+    @State private var selectedCommandID: String?
 
     let searchQuery: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            settingsTitle(
-                "Hotkeys",
-                detail: "Customize frequently used Scholium commands. Standard macOS shortcuts remain unchanged."
-            )
-            .padding(ScholiumMetrics.Settings.editorContentInset)
-
-            Divider()
-
             ScrollView {
                 VStack(
                     alignment: .leading,
@@ -26,13 +19,26 @@ struct HotkeySettingsView: View {
                 ) {
                     ForEach(visibleCategories) { category in
                         settingsEditorSection(category.title) {
-                            VStack(spacing: 0) {
-                                let commands = visibleCommands(in: category)
-                                ForEach(commands) { command in
-                                    hotkeyRow(command)
-                                    if command != commands.last { Divider() }
+                            Table(visibleCommands(in: category), selection: $selectedCommandID) {
+                                TableColumn("Command") { command in
+                                    Text(command.title)
+                                        .help(Text(command.menuPath))
                                 }
+                                TableColumn("Hotkey") { command in
+                                    hotkeyMenu(command)
+                                }
+                                .width(100)
                             }
+                            .contextMenu(forSelectionType: String.self) { ids in
+                                if let id = ids.first, let command = ScholiumHotkeyCommand(rawValue: id) {
+                                    hotkeyActions(command)
+                                }
+                            } primaryAction: { ids in
+                                if let id = ids.first { editingCommand = ScholiumHotkeyCommand(rawValue: id) }
+                            }
+                            .tableStyle(.inset)
+                            .frame(height: CGFloat(visibleCommands(in: category).count) * 30 + 32)
+
                         }
                     }
 
@@ -49,18 +55,18 @@ struct HotkeySettingsView: View {
                     HStack {
                         Text("Hotkeys are stored on this Mac and update menu commands immediately.")
                             .font(ScholiumTypography.interface(.small))
-                            .scholiumForeground(.secondaryText)
+                            .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                         Spacer()
                         Button("Restore Default Hotkeys…") {
                             pendingResetAll = true
                         }
-                        .scholiumActivationPointer()
                         .disabled(!hasCustomizations)
                     }
                 }
-                .padding(ScholiumGrid.Spacing.regionContentInset)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .padding(24)
+                .frame(maxWidth: 760, alignment: .topLeading)
+                .frame(maxWidth: .infinity, alignment: .top)
             }
             .scrollContentBackground(.hidden)
         }
@@ -77,7 +83,7 @@ struct HotkeySettingsView: View {
                     in: preferencesData
                 )
             }
-            .scholiumButtonStyle(.automatic)
+            .buttonStyle(.automatic)
         }
         .confirmationDialog(
             "Restore Default Hotkeys?",
@@ -87,9 +93,7 @@ struct HotkeySettingsView: View {
             Button("Restore Defaults", role: .destructive) {
                 preferencesData = ScholiumHotkeyPreferences.defaultData
             }
-            .scholiumActivationPointer()
             Button("Cancel", role: .cancel) {}
-            .scholiumActivationPointer()
         } message: {
             Text("This restores every customizable Scholium command on this Mac. Standard macOS shortcuts are not affected.")
         }
@@ -123,26 +127,23 @@ struct HotkeySettingsView: View {
         ].contains { $0.localizedCaseInsensitiveContains(query) }
     }
 
-    private func hotkeyRow(_ command: ScholiumHotkeyCommand) -> some View {
-        HStack(
-            alignment: .center,
-            spacing: ScholiumGrid.Spacing.inlineControlGap
-        ) {
-            VStack(
-                alignment: .leading,
-                spacing: ScholiumGrid.Spacing.labelAccessoryGap
-            ) {
-                Text(command.title)
-                    .font(ScholiumTypography.interface(.rowTitle))
-                Text(command.menuPath)
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
-            }
-            Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
-
+    private func hotkeyMenu(_ command: ScholiumHotkeyCommand) -> some View {
             Menu {
+                hotkeyActions(command)
+            } label: {
+                Text(binding(for: command)?.displayName ?? "None")
+                    .monospacedDigit()
+                    .frame(minWidth: 64)
+            }
+            .scholiumMenuStyle(.button)
+            .controlSize(.small)
+            .accessibilityLabel(Text("Hotkey for \(String(localized: command.title))"))
+            .accessibilityValue(Text(binding(for: command)?.displayName ?? "None"))
+            .accessibilityIdentifier("scholium.hotkeys.command.\(command.rawValue)")
+    }
+    @ViewBuilder
+    private func hotkeyActions(_ command: ScholiumHotkeyCommand) -> some View {
                 Button("Record New Hotkey…") { editingCommand = command }
-                .scholiumActivationPointer()
                 Button("Clear Hotkey") {
                     preferencesData = ScholiumHotkeyPreferences.data(
                         setting: nil,
@@ -150,7 +151,6 @@ struct HotkeySettingsView: View {
                         in: preferencesData
                     )
                 }
-                .scholiumActivationPointer()
                 .disabled(binding(for: command) == nil)
                 Divider()
                 Button("Restore Default") {
@@ -160,25 +160,10 @@ struct HotkeySettingsView: View {
                         in: preferencesData
                     )
                 }
-                .scholiumActivationPointer()
                 .disabled(!ScholiumHotkeyPreferences.isCustomized(
                     command,
                     data: preferencesData
                 ))
-            } label: {
-                Text(binding(for: command)?.displayName ?? "None")
-                    .monospacedDigit()
-                    .frame(minWidth: 64)
-            }
-            .scholiumActivationPointer()
-            .scholiumMenuStyle(.button)
-            .controlSize(.small)
-            .accessibilityLabel(Text("Hotkey for \(String(localized: command.title))"))
-            .accessibilityValue(Text(binding(for: command)?.displayName ?? "None"))
-            .accessibilityIdentifier("scholium.hotkeys.command.\(command.rawValue)")
-        }
-        .padding(.vertical, ScholiumMetrics.Settings.rowVerticalInset)
-        .accessibilityElement(children: .contain)
     }
 
     private func binding(
@@ -233,7 +218,7 @@ private struct HotkeyRecordingSheet: View {
 
                 Text("Include ⌘. Press Delete to clear the shortcut or Escape to stop recording.")
                     .font(ScholiumTypography.interface(.body))
-                    .scholiumForeground(.secondaryText)
+                    .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 if let issue = validationIssue {
@@ -249,17 +234,14 @@ private struct HotkeyRecordingSheet: View {
 
             HStack {
                 Button("Clear") { draft = nil }
-                    .scholiumActivationPointer()
                     .disabled(draft == nil)
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
-                .scholiumActivationPointer()
                 Button("Save") {
                     save(draft)
                     dismiss()
                 }
-                .scholiumActivationPointer()
-                .scholiumButtonStyle(.bordered)
+                .buttonStyle(.bordered)
                 .disabled(validationIssue != nil)
             }
         }

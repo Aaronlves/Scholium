@@ -46,11 +46,19 @@ func settingsEditorSection<Content: View>(
     _ title: LocalizedStringResource,
     @ViewBuilder content: () -> Content
 ) -> some View {
-    VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-        settingsSectionTitle(title)
-        content()
+    HStack(alignment: .top, spacing: 16) {
+        Text(verbatim: String(localized: title) + ":")
+            .font(.body.weight(.semibold))
+            .multilineTextAlignment(.trailing)
+            .frame(width: 160, alignment: .trailing)
+            .padding(.top, 3)
+            .accessibilityAddTraits(.isHeader)
+        VStack(alignment: .leading, spacing: 8) {
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
-    .frame(maxWidth: .infinity, alignment: .leading)
+    .accessibilityElement(children: .contain)
 }
 
 @MainActor
@@ -58,11 +66,7 @@ func researchSettingsSection<Content: View>(
     _ title: LocalizedStringResource,
     @ViewBuilder content: () -> Content
 ) -> some View {
-    VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-        settingsSectionTitle(title)
-        content()
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
+    settingsEditorSection(title, content: content)
 }
 
 @MainActor
@@ -85,12 +89,10 @@ func researchSettingsCollectionRow<Content: View, Actions: View>(
 }
 
 private struct ScholiumSettingsPaneSurface: ViewModifier {
-    let role: ScholiumColorRole
-
     func body(content: Content) -> some View {
         content
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(role.color)
+            .background(Color(nsColor: .windowBackgroundColor))
     }
 }
 
@@ -137,16 +139,9 @@ private struct ScholiumSettingsFormPresentation: ViewModifier {
         ScrollView {
             content
                 .formStyle(.columns)
-                .padding(
-                    .horizontal,
-                    ScholiumMetrics.Settings.editorContentInset
-                )
-                .padding(
-                    .vertical,
-                    ScholiumMetrics.Settings.sectionSpacing
-                )
+                .padding(24)
                 .frame(
-                    maxWidth: ScholiumMetrics.Settings.formMaximumWidth,
+                    maxWidth: 760,
                     alignment: .topLeading
                 )
                 .frame(maxWidth: .infinity, alignment: .top)
@@ -157,10 +152,8 @@ private struct ScholiumSettingsFormPresentation: ViewModifier {
 }
 
 extension View {
-    func scholiumSettingsPaneSurface(
-        _ role: ScholiumColorRole = .surfaceBackground
-    ) -> some View {
-        modifier(ScholiumSettingsPaneSurface(role: role))
+    func scholiumSettingsPaneSurface() -> some View {
+        modifier(ScholiumSettingsPaneSurface())
     }
 
     func scholiumSettingsForm() -> some View {

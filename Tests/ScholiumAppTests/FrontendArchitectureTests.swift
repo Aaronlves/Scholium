@@ -2401,7 +2401,7 @@ struct FrontendArchitectureTests {
         #expect(uiTestSource.contains("letterSpacing: 0.020"))
         #expect(!uiTestSource.contains("lineHeight: 1.80"))
         #expect(!uiTestSource.contains("lineHeight: 1.65"))
-        #expect(uiTestSource.contains("XCTAssertEqual(sliderNumericValue(lineWidth), 72)"))
+        #expect(uiTestSource.contains("XCTAssertEqual(appearanceNumericValue(lineWidth), 72)"))
         #expect(
             uiTestSource.contains(
                 "Heading Study — accepted A — long mixed H1 — 1180×760 — Review — native window title"

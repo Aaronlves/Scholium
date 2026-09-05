@@ -119,8 +119,10 @@ Menus follow task ownership:
   Sidebar, and Inspector.
 - **Research**: Research Records, Settle, and Agent Changes when present.
 - **Window**: standard windows plus Notifications.
-- **Settings**: one searchable native list/detail window with **Application**,
-  **This Triptych**, and **Research Guidance** groups.
+- **Settings**: one native preferences window with icon-and-label toolbar categories,
+  Settings search, and explicit Application, This Triptych, or This Mac scope.
+  Switching categories smoothly adjusts the window to the pane’s preferred size;
+  Reduce Motion makes the adjustment immediate.
 
 Settings search indexes static page/control metadata, not research or Skill
 content. Triptychs, Document Appearance, and Hotkeys are Application settings;

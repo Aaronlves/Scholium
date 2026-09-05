@@ -1458,7 +1458,6 @@ enum ScholiumMetrics {
     }
 
     enum Settings {
-        static let sidebarWidth = ScholiumGrid.foundationUnit * 54
         static let sectionSpacing = ScholiumGrid.foundationUnit * 3.5
         static let columnSpacing = ScholiumGrid.foundationUnit * 6
         static let editorContentInset = ScholiumGrid.Spacing.regionContentInset

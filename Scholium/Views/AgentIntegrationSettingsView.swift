@@ -12,20 +12,7 @@ struct AgentIntegrationSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
-                settingsTitle(
-                    LocalizedStringResource(
-                        "Agent Integration",
-                        table: "Localizable",
-                        bundle: .module
-                    ),
-                    detail: LocalizedStringResource(
-                        "Connect an external Agent host to the currently running Scholium App through the local MCP adapter.",
-                        table: "Localizable",
-                        bundle: .module
-                    )
-                )
-
-                researchSettingsSection("AVAILABILITY") {
+                researchSettingsSection("Status") {
                     VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                         statusRow("Scholium App", detail: "Available", available: true)
                         switch settingsModel.agentBridgeAvailability {
@@ -42,22 +29,20 @@ struct AgentIntegrationSettingsView: View {
                     }
                 }
 
-                researchSettingsSection("SETUP") {
+                researchSettingsSection("Setup") {
                     VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                        Text("These commands register the same local stdio server at user scope. Scholium copies the command only; it does not edit either host’s settings or claim setup succeeded.")
+                        Text("Copies a setup command. Run it in your Agent host to connect.")
                             .font(ScholiumTypography.interface(.body))
-                            .scholiumForeground(.secondaryText)
+                            .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
 
                         HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                             Button("Copy Codex Setup Command") {
                                 copySetupCommand(for: .codex)
                             }
-                            .scholiumActivationPointer()
                             Button("Copy Claude Setup Command") {
                                 copySetupCommand(for: .claude)
                             }
-                            .scholiumActivationPointer()
                         }
                         .disabled(cliURL == nil)
 
@@ -69,25 +54,17 @@ struct AgentIntegrationSettingsView: View {
                     }
                 }
 
-                researchSettingsSection("CORE PROTOCOL") {
+                researchSettingsSection("Core Protocol") {
                     VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                        Text("The release-bundled scholium-core-protocol folder is an ordinary Skill. You may inspect it and install it in your Agent host alongside your own method Skills.")
-                            .font(ScholiumTypography.interface(.body))
-                            .scholiumForeground(.secondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
                         Button("Show Core Protocol in Finder…") {
                             guard let coreProtocolURL else { return }
                             NSWorkspace.shared.activateFileViewerSelecting([coreProtocolURL])
                         }
-                        .scholiumActivationPointer()
                         .disabled(coreProtocolURL == nil)
                     }
                 }
 
-                Text("MCP tool availability is not permission to modify research material. Write scope comes only from the researcher’s explicit request in the external conversation.")
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
+
             }
             .padding(ScholiumGrid.Spacing.regionContentInset)
             .frame(maxWidth: 720, alignment: .topLeading)
@@ -109,7 +86,7 @@ struct AgentIntegrationSettingsView: View {
                 .frame(width: 150, alignment: .leading)
             Text(verbatim: detail)
                 .font(ScholiumTypography.interface(.small))
-                .scholiumForeground(.secondaryText)
+                .foregroundStyle(.secondary)
                 .textSelection(.enabled)
             Spacer(minLength: 0)
         }
