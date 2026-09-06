@@ -215,11 +215,6 @@ struct ResearchInspectorContentContext {
         String,
         YAMLValue?
     ) async throws -> Void
-    let saveAuthoredAboutField: @MainActor (
-        WindowDocumentLocation,
-        String,
-        YAMLValue?
-    ) async throws -> Void
     let openZoteroItem: (AnalysisZoteroBinding) async -> Void
     let refreshZoteroMetadata: (UUID, AnalysisZoteroBinding) -> Void
     let manageZoteroBinding: (UUID, AnalysisZoteroBinding?) -> Void
@@ -357,20 +352,7 @@ struct ResearchOverviewView: View {
                                     descriptor: field,
                                     activeEditorKey: $activeAboutEditorKey,
                                     save: { value in
-                                        switch field.authority {
-                                        case .managedMetadata:
-                                            try await context.saveManagedAboutField(
-                                                note,
-                                                field.key,
-                                                value
-                                            )
-                                        case .authoredSource:
-                                            try await context.saveAuthoredAboutField(
-                                                note,
-                                                field.key,
-                                                value
-                                            )
-                                        }
+                                        try await context.saveManagedAboutField(note, field.key, value)
                                     }
                                 )
                             }
@@ -507,26 +489,11 @@ struct ResearchOverviewView: View {
             in: note.schemaProfile,
             catalog: context.metadataCatalog
         ) else { return nil }
-        if let contract = context.metadataCatalog.contract(
-            for: key,
-            profile: note.schemaProfile
-        ) {
-            return AboutPropertyDescriptor(
-                presentation: presentation,
-                contract: contract,
-                authority: .managedMetadata,
-                value: note.managedMetadataValue(named: key)
-            )
-        }
-        guard let contract = PropertyContractCatalog.contract(
-            for: key,
-            profile: note.schemaProfile
-        ) else { return nil }
+        guard let contract = context.metadataCatalog.contract(for: key, profile: note.schemaProfile) else { return nil }
         return AboutPropertyDescriptor(
             presentation: presentation,
             contract: contract,
-            authority: .authoredSource,
-            value: note.authoredYAMLValue(named: key)
+            value: note.managedMetadataValue(named: key)
         )
     }
 
@@ -598,7 +565,6 @@ struct ResearchOverviewView: View {
             openAttention: {},
             retryRefresh: {},
             saveManagedAboutField: { _, _, _ in },
-            saveAuthoredAboutField: { _, _, _ in },
             openZoteroItem: { _ in },
             refreshZoteroMetadata: { _, _ in },
             manageZoteroBinding: { _, _ in }

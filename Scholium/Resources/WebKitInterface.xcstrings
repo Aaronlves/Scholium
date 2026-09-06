@@ -1,6 +1,8 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+
+    "YAML frontmatter" : {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "YAML frontmatter"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "YAML 文档头"}}}},
     "Add Document" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Add Document"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"附加文档"}}}},
     "Add accTitle and accDescr to provide a concise nonvisual account of this diagram." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Add accTitle and accDescr to provide a concise nonvisual account of this diagram."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"请添加 accTitle 和 accDescr，为此图提供简明的非视觉说明。"}}}},
     "Attached document unavailable {title}" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Attached document unavailable {title}"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"附加文档不可用：{title}"}}}},
@@ -22,7 +24,6 @@
     "Diagram rendering is unavailable. Mermaid source is shown." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Diagram rendering is unavailable. Mermaid source is shown."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"图表渲染不可用，现显示 Mermaid 源文本。"}}}},
     "Display Math" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Display Math"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"行间公式"}}}},
     "Divider" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Divider"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"分隔线"}}}},
-    "Edit mode is unavailable because YAML frontmatter is not closed. Use Source mode to finish the frontmatter." : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Edit mode is unavailable because YAML frontmatter is not closed. Use Source mode to finish the frontmatter."}},"zh-Hans":{"stringUnit":{"state":"translated","value":"由于 YAML 前置元数据尚未闭合，编辑模式不可用。请在源文本模式中完成前置元数据。"}}}},
     "Edit mode unavailable" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Edit mode unavailable"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"编辑模式不可用"}}}},
     "Embedded note" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Embedded note"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"嵌入笔记"}}}},
     "Embedded note content for {title}" : {"localizations":{"en":{"stringUnit":{"state":"new","value":"Embedded note content for {title}"}},"zh-Hans":{"stringUnit":{"state":"translated","value":"嵌入笔记“{title}”的内容"}}}},

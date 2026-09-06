@@ -108,6 +108,24 @@ default is monospaced. Changing presentation never changes source bytes or
 logical lines. Native app chrome is not themeable. Advanced CSS is additive and
 optional.
 
+Appearance directly exposes body font/size, line width/spacing, Source
+font/size. Frontmatter remains above the document title as quiet, indented Source
+text, with generous separation from the title and no label, button, or container
+chrome. Opening or switching documents starts at the title; scrolling upward
+reveals YAML for direct editing in Edit. No disclosure or timed collapse exists.
+Initial positioning precedes presentation; saving does not reset the viewport.
+Document switching presents only the requested mode after readiness, without
+showing a temporary layout from another mode.
+A View-menu action navigates to Frontmatter without creating an empty envelope.
+Source always displays the full original text. The same documented
+`appearances.json` file owns basic and advanced configuration. Advanced body
+typography, headings, and Callout geometry use file editing, not a second GUI
+style editor. Finder, configuration guidance, explicit Reload, and Restore
+Defaults remain available. An external edit prevents stale GUI overwrite;
+invalid reload preserves the loaded appearance and draft and identifies the
+invalid field. Basic GUI edits retain advanced values. CSS snippets remain
+separately managed under §18.4.1.
+
 The app-owned filename title is the primary document title. Review and Edit
 place it at the top of the shared document plane, inside the document's
 scrolling reading and writing context but outside authoritative Markdown.
@@ -226,9 +244,8 @@ geometry.
 About directly edits one current-Note field at a time. Plain values activate an
 inline control; structured contributors retain their ordered structured editor.
 Save and Cancel remain explicit, field-local actions. Managed values commit at
-the exact Metadata revision. Authored `summary`/`keywords` commit through the
-exact-source writer after the current editor is flushed and never become
-managed values. The Metadata sheet remains available for Add Field and
+the exact Metadata revision. YAML fields have no About presentation or editing
+route and never become managed values. The Metadata sheet remains available for Add Field and
 multi-field editing; definitions come from Settings and archived present fields
 remain editable/removable. About coordinates these existing owners without
 creating another one.
@@ -324,7 +341,7 @@ Overview contains, in order:
 
 1. a conditional **Needs Attention** count and route for the current Note;
 2. **About** with visible semantic groups, configured core fields even when
-   empty, every other present managed value, authored values, direct field
+   empty, every other present managed value, direct field
    editing, read-only file dates and exact-revision Settlement state, plus Add
    Field; and
 3. optional Analysis Zotero link/manage/open/refresh actions.

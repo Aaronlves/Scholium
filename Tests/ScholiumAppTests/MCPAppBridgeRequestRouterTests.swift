@@ -177,7 +177,7 @@ struct MCPAppBridgeRequestRouterTests {
         let initialFingerprint = try decodedFingerprint(created["fingerprint"])
         let createdURL = fixture.topicsURL
             .appendingPathComponent("Nested/Exact.md")
-        let initialSource = "---\nsummary: null\nkeywords: []\n---\n\n# Line 1\r\nLine 2\r\n"
+        let initialSource = "\n# Line 1\r\nLine 2\r\n"
         #expect(try Data(contentsOf: createdURL) == Data(initialSource.utf8))
 
         let updated = try result(await router.handle(ScholiumMCPBridgeRequest(
@@ -197,7 +197,7 @@ struct MCPAppBridgeRequestRouterTests {
         let afterFingerprint = try decodedFingerprint(updated["after_fingerprint"])
         #expect(updated["readback_verified"]?.boolValue == true)
         #expect(try Data(contentsOf: createdURL) == Data(
-            "---\nsummary: null\nkeywords: []\n---\nRevised A\r\nRevised B\r\n".utf8
+            "Revised A\r\nRevised B\r\n".utf8
         ))
 
         let stale = await router.handle(ScholiumMCPBridgeRequest(
@@ -280,7 +280,7 @@ struct MCPAppBridgeRequestRouterTests {
         )
         #expect(secondUndone.restoredFingerprint == afterFingerprint)
         #expect(try Data(contentsOf: createdURL) == Data(
-            "---\nsummary: null\nkeywords: []\n---\nRevised A\r\nRevised B\r\n".utf8
+            "Revised A\r\nRevised B\r\n".utf8
         ))
         let firstCurrentAgain = try await handle.agentCollaboration.agentChangeReview(
             id: updateChangeID

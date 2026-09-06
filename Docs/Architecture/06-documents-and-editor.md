@@ -52,13 +52,15 @@ the retained CodeMirror surface is also mounted continuously. Review, Edit,
 and Source transitions change opacity, stacking, hit testing,
 accessibility exposure, and first-responder focus rather than view identity.
 `MarkdownEditorSession.presentedMode` advances after typed acknowledgement.
-Review remains visible until the requested Edit/Source mode is acknowledged;
-a retained Source frame cannot satisfy Edit readiness. Subsequent Edit/Source
-reconfiguration retains CodeMirror without routing through Review. First
+Editor readiness belongs to one document identity. Pending Edit/Source shows
+an opaque document plane above live WebKit until measured positioning completes.
+Same-document mode changes
+retain CodeMirror; another document cannot inherit its readiness. First
 ordinary Edit focuses the exact body start after YAML, or an exactly mapped
 Review selection. A retained/restored open Note returns to its valid title/body
 target and selection; an explicit locator takes precedence. Source retains its
 exact-source selection.
+Focus request revisions prevent delayed navigation callbacks from overriding newer focus requests.
 Managed New Note skips Review-first presentation. `DocumentController`
 installs its snapshot, exact source, active Edit phase, and body-start offset in
 one MainActor transaction. Until typed acknowledgement, the host exposes
@@ -451,7 +453,7 @@ Complete note source uses one CodeMirror language owner built from
 real incremental YAML subtree even when the YAML contains diagnostics; the
 body remains the Markdown subtree. If an opening delimiter has no closing
 delimiter, Live Preview makes no semantic projection, keeps the exact source
-editable, and presents an accessible Source-mode instruction. Table, callout,
+editable as quiet Source text above the title. Table, callout,
 footnote, mathematics, and preview adapters all honor this fail-closed guard.
 
 That Markdown content language is extended through the locked Lezer API with
@@ -545,9 +547,9 @@ Read and Live Preview consume one presentation contract:
 
 - `ScholiumWebDesignTokens.documentPresentationCSS` derives default Appearance
   CSS from `DocumentAppearanceSettings.defaultSettings`;
-- `StyleOperations` persists typed, named Appearance configurations under
-  Application Support and the frontend projects the selected configuration to
-  deterministic CSS without placing configuration in a research vault;
+- `StyleOperations` validates and explicitly reloads editable `appearances.json`
+  in Application Support; coordinated, byte-checked writes reject stale edits.
+  Reload failure retains the loaded appearance; the frontend derives its CSS;
 - `DocumentSourceAppearance` stores the unrestricted installed font and size;
   escaped CSS transports them to Source without replacing the editor;
 - protected render-component CSS owns common callout, link, table, footnote,
@@ -747,3 +749,6 @@ HTML-to-Markdown persistence, normalization or repair, a floating formatting
 toolbar, arbitrary media management, embedded AI chat or suggestions,
 real-time collaboration, a new SwiftPM target, or a generic editor plugin
 framework.
+
+Frontmatter remains above the title in the same CodeMirror source and history.
+Activation positions the title; reconstruction preserves position.

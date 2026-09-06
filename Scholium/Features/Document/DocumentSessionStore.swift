@@ -122,6 +122,8 @@ final class DocumentSessionModel: ObservableObject {
     /// session reuses its last title/body focus target and exact valid editor
     /// selection; managed creation keeps its explicit body-start contract.
     func prepareForDocumentActivation() {
+        resetScrollPosition()
+        editorSession.prepareOpeningViewport()
         let target: WindowDocumentFocusTarget
         if isEnteringManagedCreation {
             target = .editor

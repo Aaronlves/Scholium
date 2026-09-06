@@ -966,8 +966,6 @@ extension ScholiumUITests {
             }
 
             setNumber("Line spacing", target: lineHeight, step: 0.05)
-            setNumber("Paragraph spacing", target: paragraphSpacing, step: 0.05)
-            setNumber("Letter spacing", target: letterSpacing, step: 0.005)
 
             let save = app.buttons["Save Appearance"]
             XCTAssertTrue(save.waitForExistence(timeout: 5))
@@ -975,6 +973,25 @@ extension ScholiumUITests {
                 scrollUntilHittable(save, in: form)
                 save.click()
                 XCTAssertTrue(waitUntil(timeout: 5) { !save.isEnabled })
+            }
+
+            do {
+                let fileURL = homeDirectory.appendingPathComponent("ApplicationSupport/Workspace/Styles/appearances.json")
+                var file = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: fileURL)) as? [String: Any])
+                var profiles = try XCTUnwrap(file["profiles"] as? [[String: Any]])
+                let selected = try XCTUnwrap(file["selectedProfileID"] as? String)
+                let index = try XCTUnwrap(profiles.firstIndex { $0["id"] as? String == selected })
+                var configuration = try XCTUnwrap(profiles[index]["settings"] as? [String: Any])
+                var body = try XCTUnwrap(configuration["body"] as? [String: Any])
+                body["paragraphSpacingEm"] = paragraphSpacing
+                body["letterSpacingEm"] = letterSpacing
+                configuration["body"] = body
+                profiles[index]["settings"] = configuration
+                file["profiles"] = profiles
+                try JSONSerialization.data(withJSONObject: file, options: .prettyPrinted).write(to: fileURL, options: .atomic)
+                app.buttons["Reload"].click()
+            } catch {
+                XCTFail("Could not reload the fixture Appearance: \(error)")
             }
 
             let settingsWindow = settingsWindow()

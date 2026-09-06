@@ -702,10 +702,10 @@ extension ScholiumUITests {
         }
 
         let firstMarker = "cold-no-seed-first-keystroke\n"
-        let fixedYAML = "---\nsummary: null\nkeywords: []\n---\n"
+        let emptySource = ""
         try createAndType(
             path: "Untitled.md",
-            initialSource: fixedYAML,
+            initialSource: emptySource,
             marker: firstMarker
         )
 
@@ -775,7 +775,7 @@ extension ScholiumUITests {
         let secondMarker = "warm-custom-field-first-keystroke\n"
         try createAndType(
             path: "Untitled 2.md",
-            initialSource: fixedYAML,
+            initialSource: emptySource,
             marker: secondMarker
         )
         XCTAssertTrue(waitForDocumentTitle("Untitled 2", timeout: 20))
@@ -811,7 +811,7 @@ extension ScholiumUITests {
             "01-analyses/Untitled 2.md"
         )
         XCTAssertTrue(waitUntil(timeout: 10) {
-            (try? self.source(at: secondURL)) == fixedYAML + secondMarker
+            (try? self.source(at: secondURL)) == emptySource + secondMarker
         })
     }
 

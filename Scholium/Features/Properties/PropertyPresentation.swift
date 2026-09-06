@@ -1,14 +1,13 @@
 import ScholiumContracts
 
 /// The one fixed presentation-group vocabulary shared by Properties,
-/// Settings, and About. YAML remains flat; these groups are reading order.
+/// Settings and About. These groups describe managed Metadata only.
 enum PropertyPresentationGroup: String, CaseIterable, Hashable, Sendable {
     case source
     case publication
     case accessAndIdentifiers
     case topicDescription
     case workDescription
-    case authoredYAML
     case customMetadata
 
     var label: String {
@@ -18,7 +17,6 @@ enum PropertyPresentationGroup: String, CaseIterable, Hashable, Sendable {
         case .accessAndIdentifiers: ScholiumL10n.dynamicString("Access & Identifiers")
         case .topicDescription: ScholiumL10n.dynamicString("Topic Description")
         case .workDescription: ScholiumL10n.dynamicString("Work Description")
-        case .authoredYAML: ScholiumL10n.dynamicString("Authored YAML")
         case .customMetadata: ScholiumL10n.dynamicString("Custom Metadata")
         }
     }
@@ -29,7 +27,6 @@ enum PropertyPresentationGroup: String, CaseIterable, Hashable, Sendable {
         case .publication: 1
         case .accessAndIdentifiers: 2
         case .customMetadata: 3
-        case .authoredYAML: 4
         }
     }
 }
@@ -67,24 +64,8 @@ enum PropertyPresentationCatalog {
         catalog: NoteMetadataCatalog
     ) -> [PropertyPresentation] {
         let contracts = catalog.contracts(for: profile)
-            + PropertyContractCatalog.contracts(for: profile)
         return contracts.enumerated().map { index, contract in
-            PropertyPresentation(
-                key: contract.canonicalKey,
-                label: label(
-                    for: contract.canonicalKey,
-                    profile: profile,
-                    catalog: catalog
-                ),
-                help: help(
-                    for: contract.canonicalKey,
-                    profile: profile,
-                    catalog: catalog
-                ),
-                group: group(for: contract.canonicalKey, profile: profile),
-                order: index,
-                controlStyle: controlStyle(for: contract)
-            )
+            makePresentation(contract, order: index, profile: profile, catalog: catalog)
         }.sorted {
             ($0.group.order, $0.order) < ($1.group.order, $1.order)
         }
@@ -110,9 +91,6 @@ enum PropertyPresentationCatalog {
         guard let contract = catalog.contract(
             for: presentation.key,
             profile: profile
-        ) ?? PropertyContractCatalog.contract(
-            for: presentation.key,
-            profile: profile
         ), contract.canonicalKey == presentation.key else { return nil }
         return contract
     }
@@ -122,17 +100,43 @@ enum PropertyPresentationCatalog {
         in profile: SchemaProfileID,
         catalog: NoteMetadataCatalog
     ) -> PropertyPresentation? {
-        presentations(for: profile, catalog: catalog).first { $0.key == key }
+        let contracts = catalog.contracts(for: profile)
+        guard let index = contracts.firstIndex(where: { $0.canonicalKey == key }) else { return nil }
+        return makePresentation(contracts[index], order: index, profile: profile, catalog: catalog)
+    }
+
+    private static func makePresentation(
+        _ contract: PropertyContract,
+        order: Int,
+        profile: SchemaProfileID,
+        catalog: NoteMetadataCatalog
+    ) -> PropertyPresentation {
+        PropertyPresentation(
+            key: contract.canonicalKey,
+            label: label(
+                for: contract.canonicalKey,
+                profile: profile,
+                catalog: catalog
+            ),
+            help: help(
+                for: contract.canonicalKey,
+                profile: profile,
+                catalog: catalog
+            ),
+            group: group(for: contract.canonicalKey, profile: profile),
+            order: order,
+            controlStyle: controlStyle(for: contract)
+        )
     }
 
     static func orderedGroups(for profile: SchemaProfileID) -> [PropertyPresentationGroup] {
         switch profile {
         case .analysis:
-            [.source, .publication, .accessAndIdentifiers, .customMetadata, .authoredYAML]
+            [.source, .publication, .accessAndIdentifiers, .customMetadata]
         case .topicMarkdown:
-            [.topicDescription, .customMetadata, .authoredYAML]
+            [.topicDescription, .customMetadata]
         case .draftProject:
-            [.workDescription, .customMetadata, .authoredYAML]
+            [.workDescription, .customMetadata]
         case .genericMarkdown:
             [.customMetadata]
         }
@@ -167,7 +171,6 @@ enum PropertyPresentationCatalog {
         for key: String,
         profile: SchemaProfileID
     ) -> PropertyPresentationGroup {
-        if key == "summary" || key == "keywords" { return .authoredYAML }
         switch profile {
         case .analysis:
             if analysisSourceKeys.contains(key) { return .source }

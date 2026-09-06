@@ -138,7 +138,7 @@ struct DocumentSessionLifecycleTests {
         #expect(!session.isEnteringManagedCreation)
     }
 
-    @Test("First activation starts in the body and a retained session returns to its exact position")
+    @Test("Activation preserves selection but starts a new opening presentation")
     func activationFocusPolicy() {
         let session = DocumentSessionModel(key: nil)
         let source = "# Section\n\nArgument."
@@ -161,7 +161,10 @@ struct DocumentSessionLifecycleTests {
             focusTarget: .editor,
             context: nil
         )
+        let previousOpening = session.editorSession.openingPresentationID
         session.prepareForDocumentActivation()
+        #expect(session.editorSession.openingPresentationID != previousOpening)
+        #expect(session.editorSession.opensAtDocumentTitle)
 
         #expect(session.editorSession.preferredDocumentFocusTarget == .editor)
         #expect(session.windowPresentationSnapshot.focusTarget == .editor)

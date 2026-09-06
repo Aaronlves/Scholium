@@ -91,12 +91,48 @@
   Markdown input retain formatting and insertion commands.
   Markdown is the sole written annotation authority; there is no separate
   Review Comment or passage Discussion UI.
-- Appearance profiles include Source font and size. Settings lists installed
-  font families without restricting them to monospaced choices; saved changes
-  update the retained Source presentation without changing source or selection.
-  Profiles missing the required Source settings fail the existing manifest
-  validation and remain byte-unchanged and nonmodifiable; this pre-production
-  cutover adds no automatic conversion of older appearance profiles.
+- Appearance exposes body and Source font/size, line width/spacing. Advanced typography remains in editable `appearances.json` with
+  a Finder route, guide and explicit reload. Invalid or stale external edits
+  cannot replace the loaded appearance or be overwritten by a stale GUI save.
+- About and Metadata expose managed values only; authored YAML has no field
+  editor. YAML remains above the title: Review shows source text and Edit allows direct
+  editing. Initial title positioning leaves it above the viewport; Source retains
+  exact source. Disclosure controls and automatic collapse have been removed. Ordinary New Note creates no YAML scaffold.
+- Document activation now resets opening position separately from editor
+  reconstruction. Readiness is keyed to each opening; pending Edit no longer
+  exposes a temporary Review layout. Mathematics and cached reopening pass
+  regression checks. A user recording subsequently captured one YAML frame
+  before title positioning; post-readiness geometry tests alone missed it.
+  Pending presentation now covers live WebKit instead of hiding its layout,
+  and readiness awaits CodeMirror's measured title-position writes.
+  A 25-second disposable QA recording (1,427 decoded frames) had no YAML OCR
+  hits during repeated switching; visual review and upward-scroll/reopening
+  checks passed. Four focused regression tests passed. This is bounded QA,
+  not proof against every compositor timing. Four-opening measurements showed
+  roughly 60 ms additional warm-opening latency; no fixed delay was added.
+- Frontmatter scroll cutover: title-position and exact-source/Undo integration
+  checks pass, including deferred scroll restoration. Disposable QA confirms
+  opening at the title and scrolling upward to the indented YAML region.
+- Earlier 2026-09-06 verification: appearance file reload, invalid/stale edits, exact
+  YAML projection and Undo passed focused tests. Disposable 500-note QA
+  visually checked light/dark Appearance, pane resizing, reload/error recovery,
+  YAML on/off in Review/Edit, full Source, managed About and YAML-free creation.
+  The follow-up resolved all 10 baseline failures: native Settings has an
+  explicit system-style boundary, preview tests use the native host, and newer
+  focus requests supersede delayed navigation callbacks. The complete repository
+  gate passes, including 609 App tests, symbol-graph validation and Release build.
+  Computer Use checked Settings, navigation-to-Review focus and native annotation
+  previews. One isolated QA remains available at the researcher's request.
+  VoiceOver and system accessibility overrides were not manually exercised;
+  a successful Release build is not packaged-release acceptance.
+- Subsequent Settings polish shortens the two integration toolbar labels and
+  anchors native frame interpolation at the current top-left corner. The
+  scene's flexible content boundary prevents pane layout from interrupting
+  expansion. The researcher accepted the animation; Computer Use checked all
+  seven panes after spacing adjustments, including short-pane search visibility.
+  Metadata single-field lookup no longer rebuilds the complete presentation
+  catalog. Owning suites passed (44 tests; final spacing follow-up 24 tests).
+  This scoped follow-up did not repeat the earlier complete repository gate.
 - Review and inactive Edit show a link annotation from one trailing superscript
   marker in the shared bounded preview surface, never as a block inserted into
   prose. Hover or focus reveals it, click keeps it open, and Escape or outside

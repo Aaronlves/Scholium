@@ -1,4 +1,4 @@
-export const EDITOR_PROTOCOL_VERSION = 25;
+export const EDITOR_PROTOCOL_VERSION = 27;
 export const MAX_INBOUND_BYTES = 2_500_000;
 export const MAX_SOURCE_UTF8_BYTES = 8_000_000;
 
@@ -106,6 +106,7 @@ export type EditorOperation =
     dialect: MarkdownEditingDialect;
     initialSelection?: SelectionRange;
   }
+  | {type: "positionDocumentTitle"}
   | {type: "setMode"; mode: EditorMode}
   | {type: "setDocumentTitle"; value: string}
   | {type: "setDocumentAttachments"; value: EditorDocumentAttachment[]}
@@ -158,7 +159,7 @@ export interface EditorCommandResult {
 }
 
 const operationTypes = new Set([
-  "initialize", "setMode", "setDocumentTitle", "setDocumentAttachments", "revealDocumentAttachmentControl", "setPresentationCSS", "setUserCSS", "setLinkPreviews", "showPreview", "measureVisibleProjection", "showPreviewAt", "announceStatus",
+  "initialize", "positionDocumentTitle", "setMode", "setDocumentTitle", "setDocumentAttachments", "revealDocumentAttachmentControl", "setPresentationCSS", "setUserCSS", "setLinkPreviews", "showPreview", "measureVisibleProjection", "showPreviewAt", "announceStatus",
   "goToLine", "revealSourceRange", "setScrollFraction", "setScrollAnchor", "queryText", "querySelection", "queryContext", "queryScrollAnchor", "queryPerformance",
   "captureRecovery", "restoreRecovery", "acknowledgeCommittedSnapshot", "command", "documentFind", "clearDocumentFind", "markClean", "focus", "focusTitle", "blur",
 ]);
@@ -355,7 +356,7 @@ function validOperation(operation: Record<string, unknown>) {
       && ["present", "update", "next", "previous", "replaceCurrent", "replaceAll"].includes(value.action ?? "");
   }
   case "queryText": case "querySelection": case "queryContext": case "queryScrollAnchor": case "queryPerformance": case "captureRecovery": case "showPreview": case "measureVisibleProjection": case "revealDocumentAttachmentControl":
-  case "clearDocumentFind": case "markClean": case "focus": case "focusTitle": case "blur": return true;
+  case "positionDocumentTitle": case "clearDocumentFind": case "markClean": case "focus": case "focusTitle": case "blur": return true;
   default: return false;
   }
 }

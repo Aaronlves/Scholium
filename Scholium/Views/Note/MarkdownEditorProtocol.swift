@@ -1,7 +1,7 @@
 import Foundation
 import ScholiumContracts
 
-let markdownEditorProtocolVersion = 25
+let markdownEditorProtocolVersion = 27
 let markdownEditorMaximumInboundBytes = 2_500_000
 let markdownEditorMaximumSelectionRangeCount = 128
 
@@ -224,6 +224,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         dialect: MarkdownEditingDialect,
         initialSelection: MarkdownEditorSelectionRange?
     )
+    case positionDocumentTitle
     case setMode(MarkdownEditorMode)
     case setDocumentTitle(String)
     case setDocumentAttachments([MarkdownEditorDocumentAttachment])
@@ -266,7 +267,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
         case expectedText, committedText, committedFingerprint, command, argument
     }
     private enum Kind: String, Codable {
-        case initialize, setMode, setDocumentTitle, setDocumentAttachments, revealDocumentAttachmentControl, setPresentationCSS, setUserCSS, setLinkPreviews, showPreview, measureVisibleProjection, showPreviewAt, announceStatus
+        case initialize, positionDocumentTitle, setMode, setDocumentTitle, setDocumentAttachments, revealDocumentAttachmentControl, setPresentationCSS, setUserCSS, setLinkPreviews, showPreview, measureVisibleProjection, showPreviewAt, announceStatus
         case goToLine, revealSourceRange, setScrollFraction, setScrollAnchor, queryText, querySelection, queryContext, queryScrollAnchor, queryPerformance
         case captureRecovery, restoreRecovery, acknowledgeCommittedSnapshot, command, documentFind, clearDocumentFind, markClean, focus, focusTitle, blur
     }
@@ -284,6 +285,7 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
                     forKey: .initialSelection
                 )
             )
+        case .positionDocumentTitle: self = .positionDocumentTitle
         case .setMode: self = try .setMode(container.decode(MarkdownEditorMode.self, forKey: .mode))
         case .setDocumentTitle:
             self = try .setDocumentTitle(container.decode(String.self, forKey: .value))
@@ -357,6 +359,8 @@ enum MarkdownEditorOperation: Codable, Hashable, Sendable {
             try pair(.setDocumentTitle, value, .value, into: &container)
         case let .setDocumentAttachments(value):
             try pair(.setDocumentAttachments, value, .value, into: &container)
+        case .positionDocumentTitle:
+            try container.encode(Kind.positionDocumentTitle, forKey: .type)
         case .revealDocumentAttachmentControl:
             try container.encode(Kind.revealDocumentAttachmentControl, forKey: .type)
         case let .setPresentationCSS(value): try pair(.setPresentationCSS, value, .value, into: &container)

@@ -15,9 +15,10 @@ facts, and integrations remain separate authorities.
 | `summary` | Multiline text | Optional researcher-authored navigation description. |
 | `keywords` | Text list | Optional researcher-authored retrieval terms. |
 
-Managed creation writes `summary: null` and `keywords: []`; both count as absent
-until populated. They are edited in Source. Every other YAML key is preserved
-exactly as custom source without canonical or managed-field semantics.
+Ordinary managed creation inserts no YAML. Explicit typed creation may include
+nonempty authored values. YAML is editable as raw Source or in the explicitly
+document Frontmatter above the title, sharing the same source and Undo history.
+It is excluded from About and Metadata forms. Every other key remains exact custom source without managed semantics.
 
 ### Analyses
 
@@ -47,7 +48,7 @@ maintained for an Agent. MCP creation does not accept the prior
 `source_type`/managed bibliographic creation route.
 
 Default About always shows managed `type`, `authors`, and `publication_date`
-even when empty, then authored `summary` and `keywords`. Every other present
+even when empty. Every other present
 managed value appears automatically in its catalog order. Managed `title`
 is the analyzed work's optional academic title: it appears in About when
 present and remains searchable, but never establishes the Note title.
@@ -79,18 +80,16 @@ keys, including status or deadline fields, have no canonical meaning.
 
 Group order is:
 
-- Analysis: Source, Publication, Access & Identifiers, Custom Metadata, Authored
-  YAML;
-- Topic: Topic Description, Custom Metadata, Authored YAML;
-- Work: Work Description, Custom Metadata, Authored YAML.
+- Analysis: Source, Publication, Access & Identifiers, Custom Metadata;
+- Topic: Topic Description, Custom Metadata;
+- Work: Work Description, Custom Metadata.
 
 Metadata and About use concise visible group headings plus whitespace and rules.
 About's configured managed fields are always shown; configuration controls their
 order rather than hiding other stored values. Every other present managed value,
 including an archived custom value, follows automatically. Empty unconfigured
 fields remain discoverable through Add Field rather than filling the Inspector.
-Authored `summary` and `keywords` are always shown. Keywords are neutral content
-capsules when not being edited.
+Authored YAML is excluded from these groups and has no dedicated field controls.
 
 Defined, applicable, recommended, present, and About-always-shown remain
 independent. A definition or always-shown choice creates no Note value;
@@ -107,7 +106,7 @@ choices may be inserted at any position.
 Archive/Restore preserves stored values, About presentation, and
 Search/editing validation while removing the field from new-value,
 About-always-shown choices. Restore About defaults changes no definitions.
-The fixed authored-YAML scaffold is creation policy, not editable Settings.
+Navigating to Frontmatter never creates an empty envelope or changes source.
 
 ## Appendix B. Critique requirements
 

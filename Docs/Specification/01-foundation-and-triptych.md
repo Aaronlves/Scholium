@@ -25,8 +25,8 @@
   **Attention** presents recoverable
   derived warnings without philosophical judgment.
 - **Metadata** is the researcher-owned structured state managed by Scholium.
-  About combines selected managed values with authored YAML `summary` and
-  `keywords` without becoming another status model.
+  About presents managed values without interpreting authored YAML or becoming
+  another status model.
 - A **Research Record** is attributed, portable research history for one
   continuing inquiry: a revisable question whose substantive steps must be
   understood together to explain how the current understanding formed,

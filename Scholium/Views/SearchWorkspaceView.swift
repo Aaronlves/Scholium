@@ -1222,6 +1222,14 @@ struct SpotlightSearchPanelView: View {
 }
 
 private extension NoteSearchResult {
+    var hasYAMLMatch: Bool {
+        if matchedField == .summary || matchedField == .tag { return true }
+        return matchReasons.contains {
+            if case .property(let property) = $0 { return property.key == "summary" || property.key == "keywords" }
+            return false
+        }
+    }
+
     var searchStructuredReasonDescription: String? {
         for reason in matchReasons {
             switch reason {
@@ -1277,10 +1285,12 @@ private struct NoteSearchResultRow: View {
                     .lineLimit(1)
             }
 
-            Text(highlightedSnippet)
-                .font(ScholiumTypography.scholarly(.body))
-                .lineLimit(2)
-                .multilineTextAlignment(.leading)
+            if !note.hasYAMLMatch {
+                Text(highlightedSnippet)
+                    .font(ScholiumTypography.scholarly(.body))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+            }
 
             HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Text(note.vaultRole.displayName)
@@ -1288,7 +1298,9 @@ private struct NoteSearchResultRow: View {
                 if scope == .thisNote {
                     Text(String(localized: "Line \(note.sourceRange?.line ?? note.sourceLine), Column \(note.sourceRange?.column ?? 1)"))
                 }
-                if let reason = note.searchStructuredReasonDescription {
+                if note.hasYAMLMatch {
+                    Text("Matched source")
+                } else if let reason = note.searchStructuredReasonDescription {
                     Text(reason)
                         .lineLimit(1)
                 } else {

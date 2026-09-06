@@ -45,6 +45,14 @@ private enum ScholiumSettingsDestination: String, CaseIterable, Identifiable {
         }
     }
 
+    var toolbarTitle: String {
+        switch self {
+        case .agentIntegration: ScholiumL10n.string("Agents")
+        case .externalToolsCitations: ScholiumL10n.string("Tools")
+        default: String(localized: title)
+        }
+    }
+
     var symbol: String {
         switch self {
         case .triptychs: "rectangle.3.group"
@@ -138,6 +146,15 @@ struct ScholiumSettingsView: View {
     @State private var didPresentQAFeedbackProof = false
 
     var body: some View {
+        // The scene supplies space; individual panes must not publish new
+        // window size constraints while AppKit interpolates the frame.
+        GeometryReader { _ in
+            settingsContent
+        }
+        .frame(minWidth: 620, minHeight: 180)
+    }
+
+    private var settingsContent: some View {
         VStack(spacing: 0) {
             HStack {
                 Spacer()
@@ -153,7 +170,7 @@ struct ScholiumSettingsView: View {
             settingsDetail
         }
         }
-        .frame(minWidth: 620, maxWidth: .infinity, minHeight: 280, maxHeight: .infinity, alignment: .top)
+        .frame(minWidth: 620, maxWidth: .infinity, minHeight: 180, maxHeight: .infinity, alignment: .top)
         .background(Color(nsColor: .windowBackgroundColor))
         .background(SettingsToolbarAttachment(destination: $destination))
         .background {
@@ -327,7 +344,7 @@ private struct SettingsToolbarAttachment: NSViewRepresentable {
                 window.titlebarAppearsTransparent = false
                 window.titlebarSeparatorStyle = .automatic
                 window.backgroundColor = .windowBackgroundColor
-                window.contentMinSize = NSSize(width: 620, height: 280)
+                window.contentMinSize = NSSize(width: 620, height: 180)
             }
             let destination = parent.destination
             guard presented != destination else { return }
@@ -336,18 +353,28 @@ private struct SettingsToolbarAttachment: NSViewRepresentable {
             presented = destination
             toolbar.selectedItemIdentifier = NSToolbarItem.Identifier(destination.rawValue)
             window.title = String(localized: destination.title)
+            // Finish the SwiftUI layout transaction before starting native
+            // geometry changes. Otherwise its hosting-window reconciliation
+            // can overwrite an expanding frame animation with the end frame.
+            DispatchQueue.main.async { [weak self, weak window] in
+                guard let self, let window, self.presented == destination else { return }
+                self.resize(window, for: destination, animate: animate)
+            }
+        }
+
+        private func resize(_ window: NSWindow, for destination: ScholiumSettingsDestination, animate: Bool) {
             let size: NSSize
             switch destination {
-            case .triptychs: size = NSSize(width: 820, height: 640)
-            case .appearance: size = NSSize(width: 780, height: 700)
-            case .hotkeys: size = NSSize(width: 820, height: 600)
-            case .metadata: size = NSSize(width: 860, height: 650)
-            case .attention: size = NSSize(width: 820, height: 360)
-            case .agentIntegration: size = NSSize(width: 820, height: 440)
-            case .externalToolsCitations: size = NSSize(width: 780, height: 360)
+            case .triptychs: size = NSSize(width: 760, height: 620)
+            case .appearance: size = NSSize(width: 720, height: 550)
+            case .hotkeys: size = NSSize(width: 760, height: 550)
+            case .metadata: size = NSSize(width: 800, height: 560)
+            case .attention: size = NSSize(width: 760, height: 330)
+            case .agentIntegration: size = NSSize(width: 760, height: 380)
+            case .externalToolsCitations: size = NSSize(width: 760, height: 300)
             }
             var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: size))
-            frame.origin = NSPoint(x: window.frame.midX - frame.width / 2,
+            frame.origin = NSPoint(x: window.frame.minX,
                                    y: window.frame.maxY - frame.height)
             if let screen = window.screen {
                 let visible = screen.visibleFrame
@@ -356,7 +383,14 @@ private struct SettingsToolbarAttachment: NSViewRepresentable {
                 frame.origin.x = max(visible.minX, min(frame.minX, visible.maxX - frame.width))
                 frame.origin.y = max(visible.minY, min(frame.minY, visible.maxY - frame.height))
             }
-            window.setFrame(frame, display: true, animate: animate)
+            // The animator retargets an in-flight resize without blocking the
+            // SwiftUI update that installs the selected pane. Both frame edges
+            // move together so the current top-left corner stays anchored.
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = animate ? 0.22 : 0
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                window.animator().setFrame(frame, display: true)
+            }
         }
 
         func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -377,7 +411,8 @@ private struct SettingsToolbarAttachment: NSViewRepresentable {
                      willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
             guard let destination = ScholiumSettingsDestination(rawValue: identifier.rawValue) else { return nil }
             let item = NSToolbarItem(itemIdentifier: identifier)
-            item.label = String(localized: destination.title)
+            item.label = destination.toolbarTitle
+            item.toolTip = String(localized: destination.title)
             item.image = NSImage(systemSymbolName: destination.symbol, accessibilityDescription: item.label)
             item.target = self
             item.action = #selector(selectPane(_:))
@@ -666,8 +701,8 @@ private struct MetadataSettingsView: View {
                     "These current-schema settings need review before managed creation can resume.",
                     systemImage: "exclamationmark.triangle"
                 )
-                .font(ScholiumTypography.interface(.small))
-                .scholiumForeground(.attention)
+                .font(.caption)
+                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             }
             if let refreshError = settingsModel.errorMessage {
@@ -675,8 +710,8 @@ private struct MetadataSettingsView: View {
                     "Settings refresh failed. The last confirmed settings remain visible. \(refreshError)",
                     systemImage: "arrow.clockwise.circle"
                 )
-                .font(ScholiumTypography.interface(.small))
-                .scholiumForeground(.attention)
+                .font(.caption)
+                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             }
             settingsEditorSection("Metadata role") {
@@ -779,22 +814,22 @@ private struct MetadataSettingsView: View {
         if revisionConflict {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
                 Text("The saved metadata settings changed after this draft was loaded. The saved version and this draft were both preserved.")
-                    .font(ScholiumTypography.interface(.small))
+                    .font(.caption)
                     .foregroundStyle(.secondary)
                 Button("Reload Saved Settings") {
                     Task { await reloadSavedSettings() }
                 }
                 if let errorMessage {
                     Text(errorMessage)
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.destructive)
+                        .font(.caption)
+                        .foregroundStyle(.red)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
         } else if let errorMessage {
             Label(errorMessage, systemImage: "exclamationmark.triangle")
-                .font(ScholiumTypography.interface(.small))
-                .scholiumForeground(.destructive)
+                .font(.caption)
+                .foregroundStyle(.red)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -802,14 +837,14 @@ private struct MetadataSettingsView: View {
     private var fieldDefinitionsSection: some View {
         settingsEditorSection("Managed Fields") {
             Text("Field keys and types are permanent. Archiving preserves stored values.")
-                .font(ScholiumTypography.interface(.small))
+                .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             let definitions = metadataFields[selectedSlot] ?? []
             if definitions.isEmpty {
                 Text("No custom fields. Built-in fields remain available.")
-                    .font(ScholiumTypography.interface(.body))
+                    .font(.body)
                     .foregroundStyle(.secondary)
             } else {
                 LazyVStack(
@@ -853,8 +888,8 @@ private struct MetadataSettingsView: View {
                     }
                     if let message = newFieldValidationMessage {
                         Text(message)
-                            .font(ScholiumTypography.interface(.small))
-                            .scholiumForeground(.destructive)
+                            .font(.caption)
+                            .foregroundStyle(.red)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
@@ -889,16 +924,16 @@ private struct MetadataSettingsView: View {
                         .textFieldStyle(.roundedBorder)
                         .accessibilityLabel("Display name for \(definition.key)")
                     Text(definition.key)
-                        .font(ScholiumTypography.exact(.small))
+                        .font(.caption.monospaced())
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: ScholiumMetrics.Settings.labelActionMinimumSpacing)
                 VStack(alignment: .trailing, spacing: ScholiumMetrics.Properties.headerDetailSpacing) {
                     Text(displayName(for: definition.valueKind))
-                        .font(ScholiumTypography.interface(.compact))
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                     Text(definition.lifecycle == .active ? "Active" : "Archived")
-                        .font(ScholiumTypography.interface(.small))
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -913,7 +948,7 @@ private struct MetadataSettingsView: View {
                 ForEach(definition.allowedValues ?? [], id: \.self) { choice in
                     HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                         Text(choice)
-                            .font(ScholiumTypography.interface(.small))
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
                         Spacer()
@@ -943,7 +978,7 @@ private struct MetadataSettingsView: View {
 
             HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 Text("Used in \(metadataUsageCount(for: definition.key)) Notes")
-                    .font(ScholiumTypography.interface(.small))
+                    .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button("Move Up") {
@@ -1240,8 +1275,8 @@ private struct MetadataSettingsView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
             Label(diagnostic.displayMessage, systemImage: "exclamationmark.circle")
-                .font(ScholiumTypography.interface(.small))
-                .scholiumForeground(.destructive)
+                .font(.caption)
+                .foregroundStyle(.red)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("scholium.metadataSettings.validation")
             if diagnostic.role != nil || diagnostic.sourceType != nil {
@@ -1527,7 +1562,7 @@ struct ZoteroSettingsView: View {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                 LabeledContent("Local API") {
                     Label(statusTitle, systemImage: statusSymbol)
-                        .scholiumForeground(statusColorRole)
+                        .foregroundStyle(.primary)
                 }
                 LabeledContent("Last Connected") {
                     Text(info.lastSuccessfulConnection?.formatted(date: .abbreviated, time: .shortened) ?? "Never")
@@ -1542,16 +1577,16 @@ struct ZoteroSettingsView: View {
                     }
                 }
                 Text("Scholium connects only to Zotero Desktop on localhost and never modifies its data. No account or API key is required.")
-                    .font(ScholiumTypography.interface(.body))
+                    .font(.body)
                     .foregroundStyle(.secondary)
                 if info.status == .apiDisabled {
                     Text("In Zotero Advanced settings, enable ‘Allow other applications on this computer to communicate with Zotero’, then test again.")
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.attention)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 if let errorMessage {
                     Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                        .scholiumForeground(.destructive)
+                        .foregroundStyle(.red)
                 }
             }
         }
@@ -1591,10 +1626,6 @@ struct ZoteroSettingsView: View {
         info.status == .available ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
     }
 
-    private var statusColorRole: ScholiumColorRole {
-        info.status == .available ? .confirmed : .attention
-    }
-
     private func refresh() {
         isTesting = true
         Task {
@@ -1620,7 +1651,8 @@ struct WorkspaceSettingsView: View {
             settingsEditorSection("Triptych") {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: ScholiumMetrics.Settings.rootSpacing) {
-                        triptychPicker.labelsHidden()
+                        triptychPicker.labelsHidden().fixedSize().frame(width: 180, alignment: .leading)
+                        Spacer(minLength: 8)
                         triptychActions
                     }
                     VStack(
@@ -1745,6 +1777,9 @@ private struct AppearanceSettingsView: View {
     @State private var pendingProfileSelection: UUID?
     @State private var nameDraft = ""
 
+    @State private var showsCSSSnippets = false
+    @State private var confirmsConfigurationReload = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ScrollView {
@@ -1762,11 +1797,26 @@ private struct AppearanceSettingsView: View {
 
                     Divider()
 
-                    settingsEditorSection("CSS Snippets") {
-                        cssSnippetsContent
+                    settingsEditorSection("Configuration File") {
+                        HStack {
+                            Button("Show in Finder…") { store.revealAppearanceConfiguration() }
+                            Button("Reload") {
+                                if hasUnsavedChanges { confirmsConfigurationReload = true }
+                                else { store.reloadAppearanceConfiguration() }
+                            }
+                        }
+                        HStack {
+                            Button("Configuration Guide…") {
+                                if let url = Bundle.module.url(forResource: "AppearanceConfiguration", withExtension: "md") {
+                                    NSWorkspace.shared.open(url)
+                                }
+                            }
+                            Button("CSS Snippets…") { showsCSSSnippets = true }
+                        }
                     }
                 }
-                .padding(24)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 16)
                 .frame(maxWidth: 760, alignment: .topLeading)
                 .frame(maxWidth: .infinity, alignment: .top)
             }
@@ -1775,23 +1825,23 @@ private struct AppearanceSettingsView: View {
 
             if let reason = store.safeModeReason {
                 Label("CSS Safe Mode: \(reason)", systemImage: "exclamationmark.shield.fill")
-                    .font(ScholiumTypography.interface(.body))
-                    .scholiumForeground(.attention)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
                     .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
                     .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
             }
             if let storeError = store.storeError {
                 Label(storeError, systemImage: "exclamationmark.triangle.fill")
-                    .font(ScholiumTypography.interface(.body))
-                    .scholiumForeground(.destructive)
+                    .font(.body)
+                    .foregroundStyle(.red)
                     .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
                     .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
                     .accessibilityIdentifier("settings.css.store-error")
             }
             if let importError {
                 Label(importError, systemImage: "exclamationmark.triangle.fill")
-                    .font(ScholiumTypography.interface(.body))
-                    .scholiumForeground(.destructive)
+                    .font(.body)
+                    .foregroundStyle(.red)
                     .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
                     .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
             }
@@ -1801,6 +1851,29 @@ private struct AppearanceSettingsView: View {
         .scholiumSettingsPaneSurface()
         .onAppear { loadSelectedDraft() }
         .onChange(of: store.selectedAppearanceProfileID) { _, _ in loadSelectedDraft() }
+        .onChange(of: store.appearanceProfiles) { _, _ in loadSelectedDraft() }
+        .onChange(of: store.appearanceReloadRevision) { _, _ in loadSelectedDraft() }
+        .sheet(isPresented: $showsCSSSnippets) {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("CSS Snippets").font(.headline)
+                ScrollView { cssSnippetsContent }
+                if let error = importError ?? store.storeError {
+                    Text(error)
+                        .font(.body)
+                        .foregroundStyle(.red)
+                }
+                HStack { Spacer(); Button("Done") { showsCSSSnippets = false }.keyboardShortcut(.cancelAction) }
+            }
+            .padding(.horizontal, 24)
+                .padding(.vertical, 16)
+            .frame(width: 600, height: 360)
+        }
+        .confirmationDialog("Reload Appearance Configuration?", isPresented: $confirmsConfigurationReload, titleVisibility: .visible) {
+            Button("Reload", role: .destructive) { store.reloadAppearanceConfiguration() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Reloading replaces your unsaved appearance draft with the configuration file. An invalid file leaves the draft unchanged.")
+        }
         .alert("Rename Appearance", isPresented: $showRename) {
             TextField("Configuration name", text: $nameDraft)
             Button("Cancel", role: .cancel) {}
@@ -1899,11 +1972,6 @@ private struct AppearanceSettingsView: View {
 
     private var cssSnippetsContent: some View {
         VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            Text("Optional CSS snippets are additive compatibility overrides; the selected appearance remains primary.")
-                .font(ScholiumTypography.interface(.body))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
             ForEach(store.snippets) { snippet in
                 CSSSnippetRow(
                     snippet: snippet,
@@ -1914,7 +1982,7 @@ private struct AppearanceSettingsView: View {
 
             if store.snippets.isEmpty {
                 Text("No snippets imported.")
-                    .font(ScholiumTypography.interface(.body))
+                    .font(.body)
                     .foregroundStyle(.secondary)
             }
 
@@ -1933,7 +2001,7 @@ private struct AppearanceSettingsView: View {
                 } label: {
                     Label("More", systemImage: "ellipsis.circle")
                 }
-                .scholiumMenuStyle(.borderlessButton)
+                .menuStyle(.borderlessButton)
                 .fixedSize()
             }
         }
@@ -1973,7 +2041,7 @@ private struct AppearanceSettingsView: View {
             Label("Manage", systemImage: "ellipsis.circle")
         }
         .scholiumActivationPointer()
-        .scholiumMenuStyle(.borderlessButton)
+        .menuStyle(.borderlessButton)
         .fixedSize()
         .accessibilityIdentifier("scholium.appearance.manage")
     }
@@ -2038,164 +2106,63 @@ private struct AppearanceSettingsView: View {
 
 private struct AppearanceProfileEditor: View {
     @Binding var profile: DocumentAppearanceProfile
-    @State private var editsFirstHeading = true
-    @State private var selectedCallout = DocumentCalloutAppearanceRole.orientation
     private let sourceFontFamilies = NSFontManager.shared.availableFontFamilies.sorted {
         $0.localizedStandardCompare($1) == .orderedAscending
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            bodyControls
-            Divider()
-            sourceControls
-            Divider()
-            headingControls
-            Divider()
-            calloutControls
-        }
-        .toggleStyle(.checkbox)
-    }
-
-    private var bodyControls: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
             settingsEditorSection("Body Font") {
-                Picker("Body Font", selection: $profile.settings.body.fontFamily) {
-                    ForEach(DocumentAppearanceFontFamily.allCases, id: \.self) { Text($0.label).tag($0) }
-                }.labelsHidden().frame(width: 240, alignment: .leading)
-            }
-            AppearanceDoubleControl("Font size", value: $profile.settings.body.fontSizePoints, range: 9...24, step: 0.5, suffix: "pt")
-            AppearanceDoubleControl("Line spacing", value: $profile.settings.body.lineHeight, range: 1.2...2.4, step: 0.05, suffix: "×")
-            AppearanceDoubleControl("Line width", value: $profile.settings.lineWidthCharacterUnits, range: DocumentAppearanceSettings.lineWidthCharacterUnitsRange, step: 1, suffix: "ch", precision: 0, accessibilityUnit: "character-width units")
-            AppearanceDoubleControl("Paragraph spacing", value: $profile.settings.body.paragraphSpacingEm, range: 0...2, step: 0.05, suffix: "em")
-            AppearanceDoubleControl("First-line indent", value: $profile.settings.body.firstLineIndentEm, range: 0...4, step: 0.1, suffix: "em")
-            AppearanceDoubleControl("Letter spacing", value: $profile.settings.body.letterSpacingEm, range: -0.05...0.1, step: 0.005, suffix: "em", precision: 3)
-            AppearanceDoubleControl("Word spacing", value: $profile.settings.body.wordSpacingEm, range: -0.1...0.5, step: 0.01, suffix: "em")
-            settingsEditorSection("Alignment") {
-                Picker("Alignment", selection: $profile.settings.body.alignment) {
-                    ForEach(DocumentTextAlignment.allCases, id: \.self) { Text($0.label).tag($0) }
-                }.labelsHidden()
-            }
-            settingsEditorSection("Hyphenation") {
-                Picker("Hyphenation", selection: $profile.settings.body.hyphenation) {
-                    ForEach(DocumentHyphenation.allCases, id: \.self) { Text($0.label).tag($0) }
-                }.labelsHidden()
-            }
-            settingsEditorSection("Typography") {
-                Toggle("Kerning", isOn: $profile.settings.body.kerning)
-                Toggle("Common ligatures", isOn: $profile.settings.body.ligatures)
-            }
-        }
-    }
-
-    private var sourceControls: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            settingsEditorSection("Source Font") {
-                Picker("Source Font", selection: $profile.settings.source.fontFamily) {
-                    ForEach(Array(Set(sourceFontFamilies + [profile.settings.source.fontFamily])).sorted(), id: \.self) {
-                        Text(verbatim: $0).tag($0)
-                    }
+                HStack(spacing: 8) {
+                    Picker("Body Font", selection: $profile.settings.body.fontFamily) {
+                        ForEach(DocumentAppearanceFontFamily.allCases, id: \.self) { Text($0.label).tag($0) }
+                    }.labelsHidden().frame(width: 210, alignment: .leading)
+                    AppearanceNumberControl(value: $profile.settings.body.fontSizePoints, range: 9...24, step: 0.5, title: "Body font size")
+                    Text("pt")
                 }
-                .labelsHidden().frame(width: 240, alignment: .leading)
-                .accessibilityIdentifier("scholium.appearance.sourceFont")
             }
-            AppearanceDoubleControl("Font size", value: $profile.settings.source.fontSizePoints, range: 6...72, step: 0.5, suffix: "pt")
-        }
-    }
-
-    private var headingControls: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            settingsEditorSection("Heading Font") {
-                Picker("Heading Font", selection: $profile.settings.headings.fontFamily) {
-                    ForEach(DocumentHeadingFontFamily.allCases, id: \.self) { Text($0.label).tag($0) }
-                }.labelsHidden()
-            }
-            settingsEditorSection("Style") {
-                Picker("Style", selection: $profile.settings.headings.style) {
-                    ForEach(DocumentHeadingStyle.allCases, id: \.self) { Text($0.label).tag($0) }
-                }.labelsHidden()
-            }
-            AppearanceWeightPicker("Weight", weight: $profile.settings.headings.weight)
-            AppearanceDoubleControl("Line spacing", value: $profile.settings.headings.lineHeight, range: 1...2.4, step: 0.05, suffix: "×")
-            AppearanceDoubleControl("Letter spacing", value: $profile.settings.headings.letterSpacingEm, range: -0.05...0.1, step: 0.005, suffix: "em", precision: 3)
-            settingsEditorSection("Heading Level") {
-                Picker("Heading Level", selection: $editsFirstHeading) {
-                    Text("First-level heading (H1)").tag(true)
-                    Text("Lower headings (H2–H6)").tag(false)
-                }.labelsHidden()
-            }
-            HeadingLevelAppearanceEditor(level: editsFirstHeading
-                ? $profile.settings.headings.level1 : $profile.settings.headings.level2)
-        }
-    }
-
-    private var calloutControls: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            settingsEditorSection("Callout") {
-                Picker("Callout", selection: $selectedCallout) {
-                    ForEach(DocumentCalloutAppearanceRole.allCases, id: \.self) { Text($0.label).tag($0) }
-                }.labelsHidden()
-            }
-            if let index = profile.settings.callouts.firstIndex(where: { $0.role == selectedCallout }) {
-                CalloutAppearanceEditor(callout: $profile.settings.callouts[index])
+            AppearanceDoubleControl("Line width", value: $profile.settings.lineWidthCharacterUnits, range: DocumentAppearanceSettings.lineWidthCharacterUnitsRange, step: 1, suffix: "ch", precision: 0, accessibilityUnit: "character-width units")
+            AppearanceDoubleControl("Line spacing", value: $profile.settings.body.lineHeight, range: 1.2...2.4, step: 0.05, suffix: "×")
+            Divider()
+            settingsEditorSection("Source Font") {
+                HStack(spacing: 8) {
+                    Picker("Source Font", selection: $profile.settings.source.fontFamily) {
+                        ForEach(Array(Set(sourceFontFamilies + [profile.settings.source.fontFamily])).sorted(), id: \.self) {
+                            Text(verbatim: $0).tag($0)
+                        }
+                    }.labelsHidden().frame(width: 210, alignment: .leading)
+                    .accessibilityIdentifier("scholium.appearance.sourceFont")
+                    AppearanceNumberControl(value: $profile.settings.source.fontSizePoints, range: 6...72, step: 0.25, title: "Source font size")
+                    Text("pt")
+                }
             }
         }
     }
 }
 
-private struct HeadingLevelAppearanceEditor: View {
-    @Binding var level: DocumentHeadingLevelAppearance
+private struct AppearanceNumberControl: View {
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+    let title: LocalizedStringResource
 
-    var body: some View {
-        AppearanceDoubleControl("Scale", value: $level.scale, range: 0.8...3, step: 0.05, suffix: "×")
-        settingsEditorSection("Alignment") {
-            Picker("Alignment", selection: $level.alignment) {
-                ForEach(DocumentTextAlignment.allCases, id: \.self) { Text($0.label).tag($0) }
-            }.labelsHidden()
-        }
-        AppearanceDoubleControl("Space before", value: $level.spaceBeforeEm, range: 0...4, step: 0.1, suffix: "em")
-        AppearanceDoubleControl("Space after", value: $level.spaceAfterEm, range: 0...4, step: 0.1, suffix: "em")
-    }
-}
-
-private struct CalloutAppearanceEditor: View {
-    @Binding var callout: DocumentCalloutAppearance
-
-    var body: some View {
-        AppearanceDoubleControl("Horizontal inset", value: $callout.inlineInsetEm, range: 0...4, step: 0.1, suffix: "em")
-        AppearanceDoubleControl("Block spacing", value: $callout.blockGapEm, range: 0...4, step: 0.1, suffix: "em")
-        AppearanceDoubleControl("Text scale", value: $callout.fontScale, range: 0.8...1.4, step: 0.05, suffix: "×")
-        AppearanceDoubleControl("Paragraph spacing", value: $callout.paragraphSpacingEm, range: 0...2, step: 0.05, suffix: "em")
-        AppearanceWeightPicker("Title weight", weight: $callout.titleWeight)
-
-        switch callout.role {
-        case .orientation:
-            AppearanceDoubleControl("Start inset", value: optional($callout.startInsetEm, fallback: 3), range: 0...6, step: 0.1, suffix: "em")
-            AppearanceDoubleControl("End inset", value: optional($callout.endInsetEm, fallback: 3), range: 0...6, step: 0.1, suffix: "em")
-            AppearanceDoubleControl("Line spacing", value: optional($callout.lineHeight, fallback: 1.3), range: 1.1...2.4, step: 0.05, suffix: "×")
-        case .connections:
-            AppearanceDoubleControl("Content indent", value: optional($callout.contentIndentEm, fallback: 1.1), range: 0...4, step: 0.1, suffix: "em")
-        case .statement:
-            AppearanceDoubleControl("Title gap", value: optional($callout.titleGapEm, fallback: 0.32), range: 0...2, step: 0.05, suffix: "em")
-        case .illustration:
-            AppearanceDoubleControl("Title column", value: optional($callout.titleColumnEm, fallback: 6.5), range: 3...16, step: 0.5, suffix: "em")
-            AppearanceDoubleControl("Column gap", value: optional($callout.columnGapEm, fallback: 1), range: 0...4, step: 0.1, suffix: "em")
-        case .caution, .source:
-            AppearanceDoubleControl("Vertical padding", value: optional($callout.paddingBlockEm, fallback: 0.9), range: 0...3, step: 0.1, suffix: "em")
-            AppearanceDoubleControl("Horizontal padding", value: optional($callout.paddingInlineEm, fallback: 1), range: 0...4, step: 0.1, suffix: "em")
-        case .folded:
-            AppearanceDoubleControl("Content indent", value: optional($callout.contentIndentEm, fallback: 1.05), range: 0...4, step: 0.1, suffix: "em")
-        case .quotation:
-            AppearanceDoubleControl("Quotation scale", value: optional($callout.quotationScale, fallback: 1.06), range: 0.8...1.5, step: 0.05, suffix: "×")
-            AppearanceDoubleControl("Attribution scale", value: optional($callout.attributionScale, fallback: 0.85), range: 0.6...1.2, step: 0.05, suffix: "×")
-        }
+    private var boundedValue: Binding<Double> {
+        Binding(get: { value }, set: { candidate in
+            guard candidate.isFinite else { return }
+            value = min(max(candidate, range.lowerBound), range.upperBound)
+        })
     }
 
-    private func optional(_ value: Binding<Double?>, fallback: Double) -> Binding<Double> {
-        Binding(
-            get: { value.wrappedValue ?? fallback },
-            set: { value.wrappedValue = $0 }
-        )
+    var body: some View {
+        HStack(spacing: 2) {
+            TextField("", value: boundedValue, format: .number.precision(.fractionLength(0...2)))
+                .frame(width: 58)
+                .accessibilityLabel(Text(title))
+            Stepper("", value: boundedValue, in: range, step: step)
+                .labelsHidden()
+                .accessibilityLabel(Text(title))
+        }
+        .fixedSize()
     }
 }
 
@@ -2247,28 +2214,6 @@ private struct AppearanceDoubleControl: View {
     }
 }
 
-private struct AppearanceWeightPicker: View {
-    let title: String
-    @Binding var weight: Int
-
-    init(_ title: String, weight: Binding<Int>) {
-        self.title = title
-        _weight = weight
-    }
-
-    var body: some View {
-        settingsEditorSection(LocalizedStringResource(stringLiteral: title)) {
-            Picker(title, selection: $weight) {
-            Text("Regular, 400").tag(400)
-            Text("Medium, 500").tag(500)
-            Text("Semibold, 600").tag(600)
-            Text("Bold, 700").tag(700)
-        }
-            .labelsHidden()
-        }
-    }
-}
-
 private extension DocumentAppearanceFontFamily {
     var label: String {
         switch self {
@@ -2278,61 +2223,6 @@ private extension DocumentAppearanceFontFamily {
         case .georgia: "Georgia"
         case .times: "Times New Roman"
         case .systemSerif: "System Serif"
-        }
-    }
-}
-
-private extension DocumentHeadingFontFamily {
-    var label: String {
-        switch self {
-        case .body: "Inherit Body"
-        case .alegreya: "Alegreya"
-        case .systemSerif: "System Serif"
-        case .systemSans: "System Sans"
-        }
-    }
-}
-
-private extension DocumentHeadingStyle {
-    var label: String {
-        switch self {
-        case .upright: "Upright"
-        case .italic: "Italic"
-        case .smallCaps: "Small Caps"
-        }
-    }
-}
-
-private extension DocumentTextAlignment {
-    var label: String {
-        switch self {
-        case .start: "Leading"
-        case .center: "Centered"
-        case .justify: "Justified"
-        }
-    }
-}
-
-private extension DocumentHyphenation {
-    var label: String {
-        switch self {
-        case .none: "Off"
-        case .automatic: "Automatic"
-        }
-    }
-}
-
-private extension DocumentCalloutAppearanceRole {
-    var label: String {
-        switch self {
-        case .orientation: "Orientation"
-        case .connections: "Connections"
-        case .statement: "Statement"
-        case .illustration: "Illustration"
-        case .caution: "Caution"
-        case .folded: "Folded"
-        case .quotation: "Quotation"
-        case .source: "Source"
         }
     }
 }
@@ -2357,12 +2247,12 @@ private struct CSSSnippetRow: View {
                         .lineLimit(1)
                     if let error {
                         Text(error)
-                            .font(ScholiumTypography.interface(.small))
-                            .scholiumForeground(.destructive)
+                            .font(.caption)
+                            .foregroundStyle(.red)
                             .lineLimit(2)
                     } else {
                         Text(snippet.isEnabled ? "Enabled" : "Disabled")
-                            .font(ScholiumTypography.interface(.small))
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -2397,7 +2287,7 @@ private struct CSSSnippetRow: View {
                 Label("Snippet Actions", systemImage: "ellipsis.circle")
             }
             .labelStyle(.iconOnly)
-            .scholiumMenuStyle(.borderlessButton)
+            .menuStyle(.borderlessButton)
         }
         .padding(.vertical, ScholiumMetrics.Settings.rowVerticalInset)
         .alert("Rename CSS Snippet", isPresented: $showRename) {
@@ -2459,7 +2349,7 @@ private struct WorkspacePathEditor: View {
                         containerURL: $portableContainerURL
                     )
                     Text("Scholium stores the small portable .scholium folder beside Works. macOS therefore asks once for access to the folder containing Works; it is not added as a fourth vault.")
-                        .font(ScholiumTypography.interface(.small))
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                         .frame(
                             maxWidth: ScholiumMetrics.Settings.formExplanationMaximumWidth,
@@ -2475,15 +2365,15 @@ private struct WorkspacePathEditor: View {
 
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                    .font(ScholiumTypography.interface(.body))
-                    .scholiumForeground(.destructive)
+                    .font(.body)
+                    .foregroundStyle(.red)
                     .padding(.horizontal, ScholiumMetrics.Settings.pathHorizontalInset)
                     .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
                     .accessibilityLabel("Workspace error: \(errorMessage)")
             } else if let recoveryMessage = settingsModel.workspaceRecoveryMessage {
                 Label(recoveryMessage, systemImage: "folder.badge.questionmark")
-                    .font(ScholiumTypography.interface(.body))
-                    .scholiumForeground(.attention)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
                     .padding(.horizontal, ScholiumMetrics.Settings.pathHorizontalInset)
                     .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
                     .accessibilityLabel("Workspace access: \(recoveryMessage)")
@@ -2609,21 +2499,19 @@ struct PortableControlFolderRow: View {
             HStack(spacing: ScholiumGrid.Spacing.nestedContentInset) {
                 Image(systemName: "folder.badge.gearshape")
                     .scholiumSymbolStyle(.prominent)
-                    .scholiumForeground(.accent)
+                    .foregroundStyle(.primary)
                     .frame(width: 24)
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.rowDetailSpacing) {
                     Text("Folder Containing Works")
-                        .font(ScholiumTypography.interface(.rowTitle))
+                        .font(.body)
                     Text("Authorizes portable settings stored beside Works")
-                        .font(ScholiumTypography.interface(.small))
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                     Text(containerURL?.path(percentEncoded: false) ?? "Authorization required")
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(
-                            containerURL == nil ? .secondaryText : .primaryText
-                        )
+                        .font(.caption)
+                        .foregroundStyle(containerURL == nil ? .secondary : .primary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
@@ -2638,8 +2526,8 @@ struct PortableControlFolderRow: View {
             }
             if let selectionError {
                 Text(selectionError)
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.destructive)
+                    .font(.caption)
+                    .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
             }
@@ -2699,10 +2587,10 @@ struct WorkspaceFolderRow: View {
             HStack(spacing: ScholiumGrid.Spacing.nestedContentInset) {
                 VStack(alignment: .leading, spacing: ScholiumMetrics.Settings.rowDetailSpacing) {
                     Text(ScholiumL10n.dynamicString(title))
-                        .font(ScholiumTypography.interface(.rowTitle))
+                        .font(.body)
                     Text(url?.path(percentEncoded: false) ?? "No folder selected")
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(url == nil ? .secondaryText : .primaryText)
+                        .font(.caption)
+                        .foregroundStyle(url == nil ? .secondary : .primary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .help(url?.path(percentEncoded: false) ?? "Choose a folder")
@@ -2717,8 +2605,8 @@ struct WorkspaceFolderRow: View {
             }
             if let selectionError {
                 Text(selectionError)
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.destructive)
+                    .font(.caption)
+                    .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
             }

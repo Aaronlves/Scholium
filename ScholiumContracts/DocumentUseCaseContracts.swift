@@ -144,8 +144,8 @@ public struct AnalysisCreationMetadata: Codable, Hashable, Sendable {
 }
 
 /// The only authored YAML values that a managed Note creator may receive.
-/// Omission is represented in source by the fixed `summary: null` and
-/// `keywords: []` scaffold; callers never supply YAML fragments or delimiters.
+/// Omission leaves the Note YAML-free; callers never supply YAML fragments or
+/// delimiters through this typed creation route.
 public struct AuthoredNoteYAML: Codable, Hashable, Sendable {
     public static let maximumSummaryUTF8ByteCount = 32 * 1_024
     public static let maximumKeywordCount = 128
@@ -254,15 +254,16 @@ public enum ManagedNoteSourceBuilder {
         vaultRole: VaultRole
     ) throws -> String {
         let authored = try request.authoredYAML ?? AuthoredNoteYAML()
+        guard authored.summary != nil || !authored.keywords.isEmpty else { return request.body }
         let summarySource: String
         if let summary = authored.summary {
             summarySource = try FrontmatterPatchPlanner.serializeTopLevelMapping([
                 (key: "summary", value: .string(summary)),
             ])
         } else {
-            summarySource = "summary: null\n"
+            summarySource = ""
         }
-        let keywordsSource = try FrontmatterPatchPlanner.serializeTopLevelMapping([
+        let keywordsSource = authored.keywords.isEmpty ? "" : try FrontmatterPatchPlanner.serializeTopLevelMapping([
             (key: "keywords", value: .array(authored.keywords)),
         ])
         let source = "---\n" + summarySource + keywordsSource + "---\n" + request.body

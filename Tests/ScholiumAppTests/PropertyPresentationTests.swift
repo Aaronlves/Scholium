@@ -7,7 +7,27 @@ import Testing
 
 @Suite("Portable metadata presentation and editor boundary")
 struct PropertyPresentationTests {
-    @Test("Descriptors combine managed fields with the two authored YAML fields")
+    @Test("Individual field lookup preserves complete catalog semantics")
+    func individualFieldLookup() {
+        let catalog = NoteMetadataCatalog(customFieldsByRole: [
+            .paperAnalysis: [.init(key: "reading_note", valueKind: .text, label: "Reading note")],
+        ])
+        let start = ContinuousClock.now
+        for profile in PropertyPresentationCatalog.currentProfiles {
+            let all = PropertyPresentationCatalog.presentations(for: profile, catalog: catalog)
+            for _ in 0..<10 {
+                for expected in all {
+                    #expect(PropertyPresentationCatalog.presentation(
+                        for: expected.key, in: profile, catalog: catalog) == expected)
+                }
+            }
+            #expect(PropertyPresentationCatalog.presentation(
+                for: "not_a_field", in: profile, catalog: catalog) == nil)
+        }
+        print("Individual field lookup diagnostic: \(start.duration(to: .now))")
+    }
+
+    @Test("Descriptors expose managed Metadata only")
     func descriptorsResolveToOwningContracts() {
         for profile in PropertyPresentationCatalog.currentProfiles {
             let presentations = PropertyPresentationCatalog.presentations(
@@ -15,7 +35,6 @@ struct PropertyPresentationTests {
                 catalog: .builtIn
             )
             let expected = NoteMetadataCatalog.builtIn.contracts(for: profile)
-                + PropertyContractCatalog.contracts(for: profile)
             #expect(presentations.count == Set(presentations.map(\.key)).count)
             #expect(Set(presentations.map(\.key)) == Set(expected.map(\.canonicalKey)))
             #expect(presentations == presentations.sorted {
@@ -246,7 +265,8 @@ struct PropertyPresentationTests {
         #expect(keys.contains("publication_date"))
         #expect(keys.contains("publisher"))
         #expect(keys.contains("doi"))
-        #expect(keys.suffix(2) == ["summary", "keywords"])
+        #expect(!keys.contains("summary"))
+        #expect(!keys.contains("keywords"))
         #expect(!keys.contains("title"))
     }
 
@@ -263,13 +283,11 @@ struct PropertyPresentationTests {
             .source,
             .publication,
             .accessAndIdentifiers,
-            .authoredYAML,
         ])
         #expect(groups.map(\.keys) == [
             ["authors", "type"],
             ["publication_date", "publisher"],
             ["doi"],
-            ["summary", "keywords"],
         ])
     }
 
@@ -467,35 +485,7 @@ struct PropertyPresentationTests {
         #expect(unavailable.map(\.value) == ["Unavailable"])
     }
 
-    @Test("About authored edits preserve every unrelated source byte")
-    func aboutAuthoredEditUsesTargetedSourcePatch() throws {
-        let source = "\u{FEFF}---\r\n# exact comment\r\nsummary: Old value\r\nkeywords: [one, two]\r\nunknown: 'keep'\r\n---\r\n# Body 😀"
-        let document = NoteDocument(relativePath: "analysis.md", rawContent: source)
-        let proposedChange = try AboutAuthoredFieldMutation.changeSet(
-            document: document,
-            key: "summary",
-            value: .string("New: value")
-        )
-        let changeSet = try #require(proposedChange)
-        let result = try document.applying(changeSet, timestampKey: nil)
 
-        #expect(result == "\u{FEFF}---\r\n# exact comment\r\nsummary: \"New: value\"\r\nkeywords: [one, two]\r\nunknown: 'keep'\r\n---\r\n# Body 😀")
-    }
-
-    @Test("About inserts the first authored field only after explicit input")
-    func aboutAuthoredEditCanInsertFirstEnvelope() throws {
-        let source = "\u{FEFF}# Existing body\r\n\r\nExact tail"
-        let document = NoteDocument(relativePath: "topic.md", rawContent: source)
-        let proposedChange = try AboutAuthoredFieldMutation.changeSet(
-            document: document,
-            key: "keywords",
-            value: .array([.string("agency"), .string("reasons")])
-        )
-        let changeSet = try #require(proposedChange)
-        let result = try document.applying(changeSet, timestampKey: nil)
-
-        #expect(result == "\u{FEFF}---\r\nkeywords:\r\n  - agency\r\n  - reasons\r\n---\r\n# Existing body\r\n\r\nExact tail")
-    }
 }
 
 private func fixtureDate(_ date: Date?) -> String {

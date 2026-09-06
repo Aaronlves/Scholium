@@ -50,9 +50,13 @@ and controls. Right-aligned group labels share one column; related controls
 start on one content axis, with necessary supporting copy directly below its
 control. Fine rules separate groups; field and shortcut collections use native
 tables with adjacent collection actions. Settings stays on one visual level:
-Appearance exposes its options directly without nested advanced disclosures;
-heading-level and Callout selectors choose the object being edited in place. Pane changes may resize the window with native animation, with an
-immediate Reduce Motion result.
+Appearance directly exposes body font and size, line width and spacing, Source
+font and size. Fine typography,
+headings, and Callout geometry are edited in the documented Appearance
+configuration file rather than additional controls or nested advanced pages.
+A Finder route, explicit Reload, and Restore Defaults retain access and recovery. Pane changes resize from the current top-left corner with interruptible native
+animation and an immediate Reduce Motion result. Screen edges constrain the
+final frame. Toolbar labels stay concise; tooltips retain full category names.
 System-owned navigation, toolbars, menus, and popovers keep native treatment.
 There is no separate feature-authored frosted-glass style. The system owns
 transparency and contrast adaptation; do not simulate Liquid Glass in WebKit.
@@ -104,7 +108,7 @@ Footnote and link-annotation markers remain subordinate to prose, keyboard
 reachable, and visually stable within the line. §18 owns their activation,
 dismissal, and source-navigation behavior.
 
-Color has exactly two researcher inputs:
+Scholium content color has exactly two researcher inputs:
 
 - **Accent** `#A94C22`
 - **Paper** `#FEF8ED`
@@ -114,6 +118,10 @@ authorship, status, and interaction outputs. Native and embedded-document
 presentations consume the same semantic meanings. Feature code introduces no
 parallel palette, and color alone never encodes truth, support, authority,
 acceptance, completion, or philosophical value.
+
+Settings and editing auxiliaries use native semantic colors, including the
+system control accent, rather than Scholium's content palette. System typography
+and standard button/menu styles need no product wrapper in these boundaries.
 
 Onboarding illustrations use a closed parchment, ink, and Accent palette. That
 palette is illustration identity, not a general interface palette.
@@ -182,7 +190,7 @@ Ordinary command buttons use neutral Ink and native surfaces. Default-action
 status retains native keyboard behavior without introducing brand Accent.
 Destructive and cancel actions retain their native semantic roles. Shared
 presentation owns ordinary command styling, icon-control chrome, and custom
-row/selection feedback outside editing assistance. The latter explicitly
+row/selection feedback outside Settings and editing assistance. These native boundaries explicitly
 restores native control defaults, including system accent behavior; feature
 views do not author button colors or selection fills. Native menus, groups, and toolbar controls retain their distinct
 platform forms. Accent remains available for meaningful state and authored

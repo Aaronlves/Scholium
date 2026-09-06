@@ -3,8 +3,8 @@ import SwiftUI
 
 /// The shared presentation boundary for Scholium's macOS Settings window.
 /// Native controls retain their platform behavior; this layer supplies only
-/// the editorial plane, hierarchy, spacing, and semantic colors shared by
-/// every Settings pane.
+/// label alignment and spacing shared by every Settings pane. System
+/// typography, colors, materials and control feedback remain native.
 @MainActor
 func settingsTitle(
     _ title: LocalizedStringResource,
@@ -15,12 +15,12 @@ func settingsTitle(
         spacing: ScholiumMetrics.ResearchGuidance.titleDetailSpacing
     ) {
         Text(title)
-            .font(ScholiumTypography.interface(.primaryTitle))
-            .scholiumForeground(.primaryText)
+            .font(.title2)
+            .foregroundStyle(.primary)
             .accessibilityAddTraits(.isHeader)
         Text(detail)
-            .font(ScholiumTypography.interface(.body))
-            .scholiumForeground(.secondaryText)
+            .font(.body)
+            .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
     }
     .frame(
@@ -35,8 +35,8 @@ func settingsSectionTitle(
     _ title: LocalizedStringResource
 ) -> some View {
     Text(title)
-        .font(ScholiumTypography.interface(.sectionTitle))
-        .scholiumForeground(.primaryText)
+        .font(.headline)
+        .foregroundStyle(.primary)
         .padding(.top, ScholiumGrid.Spacing.inlineControlGap)
         .accessibilityAddTraits(.isHeader)
 }
@@ -139,7 +139,8 @@ private struct ScholiumSettingsFormPresentation: ViewModifier {
         ScrollView {
             content
                 .formStyle(.columns)
-                .padding(24)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 16)
                 .frame(
                     maxWidth: 760,
                     alignment: .topLeading

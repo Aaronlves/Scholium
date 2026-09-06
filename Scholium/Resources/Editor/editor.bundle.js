@@ -21106,11 +21106,12 @@
   }
 
   // protocol.ts
-  var EDITOR_PROTOCOL_VERSION = 25;
+  var EDITOR_PROTOCOL_VERSION = 27;
   var MAX_INBOUND_BYTES = 25e5;
   var MAX_SOURCE_UTF8_BYTES = 8e6;
   var operationTypes = /* @__PURE__ */ new Set([
     "initialize",
+    "positionDocumentTitle",
     "setMode",
     "setDocumentTitle",
     "setDocumentAttachments",
@@ -21289,6 +21290,7 @@
       case "showPreview":
       case "measureVisibleProjection":
       case "revealDocumentAttachmentControl":
+      case "positionDocumentTitle":
       case "clearDocumentFind":
       case "markClean":
       case "focus":
@@ -30834,6 +30836,7 @@ ${fence}
 
   // localization.ts
   var webInterfaceLocalizationKeys = [
+    "YAML frontmatter",
     "Attachments",
     "Add Document",
     "Preview attached document {title}",
@@ -30871,7 +30874,6 @@ ${fence}
     "Add accTitle and accDescr to provide a concise nonvisual account of this diagram.",
     "This Mermaid diagram could not be rendered. Source is shown.",
     "Footnote {ordinal}",
-    "Edit mode is unavailable because YAML frontmatter is not closed. Use Source mode to finish the frontmatter.",
     "Edit mode unavailable",
     "Close the YAML frontmatter in Source mode to restore the visual projection.",
     "The editor could not preserve the exact source line endings.",
@@ -32156,6 +32158,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
 
   // scroll-coordinator.ts
   function createEditorScrollCoordinator(editor2, options) {
+    let scrollRevision = 0;
     function currentAnchor() {
       const extent = Math.max(0, editor2.scrollDOM.scrollHeight - editor2.scrollDOM.clientHeight);
       const fallbackFraction = extent > 0 ? Math.max(0, Math.min(1, editor2.scrollDOM.scrollTop / extent)) : 0;
@@ -32171,7 +32174,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       };
     }
     function captureGeometry() {
-      return { anchor: currentAnchor(), document: editor2.state.doc };
+      return { anchor: currentAnchor(), document: editor2.state.doc, revision: scrollRevision };
     }
     function postCurrent() {
       options.post(currentAnchor());
@@ -32233,6 +32236,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     let geometryReportScheduled = false;
     let pendingGeometrySnapshot;
     function scheduleGeometryReport(snapshot) {
+      if (snapshot && snapshot.revision !== scrollRevision) return;
       pendingGeometrySnapshot ??= snapshot;
       if (geometryReportScheduled) return;
       geometryReportScheduled = true;
@@ -32241,26 +32245,33 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         const geometrySnapshot = pendingGeometrySnapshot;
         pendingGeometrySnapshot = void 0;
         const documentSnapshot = geometrySnapshot?.document ?? editor2.state.doc;
+        const revision = geometrySnapshot?.revision ?? scrollRevision;
         editor2.requestMeasure({
           read: () => {
-            if (editor2.state.doc !== documentSnapshot) return void 0;
+            if (editor2.state.doc !== documentSnapshot || revision !== scrollRevision) return void 0;
             return geometrySnapshot ? requestedScrollTop(geometrySnapshot.anchor) : null;
           },
           write: (scrollTop) => {
-            if (scrollTop === void 0 || editor2.state.doc !== documentSnapshot) return;
+            if (scrollTop === void 0 || editor2.state.doc !== documentSnapshot || revision !== scrollRevision) return;
             if (scrollTop !== null) editor2.scrollDOM.scrollTop = scrollTop;
             postCurrent();
           }
         });
       });
     }
+    function setTop(top2) {
+      scrollRevision += 1;
+      pendingGeometrySnapshot = void 0;
+      editor2.scrollDOM.scrollTop = Math.max(0, top2);
+    }
     function setFraction(requestedFraction) {
       options.flushPresentationGeometry();
       const fraction = Number.isFinite(requestedFraction) ? Math.max(0, Math.min(1, requestedFraction)) : 0;
       const extent = Math.max(0, editor2.scrollDOM.scrollHeight - editor2.scrollDOM.clientHeight);
-      editor2.scrollDOM.scrollTop = extent * fraction;
+      setTop(extent * fraction);
     }
     function setAnchor(anchor) {
+      const revision = ++scrollRevision;
       options.flushPresentationGeometry();
       if (!validAnchor(anchor)) {
         setFraction(anchor.fallbackFraction);
@@ -32271,11 +32282,11 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         editor2.scrollDOM.scrollTop = 0;
         postCurrent();
         const keepDocumentStart = () => {
-          if (editor2.state.doc !== documentSnapshot) return;
+          if (editor2.state.doc !== documentSnapshot || revision !== scrollRevision) return;
           editor2.requestMeasure({
             read: () => editor2.state.doc === documentSnapshot,
             write: (isCurrentDocument) => {
-              if (!isCurrentDocument || editor2.state.doc !== documentSnapshot) return;
+              if (!isCurrentDocument || editor2.state.doc !== documentSnapshot || revision !== scrollRevision) return;
               editor2.scrollDOM.scrollTop = 0;
               postCurrent();
             }
@@ -32288,18 +32299,18 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       }
       const blockProbe = anchor.sourceUTF16Offset === anchor.blockUTF16LowerBound && anchor.blockUTF16UpperBound > anchor.blockUTF16LowerBound ? anchor.blockUTF16LowerBound + 1 : anchor.sourceUTF16Offset;
       const applyMeasuredAnchor = () => {
-        if (editor2.state.doc !== documentSnapshot) return;
+        if (editor2.state.doc !== documentSnapshot || revision !== scrollRevision) return;
         editor2.requestMeasure({
           read: () => editor2.state.doc === documentSnapshot ? requestedScrollTop(anchor) : null,
           write: (scrollTop) => {
-            if (scrollTop === null || editor2.state.doc !== documentSnapshot) return;
+            if (scrollTop === null || editor2.state.doc !== documentSnapshot || revision !== scrollRevision) return;
             editor2.scrollDOM.scrollTop = scrollTop;
             postCurrent();
           }
         });
       };
       const applyScrollEffect = () => {
-        if (editor2.state.doc !== documentSnapshot) return;
+        if (editor2.state.doc !== documentSnapshot || revision !== scrollRevision) return;
         editor2.dispatch({ effects: EditorView.scrollIntoView(blockProbe, { y: "start", yMargin: 4 }) });
       };
       editor2.scrollDOM.scrollTop = requestedScrollTop(anchor);
@@ -32322,7 +32333,8 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       postCurrent,
       scheduleGeometryReport,
       setAnchor,
-      setFraction
+      setFraction,
+      setTop
     };
   }
 
@@ -36105,7 +36117,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     editingDialect: () => editingDialect,
     recordMetric: recordEditorMetric
   });
-  var hiddenFrontmatterSourceSelection = null;
   var modeTransitionSequence = 0;
   var liveWidgetReuseCounts = { table: 0, callout: 0, footnote: 0 };
   var lastUndoLabel;
@@ -37097,71 +37108,21 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     decorations: (value) => value.decorations,
     provide: (plugin) => EditorView.atomicRanges.of((view) => view.plugin(plugin)?.atomicRanges ?? Decoration.none)
   });
-  var UnclosedFrontmatterWidget = class _UnclosedFrontmatterWidget extends WidgetType {
-    eq(other) {
-      return other instanceof _UnclosedFrontmatterWidget;
-    }
-    get estimatedHeight() {
-      return 72;
-    }
-    toDOM() {
-      const notice = document.createElement("div");
-      notice.className = "cm-live-frontmatter-unavailable";
-      notice.dataset.scholiumProtected = "frontmatter-unavailable";
-      notice.setAttribute("role", "note");
-      notice.setAttribute(
-        "aria-label",
-        localized("Edit mode is unavailable because YAML frontmatter is not closed. Use Source mode to finish the frontmatter.")
-      );
-      const title = document.createElement("strong");
-      title.textContent = localized("Edit mode unavailable");
-      const detail = document.createElement("span");
-      detail.textContent = localized(
-        "Close the YAML frontmatter in Source mode to restore the visual projection."
-      );
-      notice.append(title, detail);
-      return notice;
-    }
-    ignoreEvent() {
-      return true;
-    }
-  };
-  function buildLiveFrontmatterProjection(state) {
+  function buildFrontmatterLines(state) {
     const index = liveProjectionIndex.index(state);
-    if (index.hasUnclosedFrontmatter) {
-      const unavailable = Decoration.set([
-        Decoration.replace({
-          widget: new UnclosedFrontmatterWidget(),
-          block: true
-        }).range(0, state.doc.length)
-      ]);
-      return {
-        decorations: unavailable,
-        atomicRanges: unavailable
-      };
+    const lines = [];
+    const end = index.frontmatterRange?.to ?? (index.hasUnclosedFrontmatter ? state.doc.length : 0);
+    for (let n = 1; n <= state.doc.lines && state.doc.line(n).from < end; n++) {
+      lines.push(Decoration.line({ class: "scholium-frontmatter-line" }).range(state.doc.line(n).from));
     }
-    const bodyFrom = index.frontmatterRange?.to ?? 0;
-    if (bodyFrom === 0) {
-      return { decorations: Decoration.none, atomicRanges: Decoration.none };
-    }
-    const hiddenTo = state.doc.lineAt(Math.max(0, bodyFrom - 1)).to;
-    const hiddenFrontmatter = Decoration.set([
-      Decoration.replace({ block: true }).range(0, hiddenTo)
-    ]);
-    const atomicFrontmatter = Decoration.set([
-      Decoration.replace({ block: true }).range(0, bodyFrom)
-    ]);
-    return { decorations: hiddenFrontmatter, atomicRanges: atomicFrontmatter };
+    return Decoration.set(lines, true);
   }
-  var liveFrontmatterGuardField = StateField.define({
-    create: buildLiveFrontmatterProjection,
+  var liveFrontmatterLines = StateField.define({
+    create: buildFrontmatterLines,
     update(previous, transaction) {
-      return transaction.docChanged ? buildLiveFrontmatterProjection(transaction.state) : previous;
+      return transaction.docChanged ? buildFrontmatterLines(transaction.state) : previous;
     },
-    provide: (field) => [
-      EditorView.decorations.from(field, (value) => value.decorations),
-      EditorView.atomicRanges.of((view) => view.state.field(field).atomicRanges)
-    ]
+    provide: (field) => EditorView.decorations.from(field)
   });
   var dirty = false;
   var pendingKeyDownStartedAt = null;
@@ -37180,9 +37141,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       (transaction) => transaction.annotation(programmaticDocumentChange) === true
     );
     if (isProgrammatic) return;
-    if (update.selectionSet && hiddenFrontmatterSourceSelection && !update.state.selection.eq(hiddenFrontmatterSourceSelection.clampedLiveSelection)) {
-      hiddenFrontmatterSourceSelection = null;
-    }
     if (update.docChanged) dirty = true;
     if (!update.docChanged && !update.selectionSet) return;
     if (update.docChanged) {
@@ -37201,9 +37159,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       }
       const baseGeneration = documentVersion;
       documentVersion += 1;
-      if (hiddenFrontmatterSourceSelection?.documentVersion !== documentVersion) {
-        hiddenFrontmatterSourceSelection = null;
-      }
       const changes = [];
       const mirrorChanges = [];
       update.changes.iterChanges((fromA, toA, _fromB, _toB, inserted) => {
@@ -37425,7 +37380,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     liveDocumentAttachments,
     inputSuggestions.extension,
     liveSemanticLayout.extension,
-    liveFrontmatterGuardField,
+    liveFrontmatterLines,
     liveMermaidProjection.extension,
     liveStructuredBlockProjections.tableExtension,
     liveDisplayMathProjection.extension,
@@ -37577,6 +37532,15 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   function protectedCommandRanges(state = editor.state) {
     return liveProjectionIndex.index(state).commandProtectedRanges;
   }
+  function editingFrontmatterSelection(state = editor.state) {
+    if (configuredEditorMode(state) !== "livePreview") return false;
+    const index = liveProjectionIndex.index(state);
+    const end = index.frontmatterRange?.to ?? (index.hasUnclosedFrontmatter ? state.doc.length : 0);
+    return end > 0 && state.selection.ranges.every((range) => range.from < end && range.to <= end);
+  }
+  function commandProtection(command2, state = editor.state) {
+    return editingFrontmatterSelection(state) && (command2 === "pastePlain" || command2 === "pasteMarkdown") ? [] : protectedCommandRanges(state);
+  }
   function indexedTablePositionAt(state, offset) {
     return projectionRangeContaining(
       liveProjectionIndex.index(state).tablePositionRanges,
@@ -37634,7 +37598,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       activeBlockConstructs: [...block],
       tablePosition: currentTablePosition,
       composing: view.composing,
-      availableCommands: view.composing || protectedSelection ? [] : availableCommands,
+      availableCommands: view.composing ? [] : editingFrontmatterSelection(state) ? ["pastePlain", "pasteMarkdown"] : protectedSelection ? [] : availableCommands,
       undoLabel: undoDepth(state) > 0 ? lastUndoLabel || "Undo Editing" : void 0,
       redoLabel: redoDepth(state) > 0 ? lastRedoLabel || "Redo Editing" : void 0
     };
@@ -37716,6 +37680,9 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       return rejected(request.requestID, documentVersion, "stale editor generation");
     }
     switch (operation.type) {
+      case "positionDocumentTitle":
+        await editorOperations.positionDocumentTitle();
+        break;
       case "setMode":
         await editorOperations.setMode(operation.mode);
         break;
@@ -37882,10 +37849,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         };
       }
       case "command": {
-        const argument = operation.command === "pasteMarkdown" ? pasteAsMarkdown(decodeClipboardPayload(operation.argument)) : operation.argument;
+        const argument = operation.command === "pasteMarkdown" ? editingFrontmatterSelection() ? decodeClipboardPayload(operation.argument).plainText : pasteAsMarkdown(decodeClipboardPayload(operation.argument)) : operation.argument;
         const transformed = transformMarkdown(editor.state.doc.toString(), editorSelections(), operation.command, {
           argument,
-          protectedRanges: protectedCommandRanges(),
+          protectedRanges: commandProtection(operation.command),
           taskItems: liveProjectionIndex.index(editor.state).taskItemRanges
         });
         if (!transformed) return rejected(request.requestID, documentVersion, "command is unavailable for the exact selection");
@@ -38001,11 +37968,11 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     const text = transfer.getData("text/plain");
     if (!text) return false;
     if (dropPosition !== void 0) editor.dispatch({ selection: { anchor: dropPosition } });
-    const url = isSingleSafeURL(text);
+    const url = editingFrontmatterSelection() ? null : isSingleSafeURL(text);
     const command2 = url && editor.state.selection.ranges.every((selection) => !selection.empty) ? "linkSelectedText" : "pastePlain";
     const transformed = transformMarkdown(editor.state.doc.toString(), editorSelections(), command2, {
       argument: url ?? text,
-      protectedRanges: protectedCommandRanges()
+      protectedRanges: commandProtection(command2)
     });
     return applyInteraction(transformed, command2 === "linkSelectedText" ? "input.scholium.linkPaste" : "input.scholium.plainPaste");
   }
@@ -38075,6 +38042,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       bridgeSessionID = sessionID;
       bridgeDocumentID = documentID;
       bridgeFingerprint = startingFingerprint;
+      editor.contentDOM.style.minHeight = "";
       documentTitle = "";
       documentTitleDraft = null;
       documentTitleError = null;
@@ -38085,7 +38053,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       documentAttachmentInitialRevealDeadline = performance.now() + 1800;
       lastDocumentFocusTarget = void 0;
       documentVersion = 0;
-      hiddenFrontmatterSourceSelection = null;
       const separator = text.includes("\r\n") ? "\r\n" : "\n";
       exactSourceMirror.replace(text);
       editor.dispatch({
@@ -38123,31 +38090,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       previewPopover.hide();
       const scrollSnapshot = editor.scrollSnapshot();
       const nextMode = mode === "livePreview" ? "livePreview" : "source";
-      const previousMode = configuredEditorMode(editor.state);
-      let selection;
-      if (nextMode === "livePreview") {
-        const bodyFrom = frontmatterBodyOffset(editor.state.doc);
-        if (bodyFrom > 0 && editor.state.selection.ranges.some((range) => range.from < bodyFrom)) {
-          if (previousMode === "source") {
-            const clampedLiveSelection = EditorSelection.create([
-              EditorSelection.cursor(bodyFrom)
-            ]);
-            hiddenFrontmatterSourceSelection = {
-              documentVersion,
-              sourceSelection: editor.state.selection,
-              clampedLiveSelection
-            };
-            selection = clampedLiveSelection;
-          } else {
-            selection = EditorSelection.create([EditorSelection.cursor(bodyFrom)]);
-          }
-        }
-      } else if (nextMode === "source" && previousMode === "livePreview" && hiddenFrontmatterSourceSelection?.documentVersion === documentVersion) {
-        selection = hiddenFrontmatterSourceSelection.sourceSelection;
-        hiddenFrontmatterSourceSelection = null;
-      }
       editor.dispatch({
-        selection,
         effects: [
           modeCompartment.reconfigure(nextMode === "livePreview" ? livePreviewMode : sourceMode),
           scrollSnapshot
@@ -38172,7 +38115,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       if (appliedMode === "livePreview") convergeLivePreviewProjection();
       flushPresentationStyleAndGeometry();
     },
-    /** @param {string} css */
     setPresentationCSS(css2) {
       if (setDynamicStyle("scholium-presentation-css", css2)) refreshMermaidTheme();
     },
@@ -38204,7 +38146,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       const documentLength = editor.state.doc.length;
       const from = Math.max(0, Math.min(Math.trunc(requestedFromUTF16), documentLength));
       const to = Math.max(from, Math.min(Math.trunc(requestedToUTF16), documentLength));
-      hiddenFrontmatterSourceSelection = null;
       editor.dispatch({
         selection: EditorSelection.single(from, to),
         effects: EditorView.scrollIntoView(EditorSelection.range(from, to), { y: "center" }),
@@ -38216,6 +38157,39 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     },
     setScrollFraction(requestedFraction) {
       scrollCoordinator.setFraction(requestedFraction);
+    },
+    async positionDocumentTitle() {
+      if (configuredEditorMode(editor.state) !== "livePreview" || !frontmatterBodyOffset(editor.state.doc)) return;
+      flushPresentationStyleAndGeometry();
+      await document.fonts.ready;
+      await new Promise((resolve, reject) => editor.requestMeasure({
+        read: (view) => {
+          const title = view.dom.querySelector(".scholium-note-title-input");
+          return title ? Math.max(0, view.scrollDOM.scrollTop + title.getBoundingClientRect().top - view.scrollDOM.getBoundingClientRect().top - 32) : null;
+        },
+        write: (target) => {
+          if (target === null) {
+            reject(new Error("Document title is not laid out"));
+            return;
+          }
+          editor.contentDOM.style.minHeight = `calc(100% + ${Math.ceil(target)}px)`;
+          scrollCoordinator.setTop(target);
+          editor.requestMeasure({
+            read: (view) => {
+              const title = view.dom.querySelector(".scholium-note-title-input");
+              return title ? view.scrollDOM.scrollTop + title.getBoundingClientRect().top - view.scrollDOM.getBoundingClientRect().top - 32 : null;
+            },
+            write: (settledTop) => {
+              if (settledTop === null) {
+                reject(new Error("Document title lost during layout"));
+                return;
+              }
+              scrollCoordinator.setTop(settledTop);
+              resolve();
+            }
+          });
+        }
+      }));
     },
     setScrollAnchor(anchor) {
       scrollCoordinator.setAnchor(anchor);

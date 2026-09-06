@@ -552,7 +552,7 @@ enum ScholiumWebDesignTokens {
             --scholium-document-half-line-width: \(number(defaults.lineWidthCharacterUnits / 2))ch;
             --scholium-document-prose-font-size: \(number(body.fontSizePoints))pt;
             --scholium-document-source-font-size: \(number(defaults.source.fontSizePoints))pt;
-            --scholium-document-source-font-family: "Victor Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+            --scholium-document-source-font-family: "Courier", ui-monospace, "SFMono-Regular", Menlo, monospace;
             --scholium-document-title-size: 180%;
             --scholium-document-title-line-height: 1.15;
             --scholium-document-title-after: 0.65em;
@@ -707,6 +707,22 @@ enum ScholiumWebDesignTokens {
         .cm-editor.scholium-live-mode .cm-live-paragraph {
           box-sizing: border-box;
         }
+        .scholium-document .scholium-frontmatter-source,
+        .cm-editor.scholium-live-mode .cm-content > .cm-line.scholium-frontmatter-line {
+          font-family: var(--scholium-document-source-font-family);
+          font-size: var(--scholium-document-source-font-size);
+          line-height: 1.7;
+          color: var(--scholium-color-secondary-text);
+          padding-inline: 20px;
+          text-indent: 0;
+          background: transparent;
+          border: 0;
+          white-space: pre-wrap;
+          overflow-wrap: anywhere;
+        }
+        .scholium-document .scholium-frontmatter-source { margin: 0 0 48px; }
+        .cm-editor .scholium-frontmatter-line * { color: inherit; }
+        .cm-editor .scholium-frontmatter-line + .cm-live-note-title { padding-top: 48px; }
         .scholium-note-title {
           box-sizing: border-box;
           margin: 0;

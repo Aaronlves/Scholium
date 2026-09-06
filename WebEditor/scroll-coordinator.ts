@@ -6,6 +6,7 @@ import {recordEditorMetric} from "./performance";
 export interface EditorGeometrySnapshot {
   anchor: EditorScrollAnchor;
   document: Text;
+  revision: number;
 }
 
 export interface EditorScrollCoordinator {
@@ -15,6 +16,7 @@ export interface EditorScrollCoordinator {
   scheduleGeometryReport(snapshot?: EditorGeometrySnapshot): void;
   setAnchor(anchor: EditorScrollAnchor): void;
   setFraction(fraction: number): void;
+  setTop(top: number): void;
 }
 
 /** Owns scroll observation, metrics, and restoration for one retained view. */
@@ -25,6 +27,7 @@ export function createEditorScrollCoordinator(
     flushPresentationGeometry(): void;
   },
 ): EditorScrollCoordinator {
+  let scrollRevision = 0;
   function currentAnchor(): EditorScrollAnchor {
     const extent = Math.max(0, editor.scrollDOM.scrollHeight - editor.scrollDOM.clientHeight);
     const fallbackFraction = extent > 0
@@ -45,7 +48,7 @@ export function createEditorScrollCoordinator(
   }
 
   function captureGeometry(): EditorGeometrySnapshot {
-    return {anchor: currentAnchor(), document: editor.state.doc};
+    return {anchor: currentAnchor(), document: editor.state.doc, revision: scrollRevision};
   }
 
   function postCurrent() {
@@ -125,6 +128,7 @@ export function createEditorScrollCoordinator(
   let geometryReportScheduled = false;
   let pendingGeometrySnapshot: EditorGeometrySnapshot | undefined;
   function scheduleGeometryReport(snapshot?: EditorGeometrySnapshot) {
+    if (snapshot && snapshot.revision !== scrollRevision) return;
     pendingGeometrySnapshot ??= snapshot;
     if (geometryReportScheduled) return;
     geometryReportScheduled = true;
@@ -133,20 +137,27 @@ export function createEditorScrollCoordinator(
       const geometrySnapshot = pendingGeometrySnapshot;
       pendingGeometrySnapshot = undefined;
       const documentSnapshot = geometrySnapshot?.document ?? editor.state.doc;
+      const revision = geometrySnapshot?.revision ?? scrollRevision;
       editor.requestMeasure({
         read: () => {
-          if (editor.state.doc !== documentSnapshot) return undefined;
+          if (editor.state.doc !== documentSnapshot || revision !== scrollRevision) return undefined;
           return geometrySnapshot
             ? requestedScrollTop(geometrySnapshot.anchor)
             : null;
         },
         write: (scrollTop) => {
-          if (scrollTop === undefined || editor.state.doc !== documentSnapshot) return;
+          if (scrollTop === undefined || editor.state.doc !== documentSnapshot || revision !== scrollRevision) return;
           if (scrollTop !== null) editor.scrollDOM.scrollTop = scrollTop;
           postCurrent();
         },
       });
     });
+  }
+
+  function setTop(top: number) {
+    scrollRevision += 1;
+    pendingGeometrySnapshot = undefined;
+    editor.scrollDOM.scrollTop = Math.max(0, top);
   }
 
   function setFraction(requestedFraction: number) {
@@ -155,10 +166,11 @@ export function createEditorScrollCoordinator(
       ? Math.max(0, Math.min(1, requestedFraction))
       : 0;
     const extent = Math.max(0, editor.scrollDOM.scrollHeight - editor.scrollDOM.clientHeight);
-    editor.scrollDOM.scrollTop = extent * fraction;
+    setTop(extent * fraction);
   }
 
   function setAnchor(anchor: EditorScrollAnchor) {
+    const revision = ++scrollRevision;
     options.flushPresentationGeometry();
     if (!validAnchor(anchor)) {
       setFraction(anchor.fallbackFraction);
@@ -169,11 +181,11 @@ export function createEditorScrollCoordinator(
       editor.scrollDOM.scrollTop = 0;
       postCurrent();
       const keepDocumentStart = () => {
-        if (editor.state.doc !== documentSnapshot) return;
+        if (editor.state.doc !== documentSnapshot || revision !== scrollRevision) return;
         editor.requestMeasure({
           read: () => editor.state.doc === documentSnapshot,
           write: (isCurrentDocument) => {
-            if (!isCurrentDocument || editor.state.doc !== documentSnapshot) return;
+            if (!isCurrentDocument || editor.state.doc !== documentSnapshot || revision !== scrollRevision) return;
             editor.scrollDOM.scrollTop = 0;
             postCurrent();
           },
@@ -189,20 +201,20 @@ export function createEditorScrollCoordinator(
       ? anchor.blockUTF16LowerBound + 1
       : anchor.sourceUTF16Offset;
     const applyMeasuredAnchor = () => {
-      if (editor.state.doc !== documentSnapshot) return;
+      if (editor.state.doc !== documentSnapshot || revision !== scrollRevision) return;
       editor.requestMeasure({
         read: () => editor.state.doc === documentSnapshot
           ? requestedScrollTop(anchor)
           : null,
         write: (scrollTop) => {
-          if (scrollTop === null || editor.state.doc !== documentSnapshot) return;
+          if (scrollTop === null || editor.state.doc !== documentSnapshot || revision !== scrollRevision) return;
           editor.scrollDOM.scrollTop = scrollTop;
           postCurrent();
         },
       });
     };
     const applyScrollEffect = () => {
-      if (editor.state.doc !== documentSnapshot) return;
+      if (editor.state.doc !== documentSnapshot || revision !== scrollRevision) return;
       editor.dispatch({effects: EditorView.scrollIntoView(blockProbe, {y: "start", yMargin: 4})});
     };
     editor.scrollDOM.scrollTop = requestedScrollTop(anchor);
@@ -227,5 +239,6 @@ export function createEditorScrollCoordinator(
     scheduleGeometryReport,
     setAnchor,
     setFraction,
+    setTop,
   };
 }

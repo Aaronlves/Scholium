@@ -151,7 +151,7 @@ struct ScholiumApp: App {
 
         Settings {
             ScholiumSettingsWindowContent()
-            .frame(minWidth: 620, minHeight: 280)
+            .frame(minWidth: 620, minHeight: 180)
         }
         .windowResizability(.automatic)
         .environmentObject(applicationBootstrap)
@@ -1001,6 +1001,8 @@ struct ScholiumFocusedEditorActions {
     let canAttachDocument: Bool
     let attachDocumentCopy: () -> Void
     let referenceOriginalDocument: () -> Void
+    var canEditFrontmatter = false
+    var goToFrontmatter: () -> Void = {}
 }
 
 struct ScholiumFocusedEditorActionsKey: FocusedValueKey {
@@ -1429,6 +1431,11 @@ private struct ScholiumSidebarCommandContent: View {
         .scholiumActivationPointer()
         .scholiumKeyboardShortcut(shortcut(for: .searchResearch))
         .disabled(searchActions == nil)
+        Button("Go to Frontmatter") {
+            editorActions?.goToFrontmatter()
+        }
+        .keyboardShortcut("f", modifiers: [.command, .option, .shift])
+        .disabled(editorActions?.canEditFrontmatter != true || editorActions?.isComposing == true)
         Button("Research Records…") {
             workspaceWindowActions?.showResearchRecords()
         }
@@ -5874,44 +5881,6 @@ final class WindowModel: ObservableObject {
             expectedRevision: currentSnapshot.metadata?.revision,
             reportsSuccess: false
         )
-    }
-
-    /// Commits one authored About field through the exact Markdown writer.
-    /// Any dirty active editor is proven saved first, then the current source
-    /// revision is reread before the targeted frontmatter patch is planned.
-    func saveAuthoredAboutField(
-        for note: WindowDocumentLocation,
-        key: String,
-        value: YAMLValue?
-    ) async throws {
-        guard key == "summary" || key == "keywords" else {
-            throw VaultRepositoryError.invalidFrontmatter(
-                "Only Summary and Keywords are authored About fields."
-            )
-        }
-        try await flushRegisteredEditorIfNeeded()
-        guard let context = activeDocumentContext(for: note.relativePath),
-              note.workspaceSnapshot?.stableIdentity.resolvedID == context.noteID,
-              let currentSnapshot = workspaceProjectionController.cachedNote(
-                vaultID: context.vaultID,
-                stableNoteID: context.noteID,
-                relativePath: note.relativePath
-              ) else {
-            throw NoteIdentityRecoveryError.identityUnresolved(note.relativePath)
-        }
-        let document = currentSnapshot.document
-        guard let changeSet = try AboutAuthoredFieldMutation.changeSet(
-            document: document,
-            key: key,
-            value: value
-        ) else { return }
-        let outcome = try await documentController.save(
-            currentSnapshot.id,
-            changeSet: changeSet,
-            expectedRevision: document.fingerprint
-        )
-        _ = await replaceSavedDocument(outcome.committedValue.document)
-        _ = reportCommittedMutationWarnings(outcome)
     }
 
     func diskDocument(for path: String) async throws -> NoteDocument {

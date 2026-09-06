@@ -181,16 +181,16 @@ visible group, and control style only. About's field-local editor delegates
 managed values to the existing exact Metadata revision owner. The shared
 Metadata sheet remains the Add Field and multi-field managed editor, offers
 only role-valid missing keys, and never creates or patches frontmatter.
-Authored `summary` and `keywords` are read from exact source for About; their
-About editor delegates one bounded change to the exact-source writer after the
-active editor is flushed and the current source revision is revalidated.
+About reads managed Metadata only. The authored-source descriptor and targeted
+About YAML mutation route are absent; Source and the document Frontmatter
+above the title share ordinary raw editing.
 Unknown YAML remains byte-preserved custom source and is never surfaced as a
 managed-field alias.
 
 `FrontmatterPatchPlanner` remains a source-fidelity utility for bounded typed
 serialization and explicit source operations. It is not a Metadata writer.
-Managed creation always emits fixed `summary` then `keywords`; omitted values
-serialize as `null` and `[]`, while a typed request may supply either value.
+Managed creation leaves source YAML-free unless a typed request supplies
+nonempty authored values; it emits only those supplied keys.
 No runtime path inserts YAML merely because a managed field is added. The body has
 no Scholium schema, required section, or generated research prose.
 

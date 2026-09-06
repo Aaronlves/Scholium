@@ -1,11 +1,6 @@
 import ScholiumContracts
 import SwiftUI
 
-enum AboutPropertyAuthority: Hashable, Sendable {
-    case managedMetadata
-    case authoredSource
-}
-
 struct AboutPropertyDescriptor: Identifiable, Hashable, Sendable {
     var id: String { presentation.key }
     var key: String { presentation.key }
@@ -15,11 +10,9 @@ struct AboutPropertyDescriptor: Identifiable, Hashable, Sendable {
 
     let presentation: PropertyPresentation
     let contract: PropertyContract
-    let authority: AboutPropertyAuthority
     let value: YAMLValue?
 
     var isEditable: Bool {
-        if authority == .authoredSource, value == .null { return true }
         return value.map {
             PropertyContractCatalog.supportsTargetedStructuredEditing(
                 $0,
@@ -381,12 +374,7 @@ struct AboutEditablePropertyRow: View {
         .disabled(operationState.isSaving)
     }
 
-    private var authorityLabel: String {
-        switch descriptor.authority {
-        case .managedMetadata: String(localized: "Scholium Metadata")
-        case .authoredSource: String(localized: "Authored Source")
-        }
-    }
+    private var authorityLabel: String { String(localized: "Scholium Metadata") }
 
     @ViewBuilder
     private var editorControl: some View {
@@ -559,9 +547,7 @@ struct AboutEditablePropertyRow: View {
                 !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }
             if values.isEmpty {
-                return descriptor.authority == .authoredSource && descriptor.key == "keywords"
-                    ? .array([])
-                    : nil
+                return nil
             }
             return .array(values.map(YAMLValue.string))
         case .creatorList:

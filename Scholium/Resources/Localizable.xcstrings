@@ -1,6 +1,21 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Go to Frontmatter": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Go to Frontmatter"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "前往 Frontmatter"}}}},
+
+    "Source font size": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Source font size"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "源文本字号"}}}},
+    "Body font size": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Body font size"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "正文字号"}}}},
+    "pt": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "pt"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "点"}}}},
+    "Show in Finder…": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Show in Finder…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "在 Finder 中显示…"}}}},
+    "Reloading replaces your unsaved appearance draft with the configuration file. An invalid file leaves the draft unchanged.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Reloading replaces your unsaved appearance draft with the configuration file. An invalid file leaves the draft unchanged."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "重新载入会用配置文件替换尚未保存的外观修改。文件无效时，修改会保持不变。"}}}},
+    "Reload Appearance Configuration?": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Reload Appearance Configuration?"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "重新载入外观配置？"}}}},
+    "Reload": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Reload"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "重新载入"}}}},
+    "Matched source": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Matched source"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "匹配原文"}}}},
+    "Configuration Guide…": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Configuration Guide…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "配置说明…"}}}},
+    "Configuration File": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Configuration File"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "配置文件"}}}},
+    "CSS Snippets…": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "CSS Snippets…"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "CSS 片段…"}}}},
+    "Agents": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Agents"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "智能体"}}}},
+    "Tools": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Tools"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "工具"}}}},
     "Heading Font": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Heading Font"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "标题字体"}}}},
     "Heading Level": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Heading Level"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "标题级别"}}}},
     "CSS Snippets": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "CSS Snippets"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "CSS 片段"}}}},

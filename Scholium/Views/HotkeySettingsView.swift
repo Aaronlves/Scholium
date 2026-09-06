@@ -54,7 +54,7 @@ struct HotkeySettingsView: View {
 
                     HStack {
                         Text("Hotkeys are stored on this Mac and update menu commands immediately.")
-                            .font(ScholiumTypography.interface(.small))
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                         Spacer()
@@ -64,7 +64,8 @@ struct HotkeySettingsView: View {
                         .disabled(!hasCustomizations)
                     }
                 }
-                .padding(24)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 16)
                 .frame(maxWidth: 760, alignment: .topLeading)
                 .frame(maxWidth: .infinity, alignment: .top)
             }
@@ -135,7 +136,7 @@ struct HotkeySettingsView: View {
                     .monospacedDigit()
                     .frame(minWidth: 64)
             }
-            .scholiumMenuStyle(.button)
+            .menuStyle(.button)
             .controlSize(.small)
             .accessibilityLabel(Text("Hotkey for \(String(localized: command.title))"))
             .accessibilityValue(Text(binding(for: command)?.displayName ?? "None"))
@@ -217,14 +218,14 @@ private struct HotkeyRecordingSheet: View {
                 .frame(maxWidth: .infinity, minHeight: 52)
 
                 Text("Include ⌘. Press Delete to clear the shortcut or Escape to stop recording.")
-                    .font(ScholiumTypography.interface(.body))
+                    .font(.body)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 if let issue = validationIssue {
                     Label(issue.message, systemImage: "exclamationmark.triangle")
-                        .font(ScholiumTypography.interface(.body))
-                        .scholiumForeground(.destructive)
+                        .font(.body)
+                        .foregroundStyle(.red)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("scholium.hotkeys.validation")
                 }

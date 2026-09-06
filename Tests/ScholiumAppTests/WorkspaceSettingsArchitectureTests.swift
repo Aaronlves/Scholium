@@ -605,10 +605,9 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!fieldEditorSource.contains("Not typical for"))
         #expect(source.contains("Text(\"Pending Removal\")"))
         #expect(source.contains("Text(\"Not typical\")"))
-        #expect(source.components(separatedBy: ".buttonStyle(.borderedProminent)").count == 3)
-        #expect(source.components(
-            separatedBy: ".tint(ScholiumColorRole.accent.color)"
-        ).count == 2)
+        #expect(source.contains(".scholiumButtonStyle(.bordered)"))
+        #expect(!source.contains(".borderedProminent"))
+        #expect(!source.contains(".tint(ScholiumColorRole.accent.color)"))
         #expect(!source.contains(".tint(ScholiumColorRole.mutedText.color)"))
         #expect(source.contains("removedFieldKeys"))
         #expect(source.contains("List(selection: $selectionKey)"))
@@ -718,7 +717,7 @@ struct WorkspaceSettingsArchitectureTests {
         })
     }
 
-    @Test("Appearance owns named structured profiles without a generated CSS preview")
+    @Test("Appearance exposes basic controls and a reloadable advanced configuration file")
     func appearanceProfileSurface() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -754,9 +753,11 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!appearanceSource.contains("Line width preset"))
         #expect(!appearanceSource.contains("Line width mode"))
         #expect(appearanceSource.contains("settingsEditorSection(\"Source Font\")"))
-        #expect(appearanceSource.contains("settingsEditorSection(\"Heading Font\")"))
-        #expect(appearanceSource.contains("settingsEditorSection(\"Callout\")"))
-        #expect(appearanceSource.contains("settingsEditorSection(\"CSS Snippets\")"))
+        #expect(!appearanceSource.contains("settingsEditorSection(\"Heading Font\")"))
+        #expect(!appearanceSource.contains("settingsEditorSection(\"Callout\")"))
+        #expect(appearanceSource.contains("store.reloadAppearanceConfiguration()"))
+        #expect(appearanceSource.contains("store.revealAppearanceConfiguration()"))
+        #expect(!appearanceSource.contains("showsYAMLFrontmatter"))
         #expect(!appearanceSource.contains("DisclosureGroup("))
         #expect(appearanceSource.contains("Button(\"Revert to Saved\")"))
         #expect(appearanceSource.contains("Restore Default Appearance…"))
@@ -765,11 +766,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(appearanceSource.contains(
             "Stepper(\"\", value: boundedValue"
         ))
-        #expect(
-            appearanceSource.components(
-                separatedBy: "AppearanceDoubleControl(\"Block spacing\""
-            ).count == 2
-        )
+        #expect(!appearanceSource.contains("AppearanceDoubleControl(\"Block spacing\""))
         #expect(!appearanceSource.contains("SafeMarkdownReadWebView"))
     }
 
@@ -819,7 +816,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(settingsSource.contains("window.toolbarStyle = .preference"))
         #expect(settingsSource.contains("toolbar.selectedItemIdentifier"))
         #expect(settingsSource.contains("accessibilityDisplayShouldReduceMotion"))
-        #expect(settingsSource.contains("window.setFrame(frame, display: true, animate: animate)"))
+        #expect(settingsSource.contains("window.animator().setFrame(frame, display: true)"))
         #expect(settingsSource.contains("ScholiumWindowTopOverlayHost("))
         #expect(settingsSource.contains("ScholiumSettingsSearchField("))
         #expect(!settingsSceneSource.contains(".frame(width: 700, height: 560"))

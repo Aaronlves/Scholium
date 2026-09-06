@@ -1435,7 +1435,7 @@
       if (![offset, lower, upper, relative].every(Number.isFinite)) return false;
       const fallback = Number(anchor.fallbackFraction);
       if (Number.isFinite(fallback) && fallback <= 0) {
-        window.scrollTo({ top: 0, behavior: "auto" });
+        window.scrollTo({ top: Math.max(0, window.scrollY + (documentRoot.querySelector(".scholium-note-title")?.getBoundingClientRect().top ?? 32) - 32), behavior: "auto" });
         return true;
       }
       const target = visibleScrollEntry(scrollEntryForAnchor(anchor));

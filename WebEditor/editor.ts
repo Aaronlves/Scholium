@@ -197,11 +197,6 @@ const liveProjectionIndex = createLiveProjectionIndexController({
   editingDialect: () => editingDialect,
   recordMetric: recordEditorMetric,
 });
-let hiddenFrontmatterSourceSelection: {
-  documentVersion: number;
-  sourceSelection: EditorSelection;
-  clampedLiveSelection: EditorSelection;
-} | null = null;
 let modeTransitionSequence = 0;
 const liveWidgetReuseCounts = {table: 0, callout: 0, footnote: 0};
 let lastUndoLabel: string | undefined;
@@ -1422,80 +1417,22 @@ const livePreview = ViewPlugin.fromClass(LivePreviewPlugin, {
     view.plugin(plugin)?.atomicRanges ?? Decoration.none),
 });
 
-class UnclosedFrontmatterWidget extends WidgetType {
-  eq(other: UnclosedFrontmatterWidget) { return other instanceof UnclosedFrontmatterWidget; }
-
-  get estimatedHeight() { return 72; }
-
-  toDOM() {
-    const notice = document.createElement("div");
-    notice.className = "cm-live-frontmatter-unavailable";
-    notice.dataset.scholiumProtected = "frontmatter-unavailable";
-    notice.setAttribute("role", "note");
-    notice.setAttribute(
-      "aria-label",
-      localized("Edit mode is unavailable because YAML frontmatter is not closed. Use Source mode to finish the frontmatter."),
-    );
-
-    const title = document.createElement("strong");
-    title.textContent = localized("Edit mode unavailable");
-    const detail = document.createElement("span");
-    detail.textContent = localized(
-      "Close the YAML frontmatter in Source mode to restore the visual projection.",
-    );
-    notice.append(title, detail);
-    return notice;
-  }
-
-  ignoreEvent() { return true; }
-}
-
-interface LiveFrontmatterProjectionState {
-  decorations: DecorationSet;
-  atomicRanges: DecorationSet;
-}
-
-function buildLiveFrontmatterProjection(state: EditorState): LiveFrontmatterProjectionState {
+function buildFrontmatterLines(state: EditorState): DecorationSet {
   const index = liveProjectionIndex.index(state);
-  if (index.hasUnclosedFrontmatter) {
-    const unavailable = Decoration.set([
-      Decoration.replace({
-        widget: new UnclosedFrontmatterWidget(),
-        block: true,
-      }).range(0, state.doc.length),
-    ]);
-    return {
-      decorations: unavailable,
-      atomicRanges: unavailable,
-    };
+  const lines: Range<Decoration>[] = [];
+  const end = index.frontmatterRange?.to ?? (index.hasUnclosedFrontmatter ? state.doc.length : 0);
+  for (let n = 1; n <= state.doc.lines && state.doc.line(n).from < end; n++) {
+    lines.push(Decoration.line({class: "scholium-frontmatter-line"}).range(state.doc.line(n).from));
   }
-  const bodyFrom = index.frontmatterRange?.to ?? 0;
-  if (bodyFrom === 0) {
-    return {decorations: Decoration.none, atomicRanges: Decoration.none};
-  }
-  // End before the line break that introduces the first body line. A block
-  // replacement ending exactly at that line's start suppresses CodeMirror's
-  // line and inline decorations at the shared boundary, leaving the H1 as
-  // raw source even though its semantic node is present.
-  const hiddenTo = state.doc.lineAt(Math.max(0, bodyFrom - 1)).to;
-  const hiddenFrontmatter = Decoration.set([
-    Decoration.replace({block: true}).range(0, hiddenTo),
-  ]);
-  const atomicFrontmatter = Decoration.set([
-    Decoration.replace({block: true}).range(0, bodyFrom),
-  ]);
-  return {decorations: hiddenFrontmatter, atomicRanges: atomicFrontmatter};
+  return Decoration.set(lines, true);
 }
 
-const liveFrontmatterGuardField = StateField.define<LiveFrontmatterProjectionState>({
-  create: buildLiveFrontmatterProjection,
+const liveFrontmatterLines = StateField.define<DecorationSet>({
+  create: buildFrontmatterLines,
   update(previous, transaction) {
-    return transaction.docChanged ? buildLiveFrontmatterProjection(transaction.state) : previous;
+    return transaction.docChanged ? buildFrontmatterLines(transaction.state) : previous;
   },
-  provide: (field) => [
-    EditorView.decorations.from(field, (value) => value.decorations),
-    EditorView.atomicRanges.of((view) => view.state.field(field).atomicRanges),
-  ],
+  provide: field => EditorView.decorations.from(field),
 });
 
 let dirty = false;
@@ -1517,13 +1454,6 @@ const stateReporter = EditorView.updateListener.of((update) => {
     (transaction) => transaction.annotation(programmaticDocumentChange) === true,
   );
   if (isProgrammatic) return;
-  if (update.selectionSet && hiddenFrontmatterSourceSelection
-      && !update.state.selection.eq(hiddenFrontmatterSourceSelection.clampedLiveSelection)) {
-    // The hidden Source selection is a one-transition restoration aid, not a
-    // second selection owner. Any subsequent researcher or command movement
-    // in Edit invalidates it.
-    hiddenFrontmatterSourceSelection = null;
-  }
   if (update.docChanged) dirty = true;
   if (!update.docChanged && !update.selectionSet) return;
 
@@ -1543,9 +1473,6 @@ const stateReporter = EditorView.updateListener.of((update) => {
     }
     const baseGeneration = documentVersion;
     documentVersion += 1;
-    if (hiddenFrontmatterSourceSelection?.documentVersion !== documentVersion) {
-      hiddenFrontmatterSourceSelection = null;
-    }
     /** @type {{from: number, to: number, insert: string}[]} */
     const changes: SourceDelta[] = [];
     const mirrorChanges: NormalizedSourceChange[] = [];
@@ -1822,7 +1749,7 @@ const livePreviewMode = [
   liveDocumentAttachments,
   inputSuggestions.extension,
   liveSemanticLayout.extension,
-  liveFrontmatterGuardField,
+  liveFrontmatterLines,
   liveMermaidProjection.extension,
   liveStructuredBlockProjections.tableExtension,
   liveDisplayMathProjection.extension,
@@ -1950,6 +1877,18 @@ function protectedCommandRanges(state = editor.state) {
   return liveProjectionIndex.index(state).commandProtectedRanges;
 }
 
+function editingFrontmatterSelection(state = editor.state) {
+  if (configuredEditorMode(state) !== "livePreview") return false;
+  const index = liveProjectionIndex.index(state);
+  const end = index.frontmatterRange?.to ?? (index.hasUnclosedFrontmatter ? state.doc.length : 0);
+  return end > 0 && state.selection.ranges.every(range => range.from < end && range.to <= end);
+}
+
+function commandProtection(command: string, state = editor.state) {
+  return editingFrontmatterSelection(state) && (command === "pastePlain" || command === "pasteMarkdown")
+    ? [] : protectedCommandRanges(state);
+}
+
 function indexedTablePositionAt(state: EditorState, offset: number) {
   return projectionRangeContaining(
     liveProjectionIndex.index(state).tablePositionRanges,
@@ -2010,7 +1949,8 @@ function currentEditorContext(view = editor): EditorContext {
     activeBlockConstructs: [...block],
     tablePosition: currentTablePosition,
     composing: view.composing,
-    availableCommands: view.composing || protectedSelection ? [] : availableCommands,
+    availableCommands: view.composing ? [] : editingFrontmatterSelection(state)
+      ? ["pastePlain", "pasteMarkdown"] : protectedSelection ? [] : availableCommands,
     undoLabel: undoDepth(state) > 0 ? lastUndoLabel || "Undo Editing" : undefined,
     redoLabel: redoDepth(state) > 0 ? lastRedoLabel || "Redo Editing" : undefined,
   };
@@ -2096,6 +2036,7 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
     return rejected(request.requestID, documentVersion, "stale editor generation");
   }
   switch (operation.type) {
+  case "positionDocumentTitle": await editorOperations.positionDocumentTitle(); break;
   case "setMode": await editorOperations.setMode(operation.mode); break;
   case "setDocumentTitle": editorOperations.setDocumentTitle(operation.value); break;
   case "setDocumentAttachments": editorOperations.setDocumentAttachments(operation.value); break;
@@ -2238,11 +2179,13 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   }
   case "command": {
     const argument = operation.command === "pasteMarkdown"
-      ? pasteAsMarkdown(decodeClipboardPayload(operation.argument))
+      ? editingFrontmatterSelection()
+        ? decodeClipboardPayload(operation.argument).plainText
+        : pasteAsMarkdown(decodeClipboardPayload(operation.argument))
       : operation.argument;
     const transformed = transformMarkdown(editor.state.doc.toString(), editorSelections(), operation.command, {
       argument,
-      protectedRanges: protectedCommandRanges(),
+      protectedRanges: commandProtection(operation.command),
       taskItems: liveProjectionIndex.index(editor.state).taskItemRanges,
     });
     if (!transformed) return rejected(request.requestID, documentVersion, "command is unavailable for the exact selection");
@@ -2356,13 +2299,13 @@ function pasteTransfer(
   const text = transfer.getData("text/plain");
   if (!text) return false;
   if (dropPosition !== undefined) editor.dispatch({selection: {anchor: dropPosition}});
-  const url = isSingleSafeURL(text);
+  const url = editingFrontmatterSelection() ? null : isSingleSafeURL(text);
   const command = url && editor.state.selection.ranges.every((selection) => !selection.empty)
     ? "linkSelectedText"
     : "pastePlain";
   const transformed = transformMarkdown(editor.state.doc.toString(), editorSelections(), command, {
     argument: url ?? text,
-    protectedRanges: protectedCommandRanges(),
+    protectedRanges: commandProtection(command),
   });
   return applyInteraction(transformed, command === "linkSelectedText" ? "input.scholium.linkPaste" : "input.scholium.plainPaste");
 }
@@ -2399,11 +2342,9 @@ function setDynamicStyle(id: string, css: string) {
 }
 
 function flushPresentationStyleAndGeometry() {
-  // Native keeps a newly created editor hidden until the final presentation
-  // request is acknowledged. WebKit can otherwise defer style invalidation on
-  // that hidden page and briefly expose body-sized headings when SwiftUI makes
-  // the surface visible. Resolve the cascade and representative geometry in
-  // this final bridge turn; no animation frame or second state owner is needed.
+  // Initiate style and font resolution before the opening measurement.
+  // Native covers the live WebView with the document plane until that
+  // measurement and its scroll write have both completed.
   for (const selector of [
     ".cm-content",
     ".cm-live-h1",
@@ -2427,8 +2368,8 @@ function flushPresentationStyleAndGeometry() {
  * after layout. Advance a bounded leading/visible parse window and explicitly
  * refresh the projection before acknowledging the command. Native style and
  * scroll convergence then provide additional bridge turns before Swift reveals
- * a freshly constructed editor, without making the bridge depend on animation
- * frames that WebKit is allowed to suspend while the view is hidden.
+ * a freshly constructed editor. The opening request separately awaits measured
+ * layout while the covered WebView remains in the rendering lifecycle.
  */
 function convergeLivePreviewProjection() {
   if (configuredEditorMode(editor.state) !== "livePreview") return;
@@ -2454,6 +2395,7 @@ const editorOperations = {
     bridgeSessionID = sessionID;
     bridgeDocumentID = documentID;
     bridgeFingerprint = startingFingerprint;
+    editor.contentDOM.style.minHeight = "";
     documentTitle = "";
     documentTitleDraft = null;
     documentTitleError = null;
@@ -2464,7 +2406,6 @@ const editorOperations = {
     documentAttachmentInitialRevealDeadline = performance.now() + 1800;
     lastDocumentFocusTarget = undefined;
     documentVersion = 0;
-    hiddenFrontmatterSourceSelection = null;
     const separator = text.includes("\r\n") ? "\r\n" : "\n";
     exactSourceMirror.replace(text);
     editor.dispatch({
@@ -2508,32 +2449,7 @@ const editorOperations = {
     previewPopover.hide();
     const scrollSnapshot = editor.scrollSnapshot();
     const nextMode = mode === "livePreview" ? "livePreview" : "source";
-    const previousMode = configuredEditorMode(editor.state);
-    let selection: EditorSelection | undefined;
-    if (nextMode === "livePreview") {
-      const bodyFrom = frontmatterBodyOffset(editor.state.doc);
-      if (bodyFrom > 0 && editor.state.selection.ranges.some((range) => range.from < bodyFrom)) {
-        if (previousMode === "source") {
-          const clampedLiveSelection = EditorSelection.create([
-            EditorSelection.cursor(bodyFrom),
-          ]);
-          hiddenFrontmatterSourceSelection = {
-            documentVersion,
-            sourceSelection: editor.state.selection,
-            clampedLiveSelection,
-          };
-          selection = clampedLiveSelection;
-        } else {
-          selection = EditorSelection.create([EditorSelection.cursor(bodyFrom)]);
-        }
-      }
-    } else if (nextMode === "source" && previousMode === "livePreview"
-        && hiddenFrontmatterSourceSelection?.documentVersion === documentVersion) {
-      selection = hiddenFrontmatterSourceSelection.sourceSelection;
-      hiddenFrontmatterSourceSelection = null;
-    }
     editor.dispatch({
-      selection,
       effects: [
         modeCompartment.reconfigure(nextMode === "livePreview" ? livePreviewMode : sourceMode),
         scrollSnapshot,
@@ -2560,9 +2476,9 @@ const editorOperations = {
     // compartment, semantic projection, cascade, and representative geometry
     // belong to the same completed configuration before acknowledging it.
     flushPresentationStyleAndGeometry();
+
   },
 
-  /** @param {string} css */
   setPresentationCSS(css: string) {
     if (setDynamicStyle("scholium-presentation-css", css)) refreshMermaidTheme();
   },
@@ -2605,7 +2521,6 @@ const editorOperations = {
     // An explicit native locator supersedes any pre-clamp Source selection
     // retained while entering Live Preview. Restoring that older selection on
     // a later Source request would move managed New Note back into its YAML.
-    hiddenFrontmatterSourceSelection = null;
     editor.dispatch({
       selection: EditorSelection.single(from, to),
       effects: EditorView.scrollIntoView(EditorSelection.range(from, to), {y: "center"}),
@@ -2617,10 +2532,39 @@ const editorOperations = {
   },
 
   setScrollFraction(requestedFraction: number) {
-    // Scroll restoration is the final independent bridge turn before native
-    // reveals a newly created editor. Resolve presentation CSS and projected
-    // line geometry here so its acknowledgement is a real visibility barrier.
     scrollCoordinator.setFraction(requestedFraction);
+  },
+
+  async positionDocumentTitle() {
+    if (configuredEditorMode(editor.state) !== "livePreview" || !frontmatterBodyOffset(editor.state.doc)) return;
+    flushPresentationStyleAndGeometry();
+    await document.fonts.ready;
+    // The native document plane covers this view while CodeMirror measures.
+    // Acknowledgement follows the measured write, never a provisional DOM read.
+    await new Promise<void>((resolve, reject) => editor.requestMeasure({
+      read: view => {
+        const title = view.dom.querySelector(".scholium-note-title-input");
+        return title ? Math.max(0, view.scrollDOM.scrollTop + title.getBoundingClientRect().top
+          - view.scrollDOM.getBoundingClientRect().top - 32) : null;
+      },
+      write: target => {
+        if (target === null) { reject(new Error("Document title is not laid out")); return; }
+        editor.contentDOM.style.minHeight = `calc(100% + ${Math.ceil(target)}px)`;
+        scrollCoordinator.setTop(target);
+        editor.requestMeasure({
+          read: view => {
+            const title = view.dom.querySelector(".scholium-note-title-input");
+            return title ? view.scrollDOM.scrollTop + title.getBoundingClientRect().top
+              - view.scrollDOM.getBoundingClientRect().top - 32 : null;
+          },
+          write: settledTop => {
+            if (settledTop === null) { reject(new Error("Document title lost during layout")); return; }
+            scrollCoordinator.setTop(settledTop);
+            resolve();
+          },
+        });
+      },
+    }));
   },
 
   setScrollAnchor(anchor: EditorScrollAnchor) {

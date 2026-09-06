@@ -21,6 +21,7 @@ public actor StyleOperations: StyleUseCases {
     private var storeError: String?
     private var manifestLoadFailure: Error?
     private var didLoad = false
+    private var loadedAppearanceBytes: Data?
 
     public init(applicationSupportURL: URL, fileManager: FileManager = .default) {
         self.fileManager = fileManager
@@ -38,6 +39,34 @@ public actor StyleOperations: StyleUseCases {
 
     public func styleSnapshot() throws -> StyleSnapshot {
         ensureLoaded()
+        return snapshot()
+    }
+
+    public func appearanceConfigurationURL() throws -> URL {
+        ensureLoaded()
+        return appearanceManifestURL
+    }
+
+    public func reloadAppearanceConfiguration() throws -> StyleSnapshot {
+        ensureLoaded()
+        let bytes = try readAppearanceBytes()
+        let manifest = try decodeAppearance(bytes)
+        var recoveredSnippets = snippets
+        // A repaired file can also recover a failed first load. Snippet errors
+        // are rechecked independently before allowing writes again.
+        if manifestLoadFailure != nil {
+            if fileManager.fileExists(atPath: manifestURL.path) {
+                recoveredSnippets = try JSONDecoder().decode([CSSSnippetRecord].self, from: Data(contentsOf: manifestURL))
+                    .map(normalizedSnippetRecord)
+            }
+        }
+        appearanceProfiles = manifest.profiles
+        selectedAppearanceProfileID = manifest.selectedProfileID
+        loadedAppearanceBytes = bytes
+        snippets = recoveredSnippets
+        manifestLoadFailure = nil
+        rebuildCSS()
+        storeError = nil
         return snapshot()
     }
 
@@ -318,11 +347,10 @@ public actor StyleOperations: StyleUseCases {
                     .map(normalizedSnippetRecord)
             }
             if fileManager.fileExists(atPath: appearanceManifestURL.path) {
-                let manifest = try JSONDecoder().decode(
-                    AppearanceManifest.self,
-                    from: Data(contentsOf: appearanceManifestURL)
-                )
-                appearanceProfiles = manifest.profiles.map(normalized)
+                let bytes = try readAppearanceBytes()
+                let manifest = try decodeAppearance(bytes)
+                loadedAppearanceBytes = bytes
+                appearanceProfiles = manifest.profiles
                 selectedAppearanceProfileID = manifest.selectedProfileID
             } else {
                 let profile = DocumentAppearanceProfile(name: "Custom")
@@ -436,7 +464,99 @@ public actor StyleOperations: StyleUseCases {
     private func writeAppearanceManifest(_ manifest: AppearanceManifest) throws {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(manifest).write(to: appearanceManifestURL, options: [.atomic])
+        let bytes = try encoder.encode(manifest)
+        var coordinationError: NSError?
+        var writeError: Error?
+        NSFileCoordinator().coordinate(writingItemAt: appearanceManifestURL, options: .forReplacing, error: &coordinationError) { url in
+            do {
+                let current = fileManager.fileExists(atPath: url.path) ? try readAppearanceBytes() : nil
+                guard current == loadedAppearanceBytes else { throw StyleUseCaseError.configurationChanged }
+                try bytes.write(to: url, options: .atomic)
+            } catch { writeError = error }
+        }
+        if let coordinationError { throw coordinationError }
+        if let writeError { throw writeError }
+        loadedAppearanceBytes = bytes
+    }
+
+    private func readAppearanceBytes() throws -> Data {
+        let values = try appearanceManifestURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey])
+        guard values.isRegularFile == true, values.isSymbolicLink != true,
+              (values.fileSize ?? 0) <= 2_000_000 else {
+            throw StyleUseCaseError.invalidConfiguration("appearances.json must be a regular file smaller than 2 MB.")
+        }
+        let bytes = try Data(contentsOf: appearanceManifestURL)
+        guard bytes.count <= 2_000_000 else {
+            throw StyleUseCaseError.invalidConfiguration("appearances.json must be smaller than 2 MB.")
+        }
+        return bytes
+    }
+
+    private func decodeAppearance(_ bytes: Data) throws -> AppearanceManifest {
+        do {
+            let manifest = try JSONDecoder().decode(AppearanceManifest.self, from: bytes)
+            guard !manifest.profiles.isEmpty,
+                  Set(manifest.profiles.map(\.id)).count == manifest.profiles.count,
+                  manifest.profiles.contains(where: { $0.id == manifest.selectedProfileID }) else {
+                throw StyleUseCaseError.invalidConfiguration("profiles must have unique IDs and contain selectedProfileID.")
+            }
+            let normalizedManifest = AppearanceManifest(
+                selectedProfileID: manifest.selectedProfileID,
+                profiles: manifest.profiles.map(normalized)
+            )
+            let original = try JSONSerialization.jsonObject(with: JSONEncoder().encode(manifest))
+            try rejectUnknownConfigurationKeys(try JSONSerialization.jsonObject(with: bytes), decoded: original, path: "$")
+            let normalizedObject = try JSONSerialization.jsonObject(with: JSONEncoder().encode(normalizedManifest))
+            if let path = firstConfigurationDifference(original, normalizedObject, path: "$") {
+                throw StyleUseCaseError.invalidConfiguration("\(path) is outside its supported range or has an invalid value.")
+            }
+            return manifest
+        } catch let error as DecodingError {
+            let context: DecodingError.Context
+            var missingKey: String?
+            switch error {
+            case .keyNotFound(let key, let value): context = value; missingKey = key.stringValue
+            case .typeMismatch(_, let value), .valueNotFound(_, let value), .dataCorrupted(let value): context = value
+            @unknown default: throw StyleUseCaseError.invalidConfiguration(error.localizedDescription)
+            }
+            let components = context.codingPath.map { $0.stringValue } + (missingKey.map { [$0] } ?? [])
+            throw StyleUseCaseError.invalidConfiguration("\((components.isEmpty ? ["$"] : components).joined(separator: ".")): \(context.debugDescription)")
+        }
+    }
+
+    private func firstConfigurationDifference(_ original: Any, _ normalized: Any, path: String) -> String? {
+        if let lhs = original as? [String: Any], let rhs = normalized as? [String: Any] {
+            for key in Set(lhs.keys).union(rhs.keys).sorted() {
+                guard let a = lhs[key], let b = rhs[key] else { return "\(path).\(key)" }
+                if let changed = firstConfigurationDifference(a, b, path: "\(path).\(key)") { return changed }
+            }
+            return nil
+        }
+        if let lhs = original as? [Any], let rhs = normalized as? [Any] {
+            guard lhs.count == rhs.count else { return path }
+            for index in lhs.indices {
+                if let changed = firstConfigurationDifference(lhs[index], rhs[index], path: "\(path)[\(index)]") { return changed }
+            }
+            return nil
+        }
+        return (original as? NSObject)?.isEqual(normalized) == true ? nil : path
+    }
+
+    private func rejectUnknownConfigurationKeys(_ input: Any, decoded: Any, path: String) throws {
+        if let input = input as? [String: Any], let decoded = decoded as? [String: Any] {
+            let optionalCalloutKeys: Set<String> = ["lineHeight", "startInsetEm", "endInsetEm", "titleGapEm", "titleColumnEm", "columnGapEm", "paddingBlockEm", "paddingInlineEm", "contentIndentEm", "quotationScale", "attributionScale"]
+            for (key, value) in input {
+                guard let canonical = decoded[key] else {
+                    if decoded["role"] != nil, optionalCalloutKeys.contains(key), value is NSNull { continue }
+                    throw StyleUseCaseError.invalidConfiguration("\(path).\(key) is not a supported field.")
+                }
+                try rejectUnknownConfigurationKeys(value, decoded: canonical, path: "\(path).\(key)")
+            }
+        } else if let input = input as? [Any], let decoded = decoded as? [Any] {
+            for (index, pair) in zip(input, decoded).enumerated() {
+                try rejectUnknownConfigurationKeys(pair.0, decoded: pair.1, path: "\(path)[\(index)]")
+            }
+        }
     }
 
     private func normalized(_ profile: DocumentAppearanceProfile) -> DocumentAppearanceProfile {

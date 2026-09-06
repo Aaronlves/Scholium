@@ -520,37 +520,42 @@ struct FrontendArchitectureTests {
     func editorHostPresentationGate() {
         var gate = DocumentEditorPresentationGate()
 
-        gate.reconcile(presentsEditor: false, editorIsReady: false)
-        #expect(!gate.showsEditor(presentsEditor: false, editorIsReady: false))
+        gate.reconcile(documentID: "A", presentsEditor: false, editorIsReady: false)
+        #expect(!gate.showsEditor(documentID: "A", presentsEditor: false, editorIsReady: false))
 
-        gate.reconcile(presentsEditor: true, editorIsReady: false)
-        #expect(!gate.showsEditor(presentsEditor: true, editorIsReady: false))
+        gate.reconcile(documentID: "A", presentsEditor: true, editorIsReady: false)
+        #expect(!gate.showsEditor(documentID: "A", presentsEditor: true, editorIsReady: false))
         #expect(!gate.allowsReadHitTesting(
+            documentID: "A",
             presentsEditor: true,
             editorIsReady: false,
             allowsPendingRecovery: false
         ))
         #expect(gate.allowsReadHitTesting(
+            documentID: "A",
             presentsEditor: true,
             editorIsReady: false,
             allowsPendingRecovery: true
         ))
 
-        gate.reconcile(presentsEditor: true, editorIsReady: true)
-        #expect(gate.showsEditor(presentsEditor: true, editorIsReady: true))
+        gate.reconcile(documentID: "A", presentsEditor: true, editorIsReady: true)
+        #expect(gate.showsEditor(documentID: "A", presentsEditor: true, editorIsReady: true))
         #expect(!gate.allowsReadHitTesting(
+            documentID: "A",
             presentsEditor: true,
             editorIsReady: true,
             allowsPendingRecovery: true
         ))
 
+        #expect(!gate.showsEditor(documentID: "B", presentsEditor: true, editorIsReady: false))
+
         // A bridge-confirmed editor remains the visible surface while the
         // retained CodeMirror state atomically changes Edit <-> Source.
-        gate.reconcile(presentsEditor: true, editorIsReady: false)
-        #expect(gate.showsEditor(presentsEditor: true, editorIsReady: false))
+        gate.reconcile(documentID: "A", presentsEditor: true, editorIsReady: false)
+        #expect(gate.showsEditor(documentID: "A", presentsEditor: true, editorIsReady: false))
 
-        gate.reconcile(presentsEditor: false, editorIsReady: false)
-        #expect(!gate.showsEditor(presentsEditor: false, editorIsReady: false))
+        gate.reconcile(documentID: "A", presentsEditor: false, editorIsReady: false)
+        #expect(!gate.showsEditor(documentID: "A", presentsEditor: false, editorIsReady: false))
 
         #expect(gate.allowsEditorFocus(
             isEditing: true,
@@ -790,7 +795,9 @@ struct FrontendArchitectureTests {
                 in: source,
                 range: NSRange(source.startIndex..<source.endIndex, in: source)
             )
-            if path == "Scholium/Views/Note/DocumentFindPanel.swift" {
+            if NativeSettingsSourceScope.paths.contains(path) {
+                #expect(!source.contains("NSColor.system"))
+            } else if path == "Scholium/Views/Note/DocumentFindPanel.swift" {
                 #expect(source.contains(".foregroundStyle(.red)"))
                 #expect(rawFunctionalColor.numberOfMatches(
                     in: source, range: NSRange(source.startIndex..<source.endIndex, in: source)) == 1)
@@ -839,7 +846,7 @@ struct FrontendArchitectureTests {
 
         for (path, source) in applicationSources.sorted(by: { $0.key < $1.key }) {
             let sourceRange = NSRange(source.startIndex..<source.endIndex, in: source)
-            if path != designSystemPath {
+            if path != designSystemPath && !NativeSettingsSourceScope.paths.contains(path) {
                 #expect(
                     rawAppKitPaletteAccess.firstMatch(
                         in: source,
@@ -855,7 +862,9 @@ struct FrontendArchitectureTests {
                     "\(path) owns a numeric semantic-color opacity recipe"
                 )
             }
-            if path == "Scholium/Views/Note/DocumentFindPanel.swift" {
+            if NativeSettingsSourceScope.paths.contains(path) {
+                // macOS owns Settings control colors.
+            } else if path == "Scholium/Views/Note/DocumentFindPanel.swift" {
                 // Editor auxiliary controls deliberately restore system semantics.
                 #expect(directSystemForeground.numberOfMatches(in: source, range: sourceRange) == 2)
             } else {
@@ -919,7 +928,8 @@ struct FrontendArchitectureTests {
         #expect(!comparison.contains("Text(\"Blank line\")"))
 
         let settings = try #require(viewSources["Scholium/Views/WorkspaceSettingsView.swift"])
-        #expect(settings.contains("info.status == .available ? .confirmed : .attention"))
+        #expect(settings.contains("Label(statusTitle, systemImage: statusSymbol)"))
+        #expect(!settings.contains("statusColorRole"))
 
         let frontmatter = try #require(
             viewSources["Scholium/Views/Metadata/MetadataEditorView.swift"]
@@ -3216,7 +3226,9 @@ struct FrontendArchitectureTests {
                 ) == nil,
                 "Custom typeface escaped the semantic typography owner: \(sourceURL.path)"
             )
-            if sourceURL == applicationRoot.appendingPathComponent("Views/Note/DocumentFindPanel.swift") {
+            if NativeSettingsSourceScope.paths.contains(sourceURL.path.replacingOccurrences(of: repository.path + "/", with: "")) {
+                // Native Settings typography follows the system.
+            } else if sourceURL == applicationRoot.appendingPathComponent("Views/Note/DocumentFindPanel.swift") {
                 #expect(rawSemanticStylePattern.numberOfMatches(in: source, range: sourceRange) == 3)
 
             } else {
@@ -3886,11 +3898,11 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        #expect(
-            toolbarSource.contains(
-                "note.workspaceSnapshot?.headings ?? []"
-            )
-        )
+        // Outline moved to the persistent Sidebar; the toolbar no longer owns headings.
+        let outlineSource = try String(contentsOf: repository.appendingPathComponent(
+            "Scholium/Views/Sidebar/DocumentOutlineSidebar.swift"), encoding: .utf8)
+        #expect(!toolbarSource.contains("workspaceSnapshot?.headings"))
+        #expect(!outlineSource.contains("MarkdownSemanticDocument("))
         #expect(!toolbarSource.contains("MarkdownSemanticDocument("))
     }
 

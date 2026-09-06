@@ -7,6 +7,7 @@ import Foundation
 @MainActor
 final class CSSSnippetStore: ObservableObject {
     @Published private(set) var appearanceProfiles: [DocumentAppearanceProfile] = []
+    @Published private(set) var appearanceReloadRevision = 0
     @Published private(set) var selectedAppearanceProfileID: UUID?
     @Published private(set) var appearanceCSS = ""
     @Published private(set) var snippets: [CSSSnippetRecord] = []
@@ -63,6 +64,24 @@ final class CSSSnippetStore: ObservableObject {
 
     func removeAppearance(_ id: UUID) {
         perform { try await self.operations.removeAppearanceProfile(id) }
+    }
+
+    func revealAppearanceConfiguration() {
+        Task {
+            do {
+                let url = try await operations.appearanceConfigurationURL()
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            } catch { storeError = error.localizedDescription }
+        }
+    }
+
+    func reloadAppearanceConfiguration() {
+        Task {
+            do {
+                apply(try await operations.reloadAppearanceConfiguration())
+                appearanceReloadRevision += 1
+            } catch { storeError = error.localizedDescription }
+        }
     }
 
     func setEnabled(_ enabled: Bool, for id: UUID) {

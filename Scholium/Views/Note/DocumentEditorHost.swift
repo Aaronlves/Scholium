@@ -5,26 +5,28 @@ import SwiftUI
 /// an already presented CodeMirror surface stays visible during its atomic
 /// Edit <-> Source compartment reconfiguration.
 struct DocumentEditorPresentationGate: Equatable {
-    private(set) var hasPresentedEditor = false
+    private(set) var presentedDocumentID: String?
 
-    mutating func reconcile(presentsEditor: Bool, editorIsReady: Bool) {
+    mutating func reconcile(documentID: String, presentsEditor: Bool, editorIsReady: Bool) {
         if !presentsEditor {
-            hasPresentedEditor = false
+            presentedDocumentID = nil
         } else if editorIsReady {
-            hasPresentedEditor = true
+            presentedDocumentID = documentID
         }
     }
 
-    func showsEditor(presentsEditor: Bool, editorIsReady: Bool) -> Bool {
-        presentsEditor && (hasPresentedEditor || editorIsReady)
+    func showsEditor(documentID: String, presentsEditor: Bool, editorIsReady: Bool) -> Bool {
+        presentsEditor && (presentedDocumentID == documentID || editorIsReady)
     }
 
     func allowsReadHitTesting(
+        documentID: String,
         presentsEditor: Bool,
         editorIsReady: Bool,
         allowsPendingRecovery: Bool
     ) -> Bool {
         !showsEditor(
+            documentID: documentID,
             presentsEditor: presentsEditor,
             editorIsReady: editorIsReady
         ) && (!presentsEditor || allowsPendingRecovery)
@@ -48,6 +50,7 @@ struct DocumentEditorPresentationGate: Equatable {
 /// switches change visibility and focus only; they do not remove either WebKit
 /// surface from the hierarchy.
 struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
+    let documentID: String
     let presentsEditor: Bool
     let retainsEditor: Bool
     let editorIsReady: Bool
@@ -57,6 +60,7 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
     @State private var presentationGate = DocumentEditorPresentationGate()
 
     init(
+        documentID: String,
         presentsEditor: Bool,
         retainsEditor: Bool,
         editorIsReady: Bool,
@@ -64,6 +68,7 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
         @ViewBuilder read: () -> ReadSurface,
         @ViewBuilder editor: () -> EditorSurface
     ) {
+        self.documentID = documentID
         self.presentsEditor = presentsEditor
         self.retainsEditor = retainsEditor
         self.editorIsReady = editorIsReady
@@ -74,6 +79,7 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
 
     private var showsEditor: Bool {
         presentationGate.showsEditor(
+            documentID: documentID,
             presentsEditor: presentsEditor,
             editorIsReady: editorIsReady
         )
@@ -82,38 +88,56 @@ struct DocumentEditorHost<ReadSurface: View, EditorSurface: View>: View {
     var body: some View {
         ZStack {
             readSurface
-                .opacity(showsEditor ? 0 : 1)
+                .opacity(!presentsEditor || allowsPendingReadRecovery ? 1 : 0)
                 .allowsHitTesting(presentationGate.allowsReadHitTesting(
+                    documentID: documentID,
                     presentsEditor: presentsEditor,
                     editorIsReady: editorIsReady,
                     allowsPendingRecovery: allowsPendingReadRecovery
                 ))
-                .accessibilityHidden(showsEditor)
+                .accessibilityHidden(presentsEditor && !allowsPendingReadRecovery)
                 .zIndex(showsEditor ? 0 : 1)
 
             if retainsEditor {
                 editorSurface
-                    .opacity(showsEditor ? 1 : 0)
+                    .opacity(presentsEditor ? 1 : 0)
                     .allowsHitTesting(showsEditor)
                     .accessibilityHidden(!showsEditor)
                     .zIndex(showsEditor ? 1 : 0)
             }
+            if presentsEditor && !showsEditor && !allowsPendingReadRecovery {
+                // Keep WebKit participating in real layout while the document
+                // plane covers preparation. Hiding the WebView itself defers
+                // the very rendering work that determines readiness.
+                Color.clear
+                    .scholiumSurface(.document)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                    .zIndex(2)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .transaction { $0.animation = nil }
+        .onChange(of: documentID) { _, _ in
+            presentationGate.reconcile(documentID: documentID, presentsEditor: presentsEditor, editorIsReady: editorIsReady)
+        }
         .onAppear {
             presentationGate.reconcile(
+                documentID: documentID,
                 presentsEditor: presentsEditor,
                 editorIsReady: editorIsReady
             )
         }
         .onChange(of: presentsEditor) { _, _ in
             presentationGate.reconcile(
+                documentID: documentID,
                 presentsEditor: presentsEditor,
                 editorIsReady: editorIsReady
             )
         }
         .onChange(of: editorIsReady) { _, _ in
             presentationGate.reconcile(
+                documentID: documentID,
                 presentsEditor: presentsEditor,
                 editorIsReady: editorIsReady
             )

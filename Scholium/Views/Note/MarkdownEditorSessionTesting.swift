@@ -150,7 +150,6 @@ extension MarkdownEditorSession {
         let previewRenderedMathCount: Int
         let frontmatterLineCount: Int
         let frontmatterVisibleHeight: Double
-        let unclosedFrontmatterNoticeCount: Int
         let semanticTableCount: Int
         let liveTableSourceLineCount: Int
         let tableHeaderCount: Int
@@ -477,10 +476,9 @@ extension MarkdownEditorSession {
                 previewCalloutCount: document.querySelectorAll('#scholium-preview-popover .scholium-callout-state').length,
                 previewTableCount: document.querySelectorAll('#scholium-preview-popover table.scholium-table').length,
                 previewRenderedMathCount: document.querySelectorAll('#scholium-preview-popover .scholium-math-rendered').length,
-                frontmatterLineCount: document.querySelectorAll('.cm-live-frontmatter').length,
-                frontmatterVisibleHeight: Array.from(document.querySelectorAll('.cm-live-frontmatter'))
+                frontmatterLineCount: document.querySelectorAll('.scholium-frontmatter-line').length,
+                frontmatterVisibleHeight: Array.from(document.querySelectorAll('.scholium-frontmatter-line'))
                     .reduce((height, line) => height + line.getBoundingClientRect().height, 0),
-                unclosedFrontmatterNoticeCount: document.querySelectorAll('.cm-live-frontmatter-unavailable').length,
                 semanticTableCount: document.querySelectorAll('.cm-live-table-widget .scholium-table').length,
                 liveTableSourceLineCount: document.querySelectorAll('.cm-line.cm-live-table').length,
                 tableHeaderCount: document.querySelectorAll('.cm-live-table-widget th[scope="col"]').length,

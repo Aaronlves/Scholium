@@ -5,6 +5,62 @@ import Testing
 
 @Suite("Application-owned style I/O")
 struct StyleOperationsTests {
+    @Test("External configuration reload preserves advanced values and prevents a stale UI overwrite")
+    func externalAppearanceConfiguration() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("ScholiumAppearanceFile-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let operations = StyleOperations(applicationSupportURL: root)
+        let initial = try await operations.styleSnapshot()
+        var draft = try #require(initial.appearanceProfiles.first)
+        let url = try await operations.appearanceConfigurationURL()
+        let initialBytes = try Data(contentsOf: url)
+        var file = try #require(JSONSerialization.jsonObject(with: initialBytes) as? [String: Any])
+        var profiles = try #require(file["profiles"] as? [[String: Any]])
+        var settings = try #require(profiles[0]["settings"] as? [String: Any])
+        var headings = try #require(settings["headings"] as? [String: Any])
+        headings["weight"] = 650
+        settings["headings"] = headings
+        profiles[0]["settings"] = settings
+        file["profiles"] = profiles
+        let external = try JSONSerialization.data(withJSONObject: file, options: .sortedKeys)
+        try external.write(to: url, options: .atomic)
+        draft.settings.body.fontSizePoints = 16
+        await #expect(throws: (any Error).self) { try await operations.updateAppearanceProfile(draft) }
+        #expect(try Data(contentsOf: url) == external)
+        let reloaded = try await operations.reloadAppearanceConfiguration()
+        var current = try #require(reloaded.appearanceProfiles.first)
+        #expect(current.settings.headings.weight == 650)
+        current.settings.body.fontSizePoints = 15
+        let saved = try await operations.updateAppearanceProfile(current)
+        #expect(saved.appearanceProfiles.first?.settings.headings.weight == 650)
+        #expect(saved.appearanceProfiles.first?.settings.body.fontSizePoints == 15)
+    }
+
+    @Test("Invalid external configuration leaves both the file and loaded appearance intact", arguments: ["range", "unknown", "syntax"])
+    func invalidConfigurationRetainsAppearance(_ kind: String) async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("ScholiumInvalidAppearance-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let operations = StyleOperations(applicationSupportURL: root)
+        let initial = try await operations.styleSnapshot()
+        let url = try await operations.appearanceConfigurationURL()
+        let original = try Data(contentsOf: url)
+        var file = try #require(JSONSerialization.jsonObject(with: original) as? [String: Any])
+        var profiles = try #require(file["profiles"] as? [[String: Any]])
+        var settings = try #require(profiles[0]["settings"] as? [String: Any])
+        settings[kind == "range" ? "lineWidthCharacterUnits" : "misspelledSetting"] = 999
+        profiles[0]["settings"] = settings
+        file["profiles"] = profiles
+        let invalid = kind == "syntax" ? Data("{bad json".utf8) : try JSONSerialization.data(withJSONObject: file)
+        try invalid.write(to: url, options: .atomic)
+        await #expect(throws: (any Error).self) { try await operations.reloadAppearanceConfiguration() }
+        let retained = try await operations.styleSnapshot()
+        #expect(retained.appearanceProfiles == initial.appearanceProfiles)
+        #expect(try Data(contentsOf: url) == invalid)
+        try original.write(to: url, options: .atomic)
+        let repaired = try await operations.reloadAppearanceConfiguration()
+        #expect(repaired.appearanceProfiles == initial.appearanceProfiles)
+    }
+
     @Test("Named Appearance profiles persist, select, rename, duplicate, and remove")
     func appearanceProfilePersistence() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(
@@ -21,7 +77,7 @@ struct StyleOperationsTests {
         #expect(initial.selectedAppearanceProfileID == original.id)
         #expect(original.name == "Custom")
         #expect(original.settings.lineWidthCharacterUnits == 66)
-        #expect(original.settings.body.fontSizePoints == 13)
+        #expect(original.settings.body.fontSizePoints == 12)
         #expect(original.settings.body.lineHeight == 1.7)
 
         var edited = original

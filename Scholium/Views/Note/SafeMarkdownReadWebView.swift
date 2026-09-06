@@ -462,6 +462,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             )
             let html = Self.documentHTML(
                 body: body,
+                frontmatter: NoteDocument(relativePath: documentID, rawContent: source).rawFrontmatter,
                 documentTitle: documentTitle,
                 includesMathRuntime: includesMathRuntime,
                 localization: interfaceLocalization
@@ -988,7 +989,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 }
                 window.scholiumReadScroll?.recordRestoreAttempt?.();
                 const restored = Boolean(anchor && window.scholiumReadScroll?.restore(anchor));
-                if (!restored) window.scrollTo({top: extent * fallbackFraction, behavior: 'auto'});
+                if (!restored) {
+                  const title = document.querySelector('.scholium-note-title');
+                  const initialTop = document.querySelector('.scholium-frontmatter-source') && title
+                    ? Math.max(0, window.scrollY + title.getBoundingClientRect().top - 32) : 0;
+                  window.scrollTo({top: fallbackFraction === 0 ? initialTop : extent * fallbackFraction, behavior: 'auto'});
+                }
                 const fraction = extent > 0 ? Math.max(0, Math.min(1, window.scrollY / extent)) : 0;
                 return {
                   restored,
@@ -1286,6 +1292,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
 
         static func documentHTML(
             body: String,
+            frontmatter: String? = nil,
             documentTitle: String? = nil,
             includesMathRuntime: Bool? = nil,
             localization: WebKitInterfaceLocalization = .current()
@@ -1300,6 +1307,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 <div class="scholium-note-title" role="heading" aria-level="1" dir="auto" data-scholium-protected="note-title">\(escapedHTMLText(title))</div>
                 """
             } ?? ""
+            let frontmatterMarkup = frontmatter.map { "<pre class=\"scholium-frontmatter-source\">\(escapedHTMLText($0))</pre>" } ?? ""
             let attachmentMount = titleMarkup.isEmpty
                 ? ""
                 : "<div id=\"scholium-document-attachment-mount\"></div>"
@@ -1324,7 +1332,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
               <style id="scholium-user-css"></style>
             </head>
             <body>
-              <main id="scholium-document" class="scholium-document">\(titleMarkup)\(attachmentMount)\(bodyMarkup)</main>
+              <main id="scholium-document" class="scholium-document">\(frontmatterMarkup)\(titleMarkup)\(attachmentMount)\(bodyMarkup)</main>
               <aside id="scholium-preview-popover" class="scholium-preview-popover" data-scholium-protected="preview-popover" role="note" aria-labelledby="scholium-preview-title" aria-live="polite" hidden>
                 <h2 id="scholium-preview-title" class="scholium-preview-title"></h2>
                 <p class="scholium-preview-metadata" hidden></p>

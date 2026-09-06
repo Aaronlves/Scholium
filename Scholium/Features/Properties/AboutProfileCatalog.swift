@@ -86,7 +86,7 @@ enum AboutProfileCatalog {
                 && allowsPresentField($0, profile: profile, catalog: catalog)
         }
         let managedFields = alwaysShownFields + additionalPresentFields
-        let fields = managedFields + fixedAuthoredFields(for: profile)
+        let fields = managedFields
         let grouped = Dictionary(grouping: fields) { key in
             PropertyPresentationCatalog.presentation(
                 for: key,
@@ -134,10 +134,6 @@ enum AboutProfileCatalog {
             return false
         }
         return catalog.contract(for: key, profile: profile) != nil
-    }
-
-    private static func fixedAuthoredFields(for profile: SchemaProfileID) -> [String] {
-        PropertyContractCatalog.contracts(for: profile).map(\.canonicalKey)
     }
 
     private static func defaultVisibleFields(for profile: SchemaProfileID) -> [String] {

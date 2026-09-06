@@ -132,8 +132,11 @@ Protected constructs follow these rules:
 
 [Appendix A](11-metadata-and-critique.md#shared-authored-yaml) owns the authored
 YAML allowlist. `summary` and `keywords` remain authored source, editable in
-Source and usable by About and Search. Every other key is preserved exactly but
-has no canonical product semantics.
+Source or the Frontmatter above the document title, and searchable as source.
+YAML has no field-form editor or Inspector/Metadata presentation. Frontmatter
+remains above the title and is reached by scrolling or the View menu. Source always
+retains the complete document. Every other key is preserved exactly but has no
+canonical product semantics.
 
 All other canonical structured values are **Scholium Metadata**. One portable,
 schema-checked JSON record belongs to each stable Note identity. It is separate
@@ -157,11 +160,8 @@ Rename never synchronizes Metadata or body headings.
 
 About is the current Note's primary Metadata view and ordinary editing surface.
 It always shows the role's configured core managed fields even when empty,
-automatically adds every other present managed value, and keeps authored
-`summary` and `keywords` visible. A field edit remains bound to its real owner:
-managed values use the loaded Metadata revision, while authored values use an
-exact source revision and a targeted YAML patch after the current editor is
-safely flushed. File and Settlement facts are read-only. The Metadata sheet
+automatically adds every other present managed value, and excludes YAML fields.
+A field edit uses the loaded Metadata revision; no About action patches YAML. File and Settlement facts are read-only. The Metadata sheet
 remains the Add Field and multi-field editing route; it preserves drafts on
 conflict and never creates or changes YAML. CLI metadata read/set/remove
 operations use the same managed owner and Metadata fingerprint, never the
@@ -180,23 +180,16 @@ vault root or exact selected folder. New paths are atomically claimed as
 replace an existing comparison-equivalent path.
 
 A managed New Note uses one Application-owned creator shared by GUI, CLI, and
-Scholium MCP. GUI and MCP creation write exactly:
+Scholium MCP. Without explicitly supplied source values, it creates an empty,
+YAML-free document and opens Edit at the exact body start. It adds no YAML
+scaffold, H1, title, required Metadata, naming sheet, or classification step.
+Import, Duplicate, Restore, external discovery, and managed Critique creation
+keep their own exact-source contracts.
 
-```yaml
----
-summary: null
-keywords: []
----
-```
-
-It then opens Edit at the exact body start. It adds no H1, title, required
-Metadata, naming sheet, or classification step. Import, Duplicate, Restore,
-external discovery, and managed Critique creation keep their own exact-source
-contracts and do not inject this scaffold.
-
-MCP creation accepts only exact role/path, body, and optional authored
-`summary`/`keywords`. It accepts no YAML fragment, creates no bibliographic
-Metadata, and grants no continuing create authority after the identity exists.
+MCP creation accepts exact role/path, body, and optional explicitly authored
+`summary`/`keywords`. Only supplied nonempty values create frontmatter. This
+typed transport accepts no YAML fragment, creates no bibliographic Metadata,
+and grants no continuing create authority after the identity exists.
 
 A successful source-and-identity commit appears immediately in Library; derived
 indexes refresh afterward without blocking writing. Presentation failure must

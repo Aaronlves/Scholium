@@ -160,6 +160,10 @@
 - Settings exposes search, native toolbar selection, selected destination, scope, and
   detail in predictable order. Empty search retains the query and names the
   absence.
+- Appearance configuration reload exposes success or a persistent field-specific
+  failure, preserves a rejected draft, and never overwrites an external edit.
+  Frontmatter is reachable by scrolling or a named View-menu action and shortcut.
+  Opening starts at the title; source editing preserves focus and composition.
 - Hotkeys expose command, menu location, binding, recording state, validation,
   Save, Clear, and Restore. Invalid drafts never change menus.
 - Metadata settings expose role, field definitions, applicability, About

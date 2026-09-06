@@ -355,7 +355,7 @@ struct DocumentOperationsTests {
             )
         ).committedValue.document
         #expect(optional.rawContent
-            == "---\nsummary: null\nkeywords: []\n---\n# Optional\n")
+            == "# Optional\n")
         #expect(!optional.rawContent.contains("research_unit"))
         _ = try await handle.refresh()
 
@@ -390,7 +390,7 @@ struct DocumentOperationsTests {
             )
         ).committedValue.document
         #expect(created.rawContent
-            == "---\nsummary: null\nkeywords: []\n---\n# Analysis\n")
+            == "# Analysis\n")
 
         let worksID = try #require(fixture.assignment.vault(for: .output)?.id)
         let untitledWork = try await handle.documents.createManagedNote(
@@ -400,7 +400,7 @@ struct DocumentOperationsTests {
             )
         ).committedValue.document
         #expect(untitledWork.rawContent
-            == "---\nsummary: null\nkeywords: []\n---\n")
+            == "")
         await runtime.shutdown()
     }
 
@@ -429,7 +429,7 @@ struct DocumentOperationsTests {
 
         #expect(created.document.relativePath == "Sources/Untitled 3.md")
         #expect(created.document.rawContent
-            == "---\nsummary: null\nkeywords: []\n---\n")
+            == "")
         #expect(created.sourceAheadSnapshot.derivedProjectionState == .sourceAhead)
         let publication = try #require(await iterator.next())
         guard case .sourceCommitted(let event) = publication else {
@@ -508,14 +508,14 @@ struct DocumentOperationsTests {
         await runtime.shutdown()
     }
 
-    @Test("Managed creation writes the same fixed YAML scaffold for every role")
-    func managedCreationUsesFixedYAMLScaffold() async throws {
+    @Test("Managed creation leaves every role YAML-free unless explicitly authored")
+    func managedCreationDoesNotInventYAML() async throws {
         let fixture = try await LifecycleFixture.make()
         defer { fixture.remove() }
         let runtime = fixture.runtime()
         let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
 
-        let expectedSource = "---\nsummary: null\nkeywords: []\n---\n"
+        let expectedSource = ""
         for slot in WorkspaceVaultSlot.allCases {
             let registeredVault = try #require(fixture.assignment.vault(for: slot))
             let vaultID = registeredVault.id
@@ -603,7 +603,7 @@ struct DocumentOperationsTests {
             )
         ).committedValue
         #expect(optional.document.rawContent
-            == "---\nsummary: null\nkeywords: []\n---\n")
+            == "")
         #expect(optional.metadata?.record.fields == [
             "type": .string("journal_article"),
         ])
@@ -762,7 +762,7 @@ struct DocumentOperationsTests {
             folderRelativePath: nil
         ).committedValue
         #expect(created.document.rawContent
-            == "---\nsummary: null\nkeywords: []\n---\n")
+            == "")
         await runtime.shutdown()
     }
 
@@ -832,7 +832,7 @@ struct DocumentOperationsTests {
         let committed = try await creation.value.committedValue
         await handle.setManagedCreationPreLeaseBarrierForTesting(nil)
         #expect(committed.document.rawContent
-            == "---\nsummary: null\nkeywords: []\n---\n# Must not commit\n")
+            == "# Must not commit\n")
         #expect(try await handle.services.controlStore.identityRecord(
             id: reservedID
         )?.relativePath == "Stale Settings.md")
@@ -1100,7 +1100,7 @@ struct DocumentOperationsTests {
             relativePath: "Second Classification/Untitled.md"
         ))
         #expect(moved.rawContent
-            == "---\nsummary: null\nkeywords: []\n---\n")
+            == "")
         await runtime.shutdown()
     }
 

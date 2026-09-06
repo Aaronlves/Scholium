@@ -32,7 +32,7 @@ struct AgentIntegrationSettingsView: View {
                 researchSettingsSection("Setup") {
                     VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                         Text("Copies a setup command. Run it in your Agent host to connect.")
-                            .font(ScholiumTypography.interface(.body))
+                            .font(.body)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
 
@@ -48,8 +48,8 @@ struct AgentIntegrationSettingsView: View {
 
                         if cliURL == nil {
                             Text("Install the compatible Scholium CLI before copying a setup command.")
-                                .font(ScholiumTypography.interface(.small))
-                                .scholiumForeground(.attention)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -66,8 +66,8 @@ struct AgentIntegrationSettingsView: View {
 
 
             }
-            .padding(ScholiumGrid.Spacing.regionContentInset)
-            .frame(maxWidth: 720, alignment: .topLeading)
+            .padding(24)
+            .frame(maxWidth: 760, alignment: .topLeading)
             .frame(maxWidth: .infinity, alignment: .top)
         }
         .scholiumSettingsPaneSurface()
@@ -81,11 +81,11 @@ struct AgentIntegrationSettingsView: View {
     ) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.inlineControlGap) {
             Label(title, systemImage: available ? "checkmark.circle" : "exclamationmark.triangle")
-                .font(ScholiumTypography.interface(.body, emphasis: .strong))
-                .scholiumForeground(available ? .confirmed : .attention)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.primary)
                 .frame(width: 150, alignment: .leading)
             Text(verbatim: detail)
-                .font(ScholiumTypography.interface(.small))
+                .font(.caption)
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
             Spacer(minLength: 0)

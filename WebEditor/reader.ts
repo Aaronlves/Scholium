@@ -96,6 +96,7 @@ async function initializeReader(value: unknown): Promise<void> {
   const post = (type: string, extra: Record<string, unknown> = {}) => handler?.postMessage({
     version, documentID, fingerprint, loadGeneration, type, ...extra,
   });
+
   let didRevealDocumentAttachmentControl = false;
   const renderDocumentAttachments = (
     attachments: readonly DocumentAttachmentPresentation[],
@@ -1030,7 +1031,7 @@ async function initializeReader(value: unknown): Promise<void> {
     if (![offset, lower, upper, relative].every(Number.isFinite)) return false;
     const fallback = Number(anchor.fallbackFraction);
     if (Number.isFinite(fallback) && fallback <= 0) {
-      window.scrollTo({top: 0, behavior: 'auto'});
+      window.scrollTo({top: Math.max(0, window.scrollY + (documentRoot.querySelector('.scholium-note-title')?.getBoundingClientRect().top ?? 32) - 32), behavior: 'auto'});
       return true;
     }
     const target = visibleScrollEntry(scrollEntryForAnchor(anchor));

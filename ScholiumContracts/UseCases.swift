@@ -222,6 +222,8 @@ public protocol StyleUseCases: Sendable {
     func renameAppearanceProfile(_ id: UUID, to name: String) async throws -> StyleSnapshot
     func duplicateAppearanceProfile(_ id: UUID) async throws -> StyleSnapshot
     func removeAppearanceProfile(_ id: UUID) async throws -> StyleSnapshot
+    func appearanceConfigurationURL() async throws -> URL
+    func reloadAppearanceConfiguration() async throws -> StyleSnapshot
     func importStyleSnippet(from sourceURL: URL) async throws -> StyleSnapshot
     func setStyleSnippetEnabled(_ enabled: Bool, id: UUID) async throws -> StyleSnapshot
     func moveStyleSnippet(_ id: UUID, by offset: Int) async throws -> StyleSnapshot
@@ -356,11 +358,17 @@ public struct CSSSnippetRecord: Codable, Hashable, Identifiable, Sendable {
 
 public enum StyleUseCaseError: LocalizedError, Sendable {
     case unavailable(String)
+    case invalidConfiguration(String)
+    case configurationChanged
 
     public var errorDescription: String? {
         switch self {
         case .unavailable(let reason):
             "Appearance settings are unavailable: \(reason) Reveal the managed Styles folder in Finder and repair or remove the invalid settings file before making changes."
+        case .invalidConfiguration(let reason):
+            "Could not load appearance configuration: \(reason) The current appearance has been retained."
+        case .configurationChanged:
+            "The appearance configuration changed outside Scholium. Reload it before saving. Your draft has been retained."
         }
     }
 }

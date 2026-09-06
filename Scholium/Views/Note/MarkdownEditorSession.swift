@@ -160,6 +160,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var pendingLinkPreviews: [MarkdownEditorLinkPreview] = []
     var pendingScrollFraction: Double?
     var pendingScrollAnchor: EditorScrollAnchor?
+    @Published private(set) var openingPresentationID = UUID()
+    @Published private(set) var opensAtDocumentTitle = true
     private var reconstructionScrollAnchor: EditorScrollAnchor?
     private var startupTask: Task<Void, Never>?
     private var documentLoadTask: Task<Void, Never>?
@@ -168,6 +170,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private var documentStatisticsRequestID: UInt64 = 0
     private var documentStatisticsIdentity: DocumentStatisticsRequestIdentity?
     private var automaticFocusIsAuthorized = false
+    private var focusRequestRevision: UInt64 = 0
     private var automaticFocusTarget: WindowDocumentFocusTarget = .editor
     private var sourceMutationBarrier: Task<Void, Never>?
     private var inFlightRequestTasks: [UUID: Task<MarkdownEditorCommandResult, Error>] = [:]
@@ -470,6 +473,11 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         viewReconstructionID = UUID()
     }
 
+    func prepareOpeningViewport() {
+        openingPresentationID = UUID()
+        opensAtDocumentTitle = true
+    }
+
     func loadDocument(
         _ source: String,
         documentID: String,
@@ -696,6 +704,8 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
 
     func goToLine(_ line: Int, focusesEditor: Bool = true) {
         if focusesEditor {
+            focusRequestRevision &+= 1
+            automaticFocusIsAuthorized = true
             preferredDocumentFocusTarget = .editor
             automaticFocusTarget = .editor
         }
@@ -1146,12 +1156,15 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     }
 
     private func requestFocus(_ target: WindowDocumentFocusTarget) {
+        focusRequestRevision &+= 1
+        let revision = focusRequestRevision
         automaticFocusTarget = target
         preferredDocumentFocusTarget = target
         automaticFocusIsAuthorized = true
         let precedingHandoff = focusHandoffTask
         Task {
             await precedingHandoff?.value
+            guard revision == focusRequestRevision, automaticFocusIsAuthorized else { return }
             try? await focusAndWait(target)
         }
     }
@@ -1177,6 +1190,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     private func focusAndWait(
         _ target: WindowDocumentFocusTarget
     ) async throws {
+        focusRequestRevision &+= 1
         automaticFocusTarget = target
         preferredDocumentFocusTarget = target
         automaticFocusIsAuthorized = true
@@ -1202,18 +1216,26 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
     /// The WebView remains attached so selection, undo, and CodeMirror state
     /// survive, but it must not continue accepting invisible input.
     func resignFocus() {
+        focusRequestRevision &+= 1
+        let revision = focusRequestRevision
+        automaticFocusIsAuthorized = false
         let task = Task {
-            await resignFocusAndWait()
+            await resignFocusAndWait(revision: revision)
         }
         focusHandoffTask = task
     }
 
     func resignFocusAndWait() async {
+        focusRequestRevision &+= 1
         automaticFocusIsAuthorized = false
+        await resignFocusAndWait(revision: focusRequestRevision)
+    }
+
+    private func resignFocusAndWait(revision: UInt64) async {
         await documentLoadTask?.value
         // A newer Edit/Source request supersedes this pending Review handoff.
         // Its renewed focus lease must not be revoked by the older task.
-        guard !automaticFocusIsAuthorized else { return }
+        guard revision == focusRequestRevision, !automaticFocusIsAuthorized else { return }
         guard isReady, let webView else { return }
         if let window = webView.window,
            let firstResponder = window.firstResponder as? NSView,
@@ -1556,7 +1578,13 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                 // Recovery and the final converged styles can both change
                 // visual block heights. Restore the retained position only
                 // after both have settled into the retained EditorState.
-                if let anchor = restorationScrollAnchor,
+                if opensAtDocumentTitle && mode == .livePreview {
+                    _ = try await send(
+                        .setScrollFraction(0),
+                        in: webView,
+                        requiringRequestEpoch: intendedRequestEpoch
+                    )
+                } else if let anchor = restorationScrollAnchor,
                    let wireAnchor = wireAnchor(from: anchor, in: checkedSource) {
                     _ = try await send(
                         .setScrollAnchor(wireAnchor),
@@ -1597,6 +1625,14 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
                         )
                     }
                 }
+                if opensAtDocumentTitle && appliedMode == .livePreview {
+                    _ = try await send(
+                        .positionDocumentTitle,
+                        in: webView,
+                        requiringRequestEpoch: intendedRequestEpoch
+                    )
+                }
+                opensAtDocumentTitle = false
                 updatePresentation { $0.complete(appliedMode) }
                 // CodeMirror has replaced its exact source, but WebKit can
                 // retain the previous accessibility value until a separate
@@ -1688,10 +1724,14 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         guard isReady, isLoaded, let line = pendingLine, let webView else { return }
         pendingLine = nil
         let documentID = self.documentID
+        let focusRevision = focusRequestRevision
         Task {
             do {
-                _ = try await send(.goToLine(line.line, focusesEditor: line.focusesEditor), in: webView)
+                let focusesEditor = line.focusesEditor && focusRevision == focusRequestRevision
+                    && automaticFocusIsAuthorized
+                _ = try await send(.goToLine(line.line, focusesEditor: focusesEditor), in: webView)
                 guard line.focusesEditor, self.webView === webView,
+                      focusRevision == self.focusRequestRevision, self.automaticFocusIsAuthorized,
                       self.documentID == documentID, !Task.isCancelled,
                       webView.window?.makeFirstResponder(webView) == true else { return }
                 try await focusAndWait(.editor)

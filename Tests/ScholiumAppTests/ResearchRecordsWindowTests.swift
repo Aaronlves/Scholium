@@ -151,7 +151,7 @@ struct ResearchRecordsWindowTests {
         #expect(source.contains("LazyHStack"))
         #expect(source.contains(".scrollIndicators(.hidden)"))
         #expect(source.contains(".scrollBounceBehavior(.basedOnSize, axes: .horizontal)"))
-        #expect(source.contains(".buttonStyle(.bordered)"))
+        #expect(source.contains(".scholiumButtonStyle(.bordered)"))
         #expect(source.contains(".onExitCommand { dismissWindow() }"))
         #expect(source.contains("dismissWindow()"))
         #expect(sceneSource.contains(

@@ -1204,12 +1204,12 @@ extension MarkdownEditorWebViewIntegrationTests {
             configuration: .init(textScale: 1),
             appearanceName: .aqua,
             readUserCSS: """
-            .scholium-document { max-width: 46ch; }
+            .scholium-document { max-width: calc(100% - 16px); }
             .scholium-document h2 { font-weight: 500; }
             .scholium-document p { line-height: 1.75; }
             """,
             liveUserCSS: """
-            .cm-editor.scholium-live-mode .cm-content { max-width: 46ch; }
+            .cm-editor.scholium-live-mode .cm-content { max-width: calc(100% - 16px); }
             .scholium-live-mode .cm-live-h2 { font-weight: 500; }
             .scholium-live-mode .cm-live-paragraph { line-height: 1.75; }
             """

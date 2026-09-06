@@ -1,4 +1,5 @@
 export const webInterfaceLocalizationKeys = [
+  "YAML frontmatter",
   "Attachments",
   "Add Document",
   "Preview attached document {title}",
@@ -36,7 +37,6 @@ export const webInterfaceLocalizationKeys = [
   "Add accTitle and accDescr to provide a concise nonvisual account of this diagram.",
   "This Mermaid diagram could not be rendered. Source is shown.",
   "Footnote {ordinal}",
-  "Edit mode is unavailable because YAML frontmatter is not closed. Use Source mode to finish the frontmatter.",
   "Edit mode unavailable",
   "Close the YAML frontmatter in Source mode to restore the visual projection.",
   "The editor could not preserve the exact source line endings.",

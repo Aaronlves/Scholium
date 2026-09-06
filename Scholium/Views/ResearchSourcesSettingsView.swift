@@ -6,8 +6,8 @@ struct ResearchSourcesSettingsView: View {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
                 ZoteroSettingsView()
             }
-            .padding(ScholiumGrid.Spacing.regionContentInset)
-            .frame(maxWidth: 720, alignment: .topLeading)
+            .padding(24)
+            .frame(maxWidth: 760, alignment: .topLeading)
             .frame(maxWidth: .infinity, alignment: .top)
         }
         .scholiumSettingsPaneSurface()

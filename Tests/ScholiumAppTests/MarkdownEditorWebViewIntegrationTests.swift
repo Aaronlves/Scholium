@@ -9,6 +9,87 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test("Frontmatter above the title edits the exact document and shares Undo")
+    func frontmatterAboveTitlePreservesSource() async throws {
+        let source = "\u{FEFF}---\r\n# 注释 😀\r\nunknown: 'keep'\r\nsummary: |\r\n  原文\r\n---\r\n# Body\r\n\r\nUntouched body.\r\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let webView = try #require(harness.session.webView)
+        try await Task.sleep(for: .milliseconds(200))
+        let titleOffset = try await harness.callPageJavaScript("return document.querySelector('.scholium-note-title-input').getBoundingClientRect().top - document.querySelector('.cm-scroller').getBoundingClientRect().top;") as? Double
+        #expect(abs((titleOffset ?? -100) - 32) < 2)
+        _ = try await harness.session.send(.goToLine(2, focusesEditor: true), in: webView)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        let controls = try await harness.callPageJavaScript("return document.querySelectorAll('.scholium-frontmatter-entry').length;") as? Int
+        #expect(controls == 0)
+        try await harness.session.focusAndWait()
+        try await harness.session.perform(.pastePlain, argument: "# 新注释 ")
+        let edited = source.replacingOccurrences(of: "# 注释", with: "# 新注释 # 注释")
+        #expect(try await harness.session.currentText(for: harness.documentID) == edited)
+        _ = try await harness.callPageJavaScript("document.querySelector('.cm-content').dispatchEvent(new KeyboardEvent('keydown', {key:'z', code:'KeyZ', metaKey:true, bubbles:true, cancelable:true}));")
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        _ = try await harness.session.send(.goToLine(2, focusesEditor: true), in: webView)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+    }
+
+    @Test("Mathematics opening keeps the document title anchored after rendering settles")
+    func mathematicsOpeningTitleRemainsStable() async throws {
+        let source = "---\nsummary: QA\nkeywords: [test]\n---\n# Mathematics\n\nInline $a^2+b^2=c^2$.\n\n$$\n\\int_0^1 x^2\\,dx = \\frac{1}{3}\n$$\n\nEnd.\n"
+        let harness = EditorHarness(documentTitle: "Mathematics", source: source,
+            initialPresentationCSS: ScholiumDocumentPresentationConfiguration(textScale: 1).css,
+            laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        for _ in 0..<5 {
+            let offset = try await harness.callPageJavaScript("return document.querySelector('.scholium-note-title-input').getBoundingClientRect().top - document.querySelector('.cm-scroller').getBoundingClientRect().top;") as? Double
+            #expect(abs((offset ?? -100) - 32) < 2)
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        try await harness.session.testingApplyScrollFraction(0.8)
+        harness.session.prepareOpeningViewport()
+        try await harness.reconstructEditorView()
+        try await harness.waitUntilReady()
+        try await Task.sleep(for: .milliseconds(200))
+        let reopenedOffset = try await harness.callPageJavaScript("return document.querySelector('.scholium-note-title-input').getBoundingClientRect().top - document.querySelector('.cm-scroller').getBoundingClientRect().top;") as? Double
+        #expect(abs((reopenedOffset ?? -100) - 32) < 2)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
+    }
+
+    @Test("示例材料 never exposes frontmatter after opening readiness, including cached reopening")
+    func exampleMaterialOpeningFrames() async throws {
+        let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(contentsOf: root.appendingPathComponent("TestVaults/01-analyses/示例材料.md"), encoding: .utf8)
+        let harness = EditorHarness(documentID: "示例材料.md", documentTitle: "示例材料", source: source,
+            initialPresentationCSS: ScholiumDocumentPresentationConfiguration(textScale: 1).css,
+            laysOutForPointerTesting: true)
+        defer { harness.close() }
+        for opening in 0..<4 {
+            let started = Date()
+            if opening > 0 {
+                try await harness.session.testingApplyScrollFraction(0.7)
+                harness.session.prepareOpeningViewport()
+                try await harness.reconstructEditorView()
+            }
+            try await harness.waitUntilReady()
+            print("EXAMPLE_OPENING_MS", opening, Date().timeIntervalSince(started) * 1000)
+            let samples = try await harness.callPageJavaScript("""
+                const samples = [];
+                for (let i = 0; i < 20; i++) {
+                  const top = document.querySelector('.cm-scroller').getBoundingClientRect().top;
+                  const title = document.querySelector('.scholium-note-title-input').getBoundingClientRect().top - top;
+                  const yamlBottom = Math.max(...Array.from(document.querySelectorAll('.scholium-frontmatter-line'), e => e.getBoundingClientRect().bottom - top));
+                  samples.push({title, yamlBottom});
+                  await Promise.race([new Promise(resolve => requestAnimationFrame(resolve)), new Promise(resolve => setTimeout(resolve, 50))]);
+                }
+                return JSON.stringify(samples.filter(s => Math.abs(s.title - 32) > 2 || s.yamlBottom > 0));
+                """) as? String
+            #expect(samples == "[]", "Opening \(opening): \(samples ?? "missing geometry")")
+            #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        }
+    }
+
     private func pixelValue(_ cssValue: String) -> Double? {
         guard cssValue.hasSuffix("px") else { return nil }
         return Double(cssValue.dropLast(2))
@@ -200,7 +281,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("A bare ATX marker and space immediately use heading presentation")
+    @Test("Empty ATX headings retain semantic presentation with or without a separator")
     func bareATXMarkerImmediatelyUsesHeadingPresentation() async throws {
         let source = ""
         let harness = EditorHarness(
@@ -212,7 +293,8 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         try await harness.session.perform(.pastePlain, argument: "#")
         try await harness.waitUntilSelection(head: 1, stage: "ATX marker")
-        #expect(try await harness.session.testingAccessibilitySnapshot().liveH1Count == 0)
+        // CommonMark permits an empty ATX heading with no trailing separator.
+        #expect(try await harness.session.testingAccessibilitySnapshot().liveH1Count == 1)
 
         try await harness.session.perform(.pastePlain, argument: " ")
         try await harness.waitUntilSelection(head: 2, stage: "ATX marker separator")
@@ -2562,8 +2644,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
         #expect(activeTitle.h1TextAlign == "start")
 
-        harness.session.resignFocus()
-        try await Task.sleep(for: .milliseconds(150))
+        await harness.session.resignFocusAndWait()
         #expect(!(try await harness.session.testingAccessibilitySnapshot()).isFocused)
         harness.session.focus()
         try await harness.waitUntilFocused()
@@ -3980,128 +4061,83 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
     }
 
-    @Test("Edit previews Command-armed links and annotated links without reflow")
+    @Test("Edit previews Command-armed links and annotated links in the native surface without reflow")
     func editAnnotatedLinkDisclosure() async throws {
         let source = "Intro.\n\n> [!state] Related\n> [[Target]]\n\n[[Support]]{{First **reason**.\n\n- Second reason.}}\n"
         let targetOffset = try #require(source.range(of: "[[Target]]")?.lowerBound)
             .utf16Offset(in: source)
-        let harness = EditorHarness(
-            source: source,
-            linkPreviews: [Self.linkPreview(atUTF16: targetOffset)],
-            laysOutForPointerTesting: true
-        )
+        let harness = EditorHarness(source: source,
+            linkPreviews: [Self.linkPreview(atUTF16: targetOffset)], laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
-
-        let snapshot = try #require(try await harness.callPageJavaScript(
-                """
-                const targetLink = Array.from(document.querySelectorAll('.cm-live-wiki-link'))
-                  .find(candidate => candidate.textContent === 'Target');
-                const button = document.querySelector('.scholium-link-annotation-button');
-                const icon = button?.querySelector('.scholium-link-annotation-icon');
-                const marker = button?.closest('.scholium-link-annotation-disclosure');
-                const popover = document.getElementById('scholium-preview-popover');
-                if (!targetLink || !button || !icon || !marker || !popover) return null;
-                const documentHeightBefore = document.documentElement.scrollHeight;
-                targetLink.dispatchEvent(new PointerEvent('pointermove', {bubbles: true}));
-                await new Promise(resolve => setTimeout(resolve, 350));
-                const hiddenWithoutCommand = popover.hidden;
-                document.dispatchEvent(new KeyboardEvent('keydown', {
-                  key: 'Meta',
-                  metaKey: true,
-                  bubbles: true
-                }));
-                await new Promise(resolve => setTimeout(resolve, 350));
-                const linkStyle = getComputedStyle(targetLink);
-                const targetPreviewTitle = popover.querySelector('.scholium-preview-title')?.textContent || '';
-                const targetPreviewVisible = !popover.hidden;
-                const targetArmed = targetLink.classList.contains('scholium-link-preview-armed');
-                const targetCursor = linkStyle.cursor;
-                const targetUnderline = linkStyle.textDecorationLine;
-                const targetFeedbackVisible = linkStyle.backgroundColor !== 'rgba(0, 0, 0, 0)';
-                document.dispatchEvent(new KeyboardEvent('keyup', {key: 'Meta', bubbles: true}));
-                document.body.dispatchEvent(new PointerEvent('pointermove', {bubbles: true}));
-                document.dispatchEvent(new KeyboardEvent('keydown', {
-                  key: 'Meta',
-                  metaKey: true,
-                  bubbles: true
-                }));
-                targetLink.dispatchEvent(new PointerEvent('pointermove', {bubbles: true}));
-                await new Promise(resolve => setTimeout(resolve, 350));
-                const commandFirstPreviewVisible = !popover.hidden
-                  && popover.querySelector('.scholium-preview-title')?.textContent === 'Target note';
-                document.dispatchEvent(new KeyboardEvent('keyup', {key: 'Meta', bubbles: true}));
-
-                button.dispatchEvent(new PointerEvent('pointermove', {bubbles: true}));
-                await new Promise(resolve => setTimeout(resolve, 350));
-                const annotationBody = popover.querySelector('.scholium-preview-body');
-                const annotationExpanded = button.getAttribute('aria-expanded');
-                const annotationText = annotationBody?.textContent || '';
-                const strongText = annotationBody?.querySelector('strong')?.textContent || '';
-                button.click();
-                document.body.dispatchEvent(new PointerEvent('pointermove', {bubbles: true}));
-                await new Promise(resolve => setTimeout(resolve, 220));
-                const pinnedVisibleAfterExit = !popover.hidden;
-                document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
-                const hiddenAfterEscape = popover.hidden;
-                button.focus();
-                await new Promise(resolve => setTimeout(resolve, 25));
-                const keyboardFocusVisible = !popover.hidden;
-                button.blur();
-                await new Promise(resolve => setTimeout(resolve, 220));
-                const iconStyle = getComputedStyle(icon);
-                const markerStyle = getComputedStyle(marker);
-                return {
-                  hiddenWithoutCommand,
-                  targetPreviewTitle,
-                  targetPreviewVisible,
-                  targetArmed,
-                  targetCursor,
-                  targetUnderline,
-                  targetFeedbackVisible,
-                  commandFirstPreviewVisible,
-                  annotationExpanded,
-                  annotationText,
-                  strongText,
-                  pinnedVisibleAfterExit,
-                  hiddenAfterEscape,
-                  keyboardFocusVisible,
-                  hiddenAfterFocusExit: popover.hidden,
-                  documentHeightStable: document.documentElement.scrollHeight === documentHeightBefore,
-                  markerLineHeight: markerStyle.lineHeight,
-                  markerVerticalAlign: markerStyle.verticalAlign,
-                  inlinePanelCount: document.querySelectorAll('.scholium-link-annotation-panel').length,
-                  iconName: icon.dataset.scholiumSystemSymbol || '',
-                  iconMasked: [iconStyle.webkitMaskImage, iconStyle.maskImage].some(
-                    value => Boolean(value) && value !== 'none'
-                  ),
-                  svgCount: icon.querySelectorAll('svg').length
-                };
-                """
-            ) as? [String: Any])
-
-        #expect(snapshot["hiddenWithoutCommand"] as? Bool == true)
-        #expect(snapshot["targetPreviewTitle"] as? String == "Target note")
-        #expect(snapshot["targetPreviewVisible"] as? Bool == true)
-        #expect(snapshot["targetArmed"] as? Bool == true)
-        #expect(snapshot["targetCursor"] as? String == "pointer")
-        #expect((snapshot["targetUnderline"] as? String)?.contains("underline") == true)
-        #expect(snapshot["targetFeedbackVisible"] as? Bool == true)
-        #expect(snapshot["commandFirstPreviewVisible"] as? Bool == true)
-        #expect(snapshot["annotationExpanded"] as? String == "true")
-        #expect((snapshot["annotationText"] as? String)?.contains("Second reason.") == true)
-        #expect(snapshot["strongText"] as? String == "reason")
-        #expect(snapshot["pinnedVisibleAfterExit"] as? Bool == true)
-        #expect(snapshot["hiddenAfterEscape"] as? Bool == true)
-        #expect(snapshot["keyboardFocusVisible"] as? Bool == true)
-        #expect(snapshot["hiddenAfterFocusExit"] as? Bool == true)
-        #expect(snapshot["documentHeightStable"] as? Bool == true)
-        #expect(snapshot["markerLineHeight"] as? String == "0px")
-        #expect(snapshot["markerVerticalAlign"] as? String == "super")
-        #expect(snapshot["inlinePanelCount"] as? Int == 0)
-        #expect(snapshot["iconName"] as? String == "text-bubble")
-        #expect(snapshot["iconMasked"] as? Bool == true)
-        #expect(snapshot["svgCount"] as? Int == 0)
+        let owner = try #require(harness.session.webView)
+        let frame = owner.frame
+        let selection = harness.session.context?.selections
+        let undo = harness.session.context?.undoLabel
+        let anchors = """
+            const targetLink = Array.from(document.querySelectorAll('.cm-live-wiki-link'))
+              .find(candidate => candidate.textContent === 'Target');
+            const button = document.querySelector('.scholium-link-annotation-button');
+            """
+        #expect(try await harness.callPageJavaScript(anchors + "return !!targetLink && !!button;") as? Bool == true)
+        _ = try await harness.callPageJavaScript(anchors + """
+            targetLink.dispatchEvent(new PointerEvent('pointermove', {bubbles: true}));
+            await new Promise(resolve => setTimeout(resolve, 350));
+            """)
+        #expect(harness.session.floatingSurfaces.previewWebView == nil)
+        _ = try await harness.callPageJavaScript("""
+            document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Meta', metaKey: true, bubbles: true}));
+            """)
+        _ = try await harness.waitUntilPresentation(stage: "Command after pointer entry") {
+            !$0.previewPopoverHidden && $0.previewTitle == "Target note"
+        }
+        #expect(try await harness.callPageJavaScript(anchors + """
+            const style = getComputedStyle(targetLink);
+            return targetLink.classList.contains('scholium-link-preview-armed')
+              && style.cursor === 'pointer' && style.textDecorationLine.includes('underline');
+            """) as? Bool == true)
+        _ = try await harness.callPageJavaScript("""
+            document.dispatchEvent(new KeyboardEvent('keyup', {key: 'Meta', bubbles: true}));
+            document.body.dispatchEvent(new PointerEvent('pointermove', {bubbles: true}));
+            """)
+        _ = try await harness.waitUntilPresentation(stage: "released Command") { $0.previewPopoverHidden }
+        _ = try await harness.callPageJavaScript(anchors + """
+            document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Meta', metaKey: true, bubbles: true}));
+            targetLink.dispatchEvent(new PointerEvent('pointermove', {bubbles: true}));
+            """)
+        _ = try await harness.waitUntilPresentation(stage: "Command before pointer entry") {
+            !$0.previewPopoverHidden && $0.previewTitle == "Target note"
+        }
+        _ = try await harness.callPageJavaScript(anchors + """
+            document.dispatchEvent(new KeyboardEvent('keyup', {key: 'Meta', bubbles: true}));
+            button.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+            """)
+        _ = try await harness.waitUntilPresentation(stage: "pinned native annotation") {
+            !$0.previewPopoverHidden && $0.previewTitle == "Support"
+        }
+        let preview = try #require(harness.session.floatingSurfaces.previewWebView)
+        #expect(try await preview.evaluateJavaScript("document.body.textContent.includes('Second reason.')") as? Bool == true)
+        #expect(try await preview.evaluateJavaScript("document.querySelector('strong')?.textContent") as? String == "reason")
+        _ = try await harness.callPageJavaScript("""
+            document.body.dispatchEvent(new PointerEvent('pointermove', {bubbles: true}));
+            await new Promise(resolve => setTimeout(resolve, 220));
+            """)
+        #expect(!(try await harness.session.testingAccessibilitySnapshot()).previewPopoverHidden)
+        _ = try await harness.callPageJavaScript("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));")
+        _ = try await harness.waitUntilPresentation(stage: "annotation Escape") { $0.previewPopoverHidden }
+        _ = try await harness.callPageJavaScript(anchors + "button.focus();")
+        _ = try await harness.waitUntilPresentation(stage: "keyboard annotation focus") {
+            !$0.previewPopoverHidden && $0.previewTitle == "Support"
+        }
+        _ = try await harness.callPageJavaScript(anchors + "button.blur();")
+        _ = try await harness.waitUntilPresentation(stage: "annotation focus exit") { $0.previewPopoverHidden }
+        #expect(try await harness.callPageJavaScript("""
+            return document.querySelectorAll('#scholium-preview-popover, .scholium-link-annotation-panel').length;
+            """) as? Int == 0)
+        #expect(owner.frame == frame)
+        #expect(harness.session.context?.selections == selection)
+        #expect(harness.session.context?.undoLabel == undo)
+        #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
 
@@ -4442,8 +4478,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(initial == original)
 
         diagnosticStage = "initial focus handoff"
-        harness.session.resignFocus()
-        try await Task.sleep(for: .milliseconds(150))
+        await harness.session.resignFocusAndWait()
         do {
             #expect(!(try await harness.session.testingAccessibilitySnapshot()).isFocused)
         } catch {
@@ -4471,9 +4506,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(accessibility.renderedMathCount == 4)
         #expect(accessibility.mathErrorCount == 0)
         #expect(accessibility.displayMathOverflowX == "auto")
-        #expect(accessibility.frontmatterLineCount == 0)
-        #expect(accessibility.frontmatterVisibleHeight == 0)
-        #expect(accessibility.unclosedFrontmatterNoticeCount == 0)
+        #expect(accessibility.frontmatterLineCount > 0)
+        #expect(accessibility.frontmatterVisibleHeight > 0)
         #expect(accessibility.semanticTableCount == 1)
         #expect(accessibility.liveTableSourceLineCount == 0)
         #expect(accessibility.tableHeaderCount == 3)
@@ -4580,10 +4614,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilPreviewIsAvailable()
         #expect(harness.session.canShowPreviewAtSelection)
         harness.session.showPreview()
-        let preview = try await harness.waitUntilPresentation(stage: "link preview") {
-            !$0.previewPopoverHidden && $0.previewTitle == "Target note"
-        }
-        #expect(preview.previewTitle == "Target note")
+        // Native preview visibility is covered by nativeEditPreviewPreservesDocument
+        // in a laid-out native host. This unconstrained bridge fixture verifies
+        // the request and source/session state, not floating-window geometry.
         try await Task.sleep(for: .milliseconds(200))
         let presentationPerformance = try await harness.session.queryPerformanceSamples()
         #expect(presentationPerformance.contains { $0.name == "mode-toggle-work" })
@@ -4630,16 +4663,15 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(sourceMode.contentPaddingInlineStart == "20px")
         #expect(sourceMode.isFocused)
         #expect(harness.session.context?.selections == initialSelection)
-        let bodyStartEditorOffset = frontmatter.replacingOccurrences(of: "\r\n", with: "\n").utf16.count
         harness.session.goToLine(2)
         try await harness.waitUntilSelection(head: 4, stage: "Source frontmatter line")
         harness.session.setMode(.livePreview)
-        _ = try await harness.waitUntilPresentation(stage: "frontmatter-clamped Live Preview") {
-            $0.label == "Markdown editor, Edit mode" && $0.frontmatterLineCount == 0
+        _ = try await harness.waitUntilPresentation(stage: "frontmatter remains editable in Live Preview") {
+            $0.label == "Markdown editor, Edit mode" && $0.frontmatterLineCount > 0
         }
         try await harness.waitUntilSelection(
-            head: bodyStartEditorOffset,
-            stage: "Edit body clamp"
+            head: 4,
+            stage: "Edit preserves YAML selection"
         )
         harness.session.setMode(.source)
         _ = try await harness.waitUntilPresentation(stage: "frontmatter selection restored Source") {
@@ -4846,7 +4878,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 && (Double($0.contentPaddingInlineStart.dropLast(2)) ?? 0) > 40
         }
         #expect(regularSourceGrid.presentation.rootInlineSource == "40.000000px")
-        #expect(regularSourceGrid.presentation.documentFontFamily.contains("Victor Mono"))
+        #expect(regularSourceGrid.presentation.documentFontFamily.contains("Courier"))
         #expect(try await harness.session.currentText(for: harness.documentID) == afterInsertion)
 
         let regularSourceInset = try #require(
@@ -4875,7 +4907,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 && $0.presentation.rootLineWidth == "48ch"
                 && (Double($0.contentPaddingInlineStart.dropLast(2)) ?? 0) > regularSourceInset
         }
-        #expect(customSourceGrid.presentation.documentFontFamily.contains("Victor Mono"))
+        #expect(customSourceGrid.presentation.documentFontFamily.contains("Courier"))
         #expect(customSourceGrid.isFocused)
         #expect(harness.session.context?.selections == selectionBeforeLineWidthChange)
         #expect(harness.session.context?.undoLabel == undoBeforeLineWidthChange)
@@ -4903,11 +4935,11 @@ struct MarkdownEditorWebViewIntegrationTests {
         defer { unclosedHarness.close() }
         try await unclosedHarness.waitUntilReady()
         let unavailableLive = try await unclosedHarness.waitUntilPresentation(stage: "unclosed frontmatter") {
-            $0.unclosedFrontmatterNoticeCount == 1
+            $0.frontmatterLineCount > 0
         }
         #expect(unavailableLive.gutterCount == 0)
         #expect(unavailableLive.lineNumberCount == 0)
-        #expect(unavailableLive.frontmatterLineCount == 0)
+        #expect(unavailableLive.frontmatterLineCount > 0)
         #expect(unavailableLive.semanticTableCount == 0)
         #expect(unavailableLive.renderedMathCount == 0)
         #expect(unavailableLive.previewAnchorCount == 0)
@@ -4917,10 +4949,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(Data(unavailableLiveSource.utf8) == Data(unclosedSource.utf8))
         #expect(Array(unavailableLiveSource.utf16) == Array(unclosedSource.utf16))
         unclosedHarness.session.setMode(.source)
-        let unclosedSourceMode = try await unclosedHarness.waitUntilPresentation(stage: "unclosed frontmatter Source") {
+        _ = try await unclosedHarness.waitUntilPresentation(stage: "unclosed frontmatter Source") {
             $0.gutterCount > 0 && $0.lineNumberCount > 0
         }
-        #expect(unclosedSourceMode.unclosedFrontmatterNoticeCount == 0)
         let unavailableSourceModeSource = try await unclosedHarness.session.currentText(
             for: unclosedHarness.documentID
         )
@@ -5699,7 +5730,7 @@ struct MarkdownEditorWebViewIntegrationTests {
 
     private struct EditorHarnessRoot: View {
         @ObservedObject var sourceBox: SourceBox
-        let session: MarkdownEditorSession
+        @ObservedObject var session: MarkdownEditorSession
         let documentID: String
         let linkPreviews: [DocumentLinkPreview]
         let onTitleRename: @MainActor (String, String) async throws -> String
@@ -5739,6 +5770,15 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
 
         private var editorSurface: some View {
+            DocumentEditorHost(
+                documentID: session.openingPresentationID.uuidString,
+                presentsEditor: true,
+                retainsEditor: true,
+                editorIsReady: session.isLoaded && !session.opensAtDocumentTitle
+            ) { Color.clear } editor: { editorWebView }
+        }
+
+        private var editorWebView: some View {
             MarkdownEditorWebView(
                     session: session,
                     documentID: documentID,

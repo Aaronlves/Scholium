@@ -8,14 +8,15 @@ struct InterfacePresentationOwnershipTests {
     let directStyles = try occurrenceInventory(
       pattern: #"\.buttonStyle\s*\(\s*\."#,
       extensions: ["swift"]
-    )
-    #expect(directStyles == ["Scholium/UI/Components/ScholiumButtons.swift": 1,
+    ).filter { !NativeSettingsSourceScope.paths.contains($0.key) }
+    #expect(directStyles == ["Scholium/App/ScholiumApp.swift": 1,
+                             "Scholium/UI/Components/ScholiumButtons.swift": 1,
                              "Scholium/Views/Note/DocumentFindPanel.swift": 3,
                              "Scholium/Views/Sidebar/DocumentOutlineSidebar.swift": 1],
             Comment(rawValue: diagnostic(for: directStyles)))
     let menuStyles = try occurrenceInventory(
       pattern: #"\.menuStyle\s*\(\s*\."#, extensions: ["swift"]
-    )
+    ).filter { !NativeSettingsSourceScope.paths.contains($0.key) }
     #expect(menuStyles == ["Scholium/UI/Components/ScholiumButtons.swift": 1,
                            "Scholium/Views/Note/DocumentFindPanel.swift": 1,
                            "Scholium/Views/Sidebar/DocumentOutlineSidebar.swift": 1],

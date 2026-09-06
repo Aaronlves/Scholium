@@ -379,13 +379,6 @@ struct ContentView: View {
                     value: value
                 )
             },
-            saveAuthoredAboutField: { note, key, value in
-                try await appState.saveAuthoredAboutField(
-                    for: note,
-                    key: key,
-                    value: value
-                )
-            },
             openZoteroItem: { binding in
                 await appState.zoteroCoordinator.bridge.openInZotero(binding: binding)
             },

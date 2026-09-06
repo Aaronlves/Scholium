@@ -492,7 +492,9 @@ struct NoteContentView: View {
                 },
                 referenceOriginalDocument: {
                     requestDocumentAttachment(.referenceOriginal)
-                }
+                },
+                canEditFrontmatter: editingIsAvailable,
+                goToFrontmatter: goToFrontmatter
             )
         ))
         .sheet(isPresented: Binding(
@@ -799,12 +801,13 @@ struct NoteContentView: View {
     @ViewBuilder
     private var documentBodySurface: some View {
         DocumentEditorHost(
+            documentID: editorSession.openingPresentationID.uuidString,
             presentsEditor: isEditing,
             retainsEditor: documentSession.retainsEditorSurface,
             editorIsReady: editorSession.isLoaded
+                && !editorSession.opensAtDocumentTitle
                 && editorSession.presentedMode == documentSession.activeEditorMode,
-            allowsPendingReadRecovery: documentSession.isEnteringManagedCreation
-                && editorSession.errorMessage != nil
+            allowsPendingReadRecovery: editorSession.errorMessage != nil
         ) {
             readSurface
         } editor: {
@@ -1587,6 +1590,12 @@ struct NoteContentView: View {
             editorSession.goToLine(line)
             actions.clearPendingSourceLine()
         }
+    }
+
+    private func goToFrontmatter() {
+        guard editingIsAvailable, editorSession.context?.composing != true else { return }
+        selectPresentationMode(.livePreview)
+        editorSession.goToLine(1)
     }
 
     private func beginEditing(mode: MarkdownEditorMode = .livePreview) {

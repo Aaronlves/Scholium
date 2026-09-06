@@ -59,7 +59,7 @@ public struct DocumentBodyAppearance: Codable, Hashable, Sendable {
 
     public init(
         fontFamily: DocumentAppearanceFontFamily = .alegreya,
-        fontSizePoints: Double = 13,
+        fontSizePoints: Double = 12,
         lineHeight: Double = 1.7,
         paragraphSpacingEm: Double = 0.7,
         firstLineIndentEm: Double = 0,
@@ -202,7 +202,7 @@ public struct DocumentSourceAppearance: Codable, Hashable, Sendable {
     public var fontFamily: String
     public var fontSizePoints: Double
 
-    public init(fontFamily: String = "Victor Mono", fontSizePoints: Double = 11.25) {
+    public init(fontFamily: String = "Courier", fontSizePoints: Double = 9.6) {
         self.fontFamily = fontFamily
         self.fontSizePoints = fontSizePoints
     }
