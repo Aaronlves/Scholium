@@ -1586,14 +1586,14 @@ struct WindowControllerArchitectureTests {
         ))
 
         #expect(window.vaultError == nil)
-        #expect(window.feedbackItems.last?.kind == .warning)
-        #expect(window.feedbackItems.last?.message.contains("already committed") == true)
-        #expect(window.feedbackItems.last?.message.contains("do not import them again") == true)
-        #expect(window.feedbackItems.last?.message.contains("Topics") == true)
-        #expect(window.feedbackItems.last?.message.contains(
+        #expect(window.shellState.operationIssues.last?.kind == .warning)
+        #expect(window.shellState.operationIssues.last?.message.contains("already committed") == true)
+        #expect(window.shellState.operationIssues.last?.message.contains("do not import them again") == true)
+        #expect(window.shellState.operationIssues.last?.message.contains("Topics") == true)
+        #expect(window.shellState.operationIssues.last?.message.contains(
             "stable note identity recovery is incomplete"
         ) == true)
-        #expect(window.feedbackItems.last?.message.contains(
+        #expect(window.shellState.operationIssues.last?.message.contains(
             "Identity registry is unavailable."
         ) == true)
 

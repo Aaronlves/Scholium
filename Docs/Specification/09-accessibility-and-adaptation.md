@@ -100,15 +100,12 @@
   not remain open in an unusably compressed state.
 - Attention exposes group, issue, Note, locator, state, actions, freshness, and
   Retry in a coherent order.
-- Agent Change notifications expose exact Note, operation, time,
-  current/Earlier Revision state, and valid actions. A multi-change disclosure
-  states its count; keyboard/pointer expansion and collapse are equivalent.
-  Reduce Motion changes transition, not content or state.
-- Settings and workspace feedback remain in window reading order without moving
-  existing controls or obscuring their owners.
-
-### Document and editor
-
+- Bell Agent Change rows expose exact Note, operation, time, revision state,
+  and valid actions. Background notifications use macOS presentation and its
+  accessibility settings; foreground activity adds no competing overlay.
+- Persistent operation problems and Settings validation retain full readable
+  text, explicit keyboard-accessible repair/dismissal, and their local reading
+  order. No necessary error depends on notification permission or a time limit.
 - Managed New Note announces once, opens Edit, and places insertion at the exact
   body start. Durable-source/editor-failure names Retry Edit and Source without
   inviting another creation.

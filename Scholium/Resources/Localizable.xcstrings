@@ -1,6 +1,9 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "An Agent changed a Note. Open Scholium to inspect the change.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "An Agent changed a Note. Open Scholium to inspect the change."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "Agent 已更改一篇笔记。打开 Scholium 查看变更。"}}}},
+    "This Agent Change is no longer available.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "This Agent Change is no longer available."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "此 Agent 变更记录已不可用。"}}}},
+    "The File Operation Completed with Warnings": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "The File Operation Completed with Warnings"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "文件操作已完成，但有警告"}}}},
     "Go to Frontmatter": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Go to Frontmatter"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "前往 Frontmatter"}}}},
 
     "Source font size": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "Source font size"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "源文本字号"}}}},

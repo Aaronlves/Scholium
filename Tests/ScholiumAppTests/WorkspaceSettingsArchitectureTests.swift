@@ -625,40 +625,9 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(!source.contains("DatePicker("))
     }
 
-    @Test("Settings feedback preserves distinct messages and dismisses by identity")
-    func settingsFeedbackQueue() throws {
-        let model = WorkspaceSettingsModel()
 
-        model.presentFeedback("First", kind: .confirmation)
-        let first = try #require(model.feedbackItems.first)
-        #expect(first.message == "First")
-        #expect(first.kind == .confirmation)
-        #expect(first.kind.dismissesAutomatically)
 
-        model.presentFeedback("Second", kind: .error)
-        let second = try #require(model.feedbackItems.last)
-        #expect(model.feedbackItems.map(\.message) == ["First", "Second"])
-        #expect(second.kind == .error)
-        #expect(!second.kind.dismissesAutomatically)
 
-        model.dismissFeedback(id: first.id)
-        #expect(model.feedbackItems == [second])
-
-        model.dismissFeedback(id: second.id)
-        #expect(model.feedbackItems.isEmpty)
-    }
-
-    @Test("Settings feedback deduplicates an identical live notice")
-    func settingsFeedbackDeduplication() throws {
-        let model = WorkspaceSettingsModel()
-
-        model.presentFeedback("Saved", kind: .confirmation)
-        let firstID = try #require(model.feedbackItems.first?.id)
-        model.presentFeedback("Saved", kind: .confirmation)
-
-        #expect(model.feedbackItems.count == 1)
-        #expect(model.feedbackItems.first?.id != firstID)
-    }
 
     @Test("Settings root and model cannot construct window-local owners")
     func sourceBoundary() throws {
@@ -694,7 +663,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(rootSource.contains("ScholiumSettingsView()"))
     }
 
-    @Test("Settings descendants borrow only Settings state and app notification authorization")
+    @Test("Settings descendants borrow only Settings state")
     func descendantsUseOnlySettingsOwners() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -817,7 +786,7 @@ struct WorkspaceSettingsArchitectureTests {
         #expect(settingsSource.contains("toolbar.selectedItemIdentifier"))
         #expect(settingsSource.contains("accessibilityDisplayShouldReduceMotion"))
         #expect(settingsSource.contains("window.animator().setFrame(frame, display: true)"))
-        #expect(settingsSource.contains("ScholiumWindowTopOverlayHost("))
+        #expect(!settingsSource.contains("ScholiumWindowTopOverlayHost("))
         #expect(settingsSource.contains("ScholiumSettingsSearchField("))
         #expect(!settingsSceneSource.contains(".frame(width: 700, height: 560"))
         #expect(guidanceSource.contains(".scholiumSettingsPaneSurface()"))

@@ -40,9 +40,10 @@ whitespace, semantic surfaces, and fine structural rules first. A bounded panel
 is appropriate only when its task is genuinely transient or spatially anchored.
 
 Semantic floating containers use native Liquid Glass: contextual Find, Search,
-previews, suggestions, and transient notifications sit above their originating
+previews, and suggestions sit above their originating
 content without reflowing it. Reading, editing, document forms, and persistent
-operation or recovery regions use Scholium's opaque semantic colors. Glass
+operation or recovery regions,
+use Scholium's opaque semantic colors. Glass
 belongs to the floating container. Embedded document previews retain document
 semantics; editor assistance controls and candidates use system presentation. Clickability alone does not grant a control a glass surface.
 Settings uses native macOS window backgrounds, preference toolbars, typography,

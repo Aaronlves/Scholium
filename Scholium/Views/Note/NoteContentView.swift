@@ -4,7 +4,6 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 enum DocumentNotificationKind {
-    case confirmation
     case information
     case error
 }

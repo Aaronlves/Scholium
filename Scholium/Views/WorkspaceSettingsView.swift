@@ -143,7 +143,6 @@ struct ScholiumSettingsView: View {
     private var persistedResearchCategory = ResearchGuidanceCategory.agentIntegration.rawValue
     @State private var destination = ScholiumSettingsDestination.triptychs
     @State private var searchQuery = ""
-    @State private var didPresentQAFeedbackProof = false
 
     var body: some View {
         // The scene supplies space; individual panes must not publish new
@@ -173,36 +172,8 @@ struct ScholiumSettingsView: View {
         .frame(minWidth: 620, maxWidth: .infinity, minHeight: 180, maxHeight: .infinity, alignment: .top)
         .background(Color(nsColor: .windowBackgroundColor))
         .background(SettingsToolbarAttachment(destination: $destination))
-        .background {
-            ScholiumWindowTopOverlayHost(
-                topInset: ScholiumGrid.Spacing.sectionSeparation
-            ) {
-                if let feedback = settingsModel.feedbackItems.first {
-                    WorkspaceSettingsFeedbackItem(
-                        feedback: feedback,
-                        dismiss: {
-                            settingsModel.dismissFeedback(id: feedback.id)
-                        }
-                    )
-                    .transition(
-                        ScholiumMotion.transientStatusTransition(
-                            reduceMotion: reduceMotion,
-                            edge: .top
-                        )
-                    )
-                    .animation(
-                        ScholiumMotion.transientStatus(reduceMotion: reduceMotion),
-                        value: settingsModel.feedbackItems
-                    )
-                }
-            }
-        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.settings.root")
-        .animation(
-            ScholiumMotion.transientStatus(reduceMotion: reduceMotion),
-            value: settingsModel.feedbackItems
-        )
         .onAppear {
             let pane = WorkspaceSettingsPane(rawValue: persistedPane) ?? .triptychs
             let category = ResearchGuidanceCategory(
@@ -213,7 +184,6 @@ struct ScholiumSettingsView: View {
                 researchCategory: category
             )
             settingsModel.selectPane(destination.pane)
-            presentQAFeedbackProofIfNeeded()
         }
         .onChange(of: destination) { _, destination in
             if !destination.matches(searchQuery) { searchQuery = "" }
@@ -228,25 +198,6 @@ struct ScholiumSettingsView: View {
                   let first = filteredDestinations.first else { return }
             destination = first
         }
-    }
-
-    private func presentQAFeedbackProofIfNeeded() {
-        #if DEBUG
-        guard !didPresentQAFeedbackProof,
-              Bundle.main.bundleIdentifier == "com.scholium.qa",
-              ProcessInfo.processInfo.arguments.contains(
-                  "--scholium-feedback-proofs"
-              ) else { return }
-        didPresentQAFeedbackProof = true
-        settingsModel.presentFeedback(
-            "QA settings confirmation",
-            kind: .confirmation
-        )
-        settingsModel.presentFeedback(
-            "QA settings error",
-            kind: .error
-        )
-        #endif
     }
 
     private var filteredApplicationDestinations: [ScholiumSettingsDestination] {
@@ -442,6 +393,12 @@ private struct AttentionSettingsView: View {
                 settingsEditorSection("Reminder Timing for This Triptych") {
                     reminderTimingPicker
                     saveAttentionButton
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
                 }
                 Divider()
                 settingsEditorSection("Dismissed Items on This Mac") {
@@ -468,14 +425,7 @@ private struct AttentionSettingsView: View {
                 ? stored
                 : TriptychSettings().attentionDismissalDays
         }
-        .alert("Could Not Save Notification Settings", isPresented: Binding(
-            get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
-        )) {
-            Button("Dismiss", role: .cancel) { errorMessage = nil }
-        } message: {
-            Text(errorMessage ?? "")
-        }
+
     }
 
     private var hasDismissedAttention: Bool {
@@ -504,6 +454,7 @@ private struct AttentionSettingsView: View {
     }
 
     private func save() {
+        errorMessage = nil
         isSaving = true
         Task {
             do {
@@ -511,12 +462,8 @@ private struct AttentionSettingsView: View {
                 settings.attentionDismissalDays = AttentionPreferences.normalizedDays(dismissalDays)
                 let result = try await settingsModel.saveTriptychSettings(settings)
                 dismissalDays = settings.attentionDismissalDays
-                settingsModel.presentFeedback(
-                    result.targetIsCurrent
-                        ? String(localized: "Notification settings saved", table: "Localizable", bundle: .module)
-                        : result.warning ?? String(localized: "Settings saved to the previously active Triptych.", table: "Localizable", bundle: .module),
-                    kind: result.targetIsCurrent ? .confirmation : .warning
-                )
+                errorMessage = result.warning
+
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -1386,15 +1333,8 @@ private struct MetadataSettingsView: View {
                     revisionConflict = true
                     errorMessage = result.warning
                 }
-                let message = if result.warning == nil {
-                    String(localized: "Metadata configuration saved", table: "Localizable", bundle: .module)
-                } else {
-                    result.warning ?? String(localized: "Metadata configuration saved", table: "Localizable", bundle: .module)
-                }
-                settingsModel.presentFeedback(
-                    message,
-                    kind: result.warning == nil ? .confirmation : .warning
-                )
+                errorMessage = result.warning
+
             } catch TriptychControlError.settingsRevisionConflict {
                 revisionConflict = true
             } catch WorkspaceSettingsMutationError.triptychChanged {
@@ -1531,24 +1471,6 @@ private struct MetadataSettingsView: View {
         if let role = diagnostic.role { selectedSlot = role }
     }
 
-}
-
-private struct WorkspaceSettingsFeedbackItem: View {
-    let feedback: WorkspaceSettingsFeedback
-    let dismiss: () -> Void
-
-    var body: some View {
-        ScholiumOperationFeedback(
-            id: feedback.id,
-            message: feedback.message,
-            kind: feedback.kind,
-            maximumWidth: ScholiumMetrics.Notice.settingsFeedbackMaximumWidth,
-            accessibilityIdentifierPrefix: "scholium.settings.feedback",
-            dismiss: dismiss
-        )
-        .padding(.horizontal, ScholiumGrid.Spacing.sectionSeparation)
-        .frame(maxWidth: .infinity, alignment: .top)
-    }
 }
 
 struct ZoteroSettingsView: View {

@@ -21,6 +21,7 @@ private enum DocumentTitleRenameError: LocalizedError {
 // MARK: - Content View
 
 struct ContentView: View {
+    @State private var operationIssueHeight: CGFloat = 0
     @ObservedObject var appState: WindowModel
     @ObservedObject private var presentationRouter: WindowPresentationRouter
     @ObservedObject private var discoveryController: DiscoveryController
@@ -144,42 +145,10 @@ struct ContentView: View {
         // the toolbar contributes no competing full-width material band.
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background {
-            ScholiumWindowTopOverlayHost(
-                topInset: ScholiumGrid.Spacing.sectionSeparation
-            ) {
-                windowTopNotificationOverlay
-                    .scholiumButtonStyle(.automatic)
-                    .ignoresSafeArea(.container, edges: .top)
-                    .animation(
-                        ScholiumMotion.transientStatus(reduceMotion: reduceMotion),
-                        value: shellState.feedbackItems
-                    )
-            }
-        }
-        .overlay(alignment: .bottom) {
-            if let feedback = shellState.transientFeedbackItems.first {
-                WindowFeedbackItem(
-                    feedback: feedback,
-                    dismiss: { shellState.dismissFeedback(id: feedback.id) }
-                )
-                .padding(.bottom, ScholiumGrid.Spacing.sectionSeparation)
-                .transition(
-                    ScholiumMotion.transientStatusTransition(
-                        reduceMotion: reduceMotion
-                    )
-                )
-                .zIndex(10)
-            }
-        }
         .ignoresSafeArea(.container, edges: .top)
         .animation(
             ScholiumMotion.documentReveal(reduceMotion: reduceMotion),
             value: appState.currentNote != nil
-        )
-        .animation(
-            ScholiumMotion.transientStatus(reduceMotion: reduceMotion),
-            value: shellState.feedbackItems
         )
         .overlay {
             if appState.isLoading {
@@ -219,28 +188,6 @@ struct ContentView: View {
                     }
                 )
             }
-        }
-    }
-
-    @ViewBuilder
-    private var refreshStatusNotice: some View {
-        if let status = appState.refreshStatusText {
-            ScholiumNotificationBanner(
-                systemImage: appState.hasDerivedRefreshFailure ? "exclamationmark.triangle" : "arrow.triangle.2.circlepath",
-                colorRole: appState.hasDerivedRefreshFailure ? .attention : .secondaryText,
-                title: status,
-                detail: nil,
-                maximumWidth: ScholiumMetrics.Notice.windowFeedbackMaximumWidth,
-                accessibilityIdentifier: "scholium.refreshStatus"
-            ) {
-                if appState.hasDerivedRefreshFailure {
-                    Button("Retry Refresh") {
-                        Task { await appState.retryDerivedRefresh() }
-                    }
-                    .scholiumButtonStyle(.borderless)
-                }
-            }
-            .padding(ScholiumMetrics.Workspace.refreshStatusOuterInset)
         }
     }
 
@@ -594,12 +541,10 @@ struct ContentView: View {
             },
             notify: { message, kind in
                 switch kind {
-                case .confirmation:
-                    appState.presentFeedback(message)
                 case .information:
-                    appState.presentFeedback(message, kind: .information)
+                    appState.reportOperationIssue(message, kind: .information)
                 case .error:
-                    appState.presentFeedback(message, kind: .error)
+                    appState.reportOperationIssue(message, kind: .error)
                 }
             }
         )
@@ -686,21 +631,15 @@ struct ContentView: View {
                 do {
                     try await appState.libraryMutationController.prepareFolderSystemTrash($0)
                 } catch {
-                    appState.presentFeedback(error.localizedDescription, kind: .error)
+                    appState.reportOperationIssue(error.localizedDescription, kind: .error)
                 }
             },
             copyRelativePath: { path in
                 do {
                     try appState.copyTextToClipboard(path)
-                    appState.presentFeedback(
-                        String(
-                            localized: "Relative path copied.",
-                            table: "Localizable",
-                            bundle: .module
-                        )
-                    )
+
                 } catch {
-                    appState.presentFeedback(error.localizedDescription, kind: .error)
+                    appState.reportOperationIssue(error.localizedDescription, kind: .error)
                 }
             },
             revealNote: { appState.showInFinder($0) },
@@ -708,13 +647,13 @@ struct ContentView: View {
                 do {
                     try await appState.libraryMutationController.prepareNoteSystemTrash($0)
                 } catch {
-                    appState.presentFeedback(error.localizedDescription, kind: .error)
+                    appState.reportOperationIssue(error.localizedDescription, kind: .error)
                 }
             },
             revealCurrentVault: { appState.revealVaultInFinder() },
             openSettings: { openSettings() },
             selectSortOrder: { appState.discoveryController.selectSortOrder($0) },
-            showError: { appState.presentFeedback($0, kind: .error) }
+            showError: { appState.reportOperationIssue($0, kind: .error) }
         )
     }
 
@@ -953,7 +892,6 @@ struct ContentView: View {
     @ViewBuilder
     private var detailRegion: some View {
         VStack(spacing: 0) {
-            refreshStatusNotice
             if !appState.transactionRecoveryRecords.isEmpty
                 || !appState.interruptedSaveRecoveries.isEmpty
                 || appState.transactionRecoveryError != nil
@@ -967,31 +905,30 @@ struct ContentView: View {
                     appState.showTransactionRecovery = true
                 }
             }
+            if !shellState.operationIssues.isEmpty || appState.refreshStatusText != nil {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(shellState.operationIssues) { issue in
+                            ScholiumOperationIssueView(issue: issue,
+                                refresh: { Task { await appState.retryDerivedRefresh() } },
+                                dismiss: { shellState.dismissOperationIssue(id: issue.id) })
+                        }
+                        if let status = appState.refreshStatusText {
+                            HStack {
+                                Text(status).font(ScholiumTypography.interface(.body)).textSelection(.enabled)
+                                if appState.hasDerivedRefreshFailure {
+                                    Button("Retry Refresh") { Task { await appState.retryDerivedRefresh() } }
+                                }
+                            }
+                            .accessibilityIdentifier("scholium.refreshStatus")
+                        }
+                    }
+                    .padding(12)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { operationIssueHeight = $0 }
+                }
+                .frame(height: min(operationIssueHeight, 180))
+            }
             detailContent
-        }
-    }
-
-    @ViewBuilder
-    private var windowTopNotificationOverlay: some View {
-        if shellState.hasCompletedInitialRestore {
-            windowTopNotificationSurface
-            .zIndex(10)
-        }
-    }
-
-    @ViewBuilder
-    private var windowTopNotificationSurface: some View {
-        if let feedback = shellState.persistentFeedbackItems.first {
-            WindowFeedbackItem(
-                feedback: feedback,
-                dismiss: { shellState.dismissFeedback(id: feedback.id) }
-            )
-            .transition(
-                ScholiumMotion.transientStatusTransition(
-                    reduceMotion: reduceMotion,
-                    edge: .top
-                )
-            )
         }
     }
 
@@ -1166,26 +1103,6 @@ private struct LoadingOverlay: View {
             )
             .accessibilityAddTraits(.isModal)
             .accessibilityIdentifier("scholium.loadingOverlay")
-    }
-}
-
-// MARK: - Window Feedback
-
-private struct WindowFeedbackItem: View {
-    let feedback: WindowFeedback
-    let dismiss: () -> Void
-
-    var body: some View {
-        ScholiumOperationFeedback(
-            id: feedback.id,
-            message: feedback.message,
-            kind: feedback.kind,
-            maximumWidth: feedback.kind.dismissesAutomatically
-                ? ScholiumMetrics.Notice.transientToastMaximumWidth
-                : ScholiumMetrics.Notice.windowFeedbackMaximumWidth,
-            accessibilityIdentifierPrefix: "scholium.windowFeedback",
-            dismiss: dismiss
-        )
     }
 }
 

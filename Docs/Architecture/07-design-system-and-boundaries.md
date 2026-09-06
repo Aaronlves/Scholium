@@ -71,10 +71,8 @@ points to CSS pixels.
 The shared segmented selection plate retains its control elevation. Semantic
 floats instead use `scholiumFloatingSurface` (SwiftUI) or the bounded
 `DocumentFloatingSurfaceController` (AppKit `NSGlassEffectView`). Find, Search,
-progress overlays, and `ScholiumNotificationBanner` share native Liquid Glass;
-no feature adds a second shadow or frosted-material recipe. Operation feedback
-uses the same banner for transient and persistent delivery while its existing
-policy owns announcements, dismissal, and lifetime. Inline document integrity
+and progress overlays share native Liquid Glass; no feature adds a second
+shadow or frosted-material recipe. Persistent operation, document integrity,
 and recovery notices remain opaque content surfaces.
 
 The editor and reader project inert preview HTML into a transparent, local-only
@@ -155,7 +153,10 @@ instead use `scholiumContentControlPointerFeedback`: a zero-hit-test AppKit
 adapter observes the complete Menu frame because the host does not reliably
 forward pointer state into its label. The enclosing Button or Menu retains
 activation, focus, menu tracking, and accessibility; no leaf or compound
-wrapper adds another transient-state owner.
+wrapper adds another transient-state owner. The tracking view clips to its own
+bounds, retains one in-visible-rect tracking identity, and intersects local bounds
+with the visible region. Pointer movement, viewport bounds changes, and window
+activity reconcile hover; detach publishes a reset before removing observers.
 CodeMirror suggestions project one current listbox item on the persistent raised
 surface; native pointer movement updates that item without a second hover fill. The protected Callout stylesheet owns
 only its disclosure geometry and selectors; its fold mark consumes the shared
@@ -393,17 +394,25 @@ Agent Changes, Attention, Recovery, and Settings owners continue
 to derive their own states and transitions. `ScholiumApparatusStateView`,
 inline field feedback, and `ScholiumRecoveryNotice` remain separate owners for
 their distinct compact, validation, and persistent-recovery responsibilities.
-Window and Settings operation feedback share `ScholiumOperationFeedback`,
-`ScholiumFeedbackKind`, and `ScholiumFeedbackPolicy`. Confirmation and
-Information use one content-fitting bottom-centred window overlay; Warning
-and Error use one top-centred window overlay until explicit dismissal. Neither
-changes Document geometry. Settings
-shows the same queue one item at a time in a top-centred window overlay, outside
-pane layout and one compact inset from the top window edge, where it may cover
-transparent native titlebar space. Main-window overlays use the same compact
-outer-edge inset and their top variants may cover native toolbar space.
-`ScholiumDocumentStatusNotice` remains an operation-state
-projection, not a queue member, and occupies inline Document layout.
+`SystemNotificationService` is the App-level macOS delivery owner. The running
+MCP router hands it one confirmed mutation result after the Application
+transaction; it does not observe per-window history or derived refreshes.
+`UNUserNotificationCenter` is attached at App launch without requesting permission.
+Only the first eligible background event requests system authorization; denial
+remains quiet. Same-Note bursts coalesce, activation cancels pending delivery,
+and native delegate presentation suppresses foreground banners.
+
+An opaque `AgentChangeNotificationRoute` carries exact identity without Note
+prose, title, or path. Clicks reuse a matching window or open the target Triptych;
+its current Agent Change owner revalidates before presenting the comparison.
+A cold-window handoff is memory-only and consumed once; window restoration
+does not serialize or replay notification clicks.
+Notification failure never changes a committed MCP result or source authority.
+`WindowShellState` retains persistent operation issues without expiry or priority.
+`ScholiumOperationIssueView` renders them in the Document region. Settings retains
+field/save errors and local copy acknowledgement. Bell projections, local
+Settlement, `ScholiumDocumentStatusNotice`, and recovery retain their own state.
+No global overlay host, activity banner projection, or Settings feedback queue remains.
 
 ## Boundary enforcement
 

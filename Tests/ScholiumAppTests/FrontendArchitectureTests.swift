@@ -9,123 +9,9 @@ import Testing
 @Suite("Frontend architecture")
 @MainActor
 struct FrontendArchitectureTests {
-    @Test("Window feedback uses content-fitting edge overlays without Document reflow")
-    func windowFeedbackUsesConsequenceSpecificPlacement() throws {
-        let repository = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let source = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/ContentView.swift"
-            ),
-            encoding: .utf8
-        )
-        let settingsSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/WorkspaceSettingsView.swift"
-            ),
-            encoding: .utf8
-        )
-        let componentsSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/UI/Components/ScholiumNotifications.swift"
-            ),
-            encoding: .utf8
-        )
-        let windowManagementSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/UI/Components/ScholiumWindowManagement.swift"
-            ),
-            encoding: .utf8
-        )
-        let designSystemSource = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/UI/Foundation/ScholiumDesignSystem.swift"
-            ),
-            encoding: .utf8
-        )
-        let documentStart = try #require(source.range(of: "} document: {"))
-        let apparatusStart = try #require(
-            source.range(
-                of: "} apparatus: {",
-                range: documentStart.upperBound..<source.endIndex
-            )
-        )
-        let documentRegion = source[
-            documentStart.lowerBound..<apparatusStart.lowerBound
-        ]
 
-        #expect(documentRegion.contains("detailRegion"))
-        #expect(source.contains("ScholiumWindowTopOverlayHost("))
-        #expect(source.contains(".overlay(alignment: .bottom)"))
-        #expect(source.contains("windowTopNotificationOverlay"))
-        #expect(source.contains("shellState.transientFeedbackItems.first"))
-        #expect(source.contains("shellState.persistentFeedbackItems.first"))
-        #expect(source.contains("ScholiumMetrics.Notice.transientToastMaximumWidth"))
-        #expect(source.contains("ScholiumMetrics.Notice.windowFeedbackMaximumWidth"))
-        #expect(source.contains("WindowFeedbackItem("))
-        #expect(source.contains("ScholiumOperationFeedback("))
-        #expect(settingsSource.contains("WorkspaceSettingsFeedbackItem("))
-        #expect(settingsSource.contains("ScholiumWindowTopOverlayHost("))
-        #expect(settingsSource.contains(
-            "topInset: ScholiumGrid.Spacing.sectionSeparation"
-        ))
-        #expect(settingsSource.contains("settingsModel.feedbackItems.first"))
-        #expect(settingsSource.contains("ScholiumOperationFeedback("))
-        #expect(componentsSource.contains("struct ScholiumOperationFeedback: View"))
-        #expect(componentsSource.contains("struct ScholiumNotificationBanner<Actions: View>"))
-        #expect(componentsSource.contains("title: kind.dismissesAutomatically ? message : kind.accessibilityLabel"))
-        #expect(componentsSource.contains("if !kind.dismissesAutomatically"))
-        #expect(componentsSource.contains("ScholiumNotificationBanner("))
-        #expect(
-            componentsSource.contains(
-                ".scholiumContentFittingWidth(maximumWidth: maximumWidth)"
-            )
-        )
-        #expect(
-            designSystemSource.contains(
-                "ProposedViewSize(width: availableWidth, height: nil)"
-            )
-        )
-        #expect(componentsSource.contains("Button(\"Dismiss\", action: dismiss)"))
-        #expect(componentsSource.contains(".keyboardShortcut(.cancelAction)"))
-        #expect(componentsSource.contains("guard kind.dismissesAutomatically"))
-        #expect(windowManagementSource.contains("fittingSizeDidChange"))
-        #expect(
-            windowManagementSource.contains(
-                "while let superview = frameView.superview"
-            )
-        )
-        #expect(!windowManagementSource.contains("fullWidthTitlebarView"))
-        #expect(!source.contains("WindowFeedbackStack"))
-        #expect(!settingsSource.contains("WorkspaceSettingsFeedbackStack"))
-        #expect(source.contains("refreshStatusNotice"))
-        #expect(source.contains("accessibilityIdentifier: \"scholium.refreshStatus\""))
 
-    }
 
-    @Test("Window feedback queues distinct notices and keeps warnings persistent")
-    func windowFeedbackQueue() throws {
-        let shell = WindowShellState()
-
-        shell.presentFeedback("Saved", kind: .confirmation)
-        let confirmation = try #require(shell.feedbackItems.first)
-        #expect(confirmation.kind.dismissesAutomatically)
-
-        shell.presentFeedback("Recovery required", kind: .warning)
-        let warning = try #require(shell.feedbackItems.last)
-        #expect(shell.feedbackItems.map(\.message) == ["Saved", "Recovery required"])
-        #expect(shell.transientFeedbackItems == [confirmation])
-        #expect(shell.persistentFeedbackItems == [warning])
-        #expect(!warning.kind.dismissesAutomatically)
-
-        shell.dismissFeedback(id: confirmation.id)
-        #expect(shell.feedbackItems == [warning])
-
-        shell.resetWorkspaceSessions()
-        #expect(shell.feedbackItems.isEmpty)
-    }
 
     @Test("Packaged performance prepares its UI driver before the cooled gate")
     func performanceGateUsesPreparedDriver() throws {
@@ -2333,7 +2219,6 @@ struct FrontendArchitectureTests {
         #expect(attentionSource.contains("title: session.noteTitle(for: change)"))
         #expect(attentionSource.contains("title: session.noteTitle(for: item)"))
         #expect(!notificationRowsSource.contains("ScholiumTypography.exact"))
-        #expect(!notificationRowsSource.contains("VStack("))
         #expect(
             notificationRowsSource.components(
                 separatedBy: "ScholiumQuietRowButtonStyle("
@@ -3955,27 +3840,7 @@ struct FrontendArchitectureTests {
         #expect(!overlaySource.contains("scholiumReduceTransparency"))
     }
 
-    @Test("Transient status motion is accessibility-owned by the view")
-    func transientStatusMotionToken() throws {
-        #expect(ScholiumMotion.transientStatus(reduceMotion: true) == nil)
-        #expect(ScholiumMotion.transientStatus(reduceMotion: false) != nil)
 
-        let repository = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-        let appSource = try String(
-            contentsOf: repository.appendingPathComponent("Scholium/App/ScholiumApp.swift"),
-            encoding: .utf8
-        )
-        let presentFeedbackSource = try #require(
-            appSource.range(of: "func presentFeedback(")
-        )
-        let suffix = appSource[presentFeedbackSource.lowerBound...]
-        let end = suffix.range(of: "private func refreshIdentityState")
-        let body = end.map { String(suffix[..<$0.lowerBound]) } ?? String(suffix.prefix(1_000))
-        #expect(!body.contains("withAnimation"))
-    }
 
     @Test("Two color Variables resolve the approved light, dark, and contrast roles")
     func reviewedAppearancePalettes() throws {
@@ -4170,7 +4035,6 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMotion.searchExpansion(reduceMotion: true) == nil)
         #expect(ScholiumMotion.disclosure(reduceMotion: true) == nil)
         #expect(ScholiumMotion.symbolReplacement(reduceMotion: true) == nil)
-        #expect(ScholiumMotion.transientStatus(reduceMotion: true) == nil)
 
         #expect(ScholiumMotion.bootstrapStep(reduceMotion: false) != nil)
         #expect(ScholiumMotion.documentReveal(reduceMotion: false) != nil)
@@ -4178,7 +4042,6 @@ struct FrontendArchitectureTests {
         #expect(ScholiumMotion.searchExpansion(reduceMotion: false) != nil)
         #expect(ScholiumMotion.disclosure(reduceMotion: false) != nil)
         #expect(ScholiumMotion.symbolReplacement(reduceMotion: false) != nil)
-        #expect(ScholiumMotion.transientStatus(reduceMotion: false) != nil)
     }
 
     @Test("Bootstrap step motion keeps one semantic recipe owner")
@@ -4221,8 +4084,8 @@ struct FrontendArchitectureTests {
 
         #expect(contentSource.contains("ScholiumMotion.documentRevealTransition("))
         #expect(contentSource.contains("ScholiumMotion.searchPresentationTransition("))
-        #expect(contentSource.contains("ScholiumMotion.transientStatusTransition("))
-        #expect(settingsSource.contains("ScholiumMotion.transientStatusTransition("))
+        #expect(contentSource.contains("ScholiumOperationIssueView("))
+        #expect(!settingsSource.contains("ScholiumNotificationStack("))
         #expect(!contentSource.contains("scale(scale: 0.985"))
         #expect(!contentSource.contains("scale(scale: 0.995"))
         #expect(!settingsSource.contains(".move(edge: .bottom)"))

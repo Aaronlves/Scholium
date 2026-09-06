@@ -14,16 +14,19 @@ final class MCPAppBridgeRequestRouter {
 
     private let runtime: WorkspaceRuntime
     private let flushEditors: EditorFlusher
+    private let didConfirmChange: @MainActor (AgentChange) -> Void
     private let openTriptychs: OpenTriptychs
 
     init(
         runtime: WorkspaceRuntime,
         flushEditors: @escaping EditorFlusher,
-        openTriptychs: @escaping OpenTriptychs
+        openTriptychs: @escaping OpenTriptychs,
+        didConfirmChange: @escaping @MainActor (AgentChange) -> Void = { _ in }
     ) {
         self.runtime = runtime
         self.flushEditors = flushEditors
         self.openTriptychs = openTriptychs
+        self.didConfirmChange = didConfirmChange
     }
 
     func handle(_ request: ScholiumMCPBridgeRequest) async
@@ -490,6 +493,7 @@ final class MCPAppBridgeRequestRouter {
         }
         let handle = try await runtime.openWorkspace(id: triptychID)
         let result = try await handle.agentCollaboration.createNote(request)
+        didConfirmChange(result.change)
         return ok([
             "triptych_id": .string(triptychID.uuidString.lowercased()),
             "change_id": .string(result.change.id.uuidString.lowercased()),
@@ -532,6 +536,7 @@ final class MCPAppBridgeRequestRouter {
             mode: mode,
             content: content
         )
+        didConfirmChange(result.change)
         return ok([
             "triptych_id": .string(triptychID.uuidString.lowercased()),
             "change_id": .string(result.change.id.uuidString.lowercased()),
@@ -562,6 +567,7 @@ final class MCPAppBridgeRequestRouter {
             noteID: noteID,
             expectedFingerprint: expected
         )
+        didConfirmChange(result.change)
         return ok([
             "triptych_id": .string(triptychID.uuidString.lowercased()),
             "change_id": .string(result.change.id.uuidString.lowercased()),

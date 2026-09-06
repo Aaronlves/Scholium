@@ -84,21 +84,7 @@ struct WorkspaceSettingsSaveResult: Equatable, Sendable {
     let targetIsCurrent: Bool
 }
 
-struct WorkspaceSettingsFeedback: Equatable, Identifiable, Sendable {
-    let id: UUID
-    let message: String
-    let kind: ScholiumFeedbackKind
 
-    init(
-        id: UUID = UUID(),
-        message: String,
-        kind: ScholiumFeedbackKind
-    ) {
-        self.id = id
-        self.message = message
-        self.kind = kind
-    }
-}
 
 enum WorkspaceSettingsMutationError: LocalizedError, Equatable {
     case triptychChanged
@@ -172,7 +158,6 @@ final class WorkspaceSettingsModel: ObservableObject {
     @Published private(set) var snapshot: WorkspaceSettingsSnapshot
     @Published private(set) var isRefreshing = false
     @Published private(set) var errorMessage: String?
-    @Published private(set) var feedbackItems: [WorkspaceSettingsFeedback] = []
     @Published var workspaceRecoveryMessage: String?
     @Published private(set) var activeTriptychServicesID: UUID?
     @Published private(set) var settingsReconciliationRequiredTriptychIDs: Set<UUID> = []
@@ -481,22 +466,6 @@ final class WorkspaceSettingsModel: ObservableObject {
 
     func openExternal(_ url: URL) {
         _ = capabilities?.machine.openExternal(url)
-    }
-
-    func presentFeedback(
-        _ message: String,
-        kind: ScholiumFeedbackKind
-    ) {
-        feedbackItems.removeAll {
-            $0.message == message && $0.kind == kind
-        }
-        feedbackItems.append(
-            WorkspaceSettingsFeedback(message: message, kind: kind)
-        )
-    }
-
-    func dismissFeedback(id: WorkspaceSettingsFeedback.ID) {
-        feedbackItems.removeAll { $0.id == id }
     }
 
     @discardableResult

@@ -1380,7 +1380,6 @@ enum ScholiumMetrics {
         static let refreshStatusSpacing = ScholiumGrid.foundationUnit * 1.75
         static let refreshStatusHorizontalInset = ScholiumGrid.foundationUnit * 2.5
         static let refreshStatusVerticalInset = ScholiumGrid.foundationUnit * 1.5
-        static let refreshStatusOuterInset = ScholiumGrid.foundationUnit * 2.5
         static let loadingOverlayInset = ScholiumGrid.foundationUnit * 7
         static let compactNoticeHorizontalInset = ScholiumGrid.foundationUnit * 4.5
         static let compactNoticeVerticalInset = ScholiumGrid.foundationUnit * 2.5
@@ -1540,9 +1539,6 @@ enum ScholiumMetrics {
         static let contentSpacing = ScholiumGrid.foundationUnit * 2.5
         static let detailSpacing = ScholiumGrid.foundationUnit * 0.5
         static let verticalInset = ScholiumGrid.foundationUnit * 2.5
-        static let transientToastMaximumWidth = ScholiumGrid.foundationUnit * 105
-        static let windowFeedbackMaximumWidth = ScholiumGrid.foundationUnit * 155
-        static let settingsFeedbackMaximumWidth = ScholiumGrid.foundationUnit * 140
     }
 
     enum Library {
@@ -1577,16 +1573,6 @@ enum ScholiumMetrics {
         /// system-owned.
         static let popoverWidth: CGFloat = 420
         static let popoverHeight: CGFloat = 360
-    }
-
-    enum ActivityNotificationStack {
-        /// The exact count remains textual; these layers only make plurality
-        /// visible before the researcher reads or focuses the control.
-        static let visibleLayerLimit = 3
-        static let collapsedLayerOffset = ScholiumGrid.foundationUnit
-        static let horizontalScaleStep: CGFloat = 0.025
-        static let maximumWidth: CGFloat = 520
-        static let expandedMaximumHeight: CGFloat = 360
     }
 
     enum Document {
@@ -2504,15 +2490,20 @@ private struct ScholiumPointerInteractionReader: NSViewRepresentable {
     }
 }
 
-private final class ScholiumPointerTrackingView: NSView {
+final class ScholiumPointerTrackingView: NSView {
     var stateDidChange: ((Bool, Bool) -> Void)?
 
     private var pointerIsInside = false
     private var pointerIsPressed = false
     private var localEventMonitor: Any?
+    private var controlTrackingArea: NSTrackingArea?
+    private weak var observedClipView: NSClipView?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        // AppKit's unclipped visibleRect may extend to the parent viewport.
+        // This observation-only view must track precisely its own control.
+        clipsToBounds = true
         setAccessibilityElement(false)
     }
 
@@ -2527,29 +2518,41 @@ private final class ScholiumPointerTrackingView: NSView {
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(
-            NSTrackingArea(
+        // inVisibleRect follows clipping and scrolling without replacing the
+        // tracking identity (and losing the matching exit event) on every layout.
+        if controlTrackingArea == nil {
+            let area = NSTrackingArea(
                 rect: .zero,
                 options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
                 owner: self
-            ))
+            )
+            controlTrackingArea = area
+            addTrackingArea(area)
+        }
+        observeViewport()
+        synchronizePointerWithWindow()
     }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         removeLocalEventMonitor()
-        guard window != nil else { return }
+        NotificationCenter.default.removeObserver(self)
+        observedClipView = nil
+        guard let window else { return }
+        observeViewport()
+        for name in [NSWindow.didResignKeyNotification, NSWindow.didBecomeKeyNotification] {
+            NotificationCenter.default.addObserver(self, selector: #selector(windowActivityChanged), name: name, object: window)
+        }
         localEventMonitor = NSEvent.addLocalMonitorForEvents(
-            matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]
+            matching: [.mouseMoved, .leftMouseDown, .leftMouseDragged, .leftMouseUp]
         ) { [weak self] event in
-            self?.handlePointerButtonEvent(event)
+            self?.handlePointerEvent(event)
             return event
         }
     }
 
     override func mouseEntered(with event: NSEvent) {
-        setState(isHovering: true, isPressed: pointerIsPressed)
+        synchronizePointerWithWindow()
     }
 
     override func mouseExited(with event: NSEvent) {
@@ -2558,13 +2561,19 @@ private final class ScholiumPointerTrackingView: NSView {
 
     func invalidate() {
         removeLocalEventMonitor()
+        NotificationCenter.default.removeObserver(self)
         stateDidChange = nil
     }
 
-    private func handlePointerButtonEvent(_ event: NSEvent) {
-        guard event.window === window else { return }
-        let isInside = bounds.contains(convert(event.locationInWindow, from: nil))
+    private func handlePointerEvent(_ event: NSEvent) {
+        guard let window, event.window === window else {
+            setState(isHovering: false, isPressed: false)
+            return
+        }
+        let isInside = bounds.intersection(visibleRect).contains(convert(event.locationInWindow, from: nil))
         switch event.type {
+        case .mouseMoved:
+            synchronizePointer(locationInWindow: window.isKeyWindow ? event.locationInWindow : nil)
         case .leftMouseDown:
             guard isInside else { return }
             setState(isHovering: true, isPressed: true)
@@ -2592,12 +2601,46 @@ private final class ScholiumPointerTrackingView: NSView {
         guard let localEventMonitor else { return }
         NSEvent.removeMonitor(localEventMonitor)
         self.localEventMonitor = nil
-        pointerIsInside = false
-        pointerIsPressed = false
+        setState(isHovering: false, isPressed: false)
+    }
+
+    private func observeViewport() {
+        let clip = enclosingScrollView?.contentView
+        guard observedClipView !== clip else { return }
+        if let observedClipView {
+            NotificationCenter.default.removeObserver(self, name: NSView.boundsDidChangeNotification, object: observedClipView)
+        }
+        observedClipView = clip
+        if let clip {
+            clip.postsBoundsChangedNotifications = true
+            NotificationCenter.default.addObserver(self, selector: #selector(viewportChanged), name: NSView.boundsDidChangeNotification, object: clip)
+        }
+    }
+
+    @objc private func viewportChanged(_ notification: Notification) {
+        synchronizePointerWithWindow()
+    }
+
+    @objc private func windowActivityChanged(_ notification: Notification) {
+        synchronizePointerWithWindow()
+    }
+
+    private func synchronizePointerWithWindow() {
+        synchronizePointer(locationInWindow: window?.isKeyWindow == true
+            ? window?.mouseLocationOutsideOfEventStream : nil)
+    }
+
+    /// Geometry is current truth; an old enter event is not durable hover state.
+    func synchronizePointer(locationInWindow: NSPoint?) {
+        let inside = window != nil && !isHiddenOrHasHiddenAncestor
+            && locationInWindow.map { bounds.intersection(visibleRect).contains(convert($0, from: nil)) } == true
+        setState(isHovering: inside, isPressed: inside && pointerIsPressed)
     }
 
     isolated deinit {
+        stateDidChange = nil
         removeLocalEventMonitor()
+        NotificationCenter.default.removeObserver(self)
     }
 }
 
@@ -2863,91 +2906,6 @@ enum ScholiumMotion {
         reduceMotion ? .identity : .symbolEffect(.replace)
     }
 
-    static func transientStatus(reduceMotion: Bool) -> Animation? {
-        reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.8)
-    }
-
-    static func transientStatusTransition(
-        reduceMotion: Bool,
-        edge: Edge = .bottom
-    ) -> AnyTransition {
-        guard !reduceMotion else { return .identity }
-        return .move(edge: edge).combined(with: .opacity)
-    }
-
-    static func activityNotificationStackExpansion(
-        reduceMotion: Bool
-    ) -> Animation? {
-        reduceMotion ? nil : .snappy(duration: 0.22, extraBounce: 0)
-    }
-
-    static func activityNotificationStackExpansionTransition(
-        reduceMotion: Bool
-    ) -> AnyTransition {
-        guard !reduceMotion else { return .identity }
-        return .offset(y: -ScholiumGrid.Spacing.inlineControlGap)
-            .combined(with: .opacity)
-    }
-}
-
-enum ScholiumFeedbackKind: Equatable, Sendable {
-    case confirmation
-    case information
-    case warning
-    case error
-
-    var dismissesAutomatically: Bool {
-        switch self {
-        case .confirmation, .information: true
-        case .warning, .error: false
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .confirmation: "checkmark.circle"
-        case .information: "info.circle"
-        case .warning: "exclamationmark.triangle"
-        case .error: "xmark.octagon"
-        }
-    }
-
-    var colorRole: ScholiumColorRole {
-        switch self {
-        case .confirmation: .confirmed
-        case .information: .information
-        case .warning: .attention
-        case .error: .destructive
-        }
-    }
-
-    var accessibilityLabel: String {
-        switch self {
-        case .confirmation:
-            String(localized: "Confirmation", table: "Localizable", bundle: .module)
-        case .information:
-            String(localized: "Information", table: "Localizable", bundle: .module)
-        case .warning:
-            String(localized: "Warning", table: "Localizable", bundle: .module)
-        case .error:
-            String(localized: "Error", table: "Localizable", bundle: .module)
-        }
-    }
-
-    var accessibilityIdentifierSuffix: String {
-        switch self {
-        case .confirmation: "confirmation"
-        case .information: "information"
-        case .warning: "warning"
-        case .error: "error"
-        }
-    }
-}
-
-enum ScholiumFeedbackPolicy {
-    /// Transient feedback is redundant, noncritical, and explicitly dismissible.
-    /// Warnings and errors never use this lifetime.
-    static let transientLifetime: Duration = .seconds(6)
 }
 
 extension View {

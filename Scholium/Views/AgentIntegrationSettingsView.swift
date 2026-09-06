@@ -5,6 +5,8 @@ import SwiftUI
 struct AgentIntegrationSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
 
+    @State private var copyStatus: String?
+
     private let cliURL = ScholiumAgentIntegrationResources.scholiumCLIURL()
     private let coreProtocolURL = try? ScholiumAgentIntegrationResources
         .coreProtocolSkillDirectoryURL()
@@ -45,6 +47,8 @@ struct AgentIntegrationSettingsView: View {
                             }
                         }
                         .disabled(cliURL == nil)
+
+                        if let copyStatus { Text(copyStatus).font(.caption).textSelection(.enabled) }
 
                         if cliURL == nil {
                             Text("Install the compatible Scholium CLI before copying a setup command.")
@@ -96,11 +100,9 @@ struct AgentIntegrationSettingsView: View {
         guard let cliURL else { return }
         let command = host.command(cliURL: cliURL)
         let copied = ScholiumPasteboardWriter.general.writeText(command)
-        settingsModel.presentFeedback(
-            copied ? "\(host.title) setup command copied"
-                : "\(host.title) setup command could not be copied.",
-            kind: copied ? .confirmation : .error
-        )
+        copyStatus = copied ? "\(host.title) setup command copied"
+            : "\(host.title) setup command could not be copied."
+
     }
 }
 

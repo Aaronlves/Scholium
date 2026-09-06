@@ -221,46 +221,42 @@ upper trailing corner, without a visible number, unread model, animation, or
 auto-open. Bell shape, dot shape, accessible state, and the popover's exact
 contents preserve meaning without relying on color.
 
-An Agent Change requiring inspection and the current Note's Settlement reminder
-may appear in the top-centered **Activity Notification Stack** over the window
-without reflow. One item shows its exact state, Note, and valid actions. With
-multiple items, the foremost real notification remains visible; hover or one
-explicit disclosure reveals the remaining real notifications downward. The
-disclosure names the exact count but never inserts a synthetic summary row. Each
-notification keeps at most one primary action beside one bounded More menu;
-copy is limited to its key state and Note and truncates before displacing
-operations. A Changed Since Settle reminder with Agent Changes may show
-**Review Changes**, which opens the exact temporary comparison directly. A
-non-Agent save never invents an Agent Change. Dismiss hides
-only the reminder; Settle Again and Mark Unsettled remain explicit researcher
-choices from the Settlement toolbar control. The stack excludes structural Attention and
-never becomes the complete queue.
-Reduce Motion preserves all content and controls without geometry animation.
+Background notifications use macOS UserNotifications for a newly confirmed
+external Agent Note mutation. The first eligible background event requests
+system authorization directly; there is no in-app permission pre-prompt or
+separate enable switch. Denial is respected without repeated requests.
+Foreground events update the bell and local Note state without banners or
+focus changes. Consecutive writes to one Note coalesce to the latest exact
+change; individual machine-local receipts remain inspectable.
 
-Window operation feedback follows consequence:
+System notification text is generic and excludes Note titles, paths, and source.
+Only opaque Triptych, change, Note, operation, and fingerprint identity supports
+click routing. Opening revalidates that exact receipt; missing or stale targets
+never silently select another change or authorize a source operation. Delivery
+failure, denied permission, and Focus never suppress necessary in-app state.
 
-- redundant Confirmation/Information may use one concise transient toast with
-  a bounded dwell and no redundant dismissal control;
-- Warning, Error, partial commit, and recovery use one persistent notice with
-  complete consequence and repair; and
-- field validation stays adjacent to its field.
-
-The operation owner retains Retry, Compare, or recovery. Presentation owns
-order, announcement, and dismissal only. Persistent feedback never times out.
+Changed Since Settle and structural Attention stay in the bell and their local
+context. Save, Conflict, and Recovery failures remain persistent beside their
+owners with valid repair actions. Other failed or partially committed operations
+remain in the originating window's Document region; Settings validation and
+copy acknowledgement stay beside their controls. Ordinary successful save,
+copy, creation, and refresh are silent. There is no global in-app notification
+overlay, priority stack, expiry timer, or duplicate delivery of the same event.
 
 The complete Notifications queue is a window-owned native popover. Sidebar
 opens Triptych scope; Inspector may open a current-Note subset. Popover closure
 does not dismiss an Agent Change or alter Settlement. The queue
 presents Agent Changes, then Settlement reminders, then grouped structural
 issues with exact reason, Note/path location, and only valid actions.
+Rows separate Note identity from the event or issue description; Agent Changes
+also show time and the current/earlier/unavailable revision state.
 Search/filter changes only this presentation.
 Stale or failed refresh retains last trustworthy content and Retry; empty and
 unavailable remain distinct.
 
-Scholium MCP produces no system notification and never activates the App or
-moves focus. In-app Agent Change routes carry exact Triptych, `change_id`, Note,
-operation, and fingerprint identity. Reopening waits for authoritative
-validation rather than guessing or dropping the route.
+Scholium MCP never activates the App or moves focus on its own. An explicit
+system-notification click may activate the exact Triptych and comparison;
+ordinary in-app routes retain the same exact-identity validation.
 
 Workspace switching stages the destination from trustworthy source and commits
 atomically after source safety. It never replaces the origin with a full-page

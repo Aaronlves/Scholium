@@ -141,7 +141,8 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                 openTriptychs: { [weak self] in
                     guard let self else { return [] }
                     return self.handles.values.map(\.assignment)
-                }
+                },
+                didConfirmChange: { SystemNotificationService.shared.receive($0) }
             )
             appBridge = try ScholiumAppBridgeServer(
                 applicationSupportURL: bridgeContainerURL

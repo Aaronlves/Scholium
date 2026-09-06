@@ -219,9 +219,15 @@ struct AgentChangesView: View {
                 selectedIndex = nil
                 review = nil
             } else {
-                selectedIndex = selectedID.flatMap { id in
-                    changes.firstIndex(where: { $0.id == id })
-                } ?? changes.indices.last
+                if let selectedID {
+                    selectedIndex = changes.firstIndex(where: { $0.id == selectedID })
+                    if selectedIndex == nil {
+                        review = nil
+                        errorMessage = String(localized: "This Agent Change is no longer available.")
+                    }
+                } else {
+                    selectedIndex = changes.indices.last
+                }
                 await reloadReview()
             }
         } catch {

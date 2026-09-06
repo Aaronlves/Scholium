@@ -12,6 +12,14 @@ final class ScholiumApplicationDelegate: NSObject, NSApplicationDelegate, Observ
     let windowLifecycleRegistry = ScholiumWindowLifecycleRegistry()
     private var terminationInFlight = false
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        SystemNotificationService.shared.start()
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        SystemNotificationService.shared.applicationBecameActive()
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard windowLifecycleRegistry.hasRegisteredWindows else {
             return .terminateNow
@@ -190,6 +198,7 @@ private struct ScholiumBootstrapWindowContent: View {
 
     var body: some View {
         ScholiumBootstrapWindowEnvironmentContent(route: $route)
+            .modifier(SystemNotificationRouting())
     }
 }
 
@@ -233,6 +242,7 @@ private struct ScholiumMainWindowContent: View {
 
     var body: some View {
         ScholiumMainWindowEnvironmentContent(route: $route)
+            .modifier(SystemNotificationRouting())
     }
 }
 
@@ -270,6 +280,7 @@ private struct ScholiumMainWindowReadyContent: View {
 private struct ScholiumSettingsWindowContent: View {
     var body: some View {
         ScholiumSettingsWindowEnvironmentContent()
+            .modifier(SystemNotificationRouting())
     }
 }
 
@@ -282,6 +293,7 @@ private struct ScholiumResearchRecordsWindowContent: View {
 
     var body: some View {
         ScholiumResearchRecordsWindowEnvironmentContent(route: $route)
+            .modifier(SystemNotificationRouting())
     }
 }
 
@@ -398,6 +410,11 @@ private struct ScholiumBootstrapRoot: View {
             isResolvingWorkspace = false
             openConfiguredWorkspaceIfAvailable()
         }
+        .onReceive(SystemNotificationService.shared.$notificationWindowID) { id in
+            guard route.purpose == .firstConfiguration, let id else { return }
+            didRouteToWorkspace = true
+            destinationWindowID = id
+        }
         .onChange(of: model.workspaceAssignment?.id) { _, _ in
             openConfiguredWorkspaceIfAvailable()
         }
@@ -448,6 +465,12 @@ private struct ScholiumBootstrapRoot: View {
     }
 
     private func openConfiguredWorkspaceIfAvailable() {
+        if route.purpose == .firstConfiguration,
+           let notificationWindowID = SystemNotificationService.shared.notificationWindowID {
+            didRouteToWorkspace = true
+            destinationWindowID = notificationWindowID
+            return
+        }
         guard !didRouteToWorkspace,
               let triptychID = model.workspaceAssignment?.id,
               model.isReadyToOpenWorkspace
@@ -747,6 +770,11 @@ private struct ScholiumWindowObservedRoot: View {
                     triptychID: triptychID
                 )
             }
+            .task(id: hasReadyWorkspace) {
+                guard hasReadyWorkspace,
+                      let notification = SystemNotificationService.shared.takeOpeningRoute(windowID: route.windowID) else { return }
+                await appState.openNotifiedAgentChange(notification)
+            }
             .task(id: presentationRouter.fileImport) {
                 await selectMarkdownFilesForImportIfRequested()
             }
@@ -760,6 +788,7 @@ private struct ScholiumWindowObservedRoot: View {
                 }
                 redirectUnconfiguredWindowToBootstrapIfNeeded()
                 appState.openRequestedInitialDocumentIfNeeded()
+
             }
             .task(id: destinationBootstrapWindowID) {
                 guard let destinationBootstrapWindowID else { return }
@@ -777,6 +806,13 @@ private struct ScholiumWindowObservedRoot: View {
             }
             .onAppear { [weak appState, weak windowCoordinator] in
                 guard let appState, let windowCoordinator else { return }
+                SystemNotificationService.shared.registerWindow(id: route.windowID) {
+                    [weak appState, weak windowCoordinator] notification in
+                    guard let appState, appState.workspaceAssignment?.id == notification.triptychID else { return false }
+                    windowCoordinator?.makeKeyAndOrderFront()
+                    Task { await appState.openNotifiedAgentChange(notification) }
+                    return true
+                }
                 if researchRecordsSourceToken == nil {
                     researchRecordsSourceToken = ResearchRecordsWindowCoordinator.shared
                         .registerWorkspace(windowID: route.windowID) {
@@ -812,6 +848,7 @@ private struct ScholiumWindowObservedRoot: View {
                 windowCoordinator.update(reduceMotion: reduceMotion)
             }
             .onDisappear {
+                SystemNotificationService.shared.unregisterWindow(id: route.windowID)
                 if let researchRecordsSourceToken {
                     ResearchRecordsWindowCoordinator.shared.unregisterWorkspace(
                         windowID: route.windowID,
@@ -1595,18 +1632,16 @@ private struct ScholiumQACommandContent: View {
             .keyboardShortcut("w", modifiers: [.command, .option, .control])
             .disabled(editorActions == nil)
         }
-        if qaEditorFaultsAreEnabled && qaFeedbackProofsAreEnabled {
+        if qaEditorFaultsAreEnabled && qaOperationProofsAreEnabled {
             Divider()
         }
-        if qaFeedbackProofsAreEnabled {
-            Button("Present Window Feedback Proof") {
-                appState?.presentFeedback(
-                    "QA transient confirmation",
-                    kind: .confirmation
-                )
-                appState?.presentFeedback(
-                    "QA persistent warning",
-                    kind: .warning
+        if qaOperationProofsAreEnabled {
+            Button("Present Operation Issue Proof") {
+                appState?.reportOperationIssue(
+                    "QA operation warning",
+                    kind: .warning,
+                    detail: "The file is preserved. This synthetic warning checks that a long explanation remains readable beside its operation and offers only the valid refresh action.",
+                    offersRefresh: true
                 )
             }
             .scholiumActivationPointer()
@@ -1619,10 +1654,10 @@ private struct ScholiumQACommandContent: View {
             && ProcessInfo.processInfo.arguments.contains("--scholium-editor-qa-faults")
     }
 
-    private var qaFeedbackProofsAreEnabled: Bool {
+    private var qaOperationProofsAreEnabled: Bool {
         Bundle.main.bundleIdentifier == "com.scholium.qa"
             && ProcessInfo.processInfo.arguments.contains(
-                "--scholium-feedback-proofs"
+                "--scholium-operation-proofs"
             )
     }
 }
@@ -1672,7 +1707,7 @@ private struct ScholiumCommands: Commands {
             attentionCommand
         }
         #if DEBUG
-        if qaEditorFaultsAreEnabled || qaFeedbackProofsAreEnabled {
+        if qaEditorFaultsAreEnabled || qaOperationProofsAreEnabled {
             CommandMenu("QA") {
                 qaCommand
             }
@@ -1686,10 +1721,10 @@ private struct ScholiumCommands: Commands {
             && ProcessInfo.processInfo.arguments.contains("--scholium-editor-qa-faults")
     }
 
-    private var qaFeedbackProofsAreEnabled: Bool {
+    private var qaOperationProofsAreEnabled: Bool {
         Bundle.main.bundleIdentifier == "com.scholium.qa"
             && ProcessInfo.processInfo.arguments.contains(
-                "--scholium-feedback-proofs"
+                "--scholium-operation-proofs"
             )
     }
     #endif
@@ -1839,13 +1874,13 @@ final class WindowModel: ObservableObject {
             isPresented: { [weak self] in self?.showSearchSurface == true },
             setPresented: { [weak self] in self?.showSearchSurface = $0 },
             reportInformation: { [weak self] message in
-                self?.presentFeedback(message, kind: .information)
+                self?.reportOperationIssue(message, kind: .information)
             },
             reportLoadFailure: { [weak self] message in
                 self?.vaultError = message
             },
             reportSaveFailure: { [weak self] message in
-                self?.presentFeedback(message, kind: .error)
+                self?.reportOperationIssue(message, kind: .error)
             },
             setAvailabilityStatus: { [weak self] status in
                 guard let self else { return }
@@ -1938,10 +1973,10 @@ final class WindowModel: ObservableObject {
                 self?.presentationRouter.alert = nil
             },
             reportError: { [weak self] message in
-                self?.presentFeedback(message, kind: .error)
+                self?.reportOperationIssue(message, kind: .error)
             },
             reportInformation: { [weak self] message in
-                self?.presentFeedback(message, kind: .information)
+                self?.reportOperationIssue(message, kind: .information)
             },
             refreshTransactionRecovery: { [weak self] in
                 await self?.refreshTransactionRecoveryRecords()
@@ -1958,7 +1993,7 @@ final class WindowModel: ObservableObject {
                 )
             },
             reportInformation: { [weak self] message in
-                self?.presentFeedback(message, kind: .information)
+                self?.reportOperationIssue(message, kind: .information)
             }
         )
     )
@@ -2027,9 +2062,7 @@ final class WindowModel: ObservableObject {
         shellState.hasCompletedInitialRestore
     }
 
-    var feedbackItems: [WindowFeedback] {
-        shellState.feedbackItems
-    }
+
 
     var colorScheme: WindowColorSchemeChoice {
         get { shellState.colorScheme }
@@ -2380,7 +2413,7 @@ final class WindowModel: ObservableObject {
                     }
                 },
                 reportInformation: { [weak self] message in
-                    self?.presentFeedback(message, kind: .information)
+                    self?.reportOperationIssue(message, kind: .information)
                 }
             )
         )
@@ -2846,10 +2879,10 @@ final class WindowModel: ObservableObject {
                     return
                 }
                 if let navigationError = error as? WindowNavigationError {
-                    self.presentFeedback(navigationError.localizedDescription, kind: .warning)
+                    self.reportOperationIssue(navigationError.localizedDescription, kind: .warning)
                 } else {
                     self.lastSaveError = error.localizedDescription
-                    self.presentFeedback(
+                    self.reportOperationIssue(
                         String(
                             localized: "The current note could not be saved, so Scholium kept it open. \(error.localizedDescription)",
                             table: "Localizable",
@@ -2888,13 +2921,13 @@ final class WindowModel: ObservableObject {
                     return
                 }
                 if let navigationError = error as? WindowNavigationError {
-                    self.presentFeedback(
+                    self.reportOperationIssue(
                         navigationError.localizedDescription,
                         kind: .warning
                     )
                 } else {
                     self.lastSaveError = error.localizedDescription
-                    self.presentFeedback(
+                    self.reportOperationIssue(
                         String(
                             localized: "The current note could not be saved, so Scholium kept it open. \(error.localizedDescription)",
                             table: "Localizable",
@@ -3022,7 +3055,7 @@ final class WindowModel: ObservableObject {
         guard let vault = workspaceAssignment?.vaults.values.first(where: {
             $0.id == snapshot.id.vaultID
         }) else {
-            presentFeedback(String(localized: "The selected vault is no longer available.", table: "Localizable", bundle: .module), kind: .warning)
+            reportOperationIssue(String(localized: "The selected vault is no longer available.", table: "Localizable", bundle: .module), kind: .warning)
             return
         }
         let reference = VaultNoteReference(
@@ -3060,7 +3093,7 @@ final class WindowModel: ObservableObject {
         guard let vault = workspaceAssignment?.vaults.values.first(where: {
             $0.id == note.vaultID
         }) else {
-            presentFeedback(
+            reportOperationIssue(
                 String(
                     localized: "The selected vault is no longer available.",
                     table: "Localizable",
@@ -3147,7 +3180,7 @@ final class WindowModel: ObservableObject {
 
     func requestDocumentMode(_ mode: NotePresentationMode) {
         guard mode == .read || canEditCurrentNote else {
-            presentFeedback(String(localized: "This note is read-only in Scholium.", table: "Localizable", bundle: .module), kind: .information)
+            reportOperationIssue(String(localized: "This note is read-only in Scholium.", table: "Localizable", bundle: .module), kind: .information)
             return
         }
         requestPresentationMode = mode
@@ -3550,7 +3583,7 @@ final class WindowModel: ObservableObject {
         do {
             stored = try await windowSessionPersistenceCoordinator.load(id: id)
         } catch {
-            presentFeedback(String(localized: "The saved window layout could not be restored. Scholium opened a clean window instead.", table: "Localizable", bundle: .module), kind: .warning)
+            reportOperationIssue(String(localized: "The saved window layout could not be restored. Scholium opened a clean window instead.", table: "Localizable", bundle: .module), kind: .warning)
             stored = nil
         }
         guard let stored else {
@@ -4077,10 +4110,8 @@ final class WindowModel: ObservableObject {
             warnings.append(presentationWarning)
         }
 
-        if warnings.isEmpty {
-            presentFeedback(successSummary)
-        } else {
-            presentFeedback(([successSummary] + warnings).joined(separator: " "), kind: .warning)
+        if !warnings.isEmpty {
+            reportOperationIssue(([successSummary] + warnings).joined(separator: " "), kind: .warning)
         }
     }
 
@@ -4504,7 +4535,7 @@ final class WindowModel: ObservableObject {
                 error.localizedDescription,
                 for: request
             )
-            presentFeedback(String(localized: "Could not open \(scope.rawValue): \(error.localizedDescription)", table: "Localizable", bundle: .module), kind: .error)
+            reportOperationIssue(String(localized: "Could not open \(scope.rawValue): \(error.localizedDescription)", table: "Localizable", bundle: .module), kind: .error)
         }
     }
 
@@ -4632,15 +4663,8 @@ final class WindowModel: ObservableObject {
                 return
             }
             expandFolderAncestors(folder.rawValue, vaultID: vault.id)
-            if !reportCommittedMutationWarnings(outcome) {
-                presentFeedback(
-                    String(
-                        localized: "Folder created: \(folder.rawValue)",
-                        table: "Localizable",
-                        bundle: .module
-                    )
-                )
-            }
+            reportCommittedMutationWarnings(outcome)
+
         } catch {
             reportCommittedMutationWarnings(
                 outcome,
@@ -4888,7 +4912,7 @@ final class WindowModel: ObservableObject {
             } catch is CancellationError {
                 return
             } catch {
-                presentFeedback(error.localizedDescription, kind: .error)
+                reportOperationIssue(error.localizedDescription, kind: .error)
             }
         }
     }
@@ -5005,22 +5029,8 @@ final class WindowModel: ObservableObject {
                 bundle: .module
             ))
         }
-        if warnings.isEmpty {
-            presentFeedback(
-                outcome.committedValue.didReplaceSource
-                    ? String(
-                        localized: "Interrupted save restored",
-                        table: "Localizable",
-                        bundle: .module
-                    )
-                    : String(
-                        localized: "Interrupted save recovery completed",
-                        table: "Localizable",
-                        bundle: .module
-                    )
-            )
-        } else {
-            presentFeedback(warnings.joined(separator: " "), kind: .warning)
+        if !warnings.isEmpty {
+            reportOperationIssue(warnings.joined(separator: " "), kind: .warning)
         }
         return outcome.committedValue
     }
@@ -5188,7 +5198,7 @@ final class WindowModel: ObservableObject {
         tabActivation: DocumentTabActivation = .place(.replaceSelected)
     ) {
         guard let location = notes.first(where: { $0.relativePath == path }) else {
-            presentFeedback(String(localized: "Note not found: \(path)", table: "Localizable", bundle: .module), kind: .warning)
+            reportOperationIssue(String(localized: "Note not found: \(path)", table: "Localizable", bundle: .module), kind: .warning)
             return
         }
         PerformanceProbe.shared.beginReadActivation(documentID: path)
@@ -5203,7 +5213,7 @@ final class WindowModel: ObservableObject {
         } else if let descriptor = selectionDescriptor(for: path) {
             documentController.selectDocument(descriptor)
         } else {
-            presentFeedback(
+            reportOperationIssue(
                 String(localized: "Note not found: \(path)", table: "Localizable", bundle: .module),
                 kind: .warning
             )
@@ -5461,7 +5471,7 @@ final class WindowModel: ObservableObject {
                     error.localizedDescription,
                     for: request
                 )
-                presentFeedback(
+                reportOperationIssue(
                     String(
                         localized: "Could not reveal the current note. \(error.localizedDescription)",
                         table: "Localizable",
@@ -5573,7 +5583,7 @@ final class WindowModel: ObservableObject {
             documentTabController.removeTabs(withIDs: matchingIDs)
             documentController.clearSelectionAfterClosingLastTab()
             reconcileDocumentSessionLeases()
-            presentFeedback(
+            reportOperationIssue(
                 String(
                     localized: "The deleted note was removed, but Scholium could not activate the adjacent tab. Choose a document to continue. \(error.localizedDescription)",
                     table: "Localizable",
@@ -5746,7 +5756,7 @@ final class WindowModel: ObservableObject {
     func openInternalLink(_ targetWithFragment: String, from sourcePath: String) {
         guard let sourceContext = activeDocumentContext(for: sourcePath),
               let graph = workspaceCatalog?.graph else {
-            presentFeedback(String(localized: "Connections are still refreshing. Try the link again shortly.", table: "Localizable", bundle: .module), kind: .information)
+            reportOperationIssue(String(localized: "Connections are still refreshing. Try the link again shortly.", table: "Localizable", bundle: .module), kind: .information)
             return
         }
         let parts = targetWithFragment.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
@@ -5788,7 +5798,7 @@ final class WindowModel: ObservableObject {
                     table: "Localizable",
                     bundle: .module
                 )
-            presentFeedback(
+            reportOperationIssue(
                 message,
                 kind: .warning
             )
@@ -5798,7 +5808,7 @@ final class WindowModel: ObservableObject {
             $0.reference.vaultID == destination.note.vaultID
                 && $0.reference.relativePath == destination.note.relativePath
         })?.reference else {
-            presentFeedback(String(localized: "The resolved note is not available in the current Triptych catalog.", table: "Localizable", bundle: .module), kind: .warning)
+            reportOperationIssue(String(localized: "The resolved note is not available in the current Triptych catalog.", table: "Localizable", bundle: .module), kind: .warning)
             return
         }
         Task { await openWorkspaceReference(reference, line: destination.line, mode: .read) }
@@ -5808,8 +5818,7 @@ final class WindowModel: ObservableObject {
     func saveMetadata(
         for note: WindowDocumentLocation,
         proposedFields: [String: YAMLValue],
-        expectedRevision: DocumentFingerprint?,
-        reportsSuccess: Bool = true
+        expectedRevision: DocumentFingerprint?
     ) async throws -> WindowDocumentLocation {
         guard let context = activeDocumentContext(for: note.relativePath) else {
             throw VaultRepositoryError.fileDoesNotExist(note.relativePath)
@@ -5829,14 +5838,7 @@ final class WindowModel: ObservableObject {
             )
             replaceCachedWorkspaceNote(savedSnapshot)
             let saved = WindowDocumentLocation.workspace(savedSnapshot)
-            let didWarn = reportCommittedMutationWarnings(outcome)
-            if !didWarn && reportsSuccess {
-                presentFeedback(String(
-                    localized: "Metadata saved",
-                    table: "Localizable",
-                    bundle: .module
-                ))
-            }
+            reportCommittedMutationWarnings(outcome)
             lastSaveError = nil
             return saved
         } catch {
@@ -5878,8 +5880,7 @@ final class WindowModel: ObservableObject {
         _ = try await saveMetadata(
             for: current,
             proposedFields: fields,
-            expectedRevision: currentSnapshot.metadata?.revision,
-            reportsSuccess: false
+            expectedRevision: currentSnapshot.metadata?.revision
         )
     }
 
@@ -5912,11 +5913,29 @@ final class WindowModel: ObservableObject {
         return (refreshed, metadata?.revision)
     }
 
-    func presentFeedback(
+    func openNotifiedAgentChange(_ route: AgentChangeNotificationRoute) async {
+        guard workspaceAssignment?.id == route.triptychID,
+              let capabilities = windowWorkspaceController.activeCapabilities else { return }
+        do {
+            let review = try await capabilities.agentCollaboration.agentChangeReview(id: route.changeID)
+            guard windowWorkspaceController.activeCapabilities?.runtimeIdentity == capabilities.runtimeIdentity,
+                  route.matches(review.change) else {
+                reportOperationIssue(String(localized: "This Agent Change is no longer available."), kind: .warning)
+                return
+            }
+            presentationRouter.present(.agentChanges(initialChangeID: route.changeID))
+        } catch {
+            reportOperationIssue(error.localizedDescription, kind: .error)
+        }
+    }
+
+    func reportOperationIssue(
         _ message: String,
-        kind: ScholiumFeedbackKind = .confirmation
+        kind: WindowOperationIssueKind,
+        detail: String? = nil,
+        offersRefresh: Bool = false
     ) {
-        shellState.presentFeedback(message, kind: kind)
+        shellState.reportOperationIssue(message, kind: kind, detail: detail, offersRefresh: offersRefresh)
     }
 
     /// Presents post-commit repair truth without turning a durable file
@@ -5976,7 +5995,12 @@ final class WindowModel: ObservableObject {
             messages.append(presentationWarning)
         }
         guard !messages.isEmpty else { return false }
-        presentFeedback(messages.joined(separator: " "), kind: .warning)
+        reportOperationIssue(
+            String(localized: "The File Operation Completed with Warnings"),
+            kind: .warning,
+            detail: messages.joined(separator: " "),
+            offersRefresh: !derivedRefreshWarnings.isEmpty || presentationWarning != nil
+        )
         return true
     }
 

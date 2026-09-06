@@ -10,12 +10,14 @@ final class ScholiumAppBridgeRequestRouter {
     init(
         runtime: WorkspaceRuntime,
         flushEditors: @escaping MCPAppBridgeRequestRouter.EditorFlusher,
-        openTriptychs: @escaping MCPAppBridgeRequestRouter.OpenTriptychs
+        openTriptychs: @escaping MCPAppBridgeRequestRouter.OpenTriptychs,
+        didConfirmChange: @escaping @MainActor (AgentChange) -> Void = { _ in }
     ) {
         mcpRouter = MCPAppBridgeRequestRouter(
             runtime: runtime,
             flushEditors: flushEditors,
-            openTriptychs: openTriptychs
+            openTriptychs: openTriptychs,
+            didConfirmChange: didConfirmChange
         )
     }
 

@@ -521,18 +521,16 @@ struct SettlementRequirementNotificationRow: View {
                     .scholiumForeground(.attention)
                     .frame(width: ScholiumGrid.Dimension.iconTrackWidth)
                     .accessibilityHidden(true)
-                HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(verbatim: requirement.title)
                         .font(ScholiumTypography.interface(.rowTitle))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                        .lineLimit(2)
+                        .truncationMode(.tail)
                         .layoutPriority(1)
-                    Text("·")
-                        .accessibilityHidden(true)
                     Text("Current Revision Not Settled")
                         .font(ScholiumTypography.interface(.small))
                         .scholiumForeground(.secondaryText)
-                        .lineLimit(1)
+                        .lineLimit(2)
                 }
                 Spacer(minLength: 0)
             }
@@ -586,23 +584,25 @@ struct AgentChangeNotificationRow: View {
                 .frame(width: ScholiumGrid.Dimension.iconTrackWidth)
                 .accessibilityHidden(true)
 
-                HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                    Text(verbatim: title)
-                        .font(ScholiumTypography.interface(.rowTitle))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .layoutPriority(1)
-                    Text("·")
-                        .accessibilityHidden(true)
-                    Text(
-                        AgentChangePresentation.stateTitle(
-                            for: change,
-                            endingRevisionState: endingRevisionState
-                        )
-                    )
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(verbatim: title)
+                            .font(ScholiumTypography.interface(.rowTitle))
+                            .lineLimit(2)
+                            .layoutPriority(1)
+                        Spacer(minLength: 4)
+                        Text(change.confirmedAt ?? change.createdAt, format: .dateTime.month(.abbreviated).day().hour().minute())
+                            .font(ScholiumTypography.interface(.small))
+                            .scholiumForeground(.secondaryText)
+                    }
+                    Text(verbatim: ScholiumL10n.localized(
+                        AgentChangePresentation.operationTitle(for: change.operation), locale: locale
+                    ) + " · " + ScholiumL10n.localized(
+                        AgentChangePresentation.stateTitle(for: change, endingRevisionState: endingRevisionState), locale: locale
+                    ))
+                        .font(ScholiumTypography.interface(.small))
+                        .scholiumForeground(.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 Spacer(minLength: 0)
@@ -676,18 +676,16 @@ struct AttentionQueueRow: View {
                     .frame(width: ScholiumGrid.Dimension.iconTrackWidth)
                     .accessibilityHidden(true)
 
-                    HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+                    VStack(alignment: .leading, spacing: 4) {
                         Text(verbatim: title)
                             .font(ScholiumTypography.interface(.rowTitle))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
+                            .lineLimit(2)
+                            .truncationMode(.tail)
                             .layoutPriority(1)
-                        Text("·")
-                            .accessibilityHidden(true)
                         Text(verbatim: AttentionIssueCopy.message(for: item, locale: locale))
                             .font(ScholiumTypography.interface(.small))
                             .scholiumForeground(.secondaryText)
-                            .lineLimit(1)
+                            .lineLimit(2)
                     }
 
                     Spacer(minLength: 0)

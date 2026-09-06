@@ -78,10 +78,29 @@
   distinct menu route. The panel adds no document padding or scroll headroom.
   Narrow reflow retains field identity, active
   options stay visible, and dismissal restores native editor focus.
-- Search, progress overlays, and notification banners share the native floating
-  material entry. Operation feedback and derived-refresh notices use one banner
-  component; transient lifetime, persistent dismissal, and queue ownership remain
-  with their existing policies. Inline integrity/recovery content stays opaque.
+- Notification row pointer tracking now clips its observation view to its own
+  bounds, intersects the visible region, retains tracking identity, and clears
+  published hover on detach/window changes. Viewport bounds changes reconcile
+  a stationary pointer after scrolling. On 2026-09-06, six focused tracking and
+  interaction tests passed. The native probe reproduced parent-sized visible
+  rectangles before clipping; QA scrolling no longer showed accumulated row
+  fills. The updated disposable QA remains open for researcher pointer acceptance.
+- Notification delivery now uses one App-level UserNotifications owner for
+  confirmed background MCP changes. First delivery requests system permission;
+  foreground activity remains in the bell/local Note state. Generic system text
+  carries no Note title, path, or source, and click routes validate exact receipts.
+  The top overlay, global priority/expiry stack, and Settings feedback queue are
+  removed. Operation failures remain persistent locally; ordinary success is quiet.
+  On 2026-09-06, 48 focused tests passed, including first authorization, denial,
+  concurrent delivery, foreground cancellation, coalescing, exact click routing,
+  and a memory-only cold-window handoff that cannot replay during restoration.
+  Disposable 500-Note QA checked light/dark, 500-point width, local warning
+  wrapping/actions, dismissal with editor focus, the bell, and Settings.
+  The complete verifier passed Core, Contracts, and Application but failed App
+  tests on editor, typography, scroll, and localization assertions. Two new raw
+  typography references were corrected and rechecked; other failures remain.
+  Real system permission/click delivery, full VoiceOver, and system accessibility
+  adaptations remain unverified. No release or human acceptance is claimed.
 - Editor and reader previews now use native glass containers with inert local
   WebKit content. Completion retains CodeMirror's keyboard and AX listbox while
   native rows project the results. A native parent separates their geometry and

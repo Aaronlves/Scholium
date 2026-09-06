@@ -152,10 +152,12 @@ struct MCPAppBridgeRequestRouterTests {
     func mutationsUseApplicationTransactions() async throws {
         let fixture = try await Fixture.make()
         defer { fixture.dispose() }
+        var deliveredChanges: [AgentChange] = []
         let router = MCPAppBridgeRequestRouter(
             runtime: fixture.runtime,
             flushEditors: { _ in },
-            openTriptychs: { [fixture] in [fixture.assignment] }
+            openTriptychs: { [fixture] in [fixture.assignment] },
+            didConfirmChange: { deliveredChanges.append($0) }
         )
         let triptychID = fixture.assignment.id.uuidString
 
@@ -210,6 +212,8 @@ struct MCPAppBridgeRequestRouterTests {
                 "content": .string("Must not commit"),
             ]
         ))
+        #expect(deliveredChanges.map(\.id) == [createChangeID, updateChangeID])
+        #expect(deliveredChanges.allSatisfy { $0.state == .confirmed })
         #expect(stale.error?.code == .staleRevision)
         #expect(try Data(contentsOf: createdURL).contains(Data("Revised A".utf8)))
 

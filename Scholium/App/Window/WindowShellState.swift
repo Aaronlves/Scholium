@@ -24,19 +24,29 @@ enum WindowColorSchemeChoice: String, CaseIterable {
     }
 }
 
-struct WindowFeedback: Equatable, Identifiable {
+enum WindowOperationIssueKind: Equatable, Sendable {
+    case information, warning, error
+}
+
+struct WindowOperationIssue: Equatable, Identifiable {
     let id: UUID
     let message: String
-    let kind: ScholiumFeedbackKind
+    let kind: WindowOperationIssueKind
+    let detail: String?
+    let offersRefresh: Bool
 
     init(
         id: UUID = UUID(),
         message: String,
-        kind: ScholiumFeedbackKind
+        kind: WindowOperationIssueKind,
+        detail: String? = nil,
+        offersRefresh: Bool = false
     ) {
         self.id = id
         self.message = message
         self.kind = kind
+        self.detail = detail
+        self.offersRefresh = offersRefresh
     }
 }
 
@@ -68,7 +78,7 @@ final class WindowShellState: ObservableObject {
         }
     }
     @Published private(set) var documentTextScale = ScholiumMetrics.Document.defaultTextScale
-    @Published private(set) var feedbackItems: [WindowFeedback] = []
+    @Published private(set) var operationIssues: [WindowOperationIssue] = []
     @Published private(set) var refreshStatusText: String?
     @Published private(set) var windowSessionPersistenceError: String?
 
@@ -143,7 +153,7 @@ final class WindowShellState: ObservableObject {
         }
         inspectorModesByWorkspace = resetInspectorModes
         inspector.mode = .overview
-        feedbackItems.removeAll()
+        operationIssues.removeAll()
     }
 
     func showResearchInspector(_ isVisible: Bool) {
@@ -182,25 +192,19 @@ final class WindowShellState: ObservableObject {
         documentTextScale = ScholiumMetrics.Document.defaultTextScale
     }
 
-    func presentFeedback(_ message: String, kind: ScholiumFeedbackKind) {
-        feedbackItems.removeAll {
-            $0.message == message && $0.kind == kind
-        }
-        feedbackItems.append(
-            WindowFeedback(message: message, kind: kind)
-        )
+    func reportOperationIssue(_ message: String, kind: WindowOperationIssueKind,
+                              detail: String? = nil, offersRefresh: Bool = false) {
+        guard !operationIssues.contains(where: {
+            $0.message == message && $0.kind == kind && $0.detail == detail
+                && $0.offersRefresh == offersRefresh
+        }) else { return }
+        operationIssues.append(WindowOperationIssue(
+            message: message, kind: kind, detail: detail, offersRefresh: offersRefresh
+        ))
     }
 
-    func dismissFeedback(id: WindowFeedback.ID) {
-        feedbackItems.removeAll { $0.id == id }
-    }
-
-    var transientFeedbackItems: [WindowFeedback] {
-        feedbackItems.filter { $0.kind.dismissesAutomatically }
-    }
-
-    var persistentFeedbackItems: [WindowFeedback] {
-        feedbackItems.filter { !$0.kind.dismissesAutomatically }
+    func dismissOperationIssue(id: UUID) {
+        operationIssues.removeAll { $0.id == id }
     }
 
     func setRefreshStatus(_ status: String?) {

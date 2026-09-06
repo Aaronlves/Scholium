@@ -833,7 +833,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
                 guard attempt == closeAttemptGeneration,
                       self.window === sender else { return }
                 if let warning = outcome.presentationWarning {
-                    appState.presentFeedback(
+                    appState.reportOperationIssue(
                         String(
                             localized: "The document was saved, but window state could not be saved. \(warning)",
                             table: "Localizable",
@@ -848,7 +848,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
                       self.window === sender else { return }
                 flushInFlight = false
                 appState.lastSaveError = error.localizedDescription
-                appState.presentFeedback(
+                appState.reportOperationIssue(
                     String(
                         localized: "Scholium kept this window open because the current note could not be saved. \(error.localizedDescription)",
                         table: "Localizable",
@@ -922,163 +922,6 @@ final class WindowAttachmentView: NSView {
         super.viewDidMoveToWindow()
         guard let window else { return }
         onWindowAttachment?(window)
-    }
-}
-
-/// Installs interactive SwiftUI content as the frontmost child of the native
-/// window frame. A top-edge notification may therefore cover transparent
-/// chrome without leaving AppKit above it in the pointer event path.
-private final class ScholiumWindowTopOverlayHostingView<Content: View>:
-    NSHostingView<Content> {
-    var fittingSizeDidChange: (() -> Void)?
-    private var lastReportedFittingSize = NSSize.zero
-
-    override var mouseDownCanMoveWindow: Bool { false }
-
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
-        true
-    }
-
-    override func layout() {
-        super.layout()
-        let currentFittingSize = fittingSize
-        guard currentFittingSize != lastReportedFittingSize else { return }
-        lastReportedFittingSize = currentFittingSize
-        DispatchQueue.main.async { [weak self] in
-            self?.fittingSizeDidChange?()
-        }
-    }
-}
-
-struct ScholiumWindowTopOverlayHost<Overlay: View>: NSViewRepresentable {
-    let topInset: CGFloat
-    let overlay: Overlay
-
-    init(
-        topInset: CGFloat,
-        @ViewBuilder overlay: () -> Overlay
-    ) {
-        self.topInset = topInset
-        self.overlay = overlay()
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    func makeNSView(context: Context) -> WindowAttachmentView {
-        context.coordinator.update(overlay: overlay, topInset: topInset)
-        let view = WindowAttachmentView()
-        view.onWindowAttachment = { [weak coordinator = context.coordinator] window in
-            coordinator?.attach(to: window)
-        }
-        return view
-    }
-
-    func updateNSView(_ nsView: WindowAttachmentView, context: Context) {
-        context.coordinator.update(overlay: overlay, topInset: topInset)
-        if let window = nsView.window {
-            context.coordinator.attach(to: window)
-        }
-    }
-
-    static func dismantleNSView(
-        _ nsView: WindowAttachmentView,
-        coordinator: Coordinator
-    ) {
-        coordinator.detach()
-    }
-
-    @MainActor
-    final class Coordinator {
-        private weak var window: NSWindow?
-        private weak var frameView: NSView?
-        private var hostingView: ScholiumWindowTopOverlayHostingView<Overlay>?
-        private var pendingTopInset: CGFloat = 0
-
-        func update(overlay: Overlay, topInset: CGFloat) {
-            pendingTopInset = topInset
-            if let hostingView {
-                hostingView.rootView = overlay
-                hostingView.invalidateIntrinsicContentSize()
-                hostingView.needsLayout = true
-                hostingView.superview?.needsLayout = true
-            } else {
-                let hostingView = ScholiumWindowTopOverlayHostingView(
-                    rootView: overlay
-                )
-                hostingView.translatesAutoresizingMaskIntoConstraints = true
-                hostingView.autoresizingMask = [.minXMargin, .maxXMargin]
-                hostingView.setContentHuggingPriority(.required, for: .horizontal)
-                hostingView.setContentHuggingPriority(.required, for: .vertical)
-                hostingView.setContentCompressionResistancePriority(
-                    .required,
-                    for: .horizontal
-                )
-                hostingView.setContentCompressionResistancePriority(
-                    .required,
-                    for: .vertical
-                )
-                hostingView.wantsLayer = true
-                hostingView.layer?.zPosition = 10_000
-                hostingView.fittingSizeDidChange = { [weak self] in
-                    self?.layoutHost()
-                }
-                self.hostingView = hostingView
-            }
-            layoutHost()
-            DispatchQueue.main.async { @MainActor [weak self] in
-                self?.layoutHost()
-            }
-        }
-
-        func attach(to window: NSWindow) {
-            guard let hostingView,
-                  let contentView = window.contentView else { return }
-            var frameView = contentView
-            while let superview = frameView.superview {
-                frameView = superview
-            }
-            if self.window === window,
-               self.frameView === frameView,
-               hostingView.superview === frameView {
-                layoutHost()
-                return
-            }
-            detachHost()
-            self.window = window
-            self.frameView = frameView
-            frameView.addSubview(hostingView, positioned: .above, relativeTo: nil)
-            layoutHost()
-        }
-
-        func detach() {
-            detachHost()
-            window = nil
-            frameView = nil
-        }
-
-        private func detachHost() {
-            hostingView?.removeFromSuperview()
-        }
-
-        private func layoutHost() {
-            guard let window, let frameView, let hostingView else { return }
-            hostingView.layoutSubtreeIfNeeded()
-            let fittingSize = hostingView.fittingSize
-            let topCenterInScreen = NSPoint(
-                x: window.frame.midX,
-                y: window.frame.maxY - pendingTopInset - (fittingSize.height / 2)
-            )
-            let topCenterInWindow = window.convertPoint(fromScreen: topCenterInScreen)
-            let topCenter = frameView.convert(topCenterInWindow, from: nil)
-            hostingView.frame = NSRect(
-                x: topCenter.x - (fittingSize.width / 2),
-                y: topCenter.y - (fittingSize.height / 2),
-                width: fittingSize.width,
-                height: fittingSize.height
-            )
-        }
     }
 }
 
