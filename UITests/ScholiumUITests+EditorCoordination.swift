@@ -243,9 +243,7 @@ extension ScholiumUITests {
         let field = app.descendants(matching: .any)["scholium.searchField"]
         let result = searchResult(named: "QA Autosave A")
         XCTAssertTrue(field.waitForExistence(timeout: 8))
-        let thisNote = app.buttons["scholium.searchScope.thisNote"]
-        XCTAssertTrue(thisNote.waitForExistence(timeout: 5))
-        thisNote.click()
+        selectResearchSearchScope("This Note", in: app)
         typeCommittedText("searchunsavedtoken", into: field, in: app)
         XCTAssertTrue(result.waitForExistence(timeout: 8))
         XCTAssertFalse(try source(at: noteURL).contains(token))

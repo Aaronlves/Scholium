@@ -64,12 +64,12 @@
 
 - The no-document state is one read-only VoiceOver group with no duplicate
   creation action.
-- Triptych navigation is one native vertical single-choice group with Up/Down
-  traversal, selected and inactive-window state, localized Note totals, and
-  unavailable-state semantics. Progressive loading preserves available Library
-  routes and focus. Workspace and Library rows follow the effective system
-  Source List size; enlarged interface text uses the native large row
-  presentation without clipping labels or symbols.
+- Triptych navigation is one native single-choice segmented control with
+  keyboard traversal, selected and inactive-window state, and unavailable-state
+  semantics. All segments retain full localized accessible names and Help when
+  compact presentation replaces text with symbols. Resizing preserves selected
+  workspace and focus. Library rows follow the effective system Source List
+  size; enlarged interface text uses native larger controls and rows.
 - Triptych/Outline toolbar controls expose their sidebar presentation and the
   collapsed state without requiring pointer input. Outline uses native tree
   hierarchy, disclosure and current-section semantics; navigation preserves
@@ -77,7 +77,7 @@
   order. Back/Forward remain in the Document toolbar when Sidebar is hidden.
 - Back/Forward, Sidebar, Inspector, Search, Notifications, filters, folder
   disclosure, Add, file actions, and hierarchy remain named and reachable
-  without hover. The nonzero Notifications dot has an exact accessible count;
+  without hover. The nonzero Notifications badge has an exact accessible count in native Help;
   bell and dot geometry preserve the visible distinction without color alone.
 - Triptych opening and creation remain named keyboard- and accessibility-
   reachable commands in the native File menu; the Window menu exposes open
@@ -185,6 +185,9 @@
 
 - Research Search and Document Find have distinct names, shortcuts, focus,
   scope, and results.
+- Quick and Advanced Search retain one query and visible scope across presentation
+  changes. The native field preserves composition and focus; opening Advanced
+  Search is explicit, and its window closes with its originating Workspace.
 - Search exposes provider, scope, query, completion/result selection, count,
   match reason, freshness, destination, and Explain Query. Invalid, ambiguous,
   provider mismatch, unavailable, partial, stale, and empty remain distinct.

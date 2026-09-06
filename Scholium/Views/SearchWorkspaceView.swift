@@ -5,7 +5,7 @@ import SwiftUI
 /// Immutable window projection and actions used by the Search presentation.
 /// Search state itself remains owned by `DiscoveryController`; persistence and
 /// presentation routing stay explicit at the `ContentView` composition root.
-struct SpotlightSearchContext {
+struct ResearchSearchContext {
     let completionContext: SearchCompletionContext
     let savedSearches: [SavedSearch]
     let savedSearchLoadFailure: String?
@@ -18,6 +18,7 @@ struct SpotlightSearchContext {
     let move: (UUID, Int) -> Void
     let delete: (UUID) -> Void
     let openRecord: (UUID, UUID?) -> Void
+    let openNote: (SearchResultSelection) -> Void
 }
 
 /// Search-local mapping from provider-owned availability into the shared
@@ -65,6 +66,17 @@ struct SearchStateBannerPresentation: Equatable, Sendable {
 }
 
 enum SearchStatePresentation {
+    /// Availability is evidence returned for a query, not the initial value of
+    /// an unqueried Search projection. Never display that default as a failure.
+    static func status(for state: DiscoverySearchState) -> SearchStateBannerPresentation? {
+        guard !state.criteria.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        if let issue = state.executionIssue { return executionIssue(issue) }
+        guard !state.isRunning, state.responseRequestID != nil,
+              state.criteria.scope != .thisNote,
+              state.criteria.providerSelection != .records else { return nil }
+        return note(state.availability.noteAvailability)
+    }
+
     static func executionIssue(
         _ issue: SearchExecutionIssue
     ) -> SearchStateBannerPresentation {
@@ -166,16 +178,28 @@ enum SearchStatePresentation {
     }
 }
 
-struct SpotlightSearchPanelView: View {
+struct ResearchSearchView<Library: View>: View {
     @ObservedObject private var controller: DiscoveryController
-    @Environment(\.scholiumReduceMotion) private var reduceMotion
-    @Environment(\.scholiumIncreasedContrast) private var increasedContrast
-    let context: SpotlightSearchContext
-    let maxPanelHeight: CGFloat?
-    @FocusState private var searchFocused: Bool
+    let context: ResearchSearchContext
+    @ObservedObject var searchController: WindowSearchController
+    let presentation: SearchPresentation
+    let library: Library
+    @State private var searchFocused = false
     @State private var searchTask: Task<Void, Never>?
-    @State private var compositionTask: Task<Void, Never>?
-    @State private var queryDraft = ""
+    private var queryDraft: String {
+        get { controller.search.criteria.query }
+        nonmutating set {
+            guard controller.search.criteria.query != newValue else { return }
+            if !isActive {
+                if isAdvanced { searchController.beginAdvanced() }
+                else { searchController.begin(.general) }
+            }
+            suppressedCompletionQuery = nil
+            controller.updateSearchQuery(newValue)
+            PerformanceProbe.shared.beginSearch(query: newValue.trimmingCharacters(in: .whitespacesAndNewlines))
+            scheduleSearch()
+        }
+    }
     @State private var showSaveSearch = false
     @State private var savedSearchName = ""
     @State private var renamingSearch: SavedSearch?
@@ -187,92 +211,54 @@ struct SpotlightSearchPanelView: View {
 
     init(
         controller: DiscoveryController,
-        context: SpotlightSearchContext,
-        maxPanelHeight: CGFloat? = nil
+        searchController: WindowSearchController,
+        context: ResearchSearchContext,
+        presentation: SearchPresentation,
+        @ViewBuilder library: () -> Library
     ) {
         self.controller = controller
+        self.searchController = searchController
         self.context = context
-        self.maxPanelHeight = maxPanelHeight
+        self.presentation = presentation
+        self.library = library()
     }
+
+    private var isActive: Bool { searchController.presentation == presentation }
+    private var isAdvanced: Bool { presentation == .advanced }
+    private var showsResults: Bool { isActive && (isAdvanced || isExpanded) }
 
     var body: some View {
         VStack(spacing: 0) {
             searchBar
-
-            if !visibleCompletions.isEmpty {
-                completionList
-            }
-
-            if let diagnostic = controller.search.diagnostics.first {
-                searchDiagnostic(diagnostic)
-            }
-
-            Divider()
-                .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
-
-            searchScopeBar
-
-            if let explanationText {
-                DisclosureGroup(
-                    "Explain Query",
-                    isExpanded: $showsQueryExplanation
-                ) {
-                    Text(explanationText)
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.secondaryText)
-                        .textSelection(.enabled)
-                        .padding(.top, ScholiumGrid.Spacing.labelAccessoryGap)
-                        .accessibilityLabel("Explain Query: \(explanationText)")
+            ZStack(alignment: .top) {
+                library
+                    .opacity(showsResults ? 0 : 1)
+                    .allowsHitTesting(!showsResults)
+                    .accessibilityHidden(showsResults)
+                if showsResults {
+                    VStack(spacing: 0) {
+                        searchScopeBar
+                        if !visibleCompletions.isEmpty { completionList }
+                        if let diagnostic = controller.search.diagnostics.first {
+                            searchDiagnostic(diagnostic)
+                        }
+                        searchAvailabilityBanner
+                        searchContent
+                    }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("scholium.searchWorkspace")
                 }
-                .font(
-                    ScholiumTypography.interface(
-                        .small,
-                        emphasis: .medium
-                    )
-                )
-                .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
-                .padding(.bottom, ScholiumMetrics.Search.explanationBottomInset)
-                .accessibilityIdentifier("scholium.searchExplanation")
             }
-
-            if isExpanded {
-                searchAvailabilityBanner
-
-                searchContent
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(
-            minWidth: 0,
-            idealWidth: ScholiumMetrics.Search.preferredWidth,
-            maxWidth: ScholiumMetrics.Search.maximumWidth
-        )
-        .frame(
-            height: isExpanded
-                ? expandedPanelHeight
-                : ScholiumMetrics.Search.collapsedHeight,
-            alignment: .top
-        )
-        .scholiumFloatingSurface(
-            in: RoundedRectangle(
-                cornerRadius: ScholiumShape.searchOverlayCornerRadius,
-                style: .continuous
-            )
-        )
-        .animation(
-            ScholiumMotion.searchExpansion(reduceMotion: reduceMotion),
-            value: isExpanded
-        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .accessibilityElement(children: .contain)
         .onAppear {
-            queryDraft = controller.search.criteria.query
-            searchFocused = true
             normalizeSelection()
+            if isActive, !queryDraft.isEmpty { scheduleSearch() }
         }
-        .onChange(of: controller.search.criteria.query) { _, value in
-            guard value != queryDraft, !searchFieldHasMarkedText else { return }
-            queryDraft = value
+        .onChange(of: controller.search.criteria.query) { _, _ in
             completionSelection = nil
-            suppressedCompletionQuery = nil
         }
         .onChange(of: controller.search.results) { _, _ in
             normalizeSelection()
@@ -300,12 +286,17 @@ struct SpotlightSearchPanelView: View {
                 .frame(width: 0, height: 0)
             }
         }
-        .onMoveCommand(perform: moveSelection)
+        .onChange(of: isActive) { _, active in
+            if !active { completionSelection = nil }
+            if active, !queryDraft.isEmpty, controller.search.results.isEmpty,
+               controller.search.recordResults.isEmpty { scheduleSearch() }
+        }
+        .onMoveCommand { if isActive { moveSelection($0) } }
         .onDisappear {
             searchTask?.cancel()
-            compositionTask?.cancel()
         }
         .onExitCommand {
+            guard isActive else { return }
             if !visibleCompletions.isEmpty {
                 suppressedCompletionQuery = queryDraft
                 completionSelection = nil
@@ -356,119 +347,100 @@ struct SpotlightSearchPanelView: View {
     }
 
     private var searchBar: some View {
-        HStack(spacing: ScholiumGrid.Spacing.nestedContentInset) {
-            Image(systemName: "magnifyingglass")
-                .font(ScholiumTypography.interface(.body))
-                .scholiumForeground(.secondaryText)
-                .accessibilityHidden(true)
-
-            TextField(
-                "",
+        HStack(spacing: 6) {
+            ResearchSearchField(
                 text: query,
-                prompt: Text("Spotlight Search")
-                    .foregroundStyle(ScholiumColorRole.secondaryText.color)
-            )
-                .textFieldStyle(.plain)
-                .font(ScholiumTypography.interface(.body))
-                .lineLimit(1)
-                .focused($searchFocused)
-                .accessibilityIdentifier("scholium.searchField")
-                .accessibilityLabel("Search")
-                .onKeyPress(.downArrow) {
-                    if !moveCompletion(.down) { moveSelection(.down) }
-                    return .handled
-                }
-                .onKeyPress(.upArrow) {
-                    if !moveCompletion(.up) { moveSelection(.up) }
-                    return .handled
-                }
-                .onKeyPress(.tab) {
-                    acceptCompletion(preferFirst: true) ? .handled : .ignored
-                }
-                .onSubmit {
-                    compositionTask?.cancel()
-                    if acceptCompletion(preferFirst: false) { return }
-                    let changed = applyQueryDraft()
-                    if changed || controller.search.isRunning
-                        || controller.search.selectedResultID == nil {
-                        scheduleSearch()
-                    } else {
-                        openSelectedResult()
-                    }
-                }
-
-            if !queryDraft.isEmpty {
-                Button {
-                    query.wrappedValue = ""
+                placeholder: "\(ScholiumL10n.string("Search")) · \(localizedScopeTitle(controller.search.criteria.scope))",
+                scope: scope,
+                provider: provider,
+                openAdvanced: isAdvanced ? nil : { searchController.beginAdvanced() },
+                isActive: isActive,
+                focusRequestID: isActive ? searchController.focusRequestID : nil,
+                replacementID: searchController.inputReplacementID,
+                beganEditing: {
                     searchFocused = true
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .scholiumForeground(.secondaryText)
-                }
-                .scholiumActivationPointer()
-                .scholiumButtonStyle(.plain)
-                .frame(
-                    minWidth: ScholiumMetrics.Accessibility.preferredCustomTarget,
-                    minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget
-                )
-                .contentShape(Rectangle())
-                .help("Clear Search")
-                .accessibilityLabel("Clear Search")
-            }
-
-            savedSearchesMenu
-
-            Button {
-                context.dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .scholiumForeground(.secondaryText)
-            }
-            .scholiumActivationPointer()
-            .scholiumButtonStyle(.borderless)
-            .frame(
-                minWidth: ScholiumMetrics.Accessibility.preferredCustomTarget,
-                minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget
+                },
+                endedEditing: { searchFocused = false },
+                command: handleSearchCommand
             )
-            .contentShape(Rectangle())
-            .keyboardShortcut(.cancelAction)
-            .help("Close Search")
-            .accessibilityLabel("Close")
-            .accessibilityIdentifier("scholium.closeSearchButton")
+            if isActive && !isAdvanced {
+                Button(action: context.dismiss) { Image(systemName: "xmark") }
+                    .scholiumButtonStyle(.borderless)
+                    .help("Close Search")
+                    .accessibilityLabel("Close Search")
+                    .accessibilityIdentifier("scholium.closeSearchButton")
+            }
         }
-        .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
-        .frame(height: ScholiumGrid.Dimension.regionHeaderHeight)
+        .padding(.horizontal, isAdvanced ? 24 : ScholiumMetrics.Library.contentInset)
+        .padding(.top, isAdvanced ? 20 : 10)
+        .padding(.bottom, isAdvanced ? 4 : 8)
+    }
+
+    private func handleSearchCommand(_ command: ResearchSearchField.Command) -> Bool {
+        switch command {
+        case .down:
+            if !moveCompletion(.down) { moveSelection(.down) }
+        case .up:
+            if !moveCompletion(.up) { moveSelection(.up) }
+        case .complete:
+            return acceptCompletion(preferFirst: true)
+        case .submit:
+            if acceptCompletion(preferFirst: false) { return true }
+            if controller.search.isRunning || controller.search.selectedResultID == nil {
+                scheduleSearch()
+            } else { openSelectedResult() }
+        case .cancel:
+            if !visibleCompletions.isEmpty {
+                suppressedCompletionQuery = queryDraft
+                completionSelection = nil
+            } else { context.dismiss() }
+        }
+        return true
     }
 
     private var searchScopeBar: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: ScholiumGrid.Spacing.nestedContentInset) {
-                scopePicker
-                    .frame(width: ScholiumMetrics.Search.scopeWidth)
-
-                providerPicker
-                    .frame(width: ScholiumMetrics.Search.scopeWidth)
-
-                Spacer(minLength: ScholiumGrid.Spacing.nestedContentInset)
-
-                searchSummary
-            }
-
-            VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                scopePicker
-                    .frame(maxWidth: .infinity)
-                providerPicker
-                    .frame(maxWidth: .infinity)
-                searchSummary
-                    .frame(maxWidth: .infinity, alignment: .leading)
+        HStack(spacing: 12) {
+            Text("\(localizedScopeTitle(controller.search.criteria.scope)) · \(providerTitle(controller.search.criteria.providerSelection))")
+                .lineLimit(1)
+            searchSummary
+            Spacer(minLength: 0)
+            if isAdvanced {
+                savedSearchesMenu
+                Button { showsQueryExplanation = true } label: {
+                    Image(systemName: "info.circle")
+                }
+                .buttonStyle(.borderless)
+                .help("Explain Query")
+                .accessibilityLabel("Explain Query")
+                .disabled(explanationText == nil)
+                .popover(isPresented: $showsQueryExplanation) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Explain Query").font(ScholiumTypography.interface(.sectionTitle))
+                        ScrollView {
+                            Text(explanationText ?? "")
+                                .font(ScholiumTypography.interface(.body))
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(maxHeight: 220)
+                    }
+                    .padding(20)
+                    .frame(width: 360)
+                    .accessibilityIdentifier("scholium.searchExplanation")
+                }
             }
         }
-        .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
-        .padding(.vertical, ScholiumMetrics.Search.scopeBarVerticalInset)
+        .font(ScholiumTypography.interface(.small))
+        .scholiumForeground(.secondaryText)
+        .controlSize(.small)
+        .tint(ScholiumColorRole.primaryText.color)
+        .padding(.horizontal, isAdvanced ? 24 : ScholiumMetrics.Library.contentInset)
+        .padding(.top, isAdvanced ? 8 : 0)
+        .padding(.bottom, 12)
     }
 
     private var visibleCompletions: [SearchCompletion] {
-        guard searchFocused,
+        guard isAdvanced, searchFocused,
               suppressedCompletionQuery != queryDraft,
               !searchFieldHasMarkedText else { return [] }
         return SearchCapabilities.current.completions(
@@ -539,10 +511,10 @@ struct SpotlightSearchPanelView: View {
     }
 
     private func apply(_ completion: SearchCompletion) {
-        queryDraft = completion.replacementText
+        searchController.replaceQuery(completion.replacementText)
+        scheduleSearch()
         completionSelection = nil
         suppressedCompletionQuery = completion.replacementText
-        _ = applyQueryDraft()
         searchFocused = true
     }
 
@@ -559,19 +531,8 @@ struct SpotlightSearchPanelView: View {
 
     @ViewBuilder
     private var searchAvailabilityBanner: some View {
-        if let executionIssue = controller.search.executionIssue {
-            operationalBanner(SearchStatePresentation.executionIssue(executionIssue))
-        } else if controller.search.criteria.scope == .thisNote
-                    || controller.search.criteria.providerSelection == .records {
-            EmptyView()
-        } else {
-            noteAvailabilityBanner(controller.search.availability.noteAvailability)
-        }
-    }
-
-    @ViewBuilder
-    private func noteAvailabilityBanner(_ availability: SearchAvailability) -> some View {
-        if let presentation = SearchStatePresentation.note(availability) {
+        if let presentation = SearchStatePresentation.status(for: controller.search),
+           !blocksResults || !controller.search.results.isEmpty || !controller.search.recordResults.isEmpty {
             operationalBanner(presentation)
         }
     }
@@ -599,89 +560,48 @@ struct SpotlightSearchPanelView: View {
         }
         .padding(.horizontal, ScholiumGrid.Spacing.nestedContentInset)
         .padding(.vertical, ScholiumMetrics.Search.availabilityVerticalInset)
-        .background(
-            ScholiumColorRole.raisedSurfaceBackground.color(
-                increasedContrast: increasedContrast
-            ),
-            in: ConcentricRectangle()
-        )
         .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
-    }
-
-    private var scopePicker: some View {
-        ScholiumSegmentedControl(
-            selection: scope,
-            options: SearchPresentationScope.visibleModes.map { mode in
-                ScholiumSegmentedControlOption(
-                    mode,
-                    title: localizedScopeTitle(mode),
-                    accessibilityIdentifier: "scholium.searchScope.\(mode.rawValue)"
-                )
-            },
-            label: String(localized: "Search scope"),
-            size: .compact,
-            accessibilityIdentifier: "scholium.searchMode"
-        )
-    }
-
-    private var providerPicker: some View {
-        ScholiumSegmentedControl(
-            selection: provider,
-            options: SearchProviderSelection.allCases.map { selection in
-                ScholiumSegmentedControlOption(
-                    selection,
-                    title: providerTitle(selection),
-                    accessibilityIdentifier:
-                        "scholium.searchProvider.\(selection.rawValue)"
-                )
-            },
-            label: String(localized: "Search provider"),
-            size: .compact,
-            accessibilityIdentifier: "scholium.searchProvider"
-        )
     }
 
     @ViewBuilder
     private var searchSummary: some View {
         if isExpanded, !controller.search.isRunning {
             Text(searchResultSummary)
-                .font(ScholiumTypography.interface(.small, emphasis: .medium))
+                .font(ScholiumTypography.interface(.small))
                 .scholiumForeground(.secondaryText)
-                .contentTransition(.numericText())
         }
-    }
-
-    private var expandedPanelHeight: CGFloat {
-        max(
-            ScholiumMetrics.Search.collapsedHeight,
-            min(
-                ScholiumMetrics.Search.expandedHeight,
-                maxPanelHeight ?? ScholiumMetrics.Search.expandedHeight
-            )
-        )
     }
 
     @ViewBuilder
     private var searchContent: some View {
-        if controller.search.isRunning {
-            ScholiumContentStateView(
-                "Searching…",
-                indicator: .progress
-            )
+        if !isExpanded {
+            ContentUnavailableView("Search Notes and Records", systemImage: "magnifyingglass",
+                                   description: Text("Enter a search term to begin."))
+                .accessibilityIdentifier("scholium.searchReady")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if controller.search.isRunning {
+            ProgressView("Searching…")
+                .controlSize(.small)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if !controller.search.diagnostics.isEmpty {
             Color.clear
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if suppressesNoMatchContent {
-            Color.clear
+        } else if blocksResults,
+                  let presentation = SearchStatePresentation.status(for: controller.search) {
+            ContentUnavailableView {
+                Label(presentation.title, systemImage: presentation.systemImage)
+            } description: {
+                Text(presentation.message)
+            } actions: {
+                if let action = presentation.action {
+                    Button(action.title) { Task { await context.refresh() } }
+                }
+            }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if controller.search.results.isEmpty
                     && controller.search.recordResults.isEmpty {
-            ScholiumContentStateView(
-                "No Search Results",
-                detail: Text("No results match the current query and scope."),
-                indicator: .symbol("magnifyingglass")
-            )
+            ContentUnavailableView("No Search Results", systemImage: "magnifyingglass",
+                                   description: Text("No results match the current query and scope."))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             results
@@ -694,17 +614,14 @@ struct SpotlightSearchPanelView: View {
             .isEmpty
     }
 
-    private var suppressesNoMatchContent: Bool {
-        guard controller.search.results.isEmpty,
-              controller.search.recordResults.isEmpty else { return false }
+    private var blocksResults: Bool {
+        guard controller.search.results.isEmpty, controller.search.recordResults.isEmpty else { return false }
         if controller.search.criteria.providerSelection == .records {
             return controller.search.executionIssue != nil
         }
         return SearchStatePresentation.suppressesNoMatchContent(
-            for: controller.search.availability,
-            scope: controller.search.criteria.scope,
-            hasExecutionIssue: controller.search.executionIssue != nil
-        )
+            for: controller.search.availability, scope: controller.search.criteria.scope,
+            hasExecutionIssue: controller.search.executionIssue != nil)
     }
 
     private var savedSearchesMenu: some View {
@@ -756,16 +673,10 @@ struct SpotlightSearchPanelView: View {
                 .scholiumActivationPointer()
             }
         } label: {
-            Image(systemName: "bookmark")
-                .scholiumForeground(.secondaryText)
+            Text("Saved Searches")
         }
-        .scholiumActivationPointer()
-        .scholiumButtonStyle(.borderless)
-        .frame(
-            minWidth: ScholiumMetrics.Accessibility.preferredCustomTarget,
-            minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget
-        )
-        .contentShape(Rectangle())
+        .menuStyle(.borderlessButton)
+        .fixedSize()
         .help("Saved Searches")
         .accessibilityLabel("Saved Searches")
     }
@@ -775,7 +686,7 @@ struct SpotlightSearchPanelView: View {
             get: { queryDraft },
             set: { value in
                 queryDraft = value
-                scheduleCompositionAwareQueryCommit(value)
+
             }
         )
     }
@@ -785,7 +696,7 @@ struct SpotlightSearchPanelView: View {
             get: { controller.search.criteria.scope },
             set: { value in
                 controller.selectSearchScope(value)
-                scheduleSearch()
+                if isActive { scheduleSearch() }
             }
         )
     }
@@ -795,14 +706,15 @@ struct SpotlightSearchPanelView: View {
             get: { controller.search.criteria.providerSelection },
             set: { value in
                 controller.selectSearchProvider(value)
-                scheduleSearch()
+                if isActive { scheduleSearch() }
             }
         )
     }
 
     private var results: some View {
         ScrollViewReader { proxy in
-            List {
+            List(selection: Binding(get: { controller.search.selectedResultID },
+                                    set: { controller.selectSearchResult($0) })) {
                 if !controller.search.results.isEmpty {
                     Section {
                         ForEach(controller.search.results) { result in
@@ -824,10 +736,13 @@ struct SpotlightSearchPanelView: View {
                 }
 
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .background(.clear)
+            .listStyle(.inset)
+            .scrollContentBackground(isAdvanced ? .automatic : .hidden)
             .accessibilityIdentifier("scholium.searchResults")
+            .onKeyPress(.return) {
+                openSelectedResult()
+                return .handled
+            }
             .onChange(of: controller.search.selectedResultID) { _, selected in
                 guard let selected else { return }
                 proxy.scrollTo(selected, anchor: .center)
@@ -843,24 +758,22 @@ struct SpotlightSearchPanelView: View {
                 + String(localized: "Line \(note.sourceLine)")
                 + (note.searchStructuredReasonDescription.map { ", \($0)" } ?? "")
         }
-        return Button {
+        return WorkspaceSearchResultRow(
+            result: result,
+            compact: !isAdvanced
+        )
+        .tag(resultID)
+        .onTapGesture {
             controller.selectSearchResult(resultID)
             open(.result(result))
-        } label: {
-            WorkspaceSearchResultRow(
-                result: result,
-                scope: controller.search.criteria.scope
-            )
         }
-        .scholiumActivationPointer()
-        .scholiumButtonStyle(.plain)
+        .accessibilityAction {
+            controller.selectSearchResult(resultID)
+            open(.result(result))
+        }
         .id(resultID)
-        .listRowInsets(searchResultInsets)
-        .listRowBackground(resultRowBackground(resultID))
-        .listRowSeparatorTint(resultSeparatorColor)
-        .accessibilityAddTraits(
-            controller.search.selectedResultID == resultID ? .isSelected : []
-        )
+        .listRowSeparator(.hidden)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint("Opens the selected Search result")
         .accessibilityIdentifier("scholium.searchResult." + result.id)
@@ -868,44 +781,42 @@ struct SpotlightSearchPanelView: View {
 
     private func recordSearchResultButton(_ result: RecordSearchResult) -> some View {
         let resultID = "record:\(result.recordID.uuidString.lowercased())"
-        return Button {
-            controller.selectSearchResult(resultID)
-            context.openRecord(result.recordID, result.matchedStepID)
-            context.dismiss()
-        } label: {
+        return HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "text.bubble")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text(result.question)
                         .font(ScholiumTypography.interface(.rowTitle))
                         .lineLimit(2)
                     Spacer()
-                    Text(result.lastSubstantiveAt, style: .relative)
-                        .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.secondaryText)
                 }
                 Text(result.snippet)
-                    .font(ScholiumTypography.scholarly(.body))
+                    .font(ScholiumTypography.interface(.small))
+                    .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
-                Text(result.matchedField == .question
-                    ? String(localized: "Matched question · Retrieval lead")
-                    : String(localized: "Matched step · Retrieval lead"))
-                    .font(ScholiumTypography.interface(.small, emphasis: .medium))
-                    .scholiumForeground(.secondaryText)
+                HStack {
+                    Text(result.matchedField == .question
+                        ? String(localized: "Matched question") : String(localized: "Matched step"))
+                    Text("·")
+                    Text(result.lastSubstantiveAt, style: .relative)
+                }
+                .font(ScholiumTypography.interface(.small))
+                .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
-            .frame(minHeight: ScholiumMetrics.Search.resultRowHeight)
         }
-        .scholiumActivationPointer()
-        .scholiumButtonStyle(.plain)
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+        .tag(resultID)
+        .onTapGesture { openRecordResult(result) }
+        .accessibilityAction { openRecordResult(result) }
         .id(resultID)
-        .listRowInsets(searchResultInsets)
-        .listRowBackground(resultRowBackground(resultID))
-        .listRowSeparatorTint(resultSeparatorColor)
-        .accessibilityAddTraits(
-            controller.search.selectedResultID == resultID ? .isSelected : []
-        )
+        .listRowSeparator(.hidden)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(result.question), Research Record")
         .accessibilityHint("Opens the selected Research Record")
         .accessibilityIdentifier(
@@ -913,35 +824,10 @@ struct SpotlightSearchPanelView: View {
         )
     }
 
-    private var searchResultInsets: EdgeInsets {
-        EdgeInsets(
-            top: ScholiumMetrics.Search.resultVerticalInset,
-            leading: ScholiumMetrics.Search.resultHorizontalInset,
-            bottom: ScholiumMetrics.Search.resultVerticalInset,
-            trailing: ScholiumMetrics.Search.resultHorizontalInset
-        )
-    }
-
-    private var resultSeparatorColor: Color {
-        ScholiumColorRole.separator.color(increasedContrast: increasedContrast)
-    }
-
-    @ViewBuilder
-    private func resultRowBackground(_ resultID: String) -> some View {
-        if controller.search.selectedResultID == resultID {
-            ZStack(alignment: .leading) {
-                ScholiumColorRole.documentBackground.color(
-                    increasedContrast: increasedContrast
-                )
-                Rectangle()
-                    .fill(ScholiumColorRole.accent.color(
-                        increasedContrast: increasedContrast
-                    ))
-                    .frame(width: ScholiumMetrics.Search.selectionIndicatorWidth)
-            }
-        } else {
-            Color.clear
-        }
+    private func openRecordResult(_ result: RecordSearchResult) {
+        controller.selectSearchResult("record:\(result.recordID.uuidString.lowercased())")
+        context.openRecord(result.recordID, result.matchedStepID)
+        if !isAdvanced { context.dismiss() }
     }
 
     private func searchSectionHeader(
@@ -978,25 +864,10 @@ struct SpotlightSearchPanelView: View {
         guard controller.search.diagnostics.isEmpty,
               let explanation = controller.search.explanation else { return nil }
         let scope = localizedScopeTitle(explanation.scope)
-        let providerName = providerTitle(controller.search.criteria.providerSelection)
-        let providerSource = explanation.providerWasExplicit ? "explicit" : "default"
-        let provider = "\(providerName) (\(providerSource) provider)"
+        let content = providerTitle(controller.search.criteria.providerSelection)
+        let heading = "\(scope) · \(content)"
         let clauses = explanation.clauses.map(explanationClause)
-        let conjunction: String = switch explanation.operator {
-        case .and: " and "
-        }
-        let query = clauses.isEmpty
-            ? "Search \(provider) in \(scope)."
-            : "Search \(provider) in \(scope) where "
-                + clauses.joined(separator: conjunction) + "."
-        let normalization = explanation.normalization
-            .map(localizedNormalization)
-            .joined(separator: "; ")
-        let limitations = explanation.limitations
-            .map(localizedLimitation)
-            .joined(separator: "; ")
-        return query + " Normalization: \(normalization). Ordering: "
-            + localizedOrdering(explanation.ordering) + ". Limits: \(limitations)."
+        return ([heading] + clauses).joined(separator: "\n")
     }
 
     private func explanationClause(_ clause: SearchExplanationClause) -> String {
@@ -1021,34 +892,10 @@ struct SpotlightSearchPanelView: View {
         searchTask?.cancel()
         controller.selectSearchResult(nil)
         searchTask = Task {
-            guard !Task.isCancelled else { return }
+            do { try await Task.sleep(for: .milliseconds(150)) } catch { return }
+            guard !Task.isCancelled, isActive else { return }
             await context.refresh()
         }
-    }
-
-    private func scheduleCompositionAwareQueryCommit(_ value: String) {
-        compositionTask?.cancel()
-        compositionTask = Task { @MainActor in
-            while searchFieldHasMarkedText {
-                do {
-                    try await Task.sleep(for: .milliseconds(10))
-                } catch {
-                    return
-                }
-            }
-            guard !Task.isCancelled, queryDraft == value else { return }
-            if applyQueryDraft() { scheduleSearch() }
-        }
-    }
-
-    @discardableResult
-    private func applyQueryDraft() -> Bool {
-        guard controller.search.criteria.query != queryDraft else { return false }
-        controller.updateSearchQuery(queryDraft)
-        PerformanceProbe.shared.beginSearch(
-            query: queryDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-        )
-        return true
     }
 
     private var searchFieldHasMarkedText: Bool {
@@ -1094,12 +941,12 @@ struct SpotlightSearchPanelView: View {
             "record:\($0.recordID.uuidString.lowercased())" == selected
         }) {
             context.openRecord(result.recordID, result.matchedStepID)
-            context.dismiss()
+            if !isAdvanced { context.dismiss() }
         }
     }
 
     private func open(_ result: SearchResultSelection) {
-        controller.requestOpen(result)
+        context.openNote(result)
     }
 
     private var allResultIDs: [String] {
@@ -1122,41 +969,6 @@ struct SpotlightSearchPanelView: View {
         case .thisNote: String(localized: "This Note")
         case .currentVault: String(localized: "This Vault")
         case .triptych: String(localized: "Triptych")
-        }
-    }
-
-    private func localizedNormalization(_ rule: SearchExplanationNormalization) -> String {
-        switch rule {
-        case .canonicalUnicodeCaseWhitespace:
-            "canonical Unicode, case, and whitespace"
-        case .lexicalUnicodeCaseDiacriticWhitespace:
-            "lexical Unicode, case, diacritic, and whitespace normalization"
-        case .cjkCharacterAndOverlappingBigramProjection:
-            "CJK character and overlapping-bigram projection with substring verification"
-        case .caseSensitiveTopLevelPropertyKey:
-            "case-sensitive Metadata keys"
-        }
-    }
-
-    private func localizedOrdering(_ ordering: SearchExplanationOrdering) -> String {
-        switch ordering {
-        case .noteExactIdentityThenBM25ThenTitleRolePath:
-            "exact Note identity, then one-corpus lexical relevance, then normalized title, vault role, and path"
-        case .recordQuestionThenStepThenTimeQuestionID:
-            "question matches, then step matches, then substantive time, question, and Record identity"
-        }
-    }
-
-    private func localizedLimitation(_ limitation: SearchExplanationLimitation) -> String {
-        switch limitation {
-        case .authorizedScopeOnly:
-            "authorized scope only"
-        case .retrievalLeadNotEvidence:
-            "retrieval leads are not evidence or researcher judgments"
-        case .noCrossProviderRanking:
-            "providers are not cross-ranked"
-        case .noteLinksDirectOnly:
-            "Note links are direct and never transitive"
         }
     }
 
@@ -1258,62 +1070,54 @@ private extension NoteSearchResult {
 
 private struct WorkspaceSearchResultRow: View {
     let result: SearchResult
-    let scope: SearchPresentationScope
+    let compact: Bool
 
     @ViewBuilder
     var body: some View {
         switch result {
-        case .note(let note): NoteSearchResultRow(note: note, scope: scope)
+        case .note(let note): NoteSearchResultRow(note: note, compact: compact)
         }
     }
 }
 
 private struct NoteSearchResultRow: View {
     let note: NoteSearchResult
-    let scope: SearchPresentationScope
+    let compact: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ScholiumMetrics.Search.savedSearchFieldSpacing) {
-            HStack {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "doc.text")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
                 Text(note.title)
                     .font(ScholiumTypography.interface(.rowTitle))
                     .lineLimit(1)
-                Spacer()
-                Text(note.vaultName)
+                if !note.hasYAMLMatch && !note.snippet.isEmpty {
+                    Text(highlightedSnippet)
+                        .font(ScholiumTypography.interface(.small))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(compact ? 1 : 2)
+                        .multilineTextAlignment(.leading)
+                }
+                Text("\(compact ? note.vaultName : location) · \(note.searchStructuredReasonDescription ?? rankDescription)")
                     .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.secondaryText)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .truncationMode(.middle)
             }
-
-            if !note.hasYAMLMatch {
-                Text(highlightedSnippet)
-                    .font(ScholiumTypography.scholarly(.body))
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-            }
-
-            HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                Text(note.vaultRole.displayName)
-                Text(parentPath)
-                if scope == .thisNote {
-                    Text(String(localized: "Line \(note.sourceRange?.line ?? note.sourceLine), Column \(note.sourceRange?.column ?? 1)"))
-                }
-                if note.hasYAMLMatch {
-                    Text("Matched source")
-                } else if let reason = note.searchStructuredReasonDescription {
-                    Text(reason)
-                        .lineLimit(1)
-                } else {
-                    Text(rankDescription)
-                }
-                Text("Retrieval lead")
-            }
-            .font(ScholiumTypography.interface(.small, emphasis: .medium))
-            .scholiumForeground(.secondaryText)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 6)
         .contentShape(Rectangle())
-        .frame(minHeight: ScholiumMetrics.Search.resultRowHeight)
+        .help("\(note.vaultName)/\(note.relativePath)")
+    }
+
+    private var location: String {
+        let parent = (note.relativePath as NSString).deletingLastPathComponent
+        let path = parent.isEmpty ? note.vaultName : "\(note.vaultName) / \(parent)"
+        guard let range = note.sourceRange else { return path }
+        return path + " · " + String(localized: "Line \(range.line), Column \(range.column)")
     }
 
     private var highlightedSnippet: AttributedString {
@@ -1327,15 +1131,9 @@ private struct NoteSearchResultRow: View {
             let upper = String.Index(utf16Offset: highlight.utf16UpperBound, in: note.snippet)
             guard let lower = AttributedString.Index(lower, within: result),
                   let upper = AttributedString.Index(upper, within: result) else { continue }
-            result[lower..<upper].backgroundColor =
-                ScholiumNativeColorRole.searchMatchHighlight.color
+            result[lower..<upper].font = ScholiumTypography.interface(.small, emphasis: .strong)
         }
         return result
-    }
-
-    private var parentPath: String {
-        let parent = (note.relativePath as NSString).deletingLastPathComponent
-        return parent.isEmpty ? String(localized: "Root") : parent
     }
 
     private var rankDescription: String {

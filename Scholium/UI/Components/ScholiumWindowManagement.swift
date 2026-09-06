@@ -421,6 +421,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     // `NSWindow.delegate` is not an ownership boundary. Keep SwiftUI's
     // delegate alive while forwarding optional callbacks, then restore it.
     nonisolated(unsafe) private var previousDelegate: (any NSWindowDelegate)?
+    private var advancedSearchWindow: AdvancedSearchWindowController?
     private var toolbarController: ScholiumWorkspaceToolbarController?
     private let loadingToolbar: NSToolbar
     private var colorScheme = WindowColorSchemeChoice.system
@@ -506,6 +507,9 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         if let window {
             ScholiumWindowAppearance.apply(colorScheme, to: window)
         }
+        if let searchWindow = advancedSearchWindow?.window {
+            ScholiumWindowAppearance.apply(colorScheme, to: searchWindow)
+        }
     }
 
     func activate(
@@ -515,6 +519,21 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
         registerLifecycle()
         attentionPresenter = showAttention
         researchRecordsPresenter = showResearchRecords
+    }
+
+    func presentAdvancedSearch<Content: View>(@ViewBuilder content: () -> Content) {
+        if advancedSearchWindow == nil {
+            advancedSearchWindow = AdvancedSearchWindowController(sourceWindow: window, content: content()) { [weak self] in
+                guard let self, self.appState.searchController.presentation == .advanced else { return }
+                self.appState.searchController.dismiss()
+            }
+        }
+        advancedSearchWindow?.present(appearance: colorScheme)
+    }
+
+    func closeAdvancedSearch() {
+        guard advancedSearchWindow?.window?.isVisible == true else { return }
+        advancedSearchWindow?.close()
     }
 
     /// Returns focus to this exact workspace after an auxiliary Records window
@@ -575,6 +594,9 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     }
 
     func detach() {
+        appState.searchController.dismiss()
+        closeAdvancedSearch()
+        advancedSearchWindow = nil
         closeAttemptGeneration &+= 1
         flushInFlight = false
         closeIsAuthorized = false
@@ -656,36 +678,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     }
 
     private func preferredAttentionRoute() -> AttentionPresentationRequest? {
-        let ledgerData = UserDefaults.standard.data(
-            forKey: AttentionPreferences.dismissalLedgerKey
-        ) ?? Data()
-        if appState.sidebarVisible {
-            return .queue(
-                anchor: .sidebar,
-                workspaceSlot: nil,
-                noteScope: nil
-            )
-        }
-
-        guard appState.researchInspectorVisible,
-              let note = appState.currentNote,
-              let vaultID = appState.currentDocumentVaultID
-        else { return nil }
-        let noteScope = VaultQualifiedNoteID(
-            vaultID: vaultID,
-            relativePath: note.relativePath
-        )
-        let ledger = AttentionPreferences.decodeLedger(ledgerData)
-        let noteItems = (appState.workspaceCatalog?.attention ?? []).filter {
-            $0.note.vaultID == noteScope.vaultID
-                && $0.note.relativePath == noteScope.relativePath
-        }
-        guard !ledger.visible(noteItems).isEmpty else { return nil }
-        return .queue(
-            anchor: .inspector,
-            workspaceSlot: nil,
-            noteScope: noteScope
-        )
+        .queue(anchor: .toolbar, workspaceSlot: nil, noteScope: nil)
     }
 
     private func registerQAFocusRequest() {
@@ -715,6 +708,7 @@ final class WorkspaceWindowCoordinator: NSObject, ObservableObject, NSWindowDele
     }
 
     private func setResearchInspectorVisible(_ visible: Bool) {
+        guard !visible || appState.canToggleResearchInspector else { return }
         guard let splitController else {
             pendingInspectorVisibility = visible
             return

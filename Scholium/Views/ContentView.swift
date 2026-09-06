@@ -93,7 +93,12 @@ struct ContentView: View {
         ) {
             LibrarySurface {
                 ZStack {
-                    SidebarView(controller: appState.discoveryController, context: sidebarContext)
+                    ResearchSearchSurface(controller: discoveryController, searchController: searchController,
+                                          shellState: shellState, workspaceProjectionController: workspaceProjectionController,
+                                          presentation: .sidebar, openRecord: openSearchRecord,
+                                          revealDocument: { windowCoordinator.makeKeyAndOrderFront() }) {
+                        SidebarView(controller: appState.discoveryController, context: sidebarContext)
+                    }
                         .opacity(shellState.sidebarContent == .triptych ? 1 : 0)
                         .allowsHitTesting(shellState.sidebarContent == .triptych)
                         .accessibilityHidden(shellState.sidebarContent != .triptych)
@@ -155,24 +160,32 @@ struct ContentView: View {
                 LoadingOverlay()
             }
         }
-        .overlay {
-            if appState.showSearchSurface {
-                SpotlightSearchOverlay(
-                    controller: appState.discoveryController,
-                    context: spotlightSearchContext
-                )
-                    .transition(
-                        ScholiumMotion.searchPresentationTransition(
-                            reduceMotion: reduceMotion
-                        )
-                    )
-                    .zIndex(20)
+        .focusedSceneValue(\.scholiumSearchActions, ScholiumSearchActions(
+            begin: { searchController.begin($0) },
+            advanced: { searchController.beginAdvanced() }
+        ))
+        .onChange(of: searchController.focusRequestID) { _, _ in
+            switch searchController.presentation {
+            case .sidebar:
+                _ = shellState.activateSidebar(.triptych)
+                windowCoordinator.actions.setLibraryVisible(true)
+                windowCoordinator.closeAdvancedSearch()
+            case .advanced:
+                windowCoordinator.presentAdvancedSearch {
+                    ResearchSearchSurface(controller: discoveryController, searchController: searchController,
+                                          shellState: shellState, workspaceProjectionController: workspaceProjectionController,
+                                          presentation: .advanced, openRecord: openSearchRecord,
+                                          revealDocument: { windowCoordinator.makeKeyAndOrderFront() }) {
+                        EmptyView()
+                    }
+                }
+            case .inactive:
+                break
             }
         }
-        .animation(
-            ScholiumMotion.searchPresentation(reduceMotion: reduceMotion),
-            value: appState.showSearchSurface
-        )
+        .onChange(of: searchController.presentation) { _, presentation in
+            if presentation == .inactive { windowCoordinator.closeAdvancedSearch() }
+        }
         .sheet(item: presentedSheet) { route in
             sheetContent(for: route)
                 .scholiumButtonStyle(.automatic)
@@ -219,22 +232,8 @@ struct ContentView: View {
         )
     }
 
-    private var spotlightSearchContext: SpotlightSearchContext {
-        SpotlightSearchContext(
-            completionContext: searchCompletionContext,
-            savedSearches: appState.searchController.savedSearches,
-            savedSearchLoadFailure: appState.searchController.savedSearchLoadFailure,
-            recoverSavedSearches: {
-                await appState.searchController.recoverSavedSearches()
-            },
-            refresh: { await appState.searchController.refresh() },
-            dismiss: { appState.searchController.dismiss() },
-            save: { appState.searchController.saveCurrent(named: $0) },
-            run: { appState.searchController.run($0) },
-            rename: { appState.searchController.rename($0, to: $1) },
-            move: { appState.searchController.move($0, by: $1) },
-            delete: { appState.searchController.delete($0) },
-            openRecord: { recordID, stepID in
+    private func openSearchRecord(_ recordID: UUID, _ stepID: UUID?) {
+
                 guard let triptychID = windowWorkspaceController.activeCapabilities?.id else {
                     return
                 }
@@ -251,38 +250,6 @@ struct ContentView: View {
                         sourceWindowID: appState.nativeWindowID
                     )
                 )
-            }
-        )
-    }
-
-    private var searchCompletionContext: SearchCompletionContext {
-        let profiles: [SchemaProfileID]
-        switch appState.discoveryController.search.criteria.scope {
-        case .currentVault:
-            profiles = [NoteMetadataCatalog.profile(for: shellState.selectedWorkspace)]
-        case .thisNote:
-            profiles = []
-        case .triptych:
-            profiles = [.analysis, .topicMarkdown, .draftProject]
-        }
-        let managedContracts = profiles.flatMap {
-            workspaceProjectionController.metadataCatalog.contracts(for: $0)
-        }
-        let authoredContracts = profiles.flatMap {
-            PropertyContractCatalog.contracts(for: $0)
-        }
-        let contracts = managedContracts + authoredContracts
-        let keys = Array(Set(contracts.map(\.canonicalKey))).sorted()
-        let values = Dictionary(
-            contracts.compactMap { contract in
-                contract.allowedValues.map { (contract.canonicalKey, $0) }
-            },
-            uniquingKeysWith: { lhs, rhs in Array(Set(lhs + rhs)).sorted() }
-        )
-        return SearchCompletionContext(
-            propertyKeys: keys,
-            propertyValues: values
-        )
     }
 
     private var researchInspectorContentContext: ResearchInspectorContentContext {
@@ -559,10 +526,7 @@ struct ContentView: View {
             ? appState.selectedDocumentPath
             : nil
         return SidebarContext(
-            triptychName: appState.workspaceAssignment?.triptych.name ?? "Not Selected",
-            attentionTotal: sidebarAttentionTotal,
             workspaceNoteCounts: sidebarWorkspaceNoteCounts,
-            attentionError: sidebarNotificationError,
             treeProjection: appState.libraryTreeProjection(
                 preorderedNotes: preorderedNotes,
                 folderRelativePaths: folders
@@ -593,23 +557,6 @@ struct ContentView: View {
                 propertyKeys: propertyFilterOptions.keys,
                 propertyValues: propertyFilterOptions.valuesByKey
             ),
-            attentionPopoverSession: appState.attentionPopoverSession,
-            searchIsPresented: appState.showSearchSurface,
-            openSearch: {
-                appState.searchController.begin(.general)
-            },
-            openAttention: {
-                windowCoordinator.actions.showAttention(
-                    .queue(
-                        anchor: .sidebar,
-                        workspaceSlot: nil,
-                        noteScope: nil
-                    )
-                )
-            },
-            retryAttention: {
-                Task { await appState.refreshWorkspaceCatalog() }
-            },
             openNote: { appState.requestOpenNote($0, disposition: $1) },
             selectTriptychWorkspace: { appState.requestTriptychWorkspace($0) },
             createUntitledNote: {
@@ -655,40 +602,6 @@ struct ContentView: View {
             selectSortOrder: { appState.discoveryController.selectSortOrder($0) },
             showError: { appState.reportOperationIssue($0, kind: .error) }
         )
-    }
-
-    private var sidebarAttentionTotal: Int? {
-        let settlementCount = researchController.researchSnapshot?
-            .settlementRequirements.count
-        let issueCount = AttentionPreferences.visibleTotalCount(
-            catalog: appState.workspaceCatalog,
-            assignment: appState.workspaceAssignment,
-            dismissalLedgerData: attentionDismissalLedgerData
-        )
-        let agentChangeCount = researchController.agentChanges?.count
-        let knownTotal = (settlementCount ?? 0)
-            + (issueCount ?? 0)
-            + (agentChangeCount ?? 0)
-        if knownTotal > 0 { return knownTotal }
-        guard settlementCount != nil, issueCount != nil, agentChangeCount != nil else {
-            return nil
-        }
-        return 0
-    }
-
-    private var sidebarNotificationError: String? {
-        if appState.workspaceCatalog == nil, let error = appState.workspaceCatalogError {
-            return error
-        }
-        if researchController.agentChanges == nil,
-           let error = researchController.agentChangesError {
-            return error
-        }
-        if researchController.researchSnapshot == nil,
-           let error = researchController.errorMessage {
-            return error
-        }
-        return nil
     }
 
     private var sidebarWorkspaceNoteCounts: SidebarWorkspaceNoteCounts {
@@ -1035,58 +948,6 @@ private struct ScholiumNoDocumentDetailView: View {
     }
 }
 
-private struct SpotlightSearchOverlay: View {
-    @ObservedObject private var controller: DiscoveryController
-    let context: SpotlightSearchContext
-
-    init(controller: DiscoveryController, context: SpotlightSearchContext) {
-        self.controller = controller
-        self.context = context
-    }
-
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .top) {
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture(perform: context.dismiss)
-                    .accessibilityHidden(true)
-
-                SpotlightSearchPanelView(
-                    controller: controller,
-                    context: context,
-                    maxPanelHeight: max(
-                        ScholiumMetrics.Search.collapsedHeight,
-                        geometry.size.height
-                            - (ScholiumMetrics.Search.responsiveMargin * 2)
-                    )
-                )
-                    .frame(width: panelWidth(for: geometry.size.width))
-                    .padding(.horizontal, ScholiumMetrics.Search.responsiveMargin)
-                    .padding(.top, ScholiumMetrics.Search.responsiveMargin)
-            }
-        }
-        .accessibilityAddTraits(.isModal)
-        .accessibilityValue(searchPresentationValue)
-        .accessibilityIdentifier("scholium.searchWorkspace")
-    }
-
-    private func panelWidth(for availableWidth: CGFloat) -> CGFloat {
-        min(
-            ScholiumMetrics.Search.preferredWidth,
-            max(
-                320,
-                availableWidth - (ScholiumMetrics.Search.responsiveMargin * 2)
-            )
-        )
-    }
-
-    private var searchPresentationValue: String {
-        controller.search.criteria.query
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .isEmpty ? "Collapsed" : "Expanded"
-    }
-}
 
 // MARK: - Loading Overlay
 

@@ -447,9 +447,6 @@ struct NoteContentView: View {
             }
         }
         .scholiumSurface(.document)
-        .focusedSceneValue(\.scholiumSearchActions, ScholiumSearchActions { invocation in
-            actions.beginSearch(invocation)
-        })
         .focusedSceneValue(
             \.scholiumEditorActions,
             ScholiumFocusedEditorActions(

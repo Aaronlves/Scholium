@@ -177,7 +177,7 @@ struct WindowControllerArchitectureTests {
         #expect(sessionSource.contains("projectionController.$state"))
     }
 
-    @Test("Visible Sidebar always owns the stable Triptych Attention route")
+    @Test("Toolbar owns Triptych Notifications independently of pane visibility")
     func stableTriptychAttentionRoute() throws {
         let repositoryRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -196,10 +196,10 @@ struct WindowControllerArchitectureTests {
         ))
         let route = source[start.lowerBound ..< end.lowerBound]
 
-        #expect(route.contains("if appState.sidebarVisible"))
-        #expect(route.contains("anchor: .sidebar"))
+        #expect(!route.contains("appState.sidebarVisible"))
+        #expect(route.contains("anchor: .toolbar"))
         #expect(route.contains("workspaceSlot: nil"))
-        #expect(route.contains("anchor: .inspector"))
+        #expect(!route.contains("anchor: .inspector"))
         #expect(!route.contains("visibleTotalCount"))
         #expect(!route.contains("count > 0"))
     }
@@ -1324,7 +1324,7 @@ struct WindowControllerArchitectureTests {
             contentsOf: repositoryRoot.appendingPathComponent("Scholium/Views/ContentView.swift"),
             encoding: .utf8
         )
-        #expect(contentView.contains("context: spotlightSearchContext"))
+        #expect(contentView.contains("ResearchSearchSurface("))
         #expect(contentView.contains("windowCoordinator.actions.showAttention"))
         #expect(!contentView.contains("WorkspaceSetupView"))
         #expect(contentView.contains("context: sidebarContext"))

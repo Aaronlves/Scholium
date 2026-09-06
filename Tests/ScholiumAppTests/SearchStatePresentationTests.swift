@@ -100,10 +100,28 @@ struct SearchStatePresentationTests {
             ),
             encoding: .utf8
         )
-        #expect(source.contains("ScholiumContentStateView("))
+        #expect(source.contains("ContentUnavailableView("))
         #expect(source.contains("\"No Search Results\""))
         #expect(source.contains("No results match the current query and scope."))
-        #expect(!source.contains("ContentUnavailableView"))
+        #expect(source.contains("List(selection:"))
+        #expect(!source.contains("listRowBackground"))
+    }
+
+    @Test("Unqueried and cleared Search does not claim its default index is unavailable")
+    func availabilityRequiresQueryEvidence() throws {
+        var state = DiscoverySearchState()
+        #expect(SearchStatePresentation.status(for: state) == nil)
+        state.criteria.query = "fixture"
+        #expect(SearchStatePresentation.status(for: state) == nil)
+        state.responseRequestID = UUID()
+        #expect(try #require(SearchStatePresentation.status(for: state)).meaning == .unavailable)
+        state.criteria.query = "  "
+        #expect(SearchStatePresentation.status(for: state) == nil)
+        state.criteria.query = "fixture"
+        state.isRunning = true
+        #expect(SearchStatePresentation.status(for: state) == nil)
+        state.executionIssue = .failed("read failed")
+        #expect(try #require(SearchStatePresentation.status(for: state)).meaning == .error)
     }
 
     @Test("Execution prerequisites remain unavailable while operation failures can retry")

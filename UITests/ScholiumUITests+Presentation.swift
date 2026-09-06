@@ -15,13 +15,12 @@ extension ScholiumUITests {
                 "scholium.noteRow.QA Autosave A.md"
             ].waitForExistence(timeout: 5))
         let wordmark = app.descendants(matching: .any)["scholium.wordmark"]
-        let search = app.buttons["scholium.sidebarSearch"]
-        let notifications = app.buttons["scholium.triptychNotifications"]
-        XCTAssertTrue(wordmark.waitForExistence(timeout: 5))
+        let search = app.searchFields["scholium.searchField"]
+        let notifications = app.buttons["Open Triptych Notifications"]
+        XCTAssertFalse(wordmark.exists)
         XCTAssertTrue(search.waitForExistence(timeout: 5))
         XCTAssertTrue(notifications.waitForExistence(timeout: 5))
-        XCTAssertLessThan(wordmark.frame.maxX, search.frame.minX)
-        XCTAssertLessThan(search.frame.maxX, notifications.frame.minX)
+        XCTAssertLessThan(notifications.frame.maxY, search.frame.minY)
         XCTAssertFalse(
             app.descendants(matching: .any)["scholium.triptychManagement"].exists
         )
@@ -51,7 +50,7 @@ extension ScholiumUITests {
 
     @MainActor
     func testNotificationsEmptyStateKeepsIndicatorWithCopy() {
-        let notifications = app.buttons["scholium.triptychNotifications"].firstMatch
+        let notifications = app.buttons["Open Triptych Notifications"].firstMatch
         XCTAssertTrue(notifications.waitForExistence(timeout: 8))
         notifications.click()
 
@@ -168,12 +167,37 @@ extension ScholiumUITests {
     }
 
     @MainActor
+    func testNativeToolbarAvailabilityFollowsCurrentDocument() throws {
+        waitForCurrentDocumentSurface()
+        let topics = app.radioButtons["Topics"].firstMatch
+        XCTAssertTrue(topics.waitForExistence(timeout: 5))
+        topics.click()
+        let outline = sidebarModeControl("Outline")
+        let inspector = app.toolbars.buttons["Show Research Inspector"].firstMatch
+        XCTAssertTrue(waitUntil(timeout: 5) { !outline.isEnabled && !inspector.isEnabled })
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.noteList"].exists)
+        app.menuBars.menuBarItems["View"].click()
+        XCTAssertFalse(app.menuItems["Outline"].isEnabled)
+        XCTAssertFalse(app.menuItems["Show Research Inspector"].isEnabled)
+        app.typeKey(.escape, modifierFlags: [])
+        XCTAssertFalse(outline.isEnabled)
+        XCTAssertFalse(inspector.isEnabled)
+        openNote("QA Topic.md", expectedTitle: "QA Topic", in: app.windows.firstMatch)
+        XCTAssertTrue(waitUntil(timeout: 5) { outline.isEnabled && inspector.isEnabled })
+        inspector.click()
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.inspectorMode"].waitForExistence(timeout: 5))
+        app.toolbars.buttons["Hide Research Inspector"].firstMatch.click()
+        outline.click()
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.documentOutline"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
     func testNativeSidebarToggleAndLibraryTriptychIdentityRemainAvailable() throws {
         waitForCurrentDocumentSurface()
         let window = app.windows.firstMatch
         let originalFrame = window.frame
         let wordmark = app.descendants(matching: .any)["scholium.wordmark"]
-        XCTAssertTrue(wordmark.waitForExistence(timeout: 5))
+        XCTAssertFalse(wordmark.exists)
         let hideSidebar = sidebarModeControl("Triptych")
         XCTAssertTrue(hideSidebar.waitForExistence(timeout: 5))
         let librarySurface = app.descendants(matching: .any)["scholium.librarySurface"]
@@ -247,68 +271,22 @@ extension ScholiumUITests {
         add(shellScreenshot)
     }
 
-    /// The Triptych selector is a native source list: pointer selection remains
-    /// quiet, then Down Arrow switches to its visible keyboard-focus
-    /// presentation and publishes the next workspace.
+    /// Native tabs retain the destination while Library navigation stays native.
     @MainActor
     func testNativeTriptychWorkspaceNavigatorUsesSelectionAndArrowKeys() throws {
         waitForCurrentDocumentSurface()
-
-        let analyses = app.descendants(matching: .any)[
-            "scholium.vault.paper_analysis"
-        ].firstMatch
-        let topics = app.descendants(matching: .any)[
-            "scholium.vault.topic_knowledge"
-        ].firstMatch
-        let workspaceTable = app.tables["scholium.workspaceNavigator"].firstMatch
-        let analysesRow = workspaceTable.descendants(matching: .tableRow)
-            .containing(.any, identifier: "scholium.vault.paper_analysis")
-            .firstMatch
-        let topicsRow = workspaceTable.descendants(matching: .tableRow)
-            .containing(.any, identifier: "scholium.vault.topic_knowledge")
-            .firstMatch
-        XCTAssertTrue(analyses.waitForExistence(timeout: 5))
+        let navigator = app.descendants(matching: .any)["scholium.workspaceNavigator"].firstMatch
+        let topics = navigator.descendants(matching: .any)["Topics"].firstMatch
         XCTAssertTrue(topics.waitForExistence(timeout: 5))
-        XCTAssertTrue(analysesRow.waitForExistence(timeout: 5))
-        XCTAssertTrue(topicsRow.waitForExistence(timeout: 5))
-
-        analyses.click()
-        XCTAssertTrue(analysesRow.isSelected)
-
-        let pointerWorkspaceScreenshot = XCTAttachment(
-            screenshot: app.windows.firstMatch.screenshot()
-        )
-        pointerWorkspaceScreenshot.name = "Pointer-quiet Triptych selection"
-        pointerWorkspaceScreenshot.lifetime = .keepAlways
-        add(pointerWorkspaceScreenshot)
-
-        app.typeKey(.downArrow, modifierFlags: [])
-
-        XCTAssertTrue(waitUntil(timeout: 8) { topicsRow.isSelected })
-        XCTAssertTrue(
-            app.descendants(matching: .any)["scholium.noteRow.QA Topic.md"]
-                .waitForExistence(timeout: 8)
-        )
-
-        let keyboardWorkspaceScreenshot = XCTAttachment(
-            screenshot: app.windows.firstMatch.screenshot()
-        )
-        keyboardWorkspaceScreenshot.name = "Keyboard-focused Triptych selection"
-        keyboardWorkspaceScreenshot.lifetime = .keepAlways
-        add(keyboardWorkspaceScreenshot)
-
-        let topicNote = app.descendants(matching: .any)[
-            "scholium.noteRow.QA Topic.md"
-        ].firstMatch
+        topics.click()
+        let topicNote = app.descendants(matching: .any)["scholium.noteRow.QA Topic.md"].firstMatch
+        XCTAssertTrue(topicNote.waitForExistence(timeout: 8))
         topicNote.click()
         XCTAssertTrue(waitForDocumentTitle("QA Topic", timeout: 5))
-
-        let pointerNoteScreenshot = XCTAttachment(
-            screenshot: app.windows.firstMatch.screenshot()
-        )
-        pointerNoteScreenshot.name = "Pointer-quiet Library Note selection"
-        pointerNoteScreenshot.lifetime = .keepAlways
-        add(pointerNoteScreenshot)
+        let attachment = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        attachment.name = "Native workspace tabs and retained Library"
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     @MainActor
@@ -426,9 +404,9 @@ extension ScholiumUITests {
         )
 
         for (scope, identifier) in [
-            ("Analyses", "scholium.vault.paper_analysis"),
-            ("Topics", "scholium.vault.topic_knowledge"),
-            ("Works", "scholium.vault.output"),
+            ("Analyses", "Analyses"),
+            ("Topics", "Topics"),
+            ("Works", "Works"),
         ] {
             let control = app.descendants(matching: .any)[identifier]
             XCTAssertTrue(control.waitForExistence(timeout: 3))

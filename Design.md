@@ -39,7 +39,7 @@ decorative containers merely to manufacture hierarchy. Use type, alignment,
 whitespace, semantic surfaces, and fine structural rules first. A bounded panel
 is appropriate only when its task is genuinely transient or spatially anchored.
 
-Semantic floating containers use native Liquid Glass: contextual Find, Search,
+Semantic floating containers use native Liquid Glass: contextual Find, query explanations,
 previews, and suggestions sit above their originating
 content without reflowing it. Reading, editing, document forms, and persistent
 operation or recovery regions,
@@ -159,13 +159,14 @@ remains unenclosed, and shape never carries state or authority alone.
 
 The persistent Outline follows Sidebar material and native tree presentation,
 with no floating container or candidate-menu treatment. Its current section and
-transient hover have distinct meanings. The Triptych/Outline toolbar selector uses native neutral navigation feedback,
+transient hover have distinct meanings. The Triptych/Outline toolbar selector and Analyses/Topics/Works workspace
+selector use native neutral navigation feedback,
 without an Accent-filled selected segment. Toolbar document identity uses Muted
 Text; the in-document filename title retains its primary heading role.
 
 Native containers and controls own hover, press, disabled, selected, focused,
 active, inactive, and cursor presentation. Section 18.3 alone defines the
-Sidebar's quiet pointer selection and keyboard-navigation emphasis; it does not
+Library tree's quiet pointer selection and keyboard-navigation emphasis; it does not
 create a general modality-styling system. The selected row remains the sole
 visible list-focus indicator without a duplicate perimeter effect. Caret
 completion uses compact 28-point single-line rows and 40-point rows with a
@@ -211,6 +212,11 @@ Attention. Wording, shape, accessibility value, and the owning detail
 presentation carry the state without color or motion. A brief non-celebratory
 transition may acknowledge the researcher's explicit act; its choreography is
 an implementation choice and never replays merely because the state is shown.
+The toolbar uses unmodified native symbol rendering for every component,
+including Settlement. State-specific symbol shapes and accessible wording
+remain; custom tint, painted selection, and feature-owned toolbar animations
+are excluded. AppKit owns enabled, disabled, selected, pressed, inactive-window,
+and accessibility-adapted control appearance.
 
 #### Metrics
 

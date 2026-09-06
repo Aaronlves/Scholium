@@ -47,7 +47,7 @@ native presentation, interface composition, and localization.
 `WindowPresentationRouter` owns four typed channels:
 
 - one mutually exclusive `WindowSheetRoute`;
-- composable `WindowOverlayRoute` values for loading and Search;
+- `WindowOverlayRoute` for loading;
 - one `WindowAlertRoute`; and
 - one typed `WindowFileImportRequest`.
 
@@ -83,6 +83,16 @@ reads, while reusable feature leaves remain on narrow values/controllers.
 installs toolbar/delegate state, and registers readiness/flushing. Search,
 notification, polling, delayed correction, and width calculation do not
 participate in constructing that workspace split.
+
+`WindowSearchController` owns the inactive/sidebar/advanced presentation and
+explicit focus requests as well as execution and saved-query lifecycle.
+`ResearchSearchSurface` observes its existing controllers in both presentations.
+`ResearchSearchView` keeps the Library mounted while showing quick results;
+`ResearchSearchField` gives composition and responder behavior to `NSSearchField`.
+`WorkspaceWindowCoordinator` owns one `AdvancedSearchWindowController`, which
+owns only its native auxiliary window and closes with the source workspace.
+Both surfaces project the same query, scope, and results; there is no centered
+Search overlay or second query engine.
 
 Research Records use a separate value-keyed `WindowGroup`, one scene identity
 per `(Triptych, originating Workspace window)`. `ResearchRecordsWindowCoordinator`
@@ -147,9 +157,8 @@ utility panel, or always-on-top surface. Per-workspace
 `AttentionPresentationState` projects structural and Settlement attention from
 current immutable state. The machine-local dismissal ledger changes
 presentation only. No queue item authorizes a source mutation, and the
-Document toolbar consumes no notification state.
-Its bell anchor sits beside Search at the logical trailing edge of the Sidebar
-header; the nonzero dot is only a presentation of the existing exact queue.
+Document editing controls consume no notification state.
+Its bell anchor is a stable native toolbar item; the nonzero dot is only a presentation of the existing exact queue.
 
 Ordinary workspace navigation uses a workspace-keyed
 `DiscoveryLibraryRequest(.stagedReplacement)`. `DiscoveryController` retains

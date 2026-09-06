@@ -6,7 +6,6 @@ import Testing
 
 @MainActor
 private final class WindowSearchPresentationProbe {
-    var isPresented = false
     var hasCurrentNote = false
     var informationMessages: [String] = []
     var openCount = 0
@@ -86,25 +85,45 @@ struct WindowSearchControllerTests {
         let controller = WindowSearchController(
             discoveryController: discovery,
             dependencies: dependencies(
-                hasCurrentNote: { probe.hasCurrentNote },
-                isPresented: { probe.isPresented },
-                setPresented: { probe.isPresented = $0 }
+                hasCurrentNote: { probe.hasCurrentNote }
             )
         )
 
         controller.begin(.findInNote(previousScope: .currentVault))
-        #expect(!probe.isPresented)
+        #expect(controller.presentation == .inactive)
 
         probe.hasCurrentNote = true
         controller.begin(.findInNote(previousScope: .currentVault))
-        #expect(probe.isPresented)
+        #expect(controller.presentation != .inactive)
         #expect(controller.criteria.scope == .thisNote)
         #expect(controller.ordinaryScope == .currentVault)
 
         controller.dismiss()
-        #expect(!probe.isPresented)
+        #expect(controller.presentation == .inactive)
         #expect(controller.criteria.scope == .currentVault)
         #expect(controller.criteria.query.isEmpty)
+    }
+
+    @Test("Advanced Search retains the quick query and scope without a second session")
+    func advancedSearchHandoff() {
+        let discovery = DiscoveryController()
+        let controller = WindowSearchController(discoveryController: discovery, dependencies: dependencies())
+        controller.begin(.general)
+        discovery.selectSearchScope(.currentVault)
+        discovery.updateSearchQuery("aurora-fixture")
+        let initialFocus = controller.focusRequestID
+        controller.beginAdvanced()
+        #expect(controller.presentation == .advanced)
+        #expect(controller.criteria.query == "aurora-fixture")
+        #expect(controller.criteria.scope == .currentVault)
+        #expect(controller.focusRequestID > initialFocus)
+        controller.begin(.general)
+        #expect(controller.presentation == .sidebar)
+        #expect(controller.criteria.query == "aurora-fixture")
+        controller.dismiss()
+        #expect(controller.presentation == .inactive)
+        #expect(controller.criteria.query.isEmpty)
+        #expect(controller.criteria.scope == .currentVault)
     }
 
     @Test("Saved Search loading and mutations are serialized by one owner")
@@ -223,7 +242,6 @@ struct WindowSearchControllerTests {
         ), for: request)
 
         let probe = WindowSearchPresentationProbe()
-        probe.isPresented = true
         let controller = WindowSearchController(
             discoveryController: discovery,
             dependencies: WindowSearchController.Dependencies(
@@ -245,8 +263,6 @@ struct WindowSearchControllerTests {
                 },
                 open: { _, _ in probe.openCount += 1 },
                 hasCurrentNote: { true },
-                isPresented: { probe.isPresented },
-                setPresented: { probe.isPresented = $0 },
                 reportInformation: { probe.informationMessages.append($0) },
                 reportLoadFailure: { _ in },
                 reportSaveFailure: { _ in },
@@ -255,12 +271,13 @@ struct WindowSearchControllerTests {
             )
         )
 
+        controller.beginAdvanced()
         await controller.open(.result(.note(hit)), disposition: .replaceCurrent)
 
         #expect(probe.openCount == 0)
         #expect(probe.informationMessages.count == 1)
         #expect(probe.informationMessages[0].contains("note changed"))
-        #expect(probe.isPresented)
+        #expect(controller.presentation != .inactive)
         #expect(discovery.search.executionIssue != nil)
     }
 
@@ -306,8 +323,6 @@ struct WindowSearchControllerTests {
                         currentVaultID: UUID()
                     )
                 },
-                isPresented: { probe.isPresented },
-                setPresented: { probe.isPresented = $0 },
                 reportInformation: { probe.informationMessages.append($0) }
             )
         )
@@ -315,7 +330,7 @@ struct WindowSearchControllerTests {
         controller.run(saved)
         await controller.waitForPendingWorkForTesting()
 
-        #expect(probe.isPresented)
+        #expect(controller.presentation != .inactive)
         #expect(controller.criteria.query == rawQuery)
         #expect(controller.criteria.scope == .currentVault)
         #expect(discovery.search.diagnostics.first?.code == .needsEditing)
@@ -377,8 +392,6 @@ struct WindowSearchControllerTests {
             WindowOpenDisposition
         ) async -> Void = { _, _ in },
         hasCurrentNote: @escaping @MainActor () -> Bool = { true },
-        isPresented: @escaping @MainActor () -> Bool = { false },
-        setPresented: @escaping @MainActor (Bool) -> Void = { _ in },
         reportInformation: @escaping @MainActor (String) -> Void = { _ in }
     ) -> WindowSearchController.Dependencies {
         WindowSearchController.Dependencies(
@@ -389,8 +402,6 @@ struct WindowSearchControllerTests {
             resultEvidence: resultEvidence,
             open: open,
             hasCurrentNote: hasCurrentNote,
-            isPresented: isPresented,
-            setPresented: setPresented,
             reportInformation: reportInformation,
             reportLoadFailure: { _ in },
             reportSaveFailure: { _ in },

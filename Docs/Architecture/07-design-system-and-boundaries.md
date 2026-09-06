@@ -70,7 +70,7 @@ only the transient role names as CSS shadow declarations without converting
 points to CSS pixels.
 The shared segmented selection plate retains its control elevation. Semantic
 floats instead use `scholiumFloatingSurface` (SwiftUI) or the bounded
-`DocumentFloatingSurfaceController` (AppKit `NSGlassEffectView`). Find, Search,
+`DocumentFloatingSurfaceController` (AppKit `NSGlassEffectView`). Find, query explanations,
 and progress overlays share native Liquid Glass; no feature adds a second
 shadow or frosted-material recipe. Persistent operation, document integrity,
 and recovery notices remain opaque content surfaces.

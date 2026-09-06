@@ -32,8 +32,7 @@ and Library presentation without restating those workflows.
 Each configured window contains one native split view:
 
 1. **Sidebar**: one region with **Triptych** and **Outline** presentations.
-   Triptych contains Scholium identity, Analyses–Topics–Works navigation,
-   Search, Triptych Notifications, and Library. Outline contains the current
+   Triptych contains Search, Analyses–Topics–Works navigation, and Library. Outline contains the current
    Document's persistent heading hierarchy and bottom-centered statistics.
 2. **Document**: the selected Note or the restrained no-document state.
 3. **Apparatus**: the trailing Research Inspector's Overview, Outgoing, and
@@ -58,6 +57,18 @@ choosing the visible item again collapses the sidebar, leaving neither item
 selected. Selecting either item while collapsed reveals it. Both presentations
 retain their independent scrolling and disclosure while switching. Native split
 visibility remains authoritative, including menu and window-resize changes.
+Outline and Inspector use native enabled, selected, pressed, and disabled
+states, with no hand-tinted unavailable symbols or custom refusal animation.
+With no Note open, opening either presentation is disabled; an already visible
+presentation can still be closed. Native Help gives the reason “No note open yet”
+(简体中文：“尚未打开笔记”). Toolbar validation and View menus derive availability
+from the same current window state. Native spacers express logical grouping;
+the system owns glass shapes, proximity effects, and transitions.
+This native state contract applies to every toolbar component, including history,
+document mode, Settlement, Research Records, and Inspector modes. A disabled
+action cannot execute through another toolbar or overflow route. Document-specific
+popovers close when their document or required source revision changes; detaching
+a window ends its toolbar interactions and prevents stale state from updating it.
 Back/Forward begin the Document toolbar region, after the sidebar tracking
 boundary and before its Muted Text document name. They remain available with
 the sidebar collapsed and traverse document visits, not heading jumps.
@@ -68,15 +79,16 @@ commits only after source safety succeeds; failure preserves the exact origin
 workspace and buffer.
 
 The native toolbar remains a bounded, stable set for frequent or high-value
-commands: the native **Triptych / Outline** sidebar selector, Back/Forward,
+commands: the native **Triptych / Outline** sidebar selector, Triptych Notifications, Back/Forward,
 current-Document identity and mode,
 Settlement, Research Records, confirmed Agent Changes when present, Inspector
 projection, and Inspector visibility. Every command also exists in its owning
 menu, and native overflow preserves access at narrow widths. The current scope
 does not require toolbar customization.
 
-Search and Triptych Notifications sit at the logical trailing edge of the
-Sidebar header rather than duplicating toolbar commands. Triptych opening and
+Search is directly editable at the top of the Sidebar. Triptych Notifications
+has one stable toolbar bell, available with either sidebar presentation or with
+the sidebar collapsed. Triptych opening and
 creation remain in the native File menu; open-window switching remains in the
 Window menu. Back/Forward traverse successful document visits only. The toolbar
 remains structurally stable during loading and uses live safe areas. Pane
@@ -99,9 +111,8 @@ save/conflict buffer and provide Retry. Window-session persistence is
 best-effort only after source safety. Cold launch begins with no document
 selected unless the researcher explicitly opens one.
 
-The Sidebar header uses one row: the Scholium wordmark is the primary brand
-title, followed at the logical trailing edge by Search and Triptych
-Notifications. It contains no persistent Triptych title or selector. The native
+The Sidebar begins with its native Search field and has no separate brand
+header or persistent Triptych title. The native
 File menu opens a registered Triptych in its own window and creates a Triptych;
 Settings manages registrations and the Window menu switches among open windows.
 When open Workspace windows belong to more than one distinct Triptych, the
@@ -115,7 +126,7 @@ Menus follow task ownership:
 - **File**: Triptych/window, New Note, Import, Duplicate, Rename, Move, Reveal,
   and system-Trash actions.
 - **Edit**: editing, Find, formatting, and Edit Metadata.
-- **View**: Back/Forward, Triptych, Outline, Sidebar visibility, Search, Document mode/text size,
+- **View**: Back/Forward, Triptych, Outline, Sidebar visibility, Search, Advanced Search, Document mode/text size,
   Sidebar, and Inspector.
 - **Research**: Research Records, Settle, and Agent Changes when present.
 - **Window**: standard windows plus Notifications.
@@ -136,17 +147,19 @@ supports clear and restore. Standard macOS commands remain outside remapping.
 
 ### 18.3 Library and Search
 
-The vertical Triptych workspace navigator presents Analyses, Topics, and Works
-in stable order as peer destinations. Rows show localized exact Note counts
-without role descriptions, progress, pipeline state, or Attention badges.
-Unknown initial count is unavailable, not zero. The native source list owns
-pointer behavior, responder routing, selection, and Up/Down traversal. A bounded
-presentation adapter distinguishes quiet pointer selection from keyboard-
-navigation emphasis without changing the selected destination or creating a
-second focus owner. The emphasized row is the sole visible list-focus indicator,
-so the container draws no duplicate perimeter focus ring. Workspace and Library
-rows follow the effective native Source List size; enlarged interface text uses
-the native larger presentation rather than a separate fixed row metric.
+The Triptych workspace navigator is one native single-choice segmented control
+for Analyses, Topics, and Works in stable order. It uses neutral native selection
+without Liquid Glass, an explicit Accent fill, an additional outer frame, or
+a custom shadow.
+Ordinary widths show complete localized text; when those labels cannot fit,
+the entire control uses stable role symbols with complete Help and accessible
+names. Resizing preserves selection and focus. Counts do not occupy the control.
+Unavailable workspaces remain disabled. AppKit owns control focus, selection,
+keyboard traversal, and active/inactive presentation.
+
+The Search field and workspace navigator form a compact fixed header. Library
+has one muted operation row; its native file tree occupies the remaining height
+and scrolls independently, retaining normal source-list row sizing.
 
 Live opening may make the selected vault's trustworthy Library usable before
 cross-vault projections are complete. Unavailable workspace rows remain
@@ -214,10 +227,12 @@ cleared, only its ancestors expand, unrelated disclosure and sort remain, and
 Library reveal does not steal editor focus. If editor activation fails after
 source commit, the UI offers Retry Edit/Source without duplicate creation.
 
-Triptych Notifications has one stable bell beside Search. It opens the complete
+Triptych Notifications has one stable native bell in the toolbar. It aligns
+with the Sidebar's upper trailing edge when expanded; native toolbar layout
+reflows it beside the sidebar selector when collapsed. It opens the complete
 Agent Change/Settlement/Attention queue without changing the selected workspace
-or Document. Zero is quiet; nonzero adds one small Accent dot at the bell's
-upper trailing corner, without a visible number, unread model, animation, or
+or Document. Zero is quiet; nonzero uses the native badged bell
+with a small dot, without a visible number, unread model, animation, or
 auto-open. Bell shape, dot shape, accessible state, and the popover's exact
 contents preserve meaning without relying on color.
 
@@ -243,7 +258,7 @@ copy acknowledgement stay beside their controls. Ordinary successful save,
 copy, creation, and refresh are silent. There is no global in-app notification
 overlay, priority stack, expiry timer, or duplicate delivery of the same event.
 
-The complete Notifications queue is a window-owned native popover. Sidebar
+The complete Notifications queue is a window-owned native popover. The toolbar
 opens Triptych scope; Inspector may open a current-Note subset. Popover closure
 does not dismiss an Agent Change or alter Settlement. The queue
 presents Agent Changes, then Settlement reminders, then grouped structural
@@ -267,10 +282,43 @@ System-Trash actions always use §6 confirmation. After a committed move, focus
 advances to the next row, previous row, then Library; only absent documents
 close. Finder owns restoration.
 
-Shared Search follows §13: one compact centered surface, visible scope, bounded
+Shared Search follows §13: an inline quick-search surface and one explicitly
+opened advanced window per originating Workspace, with visible scope and bounded
 provider-specific results, typed completion, Explain Query, exact freshness,
 and distinct invalid, ambiguous, unavailable, partial, stale, and empty states.
 All is the default provider selection and shows separate Notes and Research
 Records groups without interleaving rank; Notes and Records remain directly
 selectable dedicated paths. Completion edits visible query text only and shares
 one keyboard selection with results.
+
+Quick Search keeps its native editable field in place and shows concise results
+below it. The field's native magnifying-glass menu holds scope, content type,
+Reset Filters, and Advanced Search. Active scope and content type remain visible
+in one muted result-summary line. Reset affects these menu filters, not query
+text. Clearing quick-search text reveals the retained Library immediately.
+Its result list inherits the Sidebar's existing background without painting a
+second content surface; the system continues to own row selection feedback.
+
+Advanced Search opens explicitly from that menu or View, carrying query, scope,
+and content type into a resizable native window. Its own search menu has no
+Advanced Search entry. It uses one query field, one quiet summary/action line,
+and an independently scrolling native result list. The system owns row selection,
+focus feedback, and keyboard traversal. Note rows use a small document symbol,
+title, available bounded snippet, and one secondary location/reason line in
+interface typography. Repeated workspace labels, ranking decoration, and permanent
+“Retrieval lead” labels do not occupy each row. Record rows keep their separate
+group, identity, matched question/step, and time. Before a query, the window shows
+a neutral Search prompt; an initial or cleared projection does not claim an index
+failure. Empty and genuinely unavailable states use native content-state views,
+preserving the actual reason and any valid retry. Saved Searches remains directly
+available. Explain Query opens a compact transient explanation of the actual
+conditions; tokenizer, normalization, ranking recipes, and repeated result titles
+do not occupy the search workspace. Opening a result returns to the originating
+Document while keeping the advanced window and query available for continued
+search. Ordinary input never opens an advanced window automatically.
+
+Both presentations use one Search session and one result-validation contract.
+Only the active presentation issues queries. Closing Search cancels work and
+restores the retained Library hierarchy, disclosure, and scrolling. Closing the
+originating Workspace closes its search window. Native composition, focus,
+clear, and keyboard behavior remain intact.

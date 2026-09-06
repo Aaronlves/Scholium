@@ -502,7 +502,7 @@ Populated hierarchy ownership is split by responsibility:
 data-source/delegate reconciliation, AppKit owns hierarchy, indentation,
 selection drawing, focus, disclosure, hover, and drag feedback, and the hosted
 row layer supplies content plus contextual and accessibility actions. One
-Sidebar-native input-modality adapter shared with the workspace table leaves
+Library-native input-modality adapter leaves
 pointer-created selection unemphasized and enables AppKit's emphasized row for
 keyboard focus or navigation. It changes neither selected identity nor
 first-responder routing, and each source-list container suppresses only the
@@ -517,7 +517,7 @@ verbatim. Library-only filtering is rendered by one stateless
 `SidebarLibraryFilterMenu` from an immutable options value plus the current
 `DiscoveryFilterState`; every change returns one complete replacement intent
 to `DiscoveryController`, which remains the sole filter and ordering owner.
-Both native Sidebar lists use the effective system source-list row size. The
+The native Library tree uses the effective system source-list row size. The
 outline coordinator switches only enlarged interface presentations to AppKit's
 large row style; hosted Folder and Note content derives its system font and
 symbol point size from `effectiveRowSizeStyle` instead of publishing a fixed
@@ -597,8 +597,16 @@ their regular Glass, edge highlight, shadow, adaptive appearance, and geometry.
 A native sidebar-view segmented control projects the window-owned Triptych/Outline
 mode and native split visibility, including the all-off collapsed state.
 `WorkspaceWindowCoordinator` installs toolbar state after split attachment.
+The toolbar controller derives command availability once for presentation,
+native toolbar validation, overflow menus, and action dispatch. Window-model
+predicates also serve the View menu's Outline and Inspector commands. Published
+state is consumed on the main queue after mutation. Invalidation cancels all
+subscriptions, detaches targets and menus, and releases transient hosts; an
+invalidated controller cannot reinstall. Settlement presentation is bound to the
+exact document/revision target and closes when that target changes. Native symbols
+and control rendering carry every toolbar state without custom tint or motion.
 Back/Forward sit after the Sidebar boundary, followed by a native label rendering
-Muted Text document identity. The duplicate system title is visually hidden;
+system secondary document identity. The duplicate system title is visually hidden;
 SwiftUI still owns the window's title/subtitle metadata. `ContentView` retains
 both sidebar presentations and switches their visibility and accessibility.
 The Outline uses source-derived headings in a native `NSOutlineView`, with a
@@ -613,10 +621,14 @@ a geometry owner or painted titlebar layer. The Inspector projection
 retains its native 70 × 20 fitting size while automatic styling adopts the
 current system material.
 
-Search and Notifications are native SwiftUI controls at the logical trailing
-edge of the Sidebar header. The toolbar's Agent Changes item observes the
-window's borrowed Agent Change projection and is absent unless that list is
-nonempty; hiding it creates no second change-state owner.
+`ResearchSearchField` uses `NSSearchField` at the top of the Sidebar and in the
+advanced window. Its delegate sends only committed text to the existing Search
+owner. `WorkspaceSegmentedControl` uses native round-rect capsule segments, adapting text
+to symbols within its native layout without changing selection or callbacks.
+`ScholiumWorkspaceToolbarController` projects the existing queue through a native
+action item and anchors `NSPopover` directly to that toolbar item. A native
+flexible space positions the bell against the Sidebar tracking separator; native
+collapse reflows the same item without a second button or custom view.
 
 AppKit owns resizing, compression, dividers, collapse, fullscreen, frame
 restoration, and drag limits; the Codable route owns scene identity. No width

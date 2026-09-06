@@ -2,6 +2,12 @@ import Combine
 import Foundation
 import ScholiumContracts
 
+enum SearchPresentation: Equatable {
+    case inactive
+    case sidebar
+    case advanced
+}
+
 struct WindowSearchResultEvidence: Equatable, Sendable {
     let freshness: SearchFreshnessToken?
     let fingerprint: DocumentFingerprint?
@@ -29,8 +35,6 @@ final class WindowSearchController: ObservableObject {
             WindowOpenDisposition
         ) async -> Void
         let hasCurrentNote: @MainActor () -> Bool
-        let isPresented: @MainActor () -> Bool
-        let setPresented: @MainActor (Bool) -> Void
         let reportInformation: @MainActor (String) -> Void
         let reportLoadFailure: @MainActor (String) -> Void
         let reportSaveFailure: @MainActor (String) -> Void
@@ -38,6 +42,9 @@ final class WindowSearchController: ObservableObject {
         let reportCatalogFailure: @MainActor (String) -> Void
     }
 
+    @Published private(set) var presentation: SearchPresentation = .inactive
+    @Published private(set) var focusRequestID: UInt64 = 0
+    @Published private(set) var inputReplacementID: UInt64 = 0
     @Published private(set) var savedSearches: [SavedSearch] = []
     @Published private(set) var savedSearchLoadFailure: String?
 
@@ -64,7 +71,10 @@ final class WindowSearchController: ObservableObject {
 
     var criteria: SearchWorkspaceState {
         get { discoveryController.search.criteria }
-        set { discoveryController.replaceSearchCriteria(newValue) }
+        set {
+            discoveryController.replaceSearchCriteria(newValue)
+            inputReplacementID &+= 1
+        }
     }
 
     var ordinaryScope: SearchPresentationScope {
@@ -105,14 +115,34 @@ final class WindowSearchController: ObservableObject {
     /// This Note and leaves the researcher's ordinary scope untouched.
     func begin(_ invocation: SearchInvocation) {
         if case .findInNote = invocation, !dependencies.hasCurrentNote() { return }
-        discoveryController.presentSearch(invocation)
-        dependencies.setPresented(true)
+        if presentation == .inactive || invocation != .general {
+            discoveryController.presentSearch(invocation)
+            if invocation != .general { inputReplacementID &+= 1 }
+        }
+        present(.sidebar)
+    }
+
+    /// The advanced window shares the current query and exact result generation.
+    /// Moving between surfaces never resets criteria or starts another session.
+    func replaceQuery(_ text: String) {
+        discoveryController.updateSearchQuery(text)
+        inputReplacementID &+= 1
+    }
+
+    func beginAdvanced() {
+        present(.advanced)
+    }
+
+    private func present(_ destination: SearchPresentation) {
+        presentation = destination
+        focusRequestID &+= 1
     }
 
     func dismiss() {
         cancelExecution()
         discoveryController.dismissSearch()
-        dependencies.setPresented(false)
+        inputReplacementID &+= 1
+        presentation = .inactive
     }
 
     func refresh() async {
@@ -135,14 +165,15 @@ final class WindowSearchController: ObservableObject {
         }
     }
 
+    @discardableResult
     func open(
         _ result: SearchResultSelection,
         disposition: WindowOpenDisposition
-    ) async {
-        guard case .result(let searchResult) = result else { return }
+    ) async -> Bool {
+        guard case .result(let searchResult) = result else { return false }
         guard discoveryController.search.freshnessToken == searchResult.freshnessToken else {
             await refreshAfterStaleResult(searchResult)
-            return
+            return false
         }
         let evidence = await dependencies.resultEvidence(
             searchResult,
@@ -151,14 +182,15 @@ final class WindowSearchController: ObservableObject {
         guard evidence.freshness == searchResult.freshnessToken,
               evidence.fingerprint == searchResult.fingerprint else {
             await refreshAfterStaleResult(searchResult)
-            return
+            return false
         }
         await dependencies.open(.result(searchResult), disposition)
-        dismiss()
+        if presentation != .advanced { dismiss() }
+        return true
     }
 
     func searchGenerationDidChange() {
-        guard dependencies.isPresented(),
+        guard presentation != .inactive,
               !criteria.query.trimmingCharacters(
                   in: .whitespacesAndNewlines
               ).isEmpty else { return }
@@ -206,7 +238,8 @@ final class WindowSearchController: ObservableObject {
                 search.definition,
                 diagnostic: diagnostic
             )
-            dependencies.setPresented(true)
+            inputReplacementID &+= 1
+            present(.advanced)
             dependencies.reportInformation(diagnostic.message)
             return
         }
@@ -215,7 +248,7 @@ final class WindowSearchController: ObservableObject {
             scope: search.definition.presentationScope,
             providerSelection: search.definition.providerSelection
         )
-        dependencies.setPresented(true)
+        present(.advanced)
         Task { [weak self] in await self?.refresh() }
     }
 

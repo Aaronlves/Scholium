@@ -408,7 +408,6 @@ struct SidebarTreeTests {
         presentation.recordResponderEvent(.keyDown)
         #expect(presentation.inputModality == .keyboard)
 
-        #expect(SidebarWorkspaceTableView(frame: .zero).focusRingType == .none)
         #expect(SidebarOutlineView(frame: .zero).focusRingType == .none)
         #expect(SidebarOutlineScrollView(frame: .zero).focusRingType == .none)
     }
@@ -439,55 +438,35 @@ struct SidebarTreeTests {
     @MainActor
     @Test("Triptych workspace navigation delegates selection and traversal to AppKit")
     func nativeTriptychWorkspaceSelection() throws {
-        let counts = SidebarWorkspaceNoteCounts(values: [
-            .paperAnalysis: 4,
-            .output: 2,
-        ])
         var requestedSlot: WorkspaceVaultSlot?
-        let coordinator = ScholiumTriptychWorkspaceNavigator.Coordinator(
-            selectedSlot: .paperAnalysis,
-            noteCounts: counts,
-            locale: Locale(identifier: "en_US"),
-            select: { requestedSlot = $0 }
-        )
-        let tableView = SidebarWorkspaceTableView(
-            frame: NSRect(x: 0, y: 0, width: 280, height: 90)
-        )
-        tableView.style = .sourceList
-        tableView.dataSource = coordinator
-        tableView.delegate = coordinator
-        tableView.addTableColumn(NSTableColumn(
-            identifier: ScholiumTriptychWorkspaceNavigator.Coordinator.columnIdentifier
-        ))
-
-        coordinator.attach(tableView)
-
-        #expect(tableView.selectedRow == 0)
-        #expect(!coordinator.tableView(tableView, shouldSelectRow: 1))
-        #expect(coordinator.tableView(tableView, shouldSelectRow: 2))
-        tableView.selectRowIndexes(IndexSet(integer: 2), byExtendingSelection: false)
+        let coordinator = ScholiumTriptychWorkspaceNavigator.Coordinator(select: { requestedSlot = $0 })
+        let control = WorkspaceSegmentedControl(frame: NSRect(x: 0, y: 0, width: 360, height: 28))
+        control.segmentCount = 3
+        control.titles = ["Analyses", "Topics", "Works"]
+        control.selectedSegment = 0
+        control.setEnabled(false, forSegment: 1)
+        control.updateLabels()
+        #expect(!control.usesSymbols)
+        #expect(control.label(forSegment: 0) == "Analyses")
+        control.selectedSegment = 1
+        coordinator.selectWorkspace(control)
+        #expect(requestedSlot == nil)
+        control.selectedSegment = 2
+        coordinator.selectWorkspace(control)
         #expect(requestedSlot == .output)
-        #expect(tableView.intrinsicContentSize.height == tableView.rowHeight * 3)
-
-        // A live size change updates native rows without emitting navigation.
         requestedSlot = nil
-        for enlarged in [true, false] {
-            coordinator.apply(
-                selectedSlot: .output,
-                noteCounts: counts,
-                locale: Locale(identifier: "en_US"),
-                usesAccessibilitySize: enlarged,
-                select: { requestedSlot = $0 }
-            )
-            #expect(tableView.rowSizeStyle == (enlarged ? .large : .default))
-            #expect(tableView.selectedRow == 2)
-            #expect(requestedSlot == nil)
-            #expect(tableView.intrinsicContentSize.height == tableView.rowHeight * 3)
-            let cell = try #require(coordinator.tableView(tableView, viewFor: nil, row: 2) as? NSTableCellView)
-            #expect(cell.textField?.font?.pointSize == SidebarSourceListRowPresentation(
-                effectiveRowSizeStyle: tableView.effectiveRowSizeStyle
-            ).textPointSize)
-        }
+        control.frame.size.width = 140
+        control.updateLabels()
+        #expect(control.usesSymbols)
+        #expect(control.image(forSegment: 0) != nil)
+        #expect(control.selectedSegment == 2)
+        #expect(requestedSlot == nil)
+        control.frame.size.width = 360
+        control.updateLabels()
+        #expect(!control.usesSymbols)
+        #expect(control.label(forSegment: 2) == "Works")
+        #expect(control.image(forSegment: 2) == nil)
+        #expect(control.selectedSegment == 2)
     }
 
     @Test("An empty root Folder remains visible when disclosure state contains it")

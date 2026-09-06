@@ -2,354 +2,95 @@ import AppKit
 import ScholiumContracts
 import SwiftUI
 
-/// The native single-choice Analyses / Topics / Works navigator. AppKit owns
-/// selection, focus, inactive-window presentation, pointer behavior, and
-/// Up/Down traversal. Scholium supplies only the research destinations and
-/// their exact Note totals.
+/// Window state owns the destination. AppKit owns selection, keyboard focus,
+/// sizing and appearance; this adapter only projects the three destinations.
 struct ScholiumTriptychWorkspaceNavigator: NSViewRepresentable {
-    @Environment(\.locale) private var locale
-
     let selectedSlot: WorkspaceVaultSlot?
     let noteCounts: SidebarWorkspaceNoteCounts
     let usesAccessibilitySize: Bool
     let select: (WorkspaceVaultSlot) -> Void
+    @Environment(\.locale) private var locale
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(
-            selectedSlot: selectedSlot,
-            noteCounts: noteCounts,
-            locale: locale,
-            select: select
-        )
+    func makeCoordinator() -> Coordinator { Coordinator(select: select) }
+
+    func makeNSView(context: Context) -> WorkspaceSegmentedControl {
+        let control = WorkspaceSegmentedControl()
+        control.segmentCount = WorkspaceVaultSlot.allCases.count
+        control.trackingMode = .selectOne
+        control.segmentStyle = .roundRect
+        control.borderShape = .capsule
+        control.target = context.coordinator
+        control.action = #selector(Coordinator.selectWorkspace(_:))
+        control.setAccessibilityIdentifier("scholium.workspaceNavigator")
+        control.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        control.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return control
     }
 
-    func makeNSView(context: Context) -> SidebarWorkspaceTableView {
-        let tableView = SidebarWorkspaceTableView()
-        tableView.headerView = nil
-        tableView.style = .sourceList
-        tableView.rowSizeStyle = usesAccessibilitySize ? .large : .default
-        tableView.intercellSpacing = .zero
-        tableView.allowsEmptySelection = false
-        tableView.allowsMultipleSelection = false
-        tableView.allowsColumnSelection = false
-        tableView.allowsColumnReordering = false
-        tableView.allowsColumnResizing = false
-        tableView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
-        tableView.dataSource = context.coordinator
-        tableView.delegate = context.coordinator
-        tableView.setAccessibilityLabel(
-            ScholiumL10n.string("Triptych Workspaces", locale: locale)
-        )
-        tableView.setAccessibilityIdentifier("scholium.workspaceNavigator")
-
-        let column = NSTableColumn(identifier: Coordinator.columnIdentifier)
-        column.resizingMask = .autoresizingMask
-        tableView.addTableColumn(column)
-        context.coordinator.attach(tableView)
-        return tableView
+    func updateNSView(_ control: WorkspaceSegmentedControl, context: Context) {
+        context.coordinator.select = select
+        control.controlSize = usesAccessibilitySize ? .large : .regular
+        control.font = .systemFont(ofSize: NSFont.systemFontSize(for: control.controlSize))
+        control.titles = WorkspaceVaultSlot.allCases.map {
+            ScholiumL10n.dynamicString($0.displayName)
+        }
+        control.setAccessibilityLabel(ScholiumL10n.string("Triptych", locale: locale))
+        for (index, slot) in WorkspaceVaultSlot.allCases.enumerated() {
+            control.setEnabled(noteCounts.count(for: slot) != nil, forSegment: index)
+            control.setToolTip(control.titles[index], forSegment: index)
+        }
+        control.selectedSegment = selectedSlot.flatMap {
+            WorkspaceVaultSlot.allCases.firstIndex(of: $0)
+        } ?? -1
+        control.updateLabels()
     }
 
-    func updateNSView(
-        _ tableView: SidebarWorkspaceTableView,
-        context: Context
-    ) {
-        context.coordinator.apply(
-            selectedSlot: selectedSlot,
-            noteCounts: noteCounts,
-            locale: locale,
-            usesAccessibilitySize: usesAccessibilitySize,
-            select: select
-        )
-        tableView.setAccessibilityLabel(
-            ScholiumL10n.string("Triptych Workspaces", locale: locale)
-        )
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: WorkspaceSegmentedControl, context: Context) -> CGSize? {
+        CGSize(width: proposal.width ?? 240, height: nsView.intrinsicContentSize.height)
     }
 
     @MainActor
-    final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
-        static let columnIdentifier = NSUserInterfaceItemIdentifier(
-            "ScholiumWorkspaceColumn"
-        )
-        private static let cellIdentifier = NSUserInterfaceItemIdentifier(
-            "ScholiumWorkspaceCell"
-        )
-
-        private weak var tableView: SidebarWorkspaceTableView?
-        private var selectedSlot: WorkspaceVaultSlot?
-        private var noteCounts: SidebarWorkspaceNoteCounts
-        private var locale: Locale
-        private var select: (WorkspaceVaultSlot) -> Void
-        private var isSynchronizingSelection = false
-
-        init(
-            selectedSlot: WorkspaceVaultSlot?,
-            noteCounts: SidebarWorkspaceNoteCounts,
-            locale: Locale,
-            select: @escaping (WorkspaceVaultSlot) -> Void
-        ) {
-            self.selectedSlot = selectedSlot
-            self.noteCounts = noteCounts
-            self.locale = locale
-            self.select = select
-        }
-
-        func attach(_ tableView: SidebarWorkspaceTableView) {
-            self.tableView = tableView
-            tableView.reloadData()
-            synchronizeSelection(in: tableView)
-        }
-
-        func apply(
-            selectedSlot: WorkspaceVaultSlot?,
-            noteCounts: SidebarWorkspaceNoteCounts,
-            locale: Locale,
-            usesAccessibilitySize: Bool,
-            select: @escaping (WorkspaceVaultSlot) -> Void
-        ) {
-            let desiredRowSizeStyle: NSTableView.RowSizeStyle =
-                usesAccessibilitySize ? .large : .default
-            let contentChanged = self.noteCounts != noteCounts || self.locale != locale
-                || tableView?.rowSizeStyle != desiredRowSizeStyle
-            self.selectedSlot = selectedSlot
-            self.noteCounts = noteCounts
-            self.locale = locale
-            self.select = select
-            guard let tableView else { return }
-            tableView.rowSizeStyle = desiredRowSizeStyle
-            if contentChanged {
-                isSynchronizingSelection = true
-                tableView.reloadData()
-                isSynchronizingSelection = false
-            }
-            synchronizeSelection(in: tableView)
-        }
-
-        func numberOfRows(in tableView: NSTableView) -> Int {
-            WorkspaceVaultSlot.allCases.count
-        }
-
-        func tableView(
-            _ tableView: NSTableView,
-            viewFor tableColumn: NSTableColumn?,
-            row: Int
-        ) -> NSView? {
-            guard WorkspaceVaultSlot.allCases.indices.contains(row) else {
-                return nil
-            }
-            let slot = WorkspaceVaultSlot.allCases[row]
-            let cell = tableView.makeView(
-                withIdentifier: Self.cellIdentifier,
-                owner: self
-            ) as? SidebarWorkspaceCell ?? SidebarWorkspaceCell()
-            cell.identifier = Self.cellIdentifier
-            cell.configure(
-                title: ScholiumL10n.dynamicString(slot.displayName),
-                noteCount: noteCounts.count(for: slot),
-                noteCountDescription: noteCountDescription(for: slot),
-                accessibilityIdentifier: "scholium.vault.\(slot.rawValue)",
-                effectiveRowSizeStyle: tableView.effectiveRowSizeStyle
-            )
-            return cell
-        }
-
-        func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
-            guard WorkspaceVaultSlot.allCases.indices.contains(row) else {
-                return false
-            }
-            return noteCounts.count(for: WorkspaceVaultSlot.allCases[row]) != nil
-        }
-
-        func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
-            let rowView = SidebarSourceListRowView()
-            (tableView as? SidebarWorkspaceTableView)?.configureSelectionPresentation(for: rowView)
-            return rowView
-        }
-
-        func tableViewSelectionDidChange(_ notification: Notification) {
-            guard !isSynchronizingSelection,
-                  let tableView = notification.object as? NSTableView,
-                  WorkspaceVaultSlot.allCases.indices.contains(tableView.selectedRow)
-            else { return }
-            let slot = WorkspaceVaultSlot.allCases[tableView.selectedRow]
-            guard noteCounts.count(for: slot) != nil, slot != selectedSlot else {
-                return
-            }
-            select(slot)
-        }
-
-        private func synchronizeSelection(in tableView: NSTableView) {
-            isSynchronizingSelection = true
-            defer { isSynchronizingSelection = false }
-            guard let selectedSlot,
-                  let row = WorkspaceVaultSlot.allCases.firstIndex(of: selectedSlot),
-                  noteCounts.count(for: selectedSlot) != nil
-            else {
-                tableView.deselectAll(nil)
-                return
-            }
-            guard tableView.selectedRow != row else { return }
-            tableView.selectRowIndexes(
-                IndexSet(integer: row),
-                byExtendingSelection: false
-            )
-        }
-
-        private func noteCountDescription(for slot: WorkspaceVaultSlot) -> String {
-            guard let noteCount = noteCounts.count(for: slot) else {
-                return ScholiumL10n.string("Note count unavailable", locale: locale)
-            }
-            return String.localizedStringWithFormat(
-                ScholiumL10n.string("%lld notes", locale: locale),
-                Int64(noteCount)
-            )
+    final class Coordinator: NSObject {
+        var select: (WorkspaceVaultSlot) -> Void
+        init(select: @escaping (WorkspaceVaultSlot) -> Void) { self.select = select }
+        @objc func selectWorkspace(_ sender: NSSegmentedControl) {
+            guard WorkspaceVaultSlot.allCases.indices.contains(sender.selectedSegment),
+                  sender.isEnabled(forSegment: sender.selectedSegment) else { return }
+            select(WorkspaceVaultSlot.allCases[sender.selectedSegment])
         }
     }
 }
 
 @MainActor
-final class SidebarWorkspaceTableView: NSTableView {
-    private let selectionPresentation = SidebarSourceListSelectionPresentation()
+final class WorkspaceSegmentedControl: NSSegmentedControl {
+    var titles: [String] = []
+    private(set) var usesSymbols = false
+    private let symbols = ["doc.text.magnifyingglass", "point.3.connected.trianglepath.dotted", "square.and.pencil"]
 
-    func configureSelectionPresentation(for row: SidebarSourceListRowView) {
-        row.allowsKeyboardEmphasis = { [weak self] in
-            self?.selectionPresentation.inputModality == .keyboard
-        }
+    override func layout() {
+        super.layout()
+        updateLabels()
     }
 
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        focusRingType = .none
-    }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        focusRingType = .none
-    }
-
-    override var intrinsicContentSize: NSSize {
-        NSSize(
-            width: NSView.noIntrinsicMetric,
-            height: CGFloat(numberOfRows) * rowHeight
-        )
-    }
-
-    override func reloadData() {
-        super.reloadData()
-        invalidateIntrinsicContentSize()
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        selectionPresentation.recordPointerInteraction()
-        super.mouseDown(with: event)
-        selectionPresentation.synchronize(in: self)
-    }
-
-    override func keyDown(with event: NSEvent) {
-        selectionPresentation.recordKeyboardInteraction()
-        super.keyDown(with: event)
-        selectionPresentation.synchronize(in: self)
-    }
-
-    override func becomeFirstResponder() -> Bool {
-        let becameFirstResponder = super.becomeFirstResponder()
-        guard becameFirstResponder else { return false }
-        selectionPresentation.recordResponderEvent(NSApp.currentEvent?.type)
-        selectionPresentation.synchronize(in: self)
-        return true
-    }
-
-    override func resignFirstResponder() -> Bool {
-        let resignedFirstResponder = super.resignFirstResponder()
-        if resignedFirstResponder {
-            enumerateAvailableRowViews { row, _ in row.isEmphasized = false }
-        }
-        return resignedFirstResponder
-    }
-
-}
-
-@MainActor
-private final class SidebarWorkspaceCell: NSTableCellView {
-    private let titleField = NSTextField(labelWithString: "")
-    private let countField = NSTextField(labelWithString: "")
-    private var isAvailable = true
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        titleField.lineBreakMode = .byTruncatingTail
-        titleField.maximumNumberOfLines = 1
-        countField.alignment = .right
-        countField.setContentHuggingPriority(.required, for: .horizontal)
-
-        for field in [titleField, countField] {
-            field.translatesAutoresizingMaskIntoConstraints = false
-            addSubview(field)
-        }
-        textField = titleField
-        NSLayoutConstraint.activate([
-            titleField.leadingAnchor.constraint(
-                equalTo: leadingAnchor,
-                constant: ScholiumGrid.Spacing.inlineControlGap
-            ),
-            titleField.centerYAnchor.constraint(equalTo: centerYAnchor),
-            countField.leadingAnchor.constraint(
-                greaterThanOrEqualTo: titleField.trailingAnchor,
-                constant: ScholiumGrid.Spacing.inlineControlGap
-            ),
-            countField.trailingAnchor.constraint(
-                equalTo: trailingAnchor,
-                constant: -ScholiumGrid.Spacing.inlineControlGap
-            ),
-            countField.centerYAnchor.constraint(equalTo: centerYAnchor),
-        ])
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("SidebarWorkspaceCell is code-only")
-    }
-
-    func configure(
-        title: String,
-        noteCount: Int?,
-        noteCountDescription: String,
-        accessibilityIdentifier: String,
-        effectiveRowSizeStyle: NSTableView.RowSizeStyle
-    ) {
-        let pointSize = NSFont.systemFontSize(
-            for: sidebarControlSize(for: effectiveRowSizeStyle)
-        )
-        titleField.font = .systemFont(ofSize: pointSize)
-        countField.font = .monospacedDigitSystemFont(
-            ofSize: pointSize,
-            weight: .regular
-        )
-        isAvailable = noteCount != nil
-        titleField.stringValue = title
-        countField.stringValue = noteCount?.formatted() ?? "—"
-        titleField.setAccessibilityIdentifier(accessibilityIdentifier)
-        titleField.setAccessibilityLabel(title)
-        setAccessibilityLabel(title)
-        setAccessibilityValue(noteCountDescription)
-        setAccessibilityEnabled(isAvailable)
-        setAccessibilityIdentifier(accessibilityIdentifier)
-        updateColors()
-    }
-
-    override var backgroundStyle: NSView.BackgroundStyle {
-        didSet { updateColors() }
-    }
-
-    private func updateColors() {
-        if backgroundStyle == .emphasized {
-            titleField.textColor = .alternateSelectedControlTextColor
-            countField.textColor = .alternateSelectedControlTextColor
-        } else if isAvailable {
-            titleField.textColor = ScholiumColorRole.primaryText.nsColor
-            countField.textColor = ScholiumColorRole.mutedText.nsColor
-        } else {
-            titleField.textColor = .disabledControlTextColor
-            countField.textColor = .disabledControlTextColor
+    func updateLabels() {
+        guard titles.count == segmentCount, segmentCount > 0 else { return }
+        let font = font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
+        let requiredWidth = titles.map {
+            ($0 as NSString).size(withAttributes: [.font: font]).width + 16
+        }.max()! * CGFloat(segmentCount)
+        usesSymbols = bounds.width > 0 && bounds.width < requiredWidth
+        for index in titles.indices {
+            let title = titles[index]
+            let desiredLabel = usesSymbols ? "" : title
+            if label(forSegment: index) != desiredLabel { setLabel(desiredLabel, forSegment: index) }
+            if usesSymbols && image(forSegment: index) == nil {
+                setImage(NSImage(systemSymbolName: symbols[index], accessibilityDescription: title), forSegment: index)
+                setImageScaling(.scaleProportionallyDown, forSegment: index)
+            } else if !usesSymbols && image(forSegment: index) != nil {
+                setImage(nil, forSegment: index)
+            }
+            let width = max(0, bounds.width / CGFloat(segmentCount))
+            if self.width(forSegment: index) != width { setWidth(width, forSegment: index) }
         }
     }
 }

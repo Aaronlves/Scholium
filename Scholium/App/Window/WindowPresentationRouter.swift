@@ -55,7 +55,6 @@ struct WindowOverlayRoute: OptionSet, Sendable {
     let rawValue: UInt8
 
     static let loading = Self(rawValue: 1 << 0)
-    static let search = Self(rawValue: 1 << 1)
 }
 
 enum WindowAlertRoute: Identifiable, Equatable {

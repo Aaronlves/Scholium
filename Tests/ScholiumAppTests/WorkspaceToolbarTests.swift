@@ -132,7 +132,7 @@ struct WorkspaceToolbarTests {
         #expect(documentInformation.visibilityPriority == .high)
         let title = try #require(documentInformation.view as? NSTextField)
         #expect(title.stringValue == "Scholium")
-        #expect(title.textColor?.usingColorSpace(.deviceRGB) == ScholiumColorRole.mutedText.nsColor.usingColorSpace(.deviceRGB))
+        #expect(title.textColor?.usingColorSpace(.deviceRGB) == NSColor.secondaryLabelColor.usingColorSpace(.deviceRGB))
         #expect(window.titleVisibility == .hidden)
 
         for identifier in [
@@ -195,6 +195,8 @@ struct WorkspaceToolbarTests {
         #expect(selector.image(forSegment: 1) != nil)
         #expect(selector.isSelected(forSegment: 0))
         #expect(!selector.isSelected(forSegment: 1))
+        #expect(!selector.isEnabled(forSegment: 1))
+        #expect(selector.toolTip(forSegment: 1) == ScholiumL10n.string("No note open yet"))
 
         let inspector = try #require(item(
             ScholiumWorkspaceToolbarController.Item.inspector,
@@ -216,6 +218,26 @@ struct WorkspaceToolbarTests {
         #expect(toolbar.items.allSatisfy {
             $0.itemIdentifier.rawValue != "scholium.toolbar.agentChanges"
         })
+
+        // System validation must not re-enable commands merely because their
+        // target implements an action. This previously caused state flicker.
+        toolbar.validateVisibleItems()
+        for identifier in [ScholiumWorkspaceToolbarController.Item.back,
+                           ScholiumWorkspaceToolbarController.Item.forward,
+                           ScholiumWorkspaceToolbarController.Item.inspector,
+                           ScholiumWorkspaceToolbarController.Item.documentMode,
+                           ScholiumWorkspaceToolbarController.Item.settlement,
+                           ScholiumWorkspaceToolbarController.Item.researchRecords] {
+            let command = try #require(item(identifier, in: toolbar))
+            #expect(!controller.validateToolbarItem(command))
+            #expect(!command.isEnabled)
+            if let menu = command.menuFormRepresentation { #expect(!controller.validateMenuItem(menu)) }
+        }
+        controller.invalidate()
+        controller.activateSidebar(.outline)
+        #expect(model.shellState.sidebarContent == .triptych)
+        #expect(toolbar.delegate == nil)
+        #expect(toolbar.items.allSatisfy { $0.action == nil && $0.menuFormRepresentation == nil })
     }
 
     @Test("Peripheral controls mirror their current accessible visibility state")
@@ -252,6 +274,15 @@ struct WorkspaceToolbarTests {
         }
 
         #expect((sidebar.view as? NSSegmentedControl)?.isSelected(forSegment: 0) == false)
+        controller.invalidate()
+        model.shellState.recordLibraryVisibility(true)
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+        controller.install(in: window)
+        #expect((sidebar.view as? NSSegmentedControl)?.isSelected(forSegment: 0) == false)
+        #expect((sidebar.view as? NSSegmentedControl)?.isEnabled == false)
+        #expect(toolbar.delegate == nil)
     }
 
     private var inertWindowActions: WorkspaceWindowActions {

@@ -1003,6 +1003,7 @@ private struct ScholiumSettingsRoot: View {
 
 struct ScholiumSearchActions {
     let begin: (SearchInvocation) -> Void
+    let advanced: () -> Void
 }
 
 struct ScholiumApplicationBootstrapStatus: Equatable, Sendable {
@@ -1468,6 +1469,8 @@ private struct ScholiumSidebarCommandContent: View {
         .scholiumActivationPointer()
         .scholiumKeyboardShortcut(shortcut(for: .searchResearch))
         .disabled(searchActions == nil)
+        Button("Advanced Search…") { searchActions?.advanced() }
+            .disabled(searchActions == nil)
         Button("Go to Frontmatter") {
             editorActions?.goToFrontmatter()
         }
@@ -1477,7 +1480,7 @@ private struct ScholiumSidebarCommandContent: View {
             workspaceWindowActions?.showResearchRecords()
         }
         .scholiumActivationPointer()
-        .disabled(workspaceWindowActions == nil)
+        .disabled(workspaceWindowActions == nil || appState?.windowWorkspaceController.activeCapabilities == nil)
         Button("Triptych") {
             workspaceWindowActions?.activateSidebar(.triptych)
         }
@@ -1486,7 +1489,7 @@ private struct ScholiumSidebarCommandContent: View {
             workspaceWindowActions?.activateSidebar(.outline)
         }
         .scholiumActivationPointer()
-        .disabled(workspaceWindowActions == nil || appState?.currentNote == nil)
+        .disabled(workspaceWindowActions == nil || appState?.canActivateOutline != true)
         Button(
             ScholiumL10n.dynamicString(
                 appState?.researchInspectorVisible == true
@@ -1501,11 +1504,7 @@ private struct ScholiumSidebarCommandContent: View {
         }
         .scholiumActivationPointer()
         .scholiumKeyboardShortcut(shortcut(for: .toggleResearchInspector))
-        .disabled(
-            workspaceWindowActions == nil
-                || (appState?.researchInspectorVisible != true
-                    && appState?.currentNote == nil)
-        )
+        .disabled(workspaceWindowActions == nil || appState?.canToggleResearchInspector != true)
         Menu("Document Mode") {
             if appState?.presentedDocumentMode == .read {
                 Button("Review") { appState?.requestDocumentMode(.read) }
@@ -1871,8 +1870,6 @@ final class WindowModel: ObservableObject {
                 await self?.openSearchSelection(result, disposition: disposition)
             },
             hasCurrentNote: { [weak self] in self?.currentNote != nil },
-            isPresented: { [weak self] in self?.showSearchSurface == true },
-            setPresented: { [weak self] in self?.showSearchSurface = $0 },
             reportInformation: { [weak self] message in
                 self?.reportOperationIssue(message, kind: .information)
             },
@@ -2192,6 +2189,14 @@ final class WindowModel: ObservableObject {
         set { researchController.selectInspectorMode(newValue) }
     }
 
+    var canActivateOutline: Bool {
+        currentNote != nil || (shellState.libraryVisible && shellState.sidebarContent == .outline)
+    }
+
+    var canToggleResearchInspector: Bool {
+        currentNote != nil || shellState.inspector.isVisible
+    }
+
     var researchInspectorVisible: Bool {
         get { researchController.inspector.isVisible }
         set { researchController.showResearchInspector(newValue) }
@@ -2235,11 +2240,6 @@ final class WindowModel: ObservableObject {
     var showMarkdownImporter: Bool {
         get { presentationRouter.fileImport == .markdown }
         set { presentationRouter.fileImport = newValue ? .markdown : nil }
-    }
-
-    var showSearchSurface: Bool {
-        get { presentationRouter.presentsOverlay(.search) }
-        set { presentationRouter.setOverlay(.search, isPresented: newValue) }
     }
 
     var editingNotePath: String? {

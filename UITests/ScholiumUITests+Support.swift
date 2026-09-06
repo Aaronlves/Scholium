@@ -1293,12 +1293,12 @@ extension ScholiumUITests {
 
     @MainActor
     func searchResult(named title: String, in container: XCUIElement? = nil) -> XCUIElement {
-        let buttons = if let container {
-            container.buttons
+        let rows = if let container {
+            container.descendants(matching: .any)
         } else {
-            app.buttons
+            app.descendants(matching: .any)
         }
-        return buttons.matching(NSPredicate(
+        return rows.matching(NSPredicate(
             format: "identifier BEGINSWITH %@ AND label BEGINSWITH %@",
             "scholium.searchResult.",
             "\(title),"
@@ -1435,4 +1435,13 @@ extension ScholiumUITests {
             ofItemAtPath: destination.path
         )
     }
+}
+
+@MainActor
+func selectResearchSearchScope(_ title: String, in application: XCUIApplication) {
+    let field = application.searchFields["scholium.searchField"].firstMatch
+    XCTAssertTrue(field.waitForExistence(timeout: 5))
+    field.buttons.firstMatch.click()
+    field.menuItems["Search scope"].click()
+    field.menuItems[title].click()
 }

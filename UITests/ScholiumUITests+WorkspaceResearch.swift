@@ -610,29 +610,39 @@ extension ScholiumUITests {
     @MainActor
     func testSharedSearchMatchesAnAliasAcrossTheTriptych() throws {
         XCTAssertTrue(waitForDocumentTitle("QA Autosave A"))
-
-        app.typeKey("f", modifierFlags: [.command, .shift])
-        let search = app.descendants(matching: .any)["scholium.searchWorkspace"]
-        XCTAssertTrue(search.waitForExistence(timeout: 5))
-
-        let field = app.descendants(matching: .any)["scholium.searchField"]
+        app.menuBars.menuBarItems["View"].click()
+        app.menuItems["Advanced Search…"].click()
+        let emptyAdvanced = app.windows["scholium.advancedSearchWindow"]
+        XCTAssertTrue(emptyAdvanced.waitForExistence(timeout: 5))
+        XCTAssertTrue(emptyAdvanced.descendants(matching: .any)["scholium.searchReady"].waitForExistence(timeout: 5))
+        XCTAssertFalse(emptyAdvanced.staticTexts["Search Index Unavailable"].exists)
+        emptyAdvanced.buttons[XCUIIdentifierCloseWindow].click()
+        let field = app.searchFields["scholium.searchField"].firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 5))
-        let triptych = app.buttons["scholium.searchScope.triptych"]
-        XCTAssertTrue(triptych.waitForExistence(timeout: 5))
-        triptych.click()
-        typeCommittedText("Normative QA Nexus", into: field, in: app)
-
-        let result = searchResult(named: "QA Topic")
+        selectResearchSearchScope("Triptych", in: app)
+        field.click()
+        field.typeText("Normative QA Nexus")
+        XCTAssertEqual(field.value as? String, "Normative QA Nexus")
+        XCTAssertTrue(searchResult(named: "QA Topic").waitForExistence(timeout: 8))
+        field.buttons.firstMatch.click()
+        field.menuItems["Advanced Search…"].click()
+        let advanced = app.windows["scholium.advancedSearchWindow"]
+        XCTAssertTrue(advanced.waitForExistence(timeout: 5))
+        let advancedField = advanced.searchFields["scholium.searchField"]
+        XCTAssertEqual(advancedField.value as? String, "Normative QA Nexus")
+        advancedField.buttons.firstMatch.click()
+        XCTAssertFalse(advancedField.menuItems["Advanced Search…"].exists)
+        app.typeKey(.escape, modifierFlags: [])
+        let result = advanced.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "QA Topic,")).firstMatch
         XCTAssertTrue(result.waitForExistence(timeout: 5))
         result.click()
-
-        XCTAssertTrue(waitUntil(timeout: 8) {
-            self.documentTitle() == "QA Topic"
-        })
-        XCTAssertTrue(
-            app.descendants(matching: .any)["scholium.vault.topic_knowledge"].exists
-        )
-        XCTAssertFalse(search.exists)
+        XCTAssertTrue(waitForDocumentTitle("QA Topic", timeout: 8))
+        XCTAssertTrue(advanced.exists)
+        app.menuBars.menuBarItems["View"].click()
+        app.menuItems["Advanced Search…"].click()
+        advanced.buttons[XCUIIdentifierCloseWindow].click()
+        XCTAssertTrue(waitUntil(timeout: 5) { !advanced.exists })
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.noteList"].exists)
     }
 
     @MainActor
@@ -1048,7 +1058,7 @@ extension ScholiumUITests {
         openWorkspace.click()
 
         let analysesControl = app.descendants(matching: .any)[
-            "scholium.vault.paper_analysis"
+            "Analyses"
         ]
         let librarySurface = app.descendants(matching: .any)["scholium.librarySurface"]
         let loadingOverlay = app.descendants(matching: .any)["scholium.loadingOverlay"]
@@ -1100,7 +1110,7 @@ extension ScholiumUITests {
 
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 15))
         XCTAssertTrue(
-            app.descendants(matching: .any)["scholium.vault.paper_analysis"]
+            app.descendants(matching: .any)["Analyses"]
                 .waitForExistence(timeout: 15)
         )
         XCTAssertFalse(app.descendants(matching: .any)["scholium.triptychSetup"].exists)
@@ -1286,7 +1296,7 @@ extension ScholiumUITests {
     func testCritiqueFindingOpensExactWorkPassageInSource() throws {
         waitForCurrentDocumentSurface()
         selectVault(
-            "scholium.vault.output",
+            "Works",
             waitingFor: "scholium.folderRow.Critiques"
         )
 
@@ -1426,20 +1436,17 @@ extension ScholiumUITests {
         let field = app.descendants(matching: .any)["scholium.searchField"]
         let result = searchResult(named: "QA Autosave A")
         XCTAssertTrue(field.waitForExistence(timeout: 5))
-        let searchMode = app.descendants(matching: .any)["scholium.searchMode"]
+        let searchMode = field.buttons.firstMatch
         let closeSearch = app.descendants(matching: .any)["scholium.closeSearchButton"]
         XCTAssertTrue(searchMode.waitForExistence(timeout: 5))
         XCTAssertTrue(closeSearch.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["scholium.searchScope.thisNote"].exists)
-        XCTAssertTrue(app.buttons["scholium.searchScope.currentVault"].exists)
-        XCTAssertTrue(app.buttons["scholium.searchScope.triptych"].exists)
         let collapsedControls = field.frame
             .union(searchMode.frame)
             .union(closeSearch.frame)
         XCTAssertLessThanOrEqual(collapsedControls.width, 644)
         XCTAssertLessThanOrEqual(collapsedControls.height, 80)
 
-        app.buttons["scholium.searchScope.thisNote"].click()
+        selectResearchSearchScope("This Note", in: app)
         typeCommittedText("Research", into: field, in: app)
         XCTAssertTrue(result.waitForExistence(timeout: 8))
         let expandedContentHeight = result.frame.maxY - field.frame.minY
@@ -1469,9 +1476,7 @@ extension ScholiumUITests {
         let field = app.descendants(matching: .any)["scholium.searchField"]
         let result = searchResult(named: "QA Autosave A")
         XCTAssertTrue(field.waitForExistence(timeout: 5))
-        let thisNote = app.buttons["scholium.searchScope.thisNote"]
-        XCTAssertTrue(thisNote.waitForExistence(timeout: 5))
-        thisNote.click()
+        selectResearchSearchScope("This Note", in: app)
         typeCommittedText("analysis", into: field, in: app)
         XCTAssertTrue(result.waitForExistence(timeout: 8))
         field.click()
@@ -1503,9 +1508,7 @@ extension ScholiumUITests {
         let search = app.descendants(matching: .any)["scholium.searchWorkspace"]
         let field = app.descendants(matching: .any)["scholium.searchField"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
-        let triptych = app.buttons["scholium.searchScope.triptych"]
-        XCTAssertTrue(triptych.waitForExistence(timeout: 5))
-        triptych.click()
+        selectResearchSearchScope("Triptych", in: app)
         typeCommittedText(
             "from-note:\"QA Direct Link Concept 947\"",
             into: field,
@@ -1537,9 +1540,7 @@ extension ScholiumUITests {
         app.typeKey("f", modifierFlags: [.command, .shift])
         let field = app.descendants(matching: .any)["scholium.searchField"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
-        let triptych = app.buttons["scholium.searchScope.triptych"]
-        XCTAssertTrue(triptych.waitForExistence(timeout: 5))
-        triptych.click()
+        selectResearchSearchScope("Triptych", in: app)
         typeCommittedText("deliberative autonomy", into: field, in: app)
 
         let title = searchResult(named: "Deliberative Autonomy")

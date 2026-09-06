@@ -403,7 +403,7 @@ extension ScholiumUITests {
         XCTAssertFalse(app.buttons["Open Attachment"].exists)
 
         selectVault(
-            "scholium.vault.topic_knowledge",
+            "Topics",
             waitingFor: "scholium.noteRow.QA Topic.md"
         )
         let topicRow = app.descendants(matching: .any)["scholium.noteRow.QA Topic.md"]
@@ -411,7 +411,7 @@ extension ScholiumUITests {
         XCTAssertTrue(waitUntil(timeout: 8) { !openInZotero.exists })
 
         selectVault(
-            "scholium.vault.output",
+            "Works",
             waitingFor: "scholium.noteRow.QA Work.md"
         )
         let workRow = app.descendants(matching: .any)["scholium.noteRow.QA Work.md"]
@@ -419,7 +419,7 @@ extension ScholiumUITests {
         XCTAssertTrue(waitUntil(timeout: 8) { !openInZotero.exists })
 
         selectVault(
-            "scholium.vault.paper_analysis",
+            "Analyses",
             waitingFor: "scholium.noteRow.QA Autosave A.md"
         )
         let analysisRow = app.descendants(matching: .any)[

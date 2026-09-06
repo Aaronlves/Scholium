@@ -4,6 +4,43 @@
 
 ## Current verification snapshot
 
+**2026-09-06 Native toolbar and Search:** 87 owning tests in eight suites
+passed, covering native toolbar validation and overflow commands, lifecycle
+invalidation, window state, Library, Search response evidence, and presentation
+contracts. Two isolated UI journeys passed: no-document disabled state across
+Outline/Inspector and View menus, followed by restored availability after opening
+a Note (21.322 seconds); and blank advanced Search, rapid query entry, quick-to-
+advanced handoff, result navigation, query retention, and close (41.820 seconds).
+The earlier custom unavailable hint/motion is removed. All toolbar controls use
+native state rendering, including monochrome Settlement symbols and system title
+color. Native glass grouping remains system-owned. Computer Use confirmed disabled
+states, current document identity, transparent Sidebar Search results, and the
+native advanced result list with concise metadata. An unqueried availability
+default no longer appears as an index failure. Logs:
+`.build/native-toolbar-search-owners.log`, `.build/native-toolbar-search-ui.log`,
+and `.build/native-toolbar-search-final-build.log`. The final locally signed QA
+Debug instance remains open with disposable fixture state for the researcher.
+Full assistive/input and light/dark/system-adaptation acceptance remains pending;
+these scoped checks do not establish a complete release gate.
+
+**2026-09-06 Library and Search refinement:** 77 focused native tests in six
+suites passed, covering workspace segments, toolbar placement, Search lifetime,
+native field menus, and owning presentation contracts. The isolated Search
+journey passed in 33.690 seconds: rapid query entry, Triptych alias result,
+advanced-window handoff, absence of a recursive Advanced Search menu entry,
+result navigation with retained query/window, and native close returning to the
+Library. Active native field editors now resist stale render text assignments;
+only explicit completion/saved-query replacements may replace their contents.
+Computer Use confirmed the gray non-glass workspace segments, expanded/collapsed
+native notification placement, and the final compact advanced layout with query
+details in a small popover. Logs: `.build/sidebar-owning-tests.log` and
+`.build/sidebar-ui-test.log`. One isolated ad-hoc-signed QA Debug instance is
+left open with a disposable standard fixture copy at the researcher's request.
+This is bounded presentation verification: broader App tests still have failures
+outside this owning slice; no complete release gate is claimed. Full light/dark,
+minimum-width, assistive-technology, genuine IME, and system-adaptation acceptance
+remain pending human verification.
+
 **Environment:** 2026-09-05 approved interface corrections, Xcode 27 beta
 (`DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer`). This supersedes
 the older fixed-index Records and animated Settlement presentation evidence

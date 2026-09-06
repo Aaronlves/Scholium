@@ -28,32 +28,25 @@
   AppKit toolbar items own their native Liquid Glass, and compact Sidebar-header
   controls retain their established 28pt targets. The 70 × 20 Inspector
   projection control and split geometry remain unchanged.
-- The Sidebar header presents the Scholium wordmark as its primary brand title,
-  with Search and Notifications controls at the logical trailing edge and no
-  persistent Triptych selector. File owns New/Open Triptych, Settings manages
-  registrations, and Window owns switching among open windows. Distinct
-  concurrently open Triptychs receive native window subtitles; one Triptych
-  does not. A nonzero
-  queue uses one Accent dot on the
-  bell, keeps its exact count accessible, and never prints a numeric counter.
-  The toolbar shows Agent Changes only while confirmed local changes exist.
+- The Sidebar begins with a persistent native Search field, a neutral workspace
+  segmented control, and the muted Library operation row. It has no wordmark
+  header. Notifications uses a native toolbar button with a nonnumeric
+  badge and exact count in native Help. It aligns with the expanded Sidebar
+  trailing edge and reflows natively when Sidebar collapses. File/Settings/Window retain Triptych management.
+  Every toolbar component now uses native state rendering and one window-derived
+  enablement route for presentation, toolbar/overflow validation, and action
+  dispatch. There are no custom unavailable animations or Settlement icon tints.
+  Invalidation cancels subscriptions and detaches controls; document/revision
+  changes close stale Settlement popovers. Outline and Inspector expose the
+  same no-document prerequisite through native disabled state and Help.
 
 ## Library, Document, and Inspector
 
-- Library presents Analyses, Topics, and Works through a native source-list
-  navigator whose shared input-modality adapter keeps pointer selection quiet
-  and enables native emphasized-row focus for keyboard entry and navigation.
-  The selected row is the sole visible focus indicator, so the source-list
-  containers suppress their duplicate perimeter rings. AppKit still owns
-  selection drawing, first-responder routing, active/inactive appearance,
-  pointer behavior, and Up/Down traversal. Its native outline likewise owns row
-  selection, focus, disclosure, and drag feedback;
-  both lists follow AppKit's effective source-list size, with the large system
-  row style used for enlarged interface presentation. Scholium supplies
-  semantic text colors, exact counts, content, and valid actions. Scholium is
-  the brand title and Library is its muted subordinate section; the Library's
-  Organize and Add actions are separate borderless native menus, with global
-  Folder disclosure inside Organize. File-tree rows use the Finder-style native grid: AppKit owns
+- Library presents Analyses, Topics, and Works through native single-choice
+  segments. Complete localized labels adapt to role symbols at narrow widths;
+  selection and disabled-workspace semantics remain native. The file tree keeps
+  source-list selection, keyboard focus, disclosure, and normal native row size.
+  Organize and Add remain separate native menus. File-tree rows use the Finder-style native grid: AppKit owns
   the Folder disclosure gutter and its state, monochrome Folder and Note symbols
   share the item-type column, and their titles share the following text column.
   The 16pt Library hierarchy step is applied through AppKit's native outline
@@ -64,7 +57,7 @@
   retaining its existing Clear route. Organize separates link-annotation presence
   from Integrity, combines Metadata into one group, and exposes sorting choices
   directly. Note context menus and accessibility actions share the same file
-  command list, including Move Note. Both native lists receive enlarged-interface
+  command list, including Move Note. The native outline receives enlarged-interface
   row sizing on creation and subsequent presentation updates.
 - Standard Sidebar controls and navigation rows retain their native macOS
   cursors. The Sidebar adds no global pointing-hand remapping, custom row-hover
@@ -195,6 +188,16 @@
   present flat exact occurrence lists without peer-role folders, including
   local context and source-owned Markdown annotation. Incoming annotations are
   read-only and route editing to the source Note. It has no Actions mode.
+- Search uses a persistent native field. Its magnifying-glass menu contains
+  scope, content type, Clear Filters, and the quick-only Advanced Search entry.
+  The advanced window retains query/results when opening a Note, keeps Saved
+  Searches in a compact action line, and exposes concise query conditions in a
+  transient information popover. Native Search-field composition owns input;
+  there is no second query draft or centered overlay.
+  Results now use the native inset List's selection, with interface typography,
+  document/Record symbols, a bounded snippet, and compact location/reason text.
+  Native content-state views distinguish the initial query prompt, empty results,
+  and actual provider failure; unqueried default availability is not displayed.
 - Search defaults to **All** and presents separate Notes and Research Records
   sections without cross-provider ranking. Notes and Records are directly
   selectable provider paths; scope remains This Note, This Vault, or Triptych.

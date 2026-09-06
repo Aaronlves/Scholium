@@ -1,6 +1,134 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Matched step": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Matched step"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "匹配步骤"
+          }
+        }
+      }
+    },
+    "Matched question": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Matched question"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "匹配问题"
+          }
+        }
+      }
+    },
+    "Enter a search term to begin.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a search term to begin."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输入关键词以开始搜索。"
+          }
+        }
+      }
+    },
+    "Search Notes and Records": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search Notes and Records"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索笔记与研究记录"
+          }
+        }
+      }
+    },
+    "No note open yet" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No note open yet"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未打开笔记"
+          }
+        }
+      }
+    },
+    "Advanced Search" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Advanced Search"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "高级搜索"
+          }
+        }
+      }
+    },
+    "Advanced Search…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Advanced Search…"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "高级搜索…"
+          }
+        }
+      }
+    },
+    "Clear Filters" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear Filters"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "清除筛选"
+          }
+        }
+      }
+    },
     "An Agent changed a Note. Open Scholium to inspect the change.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "An Agent changed a Note. Open Scholium to inspect the change."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "Agent 已更改一篇笔记。打开 Scholium 查看变更。"}}}},
     "This Agent Change is no longer available.": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "This Agent Change is no longer available."}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "此 Agent 变更记录已不可用。"}}}},
     "The File Operation Completed with Warnings": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "The File Operation Completed with Warnings"}}, "zh-Hans": {"stringUnit": {"state": "translated", "value": "文件操作已完成，但有警告"}}}},

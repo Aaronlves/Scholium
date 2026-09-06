@@ -408,12 +408,9 @@ struct PropertyPresentationTests {
             ScholiumL10n.localized(DocumentSettlementToolbarPresentation.accessibilityLabel(for: $0))
         }
         #expect(Set(labels).count == states.count)
-        for (state, symbol) in zip(states, symbols) {
+        for symbol in symbols {
             #expect(NSImage(systemSymbolName: symbol, accessibilityDescription: nil) != nil)
-            #expect(DocumentSettlementToolbarPresentation.style(for: state) == .plain)
         }
-        #expect(DocumentSettlementToolbarPresentation.symbolColorRole(for: .settled) == .confirmed)
-        #expect(DocumentSettlementToolbarPresentation.symbolColorRole(for: .changedSinceSettlement) == .attention)
     }
 
     @Test("About presents file creation and modification facts from the snapshot")

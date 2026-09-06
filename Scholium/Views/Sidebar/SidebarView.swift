@@ -19,10 +19,7 @@ struct SidebarWorkspaceNoteCounts: Equatable {
 /// composition root. Filters, sorting, and disclosure remain
 /// owned by `DiscoveryController`; no view retains a parallel Library tree.
 struct SidebarContext {
-    let triptychName: String
-    let attentionTotal: Int?
     let workspaceNoteCounts: SidebarWorkspaceNoteCounts
-    let attentionError: String?
     /// Window-owned immutable hierarchy. The version changes only with its
     /// ordered Note cohort or Folder inventory, not with document presentation.
     let treeProjection: LibraryTreeProjectionVersion
@@ -38,11 +35,6 @@ struct SidebarContext {
     let canMutateLibrary: Bool
     let sourceMutationGeneration: UInt64
     let filterOptions: SidebarLibraryFilterOptions
-    let attentionPopoverSession: AttentionPopoverSession?
-    let searchIsPresented: Bool
-    let openSearch: () -> Void
-    let openAttention: () -> Void
-    let retryAttention: () -> Void
     let openNote: (WindowDocumentLocation, WindowOpenDisposition) -> Void
     let selectTriptychWorkspace: (WorkspaceVaultSlot) -> Void
     let createUntitledNote: (String?) -> Void
@@ -90,16 +82,8 @@ struct SidebarView: View {
         treeProjection.value.roots
     }
 
-    private var triptychAttentionState: SidebarTriptychAttentionState {
-        if let total = context.attentionTotal {
-            return total > 0 ? .active(count: total) : .zero
-        }
-        return context.attentionError == nil ? .checking : .unavailable
-    }
-
     var body: some View {
         VStack(spacing: 0) {
-            brandHeader
             ScholiumTriptychWorkspaceNavigator(
                 selectedSlot: context.requestedWorkspaceSlot ?? context.currentWorkspaceSlot,
                 noteCounts: context.workspaceNoteCounts,
@@ -131,41 +115,6 @@ struct SidebarView: View {
                 .accessibilityHidden(true)
             }
         }
-    }
-
-    // MARK: Fixed identity and navigation
-
-    private var brandHeader: some View {
-        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
-            Text("Scholium")
-                .font(ScholiumTypography.Brand.wordmark)
-                .scholiumForeground(.primaryText)
-                .accessibilityAddTraits(.isHeader)
-                .accessibilityIdentifier("scholium.wordmark")
-
-            Spacer(minLength: 0)
-
-            ScholiumInkIconControl(
-                title: ScholiumL10n.dynamicString("Search"),
-                systemImage: "magnifyingglass",
-                identifier: "scholium.sidebarSearch",
-                isActive: context.searchIsPresented,
-                action: context.openSearch
-            )
-
-            SidebarTriptychAttentionEntry(
-                state: triptychAttentionState,
-                open: context.openAttention,
-                retry: context.retryAttention
-            )
-            .scholiumAttentionPopover(
-                anchor: .sidebar,
-                session: context.attentionPopoverSession
-            )
-        }
-        .padding(.horizontal, ScholiumMetrics.Library.contentInset)
-        .padding(.top, ScholiumGrid.Spacing.sectionSeparation)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: Library source region

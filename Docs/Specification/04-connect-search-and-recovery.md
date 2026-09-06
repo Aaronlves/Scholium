@@ -51,8 +51,9 @@ them. Notes or Records supplies the dedicated provider path without changing
 the query or visible scope.
 
 Search owns known-Note navigation but not Recents, Quick Open, or navigation
-history. It is one compact command surface with visible scope and a bounded
-result list. Opening it retains the workspace; dismissal cancels work and
+history. It is one window-owned search session with quick and advanced presentations
+defined in §18.3, visible scope, and bounded result lists. Moving to Advanced
+Search retains query, scope, provider, and workspace; dismissal cancels work and
 clears query/results while retaining ordinary scope and Saved Searches.
 
 During live workspace opening, **This Note** performs exact lexical Search over

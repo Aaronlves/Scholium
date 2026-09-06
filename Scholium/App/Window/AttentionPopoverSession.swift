@@ -3,17 +3,17 @@ import Combine
 import Foundation
 
 enum AttentionPopoverAnchor: String, Equatable, Sendable {
-    case sidebar
+    case toolbar
     case inspector
 }
 
 enum AttentionQueuePopoverAnchor: Equatable, Sendable {
-    case sidebar
+    case toolbar
     case inspector
 
     var popoverAnchor: AttentionPopoverAnchor {
         switch self {
-        case .sidebar: .sidebar
+        case .toolbar: .toolbar
         case .inspector: .inspector
         }
     }

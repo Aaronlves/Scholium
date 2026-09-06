@@ -1626,18 +1626,7 @@ enum ScholiumMetrics {
     }
 
     enum Search {
-        static let preferredWidth: CGFloat = 640
-        static let maximumWidth: CGFloat = 720
-        static let collapsedHeight: CGFloat = 104
-        static let resultRowHeight: CGFloat = 64
-        static let resultHorizontalInset = ScholiumGrid.Spacing.regionContentInset
-        static let resultVerticalInset = ScholiumGrid.Spacing.labelAccessoryGap
-        static let selectionIndicatorWidth = ScholiumGrid.Spacing.opticalAlignmentAdjustment
-        static let expandedHeight: CGFloat = 520
-        static let scopeWidth: CGFloat = 320
         static let responsiveMargin = ScholiumGrid.Spacing.regionContentInset
-        static let explanationBottomInset = ScholiumGrid.foundationUnit * 1.5
-        static let scopeBarVerticalInset = ScholiumGrid.foundationUnit * 1.5
         static let resultContentSpacing = ScholiumGrid.foundationUnit * 2.5
         static let diagnosticBottomInset = ScholiumGrid.foundationUnit * 1.75
         static let availabilityDetailSpacing = ScholiumGrid.Spacing.opticalAlignmentAdjustment
@@ -1725,7 +1714,6 @@ enum ScholiumCornerRole: CaseIterable, Hashable, Sendable {
     case editorialPanel
     case loadingSurface
     case editorialTextEditor
-    case searchOverlay
     case boundedPanel
     case documentCodeBlock
     case documentCalloutSurface
@@ -1751,8 +1739,6 @@ enum ScholiumCornerRole: CaseIterable, Hashable, Sendable {
             3
         case .documentControl:
             5
-        case .searchOverlay:
-            12
         }
     }
 
@@ -1779,8 +1765,7 @@ enum ScholiumCornerRole: CaseIterable, Hashable, Sendable {
         case .calloutDisclosureFocus:
             "--scholium-corner-callout-disclosure-focus"
         case .editorialControl, .segmentedControl, .workspaceNavigation, .editorialPanel,
-            .loadingSurface,
-            .searchOverlay:
+            .loadingSurface:
             nil
         }
     }
@@ -1794,7 +1779,6 @@ enum ScholiumShape {
     static let editorialPanelCornerRadius = ScholiumCornerRole.editorialPanel.radius
     static let loadingSurfaceCornerRadius = ScholiumCornerRole.loadingSurface.radius
     static let editorialTextEditorCornerRadius = ScholiumCornerRole.editorialTextEditor.radius
-    static let searchOverlayCornerRadius = ScholiumCornerRole.searchOverlay.radius
 
     static let webCSSDeclarations = ScholiumCornerRole.allCases.compactMap { role in
         guard let name = role.cssVariableName else { return nil }
@@ -1946,7 +1930,6 @@ enum ScholiumSurfaceRole: CaseIterable, Hashable, Sendable {
     case apparatus
     case floatingControl
     case boundedPanel
-    case searchOverlay
     case denseEvidence
 
     var colorRole: ScholiumColorRole {
@@ -1954,14 +1937,14 @@ enum ScholiumSurfaceRole: CaseIterable, Hashable, Sendable {
         case .document: .documentBackground
         case .navigation: .navigationSurfaceBackground
         case .apparatus: .apparatusSurfaceBackground
-        case .floatingControl, .boundedPanel, .searchOverlay: .surfaceBackground
+        case .floatingControl, .boundedPanel: .surfaceBackground
         case .denseEvidence: .documentBackground
         }
     }
 
     var defaultBoundaryRole: ScholiumBoundaryRole {
         switch self {
-        case .floatingControl, .searchOverlay:
+        case .floatingControl:
             .floatingBoundary
         case .document, .navigation, .apparatus, .boundedPanel, .denseEvidence:
             .subtleBoundary
@@ -1974,8 +1957,6 @@ enum ScholiumSurfaceRole: CaseIterable, Hashable, Sendable {
             .floatingControl
         case .boundedPanel:
             nil
-        case .searchOverlay:
-            .searchOverlay
         case .document, .navigation, .apparatus, .denseEvidence:
             nil
         }
@@ -1992,13 +1973,11 @@ struct ScholiumElevationStyle: Equatable, Sendable {
 enum ScholiumElevationRole: CaseIterable, Sendable {
     case floatingControl
     case boundedPanel
-    case searchOverlay
 
     var cssVariableName: String {
         switch self {
         case .floatingControl: "--scholium-elevation-floating-control"
         case .boundedPanel: "--scholium-elevation-bounded-panel"
-        case .searchOverlay: "--scholium-elevation-search-overlay"
         }
     }
 
@@ -2013,8 +1992,6 @@ enum ScholiumElevationRole: CaseIterable, Sendable {
                 .init(opacity: 0.04, radius: 4, x: 0, y: 2)
             case .boundedPanel:
                 .init(opacity: 0.08, radius: 8, x: 0, y: 4)
-            case .searchOverlay:
-                .init(opacity: 0.12, radius: 12, x: 0, y: 6)
             }
         let contrastMultiplier = increasedContrast ? 0.0 : 1.0
         let transparencyMultiplier = reduceTransparency ? 0.5 : 1.0
@@ -2872,19 +2849,6 @@ enum ScholiumMotion {
         return showingDocument
             ? .opacity.combined(with: .scale(scale: 0.995))
             : .opacity
-    }
-
-    static func searchPresentation(reduceMotion: Bool) -> Animation? {
-        reduceMotion ? nil : .snappy(duration: 0.24)
-    }
-
-    static func searchPresentationTransition(reduceMotion: Bool) -> AnyTransition {
-        guard !reduceMotion else { return .identity }
-        return .opacity.combined(with: .scale(scale: 0.985, anchor: .top))
-    }
-
-    static func searchExpansion(reduceMotion: Bool) -> Animation? {
-        reduceMotion ? nil : .snappy(duration: 0.28)
     }
 
     static func disclosure(reduceMotion: Bool) -> Animation? {

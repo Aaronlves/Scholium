@@ -608,9 +608,7 @@ final class ScholiumPerformanceUITests: XCTestCase {
         let field = application.descendants(matching: .any)["scholium.searchField"]
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         replaceCommittedText("scopeSetup", in: field, application: application)
-        let thisVault = application.buttons["scholium.searchScope.currentVault"]
-        XCTAssertTrue(thisVault.waitForExistence(timeout: 5))
-        thisVault.click()
+        selectResearchSearchScope("This Vault", in: application)
         clearSearchField(field, application: application)
     }
 
