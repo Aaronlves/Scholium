@@ -1,6 +1,7 @@
 import ScholiumContracts
 import Combine
 import Foundation
+import SwiftUI
 
 /// Stable session identity plus the current path/title projection used by a
 /// single window. Renames replace `reference` while retaining `sessionKey`.
@@ -122,6 +123,11 @@ struct DocumentWorkspaceReconciliation: Equatable, Sendable {
         removedDocuments: [],
         retainedDeletedDocuments: []
     )
+}
+
+enum DocumentAttachmentSelectionMode: Equatable {
+    case copyIntoTriptych
+    case referenceOriginal
 }
 
 /// Per-window owner for the selected document and retained editor sessions. Repository writes,
@@ -361,6 +367,55 @@ final class DocumentController: ObservableObject {
         for target: NoteDocumentAttachmentTarget
     ) async throws -> [DocumentAttachmentSnapshot] {
         try await requireOperations().documentAttachments(for: target)
+    }
+
+    func refreshDocumentAttachments(for target: NoteDocumentAttachmentTarget, session: DocumentSessionModel) async throws {
+        guard session.key == DocumentSessionKey(vaultID: target.vaultID, noteID: target.noteID) else { return }
+        let requestID = UUID()
+        session.documentAttachmentsRequestID = requestID
+        session.documentAttachmentsLoading = true
+        session.documentAttachmentsError = nil
+        defer { if session.documentAttachmentsRequestID == requestID { session.documentAttachmentsLoading = false } }
+        do {
+            let attachments = try await documentAttachments(for: target)
+            try Task.checkCancellation()
+            guard session.documentAttachmentsRequestID == requestID else { return }
+            session.documentAttachments = attachments
+        } catch is CancellationError { throw CancellationError() }
+        catch {
+            if session.documentAttachmentsRequestID == requestID { session.documentAttachmentsError = error.localizedDescription }
+            throw error
+        }
+    }
+
+    func selectDocumentAttachment(_ mode: DocumentAttachmentSelectionMode,
+                                  for target: NoteDocumentAttachmentTarget,
+                                  session: DocumentSessionModel,
+                                  presenter: ScholiumFileSelectionPresenter?) async throws {
+        guard session.key == DocumentSessionKey(vaultID: target.vaultID, noteID: target.noteID),
+              !session.isAttachingDocument else { return }
+        guard let presenter else { throw ScholiumFileSelectionError.presenterUnavailable }
+        session.isAttachingDocument = true
+        defer { session.isAttachingDocument = false }
+        let copiesFile = mode == .copyIntoTriptych
+        let request = ScholiumFileSelectionRequest(
+            title: copiesFile ? String(localized: "Attach a Copy") : String(localized: "Reference Original"),
+            message: copiesFile
+                ? String(localized: "Choose a document to copy into this Triptych's Attachments folder.")
+                : String(localized: "Choose a document to reference in its current Finder location."),
+            prompt: String(localized: "Attach"), kind: .files(allowedContentTypes: [.content]))
+        guard let sourceURL = try await presenter.selectURL(request) else { return }
+        try Task.checkCancellation()
+        let attachment = try await attachDocument(at: sourceURL, to: target,
+            management: copiesFile ? .copyIntoTriptych : .referenceOriginal)
+        var attachments = session.documentAttachments.filter { $0.record.id != attachment.record.id }
+        attachments.append(attachment)
+        attachments.sort {
+            let order = $0.record.filename.localizedStandardCompare($1.record.filename)
+            return order == .orderedSame ? $0.record.id.uuidString < $1.record.id.uuidString : order == .orderedAscending
+        }
+        session.documentAttachments = attachments
+        AccessibilityNotification.Announcement(String(localized: "Document attached.")).post()
     }
 
     func attachDocument(

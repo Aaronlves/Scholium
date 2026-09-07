@@ -2,7 +2,7 @@ import Foundation
 
 public enum ScholiumMCPContract {
     public static let maximumDocumentUTF8ByteCount = 512 * 1_024
-    public static let currentToolSchemaVersion = 2
+    public static let currentToolSchemaVersion = 3
 }
 
 /// JSON values accepted at the MCP delivery boundary. Domain owners decode
@@ -84,13 +84,10 @@ public enum ScholiumMCPToolName: String, Codable, CaseIterable, Sendable {
     case workspaceStatus = "scholium_workspace_status"
     case search = "scholium_search"
     case readNote = "scholium_read_note"
-    case readRecord = "scholium_read_record"
     case listLinks = "scholium_list_links"
     case createNote = "scholium_create_note"
     case updateNote = "scholium_update_note"
     case trashNote = "scholium_trash_note"
-    case recordProgress = "scholium_record_progress"
-    case correctRecordStep = "scholium_correct_record_step"
 }
 
 public enum ScholiumMCPFailureCode: String, Codable, CaseIterable, Sendable {

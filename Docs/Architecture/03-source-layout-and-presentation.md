@@ -94,25 +94,9 @@ owns only its native auxiliary window and closes with the source workspace.
 Both surfaces project the same query, scope, and results; there is no centered
 Search overlay or second query engine.
 
-Research Records use a separate value-keyed `WindowGroup`, one scene identity
-per `(Triptych, originating Workspace window)`. `ResearchRecordsWindowCoordinator`
-routes an exact Record/step selection to the existing Records scene and routes
-Note attachments back through the explicitly registered originating Workspace;
-it retains no research data and never opens or searches for a Workspace window.
-The window uses sequential list and detail states in `ResearchRecordsModel`;
-Back retains the selected Record, and view-owned scroll positions retain each
-Record's reading location. Detail pins the question above scrolling steps. Its only
-text input is the system Record-provider Search field; step content is a
-read-only bounded Markdown projection followed by that step's single-line,
-horizontally scrolling Note-reference strip. Paragraphs, emphasis, strong text,
-inline code, lists, blockquotes, and ordinary links render semantically.
-Headings and unsupported constructs remain visible literal source.
-The scene uses a native task titlebar, defaults to 560 × 580 points, and has a
-420 × 360 minimum content size. It installs no toolbar; periodic
-store observation supplies refresh while native window controls and dragging
-remain AppKit-owned. The originating `WorkspaceWindowCoordinator` performs exact
-window focus after its window-scoped research controller receives the attachment
-route; failure to resolve that registered origin does not create a replacement.
+`ContextSearchField` lets AppKit own search text entry and its magnifying-glass
+options menu; query/scope values and commands come from the feature model.
+Notification consumers reuse that native presentation.
 
 Bootstrap, configured Workspace, and Settings scene roots each own one
 `ScholiumFileSelectionPresenter`. A bounded native attachment supplies that
@@ -169,24 +153,31 @@ its retained selected tab, and only then commits Shell selection, the
 destination tab group, Document mode, and Inspector mode. Rapid requests
 converge on the last requested workspace.
 
-The Research Inspector receives immutable Overview, Outgoing, and Incoming
-presentation values composed at the window root. It owns no workspace refresh, Agent
+The Research Inspector receives immutable About and Links presentation values composed at the window root. It owns no workspace refresh, Agent
 conversation, mutation, or lifecycle state. Its modes share the one native
 trailing split item and one mode value per Triptych workspace; changing modes,
-notes, or tabs never reconstructs the retained Document host. Overview contains
+notes, or tabs never reconstructs the retained Document host. About contains
 resolved About configuration, current Settlement state, and any portable Zotero
-binding for the selected Analysis. Field-local edits delegate to the portable
-Metadata revision owner or, after editor flush and target revalidation, to the
-exact-source writer. File timestamps remain read-only snapshot facts.
+binding for the selected Analysis. `OverviewMetadataFields` retains one AppKit
+field collection without category headings. Native controls and their field
+editors own focus, text Undo and composition; Tab never waits on SwiftUI state.
+`OverviewMetadataSession` owns only the Note-local managed drafts, serial commit
+queue, acknowledged revision and committed Metadata Undo/Redo. It delegates all
+writes to the existing portable Metadata owner. Settings owns the visible field
+configuration; About has no Add Field or per-field removal route. The window flush
+coordinator drains this one session before document departure or aggregate
+saves. About remains mounted across projections. File timestamps and
+Settlement remain quiet read-only snapshot facts.
 
-`WindowShellState` owns the workspace-retained link direction as the selected
-native toolbar projection. `ConnectionsInspectorView` receives that direction
-and projects the same immutable directed occurrence graph into one flat list of
-Incoming or Outgoing rows. Each authored occurrence appears once in the chosen
-projection with its exact annotation, context, and source locator; no endpoint
-pair is collapsed, classified, or placed in a peer-role folder. Projection
-changes reconstruct only the derived list and begin at the top of its sole
-scroll owner.
+`WindowShellState` owns About/Links selection. Its icon-only toolbar
+control uses AppKit segments; `InspectorLinkDirectionControl` uses native
+textured-rounded capsule segments with system accent.
+`LinksInspectorSession`, retained by the window's ResearchController, owns the
+link direction and per-Note/direction query, collapsed Note groups and scroll
+position. `ConnectionsInspectorView` filters an immutable occurrence projection;
+each link keeps its exact source locator and context. It never creates another
+graph or source owner. Native buttons and fields keep system presentation on the
+Paper content background; feature code paints no competing control theme.
 
 When the split item remains visible without a selected Document, the
 composition root installs a read-only Apparatus content-state projection rather

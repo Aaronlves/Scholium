@@ -45,7 +45,7 @@
       "capability": "agent-collaboration",
       "skill": "scholium-agent-collaboration",
       "kind": "specialist",
-      "description": "Local MCP/App bridge, guarded Note operations, Agent Changes, and attributed Research Records."
+      "description": "Local MCP/App bridge, guarded Note operations, and Agent Changes."
     },
     {
       "capability": "source-fidelity",

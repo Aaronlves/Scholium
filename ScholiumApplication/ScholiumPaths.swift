@@ -98,8 +98,8 @@ public enum ScholiumPaths {
 
     /// Stable private namespace used by the local App and CLI to derive the
     /// same loopback port and hold its process-generation authentication file.
-    /// It contains transport state only; research content, Runs, Records,
-    /// recovery state, and Session semantics remain in their existing owners.
+    /// It contains transport state only; research content and recovery state
+    /// remain with their existing owners.
     public static func appBridgeContainerURL(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         fileManager: FileManager = .default,

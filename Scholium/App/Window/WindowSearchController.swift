@@ -223,8 +223,7 @@ final class WindowSearchController: ObservableObject {
                 name: name,
                 definition: SearchDefinition(
                     query: state.query,
-                    presentationScope: state.scope,
-                    providerSelection: state.providerSelection
+                    presentationScope: state.scope
                 )
             ), at: 0)
             return searches
@@ -245,8 +244,7 @@ final class WindowSearchController: ObservableObject {
         }
         criteria = SearchWorkspaceState(
             query: search.definition.query,
-            scope: search.definition.presentationScope,
-            providerSelection: search.definition.providerSelection
+            scope: search.definition.presentationScope
         )
         present(.advanced)
         Task { [weak self] in await self?.refresh() }

@@ -35,8 +35,7 @@ Each configured window contains one native split view:
    Triptych contains Search, Analyses–Topics–Works navigation, and Library. Outline contains the current
    Document's persistent heading hierarchy and bottom-centered statistics.
 2. **Document**: the selected Note or the restrained no-document state.
-3. **Apparatus**: the trailing Research Inspector's Overview, Outgoing, and
-   Incoming projections.
+3. **Apparatus**: the trailing Research Inspector's About and Links pages.
 
 The native window and split controller own frame, dividers, collapse,
 compression, fullscreen, and toolbar geometry. Scholium owns semantic order,
@@ -49,7 +48,7 @@ continuous opaque semantic backgrounds, and the system separator is the sole
 interactive boundary. Design §19 owns this semantic material boundary; the
 architecture set records its current framework implementation.
 
-New windows show Library, hide Inspector, and begin in Analyses/Overview.
+New windows show Library, hide Inspector, and begin in Analyses/About.
 The toolbar's leading native icon selector, labelled Triptych / Outline in Help
 and accessibility, shows the chosen sidebar
 presentation. Choosing the other item switches content at the same width;
@@ -65,7 +64,7 @@ presentation can still be closed. Native Help gives the reason “No note open y
 from the same current window state. Native spacers express logical grouping;
 the system owns glass shapes, proximity effects, and transitions.
 This native state contract applies to every toolbar component, including history,
-document mode, Settlement, Research Records, and Inspector modes. A disabled
+document mode, Settlement, and Inspector modes. A disabled
 action cannot execute through another toolbar or overflow route. Document-specific
 popovers close when their document or required source revision changes; detaching
 a window ends its toolbar interactions and prevents stale state from updating it.
@@ -81,7 +80,7 @@ workspace and buffer.
 The native toolbar remains a bounded, stable set for frequent or high-value
 commands: the native **Triptych / Outline** sidebar selector, Triptych Notifications, Back/Forward,
 current-Document identity and mode,
-Settlement, Research Records, confirmed Agent Changes when present, Inspector
+Settlement, confirmed Agent Changes when present, Inspector
 projection, and Inspector visibility. Every command also exists in its owning
 menu, and native overflow preserves access at narrow widths. The current scope
 does not require toolbar customization.
@@ -125,10 +124,10 @@ Menus follow task ownership:
 
 - **File**: Triptych/window, New Note, Import, Duplicate, Rename, Move, Reveal,
   and system-Trash actions.
-- **Edit**: editing, Find, formatting, and Edit Metadata.
+- **Edit**: editing, Find, and formatting.
 - **View**: Back/Forward, Triptych, Outline, Sidebar visibility, Search, Advanced Search, Document mode/text size,
   Sidebar, and Inspector.
-- **Research**: Research Records, Settle, and Agent Changes when present.
+- **Research**: Settle, and persistent Operation History.
 - **Window**: standard windows plus Notifications.
 - **Settings**: one native preferences window with icon-and-label toolbar categories,
   Settings search, and explicit Application, This Triptych, or This Mac scope.
@@ -265,7 +264,9 @@ presents Agent Changes, then Settlement reminders, then grouped structural
 issues with exact reason, Note/path location, and only valid actions.
 Rows separate Note identity from the event or issue description; Agent Changes
 also show time and the current/earlier/unavailable revision state.
-Search/filter changes only this presentation.
+Search/filter changes only this presentation. Notification-type filters live in
+the native search-field magnifying-glass menu rather than a separate filter
+button.
 Stale or failed refresh retains last trustworthy content and Retry; empty and
 unavailable remain distinct.
 
@@ -286,28 +287,24 @@ Shared Search follows §13: an inline quick-search surface and one explicitly
 opened advanced window per originating Workspace, with visible scope and bounded
 provider-specific results, typed completion, Explain Query, exact freshness,
 and distinct invalid, ambiguous, unavailable, partial, stale, and empty states.
-All is the default provider selection and shows separate Notes and Research
-Records groups without interleaving rank; Notes and Records remain directly
-selectable dedicated paths. Completion edits visible query text only and shares
+Completion edits visible query text only and shares
 one keyboard selection with results.
 
 Quick Search keeps its native editable field in place and shows concise results
-below it. The field's native magnifying-glass menu holds scope, content type,
-Reset Filters, and Advanced Search. Active scope and content type remain visible
+below it. The field's native magnifying-glass menu holds scope,
+Reset Filters, and Advanced Search. Active scope remains visible
 in one muted result-summary line. Reset affects these menu filters, not query
 text. Clearing quick-search text reveals the retained Library immediately.
 Its result list inherits the Sidebar's existing background without painting a
 second content surface; the system continues to own row selection feedback.
 
-Advanced Search opens explicitly from that menu or View, carrying query, scope,
-and content type into a resizable native window. Its own search menu has no
+Advanced Search opens explicitly from that menu or View, carrying query and scope into a resizable native window. Its own search menu has no
 Advanced Search entry. It uses one query field, one quiet summary/action line,
 and an independently scrolling native result list. The system owns row selection,
 focus feedback, and keyboard traversal. Note rows use a small document symbol,
 title, available bounded snippet, and one secondary location/reason line in
 interface typography. Repeated workspace labels, ranking decoration, and permanent
-“Retrieval lead” labels do not occupy each row. Record rows keep their separate
-group, identity, matched question/step, and time. Before a query, the window shows
+“Retrieval lead” labels do not occupy each row. Before a query, the window shows
 a neutral Search prompt; an initial or cleared projection does not claim an index
 failure. Empty and genuinely unavailable states use native content-state views,
 preserving the actual reason and any valid retry. Saved Searches remains directly

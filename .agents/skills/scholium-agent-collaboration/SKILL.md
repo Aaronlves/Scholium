@@ -1,12 +1,12 @@
 ---
 name: scholium-agent-collaboration
-description: "Implement, diagnose, or test Scholium external-Agent collaboration through the local MCP/App bridge, guarded Note operations, Agent Changes, and Research Records. Exclude philosophical method content, interface-only changes, source parsing, retrieval ranking, and release acceptance."
+description: "Implement, diagnose, or test Scholium external-Agent collaboration through the local MCP/App bridge, guarded Note operations, and Agent Changes. Exclude philosophical method content, interface-only changes, source parsing, retrieval ranking, and release acceptance."
 ---
 
 # Scholium Agent Collaboration
 
 Own the functional boundary between an external Agent and the running App,
-including mutation evidence and attributed research history. Conversation and
+including mutation evidence and exact mutation evidence. Conversation and
 research method remain with the external host and researcher.
 
 Apply the shared [development contract](../scholium-toolkit-maintenance/references/researcher-codex-development-contract.md).
@@ -18,7 +18,7 @@ semantics there rather than treating this skill as a protocol specification.
 
 - Keep MCP framing and transport separate from Application-owned operations.
 - Add the trust-boundary owner when authorization, containment, credentials,
-  or recovery safety changes; ordinary transport or Record behavior alone
+  or recovery safety changes; ordinary transport behavior alone
   does not require that overlay.
 - Source parsing, filesystem coordination, retrieval correctness, interface
   presentation, and interaction acceptance retain their specialist owners.
@@ -30,7 +30,7 @@ semantics there rather than treating this skill as a protocol specification.
 1. Trace one current request from MCP entry through bridge routing, selected
    open Triptych, Application operation, persistence, and returned result.
 2. Distinguish Note identity and source revision, transport authentication,
-   Agent Change evidence, and Research Record history. Locate each writer and
+   Agent Change evidence, and mutation recovery. Locate each writer and
    projection before changing it.
 3. Inspect stale identities, unavailable App/workspace state, concurrent editor
    changes, failures, uncertain writes, and retry behavior relevant to that
@@ -48,12 +48,8 @@ semantics there rather than treating this skill as a protocol specification.
   foreground-window state nor a remembered path selects a consequential target.
 - Adapters do not reopen vaults or bypass live editors, current-revision checks,
   containment, source-operation coordination, readback, or recovery owners.
-- Agent Changes and Research Records have distinct purposes and persistence
-  owners. Neither becomes acceptance, settlement, task completion, or a second
-  writable Note source.
-- Preserve attribution, exact revision references, and chronological correction
-  history. A stale or damaged Record cannot authorize a source mutation or
-  silently replace valid research history.
+- Agent Change evidence never becomes acceptance, settlement, task completion,
+  or a second writable Note source.
 - Preserve confirmed writes and uncertain outcomes across delivery failure;
   follow the current operation's recovery contract without generic retries or
   invented rollback semantics.

@@ -160,14 +160,14 @@ struct AttentionQueueView: View {
                 Spacer(minLength: 0)
             }
 
-            HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-                TextField("Search", text: filterQuery)
-                    .textFieldStyle(.roundedBorder)
-                    .controlSize(.small)
-                    .focused($filterFocused)
-                    .accessibilityIdentifier("scholium.attentionSearch")
-                kindMenu
-            }
+            ContextSearchField(text: filterQuery, prompt: "Search", identifier: "scholium.attentionSearch",
+                options: [
+                    .init(title: "All Notifications", selected: notificationFilter.wrappedValue == .all) { notificationFilter.wrappedValue = .all },
+                    .init(title: "Agent Changes", selected: notificationFilter.wrappedValue == .agentChanges) { notificationFilter.wrappedValue = .agentChanges },
+                    .init(title: "Settlement Reminders", selected: notificationFilter.wrappedValue == .settlements) { notificationFilter.wrappedValue = .settlements },
+                    .init(title: "All Issues", selected: notificationFilter.wrappedValue == .issues) { notificationFilter.wrappedValue = .issues }
+                ])
+                .focused($filterFocused)
 
             if let status = refreshStatus {
                 HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.inlineControlGap) {
@@ -217,43 +217,6 @@ struct AttentionQueueView: View {
         }
     }
 
-    private var kindMenu: some View {
-        Menu {
-            Picker("Notification Type", selection: notificationFilter) {
-                Text("All Notifications").tag(AttentionNotificationFilter.all)
-                Text("Agent Changes").tag(AttentionNotificationFilter.agentChanges)
-                Text("Settlement Reminders").tag(AttentionNotificationFilter.settlements)
-                Text("All Issues").tag(AttentionNotificationFilter.issues)
-            }
-        } label: {
-            Image(
-                systemName: presentation.notificationFilter == .all
-                    ? "line.3.horizontal.decrease"
-                    : "line.3.horizontal.decrease.circle.fill"
-            )
-            .frame(
-                width: ScholiumGrid.Dimension.preferredCustomTarget,
-                height: ScholiumGrid.Dimension.preferredCustomTarget
-            )
-        }
-        .scholiumMenuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .frame(minWidth: ScholiumGrid.Dimension.preferredCustomTarget)
-        .help("Filter Notifications")
-        .accessibilityLabel("Notification Type")
-        .accessibilityValue(Text(notificationFilterTitle))
-        .accessibilityIdentifier("scholium.attentionKindFilter")
-    }
-
-    private var notificationFilterTitle: LocalizedStringResource {
-        switch presentation.notificationFilter {
-        case .all: "All Notifications"
-        case .agentChanges: "Agent Changes"
-        case .settlements: "Settlement Reminders"
-        case .issues: "All Issues"
-        }
-    }
 
     private var queueList: some View {
         List(selection: selectedItem) {

@@ -108,8 +108,7 @@ coherence remain App-owned.
 Every confirmed MCP mutation produces one machine-local Agent Change with exact
 revision evidence. Agent Changes support comparison and eligible direct Undo
 for updates; they are not chat, permission, review, acceptance, Settlement, or
-Research Records. Replacement Research Record and Handoff contracts remain
-unavailable until their separate specification decision.
+research discussion. Handoff remains unavailable pending its separate contract.
 
 The release bundles only the thin Scholium Core Protocol Skill. Researcher-owned
 method Skills live in the external Agent host; Scholium does not register,
@@ -297,14 +296,12 @@ helper uses a current-user-authenticated local bridge and fails explicitly when
 the App, bridge, selected Triptych, or current state is unavailable. It never
 falls back to direct filesystem or headless workspace access.
 
-The current collaboration surface publishes exactly ten tools:
-`scholium_workspace_status`, `scholium_search`, `scholium_read_note`,
-`scholium_read_record`, `scholium_list_links`, `scholium_create_note`,
-`scholium_update_note`, `scholium_trash_note`,
-`scholium_record_progress`, and `scholium_correct_record_step`. MCP Resources,
-Prompts, Agent Sessions, Research Actions, and Handoff are not exposed.
-Research Records are attributed history maintained by the Agent, not
-researcher acceptance or writable Note authority.
+The collaboration surface publishes seven tools: `scholium_workspace_status`,
+`scholium_search`, `scholium_read_note`, `scholium_list_links`,
+`scholium_create_note`, `scholium_update_note`, and `scholium_trash_note`.
+Research questions and selected discussion are ordinary Works Notes, using the
+same explicit writing authorization and exact-source operations. The App provides
+no separate inquiry lifecycle or automatic recording.
 
 An ordinary Wikilink may carry multiline, source-owned Markdown annotation as
 `[[Target]]{{annotation}}`. Connect, Search, and `scholium_list_links` preserve

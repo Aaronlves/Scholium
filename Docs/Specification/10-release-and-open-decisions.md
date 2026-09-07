@@ -38,20 +38,15 @@ state the accepted profile; an unaccepted optional profile is labelled
 
 **Agent Collaboration Beta/1.0** additionally covers applicable Research
 Guidance and Settings, Core Protocol discovery, user-scope Codex and Claude
-configuration, the ten MCP tools, multi-Triptych selection, App-unavailable
-behavior, source/Note-Search/Record-Search currentness, exact paging, role and
-provider filtering, fingerprinted Note create/update/system-Trash, Record
-create/append/correction, Agent Changes, direct Undo, outcome-unknown recovery,
-incoming/outgoing authored link occurrences and annotations, the read-only
-Records window, Attention, Zotero read-only/unavailable behavior, and
+configuration, the seven MCP tools, multi-Triptych selection, App-unavailable
+behavior, source/Search/graph currentness, exact paging, role filtering, fingerprinted Note create/update/system-Trash, Agent Changes, direct Undo, outcome-unknown recovery,
+incoming/outgoing authored link occurrences and annotations, Attention, Zotero read-only/unavailable behavior, and
 App/CLI/MCP parity. Exact initial frames and coordinates remain implementation
 defaults rather than release thresholds.
 
-Search acceptance covers scope/provider authorization, separate Note/Record
-ranking and freshness, Metadata and direct-link provenance,
-`link_annotation`/question/step matches, Explain/completion, Saved Search
-re-evaluation, App/CLI/MCP parity, stale refusal, isolated Record corruption
-and index rebuild, and incremental/clean equivalence. Retrieval success never
+Search acceptance covers scope authorization, Note ranking and freshness, Metadata and direct-link provenance,
+`link_annotation` matches, Explain/completion, Saved Search
+re-evaluation, App/CLI/MCP parity, stale refusal, index rebuild, and incremental/clean equivalence. Retrieval success never
 establishes philosophical relevance, evidential support, or researcher
 acceptance.
 
@@ -73,7 +68,7 @@ human path merely to restate its coverage.
 Core Protocol acceptance follows §§8.5–8.6. Before the first Agent
 Collaboration Beta it passes representative complete-source, partial-source,
 conceptually-neighboring, conflicting-note, read-only, requested-update,
-stale-revision, uncertain-outcome, substantive-Record-progress, mechanical-noise,
+stale-revision, uncertain-outcome, explicit writing scope,
 clear append/new, and ambiguous-boundary cases. Later releases repeat only
 affected cases after a material Core Protocol/tool change and retain a small
 regression set. Optional researcher-owned method Skills are not release
@@ -99,12 +94,12 @@ the current artifact.
 | **G2 Workflow independence** | Manual core works without Obsidian, Zotero, Agents, or manual filesystem repair. |
 | **G3 Source integrity** | Exact-source tests cover malformed/unknown YAML, BOM/newlines, targeted edits, atomic failure, and readback. |
 | **G4 Recovery and deletion** | Conflict, Agent Change Undo, save recovery, system-Trash receipts/cleanup, external deletion/restore/rename, and derived failure pass. |
-| **G5 Scholarly transparency** | Source, researcher/Agent content, Agent Changes, Research Records, Settle, Critique, Fidelity, provenance, and uncertainty remain distinct. |
+| **G5 Scholarly transparency** | Source, researcher/Agent content, Agent Changes, Settle, Critique, Fidelity, provenance, and uncertainty remain distinct. |
 | **G6 Accessibility/localization** | §20's current guards, required UI baseline/affected journeys, bounded human threshold, and severity threshold are met for the named profile. |
 | **G7 Performance** | The packaged-app protocol in §21.4 passes. |
 | **G8 Documentation consistency** | Specification, architecture, status, README, source, and tests do not silently conflict. |
 | **G9 Distribution integrity** | Distributed artifacts match an exact clean tag, source/licenses, signatures, architecture, checksum, and clean-account smoke test. |
-| **G10 Agent collaboration** | Core Protocol, Codex/Claude setup, MCP tools, currentness, guarded Note and Record mutations, Agent Changes, Record retrieval/presentation, recovery, and local bridge pass their journeys. |
+| **G10 Agent collaboration** | Core Protocol, Codex/Claude setup, MCP tools, currentness, guarded Note mutations, Agent Changes, Note retrieval/presentation, recovery, and local bridge pass their journeys. |
 
 Usable Core/0.1 requires G1–G4, G6, and G8. **Core App Beta** requires G1–G6,
 G8, and G9 within the Core App profile and does not require G10. Human and
@@ -264,8 +259,8 @@ an applicable §20 representative check instead of duplicating it.
 Agent Collaboration distribution additionally verifies independent CLI
 installation and version, both user-scope setup commands, Core Protocol
 availability, production-bridge availability, and one representative route
-through current status, Note/Record retrieval, one Note mutation and Agent
-Change, one Record create or append, recovery, and the unavailable-App fallback.
+through current status, Note retrieval, one Note mutation and Agent
+Change, recovery, and the unavailable-App fallback.
 Include CLI self-update when the updater or installer changes and for 1.0.
 Deterministic suites retain checksum/provenance rejection,
 interruption stages, multiple-workspace selection, stale/conflict,
@@ -280,9 +275,6 @@ external verification; never re-sign an already accepted artifact.
 
 Only current questions that can still change the target belong here:
 
-- decide whether Research Records later gain researcher-controlled deletion,
-  merge, split, or write suspension before exposing any such operation; the
-  first contract in §§8.6, 13, and 18.5 provides none of them.
 - define a lightweight, nonauthorizing Handoff and its complete-copy fallback
   before Scholium offers a route from a Note or selection into an external
   Agent conversation.

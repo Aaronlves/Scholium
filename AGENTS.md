@@ -56,10 +56,10 @@ For every user-facing interface, interaction, accessibility, or visual change:
    implementation mode according to the request.
 4. Verify platform-design claims against the available Apple HIG authority and
    selected SDK documentation. Apple guidance does not define Scholium's
-   Triptych, evidence, Review, Research Records, Critique, or research governance.
+   Triptych, evidence, Review, Critique, or research governance.
 5. Apply the Accessibility and Adaptation chapter to every change affecting
    text, color, focus, keyboard, motion, custom controls, WebKit/AppKit,
-   Inspector, Research Records, Critique, conflict, graph, or spatial relationships.
+   Inspector, Critique, conflict, graph, or spatial relationships.
 
 ## Implementation and architecture choices
 

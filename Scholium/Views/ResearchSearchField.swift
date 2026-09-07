@@ -9,7 +9,6 @@ struct ResearchSearchField: NSViewRepresentable {
     @Binding var text: String
     let placeholder: String
     @Binding var scope: SearchPresentationScope
-    @Binding var provider: SearchProviderSelection
     let openAdvanced: (() -> Void)?
     let isActive: Bool
     let focusRequestID: UInt64?
@@ -106,16 +105,7 @@ struct ResearchSearchField: NSViewRepresentable {
             let scope = NSMenuItem(title: scopeMenu.title, action: nil, keyEquivalent: "")
             scope.submenu = scopeMenu
             menu.addItem(scope)
-            let providerMenu = NSMenu(title: ScholiumL10n.string("Content"))
-            for (index, title) in ["All", "Notes", "Records"].enumerated() {
-                let item = NSMenuItem(title: ScholiumL10n.dynamicString(title), action: #selector(selectProvider(_:)), keyEquivalent: "")
-                item.tag = index
-                item.target = self
-                providerMenu.addItem(item)
-            }
-            let provider = NSMenuItem(title: providerMenu.title, action: nil, keyEquivalent: "")
-            provider.submenu = providerMenu
-            menu.addItem(provider)
+            menu.addItem(.separator())
             let clear = NSMenuItem(title: ScholiumL10n.string("Clear Filters"), action: #selector(clearFilters(_:)), keyEquivalent: "")
             clear.target = self
             menu.addItem(clear)
@@ -132,23 +122,15 @@ struct ResearchSearchField: NSViewRepresentable {
             guard modes.indices.contains(sender.tag) else { return }
             parent.scope = modes[sender.tag]
         }
-        @objc func selectProvider(_ sender: NSMenuItem) {
-            let modes: [SearchProviderSelection] = [.all, .notes, .records]
-            guard modes.indices.contains(sender.tag) else { return }
-            parent.provider = modes[sender.tag]
-        }
         @objc func clearFilters(_ sender: NSMenuItem) {
             parent.scope = .triptych
-            parent.provider = .all
         }
         @objc func advancedSearch(_ sender: NSMenuItem) { parent.openAdvanced?() }
         func validateMenuItem(_ item: NSMenuItem) -> Bool {
             if item.action == #selector(selectScope(_:)) {
                 item.state = [.thisNote, .currentVault, .triptych][item.tag] == parent.scope ? .on : .off
-            } else if item.action == #selector(selectProvider(_:)) {
-                item.state = [.all, .notes, .records][item.tag] == parent.provider ? .on : .off
             } else if item.action == #selector(clearFilters(_:)) {
-                return parent.scope != .triptych || parent.provider != .all
+                return parent.scope != .triptych
             }
             return true
         }

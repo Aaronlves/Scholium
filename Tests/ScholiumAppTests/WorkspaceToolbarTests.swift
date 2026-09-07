@@ -187,7 +187,7 @@ struct WorkspaceToolbarTests {
             in: toolbar
         ))
         let selector = try #require(sidebar.view as? NSSegmentedControl)
-        if #available(macOS 27.0, *) { #expect(selector.role == .tabs) }
+        #expect(selector.segmentStyle == .rounded)
         #expect(selector.selectedSegmentBezelColor == nil)
         #expect(selector.trackingMode == .selectOne)
         #expect(selector.segmentCount == 2)
@@ -226,8 +226,7 @@ struct WorkspaceToolbarTests {
                            ScholiumWorkspaceToolbarController.Item.forward,
                            ScholiumWorkspaceToolbarController.Item.inspector,
                            ScholiumWorkspaceToolbarController.Item.documentMode,
-                           ScholiumWorkspaceToolbarController.Item.settlement,
-                           ScholiumWorkspaceToolbarController.Item.researchRecords] {
+                           ScholiumWorkspaceToolbarController.Item.settlement] {
             let command = try #require(item(identifier, in: toolbar))
             #expect(!controller.validateToolbarItem(command))
             #expect(!command.isEnabled)
@@ -290,7 +289,6 @@ struct WorkspaceToolbarTests {
             setLibraryVisible: { _ in },
             setResearchInspectorVisible: { _ in },
             activateSidebar: { _ in },
-            showResearchRecords: {},
             showAttention: { _ in },
             showPreferredAttention: {},
             canShowAttention: { false }

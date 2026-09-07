@@ -124,15 +124,15 @@
 - Statistics identify body versus selection scope. Spelling/grammar preserve
   system routes. Image Import/Index name the copy-versus-reference consequence
   and preserve source/focus on failure.
-- Note-level document attachments expose paperclip decoration separately from
-  each complete filename, availability, and preview action. Middle truncation
-  is visual only; Help and accessibility retain the complete name. The bounded
-  single-line strip scrolls a focused off-screen attachment into view rather
-  than wrapping. **Add Document** is reachable through keyboard focus and the
-  File menu without hover; revealing or hiding it does not move the document.
-  Reduce Motion makes any reveal transition immediate. The copy-versus-reference
-  choice is explicit. Quick Look returns focus to the initiating title/body
-  target without changing selection.
+- Overview attachments expose complete filenames, count, selected file, preview,
+  availability, and a named selection menu with position for multiple files.
+  Filename activation always opens Quick Look; a single file omits selection.
+  Loading, empty and
+  unavailable states stay distinct. Selection menus and Add Document work
+  without hover, and File retains copy-versus-reference commands. Quick Look supports
+  system-native Escape/close and opening actions. Both steps preserve the
+  initiating Note, mode and source selection; preparation errors stay accessible
+  in Overview. Scholium does not rebuild the system preview controls.
 - English, Chinese, mixed content, and other Unicode source retain consistent
   visible cursor/selection within the declared support boundary. Technical
   regions are directionally isolated without changing surrounding prose.
@@ -169,12 +169,11 @@
 - Field definitions expose immutable key/kind; editable label/description,
   field/choice order, and choice addition; lifecycle, scope, and use count.
   Archive/Restore retain stored values and change no Note automatically.
-- Metadata/About use visible and accessible semantic group headings and retain
-  field labels, contributor structure, source-authority distinction, and
+- About uses one ungrouped field sequence with complete visible/accessibility
+  labels, contributor identity/order, source-authority distinction, and
   complete values at narrow width and enlarged text. Empty always-shown fields
-  expose their editable purpose rather than disappearing. Inline Save, Cancel,
-  validation, and conflict state remain programmatically associated with the
-  field; read-only file and Settlement facts expose their source and state.
+  expose their editable purpose rather than disappearing. Native field traversal, commit, cancellation, validation, and conflict
+  recovery remain programmatically associated with the field; read-only file and Settlement facts expose their source and state.
   Hover-revealed actions remain in keyboard/accessibility order without reflow.
 - Zotero link/refresh exposes exact item and library identity, current values,
   proposed fills/updates, retained conflicts, progress, partial commit,
@@ -191,10 +190,19 @@
 - Search exposes provider, scope, query, completion/result selection, count,
   match reason, freshness, destination, and Explain Query. Invalid, ambiguous,
   provider mismatch, unavailable, partial, stale, and empty remain distinct.
-- Inspector Overview/Outgoing/Incoming is one labelled single-choice native
-  toolbar group with visible selection, complete icon names, Help, and keyboard
-  traversal. No-document Inspector remains a nonempty read-only state.
-- Outgoing and Incoming state the authored occurrence direction textually. Each row names
+- Inspector About/Links is one labelled single-choice native toolbar
+  group with visible selection, complete names, Help, and keyboard traversal.
+  Links exposes its Incoming/Outgoing choice and local query independently. No-document Inspector remains a nonempty read-only state.
+- Outgoing and Incoming state the authored occurrence direction textually. Native
+  groups expose Note identity, occurrence count and disclosure state. The
+  entire Note heading toggles disclosure. Passage targets expose an activation
+  action and keyboard focus, never a checked or selected value merely from
+  navigation. Their hover feedback is supplementary to the named keyboard route.
+  After navigation, the revealed paragraph/source location remains accessible
+  when its brief highlight ends. Arrival does not replace the researcher's text
+  selection; a highlight is never the sole means of identifying the destination.
+  Reduce Motion reveals the target without animated scrolling, pulsing or fading;
+  the brief static arrival marker is removed without animation. Each row names
   source or destination, local context, and whether a link annotation is
   present. Incoming annotations are identified as read-only at the destination;
   destination navigation and **Edit at Source** remain separately named.
@@ -219,27 +227,8 @@
   workspace selection, stale revision, conflict, and uncertain outcome have
   distinct names and recovery.
 
-### Research Records
+### Agent Changes
 
-- The Records window exposes its task title, collection/result count, selected
-  Record, current question, chronological step count and position, step time,
-  Agent attribution, revision relation, and current/earlier/unavailable Note
-  references in one predictable reading order. It does not repeat its Triptych.
-- Record list and Record detail are sequential, independently named states in
-  the same compact window. Back returns from detail to the list without losing
-  selection. Every step-local Note attachment is keyboard reachable in the same
-  reading order as the step that declares it. At narrow width or enlarged text,
-  capped references remain in their single-line local strip, and focus scrolls
-  an off-screen reference into view without compressing prose or moving
-  provenance.
-- Rendered Record paragraphs, emphasis, lists, block quotations, inline code,
-  and links retain semantic accessibility. Unsupported syntax remains
-  selectable literal text. The current question is the sole page heading;
-  step prose cannot create an authored heading hierarchy.
-- Search-opened Records expose the matched step without discarding the complete
-  question/step context. Empty, loading, stale, invalid-file, and unavailable
-  states name scope, consequence, and applicable Retry without synthesizing
-  content or hiding valid neighbor Records.
 - Agent Changes names Note, operation, exact change position and revisions,
   `change_id`, and Earlier Revision, Created by External Agent, or system-Trash
   state as applicable. Before/After and inserted, removed, or changed structure
@@ -250,8 +239,7 @@
   The Settlement toolbar control retains the accessible Settle route. Direct Undo states its
   current-fingerprint prerequisite and exact outcome.
 - Source deletion and Agent Change recovery use distinct labels,
-  consequences, and focus restoration. Any future Record deletion interaction
-  must define the same properties in its own §22 contract.
+  consequences, and focus restoration.
 
 ### Evidence and representative human acceptance
 

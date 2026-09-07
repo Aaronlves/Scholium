@@ -123,6 +123,8 @@ struct ZoteroBindingPanelView: View {
             footer
         }
         .frame(minWidth: 540, minHeight: 500)
+        .background(ScholiumNativeColorRole.windowBackground.color)
+        .tint(ScholiumNativeColorRole.controlAccent.color)
     }
 
     @ViewBuilder

@@ -63,7 +63,7 @@ LEGACY_AGENT_ROOTS=(
   "${ROOT}/ScholiumCore"
 )
 if rg -n --glob '*.swift' \
-  '\b(ResearchAction[A-Za-z0-9_]*|PortableResearchRecord[A-Za-z0-9_]*|ResearchAgentSession[A-Za-z0-9_]*|ResearchDiscussion[A-Za-z0-9_]*|LocalAgentBridge[A-Za-z0-9_]*|ResearchRecordBrowser[A-Za-z0-9_]*)\b' \
+  '\b(ResearchAction[A-Za-z0-9_]*|PortableResearchRecord[A-Za-z0-9_]*|ResearchAgentSession[A-Za-z0-9_]*|ResearchDiscussion[A-Za-z0-9_]*|LocalAgentBridge[A-Za-z0-9_]*|ResearchRecord[A-Za-z0-9_]*|RecordSearch[A-Za-z0-9_]*|UnifiedSearch[A-Za-z0-9_]*|SearchProviderSelection)\b' \
   "${LEGACY_AGENT_ROOTS[@]}"; then
   echo "Agent collaboration clean-cutover guard failed: a retired production owner returned." >&2
   exit 1
@@ -71,6 +71,7 @@ fi
 
 for retired_path in \
   "${ROOT}/ScholiumResearchRecordsFeature" \
+  "${ROOT}/Scholium/Views/ResearchRecord" \
   "${ROOT}/Scholium/Features/ResearchActions" \
   "${ROOT}/Scholium/Views/ResearchActions" \
   "${ROOT}/ScholiumCore/Resources/Skills/Scholium Method Skills"; do

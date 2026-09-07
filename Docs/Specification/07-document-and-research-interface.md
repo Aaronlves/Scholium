@@ -142,21 +142,20 @@ quieter lower-heading tier. Review and Edit preserve those relative visual and
 accessible levels; Source exposes only the exact authored hierarchy and no
 projected title.
 
-Review and Edit place the Note's document attachments in one compact,
-single-line strip immediately below that title. Existing attachments remain
-visible as paperclip-and-filename controls; each caps its width, uses middle
-truncation, exposes its complete filename as Help and accessibility text, and
-opens native Quick Look without moving the document selection. The small
-expected set grows horizontally and scrolls locally when it overflows rather
-than wrapping or narrowing the manuscript.
-
-The trailing **Add Document** control retains its layout slot, appears briefly
-when a Note opens or changes, and otherwise becomes visible when pointer or
-keyboard focus enters the title/attachment region. Its menu distinguishes
-**Attach a Copy…** from **Reference Original…**; both remain available in the
-File menu without hover. When hidden it is neither visible nor interactive, and
-surrounding document layout does not move. Source has no attachment strip
-because it presents exact authored source only.
+The Note's document attachments belong to Overview, below metadata and the
+separate Zotero relation. The filename precedes one large preview using the
+available width and the document's aspect ratio. Multiple attachments expose a
+separate compact position/selection menu; the filename and thumbnail always
+open Quick Look regardless of attachment count. Count appears once, and a single
+file omits the selection menu. Complete names and unavailable
+states remain inspectable. Activating an attachment first opens a temporary
+system Quick Look window with its standard toolbar, opening actions, and
+Escape/close behavior. The system offers the associated application (normally
+Preview for PDFs and images); Scholium does not replace this window, add its own
+opening toolbar, or override file associations. Overview and File retain **Attach a
+Copy…** and **Reference Original…** for this Note. Scholium has no global
+attachment manager or persistent attachment reader. No attachment
+strip or timed Add control appears in Review, Edit, or Source.
 
 Ordinary Edit entry restores retained, fingerprint-valid title/body focus and
 selection when available. Otherwise it uses an exactly mapped Review selection,
@@ -166,10 +165,10 @@ An explicit source locator and Managed New Note's body-start insertion take
 precedence. Window restoration retains this state only for still-open tabs;
 closing a tab ends it, without permanent vault-wide cursor history.
 
-Quick Look owns a temporary native presentation and any required read-access
-lease. Closing it returns Edit to the title or body target and exact selection
-that owned focus before preview; changing the attachment projection while it is
-open never recreates the retained editor or Review document.
+Quick Look and external opening preserve the initiating Note, mode, source
+selection, and attachment selection. Preparation failure retains an actionable error in Overview;
+returning from the external application reveals the same Document. Inline
+thumbnail loading never takes editor focus or recreates the reader/editor.
 
 Edit treats all visible document rhythm as addressable. Clicking an authored
 heading's visual padding places the caret in that heading; clicking a visible
@@ -241,73 +240,56 @@ and source-neutral. Native toolbar and Sidebar-header controls preserve the
 semantic content-plane boundary in §19 without adding feature-owned material or
 geometry.
 
-About directly edits one current-Note field at a time. Plain values activate an
-inline control; structured contributors retain their ordered structured editor.
-Save and Cancel remain explicit, field-local actions. Managed values commit at
-the exact Metadata revision. YAML fields have no About presentation or editing
-route and never become managed values. The Metadata sheet remains available for Add Field and
-multi-field editing; definitions come from Settings and archived present fields
-remain editable/removable. About coordinates these existing owners without
-creating another one.
+About edits Metadata directly through a quiet, ordered list without category
+headings, an alternate editor, or Save/Cancel controls. Labels align to one
+trailing edge, values to one leading edge. Empty configured fields remain
+editable. Short fields stay on one row; longer text grows within its value
+column. Editing shows a native field bezel and focus treatment without replacing
+the retained input control; hover and selection remain system-owned.
 
-## 18.5 Research Records, contextual research, and Agent Changes
+Native controls remain mounted during editing. Tab and Shift-Tab use the native
+key loop across text, choices, creator/list actions and the next field; rapid
+input cannot wait for a declarative render or a save to move focus. Leaving a
+field submits its captured draft. Return finishes short input; multiline input
+uses Command-Return. Escape cancels uncommitted input. Native text Undo remains
+available while typing, and committed Metadata changes have revision-checked
+Undo/Redo. No success toast or confirmation button is added.
 
-Apparatus contains Research Inspector only. **Research Records** opens one
-separate, resizable native auxiliary window bound to the initiating Triptych;
-it is not an Inspector mode, Document mode, chat, or application task surface,
-and it never follows unrelated window focus. Research menu/toolbar activation
-opens the collection, while a Search result opens the same window at the exact
-Record and matched step.
+Creators use compact ordered name rows with adjacent add, remove and options
+controls. A name can use family/given fields or one literal field; conversion is
+explicit and never guesses how to split a name. Options expose secondary name
+parts and keyboard-accessible ordering. Empty placeholders create no value;
+incomplete nonempty names retain their draft and explain the error. Contributor
+identity and position are included in accessible names.
 
-The window opens as a quiet scanning list of current questions and last
-substantive-step times. One system Search field reuses §13's Record provider
-rather than creating a second parser or index. Selecting a Record transitions
-the same window to a centered Record reading view; Back returns to the list, and
-a Search result may open the exact Record and matched step directly. List and
-detail are sequential states, not simultaneous fixed regions, and the
-transition preserves selection and reading position.
+Settings owns field definitions, visibility, and order. About exposes no Add
+Field or per-row Remove Field command. Configured empty fields remain editable;
+present archived or unsupported values remain visible, with unsupported shapes
+read-only rather than reconstructed. File dates and Settlement facts remain
+read-only rows at the end of the same aligned metadata sequence. Zotero uses
+an applicable relation row with its existing operations in a native menu.
 
-The reading view pins the current question as its sole content title above an
-independently scrolling chronological step sequence. Each step shows time and
-Agent attribution followed by its rendered §8.6 Markdown; revision relationships
-are stated without turning them into acceptance or completion. Immediately
-beneath that step, one compact, single-line Note-reference strip exposes its own
-`basis` and `modified` references plus current, earlier, or unavailable revision
-state. Each control has a capped width and complete accessible name; the small
-expected set scrolls locally if it overflows. Record identifiers and
-fingerprints remain progressively disclosed after the sequence. A Note reference
-navigates to the current Note when available but never substitutes current prose
-for the historical revision.
+One Note-local session serializes exact Metadata revision commits. Acknowledged
+writes advance only that session's revision and never replace newer typing.
+Marked text remains owned by AppKit, retains its candidate commands, and blocks
+departure that would discard it. Note/workspace/window departure drains pending
+Metadata; a failure retains the Note, draft and recovery. Inspector projection
+changes preserve the same session. Persistent field errors identify the affected
+field and expose Retry or explicit Reload Metadata through its options; reload
+replaces the local Metadata drafts with the current authoritative record. YAML
+has no About edit route.
 
-The attachment control shows only the Note name and `Basis` or `Modified` in
-the ordinary current-revision case. `Earlier` or `Unavailable` appears only
-when exceptional state changes what navigation means. The native titlebar shows
-the narrow task title **Research Records**, without repeating the owning
-Triptych, and retains standard window controls and dragging. The window has a
-compact task-sized width and height rather than a desktop-scale split layout;
-exact defaults remain implementation choices, and resizing still preserves
-legibility. Search remains collection-local, visible Records refresh
-automatically, and no unavailable write or redundant refresh action is
-advertised. The window closes through Escape or its close control and dismisses
-after an attachment transfers focus to its Note in the exact originating
-Workspace window. It never creates a second Workspace window or falls back to
-another open Workspace. Merely losing focus does not close it or discard the
-current reading position.
+## 18.5 Contextual research and Agent Changes
 
-The window is read-only. It has no rich, Markdown, or plain-text editor and no
-Action, Run, Method, Result, Reading Lead, participant ledger, chat, response,
-Review, or Settle workflow. An Agent-created or appended step refreshes the
-collection without activating the App, moving focus, or implying that the
-researcher saw or accepted it; reporting remains in the external host under
-§8.6. Empty, loading, stale, invalid-file, and unavailable-provider states stay
-distinct, and one isolated invalid file does not replace valid Records.
+Apparatus contains one trailing Inspector with **About** and **Links**.
+Research questions and continuing discussion are ordinary Works Notes (§4 and
+§8.6), read and edited in the main Document. They have no dedicated Inspector,
+window, search category, or management commands.
 
-The first Record interface provides no delete, merge, split, or write-suspension
-control. Those operations remain unavailable under §22 rather than inheriting
-their superseded implementations.
-
-**Agent Changes** is a temporary read-only comparison presentation, not a
-fourth Document mode, Records collection state, durable review state, or
+**Operation History** provides a persistent browsing route over machine-local
+Agent Change evidence, independent of Notifications dismissal. Its collection
+and exact comparison remain native software-operation views throughout. It is
+not a fourth Document mode, durable review state, or
 research history. An Agent Change notification opens one exact
 `(change_id, Note ID)` result. An updated Note shows only the exact preimage and
 confirmed readback revision. A created Note shows **Created by External Agent**
@@ -328,37 +310,94 @@ and never changes Settlement. Direct Undo remains per eligible update and uses
 §8.4's revision requirement; creation and system Trash have no fabricated
 source preimage or Undo.
 
-There is one native trailing Inspector with **Overview**, **Outgoing**, and
-**Incoming** projections. An icon-only single-choice group sits at the logical
-leading edge of the Inspector's native toolbar section; every icon has a full
-Help/accessibility name and the selected projection remains visible. Pane
-content contains no duplicate projection selector. Each workspace retains its
-selected projection; Note/tab/projection changes do not alter it. Hiding
-Inspector moves no content elsewhere. Without a Document it presents **No
-Document Selected**.
+An icon-only native single-choice group in the Inspector's toolbar selects
+About or Links; each icon retains its complete Help and accessibility
+name. Pane content never repeats that selector. Each
+workspace retains its selection across Note and tab changes. Hiding Inspector
+moves no content elsewhere. Without a Document it presents No Document Selected.
 
-Overview contains, in order:
+About contains, in order:
 
-1. a conditional **Needs Attention** count and route for the current Note;
-2. **About** with visible semantic groups, configured core fields even when
-   empty, every other present managed value, direct field
-   editing, read-only file dates and exact-revision Settlement state, plus Add
-   Field; and
-3. optional Analysis Zotero link/manage/open/refresh actions.
+1. a conditional current-Note notification summary and route into its existing
+   Notifications queue. It includes Agent Changes, Settlement reminders, and
+   visible diagnostics, independently of the popover's previous filters.
+   Ordinary Agent Change history uses a quiet Note Notifications label and
+   total item count, without implying unread or required action. Current issues
+   and Settlement reminders show their actual description;
+   no notifications occupy no space. Opening the summary shows all categories
+   for that Note; it never acknowledges, dismisses, or accepts them;
+2. ordered, ungrouped metadata with configured core fields even when empty,
+   every other present managed value, and direct editing. Prefer title, authors,
+   publication date, publication, then type and other bibliographic details.
+   Labels and values share type size and baseline; secondary, right-aligned
+   labels and primary, left-aligned values establish the two columns. Long
+   titles wrap without becoming display headings. Creators retain fixed
+   Last Name then First Name columns in both resting and editing states;
+   leaving a field never joins, reverses, or replaces them with a display name.
+   Literal names occupy one field only after an explicit name-mode choice.
+   Empty names retain field placeholders. Native Tab moves through the retained
+   controls; focus departure commits without moving their positions. Validation
+   errors and composition retain the fields and draft;
+3. an applicable Zotero relation/action row separated from metadata by spacing
+   and a divider, with a quiet native Link Item/options control; no duplicated
+   Zotero metadata form;
+4. document attachments with a large preview and explicit external opening; and
+5. collapsed File Information, with read-only Created/Modified dates and
+   exact-revision Settlement facts using the same field/value typography.
+   Changed-revision reminders remain visible through Notifications and the
+   existing Settlement command even while this section is collapsed.
 
-It has no generic Research Status, Provenance, Derived State, or inline Zotero
-metadata section. Freshness appears only when pending, stale, failed, or
-unavailable and retains last trustworthy content plus Retry.
+It has no generic Research Status, Provenance, or Derived State section.
+Freshness appears only when pending, stale, failed, or unavailable and retains
+last trustworthy content plus Retry. Native editing feedback, keyboard input,
+Undo and recovery remain intact; no field-removal or confirmation buttons are
+introduced.
 
-Outgoing and Incoming each show one flat row per authored occurrence, without
-role folders, predicate clusters, inferred grouping, or a Combined direction.
+Links contains one native capsule Incoming/Outgoing segmented choice and a local
+search field. The Inspector selectors use AppKit rounded control artwork rather
+than Liquid Glass. Search scope and options live in the search-field magnifying-
+glass menu, with no separate filter row
+competes with the content. Direction, grouping, and distinct activation targets
+carry the interaction; no standing explanatory caption repeats the controls.
+Each direction groups authored occurrences by linked Note identity, with a
+Note title and occurrence count. Incoming expands to passages in that source
+Note; Outgoing expands to passages in the current Note that link to the named
+destination. The entire group heading, including its Note title and disclosure
+arrow, expands or collapses the passages without navigating. Its contextual
+Open Linked Note action opens the peer when needed. Links passages have a quiet
+hover affordance and retain keyboard activation, but no persistent selected,
+checked, visited or clicked appearance. Passage activation locates its original
+source in the current Document mode. Once the target has been revealed, the
+Document briefly highlights the corresponding visible line in Review or source
+line in Edit/Source, then returns to ordinary reading; it does not wash an entire
+long paragraph or enclosing section with color. The marker fades in briefly,
+holds, then fades out without moving or scaling the text. Reduce Motion keeps
+the same brief marker static.
+Repeated activation locates and briefly highlights the target again. Only one
+arrival highlight appears in a Document at a time; another navigation replaces
+it, and passive refresh never replays it. It is a transient presentation, not a
+source edit or a substitute for the researcher's text selection. If the target
+cannot be resolved, use the existing unavailable/recovery path rather than
+highlighting an unrelated paragraph or claiming arrival. No toast or explanatory
+success caption accompanies the jump.
+Readable context precedes its secondary source line; the existing
+dialect parser projects link labels without exposing link syntax or changing
+source anchors. Explicit outgoing fragments retain Open Linked Passage in the
+secondary menu. Repeated links
+remain separate occurrences. No inferred relation, predicate, or Combined
+direction is introduced.
 Each row retains its exact source anchor, complete local context, and optional
 annotation; repeated links remain repeated occurrences. Outgoing annotation
 editing changes only the current source Note. Incoming annotations are
 read-only and expose a separately named **Edit at Source** route that navigates
 to the source occurrence. Row titles, annotation text, and context wrap and use
-full-row native destination activation. Switching projection changes only the
-derived occurrence list and returns its sole scroll owner to the beginning.
+full-row native destination activation. Ordinary incoming, outgoing, and
+in-document link navigation retains the current Document mode and reveals the
+corresponding rendered paragraph in Review or exact line in Edit/Source.
+Outgoing fragment links use the resolved destination anchor. Each Note and
+direction retains its query, group disclosure, and reading position in
+window-local state. Returning restores that context without creating another
+graph or source owner.
 
 Document owns one **Settlement** command with a default native toolbar item and
 complete Research-menu route. It is presented as a research milestone, not task
@@ -444,7 +483,6 @@ paths, source, researcher prose, and Skill names remain verbatim.
 | Review / Edit / Source | 审阅 / 编辑 / 源文本 |
 | Research Record | 研究记录 |
 | Research Step / Basis / Modified | 研究步骤 / 依据 / 已修改 |
-| All / Notes / Records | 全部 / 笔记 / 研究记录 |
 | No Document Selected | 未选择文档 |
 | Expand / Collapse All Folders | 展开 / 折叠所有文件夹 |
 | Move to Trash… | 移至纸篓… |

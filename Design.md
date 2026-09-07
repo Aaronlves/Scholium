@@ -27,25 +27,56 @@ force.
 
 ### 19.1 Native material and content-plane boundary
 
-Navigation and chrome use the supported macOS version's native materials and
-controls. The Sidebar is a recessive navigation plane above the warm Document
-underlay. Document and Apparatus are continuous, opaque semantic content planes;
-Apparatus stays visually closer to Document than to navigation. Native safe
+Academic and research views directly related to the Document use Scholium's
+opaque Paper-derived backgrounds throughout their content area. This includes
+document reading and editing, bibliographic information, link context and
+annotations, research questions, discussion, and cited passages. Human and Agent
+contributions share this content plane; attribution uses text and structure.
+
+Software operations use native macOS presentation: navigation, toolbars, menus,
+Settings, notifications, operation history and file-difference inspection,
+connection management, confirmation, and recovery. Native does not mean glass everywhere;
+the platform owns the appropriate background, material, controls, and behavior.
+
+The distinction is primarily the background plane, never a second control
+skin. Buttons, fields, menus, selection, focus, and segmented controls on Paper
+retain native macOS appearance and behavior. Do not paint custom hover fills, focus effects, or rounded button backgrounds.
+Research links use the existing adaptive Accent; persistent navigation uses
+neutral native selection rather than introducing a competing system accent.
+Borderless native controls may keep direct research editing quiet; native input
+and Undo remain intact. Inspector navigation uses icon-only controls with named
+Help, and native rounded segments rather than Liquid Glass artwork.
+
+Each complete content view uses one coherent visual language, chosen by its
+primary research or software-operation purpose. Do not mix native operation
+panels and Paper content blocks within that view. An operational view remains
+native when it includes source excerpts or file differences; a route into
+research reading opens the corresponding Paper view. Native window chrome and
+input behavior remain platform-owned without introducing contrasting interior
+panels. Direct research editing retains Paper; field validation stays inline
+on the same surface with visible, accessible feedback and repair.
+
+The Sidebar is a recessive native navigation plane above the warm Document
+underlay. Document and the Inspector's research content are continuous opaque
+content planes; Apparatus stays visually closer to Document than to navigation. Inspector
+fields use native Interface type, trailing-aligned labels and a consistent
+value axis. The editable list has no category headings or per-group rules;
+quiet spacing and order provide hierarchy. Compact creator rows preserve the same rhythm while their controls retain
+native hover and focus semantics. Read-only facts share the same field sequence, value axis and row rhythm. Native safe
 areas keep content unobscured when system chrome or materials overlap it.
 
-Research prose, Metadata groups, Lists, Records, Agent Changes, and recovery
-content do not acquire glass, cards, tiles, chat bubbles, badges, or nested
+Research prose, Metadata, link context, discussion, and source excerpts do not
+acquire glass, cards, tiles, chat bubbles, badges, or nested
 decorative containers merely to manufacture hierarchy. Use type, alignment,
 whitespace, semantic surfaces, and fine structural rules first. A bounded panel
 is appropriate only when its task is genuinely transient or spatially anchored.
 
-Semantic floating containers use native Liquid Glass: contextual Find, query explanations,
-previews, and suggestions sit above their originating
-content without reflowing it. Reading, editing, document forms, and persistent
-operation or recovery regions,
-use Scholium's opaque semantic colors. Glass
-belongs to the floating container. Embedded document previews retain document
-semantics; editor assistance controls and candidates use system presentation. Clickability alone does not grant a control a glass surface.
+Floating operational surfaces, including Find, query explanations, and
+suggestions, use native presentation and the supported system's Liquid Glass
+where appropriate. Research previews use one opaque Paper surface. Both remain
+above their origin without reflowing it; neither nests the other visual language
+inside its content area. Editor assistance controls and candidates retain system
+presentation. Clickability alone does not grant a control a glass surface.
 Settings uses native macOS window backgrounds, preference toolbars, typography,
 and controls. Right-aligned group labels share one column; related controls
 start on one content axis, with necessary supporting copy directly below its
@@ -89,6 +120,17 @@ title hierarchy plus restrained section and body roles. Scholium does not audit
 or reject a researcher-selected Exact face; source bytes and operations remain
 independent of that presentation choice.
 
+The research Inspector uses system typography with language-aware fallback.
+About field labels and values use the same 13-point regular type and baseline;
+right-aligned labels use the secondary text role and left-aligned values use
+the primary role. Links lists use 13-point regular text; supporting context uses
+12-point secondary text. Editing preserves the resting field's type and position.
+Primary text retains the system label role. Inspector controls use their native hover, selection, text-selection and
+keyboard-focus treatment. Persistent navigation remains neutral; actionable
+research references share the Document's adaptive Accent. Transient native text
+selection and focus remain system-owned. This does not flatten text hierarchy
+or recolor prose.
+
 The app-owned Note title is the strongest element at the top of Review and Edit.
 Authored H1 remains a first-level body section rather than a second document
 title. Review and Edit share a recognizable manuscript hierarchy and reading
@@ -120,8 +162,8 @@ presentations consume the same semantic meanings. Feature code introduces no
 parallel palette, and color alone never encodes truth, support, authority,
 acceptance, completion, or philosophical value.
 
-Settings and editing auxiliaries use native semantic colors, including the
-system control accent, rather than Scholium's content palette. System typography
+Software-operation surfaces and editing auxiliaries use native semantic colors,
+including the system control accent. System typography
 and standard button/menu styles need no product wrapper in these boundaries.
 
 Onboarding illustrations use a closed parchment, ink, and Accent palette. That
@@ -157,6 +199,47 @@ remains unenclosed, and shape never carries state or authority alone.
 
 #### Interaction presentation
 
+Feedback names a present interaction fact, never merely that something was
+clicked. Selection, hover, press, input focus, disclosure and arrival are distinct
+meanings; they do not accumulate as independent highlights on one target.
+
+| Feedback | Meaning and lifetime | Presentation boundary |
+| --- | --- | --- |
+| Selection | Current navigation destination, active choice, or explicitly selected object; persists only while that state holds. | Quiet native gray for persistent workspace navigation. A past activation, successful save, opened menu or followed link creates no selection. |
+| Hover | This target is operable and this is its hit area; ends when the pointer leaves. | Recessive native feedback on the actual target, without moving text, changing layout or selecting anything. Passive labels and reading prose receive none. |
+| Press | A native command control is being activated; ends with the gesture. | Use the control's native treatment. It does not prove an asynchronous operation succeeded; add no custom flash, scale or lingering clicked state. |
+| Input focus | The current keyboard/input recipient; follows the responder. | Native focus, caret and text-selection treatment. Metadata exposes its edit frame without selecting the whole row or shifting its value. |
+| Disclosure | Whether grouped content is visible. | Arrow orientation and accessible expanded/collapsed state. An expanded heading is not a selected Note. |
+| Arrival | Navigation has revealed the requested passage in the Document. | One brief destination highlight, then ordinary reading. No persistent selected/checked/visited state on the initiating Links passage. §18.5 owns the navigation behavior. |
+| Operation state | Actual loading, failure, conflict or recovery supplied by the operation owner. | Use §19.9 and the owning workflow. Ordinary success stays silent when the resulting content or state is already apparent; necessary failures remain inspectable. |
+
+Native controls own rendering and adaptation; these meanings do not authorize a
+custom control skin or a second state owner. The Library and input candidates
+retain their purpose-specific selection/focus behavior below. Keyboard focus and
+text selection are not additional product navigation accents. Hover is never
+the only way to discover or operate a core command.
+
+The application of these meanings is bounded by the object being presented:
+
+| Surface | Persistent state | Local interaction and information |
+| --- | --- | --- |
+| Library, document tabs, workspace and Inspector selectors | Current Note, tab, workspace or pane. | Native navigation feedback; titles/icons identify destinations. |
+| Incoming/Outgoing | Current direction. | Native neutral selection; the two labels supply scope without another explanation. |
+| About fields | No row selection; only active input focus. | Labels and values share the grid. Editable values have a native input affordance; a field error supplies its necessary repair. Creator columns stay in place. |
+| Links Note heading | Expanded/collapsed only. | The entire heading toggles disclosure; title and occurrence count identify the group. |
+| Links passage | No persistent selection or toggle state. | Hover identifies the passage target. Context, source location and authored annotation remain readable; arrival feedback belongs in the Document. |
+| Attachment preview | Which file is displayed when several exist. | Filename, preview and necessary switching controls; opening one preview adds no selected frame or completion badge. |
+| Notifications and command menus | Only real open/busy/error state, never a history of clicks. | Native activation and applicable actions; counts and actual problems carry their existing workflow meanings. |
+
+Information stays visible when it identifies the object, carries research
+content, supports a current decision or repairs a real problem. Familiar
+interaction is expressed through affordances rather than standing instructions.
+Icon-only actions retain localized Help and accessible names. Repeated headings,
+normal-success captions and internal bookkeeping do not fill research space;
+full paths, exact revisions and technical details appear only where the owning
+inspection/recovery task requires them. Necessary error and provenance text is
+not removed in the name of quietness.
+
 The persistent Outline follows Sidebar material and native tree presentation,
 with no floating container or candidate-menu treatment. Its current section and
 transient hover have distinct meanings. The Triptych/Outline toolbar selector and Analyses/Topics/Works workspace
@@ -188,15 +271,21 @@ controls; they do not inherit product navigation's quiet gray treatment.
 Revealed editable Markdown delimiters use Muted Text; authored content retains
 its semantic text color and formatting. Syntax color never changes source.
 
-Ordinary command buttons use neutral Ink and native surfaces. Default-action
-status retains native keyboard behavior without introducing brand Accent.
-Destructive and cancel actions retain their native semantic roles. Shared
-presentation owns ordinary command styling, icon-control chrome, and custom
-row/selection feedback outside Settings and editing assistance. These native boundaries explicitly
-restores native control defaults, including system accent behavior; feature
-views do not author button colors or selection fills. Native menus, groups, and toolbar controls retain their distinct
-platform forms. Accent remains available for meaningful state and authored
-links, not as a general indication that a control is clickable.
+Color reinforces these meanings without becoming another feedback system.
+Persistent workspace navigation and hover use native neutral grays; hover stays
+subordinate to selection. Ordinary actions, disclosure arrows, More and relation
+management use native neutral ink rather than Accent merely because they are
+clickable. Document hyperlinks and attachment opening links
+share the existing adaptive Scholium Accent. Warning/error colors keep their
+own semantic role and readable wording; they are not brand emphasis.
+
+Software-operation windows and transient native text editing retain system
+semantic colors, default/destructive/cancel roles and keyboard behavior. Paper
+changes the content background, not the platform's control anatomy. Native
+focus and text selection may retain their system accent. A destination arrival
+highlight is a temporary presentation of navigation, not authored Markup,
+text selection, an error, or a research judgement; it adds no color input or
+feature-local palette. Feature views do not paint a competing control skin.
 
 Custom targets remain comfortably clickable and keyboard reachable. Focus is
 stronger than hover, persistent selection is distinguishable from both, and a
@@ -323,7 +412,7 @@ rejectable proof. A bounded feature-local view needs no catalog entry.
 A reusable pattern combines components around one task without copying the
 workflow authority. Pattern names do not become new modes, statuses, research
 objects, or state stores. §§18.1–18.6 own the actual Workspace, Document,
-Search, Connect, Notifications, Agent Changes, Records, Settlement, and Recovery
+Search, Connect, Notifications, Agent Changes, Settlement, and Recovery
 contracts.
 
 ### 19.8 Normative boundary and defaults

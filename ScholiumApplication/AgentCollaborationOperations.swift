@@ -12,30 +12,6 @@ public actor AgentCollaborationOperations: AgentCollaborationUseCases {
         self.reference = reference
     }
 
-    public func researchRecords() async throws -> ResearchRecordListing {
-        let handle = try await reference.requireHandle()
-        return try await handle.researchRecords()
-    }
-
-    public func researchRecord(id: UUID) async throws -> ResearchRecordRevision {
-        let handle = try await reference.requireHandle()
-        return try await handle.researchRecord(id: id)
-    }
-
-    public func recordProgress(
-        _ request: ResearchRecordProgressRequest
-    ) async throws -> ResearchRecordProgressResult {
-        let handle = try await reference.requireHandle()
-        return try await handle.recordProgress(request)
-    }
-
-    public func correctRecordStep(
-        _ request: ResearchRecordCorrectionRequest
-    ) async throws -> ResearchRecordRevision {
-        let handle = try await reference.requireHandle()
-        return try await handle.correctRecordStep(request)
-    }
-
     public func createNote(
         _ request: ManagedNoteCreationRequest
     ) async throws -> AgentNoteCreationResult {
@@ -92,82 +68,6 @@ public actor AgentCollaborationOperations: AgentCollaborationUseCases {
 }
 
 extension WorkspaceHandle {
-    func researchRecords() async throws -> ResearchRecordListing {
-        try requireActive()
-        do {
-            return try await services.researchRecordStore.listing()
-        } catch {
-            throw Self.agentRecordError(error)
-        }
-    }
-
-    func researchRecord(id: UUID) async throws -> ResearchRecordRevision {
-        try requireActive()
-        do {
-            return try await services.researchRecordStore.record(id: id)
-        } catch {
-            throw Self.agentRecordError(error)
-        }
-    }
-
-    func recordProgress(
-        _ request: ResearchRecordProgressRequest
-    ) async throws -> ResearchRecordProgressResult {
-        try requireActive()
-        try await validateRecordReferences(request.noteReferences)
-        do {
-            switch request.target {
-            case .new(let question):
-                return try await services.researchRecordStore.create(
-                    question: question,
-                    submittedBy: request.submittedBy,
-                    bodyMarkdown: request.bodyMarkdown,
-                    revisesStepIDs: request.revisesStepIDs,
-                    noteReferences: request.noteReferences
-                )
-            case .existing(
-                let recordID,
-                let expectedFingerprint,
-                let replacementQuestion
-            ):
-                return try await services.researchRecordStore.append(
-                    recordID: recordID,
-                    expectedFingerprint: expectedFingerprint,
-                    submittedBy: request.submittedBy,
-                    bodyMarkdown: request.bodyMarkdown,
-                    revisesStepIDs: request.revisesStepIDs,
-                    noteReferences: request.noteReferences,
-                    replacementQuestion: replacementQuestion
-                )
-            }
-        } catch let error as ResearchRecordContractError {
-            throw AgentCollaborationError.invalidRequest(error.localizedDescription)
-        } catch {
-            throw Self.agentRecordError(error)
-        }
-    }
-
-    func correctRecordStep(
-        _ request: ResearchRecordCorrectionRequest
-    ) async throws -> ResearchRecordRevision {
-        try requireActive()
-        try await validateRecordReferences(request.noteReferences)
-        do {
-            return try await services.researchRecordStore.correct(
-                recordID: request.recordID,
-                stepID: request.stepID,
-                expectedFingerprint: request.expectedFingerprint,
-                submittedBy: request.submittedBy,
-                bodyMarkdown: request.bodyMarkdown,
-                revisesStepIDs: request.revisesStepIDs,
-                noteReferences: request.noteReferences
-            )
-        } catch let error as ResearchRecordContractError {
-            throw AgentCollaborationError.invalidRequest(error.localizedDescription)
-        } catch {
-            throw Self.agentRecordError(error)
-        }
-    }
 
     func createAgentNote(
         _ request: ManagedNoteCreationRequest
@@ -510,31 +410,6 @@ extension WorkspaceHandle {
         return matches[0]
     }
 
-    private func validateRecordReferences(
-        _ references: [ResearchRecordNoteReference]
-    ) async throws {
-        guard !references.isEmpty else { return }
-        let refreshed = try await refresh()
-        let documents = refreshed.vaults.flatMap(\.documents)
-        for reference in references {
-            let matches = documents.filter {
-                $0.stableIdentity.resolvedID == reference.noteID
-            }
-            guard !matches.isEmpty else {
-                throw AgentCollaborationError.noteNotFound(reference.noteID)
-            }
-            guard matches.count == 1 else {
-                throw AgentCollaborationError.noteAmbiguous(reference.noteID)
-            }
-            guard matches[0].fingerprint == reference.revision else {
-                throw AgentCollaborationError.staleRevision(
-                    expected: reference.revision,
-                    current: matches[0].fingerprint
-                )
-            }
-        }
-    }
-
     private func finishFailedAgentMutation(
         changeID: UUID,
         error: Error
@@ -545,31 +420,6 @@ extension WorkspaceHandle {
             )
         } else {
             try? await services.agentChangeStore.discardPrepared(id: changeID)
-        }
-    }
-
-    private static func agentRecordError(_ error: Error) -> Error {
-        guard let error = error as? ResearchRecordStoreError else { return error }
-        switch error {
-        case .missing(let id):
-            return AgentCollaborationError.recordNotFound(id)
-        case .stepMissing(let recordID, let stepID):
-            return AgentCollaborationError.recordStepNotFound(
-                recordID: recordID,
-                stepID: stepID
-            )
-        case .staleRevision(let recordID, let expected, let current):
-            return AgentCollaborationError.staleRecordRevision(
-                recordID: recordID,
-                expected: expected,
-                current: current
-            )
-        case .operationUncertain(let id):
-            return AgentCollaborationError.recordOperationUncertain(id)
-        case .alreadyExists, .invalid, .unsafeStore, .coordinationFailed:
-            return AgentCollaborationError.recordUnavailable(
-                error.localizedDescription
-            )
         }
     }
 

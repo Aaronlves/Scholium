@@ -153,6 +153,24 @@ struct WindowControllerArchitectureTests {
         session.presentation.notificationFilter = .agentChanges
         session.presentation.filter.query = "Reasons"
         #expect(session.visibleAgentChanges(for: session.presentation) == [change])
+        let vault = RegisteredVault(name: "Topics", role: .topicKnowledge, canonicalPath: "/fixtures/Topics")
+        let note = VaultQualifiedNoteID(vaultID: vault.id, relativePath: "Drafts/Reasons.md")
+        let catalog = WorkspaceCatalogBuilder.build(
+            vaults: [vault], documents: [vault.id: [NoteDocument(relativePath: note.relativePath, rawContent: "# Reasons\n")]],
+            stableNoteIDs: [note: change.noteID])
+        projectionController.replaceCatalog(catalog)
+        agentChangeErrors.send(nil)
+        var ledger = AttentionDismissalLedger()
+        for item in catalog.attention { ledger.dismiss(item, forDays: 7) }
+        let summary = try #require(session.noteSummary(for: note, ledger: ledger, locale: Locale(identifier: "en")))
+        #expect(summary.count == 1)
+        #expect(summary.message == "Note Notifications")
+        #expect(session.noteSummary(for: .init(vaultID: vault.id, relativePath: "Other.md"), ledger: ledger) == nil)
+        #expect(session.presentation.filter.query == "Reasons")
+        session.presentQueue(anchor: .inspector, workspaceSlot: nil, noteScope: note)
+        #expect(session.presentation.filter.query.isEmpty)
+        #expect(session.presentation.notificationFilter == .all)
+        #expect(session.presentation.noteScope == note)
         session.inspect(change)
         #expect(openedAgentChangeID == change.id)
         observation.cancel()
@@ -483,9 +501,9 @@ struct WindowControllerArchitectureTests {
 
         let firstResearch = ResearchController(shellState: presentation)
         let secondResearch = ResearchController(shellState: presentation)
-        firstResearch.selectInspectorMode(.incoming)
+        firstResearch.selectInspectorMode(.links)
         firstResearch.showResearchInspector(true)
-        #expect(secondResearch.inspector.mode == .incoming)
+        #expect(secondResearch.inspector.mode == .links)
         #expect(secondResearch.inspector.isVisible)
 
         let firstDocument = DocumentController()
@@ -502,16 +520,10 @@ struct WindowControllerArchitectureTests {
     @Test(
         "Inspector restoration normalizes current, adjacent, absent, and unknown mode values",
         arguments: [
-            (nil as String?, ResearchInspectorMode.overview),
-            ("overview", ResearchInspectorMode.overview),
-            ("outgoing", .outgoing),
-            ("incoming", .incoming),
-            ("connect", .overview),
-            ("actions", .overview),
-            ("connections", .overview),
-            ("functions", .overview),
-            ("research", .overview),
-            ("unknown", .overview),
+            (nil as String?, ResearchInspectorMode.about),
+            ("about", .about),
+            ("links", .links),
+            ("unknown", .about),
         ]
     )
     func inspectorModeRestoration(
@@ -521,10 +533,10 @@ struct WindowControllerArchitectureTests {
         #expect(ResearchInspectorMode(restoring: rawValue) == expected)
     }
 
-    @Test("A new window defaults to Overview without making Inspector visible")
+    @Test("A new window defaults to About without making Inspector visible")
     func newWindowInspectorDefaults() {
         let controller = ResearchController()
-        #expect(controller.inspector.mode == .overview)
+        #expect(controller.inspector.mode == .about)
         #expect(!controller.inspector.isVisible)
     }
 
@@ -602,7 +614,7 @@ struct WindowControllerArchitectureTests {
         #expect(controllerSource.contains("@Published private(set) var selectedDocument"))
     }
 
-    @Test("The live Document presentation owns mode while sessions retain scroll")
+    @Test("The live Document presentation owns mode while activation starts at the title")
     func documentPresentationOwnsCurrentMode() {
         let reference = fixtureReference(path: "Topics/Presentation.md")
         let descriptor = WindowDocumentDescriptor(
@@ -624,7 +636,7 @@ struct WindowControllerArchitectureTests {
         #expect(session.presentationMode == .read)
         #expect(session.pendingEditorMode == .livePreview)
         #expect(controller.currentPresentationMode == .livePreview)
-        #expect(session.scrollFraction == 0.64)
+        #expect(session.scrollFraction == 0)
         let semanticAnchor = EditorScrollAnchor(
             sourceFingerprint: "revision-bound-fingerprint",
             sourceUTF16Offset: 12,
@@ -648,13 +660,13 @@ struct WindowControllerArchitectureTests {
         #expect(session.presentationMode == .read)
         #expect(session.pendingEditorMode == .livePreview)
         #expect(controller.currentPresentationMode == .livePreview)
-        #expect(session.scrollFraction == 0.31)
-        #expect(session.scrollAnchor == semanticAnchor)
+        #expect(session.scrollFraction == 0)
+        #expect(session.scrollAnchor == nil)
         #expect(controller.presentationSnapshot(vaultID: reference.vaultID) ==
             DocumentPresentationSnapshot(
                 documents: [
                     reference.relativePath: WindowDocumentPresentationSnapshot(
-                        scrollFraction: 0.31
+                        scrollFraction: 0
                     ),
                 ]
             ))
@@ -672,22 +684,22 @@ struct WindowControllerArchitectureTests {
         let shell = WindowShellState()
 
         document.rememberPresentationMode(.livePreview)
-        shell.selectInspectorMode(.outgoing)
+        shell.selectInspectorMode(.links)
 
         shell.selectWorkspace(.topicKnowledge)
         document.selectWorkspace(.topicKnowledge)
         #expect(document.currentPresentationMode == .livePreview)
-        #expect(shell.inspector.mode == .overview)
+        #expect(shell.inspector.mode == .about)
 
         document.rememberPresentationMode(.source)
-        shell.selectInspectorMode(.overview)
+        shell.selectInspectorMode(.about)
         shell.selectWorkspace(.paperAnalysis)
         document.selectWorkspace(.paperAnalysis)
 
         #expect(document.currentPresentationMode == .livePreview)
-        #expect(shell.inspector.mode == .outgoing)
+        #expect(shell.inspector.mode == .links)
         #expect(document.presentationMode(for: .topicKnowledge) == .source)
-        #expect(shell.inspectorMode(for: .topicKnowledge) == .overview)
+        #expect(shell.inspectorMode(for: .topicKnowledge) == .about)
     }
 
     @Test("The current Document mode carries across selected Notes")
@@ -1333,7 +1345,7 @@ struct WindowControllerArchitectureTests {
     @Test("Research controller owns Inspector presentation")
     func researchPresentationIsolation() {
         let controller = ResearchController()
-        #expect(controller.inspector.mode == .overview)
+        #expect(controller.inspector.mode == .about)
         #expect(!controller.inspector.isVisible)
         controller.showResearchInspector(true)
         #expect(controller.inspector.isVisible)
@@ -1977,7 +1989,6 @@ struct WindowControllerArchitectureTests {
             detachStart.lowerBound..<terminalStart.lowerBound
         ]
         for terminalOperation in [
-            "unregisterResearchRecordsWorkspace()",
             "unregisterResearchNotificationWindow()",
             "lifecycleRegistry.unregister(",
             "detachWindow(",

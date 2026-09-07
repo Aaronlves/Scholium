@@ -47,7 +47,8 @@ struct ExactSourceComparisonSheetLayout<
             minHeight: ScholiumMetrics.ResearchSheet.Comparison.minimumHeight,
             idealHeight: ScholiumMetrics.ResearchSheet.Comparison.idealHeight
         )
-        .scholiumSurface(.boundedPanel)
+        .background(ScholiumNativeColorRole.windowBackground.color)
+        .tint(ScholiumNativeColorRole.controlAccent.color)
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isModal)
         .accessibilityIdentifier(identifier)
@@ -166,7 +167,7 @@ struct ExactSourceComparisonView: View {
             }
             .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
         }
-        .background(ScholiumColorRole.documentBackground.color)
+        .background(ScholiumNativeColorRole.textBackground.color)
         .clipShape(RoundedRectangle(
             cornerRadius: ScholiumShape.editorialControlCornerRadius,
             style: .continuous

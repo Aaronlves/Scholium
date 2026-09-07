@@ -966,6 +966,37 @@ struct SidebarTreeTests {
     }
 
     @MainActor
+    @Test("A retained-document reveal restores selection after navigation fails")
+    func retainedDocumentRevealRestoresSelection() async throws {
+        _ = NSApplication.shared
+        let vaultID = UUID()
+        let first = workspaceNote(vaultID: vaultID, stableID: UUID(), path: "First.md", source: "# First\n")
+        let second = workspaceNote(vaultID: vaultID, stableID: UUID(), path: "Second.md", source: "# Second\n")
+        let projection = LibraryTreeProjection(preorderedNotes: [first, second])
+        let scope = LibraryDisclosureScope(vaultID: vaultID, sourceScope: .library)
+        func configuration(reveal: DiscoveryLibraryRevealRequest?) -> SidebarOutlineSourceList {
+            makeSidebarCoordinatorConfiguration(
+                roots: projection.roots, notes: [first, second], scope: scope,
+                expandedFolderIDs: [], selectedDocumentPath: first.relativePath,
+                revealRequest: reveal, requestedFocusPath: nil,
+                onConsumeRevealRequest: { _ in }, onFocusRequestHandled: {}
+            )
+        }
+        let coordinator = SidebarOutlineSourceList.Coordinator(configuration: configuration(reveal: nil))
+        let fixture = makeSidebarCoordinatorOutline(coordinator)
+        coordinator.apply(configuration: configuration(reveal: nil))
+        let retainedRow = fixture.outlineView.selectedRow
+        #expect(retainedRow >= 0)
+        fixture.outlineView.selectRowIndexes(IndexSet(integer: retainedRow == 0 ? 1 : 0), byExtendingSelection: false)
+        coordinator.apply(configuration: configuration(reveal: DiscoveryLibraryRevealRequest(
+            generation: 1, scope: scope, relativePath: first.relativePath, alignment: .nearest
+        )))
+        try await Task.sleep(for: .milliseconds(25))
+        #expect(fixture.outlineView.selectedRow == retainedRow)
+        coordinator.detach(from: fixture.scrollView)
+    }
+
+    @MainActor
     @Test("Sidebar drops queued reveal and focus callbacks across detach and reattach")
     func coordinatorDropsStaleTeardownCallbacks() async throws {
         _ = NSApplication.shared
@@ -1098,6 +1129,7 @@ private func makeSidebarCoordinatorConfiguration(
     notes: [WindowDocumentLocation],
     scope: LibraryDisclosureScope,
     expandedFolderIDs: Set<String>,
+    selectedDocumentPath: String? = nil,
     revealRequest: DiscoveryLibraryRevealRequest?,
     requestedFocusPath: String?,
     onConsumeRevealRequest: @escaping (DiscoveryLibraryRevealRequest) -> Void,
@@ -1136,7 +1168,7 @@ private func makeSidebarCoordinatorConfiguration(
         expandedFolders: .constant(expandedFolderIDs),
         expandedFolderIDs: expandedFolderIDs,
         usesAccessibilitySize: false,
-        selectedDocumentPath: nil,
+        selectedDocumentPath: selectedDocumentPath,
         context: context,
         dropInventory: dropInventory,
         revealRequest: revealRequest,

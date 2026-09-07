@@ -20,7 +20,7 @@ public enum AgentChangeRecoveryState: String, Codable, Hashable, Sendable {
 }
 
 /// Machine-local evidence for one MCP mutation. It is not a task, Result,
-/// Research Record, review state, permission, or researcher acceptance.
+/// review state, permission, or researcher acceptance.
 public struct AgentChange: Codable, Hashable, Identifiable, Sendable {
     public let id: UUID
     public let triptychID: UUID
@@ -228,14 +228,6 @@ public struct AgentNoteTrashResult: Sendable {
 }
 
 public protocol AgentCollaborationUseCases: Sendable {
-    func researchRecords() async throws -> ResearchRecordListing
-    func researchRecord(id: UUID) async throws -> ResearchRecordRevision
-    func recordProgress(
-        _ request: ResearchRecordProgressRequest
-    ) async throws -> ResearchRecordProgressResult
-    func correctRecordStep(
-        _ request: ResearchRecordCorrectionRequest
-    ) async throws -> ResearchRecordRevision
     func createNote(_ request: ManagedNoteCreationRequest) async throws
         -> AgentNoteCreationResult
     func updateNote(
@@ -263,15 +255,6 @@ public enum AgentCollaborationError: LocalizedError, Hashable, Sendable {
     case pathOccupied(String)
     case invalidRequest(String)
     case changeConfirmationUncertain(UUID)
-    case recordNotFound(UUID)
-    case recordStepNotFound(recordID: UUID, stepID: UUID)
-    case staleRecordRevision(
-        recordID: UUID,
-        expected: DocumentFingerprint,
-        current: DocumentFingerprint
-    )
-    case recordUnavailable(String)
-    case recordOperationUncertain(UUID)
 
     public var errorDescription: String? {
         switch self {
@@ -282,12 +265,6 @@ public enum AgentCollaborationError: LocalizedError, Hashable, Sendable {
         case .invalidRequest(let reason): reason
         case .changeConfirmationUncertain:
             "The source operation may have committed, but its Agent Change could not be confirmed."
-        case .recordNotFound: "The Research Record is not present."
-        case .recordStepNotFound: "The Research Record step is not present."
-        case .staleRecordRevision: "The Research Record fingerprint is stale."
-        case .recordUnavailable(let reason): "Research Records are unavailable: \(reason)"
-        case .recordOperationUncertain:
-            "The Research Record operation may have committed."
         }
     }
 }

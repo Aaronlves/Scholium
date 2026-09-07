@@ -3,40 +3,32 @@ import Combine
 import Foundation
 
 enum ResearchInspectorMode: String, CaseIterable, Identifiable, Sendable {
-    case overview
-    case outgoing
-    case incoming
+    case about
+    case links
 
     var id: Self { self }
 
     init(restoring rawValue: String?) {
-        switch rawValue?.lowercased() {
-        case "outgoing": self = .outgoing
-        case "incoming": self = .incoming
-        case "overview", .none: self = .overview
-        default: self = .overview
-        }
+        self = rawValue.flatMap(Self.init(rawValue:)) ?? .about
     }
 
     var interfaceTitleResource: LocalizedStringResource {
         switch self {
-        case .overview: "Overview"
-        case .outgoing: "Outgoing Links"
-        case .incoming: "Incoming Links"
+        case .about: "About"
+        case .links: "Links"
         }
     }
 
     var systemImage: String {
         switch self {
-        case .overview: "info.circle"
-        case .outgoing: "arrow.up.right"
-        case .incoming: "arrow.down.left"
+        case .about: "info.circle"
+        case .links: "link"
         }
     }
 }
 
 struct ResearchInspectorState: Equatable, Sendable {
-    var mode: ResearchInspectorMode = .overview
+    var mode: ResearchInspectorMode = .about
     var isVisible = false
 }
 
@@ -44,6 +36,7 @@ struct ResearchInspectorState: Equatable, Sendable {
 /// Permission and source-access capabilities remain with their
 /// dedicated controllers and never enter this bundle.
 struct ResearchControllerCapabilities: Sendable {
+    let triptychID: UUID
     let documents: any DocumentUseCases
     let research: any ResearchUseCases
     let agentCollaboration: any AgentCollaborationUseCases
@@ -58,6 +51,8 @@ struct ResearchControllerCapabilities: Sendable {
 @MainActor
 final class ResearchController: ObservableObject {
     typealias IntentHandler = @MainActor (WindowIntent) -> Void
+
+    let linksInspector = LinksInspectorSession()
 
     @Published private(set) var activeDocument: VaultNoteReference?
     @Published private(set) var researchSnapshot: WorkspaceResearchSnapshot?
@@ -95,6 +90,9 @@ final class ResearchController: ObservableObject {
     ) {
         agentChangesRefreshTask?.cancel()
         agentChangesRefreshGeneration &+= 1
+        if self.capabilities?.triptychID != capabilities.triptychID {
+            linksInspector.reset()
+        }
         self.capabilities = capabilities
         agentChanges = nil
         agentChangesError = nil
@@ -304,6 +302,12 @@ final class ResearchController: ObservableObject {
                     column: 1
                 )
             }
+        )))
+    }
+
+    func requestEditAtSource(_ reference: VaultNoteReference, line: Int) {
+        intentHandler(.revealSourceLocator(vaultID: reference.vaultID, locator: SourceLocator(
+            file: reference.relativePath, line: line, column: 1
         )))
     }
 

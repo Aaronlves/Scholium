@@ -14,17 +14,16 @@ struct ResearchSearchFieldTests {
         let advancedMenu = ResearchSearchField.Coordinator(advanced).makeSearchMenu()
         #expect(quickMenu.items.contains { $0.action == #selector(ResearchSearchField.Coordinator.advancedSearch(_:)) })
         #expect(!advancedMenu.items.contains { $0.action == #selector(ResearchSearchField.Coordinator.advancedSearch(_:)) })
-        #expect(advancedMenu.items.filter { $0.submenu != nil }.count == 2)
+        #expect(advancedMenu.items.filter { $0.submenu != nil }.count == 1)
     }
 
     @Test("Search filter menus expose current scope and preserve the query")
     func filtersPreserveQuery() throws {
         var query = "aurora-fixture"
         var scope: SearchPresentationScope = .triptych
-        var provider: SearchProviderSelection = .all
         let field = ResearchSearchField(text: Binding(get: { query }, set: { query = $0 }),
             placeholder: "Search", scope: Binding(get: { scope }, set: { scope = $0 }),
-            provider: Binding(get: { provider }, set: { provider = $0 }), openAdvanced: {},
+            openAdvanced: {},
             isActive: true, focusRequestID: nil, replacementID: 0, beganEditing: {}, endedEditing: {}, command: { _ in false })
         let coordinator = ResearchSearchField.Coordinator(field)
         let menu = coordinator.makeSearchMenu()
@@ -35,13 +34,13 @@ struct ResearchSearchFieldTests {
         #expect(thisVault.state == .on)
         #expect(query == "aurora-fixture")
         coordinator.clearFilters(NSMenuItem())
-        #expect(scope == .triptych && provider == .all)
+        #expect(scope == .triptych)
         #expect(query == "aurora-fixture")
     }
 
     private func field(openAdvanced: (() -> Void)?) -> ResearchSearchField {
         ResearchSearchField(text: .constant(""), placeholder: "Search",
-            scope: .constant(.triptych), provider: .constant(.all), openAdvanced: openAdvanced,
+            scope: .constant(.triptych), openAdvanced: openAdvanced,
             isActive: false, focusRequestID: nil, replacementID: 0, beganEditing: {}, endedEditing: {}, command: { _ in false })
     }
 }

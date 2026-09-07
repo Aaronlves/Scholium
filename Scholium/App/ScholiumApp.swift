@@ -137,26 +137,6 @@ struct ScholiumApp: App {
             ScholiumCommands()
         }
 
-        WindowGroup(
-            "Research Records",
-            id: "scholium-records",
-            for: ResearchRecordsWindowRoute.self,
-            content: makeResearchRecordsWindowContent,
-            defaultValue: {
-                ResearchRecordsWindowRoute(
-                    triptychID: UUID(),
-                    sourceWindowID: UUID()
-                )
-            }
-        )
-        .defaultSize(width: 560, height: 580)
-        .windowStyle(.titleBar)
-        .windowResizability(.automatic)
-        .defaultLaunchBehavior(.suppressed)
-        .restorationBehavior(.disabled)
-        .environmentObject(applicationBootstrap)
-        .environmentObject(applicationDelegate)
-
         Settings {
             ScholiumSettingsWindowContent()
             .frame(minWidth: 620, minHeight: 180)
@@ -181,12 +161,6 @@ private func makeMainWindowContent(
     _ route: Binding<TriptychWindowRoute>
 ) -> ScholiumMainWindowContent {
     ScholiumMainWindowContent(route: route)
-}
-
-private func makeResearchRecordsWindowContent(
-    _ route: Binding<ResearchRecordsWindowRoute>
-) -> ScholiumResearchRecordsWindowContent {
-    ScholiumResearchRecordsWindowContent(route: route)
 }
 
 private struct ScholiumBootstrapWindowContent: View {
@@ -281,57 +255,6 @@ private struct ScholiumSettingsWindowContent: View {
     var body: some View {
         ScholiumSettingsWindowEnvironmentContent()
             .modifier(SystemNotificationRouting())
-    }
-}
-
-private struct ScholiumResearchRecordsWindowContent: View {
-    @Binding var route: ResearchRecordsWindowRoute
-
-    nonisolated init(route: Binding<ResearchRecordsWindowRoute>) {
-        self._route = route
-    }
-
-    var body: some View {
-        ScholiumResearchRecordsWindowEnvironmentContent(route: $route)
-            .modifier(SystemNotificationRouting())
-    }
-}
-
-@MainActor
-private struct ScholiumResearchRecordsWindowEnvironmentContent: View {
-    @EnvironmentObject private var applicationBootstrap: ApplicationBootstrapController
-    @Binding var route: ResearchRecordsWindowRoute
-
-    var body: some View {
-        ApplicationBootstrapGate(controller: applicationBootstrap) {
-            ScholiumResearchRecordsWindowReadyContent(route: route)
-        }
-        .focusedSceneValue(
-            \.scholiumApplicationBootstrapStatus,
-            ScholiumApplicationBootstrapStatus(isReady: applicationBootstrap.isReady)
-        )
-    }
-}
-
-@MainActor
-private struct ScholiumResearchRecordsWindowReadyContent: View {
-    @EnvironmentObject private var workspaceStore: WorkspaceStore
-    @AppStorage(WindowColorSchemeChoice.defaultsKey)
-    private var storedColorScheme = WindowColorSchemeChoice.system.rawValue
-    let route: ResearchRecordsWindowRoute
-
-    var body: some View {
-        ResearchRecordsWindowView(
-            route: route,
-            loadCapabilities: {
-                try await workspaceStore.researchRecordsWindowCapabilities(
-                    id: route.triptychID
-                )
-            }
-        )
-        .preferredColorScheme(
-            WindowColorSchemeChoice(rawValue: storedColorScheme)?.swiftUIColorScheme
-        )
     }
 }
 
@@ -687,7 +610,6 @@ private struct ScholiumWindowObservedRoot: View {
     @StateObject private var fileSelectionPresenter = ScholiumFileSelectionPresenter()
     @State private var destinationBootstrapWindowID: UUID?
     @State private var accessRecovery: WorkspaceAccessRecovery?
-    @State private var researchRecordsSourceToken: UUID?
 
     init(
         appState: WindowModel,
@@ -813,14 +735,6 @@ private struct ScholiumWindowObservedRoot: View {
                     Task { await appState.openNotifiedAgentChange(notification) }
                     return true
                 }
-                if researchRecordsSourceToken == nil {
-                    researchRecordsSourceToken = ResearchRecordsWindowCoordinator.shared
-                        .registerWorkspace(windowID: route.windowID) {
-                            [weak appState, weak windowCoordinator] reference in
-                            appState?.researchController.requestOpen(reference)
-                            windowCoordinator?.makeKeyAndOrderFront()
-                        }
-                }
                 windowCoordinator.activate(
                     showAttention: { request in
                         switch request {
@@ -831,15 +745,6 @@ private struct ScholiumWindowObservedRoot: View {
                                 noteScope: noteScope
                             )
                         }
-                    },
-                    showResearchRecords: { triptychID in
-                        openWindow(
-                            id: "scholium-records",
-                            value: ResearchRecordsWindowRoute(
-                                triptychID: triptychID,
-                                sourceWindowID: route.windowID
-                            )
-                        )
                     }
                 )
                 windowCoordinator.update(reduceMotion: reduceMotion)
@@ -849,13 +754,6 @@ private struct ScholiumWindowObservedRoot: View {
             }
             .onDisappear {
                 SystemNotificationService.shared.unregisterWindow(id: route.windowID)
-                if let researchRecordsSourceToken {
-                    ResearchRecordsWindowCoordinator.shared.unregisterWorkspace(
-                        windowID: route.windowID,
-                        token: researchRecordsSourceToken
-                    )
-                }
-                researchRecordsSourceToken = nil
                 windowCoordinator.detach()
             }
             .scholiumFileSelectionScene(presenter: fileSelectionPresenter)
@@ -1227,9 +1125,6 @@ private struct ScholiumPasteboardCommandContent: View {
         }
         .scholiumActivationPointer()
         .disabled(appState?.currentNote == nil)
-        Button("Edit Metadata…") { appState?.showMetadataEditor = true }
-            .scholiumActivationPointer()
-            .disabled(appState?.canEditCurrentNote != true)
     }
 
     private func markdownPasteboardPayload() -> String? {
@@ -1476,11 +1371,10 @@ private struct ScholiumSidebarCommandContent: View {
         }
         .keyboardShortcut("f", modifiers: [.command, .option, .shift])
         .disabled(editorActions?.canEditFrontmatter != true || editorActions?.isComposing == true)
-        Button("Research Records…") {
-            workspaceWindowActions?.showResearchRecords()
+        Button("Operation History…") {
+            appState?.presentationRouter.present(.agentChanges(initialChangeID: nil))
         }
-        .scholiumActivationPointer()
-        .disabled(workspaceWindowActions == nil || appState?.windowWorkspaceController.activeCapabilities == nil)
+        .disabled(appState?.windowWorkspaceController.activeCapabilities == nil)
         Button("Triptych") {
             workspaceWindowActions?.activateSidebar(.triptych)
         }
@@ -2059,8 +1953,6 @@ final class WindowModel: ObservableObject {
         shellState.hasCompletedInitialRestore
     }
 
-
-
     var colorScheme: WindowColorSchemeChoice {
         get { shellState.colorScheme }
         set { shellState.colorScheme = newValue }
@@ -2242,31 +2134,6 @@ final class WindowModel: ObservableObject {
         set { presentationRouter.fileImport = newValue ? .markdown : nil }
     }
 
-    var editingNotePath: String? {
-        get {
-            guard case .metadata(let route) = presentationRouter.sheet else { return nil }
-            return route.path
-        }
-        set {
-            if let newValue {
-                presentationRouter.presentMetadata(path: newValue)
-            } else if case .metadata = presentationRouter.sheet {
-                presentationRouter.dismissSheet()
-            }
-        }
-    }
-
-    var showMetadataEditor: Bool {
-        get { editingNotePath != nil }
-        set {
-            if newValue, let path = editingNotePath ?? currentNote?.relativePath {
-                presentationRouter.presentMetadata(path: path)
-            } else if !newValue, case .metadata = presentationRouter.sheet {
-                presentationRouter.dismissSheet()
-            }
-        }
-    }
-
     var vaultError: String? {
         get { presentationRouter.alert?.message }
         set { presentationRouter.alert = newValue.map(WindowAlertRoute.actionFailure) }
@@ -2312,6 +2179,7 @@ final class WindowModel: ObservableObject {
     private let workspaceStore: WorkspaceStore
     private let lifecyclePolicy: ScholiumLifecyclePolicy
     private let documentTransitionCoordinator = DocumentTransitionCoordinator()
+    private var documentTransitionIssueID: UUID?
     private let editorFlushCoordinator: WindowEditorFlushCoordinator
     private let windowSessionPersistenceCoordinator: WindowSessionPersistenceCoordinator
     lazy var windowCloseCoordinator = WindowCloseCoordinator(
@@ -2819,6 +2687,14 @@ final class WindowModel: ObservableObject {
         )
     }
 
+    func registerMetadataEditorFlush(for path: String, token: UUID, flush: @escaping @MainActor () async throws -> Void) {
+        editorFlushCoordinator.registerMetadataEditor(token: token, path: path, flush: flush)
+    }
+
+    func unregisterMetadataEditorFlush(token: UUID) {
+        editorFlushCoordinator.unregisterMetadataEditor(token: token)
+    }
+
     func unregisterEditorFlush(token: UUID) {
         editorFlushCoordinator.unregisterCurrentEditor(
             token: token,
@@ -2874,15 +2750,19 @@ final class WindowModel: ObservableObject {
             operation: operation,
             didFail: { [weak self] error in
                 guard let self else { return }
+                self.revealRetainedDocumentAfterTransitionFailure()
                 if let customFailure {
                     customFailure(error)
                     return
                 }
+                if let issueID = self.documentTransitionIssueID {
+                    self.shellState.dismissOperationIssue(id: issueID)
+                }
                 if let navigationError = error as? WindowNavigationError {
-                    self.reportOperationIssue(navigationError.localizedDescription, kind: .warning)
+                    self.documentTransitionIssueID = self.reportOperationIssue(navigationError.localizedDescription, kind: .warning)
                 } else {
                     self.lastSaveError = error.localizedDescription
-                    self.reportOperationIssue(
+                    self.documentTransitionIssueID = self.reportOperationIssue(
                         String(
                             localized: "The current note could not be saved, so Scholium kept it open. \(error.localizedDescription)",
                             table: "Localizable",
@@ -2892,8 +2772,26 @@ final class WindowModel: ObservableObject {
                     )
                 }
             },
-            didSucceed: { didSucceed?() },
+            didSucceed: { [weak self] in
+                if let self, let issueID = self.documentTransitionIssueID {
+                    self.shellState.dismissOperationIssue(id: issueID)
+                    self.documentTransitionIssueID = nil
+                }
+                didSucceed?()
+            },
             didFinish: { didFinish?() }
+        )
+    }
+
+    private func revealRetainedDocumentAfterTransitionFailure() {
+        guard let document = documentController.selectedDocument,
+              let vaultID = currentRegisteredVault?.id,
+              discoveryController.library.sourceScope == .library else { return }
+        discoveryController.prepareLibraryNoteReveal(
+            relativePath: document.relativePath,
+            folderAncestors: libraryFolderAncestors(forDocumentPath: document.relativePath),
+            clearFilters: false,
+            in: LibraryDisclosureScope(vaultID: vaultID, sourceScope: .library)
         )
     }
 
@@ -2916,18 +2814,22 @@ final class WindowModel: ObservableObject {
             operation: operation,
             didFail: { [weak self] error in
                 guard let self else { return }
+                self.revealRetainedDocumentAfterTransitionFailure()
                 if let customFailure {
                     customFailure(error)
                     return
                 }
+                if let issueID = self.documentTransitionIssueID {
+                    self.shellState.dismissOperationIssue(id: issueID)
+                }
                 if let navigationError = error as? WindowNavigationError {
-                    self.reportOperationIssue(
+                    self.documentTransitionIssueID = self.reportOperationIssue(
                         navigationError.localizedDescription,
                         kind: .warning
                     )
                 } else {
                     self.lastSaveError = error.localizedDescription
-                    self.reportOperationIssue(
+                    self.documentTransitionIssueID = self.reportOperationIssue(
                         String(
                             localized: "The current note could not be saved, so Scholium kept it open. \(error.localizedDescription)",
                             table: "Localizable",
@@ -2937,7 +2839,13 @@ final class WindowModel: ObservableObject {
                     )
                 }
             },
-            didSucceed: { didSucceed?() },
+            didSucceed: { [weak self] in
+                if let self, let issueID = self.documentTransitionIssueID {
+                    self.shellState.dismissOperationIssue(id: issueID)
+                    self.documentTransitionIssueID = nil
+                }
+                didSucceed?()
+            },
             didFinish: { didFinish?() }
         )
     }
@@ -2960,8 +2868,7 @@ final class WindowModel: ObservableObject {
             Task { [weak self] in
                 await self?.openWorkspaceReference(
                     route.reference,
-                    line: route.sourceLocator?.line,
-                    mode: route.sourceLocator == nil ? .read : .source
+                    line: route.sourceLocator?.line
                 )
             }
         case .openSearchResult(let result, let disposition):
@@ -3082,45 +2989,6 @@ final class WindowModel: ObservableObject {
                 reference,
                 tabActivation: .place(.replaceSelected)
             )
-        }
-    }
-
-    func requestOpenNote(
-        _ note: VaultQualifiedNoteID,
-        stableNoteID: UUID,
-        sourceLine: Int? = nil
-    ) {
-        guard let vault = workspaceAssignment?.vaults.values.first(where: {
-            $0.id == note.vaultID
-        }) else {
-            reportOperationIssue(
-                String(
-                    localized: "The selected vault is no longer available.",
-                    table: "Localizable",
-                    bundle: .module
-                ),
-                kind: .warning
-            )
-            return
-        }
-        let reference = VaultNoteReference(
-            vaultID: vault.id,
-            vaultName: vault.name,
-            vaultRole: vault.role,
-            relativePath: note.relativePath,
-            stableNoteID: stableNoteID.uuidString.lowercased()
-        )
-        enqueueDocumentTransition(preservingCurrentEditorState: false) { [weak self] in
-            guard let self else { return }
-            try await self.activateWorkspaceReference(
-                reference,
-                tabActivation: .place(.replaceSelected)
-            )
-            if let sourceLine {
-                self.pendingSourceRange = nil
-                self.pendingSourceLine = max(1, sourceLine)
-                self.requestPresentationMode = .source
-            }
         }
     }
 
@@ -3667,7 +3535,7 @@ final class WindowModel: ObservableObject {
                 (
                     workspace,
                     restoredPresentation.workspaceSession(for: workspace)?
-                        .inspectorMode ?? "overview"
+                        .inspectorMode ?? "about"
                 )
             }
         )
@@ -3946,6 +3814,7 @@ final class WindowModel: ObservableObject {
         )
         researchController.bind(
             to: ResearchControllerCapabilities(
+                triptychID: capabilities.id,
                 documents: capabilities.documents,
                 research: capabilities.research.research,
                 agentCollaboration: capabilities.agentCollaboration,
@@ -5720,19 +5589,22 @@ final class WindowModel: ObservableObject {
     func openWorkspaceReference(
         _ reference: VaultNoteReference,
         line: Int? = nil,
-        mode: NotePresentationMode = .source
+        mode: NotePresentationMode? = nil
     ) async {
+        let navigationMode = mode ?? presentedDocumentMode
         enqueueDocumentTransition(preservingCurrentEditorState: false) { [weak self] in
             guard let self else { return }
             try await self.activateWorkspaceReference(
                 reference,
                 tabActivation: .place(.replaceSelected)
             )
-            if let line {
-                self.pendingSourceRange = nil
-                self.pendingSourceLine = max(1, line)
-                self.requestPresentationMode = mode
-            }
+            self.pendingSourceRange = nil
+            self.pendingSourceLine = line.map { max(1, $0) }
+            // Read-only destinations already enter Review through DocumentController.
+            // Ordinary navigation must not turn that exception into an edit warning.
+            self.requestPresentationMode = mode == nil
+                && self.currentNote?.workspaceSnapshot?.capabilities.canEditSource == false
+                ? nil : navigationMode
         }
     }
 
@@ -5811,7 +5683,7 @@ final class WindowModel: ObservableObject {
             reportOperationIssue(String(localized: "The resolved note is not available in the current Triptych catalog.", table: "Localizable", bundle: .module), kind: .warning)
             return
         }
-        Task { await openWorkspaceReference(reference, line: destination.line, mode: .read) }
+        Task { await openWorkspaceReference(reference, line: destination.line) }
     }
 
     @discardableResult
@@ -5847,43 +5719,6 @@ final class WindowModel: ObservableObject {
         }
     }
 
-    /// Commits one inline About edit through the existing portable Metadata
-    /// owner. The view supplies no record snapshot or competing merge policy.
-    func saveManagedAboutField(
-        for note: WindowDocumentLocation,
-        key: String,
-        value: YAMLValue?
-    ) async throws {
-        guard let context = activeDocumentContext(for: note.relativePath),
-              note.workspaceSnapshot?.stableIdentity.resolvedID == context.noteID,
-              let currentSnapshot = workspaceProjectionController.cachedNote(
-                vaultID: context.vaultID,
-                stableNoteID: context.noteID,
-                relativePath: note.relativePath
-              ) else {
-            throw NoteIdentityRecoveryError.identityUnresolved(note.relativePath)
-        }
-        let current = WindowDocumentLocation.workspace(currentSnapshot)
-        guard workspaceProjectionController.metadataCatalog.contract(
-            for: key,
-            profile: current.schemaProfile
-        ) != nil else {
-            throw NoteMetadataError.invalidRecord(context.noteID)
-        }
-        var fields = current.managedMetadataFields
-        if let value {
-            fields[key] = value
-        } else {
-            fields.removeValue(forKey: key)
-        }
-        guard fields != current.managedMetadataFields else { return }
-        _ = try await saveMetadata(
-            for: current,
-            proposedFields: fields,
-            expectedRevision: currentSnapshot.metadata?.revision
-        )
-    }
-
     func diskDocument(for path: String) async throws -> NoteDocument {
         guard let context = activeDocumentContext(for: path) else {
             throw VaultRepositoryError.fileDoesNotExist(path)
@@ -5902,15 +5737,9 @@ final class WindowModel: ObservableObject {
             throw VaultRepositoryError.fileDoesNotExist(path)
         }
         let metadata = try await documentController.metadata(snapshot.id)
-        let refreshed: WindowDocumentLocation
-        if let metadata {
-            let updated = snapshot.applyingCommittedMetadata(metadata)
-            replaceCachedWorkspaceNote(updated)
-            refreshed = .workspace(updated)
-        } else {
-            refreshed = current
-        }
-        return (refreshed, metadata?.revision)
+        let updated = snapshot.applyingCommittedMetadata(metadata)
+        replaceCachedWorkspaceNote(updated)
+        return (.workspace(updated), metadata?.revision)
     }
 
     func openNotifiedAgentChange(_ route: AgentChangeNotificationRoute) async {
@@ -5929,12 +5758,13 @@ final class WindowModel: ObservableObject {
         }
     }
 
+    @discardableResult
     func reportOperationIssue(
         _ message: String,
         kind: WindowOperationIssueKind,
         detail: String? = nil,
         offersRefresh: Bool = false
-    ) {
+    ) -> UUID {
         shellState.reportOperationIssue(message, kind: kind, detail: detail, offersRefresh: offersRefresh)
     }
 

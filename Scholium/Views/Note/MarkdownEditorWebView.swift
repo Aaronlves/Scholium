@@ -18,8 +18,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         String
     ) async -> [EditorLinkCompletion]
     let linkPreviews: [DocumentLinkPreview]
-    var documentAttachments: [DocumentAttachmentSnapshot] = []
-    var documentAttachmentRevealRevision: UInt64 = 0
     let initialScrollFraction: Double
     let initialScrollAnchor: EditorScrollAnchor?
     let onDocumentActivity: () -> Void
@@ -29,8 +27,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         String,
         String
     ) async throws -> String
-    var onPreviewDocumentAttachment: (UUID) -> Void = { _ in }
-    var onAttachDocument: (DocumentAttachmentSelectionMode) -> Void = { _ in }
     let onPasteImage: (EditorPastedImageSource) -> Bool
     let onLinkActivation: (String) -> Void
     let onScrollFractionChange: (Double) -> Void
@@ -53,8 +49,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             onDocumentActivity: onDocumentActivity,
             onRequestSave: onRequestSave,
             onRequestFind: onRequestFind,
-            onPreviewDocumentAttachment: onPreviewDocumentAttachment,
-            onAttachDocument: onAttachDocument,
             onRequestDocumentTitleRename: onRequestDocumentTitleRename,
             linkCompletionQuery: linkCompletionQuery,
             onLinkActivation: onLinkActivation,
@@ -148,9 +142,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         context.coordinator.presentationCSS = presentationCSS
         context.coordinator.userCSS = userCSS
         context.coordinator.linkPreviews = linkPreviews
-        context.coordinator.documentAttachments = documentAttachments
-        context.coordinator.documentAttachmentRevealRevision =
-            documentAttachmentRevealRevision
         context.coordinator.initialScrollFraction = initialScrollFraction
         context.coordinator.initialScrollAnchor = initialScrollAnchor
         if requiresMathRuntime {
@@ -159,7 +150,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         context.coordinator.performanceDocumentID = performanceDocumentID
         session.setPresentationCSS(presentationCSS)
         session.setDocumentTitle(documentTitle)
-        session.setDocumentAttachments(documentAttachments)
         session.setScrollPosition(anchor: initialScrollAnchor, fallbackFraction: initialScrollFraction)
         session.attach(webView)
         session.loadDocument(attachmentSource, documentID: documentID, mode: mode)
@@ -187,8 +177,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         context.coordinator.onDocumentActivity = onDocumentActivity
         context.coordinator.onRequestSave = onRequestSave
         context.coordinator.onRequestFind = onRequestFind
-        context.coordinator.onPreviewDocumentAttachment = onPreviewDocumentAttachment
-        context.coordinator.onAttachDocument = onAttachDocument
         context.coordinator.onRequestDocumentTitleRename = onRequestDocumentTitleRename
         context.coordinator.linkCompletionQuery = linkCompletionQuery
         context.coordinator.onLinkActivation = onLinkActivation
@@ -211,16 +199,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         if context.coordinator.linkPreviews != linkPreviews {
             context.coordinator.linkPreviews = linkPreviews
             session.setLinkPreviews(linkPreviews, in: source)
-        }
-        if context.coordinator.documentAttachments != documentAttachments {
-            context.coordinator.documentAttachments = documentAttachments
-            session.setDocumentAttachments(documentAttachments)
-        }
-        if context.coordinator.documentAttachmentRevealRevision
-            != documentAttachmentRevealRevision {
-            context.coordinator.documentAttachmentRevealRevision =
-                documentAttachmentRevealRevision
-            session.revealDocumentAttachmentControl()
         }
         if context.coordinator.documentID != documentID {
             context.coordinator.cancelLinkCompletionQuery()
@@ -301,8 +279,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         var onDocumentActivity: () -> Void
         var onRequestSave: () -> Void
         var onRequestFind: (DocumentFindShortcut) -> Void
-        var onPreviewDocumentAttachment: (UUID) -> Void
-        var onAttachDocument: (DocumentAttachmentSelectionMode) -> Void
         var onRequestDocumentTitleRename: @MainActor (
             String,
             String
@@ -326,8 +302,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
         var presentationCSS = ""
         var userCSS = ""
         var linkPreviews: [DocumentLinkPreview] = []
-        var documentAttachments: [DocumentAttachmentSnapshot] = []
-        var documentAttachmentRevealRevision: UInt64 = 0
         var awaitingEditorLoad = false
         var startingFingerprint = ""
         var initialScrollFraction: Double = 0
@@ -347,8 +321,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             onDocumentActivity: @escaping () -> Void,
             onRequestSave: @escaping () -> Void,
             onRequestFind: @escaping (DocumentFindShortcut) -> Void,
-            onPreviewDocumentAttachment: @escaping (UUID) -> Void,
-            onAttachDocument: @escaping (DocumentAttachmentSelectionMode) -> Void,
             onRequestDocumentTitleRename: @escaping @MainActor (
                 String,
                 String
@@ -366,8 +338,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             self.onDocumentActivity = onDocumentActivity
             self.onRequestSave = onRequestSave
             self.onRequestFind = onRequestFind
-            self.onPreviewDocumentAttachment = onPreviewDocumentAttachment
-            self.onAttachDocument = onAttachDocument
             self.onRequestDocumentTitleRename = onRequestDocumentTitleRename
             self.linkCompletionQuery = linkCompletionQuery
             self.onLinkActivation = onLinkActivation
@@ -546,18 +516,6 @@ struct MarkdownEditorWebView: NSViewRepresentable {
             case .linkActivated(let activation):
                 guard validEnvelope(activation.envelope) else { return }
                 onLinkActivation(activation.target)
-            case .requestDocumentAttachmentPreview(let request):
-                guard validEnvelope(request.envelope) else { return }
-                onPreviewDocumentAttachment(request.attachmentID)
-            case .requestDocumentAttachmentMenu(let request):
-                guard validEnvelope(request.envelope),
-                      let webView = message.webView ?? activeWebView else { return }
-                presentDocumentAttachmentMenu(
-                    clientX: request.clientX,
-                    clientY: request.clientY,
-                    in: webView,
-                    choose: onAttachDocument
-                )
             case .contextMenuRequested(let request):
                 guard validEnvelope(request.envelope),
                       session.acceptsInteractionRanges(

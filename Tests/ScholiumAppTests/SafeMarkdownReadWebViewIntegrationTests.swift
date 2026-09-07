@@ -6,6 +6,37 @@ import WebKit
 @testable import ScholiumApp
 
 extension MarkdownEditorWebViewIntegrationTests {
+    @Test("Review arrival is temporary, repeatable and preserves a reading selection")
+    func reviewArrivalFeedback() async throws {
+        let source = "First paragraph.\n\nSecond paragraph. " + String(repeating: "Long wrapped context remains readable. ", count: 35) + "\n"
+        let document = NoteDocument(relativePath: "Arrival.md", rawContent: source)
+        let harness = ReadHarness(source: source,
+            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
+            fingerprint: document.fingerprint.sha256, initialAnchor: nil, initialScrollFraction: 0)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        let paragraphsHaveNoBackground = "return [...document.querySelectorAll('#scholium-document p')].every(p => getComputedStyle(p).backgroundColor === 'rgba(0, 0, 0, 0)');"
+        #expect(try await harness.callBridgeJavaScript(paragraphsHaveNoBackground) as? Bool == true)
+        _ = try await harness.callBridgeJavaScript("window.getSelection().selectAllChildren(document.querySelector('[data-source-line=\"1\"]'));")
+        harness.requestSourceLine(3)
+        try await harness.waitUntilSourceLineReached(3)
+        let snapshot = try #require(try await harness.callBridgeJavaScript("return {target:document.querySelector('.scholium-arrival-target')?.dataset.arrivalLine, selection:window.getSelection().toString(), markerHeight:document.querySelector('.scholium-arrival-target').getBoundingClientRect().height, paragraphHeight:document.querySelector('[data-source-line=\"3\"]').getBoundingClientRect().height};") as? [String: Any])
+        #expect(snapshot["target"] as? String == "3")
+        #expect(snapshot["selection"] as? String == "First paragraph.")
+        let markerHeight = try #require(snapshot["markerHeight"] as? Double)
+        let paragraphHeight = try #require(snapshot["paragraphHeight"] as? Double)
+        #expect(markerHeight > 0 && markerHeight < paragraphHeight / 2)
+        #expect(try await harness.callBridgeJavaScript(Self.arrivalAnimationProbe) as? Bool == true)
+        try await Task.sleep(for: .milliseconds(1550))
+        #expect(try await harness.callBridgeJavaScript("return document.querySelectorAll('.scholium-arrival-target').length;") as? Int == 0)
+        #expect(try await harness.callBridgeJavaScript(paragraphsHaveNoBackground) as? Bool == true)
+        harness.requestSourceLine(3)
+        try await harness.waitUntilSourceLineReached(3)
+        #expect(try await harness.callBridgeJavaScript("return document.querySelectorAll('.scholium-arrival-target').length;") as? Int == 1)
+        #expect(try await harness.callBridgeJavaScript("return window.scholiumReadNavigation.reveal(99);") as? Bool == false)
+        #expect(try await harness.callBridgeJavaScript("return document.querySelectorAll('.scholium-arrival-target').length;") as? Int == 0)
+    }
+
     @Test("Review find preserves prose layout and content")
     func reviewFindPreservesLayout() async throws {
         let source = "findtarget at the beginning.\n\n" + String(repeating: "Following paragraph.\n\n", count: 30)
@@ -209,87 +240,11 @@ extension MarkdownEditorWebViewIntegrationTests {
             body: "",
             documentTitle: "Empty Argument"
         )
-        #expect(emptyHTML.contains("scholium-document-attachment-mount"))
+        #expect(!emptyHTML.contains("scholium-document-attachment-mount"))
         #expect(emptyHTML.contains("scholium-document-empty-state"))
         #expect(emptyHTML.contains("This note has no body content."))
     }
 
-    @Test("Review updates document attachments without reloading or moving the document")
-    func reviewDocumentAttachmentProjectionIsIndependent() async throws {
-        let source = "# Question\n\n" + (1...40).map {
-            "Philosophical paragraph \($0)."
-        }.joined(separator: "\n\n")
-        let document = NoteDocument(relativePath: "Reasons.md", rawContent: source)
-        let harness = ReadHarness(
-            source: source,
-            htmlBody: SafeMarkdownRenderer.render(document).htmlBody,
-            fingerprint: document.fingerprint.sha256,
-            initialAnchor: nil,
-            initialScrollFraction: 0,
-            documentTitle: "Reasons and Emotion"
-        )
-        defer { harness.close() }
-        try await harness.waitUntilReady()
-        _ = try await harness.callBridgeJavaScript(
-            "window.scrollTo({top: 220, behavior: 'auto'}); return window.scrollY;"
-        )
-        let before = try #require(try await harness.callBridgeJavaScript(
-            "window.__scholiumReviewTitleBeforeAttachment = document.querySelector('.scholium-note-title'); return window.scrollY;"
-        ) as? NSNumber).doubleValue
-
-        let record = DocumentAttachmentRecord(
-            id: UUID(),
-            noteID: UUID(),
-            vaultID: UUID(),
-            location: .vaultRelative(try AttachmentRelativePath(
-                "Attachments/f94d290a-3cb3-41b6-8cb5-0751fdfbbc66/Emotion and Reasons.pdf"
-            ))
-        )
-        harness.updateDocumentAttachments([
-            DocumentAttachmentSnapshot(record: record, availability: .available),
-        ])
-
-        let clock = ContinuousClock()
-        let deadline = clock.now.advanced(by: .seconds(3))
-        var result: [String: Any]?
-        repeat {
-            result = try await harness.callBridgeJavaScript(
-                """
-                const rail = document.querySelector('.scholium-document-attachment-rail');
-                const capsule = rail?.querySelector('.scholium-document-attachment-capsule');
-                return capsule ? {
-                  sameTitle: document.querySelector('.scholium-note-title') === window.__scholiumReviewTitleBeforeAttachment,
-                  filename: capsule.title || '',
-                  scrollY: window.scrollY
-                } : null;
-                """
-            ) as? [String: Any]
-            if result != nil { break }
-            if clock.now >= deadline {
-                Issue.record("Review did not apply its document attachment projection.")
-                break
-            }
-            try await Task.sleep(for: .milliseconds(20))
-        } while true
-
-        #expect(result?["sameTitle"] as? Bool == true)
-        #expect(result?["filename"] as? String == "Emotion and Reasons.pdf")
-        let after = (result?["scrollY"] as? NSNumber)?.doubleValue ?? -1
-        #expect(abs(after - before) < 1)
-        _ = try await harness.callBridgeJavaScript(
-            "document.querySelector('.scholium-document-attachment-rail')?.classList.remove('scholium-document-attachment-add-visible'); return true"
-        )
-        harness.revealDocumentAttachmentControl()
-        try await Task.sleep(for: .milliseconds(80))
-        #expect(try await harness.callBridgeJavaScript(
-            "return document.querySelector('.scholium-document-attachment-rail')?.classList.contains('scholium-document-attachment-add-visible') === true"
-        ) as? Bool == true)
-        let afterReveal = try #require(try await harness.callBridgeJavaScript(
-            "return window.scrollY"
-        ) as? NSNumber).doubleValue
-        #expect(abs(afterReveal - before) < 1)
-        await harness.closeAndDrain()
-    }
 
     @Test("Read loads its packaged prose font through the allowlisted scheme")
     func readLoadsAllowlistedPackagedFont() async throws {
@@ -430,6 +385,13 @@ extension MarkdownEditorWebViewIntegrationTests {
         #expect(sourceLineAnchor.blockUTF16LowerBound == requestedLineRange.lowerBound)
         #expect(sourceLineAnchor.blockUTF16UpperBound == requestedLineRange.upperBound)
         #expect(sourceLineAnchor.fallbackFraction == observedAfterSourceLine.fraction)
+
+        // A consumed locator must not suppress a later navigation to the same
+        // source line in the retained Review page.
+        try await harness.scroll(toFraction: 0.7)
+        harness.requestSourceLine(3)
+        try await harness.waitUntilSourceLineReached(3)
+        #expect(abs(try await harness.sourceLineTop(3)) <= 16)
 
         let beforeFallbackRestore = try await harness.restoreInvocationCount()
         harness.apply(initialAnchor: nil, fallbackFraction: 0.55)
@@ -1561,9 +1523,6 @@ extension MarkdownEditorWebViewIntegrationTests {
         @Published var reachedSourceLine: Int?
         @Published var linkPreviews: [DocumentLinkPreview] = []
         @Published var linkPreviewRevision = "no-previews"
-        @Published var documentAttachments: [DocumentAttachmentSnapshot] = []
-        @Published var documentAttachmentRevision = "no-document-attachments"
-        @Published var documentAttachmentRevealRevision: UInt64 = 0
         @Published var selectionSurfaceIsActive = true
         var selection: MarkdownReviewSelection?
         #if DEBUG
@@ -1643,16 +1602,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             linkPreviewRevision = revision
         }
 
-        func updateDocumentAttachments(
-            _ attachments: [DocumentAttachmentSnapshot]
-        ) {
-            documentAttachments = attachments
-            documentAttachmentRevision = UUID().uuidString
-        }
 
-        func revealDocumentAttachmentControl() {
-            documentAttachmentRevealRevision &+= 1
-        }
 
     }
 
@@ -1735,15 +1685,7 @@ extension MarkdownEditorWebViewIntegrationTests {
             }
         }
 
-        func updateDocumentAttachments(
-            _ attachments: [DocumentAttachmentSnapshot]
-        ) {
-            sourceBox.updateDocumentAttachments(attachments)
-        }
 
-        func revealDocumentAttachmentControl() {
-            sourceBox.revealDocumentAttachmentControl()
-        }
 
         func resize(width: CGFloat, height: CGFloat, duration: TimeInterval = 0) {
             guard duration > 0 else {
@@ -1974,6 +1916,11 @@ extension MarkdownEditorWebViewIntegrationTests {
 
         func setSelectionSurfaceActive(_ active: Bool) {
             sourceBox.selectionSurfaceIsActive = active
+        }
+
+        func requestSourceLine(_ line: Int) {
+            sourceBox.reachedSourceLine = nil
+            sourceBox.targetSourceLine = line
         }
 
         func recreateSurface(targetSourceLine: Int? = nil) {
@@ -2529,10 +2476,6 @@ extension MarkdownEditorWebViewIntegrationTests {
                 configurationRevision: "read-harness:\(sourceBox.presentationCSS.hashValue):\(sourceBox.userCSS.hashValue)",
                 linkPreviews: sourceBox.linkPreviews,
                 linkPreviewRevision: sourceBox.linkPreviewRevision,
-                documentAttachments: sourceBox.documentAttachments,
-                documentAttachmentRevision: sourceBox.documentAttachmentRevision,
-                documentAttachmentRevealRevision:
-                    sourceBox.documentAttachmentRevealRevision,
                 onLinkClick: { _ in },
                 onOpenExternalURL: { _ in },
                 onSelectionChange: { sourceBox.selection = $0 },

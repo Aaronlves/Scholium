@@ -1267,7 +1267,7 @@ struct WorkspaceRuntimeTests {
 
         let forgedVault = UUID()
         let vaultResponse = try await handle.discovery.search(SearchRequest(
-            query: "kind:record",
+            query: "kind:unsupported",
             presentationScope: .currentVault,
             executionScope: .currentVault(forgedVault),
             limit: 20

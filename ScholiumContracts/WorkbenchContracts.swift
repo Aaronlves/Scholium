@@ -2,16 +2,13 @@ import Foundation
 public struct SearchWorkspaceState: Codable, Hashable, Sendable {
     public var query: String
     public var scope: SearchPresentationScope
-    public var providerSelection: SearchProviderSelection
 
     public init(
         query: String = "",
-        scope: SearchPresentationScope = .triptych,
-        providerSelection: SearchProviderSelection = .all
+        scope: SearchPresentationScope = .triptych
     ) {
         self.query = query
         self.scope = scope
-        self.providerSelection = providerSelection
     }
 
 }

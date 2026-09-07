@@ -1,3 +1,4 @@
+import {createReaderArrival} from "./arrival-highlight";
 import {createNativeFloatingBridge, previewSurface} from "./native-floating";
 import {installReviewFind, type ReviewFindRequest, type ReviewFindResult} from "./review-find";
 import {
@@ -11,11 +12,6 @@ import {
   validatedReaderConfiguration,
 } from "./reader-configuration";
 import {bodyHeadingAccessibilityLevel} from "./heading-accessibility";
-import {
-  createDocumentAttachmentRail,
-  revealDocumentAttachmentAddControl,
-  type DocumentAttachmentPresentation,
-} from "./document-attachments";
 
 interface ReaderMessageHandler {
   postMessage(message: Record<string, unknown>): void;
@@ -39,15 +35,12 @@ interface ReaderScrollEntry {
 type ReaderWindow = Window & {
   webkit?: {messageHandlers?: {scholiumRead?: ReaderMessageHandler}};
   scholiumReadReady?: Promise<void>;
+  scholiumReadNavigation?: ReturnType<typeof createReaderArrival>;
   scholiumRead?: {initialize(value: unknown): Promise<void>};
   scholiumReviewFind?: {perform(request: ReviewFindRequest): ReviewFindResult};
   scholiumReviewSelection?: ReturnType<typeof createReviewSelectionPresentation>;
   scholiumMermaidReady?: Promise<void>;
   scholiumSetLinkPreviews?: (previews: ReadLinkPreview[]) => void;
-  scholiumSetDocumentAttachments?: (
-    attachments: DocumentAttachmentPresentation[],
-  ) => boolean;
-  scholiumRevealDocumentAttachmentControl?: () => boolean;
   scholiumSetReviewSelectionSurfaceActive?: (active: boolean) => boolean;
   scholiumReadScroll?: {
     restoreCount: number;
@@ -72,13 +65,16 @@ async function initializeReader(value: unknown): Promise<void> {
   const {
     version, documentID, fingerprint, loadGeneration,
     selectionEnabled, presentationCSS, userCSS, localization, linkPreviews,
-    testingEnabled, documentAttachments,
+    testingEnabled,
   } = config;
   const presentationStyle = requiredElement<HTMLStyleElement>('scholium-presentation-css');
   const userStyle = requiredElement<HTMLStyleElement>('scholium-user-css');
   presentationStyle.textContent = presentationCSS;
   userStyle.textContent = userCSS;
   const documentRoot = requiredElement('scholium-document');
+  readerWindow.scholiumReadNavigation?.destroy();
+  readerWindow.scholiumReadNavigation = createReaderArrival(documentRoot);
+  window.addEventListener('pagehide', () => readerWindow.scholiumReadNavigation?.destroy(), {once: true});
   documentRoot.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6').forEach(heading => {
     const level = Number(heading.tagName.slice(1));
     heading.setAttribute('role', 'heading');
@@ -97,37 +93,6 @@ async function initializeReader(value: unknown): Promise<void> {
     version, documentID, fingerprint, loadGeneration, type, ...extra,
   });
 
-  let didRevealDocumentAttachmentControl = false;
-  const renderDocumentAttachments = (
-    attachments: readonly DocumentAttachmentPresentation[],
-    revealInitially: boolean,
-  ) => {
-    const current = document.getElementById("scholium-document-attachment-mount")
-      ?? document.querySelector<HTMLElement>(".scholium-document-attachment-rail");
-    if (!current) return false;
-    const rail = createDocumentAttachmentRail(document, attachments, {
-      localized,
-      revealInitially: revealInitially && !didRevealDocumentAttachmentControl,
-      requestPreview: (attachmentID) => post(
-        "requestDocumentAttachmentPreview",
-        {attachmentID},
-      ),
-      requestMenu: (anchor) => post("requestDocumentAttachmentMenu", {
-        clientX: anchor.left,
-        clientY: anchor.bottom,
-      }),
-    });
-    didRevealDocumentAttachmentControl ||= revealInitially;
-    current.replaceWith(rail);
-    return true;
-  };
-  renderDocumentAttachments(documentAttachments, true);
-  readerWindow.scholiumSetDocumentAttachments = (attachments) => {
-    if (!Array.isArray(attachments) || attachments.length > 100) return false;
-    return renderDocumentAttachments(attachments, false);
-  };
-  readerWindow.scholiumRevealDocumentAttachmentControl = () =>
-    revealDocumentAttachmentAddControl(document);
   const popover = requiredElement('scholium-preview-popover');
   popover.remove();
   const nativeFloating = createNativeFloatingBridge(surface => post('floatingSurface', {surface}));

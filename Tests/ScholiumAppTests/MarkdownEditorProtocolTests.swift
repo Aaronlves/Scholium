@@ -26,44 +26,6 @@ struct MarkdownEditorProtocolTests {
         #expect(try JSONDecoder().decode(MarkdownEditorOperation.self, from: data) == operation)
     }
 
-    @Test("Document attachments round trip as source-neutral projections")
-    func documentAttachmentOperationRoundTrip() throws {
-        let attachment = MarkdownEditorDocumentAttachment(
-            DocumentAttachmentSnapshot(
-                record: DocumentAttachmentRecord(
-                    id: UUID(),
-                    noteID: UUID(),
-                    vaultID: UUID(),
-                    location: .vaultRelative(try AttachmentRelativePath(
-                        "Attachments/id/Argument.pdf"
-                    ))
-                ),
-                availability: .available
-            )
-        )
-        let operation = MarkdownEditorOperation.setDocumentAttachments([
-            attachment,
-        ])
-        let data = try JSONEncoder().encode(operation)
-        let object = try #require(
-            JSONSerialization.jsonObject(with: data) as? [String: Any]
-        )
-
-        #expect(object["type"] as? String == "setDocumentAttachments")
-        #expect(try JSONDecoder().decode(
-            MarkdownEditorOperation.self,
-            from: data
-        ) == operation)
-        #expect(!operation.serializesSourceMutation)
-
-        let reveal = MarkdownEditorOperation.revealDocumentAttachmentControl
-        let revealData = try JSONEncoder().encode(reveal)
-        #expect(try JSONDecoder().decode(
-            MarkdownEditorOperation.self,
-            from: revealData
-        ) == reveal)
-        #expect(!reveal.serializesSourceMutation)
-    }
 
     @Test("Preview request round trips as a nonmutating bridge operation")
     func previewOperationRoundTrip() throws {
@@ -267,40 +229,6 @@ struct MarkdownEditorProtocolTests {
         #expect(EditorBridgeMessageDecoder.decode(malformed) == nil)
     }
 
-    @Test("Document attachment bridge requests are typed and bounded")
-    func documentAttachmentMessageDecoding() throws {
-        let envelope: [String: Any] = [
-            "protocolVersion": 27,
-            "sessionID": "11111111-2222-3333-4444-555555555555",
-            "documentID": "topics:Scope.md",
-            "startingFingerprint": String(repeating: "a", count: 64),
-            "documentVersion": 3,
-        ]
-        let attachmentID = UUID()
-        let preview = envelope.merging([
-            "type": "requestDocumentAttachmentPreview",
-            "attachmentID": attachmentID.uuidString,
-        ]) { _, new in new }
-        let menu = envelope.merging([
-            "type": "requestDocumentAttachmentMenu",
-            "clientX": 42.5,
-            "clientY": 81.25,
-        ]) { _, new in new }
-
-        guard case .requestDocumentAttachmentPreview(let previewMessage) =
-                try #require(EditorBridgeMessageDecoder.decode(preview)) else {
-            Issue.record("The attachment preview request was not decoded.")
-            return
-        }
-        #expect(previewMessage.attachmentID == attachmentID)
-        guard case .requestDocumentAttachmentMenu(let menuMessage) =
-                try #require(EditorBridgeMessageDecoder.decode(menu)) else {
-            Issue.record("The attachment menu request was not decoded.")
-            return
-        }
-        #expect(menuMessage.clientX == 42.5)
-        #expect(menuMessage.clientY == 81.25)
-    }
 
     @Test("Inbound bridge rejects unknown, stale-version, and extra-field messages")
     func inboundBridgeRejectsUnrecognizedContracts() {

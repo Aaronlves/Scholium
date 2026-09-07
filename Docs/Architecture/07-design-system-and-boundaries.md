@@ -50,8 +50,10 @@ masks without introducing a second path catalog.
 Scholium-owned copy and glyphs. Feature views select a `ScholiumColorRole`
 rather than system primary/secondary styles or a resolved `Color`; the single
 `TextField` prompt that must remain a `Text` value consumes the same semantic
-role directly. `ScholiumNativeColorRole` names the only AppKit-owned effect
-colors used by custom rendering: search-match highlight and structural shadow.
+role directly. `ScholiumNativeColorRole` resolves AppKit-owned label, secondary
+label, window/text background, control accent, search-match highlight, and
+structural shadow. Native Inspector and operation controls consume these roles;
+their system appearance remains distinct from the authored Paper surface.
 Bootstrap's closed narrative-art palette and the fixed Markup highlight remain
 the two nonconfigurable authored exceptions declared by Design §19.2.
 Repository inventory tests reject raw Swift inputs outside those owners,
@@ -264,7 +266,8 @@ feature modules publish no Library, Apparatus, Agent Changes, or Chrome font
 aliases. Every custom top-level view shares the 17pt Semibold Interface primary
 title, while research-object titles share the 20pt Bold Scholarly title.
 Emphasis and tabular figures are resolver inputs rather than cross-product
-roles. Brand and Bootstrap retain the approved identity/hero exceptions.
+roles. The 13pt control role also supplies the native Metadata field point size.
+Brand and Bootstrap retain the approved identity/hero exceptions.
 Alegreya and Victor Mono resolution remains private. `ScholiumSymbolStyle`
 separately maps purpose-named component scale to SF Symbols.
 Repository tests reject fixed SwiftUI point sizes, raw SwiftUI text styles,

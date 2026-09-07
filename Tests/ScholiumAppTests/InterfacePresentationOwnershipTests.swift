@@ -3,7 +3,7 @@ import Testing
 
 @Suite("Interface presentation ownership")
 struct InterfacePresentationOwnershipTests {
-  @Test("Native editor assistance is system-owned; other command styling retains its shared entry")
+  @Test("Native command rendering is confined to reviewed presentation boundaries")
   func nativeButtonStyleOwnership() throws {
     let directStyles = try occurrenceInventory(
       pattern: #"\.buttonStyle\s*\(\s*\."#,
@@ -11,6 +11,12 @@ struct InterfacePresentationOwnershipTests {
     ).filter { !NativeSettingsSourceScope.paths.contains($0.key) }
     #expect(directStyles == ["Scholium/App/ScholiumApp.swift": 1,
                              "Scholium/UI/Components/ScholiumButtons.swift": 1,
+                             "Scholium/Views/Backlinks/ConnectionsInspectorView.swift": 2,
+                             "Scholium/Views/MCPAgentChangesView.swift": 1,
+                             "Scholium/Views/SearchWorkspaceView.swift": 1,
+                             "Scholium/Views/Sidebar/OverviewAttachmentsView.swift": 5,
+                             "Scholium/Views/Sidebar/OverviewNotificationsView.swift": 1,
+                             "Scholium/Views/Sidebar/ResearchInspectorContentView.swift": 2,
                              "Scholium/Views/Note/DocumentFindPanel.swift": 3,
                              "Scholium/Views/Sidebar/DocumentOutlineSidebar.swift": 1],
             Comment(rawValue: diagnostic(for: directStyles)))
@@ -18,6 +24,10 @@ struct InterfacePresentationOwnershipTests {
       pattern: #"\.menuStyle\s*\(\s*\."#, extensions: ["swift"]
     ).filter { !NativeSettingsSourceScope.paths.contains($0.key) }
     #expect(menuStyles == ["Scholium/UI/Components/ScholiumButtons.swift": 1,
+                           "Scholium/Views/Backlinks/ConnectionsInspectorView.swift": 1,
+                           "Scholium/Views/SearchWorkspaceView.swift": 1,
+                           "Scholium/Views/Sidebar/OverviewAttachmentsView.swift": 2,
+                           "Scholium/Views/Sidebar/ResearchInspectorContentView.swift": 1,
                            "Scholium/Views/Note/DocumentFindPanel.swift": 1,
                            "Scholium/Views/Sidebar/DocumentOutlineSidebar.swift": 1],
             Comment(rawValue: diagnostic(for: menuStyles)))
@@ -35,7 +45,11 @@ struct InterfacePresentationOwnershipTests {
     #expect(tintOwners == [
       "Scholium/App/ScholiumApp.swift": 3,
       "Scholium/UI/Components/ScholiumButtons.swift": 3,
-      "Scholium/Views/ResearchRecord/ResearchRecordsWindow.swift": 1,
+      "Scholium/UI/Components/ExactSourceComparisonView.swift": 1,
+      "Scholium/Views/Backlinks/ConnectionsInspectorView.swift": 1,
+      "Scholium/Views/Note/NoteContentView.swift": 1,
+      "Scholium/Views/SearchWorkspaceView.swift": 1,
+      "Scholium/Views/Sidebar/ZoteroBindingPanelView.swift": 1,
       "Scholium/Views/Note/DocumentFindPanel.swift": 1,
       "Scholium/Views/Sidebar/DocumentOutlineSidebar.swift": 1,
       "Scholium/Views/WorkspaceSetupView.swift": 1,
@@ -112,7 +126,7 @@ struct InterfacePresentationOwnershipTests {
       webHover == [
         "Scholium/Resources/Editor/callouts.css": 1,
         "Scholium/Resources/Editor/footnotes.css": 1,
-        "Scholium/UI/Foundation/ScholiumDesignSystem.swift": 4,
+        "Scholium/UI/Foundation/ScholiumDesignSystem.swift": 1,
       ],
       Comment(rawValue: diagnostic(for: webHover))
     )
@@ -141,6 +155,7 @@ struct InterfacePresentationOwnershipTests {
       trackingAreas == [
         "Scholium/UI/Foundation/ScholiumDesignSystem.swift": 1,
         "Scholium/Views/Note/DocumentFloatingSurfaceController.swift": 1,
+        "Scholium/Views/Sidebar/OverviewMetadataFields.swift": 1,
         "Scholium/UI/Components/NativeFloatingChoiceList.swift": 1,
       ],
       Comment(rawValue: diagnostic(for: trackingAreas))
@@ -210,7 +225,7 @@ struct InterfacePresentationOwnershipTests {
     let workspaceNavigator = try source(
       at: "Scholium/Views/Sidebar/SidebarWorkspaceNavigator.swift"
     )
-    #expect(workspaceNavigator.contains("tableView.style = .sourceList"))
+    #expect(workspaceNavigator.contains("class WorkspaceSegmentedControl: NSSegmentedControl"))
     #expect(!workspaceNavigator.contains("resetCursorRects"))
   }
 

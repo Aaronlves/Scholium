@@ -175,19 +175,42 @@
   body and heading ink: body prose is a subtle Primary Text/Paper mix, while
   titles and headings retain Primary Text without creating another semantic
   color role.
-- Review and Edit show Note-level document attachments directly below the
-  filename title in one compact, horizontally scrolling capsule strip. Full
-  filenames remain available through Help/accessibility despite bounded middle
-  truncation; primary activation opens native Quick Look. The trailing Add
-  control reveals on note entry and title/strip hover or focus without moving
-  layout, while File provides permanent **Attach a Copy…** and **Reference
-  Original…** routes. Source omits this source-neutral projection.
-- Inspector presents Overview, Outgoing, and Incoming through a native
-  icon-only toolbar group. Overview exposes current About, file, Settlement,
-  Critique, and applicable Zotero facts and operations. Outgoing and Incoming
-  present flat exact occurrence lists without peer-role folders, including
-  local context and source-owned Markdown annotation. Incoming annotations are
-  read-only and route editing to the source Note. It has no Actions mode.
+- Overview shows document attachments through native previews over the retained
+  document session, with consistently actionable filenames above previews, one multi-file selection
+  menu/count, bounded
+  thumbnail access, system Quick Look with its native opening actions,
+  and File-menu copy/reference. The old document
+  strip and its editor/reader protocol routes are removed.
+- Inspector presents About and Links through a native rounded
+  icon-only toolbar group. About exposes current About, file, Settlement,
+  and applicable Zotero facts and operations. Metadata uses aligned native
+  fields with visible editing frames and explicit revision-bound recovery.
+  One NSGridView aligns labels and values at 13 points; creator rows retain
+  Last Name then First Name across editing, commit and cancellation. Escape
+  restores the acknowledged value without replacing the native field editor.
+  Zotero is separated by a divider; dates and Settlement appear in collapsed
+  File Information below attachments. Note notifications use the existing
+  session to summarize all categories, independently of its prior filters.
+  Fields use one stable native text control, commit on focus departure, and
+  traverse creator subfields and adjacent fields with Tab/Shift-Tab. Return
+  submits; Escape discards only changes since the last acknowledged save.
+  The inline Save/Cancel footer is removed. Inspector projection changes save
+  without discarding drafts; Note/window departure drains the active field before proceeding. Errors preserve the current Note
+  and restore its Library selection; successful retry clears that failure.
+  Outgoing and Incoming
+  group exact occurrences by peer Note, with counts and source line context.
+  The whole Note heading toggles disclosure; its contextual action opens the
+  peer. Passage targets use ordinary native buttons with hover feedback; their
+  selected-occurrence state, toggles and selected accessibility traits are removed.
+  Review reveals the source locator and briefly highlights its visual line without
+  replacing the reading selection; Edit/Source add a transient line decoration
+  to the existing explicit navigation. The marker expires, repeats on activation,
+  and clears on replacement/teardown without source writes or history entries.
+  It fades in, holds and fades out; Reduce Motion keeps it static. Outgoing destination navigation remains
+  separately available. Source-owned Markdown annotations remain visible. Incoming annotations are
+  read-only and route explicit editing to Source. Ordinary links retain the
+  current Document mode and locate the rendered block or editor line after
+  presentation readiness. It has no Actions mode.
 - Search uses a persistent native field. Its magnifying-glass menu contains
   scope, content type, Clear Filters, and the quick-only Advanced Search entry.
   The advanced window retains query/results when opening a Note, keeps Saved
@@ -195,14 +218,11 @@
   transient information popover. Native Search-field composition owns input;
   there is no second query draft or centered overlay.
   Results now use the native inset List's selection, with interface typography,
-  document/Record symbols, a bounded snippet, and compact location/reason text.
+  document symbols, a bounded snippet, and compact location/reason text.
   Native content-state views distinguish the initial query prompt, empty results,
   and actual provider failure; unqueried default availability is not displayed.
-- Search defaults to **All** and presents separate Notes and Research Records
-  sections without cross-provider ranking. Notes and Records are directly
-  selectable provider paths; scope remains This Note, This Vault, or Triptych.
-  A Record hit opens the same Triptych-bound Records window at the matched
-  Record and step.
+- Search presents Note results; questions in Works use the same result and opening path.
+
 - System-Trash confirmation describes the exact source and any managed Critique
   moved with it. Recovery stays with the existing bounded transaction owner.
 - One separately spaced native Settlement toolbar button sits immediately before
@@ -221,22 +241,12 @@
   route to the bundled Core Protocol Skill.
 - Agent conversation remains in the external host. Scholium shows no chat,
   Agent picker, session, task, activity stack, or result-review workflow.
-- **Research Records** opens a compact separate read-only window. Its list
-  scans current questions and last substantive times with system Record Search.
-  Its task-only native titlebar and content follow the selected light/dark scheme.
-  Selecting a Record opens its detail; Back returns to the retained selection.
-  The centered reading plane pins the question above
-  independently scrolling chronological attributed steps. Each step presents
-  its basis/modified Notes in one right-growing horizontal attachment strip;
-  overflow scrolls, while each compact native button retains hover/focus/press
-  feedback and adds Earlier/Unavailable only when needed. Step prose renders
-  bounded basic Markdown; headings and unsupported constructs remain literal.
-  The native titlebar names Research Records without a Triptych subtitle;
-  Records refreshes automatically while visible.
-  Escape closes the window, and opening an attachment dismisses Records after
-  opening the Note in the exact originating Workspace window; it never creates
-  another Workspace window. There is no Record content editor or detached
-  evidence inspector.
+
+- **Operation History** has an independent menu entry and a native collection
+  over retained machine-local Agent Changes. Closing a notification does not
+  remove it. Inspector controls and notification search menus use AppKit
+  presentation on purpose-owned backgrounds; no custom Paper button skin remains
+  in the changed Inspector controls.
 - **Agent Changes** presents one machine-local MCP mutation at a time in
   confirmation order, with Previous/Next controls and an exact position. Every
   retained update is bound to one `(change ID, Note ID)` and presents its own

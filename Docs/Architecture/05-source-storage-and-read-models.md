@@ -80,27 +80,11 @@ entries require exact reconciliation. Direct Undo exists only for a confirmed
 update whose current authoritative fingerprint still equals the recorded after
 fingerprint.
 
-`ResearchRecordStore` is the portable, Triptych-bound Core actor under
-`.scholium/inquiry-records/v1/`. Each lowercase UUID-named file contains one
-strict schema-1 continuing inquiry Record. The complete file is the
-fingerprint/CAS unit. Creation, substantive append, and clerical correction use
-the same descriptor-relative containment, coordination lock, atomic
-replacement, and decoded-readback boundary; a correction appends provenance
-and never overwrites the original step. Listing isolates invalid or unsupported
-files and reports them alongside valid Records. The store never reads the
-legacy Research Action/Run/Result contracts or the Settlement namespace.
-
-`ResearchRecordSearchIndex` is a separate disposable in-memory read model. It
-rebuilds from validated Record revisions, advances its provider-local
-generation when the exact manifest changes, and indexes only current question
-and current projected step text. Note references filter authorized scope but do
-not become query text or inferred evidence relations.
-
 `SecureRecordDirectory` is the Core-only descriptor-relative primitive for
 bounded JSON state. It owns no-follow containment, byte limits,
 atomic replacement, readback, staging/deletion recovery, and the companion
 `AdvisoryFileLock` for cooperating-process serialization. Agent Changes, the
-prewrite ledger, Research Records, and other bounded stores retain their own schema,
+prewrite ledger and other bounded stores retain their own schema,
 path, transaction, recovery, and error semantics. The primitive interprets no
 research object and never becomes a writable source authority.
 
@@ -177,10 +161,11 @@ therefore has no Metadata revision dependency. Managed Analysis `title`, YAML
 `title`, and body headings have no Note-identity semantics. App's independent `AboutProfileCatalog`
 owns researcher-configured always-shown choices and order, then appends every
 other present managed value in catalog order; presentation adds label, help,
-visible group, and control style only. About's field-local editor delegates
-managed values to the existing exact Metadata revision owner. The shared
-Metadata sheet remains the Add Field and multi-field managed editor, offers
-only role-valid missing keys, and never creates or patches frontmatter.
+catalog group, and control style only. The Overview field list omits visual
+group headings. Its single Note-local session delegates commits and Undo/Redo to
+the existing exact Metadata revision owner. Add Field exposes only role-valid
+missing keys and inserts directly into the native list. No separate Metadata
+editor or frontmatter mutation route exists.
 About reads managed Metadata only. The authored-source descriptor and targeted
 About YAML mutation route are absent; Source and the document Frontmatter
 above the title share ordinary raw editing.

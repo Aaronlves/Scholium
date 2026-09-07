@@ -84,8 +84,9 @@ Group order is:
 - Topic: Topic Description, Custom Metadata;
 - Work: Work Description, Custom Metadata.
 
-Metadata and About use concise visible group headings plus whitespace and rules.
-About's configured managed fields are always shown; configuration controls their
+Catalog groups organize definitions and discovery; Overview does not display
+category headings. Its single ordered list uses consistent label/value axes.
+Configured managed fields are always shown; configuration controls their
 order rather than hiding other stored values. Every other present managed value,
 including an archived custom value, follows automatically. Empty unconfigured
 fields remain discoverable through Add Field rather than filling the Inspector.

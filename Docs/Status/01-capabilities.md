@@ -15,12 +15,10 @@
   transaction for App, researcher CLI, and MCP callers. Metadata settings,
   About editing, Settlement, Critique, Zotero bindings, transaction recovery,
   and source conflict handling remain reachable through their existing owners.
-- Search contract 14 has independent Note and Research Record providers. Every
+- Search contract 15 searches Notes through one source-authoritative path.
   Note title identity uses its filename; Analysis academic title Metadata and
-  body headings remain independently searchable. All
-  runs both and returns separate rankings, totals, offsets, continuations, and
-  generations; Notes and Records are dedicated paths. Record scope follows
-  exact current Note references and never treats a reference as query text.
+  body headings remain independently searchable. Question-centered Works Notes
+  use ordinary editing, Search, links and file operations.
 - Review and Edit project the filename title at the top of their shared
   scrolling document plane while retaining authored H1 as a body section.
   Edit routes inline title changes through the existing safe Rename transaction
@@ -36,19 +34,13 @@
   machine-local access credentials. Quick Look resolves current availability;
   media files remain on the inline image/audio path. Attachment projection does
   not change source, editor generation, selection, Undo, or scroll.
-- Strict portable Research Records are reachable under
-  `.scholium/inquiry-records/v1/`. Create, substantive append, paged read, and
-  append-only clerical correction preserve external-Agent attribution,
-  Record-file CAS fingerprints, chronological history, and exact Note
-  references. A damaged file is isolated from valid Records.
 
 ## External Agent collaboration
 
-- `scholium mcp serve` exposes exactly ten MCP tools:
+- `scholium mcp serve` exposes exactly seven MCP tools:
   `scholium_workspace_status`, `scholium_search`, `scholium_read_note`,
-  `scholium_read_record`, `scholium_list_links`, `scholium_create_note`,
-  `scholium_update_note`, `scholium_trash_note`,
-  `scholium_record_progress`, and `scholium_correct_record_step`.
+  `scholium_list_links`, `scholium_create_note`, `scholium_update_note`,
+  and `scholium_trash_note`.
 - The stdio server connects only to a running Scholium App for the current
   user. It does not launch the App, construct a headless workspace runtime, or
   read and write Triptych files itself.
@@ -71,10 +63,9 @@
 - Settings exposes Agent Integration instructions for Codex and Claude Code and
   reveals the bundled `scholium-core-protocol` Skill. Scholium stores no Agent
   credential, session, task, Run, or host preference.
-- The Core Protocol directs the Agent to maintain one continuing Record per
-  independently developing question after substantive steps. MCP itself only
-  validates identity, request shape, current revisions, and storage. Record
-  writes produce no Agent Change and never imply permission or acceptance.
+- The Core Protocol uses ordinary Note operations for explicitly requested
+  question/discussion writing. Substantive discussion does not authorize an
+  automatic write or create an application-managed inquiry lifecycle.
 
 ## Deliberately unavailable
 

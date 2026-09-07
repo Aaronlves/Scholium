@@ -24,13 +24,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
     /// A caller-owned revision lets preview data converge without becoming a
     /// document-load identity or hashing bounded HTML on every SwiftUI pass.
     var linkPreviewRevision: String? = nil
-    var documentAttachments: [DocumentAttachmentSnapshot] = []
-    var documentAttachmentRevision: String? = nil
-    var documentAttachmentRevealRevision: UInt64 = 0
     let onLinkClick: (String) -> Void
     let onOpenExternalURL: (URL) -> Void
-    var onPreviewDocumentAttachment: ((UUID) -> Void)? = nil
-    var onAttachDocument: ((DocumentAttachmentSelectionMode) -> Void)? = nil
     var onSelectionChange: ((MarkdownReviewSelection?) -> Void)? = nil
     /// Derived visibility only. Review remains the sole selection-surface
     /// owner; the coordinator transports mode changes to its retained page.
@@ -62,8 +57,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             fingerprint: fingerprint,
             onLinkClick: onLinkClick,
             onOpenExternalURL: onOpenExternalURL,
-            onPreviewDocumentAttachment: onPreviewDocumentAttachment,
-            onAttachDocument: onAttachDocument,
             onSelectionChange: onSelectionChange,
             selectionSurfaceIsActive: selectionSurfaceIsActive,
             renderingReadinessIsAcknowledged: renderingReadinessIsAcknowledged,
@@ -122,9 +115,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             configurationRevision: configurationRevision,
             linkPreviews: linkPreviews,
             linkPreviewRevision: linkPreviewRevision,
-            documentAttachments: documentAttachments,
-            documentAttachmentRevision: documentAttachmentRevision,
-            documentAttachmentRevealRevision: documentAttachmentRevealRevision,
             in: webView
         )
         return DocumentWebViewContainer(webView: webView)
@@ -141,8 +131,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             fingerprint: fingerprint,
             onLinkClick: onLinkClick,
             onOpenExternalURL: onOpenExternalURL,
-            onPreviewDocumentAttachment: onPreviewDocumentAttachment,
-            onAttachDocument: onAttachDocument,
             onSelectionChange: onSelectionChange,
             selectionSurfaceIsActive: selectionSurfaceIsActive,
             renderingReadinessIsAcknowledged: renderingReadinessIsAcknowledged,
@@ -169,9 +157,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             configurationRevision: configurationRevision,
             linkPreviews: linkPreviews,
             linkPreviewRevision: linkPreviewRevision,
-            documentAttachments: documentAttachments,
-            documentAttachmentRevision: documentAttachmentRevision,
-            documentAttachmentRevealRevision: documentAttachmentRevealRevision,
             in: webView
         )
     }
@@ -204,8 +189,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var fingerprint: String
         private var onLinkClick: (String) -> Void
         private var onOpenExternalURL: (URL) -> Void
-        private var onPreviewDocumentAttachment: ((UUID) -> Void)?
-        private var onAttachDocument: ((DocumentAttachmentSelectionMode) -> Void)?
         private var onSelectionChange: ((MarkdownReviewSelection?) -> Void)?
         private let selectionCoordinator: SafeMarkdownReadSelectionCoordinator
         private let floatingSurfaces = DocumentFloatingSurfaceController()
@@ -227,15 +210,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
         private var appliedLinkPreviewRevision = ""
         private var loadingLinkPreviewRevision = ""
         private var desiredLinkPreviews: [DocumentLinkPreview] = []
-        private var documentAttachmentUpdateTask: Task<Void, Never>?
-        private var desiredDocumentAttachmentRevision = ""
-        private var appliedDocumentAttachmentRevision = ""
-        private var loadingDocumentAttachmentRevision = ""
-        private var desiredDocumentAttachments: [DocumentAttachmentSnapshot] = []
-        private var desiredDocumentAttachmentRevealRevision: UInt64 = 0
-        private var appliedDocumentAttachmentRevealRevision: UInt64 = 0
-        private var loadingDocumentAttachmentRevealRevision: UInt64 = 0
-        private var documentAttachmentRevealTask: Task<Void, Never>?
+        private var deferredLoadTask: Task<Void, Never>?
         private var onScrollFractionChange: ((Double) -> Void)?
 
         private var onScrollAnchorChange: ((EditorScrollAnchor) -> Void)?
@@ -257,8 +232,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             fingerprint: String,
             onLinkClick: @escaping (String) -> Void,
             onOpenExternalURL: @escaping (URL) -> Void,
-            onPreviewDocumentAttachment: ((UUID) -> Void)?,
-            onAttachDocument: ((DocumentAttachmentSelectionMode) -> Void)?,
             onSelectionChange: ((MarkdownReviewSelection?) -> Void)?,
             selectionSurfaceIsActive: Bool,
             renderingReadinessIsAcknowledged: Bool,
@@ -279,8 +252,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.fingerprint = fingerprint
             self.onLinkClick = onLinkClick
             self.onOpenExternalURL = onOpenExternalURL
-            self.onPreviewDocumentAttachment = onPreviewDocumentAttachment
-            self.onAttachDocument = onAttachDocument
             self.onSelectionChange = onSelectionChange
             selectionCoordinator = SafeMarkdownReadSelectionCoordinator(
                 isActive: selectionSurfaceIsActive
@@ -306,8 +277,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             fingerprint: String,
             onLinkClick: @escaping (String) -> Void,
             onOpenExternalURL: @escaping (URL) -> Void,
-            onPreviewDocumentAttachment: ((UUID) -> Void)?,
-            onAttachDocument: ((DocumentAttachmentSelectionMode) -> Void)?,
             onSelectionChange: ((MarkdownReviewSelection?) -> Void)?,
             selectionSurfaceIsActive: Bool,
             renderingReadinessIsAcknowledged: Bool,
@@ -331,10 +300,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 finalizedSignature = nil
                 appliedLinkPreviewRevision = ""
                 loadingLinkPreviewRevision = ""
-                appliedDocumentAttachmentRevision = ""
-                loadingDocumentAttachmentRevision = ""
-                appliedDocumentAttachmentRevealRevision = 0
-                loadingDocumentAttachmentRevealRevision = 0
                 lastReachedSourceLine = nil
                 pageIsReady = false
                 selectionCoordinator.resetForDocumentChange()
@@ -348,8 +313,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             self.fingerprint = fingerprint
             self.onLinkClick = onLinkClick
             self.onOpenExternalURL = onOpenExternalURL
-            self.onPreviewDocumentAttachment = onPreviewDocumentAttachment
-            self.onAttachDocument = onAttachDocument
             self.onSelectionChange = onSelectionChange
             self.renderingReadinessIsAcknowledged = renderingReadinessIsAcknowledged
             self.onRenderingFailure = onRenderingFailure
@@ -367,6 +330,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             scrollRestoration.adoptCallerRequest(scrollRestoreRequest)
             self.onScrollFractionChange = onScrollFractionChange
             self.onScrollAnchorChange = onScrollAnchorChange
+            if targetSourceLine == nil { lastReachedSourceLine = nil }
             self.targetSourceLine = targetSourceLine
             self.onSourceLineReached = onSourceLineReached
             selectionCoordinator.update(isActive: selectionSurfaceIsActive)
@@ -384,9 +348,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             configurationRevision: String?,
             linkPreviews: [DocumentLinkPreview],
             linkPreviewRevision: String?,
-            documentAttachments: [DocumentAttachmentSnapshot],
-            documentAttachmentRevision: String?,
-            documentAttachmentRevealRevision: UInt64,
             in webView: WKWebView
         ) {
             let interfaceLocalization = WebKitInterfaceLocalization.current()
@@ -405,19 +366,12 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             ].joined(separator: ":")
             desiredLinkPreviews = linkPreviews
             desiredLinkPreviewRevision = previewRevision
-            desiredDocumentAttachments = Array(documentAttachments.prefix(100))
-            desiredDocumentAttachmentRevision = documentAttachmentRevision
-                ?? String(documentAttachments.hashValue)
-            desiredDocumentAttachmentRevealRevision =
-                documentAttachmentRevealRevision
             guard loadedSignature != signature else {
                 reannounceFinalizedRenderingIfNeeded(
                     signature: signature,
                     in: webView
                 )
                 applyLinkPreviewsIfNeeded(in: webView)
-                applyDocumentAttachmentsIfNeeded(in: webView)
-                applyDocumentAttachmentRevealIfNeeded(in: webView)
                 applySelectionCommandsIfNeeded(in: webView)
                 applyFindRequestIfNeeded(in: webView)
                 return
@@ -439,9 +393,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             finalizedSignature = nil
             renderingReadinessIsAcknowledged = false
             loadingLinkPreviewRevision = previewRevision
-            loadingDocumentAttachmentRevision = desiredDocumentAttachmentRevision
-            loadingDocumentAttachmentRevealRevision =
-                desiredDocumentAttachmentRevealRevision
             pageIsReady = false
             selectionCoordinator.resetForDocumentChange()
             findCoordinator.resetForDocumentChange()
@@ -454,7 +405,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 presentationCSS: presentationCSS,
                 userCSS: userCSS,
                 linkPreviews: linkPreviews,
-                documentAttachments: desiredDocumentAttachments,
                 includesMathRuntime: includesMathRuntime,
                 loadGeneration: loadGeneration,
                 localization: interfaceLocalization,
@@ -480,8 +430,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 activeNavigation = navigation
                 return
             }
-            documentAttachmentRevealTask?.cancel()
-            documentAttachmentRevealTask = Task { @MainActor [weak self, weak webView] in
+            deferredLoadTask?.cancel()
+            deferredLoadTask = Task { @MainActor [weak self, weak webView] in
                 guard let self, let webView,
                       self.activeWebView === webView,
                       self.loadedSignature == expectedSignature else { return }
@@ -511,7 +461,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             presentationCSS: String,
             userCSS: String,
             linkPreviews: [DocumentLinkPreview],
-            documentAttachments: [DocumentAttachmentSnapshot],
             includesMathRuntime: Bool,
             loadGeneration: UInt64,
             localization: WebKitInterfaceLocalization,
@@ -542,7 +491,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                     loadGeneration: loadGeneration,
                     selectionEnabled: onSelectionChange != nil,
                     linkPreviews: linkPreviews,
-                    documentAttachments: documentAttachments,
                     presentationCSS: presentationCSS,
                     userCSS: userCSS,
                     localization: localization
@@ -591,58 +539,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             }
         }
 
-        private func applyDocumentAttachmentsIfNeeded(in webView: WKWebView) {
-            guard pageIsReady,
-                  desiredDocumentAttachmentRevision
-                    != appliedDocumentAttachmentRevision,
-                  activeWebView === webView else { return }
-            let revision = desiredDocumentAttachmentRevision
-            let attachments = Self.documentAttachmentArguments(
-                desiredDocumentAttachments
-            )
-            documentAttachmentUpdateTask?.cancel()
-            documentAttachmentUpdateTask = Task { @MainActor [weak self, weak webView] in
-                guard let self, let webView,
-                      self.activeWebView === webView else { return }
-                let result = try? await webView.callAsyncJavaScript(
-                    "return window.scholiumSetDocumentAttachments?.(attachments) === true",
-                    arguments: ["attachments": attachments],
-                    in: nil,
-                    contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
-                )
-                guard !Task.isCancelled,
-                      result as? Bool == true,
-                      self.activeWebView === webView,
-                      self.desiredDocumentAttachmentRevision == revision else { return }
-                self.appliedDocumentAttachmentRevision = revision
-            }
-        }
 
-        private func applyDocumentAttachmentRevealIfNeeded(
-            in webView: WKWebView
-        ) {
-            guard pageIsReady,
-                  desiredDocumentAttachmentRevealRevision
-                    != appliedDocumentAttachmentRevealRevision,
-                  activeWebView === webView else { return }
-            let revision = desiredDocumentAttachmentRevealRevision
-            Task { @MainActor [weak self, weak webView] in
-                guard let self, let webView,
-                      self.activeWebView === webView else { return }
-                let result = try? await webView.callAsyncJavaScript(
-                    "return window.scholiumRevealDocumentAttachmentControl?.() === true",
-                    arguments: [:],
-                    in: nil,
-                    contentWorld: SafeMarkdownReadWebView.bridgeContentWorld
-                )
-                guard result as? Bool == true,
-                      self.activeWebView === webView,
-                      self.desiredDocumentAttachmentRevealRevision == revision else {
-                    return
-                }
-                self.appliedDocumentAttachmentRevealRevision = revision
-            }
-        }
 
         private func applySelectionCommandsIfNeeded(in webView: WKWebView) {
             guard let signature = activeLoadSignature else { return }
@@ -696,23 +593,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                       !target.isEmpty,
                       target.utf8.count <= 8_192 else { return }
                 onLinkClick(target)
-            case "requestDocumentAttachmentPreview":
-                guard let rawID = payload["attachmentID"] as? String,
-                      rawID.utf8.count <= 128,
-                      let attachmentID = UUID(uuidString: rawID) else { return }
-                onPreviewDocumentAttachment?(attachmentID)
-            case "requestDocumentAttachmentMenu":
-                guard let x = (payload["clientX"] as? NSNumber)?.doubleValue,
-                      let y = (payload["clientY"] as? NSNumber)?.doubleValue,
-                      x.isFinite, y.isFinite,
-                      let webView = message.webView,
-                      let onAttachDocument else { return }
-                presentDocumentAttachmentMenu(
-                    clientX: x,
-                    clientY: y,
-                    in: webView,
-                    choose: onAttachDocument
-                )
+
             case "selectionChanged":
                 guard payload["text"] != nil else {
                     onSelectionChange?(nil)
@@ -770,12 +651,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             )
             pageIsReady = true
             appliedLinkPreviewRevision = loadingLinkPreviewRevision
-            appliedDocumentAttachmentRevision = loadingDocumentAttachmentRevision
-            appliedDocumentAttachmentRevealRevision =
-                loadingDocumentAttachmentRevealRevision
             applyLinkPreviewsIfNeeded(in: webView)
-            applyDocumentAttachmentsIfNeeded(in: webView)
-            applyDocumentAttachmentRevealIfNeeded(in: webView)
             applySelectionCommandsIfNeeded(in: webView)
             applyFindRequestIfNeeded(in: webView)
             let restoreClaim = scrollRestoration.claimIfReady(
@@ -1129,10 +1005,8 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             sourceLineNavigationTask = nil
             linkPreviewUpdateTask?.cancel()
             linkPreviewUpdateTask = nil
-            documentAttachmentUpdateTask?.cancel()
-            documentAttachmentUpdateTask = nil
-            documentAttachmentRevealTask?.cancel()
-            documentAttachmentRevealTask = nil
+            deferredLoadTask?.cancel()
+            deferredLoadTask = nil
             selectionCoordinator.cancel()
             findCoordinator.cancel()
             runtimeCoordinator.cancel()
@@ -1212,15 +1086,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                   ) else { return }
             let result = try? await webView.callAsyncJavaScript(
                 """
-                const items = Array.from(document.querySelectorAll('[data-source-line]'));
-                let target = items.find(item => Number(item.dataset.sourceLine) === requested);
-                if (!target) {
-                  target = items.filter(item => Number(item.dataset.sourceLine) <= requested).pop() || items[0];
-                }
-                if (!target) return false;
-                target.scrollIntoView({block:'start', behavior:'auto'});
-                target.tabIndex = -1;
-                target.focus({preventScroll:true});
+                if (!window.scholiumReadNavigation?.reveal(requested)) return false;
                 const extent = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
                 const fraction = extent > 0 ? Math.max(0, Math.min(1, window.scrollY / extent)) : 0;
                 return {
@@ -1308,9 +1174,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 """
             } ?? ""
             let frontmatterMarkup = frontmatter.map { "<pre class=\"scholium-frontmatter-source\">\(escapedHTMLText($0))</pre>" } ?? ""
-            let attachmentMount = titleMarkup.isEmpty
-                ? ""
-                : "<div id=\"scholium-document-attachment-mount\"></div>"
             let bodyMarkup = if body.isEmpty {
                 """
                 <section class="scholium-document-empty-state" role="status" aria-label="\(escapedHTMLText(ScholiumL10n.string("Empty Note")))" data-scholium-protected="empty-document">
@@ -1332,7 +1195,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
               <style id="scholium-user-css"></style>
             </head>
             <body>
-              <main id="scholium-document" class="scholium-document">\(frontmatterMarkup)\(titleMarkup)\(attachmentMount)\(bodyMarkup)</main>
+              <main id="scholium-document" class="scholium-document">\(frontmatterMarkup)\(titleMarkup)\(bodyMarkup)</main>
               <aside id="scholium-preview-popover" class="scholium-preview-popover" data-scholium-protected="preview-popover" role="note" aria-labelledby="scholium-preview-title" aria-live="polite" hidden>
                 <h2 id="scholium-preview-title" class="scholium-preview-title"></h2>
                 <p class="scholium-preview-metadata" hidden></p>
@@ -1382,7 +1245,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let userCSS: String
             let localization: WebKitInterfaceLocalization
             let linkPreviews: [ReadLinkPreview]
-            let documentAttachments: [ReadDocumentAttachment]
         }
 
         private static var readerScript: String? {
@@ -1395,7 +1257,6 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             loadGeneration: UInt64,
             selectionEnabled: Bool,
             linkPreviews: [DocumentLinkPreview],
-            documentAttachments: [DocumentAttachmentSnapshot] = [],
             presentationCSS: String,
             userCSS: String,
             localization: WebKitInterfaceLocalization = .current()
@@ -1429,14 +1290,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
                 presentationCSS: presentationCSS,
                 userCSS: userCSS,
                 localization: localization,
-                linkPreviews: previews,
-                documentAttachments: documentAttachments.prefix(100).map {
-                    ReadDocumentAttachment(
-                        id: $0.record.id.uuidString.lowercased(),
-                        filename: String($0.record.filename.prefix(1_024)),
-                        available: $0.availability == .available
-                    )
-                }
+                linkPreviews: previews
             )
             let payload = base64JSON(configuration)
             return """
@@ -1460,23 +1314,7 @@ struct SafeMarkdownReadWebView: NSViewRepresentable {
             let htmlBody: String
         }
 
-        private struct ReadDocumentAttachment: Encodable {
-            let id: String
-            let filename: String
-            let available: Bool
-        }
 
-        private static func documentAttachmentArguments(
-            _ attachments: [DocumentAttachmentSnapshot]
-        ) -> [[String: Any]] {
-            attachments.prefix(100).map {
-                [
-                    "id": $0.record.id.uuidString.lowercased(),
-                    "filename": String($0.record.filename.prefix(1_024)),
-                    "available": $0.availability == .available,
-                ]
-            }
-        }
 
         private static func linkPreviewArguments(
             _ previews: [DocumentLinkPreview]

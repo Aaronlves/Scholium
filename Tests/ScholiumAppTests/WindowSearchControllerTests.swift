@@ -287,7 +287,7 @@ struct WindowSearchControllerTests {
             name: "Old semantics",
             definition: SearchDefinition(
                 contractVersion: SearchContract.currentVersion - 1,
-                query: "kind:record participant:researcher",
+                query: "kind:unsupported participant:researcher",
                 presentationScope: .triptych
             )
         )
@@ -300,7 +300,7 @@ struct WindowSearchControllerTests {
 
     @Test("A stale Saved Search opens for editing without executing")
     func staleSavedSearchOpensForEditing() async {
-        let rawQuery = "kind:record participant:researcher"
+        let rawQuery = "kind:unsupported participant:researcher"
         let saved = SavedSearch(
             name: "Old contract",
             definition: SearchDefinition(
@@ -363,7 +363,7 @@ struct WindowSearchControllerTests {
             } == true
         )
         #expect(capabilities.completions(
-            for: "kind:record part",
+            for: "kind:unsupported part",
             scope: .triptych
         ).isEmpty)
     }

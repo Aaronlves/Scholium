@@ -2,7 +2,6 @@ import ScholiumContracts
 import SwiftUI
 
 enum WindowSheetRoute: Identifiable {
-    case metadata(MetadataPanelRoute)
     case noteFileOperation(NoteFileRequest)
     case folderFileOperation(FolderFileRequest)
     case systemTrash(SystemTrashDeletionPreview)
@@ -13,7 +12,6 @@ enum WindowSheetRoute: Identifiable {
 
     var id: String {
         switch self {
-        case .metadata(let route): route.id
         case .noteFileOperation(let request): "note-file-operation:\(request.id)"
         case .folderFileOperation(let request): "folder-file-operation:\(request.id)"
         case .systemTrash(let preview):
@@ -97,15 +95,6 @@ final class WindowPresentationRouter: ObservableObject {
     func dismissSheet(if routeID: String) {
         guard sheet?.id == routeID else { return }
         sheet = nil
-    }
-
-    func presentMetadata(path: String) {
-        present(.metadata(MetadataPanelRoute(path: path)))
-    }
-
-    func finishMetadata(_ route: MetadataPanelRoute) {
-        guard sheet?.id == route.id else { return }
-        dismissSheet()
     }
 
     func setOverlay(_ route: WindowOverlayRoute, isPresented: Bool) {

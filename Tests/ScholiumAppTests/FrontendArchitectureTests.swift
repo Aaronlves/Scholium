@@ -299,9 +299,9 @@ struct FrontendArchitectureTests {
             encoding: .utf8
         )
         #expect(hostSource.contains("if retainsEditor"))
-        #expect(!hostSource.contains("if presentsEditor"))
+        #expect(hostSource.contains("if presentsEditor && !showsEditor && !allowsPendingReadRecovery"))
         #expect(hostSource.contains("allowsPendingReadRecovery"))
-        #expect(hostSource.contains("presentsEditor && (hasPresentedEditor || editorIsReady)"))
+        #expect(hostSource.contains("presentedDocumentID == documentID || editorIsReady"))
         #expect(hostSource.contains(".accessibilityHidden(!showsEditor)"))
         #expect(
             noteSource.contains("@ObservedObject private var documentSession: DocumentSessionModel")
@@ -809,11 +809,6 @@ struct FrontendArchitectureTests {
         #expect(settings.contains("Label(statusTitle, systemImage: statusSymbol)"))
         #expect(!settings.contains("statusColorRole"))
 
-        let frontmatter = try #require(
-            viewSources["Scholium/Views/Metadata/MetadataEditorView.swift"]
-        )
-        #expect(frontmatter.contains("ScholiumColorRole.destructive.color"))
-
         let search = try #require(viewSources["Scholium/Views/SearchWorkspaceView.swift"])
         #expect(search.contains(".scholiumForeground(.destructive)"))
     }
@@ -825,16 +820,11 @@ struct FrontendArchitectureTests {
         router.present(.transactionRecovery)
         #expect(router.sheet?.id == "transaction-recovery")
 
-        router.presentMetadata(path: "Topics/Agency.md")
-        guard case .metadata(let metadataRoute) = router.sheet else {
-            Issue.record("Expected Metadata to replace the transaction recovery route")
-            return
-        }
-        #expect(metadataRoute.path == "Topics/Agency.md")
+        router.present(.agentChanges(initialChangeID: nil))
+        #expect(router.sheet?.id == "agent-changes")
         router.dismissSheet(if: "transaction-recovery")
-        #expect(router.sheet?.id == metadataRoute.id)
-
-        router.dismissSheet(if: metadataRoute.id)
+        #expect(router.sheet?.id == "agent-changes")
+        router.dismissSheet(if: "agent-changes")
         #expect(router.sheet == nil)
 
         router.fileImport = .markdown
@@ -869,7 +859,7 @@ struct FrontendArchitectureTests {
 
         #expect(appSource.contains("id: \"scholium-bootstrap\""))
         #expect(appSource.contains("for: BootstrapWindowRoute.self"))
-        #expect(appSource.components(separatedBy: "WindowGroup(").count == 4)
+        #expect(appSource.components(separatedBy: "WindowGroup(").count == 3)
         #expect(!appSource.contains("id: \"scholium-stage4-design-proofs\""))
         #expect(!appSource.contains("id: \"scholium-editor\""))
         #expect(!appSource.contains("Window(\"Editor\""))
@@ -1114,7 +1104,6 @@ struct FrontendArchitectureTests {
             ScholiumWorkspaceToolbarController.Item.settlement,
             .space,
             ScholiumWorkspaceToolbarController.Item.documentMode,
-            ScholiumWorkspaceToolbarController.Item.researchRecords,
             ScholiumWorkspaceToolbarController.Item.apparatusDivider,
             ScholiumWorkspaceToolbarController.Item.inspectorModes,
             .flexibleSpace,
@@ -1165,7 +1154,7 @@ struct FrontendArchitectureTests {
         #expect(toolbarSource.contains("NSPopover"))
         #expect(!toolbarSource.contains("NSMenuToolbarItem"))
         #expect(!toolbarSource.contains("ScholiumToolbarControlHost"))
-        #expect(toolbarSource.contains("control.segmentStyle = .automatic"))
+        #expect(toolbarSource.contains("control.segmentStyle = .rounded"))
         #expect(!noteSource.contains("ScholiumInspectorModeIndex("))
         #expect(!noteSource.contains("Picker(\"Research Inspector\""))
         #expect(!apparatusComponentsSource.contains("struct ScholiumInspectorModeIndex"))
@@ -2139,8 +2128,8 @@ struct FrontendArchitectureTests {
         let notificationRowsSource = String(
             attentionSource[settlementRowStart.lowerBound..<attentionSource.endIndex]
         )
-        #expect(attentionSource.contains("TextField(\"Search\""))
-        #expect(attentionSource.contains("Picker(\"Notification Type\""))
+        #expect(attentionSource.contains("ContextSearchField("))
+        #expect(attentionSource.contains(".init(title: \"All Notifications\""))
         #expect(attentionSource.contains("scholium.attentionSearch"))
         #expect(attentionSource.contains(".popover("))
         #expect(
@@ -2334,11 +2323,8 @@ struct FrontendArchitectureTests {
         )
         #expect(!toolbar.contains("scholium.toolbar.search"))
         #expect(!sidebarSource.contains("scholium.sidebarSearch"))
-        #expect(toolbar.contains("scholium.toolbar.researchRecords"))
         #expect(!toolbar.contains("scholium.toolbar.agentChanges"))
         #expect(!toolbar.contains("appState.researchController.$agentChanges"))
-        #expect(!toolbar.contains("showNoteResearchRecords"))
-        #expect(!toolbar.contains("showTriptychResearchRecords"))
         #expect(!toolbar.contains("clock.arrow.circlepath"))
         #expect(!toolbar.contains("static let documentCommands"))
         #expect(!toolbar.contains("ScholiumWorkspaceDocumentCommandsToolbarView"))
@@ -2875,7 +2861,7 @@ struct FrontendArchitectureTests {
         #expect(!splitSource.contains("NSBackgroundExtensionView"))
         #expect(toolbarSource.contains("item.isBordered = true"))
         #expect(!toolbarSource.contains("ScholiumToolbarControlHost"))
-        #expect(toolbarSource.contains("control.segmentStyle = .automatic"))
+        #expect(toolbarSource.contains("control.segmentStyle = .rounded"))
     }
 
     @Test("Native and WebKit color roles use one semantic vocabulary")
@@ -2972,7 +2958,7 @@ struct FrontendArchitectureTests {
     @Test("Document and interface typography expose semantic roles")
     func semanticTypographyContract() throws {
         let appearance = DocumentAppearanceSettings.defaultSettings
-        #expect(appearance.body.fontSizePoints == 13)
+        #expect(appearance.body.fontSizePoints == 12)
         #expect(appearance.body.lineHeight == 1.7)
         #expect(appearance.headings.level1.scale == 1.4)
         #expect(appearance.headings.level2.scale == 1.12)
@@ -3006,13 +2992,10 @@ struct FrontendArchitectureTests {
             "ScholiumInterfaceTypography",
             "enum Library",
             "enum Apparatus",
-            "enum ResearchRecords",
             "enum Chrome",
             "static let libraryHierarchy",
             "static let libraryFolderTitle",
             "static let apparatusResearchContent",
-            "static let researchRecordBody",
-            "static let researchRecordRowBody",
         ] {
             #expect(!typographySource.contains(retiredRole))
         }
@@ -3146,9 +3129,6 @@ struct FrontendArchitectureTests {
             ScholiumMetrics.Library.workspaceNavigatorTopSpacing
                 == ScholiumGrid.Spacing.nestedContentInset
         )
-        #expect(ScholiumMetrics.ResearchRecords.collectionRowSpacing == 4)
-        #expect(ScholiumMetrics.ResearchRecords.readingMeasure == 720)
-        #expect(ScholiumMetrics.ResearchRecords.stepVerticalInset == 24)
     }
 
     @Test("Compact Sidebar Glass controls preserve the established 28-point target")
@@ -3199,17 +3179,11 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        let frontmatter = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Metadata/MetadataEditorView.swift"
-            ),
-            encoding: .utf8
-        )
         #expect(designSystem.contains(".containerShape(shape)"))
-        #expect(search.contains("in: ConcentricRectangle()"))
+        #expect(search.contains(".listStyle(.inset)"))
+        #expect(search.contains("ResearchSearchField("))
         #expect(!search.contains("ScholiumShape.searchOverlayCornerRadius"))
         #expect(bootstrap.contains("ScholiumShape.editorialPanelCornerRadius"))
-        #expect(frontmatter.contains("ScholiumShape.editorialTextEditorCornerRadius"))
     }
 
     @Test("Search and Properties consume purpose-named component dimensions")
@@ -3221,12 +3195,6 @@ struct FrontendArchitectureTests {
         let search = try String(
             contentsOf: repository.appendingPathComponent(
                 "Scholium/Views/SearchWorkspaceView.swift"
-            ),
-            encoding: .utf8
-        )
-        let frontmatter = try String(
-            contentsOf: repository.appendingPathComponent(
-                "Scholium/Views/Metadata/MetadataEditorView.swift"
             ),
             encoding: .utf8
         )
@@ -3246,13 +3214,11 @@ struct FrontendArchitectureTests {
         }
 
         #expect(matchCount(preferredTargetFrame, in: search) == 0)
-        #expect(matchCount(preferredTargetFrame, in: frontmatter) == 2)
         #expect(
             search.contains(
                 "ResearchSearchField("
             ))
         #expect(matchCount(literalPurposeDimension, in: search) == 0)
-        #expect(matchCount(literalPurposeDimension, in: frontmatter) == 0)
     }
 
     @Test("Shared editorial grid exposes reusable roles and explicit document units")
@@ -3394,7 +3360,6 @@ struct FrontendArchitectureTests {
             "liveProjectionIndex.extension",
             "liveDocumentTitle",
             "liveSemanticLayout.extension",
-            "liveFrontmatterGuardField",
             "liveSelection.extension",
             "liveMermaidProjection.extension",
             "liveStructuredBlockProjections.tableExtension",
@@ -3490,7 +3455,8 @@ struct FrontendArchitectureTests {
         #expect(structuredBlocks.components(separatedBy: "StateField.define").count == 4)
         #expect(displayMath.contains("StateField.define<LiveDisplayMathProjectionState>"))
         #expect(footnotes.contains("StateField.define<LiveFootnoteReferenceState>"))
-        #expect(editorSource.contains("const liveFrontmatterGuardField = StateField.define"))
+        #expect(!editorSource.contains("liveFrontmatterGuardField"))
+        #expect(editorSource.contains("liveDocumentTitle"))
 
         let buildStart = try #require(
             editorSource.range(of: "function buildLiveDecorations(")
@@ -4548,7 +4514,7 @@ struct FrontendArchitectureTests {
         let profile = DocumentAppearanceProfile(name: "Custom")
         let css = DocumentAppearanceStyles.css(for: profile)
 
-        #expect(css.contains("--scholium-document-prose-font-size: 13pt"))
+        #expect(css.contains("--scholium-document-prose-font-size: 12pt"))
         #expect(css.contains("--scholium-rhythm-prose-line-height: 1.7"))
         #expect(css.contains("--scholium-appearance-h1-before: 0.9em"))
         #expect(css.contains("--scholium-appearance-h1-after: 0.35em"))
@@ -4752,8 +4718,8 @@ struct FrontendArchitectureTests {
         #expect(source.contains("edge.occurrence.localContext"))
         #expect(source.contains("Edit at Source"))
         #expect(source.contains("ScholiumL10n.dynamicString("))
-        #expect(source.contains("Incoming link from \\(item.displayTitle)"))
-        #expect(source.contains("Outgoing link to \\(item.displayTitle)"))
+        #expect(source.contains("Show this passage"))
+        #expect(source.contains(".lineLimit(nil)"))
         #expect(!source.contains("ScholiumConnectionPresentation"))
         #expect(!source.contains("ConnectionPeerGroup"))
         #expect(!source.contains("ScholiumDisclosureHeaderButton"))

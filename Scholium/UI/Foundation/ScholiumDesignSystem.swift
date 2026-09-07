@@ -126,11 +126,17 @@ enum ScholiumColorRole: String, CaseIterable, Sendable {
 /// these exceptions named prevents feature views from reaching into AppKit's
 /// color catalog directly or treating them as additional product Variables.
 enum ScholiumNativeColorRole: Sendable {
+    case label, secondaryLabel, windowBackground, textBackground, controlAccent
     case searchMatchHighlight
     case structuralShadow
 
     var nsColor: NSColor {
         switch self {
+        case .label: .labelColor
+        case .secondaryLabel: .secondaryLabelColor
+        case .windowBackground: .windowBackgroundColor
+        case .textBackground: .textBackgroundColor
+        case .controlAccent: .controlAccentColor
         case .searchMatchHighlight: .findHighlightColor
         case .structuralShadow: .shadowColor
         }
@@ -703,6 +709,24 @@ enum ScholiumWebDesignTokens {
         :is(.scholium-document, .cm-editor) [role="option"]:not([aria-disabled="true"]) {
           cursor: pointer;
         }
+        .scholium-reader-arrival,
+        .cm-editor .cm-content .cm-line.scholium-arrival-target {
+          background-color: color-mix(in srgb, var(--scholium-color-accent) 16%, transparent);
+          animation: scholium-arrival-fade 1.4s ease-in-out both;
+        }
+        @keyframes scholium-arrival-fade {
+          0%, 100% { background-color: transparent; }
+          10%, 50% {
+            background-color: color-mix(in srgb, var(--scholium-color-accent) 16%, transparent);
+          }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .scholium-reader-arrival,
+          .cm-editor .cm-content .cm-line.scholium-arrival-target {
+            animation: none;
+          }
+        }
+
         .scholium-document p,
         .cm-editor.scholium-live-mode .cm-live-paragraph {
           box-sizing: border-box;
@@ -785,128 +809,7 @@ enum ScholiumWebDesignTokens {
           font-weight: 400;
           line-height: 1.35;
         }
-        .scholium-document-attachment-rail {
-          box-sizing: border-box;
-          inline-size: 100%;
-          min-block-size: 28px;
-          margin: 0;
-          padding: 0 0 var(--scholium-document-title-after);
-          overflow: hidden;
-          color: color-mix(
-            in srgb,
-            var(--scholium-color-primary-text) 82%,
-            var(--scholium-color-document-background)
-          );
-          font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-          font-size: 12px;
-          font-style: normal;
-          font-weight: 400;
-          line-height: 16px;
-          text-align: start;
-        }
-        .scholium-document-attachment-strip {
-          display: flex;
-          align-items: center;
-          flex-wrap: nowrap;
-          gap: 6px;
-          min-block-size: 28px;
-          overflow-x: auto;
-          overflow-y: hidden;
-          scrollbar-width: none;
-        }
-        .scholium-document-attachment-strip::-webkit-scrollbar {
-          display: none;
-        }
-        .scholium-document-attachment-capsule,
-        .scholium-document-attachment-add {
-          display: inline-flex;
-          flex: 0 0 auto;
-          align-items: center;
-          justify-content: flex-start;
-          gap: 5px;
-          box-sizing: border-box;
-          min-block-size: 28px;
-          margin: 0;
-          padding: 4px 8px;
-          border: 1px solid var(--scholium-color-separator);
-          border-radius: 999px;
-          color: inherit;
-          background: color-mix(
-            in srgb,
-            var(--scholium-color-primary-text) 5%,
-            transparent
-          );
-          font: inherit;
-          line-height: inherit;
-          white-space: nowrap;
-          cursor: pointer;
-          appearance: none;
-        }
-        .scholium-document-attachment-capsule {
-          min-inline-size: 0;
-          max-inline-size: min(18rem, 42vw);
-        }
-        .scholium-document-attachment-capsule[data-available="false"] {
-          opacity: 0.55;
-        }
-        .scholium-document-attachment-add {
-          opacity: 0;
-          pointer-events: none;
-          transition: opacity 120ms ease-out;
-        }
-        .scholium-document-attachment-add-visible .scholium-document-attachment-add,
-        .scholium-document-attachment-rail:hover .scholium-document-attachment-add,
-        .scholium-document-attachment-rail:focus-within .scholium-document-attachment-add {
-          opacity: 1;
-          pointer-events: auto;
-        }
-        .scholium-document-attachment-capsule:hover,
-        .scholium-document-attachment-add:hover {
-          color: var(--scholium-color-primary-text);
-          background: var(--scholium-content-hover-surface);
-        }
-        .scholium-document-attachment-capsule:focus-visible,
-        .scholium-document-attachment-add:focus-visible {
-          color: var(--scholium-color-primary-text);
-          background: var(--scholium-content-keyboard-focus-surface);
-          outline: 2px solid var(--scholium-content-focus-ring);
-          outline-offset: 1px;
-        }
-        .scholium-document-attachment-icon {
-          inline-size: 14px;
-          block-size: 14px;
-          flex: 0 0 14px;
-        }
-        .scholium-document-attachment-rail .scholium-system-symbol {
-          display: inline-block;
-          background-color: currentColor;
-          -webkit-mask-image: var(--scholium-system-symbol-image);
-          -webkit-mask-position: center;
-          -webkit-mask-repeat: no-repeat;
-          -webkit-mask-size: contain;
-          mask-image: var(--scholium-system-symbol-image);
-          mask-position: center;
-          mask-repeat: no-repeat;
-          mask-size: contain;
-        }
-        .scholium-document-attachment-name {
-          display: inline-flex;
-          min-inline-size: 0;
-          overflow: hidden;
-        }
-        .scholium-document-attachment-name-leading {
-          min-inline-size: 0;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-        .scholium-document-attachment-name-trailing {
-          flex: 0 0 auto;
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .scholium-document-attachment-add {
-            transition: none;
-          }
-        }
+
         .scholium-document-empty-state {
           margin: 0;
           padding-block: 0;
@@ -1269,19 +1172,6 @@ enum ScholiumGrid {
         static let compactHorizontalInset = Spacing.inlineControlGap
     }
 
-    /// The separate Records window owns a quiet collection-to-reading
-    /// transition within a compact window; step-local attachments scroll locally.
-    enum ResearchRecords {
-        static let collectionRowVerticalInset = foundationUnit * 2
-        static let collectionRowSpacing = foundationUnit
-        static let readingMeasure = foundationUnit * 180
-        static let readingHorizontalInset = foundationUnit * 8
-        static let readingVerticalInset = foundationUnit * 8
-        static let stepVerticalInset = foundationUnit * 6
-        static let stepHeaderSpacing = foundationUnit
-        static let referenceSectionSpacing = foundationUnit * 2
-    }
-
     /// Page- and pane-level state copy shares one readable measure. Placement
     /// and density adapt to the owning region without changing the state's
     /// workflow meaning or lifecycle.
@@ -1397,18 +1287,6 @@ enum ScholiumMetrics {
         static let controlSpacing = ScholiumGrid.foundationUnit * 1.5
         static let trailingControlMinimumSpacing = ScholiumGrid.Spacing.nestedContentInset
         static let editorContentInset = ScholiumGrid.foundationUnit * 4.5
-    }
-
-    enum ResearchRecords {
-        static let collectionRowVerticalInset =
-            ScholiumGrid.ResearchRecords.collectionRowVerticalInset
-        static let collectionRowSpacing = ScholiumGrid.ResearchRecords.collectionRowSpacing
-        static let readingMeasure = ScholiumGrid.ResearchRecords.readingMeasure
-        static let readingHorizontalInset = ScholiumGrid.ResearchRecords.readingHorizontalInset
-        static let readingVerticalInset = ScholiumGrid.ResearchRecords.readingVerticalInset
-        static let stepVerticalInset = ScholiumGrid.ResearchRecords.stepVerticalInset
-        static let stepHeaderSpacing = ScholiumGrid.ResearchRecords.stepHeaderSpacing
-        static let referenceSectionSpacing = ScholiumGrid.ResearchRecords.referenceSectionSpacing
     }
 
     enum ResearchSheet {

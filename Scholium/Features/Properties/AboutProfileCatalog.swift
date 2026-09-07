@@ -105,8 +105,7 @@ enum AboutProfileCatalog {
         profile: SchemaProfileID,
         catalog: NoteMetadataCatalog
     ) -> Bool {
-        guard key != "title",
-              PropertyPresentationCatalog.presentation(
+        guard PropertyPresentationCatalog.presentation(
                 for: key,
                 in: profile,
                 catalog: catalog
@@ -125,8 +124,7 @@ enum AboutProfileCatalog {
         profile: SchemaProfileID,
         catalog: NoteMetadataCatalog
     ) -> Bool {
-        guard key != "title",
-              PropertyPresentationCatalog.presentation(
+        guard PropertyPresentationCatalog.presentation(
                 for: key,
                 in: profile,
                 catalog: catalog

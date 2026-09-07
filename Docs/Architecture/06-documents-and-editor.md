@@ -569,17 +569,17 @@ validates both before `moveNote`. Success follows stable identity; failure
 retains the accessible draft error. It never writes Markdown; headings stay
 below it and Source has no title projection.
 
-Bridge 21 carries document attachments through a bounded source-neutral
-operation. Live Preview owns a sibling StateField/widget and
-Review a dedicated DOM mount. Updating either subtree cannot change the load
-signature, title DOM, `EditorState`, exact-source mirror, selection,
-composition, history, or scroll. Pointer activation blocks caret placement
-before its typed preview/add request; Source installs no attachment field.
-`NoteContentView` resolves records and availability. Native Quick Look owns and
-releases each access lease, then restores the retained title/body focus target.
+`NoteContentView` loads attachments into the retained Document session. Overview
+renders Quick Look thumbnails with leases released on completion/cancellation.
+SwiftUI's `quickLookPreview` owns the system window and opening actions.
+`DocumentAttachmentQuickLookSession` only retains the URL and read lease;
+system dismissal, replacement, and sidebar teardown release it once.
+No custom preview panel, toolbar, or external-opening controller remains.
+Overview and File share DocumentController's attachment operation and session
+busy state. No attachment widget or message remains in the editor/reader bridge.
 
-Review page identity excludes asynchronously derived link previews and document
-attachments. Only fingerprint, CSS, or capability changes replace the page;
+
+Review page identity excludes asynchronously derived link previews. Only fingerprint, CSS, or capability changes replace the page;
 in-page updates are read-only and preserve selection and scroll.
 `reader.bundle.js` owns the Read DOM,
 `SafeMarkdownReadWebView` owns its configuration, and coordinators own

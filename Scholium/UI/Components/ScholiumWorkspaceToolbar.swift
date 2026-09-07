@@ -33,9 +33,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         static let settlement = NSToolbarItem.Identifier(
             "scholium.toolbar.settlement"
         )
-        static let researchRecords = NSToolbarItem.Identifier(
-            "scholium.toolbar.researchRecords"
-        )
         // Apparatus is an explicitly managed trailing split item rather than
         // AppKit's Inspector factory item. A private identifier keeps the
         // initializer's explicit dividerIndex authoritative instead of asking
@@ -141,7 +138,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             Item.documentTitle,
             .space,
             Item.documentMode,
-            Item.researchRecords,
             Item.settlement,
             Item.apparatusDivider,
             Item.inspectorModes,
@@ -163,7 +159,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             Item.settlement,
             .space,
             Item.documentMode,
-            Item.researchRecords,
             Item.apparatusDivider,
             Item.inspectorModes,
             .flexibleSpace,
@@ -254,13 +249,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
                 ScholiumL10n.string("Settlement Unavailable"),
             ]
             return item
-        case Item.researchRecords:
-            return actionItem(
-                identifier: itemIdentifier,
-                label: ScholiumL10n.string("Research Records"),
-                systemImage: "text.book.closed",
-                action: #selector(showResearchRecords(_:))
-            )
         case Item.apparatusDivider:
             let splitView = splitViewController.splitView
             let item = NSTrackingSeparatorToolbarItem(
@@ -361,7 +349,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         return nil
     }
 
-
     private func installToolbarItemsIfNeeded() {
         if toolbar.itemIdentifiers != Self.itemIdentifiers {
             toolbar.itemIdentifiers = Self.itemIdentifiers
@@ -402,21 +389,15 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         let modes = ResearchInspectorMode.allCases
         let control = NSSegmentedControl(
             images: modes.compactMap {
-                ScholiumNativeToolbarPresentation.symbol(
-                    named: $0.systemImage,
-                    accessibilityDescription: ScholiumL10n.localized(
-                        $0.interfaceTitleResource
-                    )
-                )
+                ScholiumNativeToolbarPresentation.symbol(named: $0.systemImage,
+                    accessibilityDescription: ScholiumL10n.localized($0.interfaceTitleResource))
             },
             trackingMode: .selectOne,
             target: self,
             action: #selector(selectInspectorMode(_:))
         )
         control.controlSize = ScholiumNativeToolbarPresentation.controlSize
-        // Automatic lets AppKit select the current toolbar treatment, including
-        // Liquid Glass, without changing the control's 70 x 20 fitting size.
-        control.segmentStyle = .automatic
+        control.segmentStyle = .rounded
         control.setAccessibilityLabel(label)
         control.setAccessibilityIdentifier("scholium.inspectorMode")
         for (index, mode) in modes.enumerated() {
@@ -576,11 +557,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             }
         }
 
-        if let item = toolbarItem(Item.researchRecords) {
-            item.isEnabled = isCommandEnabled(Item.researchRecords)
-            item.menuFormRepresentation?.isEnabled = item.isEnabled
-        }
-
         if let item = toolbarItem(Item.inspectorModes),
             let control = item.view as? NSSegmentedControl
         {
@@ -631,7 +607,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
         case Item.forward: appState.documentNavigationHistoryController.canGoForward
         case Item.settlement: currentSettlementTarget != nil
         case Item.inspector: appState.canToggleResearchInspector
-        case Item.researchRecords: appState.windowWorkspaceController.activeCapabilities != nil
         case Item.inspectorModes: appState.currentNote != nil && appState.shellState.inspector.isVisible
         case Item.documentMode:
             appState.currentNote != nil && !currentEditorIsComposing && (ScholiumDocumentModeToolbarButtonPresentation(
@@ -697,12 +672,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             control.setToolTip(labels[index], forSegment: index)
             control.setImageScaling(.scaleProportionallyDown, forSegment: index)
         }
-        if #available(macOS 27.0, *) {
-            control.role = .tabs
-            control.segmentStyle = .automatic
-        } else {
-            control.segmentStyle = .texturedRounded
-        }
+        control.segmentStyle = .rounded
         control.setAccessibilityLabel(ScholiumL10n.string("Sidebar"))
         control.setAccessibilityIdentifier("scholium.sidebarMode")
         let item = NSToolbarItem(itemIdentifier: identifier)
@@ -812,11 +782,6 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
             mode: appState.documentController.chromeProjection.mode
         )
         appState.requestDocumentMode(presentation.destination)
-    }
-
-    @objc private func showResearchRecords(_ sender: Any?) {
-        guard isCommandEnabled(Item.researchRecords) else { return }
-        windowActions.showResearchRecords()
     }
 
     @objc private func toggleSettlement(_ sender: Any?) {

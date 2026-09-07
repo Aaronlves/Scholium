@@ -93,11 +93,6 @@ export interface DocumentFindResult {
   current: number;
   total: number;
 }
-export interface EditorDocumentAttachment {
-  id: string;
-  filename: string;
-  available: boolean;
-}
 export type EditorOperation =
   | {
     type: "initialize";
@@ -109,8 +104,6 @@ export type EditorOperation =
   | {type: "positionDocumentTitle"}
   | {type: "setMode"; mode: EditorMode}
   | {type: "setDocumentTitle"; value: string}
-  | {type: "setDocumentAttachments"; value: EditorDocumentAttachment[]}
-  | {type: "revealDocumentAttachmentControl"}
   | {type: "setPresentationCSS"; value: string}
   | {type: "setUserCSS"; value: string}
   | {type: "setLinkPreviews"; value: unknown[]}
@@ -159,7 +152,7 @@ export interface EditorCommandResult {
 }
 
 const operationTypes = new Set([
-  "initialize", "positionDocumentTitle", "setMode", "setDocumentTitle", "setDocumentAttachments", "revealDocumentAttachmentControl", "setPresentationCSS", "setUserCSS", "setLinkPreviews", "showPreview", "measureVisibleProjection", "showPreviewAt", "announceStatus",
+  "initialize", "positionDocumentTitle", "setMode", "setDocumentTitle", "setPresentationCSS", "setUserCSS", "setLinkPreviews", "showPreview", "measureVisibleProjection", "showPreviewAt", "announceStatus",
   "goToLine", "revealSourceRange", "setScrollFraction", "setScrollAnchor", "queryText", "querySelection", "queryContext", "queryScrollAnchor", "queryPerformance",
   "captureRecovery", "restoreRecovery", "acknowledgeCommittedSnapshot", "command", "documentFind", "clearDocumentFind", "markClean", "focus", "focusTitle", "blur",
 ]);
@@ -221,8 +214,6 @@ export function recoveryGenerationCanReplaceCurrent(
 
 const forwardReadableOperationTypes = new Set([
   "setDocumentTitle",
-  "setDocumentAttachments",
-  "revealDocumentAttachmentControl",
   "queryText",
   "querySelection",
   "queryContext",
@@ -302,16 +293,6 @@ function validOperation(operation: Record<string, unknown>) {
   case "setMode": return validMode(operation.mode);
   case "setDocumentTitle":
     return typeof operation.value === "string" && operation.value.length <= 1_024;
-  case "setDocumentAttachments":
-    return Array.isArray(operation.value)
-      && operation.value.length <= 100
-      && operation.value.every((item) => Boolean(item)
-        && typeof item === "object"
-        && typeof (item as {id?: unknown}).id === "string"
-        && String((item as {id: string}).id).length <= 128
-        && typeof (item as {filename?: unknown}).filename === "string"
-        && String((item as {filename: string}).filename).length <= 1_024
-        && typeof (item as {available?: unknown}).available === "boolean");
   case "setPresentationCSS":
   case "setUserCSS": return typeof operation.value === "string" && operation.value.length <= 1_000_000;
   case "announceStatus": return typeof operation.value === "string" && operation.value.length <= 500;
@@ -355,7 +336,7 @@ function validOperation(operation: Record<string, unknown>) {
       && typeof value.wholeWord === "boolean"
       && ["present", "update", "next", "previous", "replaceCurrent", "replaceAll"].includes(value.action ?? "");
   }
-  case "queryText": case "querySelection": case "queryContext": case "queryScrollAnchor": case "queryPerformance": case "captureRecovery": case "showPreview": case "measureVisibleProjection": case "revealDocumentAttachmentControl":
+  case "queryText": case "querySelection": case "queryContext": case "queryScrollAnchor": case "queryPerformance": case "captureRecovery": case "showPreview": case "measureVisibleProjection":
   case "positionDocumentTitle": case "clearDocumentFind": case "markClean": case "focus": case "focusTitle": case "blur": return true;
   default: return false;
   }

@@ -343,7 +343,7 @@ struct ArchitectureBoundaryTests {
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let relativePaths = [
-            "Scholium/Views/Metadata/MetadataEditorView.swift",
+            "Scholium/Views/Sidebar/OverviewMetadataFields.swift",
             "Scholium/Views/Note/NoteFileOperationView.swift",
             "Scholium/Views/Note/TransactionRecoveryView.swift",
             "Scholium/Views/Note/NoteContentView.swift",

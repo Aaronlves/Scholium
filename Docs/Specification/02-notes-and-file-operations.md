@@ -161,9 +161,12 @@ Rename never synchronizes Metadata or body headings.
 About is the current Note's primary Metadata view and ordinary editing surface.
 It always shows the role's configured core managed fields even when empty,
 automatically adds every other present managed value, and excludes YAML fields.
-A field edit uses the loaded Metadata revision; no About action patches YAML. File and Settlement facts are read-only. The Metadata sheet
-remains the Add Field and multi-field editing route; it preserves drafts on
-conflict and never creates or changes YAML. CLI metadata read/set/remove
+Overview owns all managed-field editing in one ordered, ungrouped list. Field
+labels share a trailing-aligned axis; values and native controls share the next
+axis. Add Field inserts a role-valid field directly into this list. There is no
+separate Metadata editor, sheet, or confirmation footer. A field edit uses the
+loaded Metadata revision; no Overview action patches YAML. File and Settlement
+facts are read-only and visually subordinate. Conflicts retain local drafts. CLI metadata read/set/remove
 operations use the same managed owner and Metadata fingerprint, never the
 source fingerprint.
 
@@ -228,11 +231,9 @@ in-flight or uncertain MCP mutation, unresolved write recovery, identity
 ambiguity, source or manifest drift, or unsafe filesystem entry blocks the
 move.
 
-A Research Record under §8.6 is independent attributed research history.
-Moving a referenced Note to system Trash does not alter or delete the Record or
-its historical Note identity and revision. Stable Note identity, Settlement,
-Zotero binding, source-access provenance, and Critique association also remain
-so Finder restoration can reconcile exact source.
+Deleting a Note does not delete independent linked Notes. Stable Note identity,
+Settlement, Zotero binding, source-access provenance, and Critique association
+remain so Finder restoration can reconcile exact source.
 
 Before the first move Scholium installs a deletion gate and durable forward
 plan with one receipt per source item. It binds each native operation to the

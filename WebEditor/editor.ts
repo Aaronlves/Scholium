@@ -1,3 +1,4 @@
+import {editorArrivalHighlight, showEditorArrival} from "./editor-arrival-highlight";
 import {createNativeFloatingBridge} from "./native-floating";
 import {
   Annotation,
@@ -130,11 +131,6 @@ import {
 } from "./projection-index";
 import {localized} from "./localization";
 import {
-  createDocumentAttachmentRail,
-  revealDocumentAttachmentAddControl,
-  type DocumentAttachmentPresentation,
-} from "./document-attachments";
-import {
   calloutDefinition as resolveCalloutDefinition,
   calloutHeader,
 } from "./callout-presentation";
@@ -260,7 +256,6 @@ const editorModeFacet = Facet.define<EditorMode, EditorMode>({
 const programmaticDocumentChange = Annotation.define<boolean>();
 const refreshLivePreviewEffect = StateEffect.define<null>();
 const refreshDocumentTitleEffect = StateEffect.define<null>();
-const refreshDocumentAttachmentsEffect = StateEffect.define<null>();
 const refreshMermaidThemeEffect = StateEffect.define<number>();
 let mermaidThemeRevision = 0;
 let documentTitle = "";
@@ -272,9 +267,6 @@ let documentTitleRenameRequest: {
   requestedTitle: string;
 } | null = null;
 let documentTitlePresentationRevision = 0;
-let documentAttachments: readonly DocumentAttachmentPresentation[] = [];
-let documentAttachmentPresentationRevision = 0;
-let documentAttachmentInitialRevealDeadline = 0;
 let lastDocumentFocusTarget: EditorFocusTarget | undefined;
 
 function setDocumentFocusTarget(target: EditorFocusTarget) {
@@ -491,65 +483,6 @@ const liveDocumentTitle = StateField.define<DecorationSet>({
       effect.is(refreshDocumentTitleEffect));
     return transaction.docChanged || titleChanged
       ? documentTitleDecorations(transaction.state)
-      : decorations;
-  },
-  provide: (field) => EditorView.decorations.from(field),
-});
-
-class DocumentAttachmentWidget extends WidgetType {
-  constructor(
-    readonly attachments: readonly DocumentAttachmentPresentation[],
-    readonly presentationRevision: number,
-  ) { super(); }
-
-  eq(other: DocumentAttachmentWidget) {
-    return other.presentationRevision === this.presentationRevision;
-  }
-
-  toDOM(view: EditorView) {
-    const revealInitially = performance.now() < documentAttachmentInitialRevealDeadline;
-    return createDocumentAttachmentRail(
-      view.dom.ownerDocument,
-      this.attachments,
-      {
-        localized,
-        revealInitially,
-        requestPreview: (attachmentID) => post({
-          type: "requestDocumentAttachmentPreview",
-          attachmentID,
-        }),
-        requestMenu: (anchor) => post({
-          type: "requestDocumentAttachmentMenu",
-          clientX: anchor.left,
-          clientY: anchor.bottom,
-        }),
-      },
-    );
-  }
-
-  ignoreEvent() { return true; }
-}
-
-function documentAttachmentDecorations(state: EditorState) {
-  return Decoration.set([
-    Decoration.widget({
-      widget: new DocumentAttachmentWidget(
-        documentAttachments,
-        documentAttachmentPresentationRevision,
-      ),
-      block: true,
-      side: -1,
-    }).range(frontmatterBodyOffset(state.doc)),
-  ]);
-}
-
-const liveDocumentAttachments = StateField.define<DecorationSet>({
-  create: (state) => documentAttachmentDecorations(state),
-  update: (decorations, transaction) => {
-    const attachmentsChanged = transaction.effects.some((effect) =>
-      effect.is(refreshDocumentAttachmentsEffect));
-    return transaction.docChanged || attachmentsChanged
-      ? documentAttachmentDecorations(transaction.state)
       : decorations;
   },
   provide: (field) => EditorView.decorations.from(field),
@@ -1746,7 +1679,6 @@ const livePreviewMode = [
   Prec.high(liveSelection.extension),
   liveProjectionIndex.extension,
   liveDocumentTitle,
-  liveDocumentAttachments,
   inputSuggestions.extension,
   liveSemanticLayout.extension,
   liveFrontmatterLines,
@@ -1780,6 +1712,7 @@ const editorContextMenu = createEditorContextMenuExtension({
 });
 
 const editorExtensions = [
+      editorArrivalHighlight,
       highlightSpecialChars(),
       history(),
       drawSelection({drawRangeCursor: false}),
@@ -2039,10 +1972,6 @@ async function executeEditorRequest(request: EditorRequest): Promise<EditorComma
   case "positionDocumentTitle": await editorOperations.positionDocumentTitle(); break;
   case "setMode": await editorOperations.setMode(operation.mode); break;
   case "setDocumentTitle": editorOperations.setDocumentTitle(operation.value); break;
-  case "setDocumentAttachments": editorOperations.setDocumentAttachments(operation.value); break;
-  case "revealDocumentAttachmentControl":
-    revealDocumentAttachmentAddControl(editor.dom.ownerDocument);
-    break;
   case "setPresentationCSS": editorOperations.setPresentationCSS(operation.value); break;
   case "setUserCSS": editorOperations.setUserCSS(operation.value); break;
   case "setLinkPreviews": editorOperations.setLinkPreviews(operation.value); break;
@@ -2401,9 +2330,6 @@ const editorOperations = {
     documentTitleError = null;
     documentTitleRenameRequest = null;
     documentTitlePresentationRevision += 1;
-    documentAttachments = [];
-    documentAttachmentPresentationRevision += 1;
-    documentAttachmentInitialRevealDeadline = performance.now() + 1800;
     lastDocumentFocusTarget = undefined;
     documentVersion = 0;
     const separator = text.includes("\r\n") ? "\r\n" : "\n";
@@ -2434,13 +2360,6 @@ const editorOperations = {
     editor.dispatch({effects: refreshDocumentTitleEffect.of(null)});
   },
 
-  setDocumentAttachments(value: readonly DocumentAttachmentPresentation[]) {
-    const next = value.slice(0, 100).map((attachment) => ({...attachment}));
-    if (JSON.stringify(next) === JSON.stringify(documentAttachments)) return;
-    documentAttachments = next;
-    documentAttachmentPresentationRevision += 1;
-    editor.dispatch({effects: refreshDocumentAttachmentsEffect.of(null)});
-  },
 
   /** @param {string} mode */
   async setMode(mode: string) {
@@ -2504,7 +2423,8 @@ const editorOperations = {
     const line = editor.state.doc.line(lineNumber);
     editor.dispatch({
       selection: { anchor: line.from },
-      effects: EditorView.scrollIntoView(line.from, { y: "center" }),
+      effects: [EditorView.scrollIntoView(line.from, { y: "center" }),
+        showEditorArrival.of(requestedLine === lineNumber ? line.from : null)],
     });
     if (focusesEditor) editor.focus();
   },

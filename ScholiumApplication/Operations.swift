@@ -395,13 +395,6 @@ public actor DiscoveryOperations: DiscoveryUseCases {
         return try await handle.search(request)
     }
 
-    public func unifiedSearch(
-        _ request: UnifiedSearchRequest
-    ) async throws -> UnifiedSearchResponse {
-        let handle = try await reference.requireHandle()
-        return try await handle.unifiedSearch(request)
-    }
-
     public func links(
         for note: VaultQualifiedNoteID,
         direction: WorkspaceLinkDirection
@@ -418,7 +411,6 @@ public actor DiscoveryOperations: DiscoveryUseCases {
         return WorkspaceGraphQueries(catalog: try await handle.snapshot().discovery.catalog)
     }
 }
-
 
 /// Researcher-owned judgments and recovery operations that remain inside the
 /// App after external conversation and workflow ownership moved to the host.

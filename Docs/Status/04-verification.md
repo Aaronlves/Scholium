@@ -4,6 +4,67 @@
 
 ## Current verification snapshot
 
+**2026-09-07 — question-centered Works cutover:** standalone research-record
+presentation, storage, search federation, contracts, and Agent tools are removed.
+Research content uses ordinary Works Notes; no migration, export, compatibility
+adapter, or automatic recording path was added. Search contract is 15 and MCP
+tool schema is 3, with seven tools.
+
+- SwiftPM Debug App and CLI builds pass with the selected Xcode beta toolchain.
+- 106 focused checks pass across Search contracts (22), window/toolbar/search/
+  localization/App-router suites (80), stdio MCP (3), and scene ownership (1).
+  The MCP test fixture was updated to the current schema before its final pass.
+- Production-symbol removal scan, documentation authority, developer-toolkit and
+  package validators, interface localization, and whitespace validation pass.
+- Disposable 500-Note QA confirms About/Links as the only Inspector choices,
+  no dedicated recording toolbar/menu command, scope-only search filtering,
+  and direct opening of a Works Note from ordinary Search. App teardown removes
+  the test bundle and disposable state; the repository fixture is preserved.
+- Follow-up interface repair passes 105 frontend, ownership, Metadata, toolbar,
+  Links, and Search checks: native palette/font use now shares existing owners;
+  stale assertions match current native controls and editor readiness ownership.
+  Disposable QA confirms Light/Dark Inspector presentation, native author-field
+  focus frames and fixed surname/given-name Tab order, and Links disclosure.
+  Links snippets now omit parser-owned annotations presented below the excerpt;
+  literal code and malformed annotation text survive. Four follow-up checks pass
+  for snippet formatting, exact-source frontmatter editing/Undo, and opening
+  readiness across cached editor reconstruction. QA confirms annotation display
+  and excerpt navigation retaining Edit mode (108 distinct checks overall).
+  No complete repository gate was run over the pre-existing mixed worktree.
+  Full accessibility/adaptation, packaged external-host and human acceptance
+  remain outside this evidence. Logs: `.build/records-removal/` and
+  `.build/interface-repair/`.
+
+
+**2026-09-06 Inspector and continuous Metadata editing:** 11 focused tests in
+four suites passed after the continuous-edit cutover, covering native buffer
+submission, marked-text command ownership, Metadata-before-document flush,
+failure selection recovery, mode retention, and revision rejection. Xcode 27
+beta Debug compiled. Computer Use on a disposable 500-Note Triptych confirmed
+Light/Dark presentation at 980pt window width, scalar row alignment, author
+surname/given-name traversal, Tab/Shift-Tab, focus-departure save, Escape rollback,
+invalid-creator retention, navigation refusal and subsequent recovery. Conflict
+probes retained the draft, explicitly reloaded the external revision, and saved
+again. File reads confirmed persistence after Inspector projection changes,
+opening the full Metadata sheet, and hiding the Inspector before Note navigation.
+The inline Save/Cancel footer and competing layout candidates are removed.
+Logs: `.build/continuous-metadata-tests.log`,
+`.build/continuous-metadata-build.log`, and
+`.build/continuous-metadata-localization.log`.
+
+The preceding link-navigation slice passed 29 focused tests and visually
+confirmed Review heading/incoming-occurrence positioning, Edit occurrence
+positioning, and a retained Source editor locating line 83. These earlier probes
+are recorded in `.build/inspector-final-tests.log` and
+`.build/inspector-reader-tests.log`; their count overlaps the current checks.
+All 500 original fixture Markdown files remained byte-identical. QA bundles and
+state were cleaned up after inspection. The broader window suite previously
+exposed four scroll-restoration assertions in unchanged controller/test code;
+localization validation still reports two unrelated missing format strings
+(`%arg · %arg`, `%arg/%arg`). Neither is counted as passing. Exact minimum-window
+geometry, system accessibility adaptations, enlarged interface text, real IME,
+and VoiceOver acceptance remain unverified. This is scoped implementation evidence.
+
 **2026-09-06 Native toolbar and Search:** 87 owning tests in eight suites
 passed, covering native toolbar validation and overflow commands, lifecycle
 invalidation, window state, Library, Search response evidence, and presentation
@@ -43,8 +104,8 @@ remain pending human verification.
 
 **Environment:** 2026-09-05 approved interface corrections, Xcode 27 beta
 (`DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer`). This supersedes
-the older fixed-index Records and animated Settlement presentation evidence
-below; it is implementation verification, not release or human acceptance.
+older interface evidence; it is implementation verification, not release or
+human acceptance.
 
 - Outline is now a persistent native tree sharing the Sidebar with Triptych.
   The icon selector switches in place and repeating the active mode collapses
@@ -172,325 +233,12 @@ below; it is implementation verification, not release or human acceptance.
 - Focused coverage proves pointer-mode native emphasis writeback is suppressed
   without changing selection, retained/native focus ownership, first Edit body
   entry after CRLF YAML, unrestricted Source-font persistence, and live WebKit
-  typography changes without source or selection mutation. Record tests cover
-  list/detail transitions, retained selection, exact step requests, and rejection
-  of requests for another Triptych. Settlement tests require distinct available
-  native symbols, state-valid actions, and an unfilled native toolbar surface.
-  After final state-label and Records appearance adjustments, all 32 owning
-  presentation/toolbar/Records tests passed and the incremental Release build
-  passed. Localization and documentation authority validation also passed.
+  typography changes without source or selection mutation.
 - The focused native Triptych navigator XCUITest passed selection and Up/Down
   navigation. Its result bundle is retained under
   `.build/qa-ui-derived-data/Logs/Test/`; this does not replace physical keyboard
   or VoiceOver acceptance.
-- Exploratory Computer Use with disposable Notes and two five-step Records
-  verified the compact task-titled list/detail window, Back restoring selection,
-  and return to the retained step after scrolling. The first reading-position
-  attempt exposed teardown clearing its retained target; ignoring that nil
-  teardown and explicitly revealing the retained step fixed the observed reset.
-  Attachment activation closed Records and returned to the exact originating
-  workspace window. Empty collection, external Record refresh, Escape dismissal,
-  saving a proportional Source font, and successful Settlement were also
-  exercised without accessing a real research vault.
-  Final QA also verified dark Records list/detail presentation and a native
-  Settlement accessibility label containing both its state and next action.
 - Complete logs are retained under `.build/interface-repair-logs/`. Genuine
   VoiceOver, physical Full Keyboard Access, Simplified Chinese IME, enlarged
   text, minimum window size, and the complete Increase Contrast/Reduce Transparency/Reduce Motion
   adaptation matrix remain open.
-
-## Earlier verification snapshots
-
-**Environment:** 2026-09-03 final fixed-index Research Records redesign and
-originating-window attachment-routing snapshot, Xcode 27 beta toolchain
-(`DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer`).
-
-The complete repository gate was rerun after the Design-authoritative Research
-Record redesign and exact originating-window routing fix. It established
-automated evidence for strict portable storage, reference/currentness
-validation, provider-separated Search, the ten-tool MCP surface, bounded Record
-read/write/correction routes, the fixed-index/centered-reading composition,
-single-line horizontal Note attachments, exact source-workspace routing, and
-the retained Agent Change exact-source behavior.
-
-Completed automated checks in this worktree:
-
-- Web editor TypeScript checking and 208 tests in 38 files passed. Reader, editor,
-  mathematics, and Mermaid bundles were rebuilt through the repository
-  toolchain, and bundle reproducibility passed.
-- Swift package tests passed: Core 344 tests in 36 suites, Core performance 3
-  tests in 1 suite, Contracts 65 tests in 12 suites, Application 125 tests in
-  17 suites, and the Application architecture measurement 1 test in 1 suite.
-- The complete App suite passed after final localization cleanup: 548 tests in
-  43 suites. Research Record coverage proves strict JSON round trips, append
-  and correction history, damaged-file isolation, stale Note/Record rejection,
-  restart persistence, independent provider results/generations, all ten MCP
-  schemas and routes, no Agent Change for Record writes, bounded Markdown
-  projection, native Search, semantic collection selection, minimal horizontal
-  attachment controls, fixed originating-workspace route identity, exact
-  attachment routing with no fallback Workspace creation, and a Record surface
-  with no toolbar, content editor, or detached evidence rail. Retained coverage
-  also proved that exact Agent Change evidence
-  survives store reopening, that sequential updates remain independent rather
-  than cumulative, that a body update exposes the removed blank line and
-  inserted text, that direct Undo restores each byte-identical Before source,
-  and that a superseded or undone ending is an Earlier Revision.
-- The public-symbol graph boundary, documentation authority and local-link
-  validator, interface localization validator, bundled-Skill validator,
-  resource and retired-surface residue guards, and `git diff --check` passed.
-- The Release product build passed in 131.40 seconds.
-- Exploratory Computer Use opened the rebuilt isolated QA App with 18 live
-  Notes, 14 Records containing 56 attributed steps and four corrections, plus
-  32 retained Agent Changes. It visually confirmed the compact 980 × 720 window,
-  hidden title-bar plane with no toolbar band, fixed 288-point index, 4-point
-  grid rhythm, selection without a leading stripe, pinned question, and
-  step-local single-line Note buttons with horizontal overflow. Activating an
-  attachment opened the bound current Note, closed Records, and returned to the
-  same exact `scholium-main` window identifier observed before opening Records;
-  no second Workspace window was created. Escape dismissal also passed. This is
-  direct exploratory evidence, not a deterministic XCTest or human acceptance
-  result.
-- The first complete-gate attempt encountered one transient
-  `couldNotExecuteSQL` in the typed generated Search-state corruption recovery
-  test. The exact test then passed alone, and the fresh complete gate passed the
-  same test within all 344 Core tests. No production Search code changed in this
-  work.
-- On 2026-09-03 the two exact-comparison presentation tests and the focused
-  palette snapshot/contrast and semantic-role architecture tests passed.
-  `build-qa-app.sh` syntax validation and `git diff --check` passed. A fresh
-  disposable fixture opened one coherent workspace instead of the former
-  settings-only Bootstrap failure.
-- On 2026-09-03 the locked Web editor toolchain typechecked, passed 211 tests in
-  38 files, and rebuilt the Editor and Reader bundles. Focused WKWebView tests
-  proved both Command-before-pointer and pointer-before-Command Edit previews,
-  a previewable link inside an inactive Callout, visible armed-link feedback,
-  Review/Edit annotation hover, keyboard focus, click retention and Escape,
-  zero-line-height superscript geometry, unchanged document height, and no
-  inline annotation panel. Focused renderer, localization, and presentation-
-  ownership tests also passed. The complete gate attempt passed 347 Core tests,
-  then stopped when the first-five-page Search microbenchmark measured 513.14
-  ms against its 500 ms threshold; the same isolated three-test performance
-  suite passed immediately afterward at 488.99 ms without a Search change.
-  Contracts passed 64 tests, Application passed 127 tests plus its isolated
-  architecture measurement, the public-symbol graph boundary passed, and the
-  Release build passed in 195.61 seconds. The 564-test App run passed the new
-  link and annotation coverage but ended on the existing long bridge matrix's
-  narrow 200% projection timeout; that exact bridge test passed alone. This is
-  not recorded as a clean complete-gate pass.
-- On 2026-09-03 the footnote authoring and presentation slice advanced the
-  editor bridge to version 20. The locked editor toolchain typechecked, passed
-  213 tests in 38 files, and reproduced the Editor, Reader, mathematics, and
-  Mermaid resources. Focused native tests passed for the typed commands,
-  configurable shortcuts, named/inline rendering, presentation ownership, and
-  Review preview/navigation/return. Focused Edit WKWebView journeys proved that
-  named and inline locators preview rendered current-buffer definitions by
-  pointer or focus without line reflow or source mutation, that named locator
-  activation still reaches its exact definition, and that Inline Footnote wraps
-  one selection in one generation with the expected selection and Undo label.
-  The complete gate passed its authority/resource checks, editor tests, RDF-1
-  fixtures, and all 347 nonperformance Core tests, then stopped when the
-  pre-existing Search first-five-pages microbenchmark measured 561.40 ms
-  against its 500 ms threshold. One isolated rerun measured 522.69 ms and also
-  failed; no Search code changed in this slice. The standalone localization
-  validator recognized every new footnote string but still reports seven
-  pre-existing missing Research Record interface entries. This is not a clean
-  complete-gate pass.
-- On 2026-09-03 the focused Edit/Review layout correction retained CodeMirror's
-  exact `break-spaces` behavior while replacing terminal-style arbitrary prose
-  breaks with strict language-aware wrapping. The locked frontend passed all
-  213 tests in 38 files and reproduced its four generated resources; all 102
-  editor and Review WKWebView tests, 23 safe-renderer tests, and 86 frontend-
-  architecture tests passed. The WebKit journeys proved document-start mode
-  changes retain the filename title, inactive ATX markers have zero width while
-  the active line exposes exact source, one inserted space has immediate
-  measured effect, and a generated footnote locator cannot separate from its
-  following punctuation. A follow-up journey proved that transferring focus
-  from each H1–H6 body heading to the filename title hides its retained marker
-  without changing source or dirty state. Documentation authority validation and
-  `git diff --check` passed. Exploratory isolated QA confirmed the visible
-  title, heading alignment, active-source transition, and paired footnote
-  locator/punctuation; this is not human acceptance.
-- On 2026-09-04 the caret-local repeated-space correction started from committed
-  baseline `dc0a25c`. The locked frontend typechecked, passed 213 tests in 38
-  files, and reproduced all four generated resources; all 102 editor WKWebView
-  tests and 86 frontend-architecture tests passed. The focused WebKit journey
-  proved that Edit uses natural start alignment and that adding a second
-  internal prose space retains nonzero authored measure without introducing a
-  visible whitespace marker, moves the neighboring word at the tested soft-wrap
-  boundary, and preserves exact source. Selecting and deleting that extra space
-  restores the word's exact pre-edit coordinates, alignment, and source without
-  residue.
-- On 2026-09-04 the Review-referenced Edit rhythm slice passed 190 focused
-  mode-contract, frontend-architecture, and editor/Review WKWebView tests. The
-  fixed catalog found no must-match local geometry differences; focused journeys
-  preserved heading and quotation prose coordinates while exact active prefixes
-  remained editable outside the measure, and retained one stable line box
-  through blank-line entry, input, deletion, and exit. The locked frontend again
-  typechecked, passed 213 tests, and reproduced all four generated resources.
-  The complete gate passed documentation, resource, RDF-1, Core 347 plus 3
-  performance tests, Contracts 64, and Application 127 plus its architecture
-  measurement, then stopped because the unchanged WebKit localization test
-  expects 100 entries while both current and committed catalogs contain 99.
-  A focused QA mode-switch journey also stopped during fixture preparation
-  because its disposable Triptych lacked `.scholium/identities.json`; it did not
-  reach or judge the interface, and cleanup removed the QA process and bundle.
-- On 2026-09-04 the philosophy-manuscript rhythm correction passed the locked
-  213-test Web editor suite with reproducible generated resources and all 190
-  focused mode-contract, frontend-architecture, and editor/Review WKWebView
-  tests after the final blank-row correction. The fixed catalog reports no
-  must-match difference: semantic block order,
-  local line geometry, wrapping, visible starts, typography, and colors match,
-  while cumulative vertical position is bounded by one prose row per authored
-  blank line. The dedicated transition test measured a stable 29.47-pixel
-  blank row through entry, first input, deletion, and exit and verified that
-  its bottom never crosses the following row's top. All H1–H6 active source
-  markers retain their heading's computed size. The body mix retains 10.86:1
-  Light and 10.09:1 Dark contrast against Paper. The one complete
-  repository-gate attempt passed documentation/resource/RDF checks,
-  Core 347 plus 3 performance tests, Contracts 64, and Application 127 plus its
-  architecture measurement, then stopped in the 574-test App run solely at the
-  pre-existing localization assertion that expects 100 entries from unchanged
-  99-entry English and Simplified Chinese catalogs; no Release build followed.
-  A rebuilt isolated QA App opened the disposable `QA Autosave A` fixture in one
-  workspace window without Bootstrap. This is automated and exploratory
-  evidence; the researcher's visual acceptance remains pending.
-- The affected macOS UI-test journey entered its test method and completed
-  Settlement plus one MCP update. After synthetic Agent Changes activation,
-  XCTest observed a disabled main window but neither rendered nor exposed the
-  attached sheet, so the journey failed before comparison and Undo assertions.
-  Exploratory Computer Use on the same isolated build rendered the red/green
-  unified comparison and exposed change kind, exact line content, blank-line,
-  line-number, and line-ending accessibility semantics. This observation is
-  neither a deterministic UI pass nor human acceptance.
-- On 2026-09-04 the Note-level document-attachment slice passed the locked
-  214-test Web editor suite with reproducible Editor/Reader resources; 41
-  focused protocol, localization, Quick Look, and Editor/Review WebKit tests;
-  the Application source-neutral/stable-identity operation test; and the Core
-  copy, availability, rollback, media-rejection, and symlink-containment tests.
-  Editor projection retained exact source, generation, dirty state, title DOM,
-  caret, and Undo; Review retained its page and scroll. Native Quick Look
-  released its access lease and restored the retained focus target. An isolated
-  nonprivate QA build showed the bounded middle-truncated capsule in Light and
-  Dark appearances and the non-shifting Add control after returning to a
-  retained Note; the title caret remained in place. This is automated and
-  exploratory evidence, not human visual or assistive-technology acceptance.
-  The complete repository gate was run once and reached the App suite, where
-  it exposed stale ownership inventories, a title-less Review parity fixture,
-  and a projection-settling pointer test. Each affected contract now passes
-  its focused test, including the complete Edit/Review presentation matrix;
-  the complete gate was not repeated under the repository's single-run rule.
-- On 2026-09-04 the Sidebar command and activation-cursor slice passed 174
-  focused App tests across Library projection, interface presentation,
-  frontend/window ownership, and native toolbar suites. A newly seeded
-  `Attachments` root remained absent from the Library while an exploratory
-  isolated QA launch showed Search then the nonnumeric Accent-dot Notifications
-  bell at the trailing side of the Scholium wordmark; the toolbar omitted Agent
-  Changes with an empty local change store. The QA process was quit and the
-  generated bundle/fixture state moved to Trash after inspection. The
-  deterministic smoke journey did not enter
-  its test method because XCTest timed out while enabling system automation
-  mode; its result bundle records an initialization failure rather than an App
-  assertion. Documentation authority and `git diff --check` passed. The
-  standalone localization validator still reports the seven pre-existing
-  Research Records entries already named above, so no clean complete-gate claim
-  is made for this slice.
-- On 2026-09-04 the native Liquid Glass button correction passed all 88 focused
-  frontend-architecture tests and all five Workspace-toolbar tests. Three
-  focused XCUITest journeys then passed in 92.400 seconds: Document Mode changed
-  among Edit, Review, and Source while keeping its native item width; Inspector
-  divider resizing plus Sidebar hide/show preserved the Inspector; and
-  Inspector open/close passed in Light and Dark. Visual inspection of four of
-  the seven retained screenshots shows continuous Sidebar, Document, and
-  Inspector colors through the transparent titlebar; standard AppKit toolbar
-  groups retain native edge highlights and shadows; Search and Notifications
-  Glass remains monochrome; and only the explicit nonzero Notifications dot
-  uses Accent. Production code adds no custom toolbar Glass effect, blur,
-  material opacity, or shadow. A separate ownership inventory remains red on
-  the pre-existing `SearchWorkspaceView` count of 22 direct activation controls
-  to 21 pointer mappings; it does not involve these system-generated toolbar
-  items. Documentation authority and `git diff --check` passed. Reduce
-  Transparency, Increase Contrast, VoiceOver, Full Keyboard Access, and human
-  visual acceptance remain unverified.
-- On 2026-09-04 the native Sidebar-material and Library-adaptation cutover
-  passed 25 Library-tree, 88 frontend-architecture, five
-  interface-presentation-ownership, and six localization tests under Xcode
-  27.0 (27A5218g), Swift 6.4, and the macOS 27 SDK. Five focused XCUITest
-  journeys used the isolated `com.scholium.qa` Debug bundle and disposable
-  fixture copies. They verified the Triptych source-list selection and arrow
-  keys; Library outline selection and disclosure; the 300-point native readable
-  minimum; Sidebar hide and restore without window-size or identity loss; and
-  the complete shell in light and dark appearances with and without Inspector.
-  Retained screenshots showed AppKit's Sidebar material over the warm Paper
-  underlay, the compact native Library control group, source-list row sizing,
-  the Finder-style disclosure, type-icon, and aligned title columns, and native
-  selection plus keyboard-focus feedback. One
-  first run of the hide/restore journey exposed a test-fixture omission before
-  the toggle step;
-  the two journeys that require the synthetic Folder now create it in their own
-  isolated copies, and the focused rerun passed. This is automated and
-  exploratory evidence, not human visual acceptance. The QA process, bundle,
-  fixture copies, and isolated home were removed after the journey.
-  Documentation authority and `git diff --check` passed. Increase Contrast,
-  Reduce Transparency, VoiceOver, Full Keyboard Access, and human visual
-  acceptance remain unverified for this slice.
-- Earlier on 2026-09-04 the now-superseded Sidebar input-modality and
-  hierarchy-grid correction passed
-  26 Library-tree tests plus 88 frontend-architecture and five
-  interface-presentation-ownership tests under Xcode 27.0 (27A5218g), Swift
-  6.4, and the macOS 27 SDK. Two focused XCUITest journeys passed in 30.102
-  seconds: pointer selection followed by Left/Right Folder disclosure, and
-  pointer workspace selection followed by Down Arrow navigation. Exploratory
-  Computer Use on the isolated nonprivate QA build showed pointer-created rows
-  retaining AppKit's quiet unemphasized selection, keyboard navigation enabling
-  emphasized selection with system selected-content ink, and the 16pt Library
-  hierarchy step applied through `NSOutlineView`. This remains automated and
-  exploratory evidence, not human visual or Full Keyboard Access acceptance.
-- Later on 2026-09-04 the Sidebar native-focus and identity cutover passed 125
-  focused App tests across Library-tree, frontend-architecture,
-  presentation-ownership, and localization suites. Four focused XCUITest
-  journeys passed across isolated invocations: startup identity, Folder
-  disclosure, Triptych workspace navigation, and the complete Triptych and
-  Library menu journey. The last journey confirmed that Organize and Add remain
-  accessible native menu buttons after replacing the persistent control-group
-  capsule with muted borderless symbols; its Organize menu opened and exposed
-  global Folder disclosure. Exploratory Computer Use on the disposable QA app
-  confirmed the resting Muted Text presentation, shallow circular hover
-  surface, and successful native menu activation. AppKit now owns active and
-  inactive selection without a pointer-versus-keyboard adapter. Documentation
-  authority, localization JSON parsing, and `git diff --check` passed. Increase
-  Contrast, Reduce Transparency, VoiceOver, Full Keyboard Access, and human
-  acceptance remain unverified.
-- Finally on 2026-09-04 the Sidebar brand-header cutover passed 147 focused App
-  tests across Library-tree, frontend-architecture, window-lifecycle,
-  presentation-ownership, and localization suites. Two isolated XCUITest
-  journeys passed in 47.958 seconds. They confirmed that the header presents
-  Scholium followed by Search and Notifications with no persistent Triptych
-  control, while the native File menu still exposes **New Triptych…** and
-  **Open Triptych**. The lifecycle suite covered one Triptych, multiple windows
-  over the same Triptych, multiple distinct Triptychs, close, and
-  assignment-before-registration ordering for the conditional native window
-  subtitle. The retained QA screenshot was inspected against those boundaries.
-  Documentation authority, localization JSON parsing, and `git diff --check`
-  passed.
-  Increase Contrast, Reduce Transparency, VoiceOver, Full Keyboard Access, and
-  human acceptance were not rerun for this final header slice.
-- On 2026-09-05 the Sidebar focus-semantics correction passed 26 Library-tree,
-  88 frontend-architecture, and five interface-presentation-ownership tests
-  under Xcode 27.0 (27A5218g), Swift 6.4, and the macOS 27 SDK. Two isolated
-  XCUITest journeys passed for native Folder disclosure and Triptych/Library
-  selection; after adding retained pointer, keyboard, and Note checkpoints, the
-  final Triptych journey passed in 18.051 seconds. Inspection of its three
-  synthetic QA screenshots confirmed that pointer selection remains quiet for
-  both workspaces and Notes, keyboard Down Arrow alone enables the emphasized
-  workspace row, the duplicate perimeter focus ring is absent, and opening a
-  Note transfers visible focus to its document title. Documentation authority
-  validation and `git diff --check` passed. This is automated and exploratory
-  evidence, not VoiceOver, Full Keyboard Access, or human acceptance.
-
-## Evidence boundary
-
-No clean-account Codex or Claude Code ten-tool smoke, packaged-artifact bridge
-smoke, deterministic Records/Agent Changes UI journey, VoiceOver, Full Keyboard
-Access, Simplified Chinese IME, Finder, notarization, distribution, or human
-acceptance has run for this redesign. Passing local automated and exploratory
-checks does not establish those claims.

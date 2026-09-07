@@ -73,6 +73,7 @@ struct AgentChangesView: View {
     let undo: Undo
 
     @State private var changes: [AgentChange] = []
+    @State private var showsHistory = true
     @State private var selectedIndex: Int?
     @State private var review: AgentChangeReview?
     @State private var isLoading = true
@@ -84,8 +85,8 @@ struct AgentChangesView: View {
 
     var body: some View {
         ExactSourceComparisonSheetLayout(
-            title: "Agent Changes",
-            detail: "Inspect one exact machine-local MCP mutation at a time.",
+            title: "Operation History",
+            detail: "Confirmed Agent changes and their recovery evidence.",
             identifier: "scholium.agentChanges"
         ) {
             Button("Close", action: dismiss.callAsFunction)
@@ -96,7 +97,7 @@ struct AgentChangesView: View {
         } footer: {
             footer
         }
-        .task { await reload(preserving: initialChangeID) }
+        .task { showsHistory = initialChangeID == nil; await reload(preserving: initialChangeID) }
         .confirmationDialog(
             "Undo Agent Change?",
             isPresented: Binding(
@@ -136,6 +137,30 @@ struct AgentChangesView: View {
                 indicator: .symbol("sparkles")
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if showsHistory {
+            List {
+                ForEach(changes.sorted(by: AgentChangePresentation.newestFirst)) { change in
+                    Button {
+                        showsHistory = false
+                        if let index = changes.firstIndex(where: { $0.id == change.id }) { select(index) }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(AgentChangePresentation.displayName(for: change))
+                            HStack {
+                                Text(AgentChangePresentation.operationTitle(for: change.operation))
+                                Text(change.confirmedAt ?? change.createdAt, style: .date)
+                                if change.state == .undone { Text("Undone") }
+                            }
+                            .font(ScholiumTypography.interface(.compact))
+                            .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 4)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .listStyle(.plain)
         } else if isLoadingReview {
             ProgressView("Loading Exact Change…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -153,8 +178,11 @@ struct AgentChangesView: View {
 
     @ViewBuilder
     private var footer: some View {
-        if let selectedIndex, !changes.isEmpty {
+        if !showsHistory, let selectedIndex, !changes.isEmpty {
             HStack(spacing: ScholiumMetrics.ResearchSheet.footerControlSpacing) {
+                Button("History") { showsHistory = true }
+                    .disabled(undoingID != nil)
+
                 Button("Previous") { select(selectedIndex - 1) }
                     .scholiumActivationPointer()
                     .disabled(selectedIndex == 0 || isLoadingReview || undoingID != nil)
@@ -372,7 +400,7 @@ private struct AgentChangeReviewContent: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
                         .padding(ScholiumGrid.Spacing.nestedContentInset)
-                        .background(ScholiumColorRole.documentBackground.color)
+                        .background(ScholiumNativeColorRole.textBackground.color)
                         .clipShape(RoundedRectangle(
                             cornerRadius: ScholiumShape.editorialControlCornerRadius,
                             style: .continuous

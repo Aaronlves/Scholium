@@ -145,11 +145,49 @@ final class AttentionPopoverSession: ObservableObject {
                 $0.value.id == note.vaultID
             })?.key
         }
+        if anchor == .inspector {
+            presentation.filter = AttentionQueueFilter()
+            presentation.notificationFilter = .all
+        }
         presentation.present(
             workspaceSlot: resolvedWorkspaceSlot,
             noteScope: noteScope
         )
         presentedAnchor = anchor.popoverAnchor
+    }
+
+    struct NoteSummary {
+        let message: String
+        let count: Int
+    }
+
+    /// A fresh, unfiltered projection, independent of the popover's last search.
+    func noteSummary(
+        for note: VaultQualifiedNoteID,
+        ledger: AttentionDismissalLedger,
+        locale: Locale = .current
+    ) -> NoteSummary? {
+        let scope = AttentionPresentationState()
+        scope.present(workspaceSlot: nil, noteScope: note)
+        let issues = ledger.visible(scopedItems(for: scope))
+        let settlements = visibleSettlementRequirements(for: scope, locale: locale)
+        let changes = visibleAgentChanges(for: scope, locale: locale)
+        let count = issues.count + settlements.count + changes.count
+        let message: String
+        if let warning = issues.first(where: { $0.severity == .warning }) {
+            message = AttentionIssueCopy.message(for: warning, locale: locale)
+        } else if !settlements.isEmpty {
+            message = ScholiumL10n.string("Current Revision Not Settled", locale: locale)
+        } else if let issue = issues.first {
+            message = AttentionIssueCopy.message(for: issue, locale: locale)
+        } else if let error = agentChangesError ?? catalogError {
+            return NoteSummary(message: error, count: count)
+        } else if !changes.isEmpty {
+            message = ScholiumL10n.string("Note Notifications", locale: locale)
+        } else {
+            return nil
+        }
+        return NoteSummary(message: message, count: count)
     }
 
     func isPresented(from anchor: AttentionPopoverAnchor) -> Bool {

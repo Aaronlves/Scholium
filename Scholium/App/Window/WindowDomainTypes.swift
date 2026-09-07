@@ -159,23 +159,7 @@ struct WindowDocumentRoute: Hashable, Sendable {
     }
 }
 
-/// Typed Scholium Metadata presentation.
-struct MetadataPanelRoute: Hashable, Sendable {
-    let presentationID: UUID
-    let path: String
 
-    var id: String {
-        "metadata:\(presentationID.uuidString.lowercased())"
-    }
-
-    init(
-        presentationID: UUID = UUID(),
-        path: String
-    ) {
-        self.presentationID = presentationID
-        self.path = path
-    }
-}
 
 /// The complete set of cross-feature requests understood by one window.
 /// Commands and application operations remain direct calls; this is not a

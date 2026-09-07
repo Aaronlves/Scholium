@@ -6,10 +6,9 @@
 
 - Run a clean-account artifact smoke with the signed App already running:
   register `scholium mcp serve` independently in Codex and Claude Code, confirm
-  fixed ten-tool discovery, exercise both Search providers, Note/Record reads,
-  links, one create/update/trash sequence, and one Record create/append/correct
-  sequence; verify both Note and Record stale-fingerprint rejection, then
-  inspect Agent Changes, Update Undo, and the read-only Records window.
+  fixed seven-tool discovery, exercise Note Search, read and links, and one
+  create/update/trash sequence; verify stale-fingerprint rejection, then inspect
+  Agent Changes and Update Undo.
 - Verify running-App absence, multiple-open-Triptych selection, reconnect, App
   relaunch, sandbox boundary, and packaged absolute CLI-path behavior on the
   actual release artifacts. These are external-host and packaging claims, not
@@ -20,7 +19,7 @@
 
 ## Human interface and accessibility acceptance
 
-- The approved Source-font controls, compact list-to-detail Records window,
+- The approved Source-font controls,
   Settlement milestone presentation, ordinary Edit body entry, and native-row
   emphasis correction are implemented. Human acceptance remains open; the
   2026-09-05 evidence is recorded in the verification chapter.
@@ -41,24 +40,16 @@
   IME exact-source journey, and one visual-adaptation set at supported window
   sizes.
 - Include Agent Integration command copying, Agent Changes comparison/Undo,
-  Library navigation, Inspector Overview/Outgoing/Incoming projection and
+  Library navigation, Inspector About/Links navigation and
   Document mode transitions,
   system Trash, conflict, and recovery where they exercise distinct human
   failure modes.
-- Add a human Records-window journey covering All/Notes/Records Search,
-  list-to-detail navigation, horizontal overflow and hover
-  for step-local Note attachments, exact originating-window attachment routing
-  and dismissal, external Agent refresh without focus movement, keyboard
-  traversal, enlarged text, narrow layout, and Simplified Chinese presentation.
 - Retain the current distinction between deterministic build/test evidence and
   human acceptance. Automated accessibility structure checks do not constitute
   VoiceOver, keyboard, IME, or visual acceptance.
 
 ## Remaining product work
 
-- Research Record deletion, merge/split, and write suspension plus Handoff are
-  future §22 work. Deleted legacy implementations do not supply any of those
-  contracts or acceptance evidence.
 - Continue performance, File Provider/sync, Finder restoration, and Zotero
   system-integration acceptance where the current specification requires
   artifact or environment evidence.

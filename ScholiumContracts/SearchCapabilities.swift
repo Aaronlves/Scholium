@@ -70,9 +70,6 @@ public struct SearchCapabilities: Codable, Hashable, Sendable {
     ) -> [SearchFieldCapability] {
         guard let capability = capability(for: provider),
               capability.scopes.contains(scope) else { return [] }
-        if provider == .record {
-            return capability.fields
-        }
         guard scope == .thisNote else { return capability.fields }
         return capability.fields.filter {
             $0.name == "kind" || SearchLexicalField(rawValue: $0.name) != nil
@@ -90,15 +87,6 @@ public struct SearchCapabilities: Codable, Hashable, Sendable {
                     #"title:"reflective equilibrium" autonomy"#,
                     #"property:language="Greek""#,
                     #"from-note:"Groundwork" duty"#,
-                ]
-            ),
-            SearchProviderCapability(
-                provider: .record,
-                fields: recordFields,
-                scopes: SearchPresentationScope.visibleModes,
-                examples: [
-                    #"question:"normative authority""#,
-                    #"step:objection"#,
                 ]
             ),
         ]
@@ -161,22 +149,4 @@ public struct SearchCapabilities: Codable, Hashable, Sendable {
         ),
     ]
 
-    private static let recordFields: [SearchFieldCapability] = [
-        SearchFieldCapability(
-            name: "kind",
-            valueKind: .canonical,
-            allowedValues: SearchProvider.allCases.map(\.rawValue),
-            allowsPhrase: false,
-            allowsPrefix: false,
-            allowsExclusion: false
-        ),
-    ] + RecordSearchField.allCases.map {
-        SearchFieldCapability(
-            name: $0.rawValue,
-            valueKind: .lexical,
-            allowsPhrase: true,
-            allowsPrefix: true,
-            allowsExclusion: true
-        )
-    }
 }

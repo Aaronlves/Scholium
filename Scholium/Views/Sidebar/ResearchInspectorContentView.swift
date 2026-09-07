@@ -58,9 +58,8 @@ struct ResearchProjectionFreshnessView: View {
                 ) {
                     if freshness.permitsRetry {
                         Button("Retry", action: retry)
-                            .scholiumActivationPointer()
                             .controlSize(.small)
-                            .scholiumButtonStyle(.borderless)
+                            .buttonStyle(.borderless)
                     }
                 }
                 .accessibilityIdentifier("scholium.researchProjectionFreshness")
@@ -80,7 +79,7 @@ struct ResearchProjectionFreshnessView: View {
 }
 
 struct ResearchOverviewPresentation {
-    let visibleAttentionItems: [AttentionQueueItem]
+    let notificationScope: VaultQualifiedNoteID?
     let freshness: ResearchProjectionFreshness
     let aboutConfiguration: VaultAboutConfiguration?
     let metadataCatalog: NoteMetadataCatalog
@@ -148,13 +147,13 @@ enum AboutFactPresentation {
         [
             ScholiumApparatusFact(
                 id: "file-created",
-                label: String(localized: "File Created"),
+                label: String(localized: "Created"),
                 value: formatDate(metadata?.creationDate),
                 monospacedDigits: true
             ),
             ScholiumApparatusFact(
                 id: "source-modified",
-                label: String(localized: "Source Modified"),
+                label: String(localized: "Modified"),
                 value: formatDate(metadata?.modificationDate),
                 monospacedDigits: true
             ),
@@ -168,7 +167,7 @@ enum AboutFactPresentation {
         var facts = [
             ScholiumApparatusFact(
                 id: "settlement-status",
-                label: String(localized: "Status"),
+                label: String(localized: "Settlement"),
                 value: settlementStatus(settlement.state)
             ),
         ]
@@ -207,20 +206,17 @@ enum AboutFactPresentation {
 struct ResearchInspectorContentContext {
     let presentation: ResearchOverviewPresentation
     let attentionPopoverSession: AttentionPopoverSession?
-    let openProperties: () -> Void
     let openAttention: () -> Void
     let retryRefresh: () -> Void
-    let saveManagedAboutField: @MainActor (
-        WindowDocumentLocation,
-        String,
-        YAMLValue?
-    ) async throws -> Void
+    let saveMetadata: @MainActor (WindowDocumentLocation, [String: YAMLValue], DocumentFingerprint?) async throws -> DocumentFingerprint?
+    let registerMetadataFlush: (UUID, @escaping @MainActor () async throws -> Void) -> Void
+    let unregisterMetadataFlush: (UUID) -> Void
+    let reloadMetadata: @MainActor (WindowDocumentLocation) async throws -> (fields: [String: YAMLValue], revision: DocumentFingerprint?)
     let openZoteroItem: (AnalysisZoteroBinding) async -> Void
     let refreshZoteroMetadata: (UUID, AnalysisZoteroBinding) -> Void
     let manageZoteroBinding: (UUID, AnalysisZoteroBinding?) -> Void
+    var attachments: ResearchAttachmentContext? = nil
 
-    var visibleAttentionItems: [AttentionQueueItem] { presentation.visibleAttentionItems }
-    var attentionCount: Int { presentation.visibleAttentionItems.count }
     var freshness: ResearchProjectionFreshness { presentation.freshness }
     var aboutConfiguration: VaultAboutConfiguration? {
         presentation.aboutConfiguration
@@ -237,16 +233,18 @@ struct ResearchInspectorContentContext {
 struct ResearchOverviewView: View {
     let note: WindowDocumentLocation
     let context: ResearchInspectorContentContext
-    @State private var activeAboutEditorKey: String?
+    @State private var metadataHeight: CGFloat = 140
+    @State private var fileInformationExpanded = false
 
     var body: some View {
         ScrollView(.vertical) {
-            LazyVStack(
+            VStack(
                 alignment: .leading,
                 spacing: ScholiumMetrics.Apparatus.sectionSpacing
             ) {
-                if !context.visibleAttentionItems.isEmpty {
-                    attentionSection
+                if let session = context.attentionPopoverSession,
+                   let scope = context.presentation.notificationScope {
+                    OverviewNotificationsView(session: session, scope: scope, open: context.openAttention)
                 }
                 aboutSection
                 ResearchProjectionFreshnessView(
@@ -263,238 +261,72 @@ struct ResearchOverviewView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
-    private var attentionSection: some View {
-        Button(action: context.openAttention) {
-            VStack(
-                alignment: .leading,
-                spacing: ScholiumMetrics.Apparatus.sectionContentSpacing
-            ) {
-                HStack(spacing: ScholiumMetrics.Apparatus.iconToTextSpacing) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(ScholiumTypography.interface(.small, emphasis: .medium))
-                        .scholiumForeground(.attention)
-                        .accessibilityHidden(true)
-                    Text("NEEDS ATTENTION")
-                        .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                        .tracking(0.7)
-                        .scholiumForeground(.attention)
-                    Spacer(minLength: ScholiumMetrics.Apparatus.iconToTextSpacing)
-                    Text(context.attentionCount.formatted())
-                        .font(
-                            ScholiumTypography.interface(.small, emphasis: .strong, tabularDigits: true)
-                        )
-                        .scholiumForeground(.attention)
-                    Image(systemName: "chevron.forward")
-                        .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                        .scholiumForeground(.mutedText)
-                        .accessibilityHidden(true)
-                }
-
-                if !visibleAttentionKinds.isEmpty {
-                    VStack(
-                        alignment: .leading,
-                        spacing: ScholiumMetrics.Apparatus.readingBlockSpacing
-                    ) {
-                        ForEach(
-                            Array(visibleAttentionKinds.prefix(3)),
-                            id: \.rawValue
-                        ) { kind in
-                            Text(attentionTitle(for: kind))
-                                .font(ScholiumTypography.scholarly(.emphasis))
-                                .scholiumForeground(.primaryText)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                }
-            }
-        }
-        .scholiumActivationPointer()
-        .scholiumAttentionPopover(
-            anchor: .inspector,
-            session: context.attentionPopoverSession
-        )
-        .buttonStyle(ScholiumQuietRowButtonStyle(
-            minimumHeight: ScholiumMetrics.Apparatus.actionRowMinimumHeight,
-            verticalInset: ScholiumMetrics.Apparatus.actionRowVerticalInset
-        ))
-        .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
-        .accessibilityLabel("Needs Attention")
-        .accessibilityValue("\(context.attentionCount) items")
-        .accessibilityIdentifier("scholium.researchOverview.notifications")
-    }
-
     private var aboutSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ScholiumApparatusSectionHeaderButton(
-                aboutTitle,
-                actionLabel: "Add Field",
-                systemImage: "plus",
-                accessibilityIdentifier: "scholium.about.edit",
-                action: context.openProperties
+            OverviewMetadataFields(
+                note: note, catalog: context.metadataCatalog,
+                visibleKeys: visibleMetadataKeys, context: context,
+                measuredHeight: $metadataHeight
             )
-            .padding(.bottom, ScholiumMetrics.Apparatus.sectionContentSpacing)
+            .frame(height: metadataHeight)
+            .accessibilityLabel("About Fields")
 
-            VStack(
-                alignment: .leading,
-                spacing: 0
-            ) {
-                ForEach(Array(aboutGroups.enumerated()), id: \.element.group) { index, group in
-                    ScholiumPropertyGroup(
-                        label: group.group.label,
-                        separatesFromPrevious: index > 0
-                    ) {
-                        VStack(
-                            alignment: .leading,
-                            spacing: ScholiumMetrics.Properties.fieldBlockSeparation
-                        ) {
-                            ForEach(group.fields) { field in
-                                AboutEditablePropertyRow(
-                                    descriptor: field,
-                                    activeEditorKey: $activeAboutEditorKey,
-                                    save: { value in
-                                        try await context.saveManagedAboutField(note, field.key, value)
-                                    }
-                                )
+            if context.zoteroBinding != nil || context.stableNoteID != nil {
+                Divider().padding(.vertical, 14)
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text("Zotero").font(ScholiumTypography.interface(.control))
+                    Spacer(minLength: 8)
+                    Menu {
+                        if let binding = context.zoteroBinding {
+                            Button("Open in Zotero") { Task { await context.openZoteroItem(binding) } }
+                            if let noteID = context.stableNoteID {
+                                Button("Refresh Zotero Metadata…") { context.refreshZoteroMetadata(noteID, binding) }
                             }
                         }
-                    }
-                }
-
-                ScholiumPropertyGroup(
-                    label: String(localized: "File History"),
-                    separatesFromPrevious: !aboutGroups.isEmpty
-                ) {
-                    ScholiumApparatusFactList(facts: fileHistoryFacts)
-                }
-
-                ScholiumPropertyGroup(
-                    label: String(localized: "Settlement"),
-                    separatesFromPrevious: true
-                ) {
-                    VStack(
-                        alignment: .leading,
-                        spacing: ScholiumMetrics.Properties.fieldBlockSeparation
-                    ) {
-                        ScholiumApparatusFactList(facts: settlementFacts)
-                        if let rationale = context.settlement.rationale {
-                            ScholiumApparatusReadingBlock(
-                                label: String(localized: "Rationale"),
-                                text: rationale
-                            )
+                        if let noteID = context.stableNoteID {
+                            Button(context.zoteroBinding == nil ? "Link Zotero Item…" : "Manage Zotero Link…") {
+                                context.manageZoteroBinding(noteID, context.zoteroBinding)
+                            }
                         }
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .lineSpacing(ScholiumMetrics.Apparatus.bodyLineSpacing)
-            .accessibilityIdentifier("scholium.about")
-
-            if let binding = context.zoteroBinding {
-                Button {
-                    Task { await context.openZoteroItem(binding) }
-                } label: {
-                    ScholiumApparatusActionRowContent(
-                        title: Text("Open in Zotero"),
-                        systemImage: "arrow.up.forward.app",
-                        showsChevron: false
-                    )
-                }
-                .scholiumActivationPointer()
-                .buttonStyle(ScholiumQuietRowButtonStyle(
-                    minimumHeight: ScholiumMetrics.Accessibility.preferredCustomTarget,
-                    verticalInset: 0
-                ))
-                .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
-                .padding(.top, ScholiumMetrics.Apparatus.sectionContentSpacing)
-                .accessibilityIdentifier("scholium.researchOverview.openInZotero")
-
-                if let noteID = context.stableNoteID {
-                    Button {
-                        context.refreshZoteroMetadata(noteID, binding)
                     } label: {
-                        ScholiumApparatusActionRowContent(
-                            title: Text("Refresh Zotero Metadata…"),
-                            systemImage: "arrow.clockwise",
-                            showsChevron: false
-                        )
+                        Text(context.zoteroBinding == nil ? "Link Item…" : "Linked")
                     }
-                    .scholiumActivationPointer()
-                    .buttonStyle(ScholiumQuietRowButtonStyle(
-                        minimumHeight: ScholiumMetrics.Accessibility.preferredCustomTarget,
-                        verticalInset: 0
-                    ))
-                    .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
-                    .padding(.top, ScholiumGrid.Spacing.inlineControlGap)
-                    .accessibilityIdentifier(
-                        "scholium.researchOverview.refreshZoteroMetadata"
-                    )
-                }
+                    .font(ScholiumTypography.interface(.control)).menuStyle(.button).buttonStyle(.accessoryBar).controlSize(.small)
+                    .accessibilityLabel("Zotero Link")
+                    .accessibilityIdentifier("scholium.researchOverview.manageZoteroBinding")
+                }.frame(minHeight: 28)
             }
-
-            if let noteID = context.stableNoteID {
-                Button {
-                    context.manageZoteroBinding(noteID, context.zoteroBinding)
-                } label: {
-                    ScholiumApparatusActionRowContent(
-                        title: Text(
-                            context.zoteroBinding == nil
-                                ? "Link Zotero Item…"
-                                : "Manage Zotero Link…"
-                        ),
-                        systemImage: "link",
-                        showsChevron: false
-                    )
-                }
-                .scholiumActivationPointer()
-                .buttonStyle(ScholiumQuietRowButtonStyle(
-                    minimumHeight: ScholiumMetrics.Accessibility.preferredCustomTarget,
-                    verticalInset: 0
-                ))
-                .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
-                .padding(.top, ScholiumMetrics.Apparatus.sectionContentSpacing)
-                .accessibilityIdentifier("scholium.researchOverview.manageZoteroBinding")
+            if let attachments = context.attachments { OverviewAttachmentsView(context: attachments) }
+            DisclosureGroup("File Information", isExpanded: $fileInformationExpanded) {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(fileHistoryFacts + settlementFacts) { fact in
+                        HStack(alignment: .firstTextBaseline, spacing: OverviewFieldLayout.columnSpacing) {
+                            Text(fact.label).foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
+                                .frame(width: OverviewFieldLayout.labelWidth, alignment: .trailing)
+                            Text(fact.value).foregroundStyle(ScholiumNativeColorRole.label.color).textSelection(.enabled)
+                                .padding(.leading, 6)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }.frame(minHeight: OverviewFieldLayout.rowHeight)
+                    }
+                    if let rationale = context.settlement.rationale {
+                        Text(rationale).textSelection(.enabled).padding(.top, 6)
+                    }
+                }.padding(.top, 6)
             }
+            .font(ScholiumTypography.interface(.control))
+            .padding(.top, 20)
+            .accessibilityIdentifier("scholium.overview.fileInformation")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onChange(of: note.workspaceSnapshot?.stableIdentity.resolvedID) { _, _ in
-            activeAboutEditorKey = nil
-        }
     }
 
-    private struct AboutGroupContent: Identifiable {
-        var id: PropertyPresentationGroup { group }
-        let group: PropertyPresentationGroup
-        let fields: [AboutPropertyDescriptor]
-    }
-
-    private var aboutGroups: [AboutGroupContent] {
+    private var visibleMetadataKeys: [String] {
         AboutProfileCatalog.groupedEntries(
             for: note.schemaProfile,
             visibleFields: context.aboutConfiguration?.visibleFields,
             presentManagedFields: Set(note.managedMetadataFields.keys),
             catalog: context.metadataCatalog
-        ).compactMap { configured in
-            let fields = configured.keys.compactMap(propertyDescriptor(for:))
-            guard !fields.isEmpty else { return nil }
-            return AboutGroupContent(
-                group: configured.group,
-                fields: fields
-            )
-        }
-    }
-
-    private func propertyDescriptor(for key: String) -> AboutPropertyDescriptor? {
-        guard let presentation = PropertyPresentationCatalog.presentation(
-            for: key,
-            in: note.schemaProfile,
-            catalog: context.metadataCatalog
-        ) else { return nil }
-        guard let contract = context.metadataCatalog.contract(for: key, profile: note.schemaProfile) else { return nil }
-        return AboutPropertyDescriptor(
-            presentation: presentation,
-            contract: contract,
-            value: note.managedMetadataValue(named: key)
-        )
+        ).flatMap(\.keys)
     }
 
     private var fileHistoryFacts: [ScholiumApparatusFact] {
@@ -516,31 +348,7 @@ struct ResearchOverviewView: View {
         return date.formatted(date: .abbreviated, time: .shortened)
     }
 
-    private func attentionTitle(for kind: AttentionQueueKind) -> LocalizedStringResource {
-        switch kind {
-        case .possibleOrphan: "Possible Orphan"
-        case .malformedMetadata: "Malformed Metadata"
-        case .brokenConnection: "Broken Connection"
-        case .ambiguousConnection: "Ambiguous Connection"
-        case .unresolvedIdentity: "Unresolved Identity"
-        }
-    }
 
-    private var visibleAttentionKinds: [AttentionQueueKind] {
-        var seen = Set<String>()
-        return context.visibleAttentionItems.compactMap { item in
-            seen.insert(item.kind.rawValue).inserted ? item.kind : nil
-        }
-    }
-
-    private var aboutTitle: LocalizedStringResource {
-        switch note.profile {
-        case .paperAnalysis: "ABOUT THIS ANALYSIS"
-        case .topicKnowledge: "ABOUT THIS TOPIC"
-        case .draftProject: "ABOUT THIS WORK"
-        case .generic: "ABOUT THIS NOTE"
-        }
-    }
 }
 
 #Preview {
@@ -552,7 +360,7 @@ struct ResearchOverviewView: View {
         ),
         context: ResearchInspectorContentContext(
             presentation: ResearchOverviewPresentation(
-                visibleAttentionItems: [],
+                notificationScope: nil,
                 freshness: .unavailable("No workspace is open."),
                 aboutConfiguration: nil,
                 metadataCatalog: .builtIn,
@@ -561,10 +369,12 @@ struct ResearchOverviewView: View {
                 stableNoteID: nil
             ),
             attentionPopoverSession: nil,
-            openProperties: {},
             openAttention: {},
             retryRefresh: {},
-            saveManagedAboutField: { _, _, _ in },
+            saveMetadata: { _, _, _ in nil },
+            registerMetadataFlush: { _, _ in },
+            unregisterMetadataFlush: { _ in },
+            reloadMetadata: { _ in ([:], nil) },
             openZoteroItem: { _ in },
             refreshZoteroMetadata: { _, _ in },
             manageZoteroBinding: { _, _ in }

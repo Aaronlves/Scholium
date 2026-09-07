@@ -283,6 +283,11 @@ extension SidebarOutlineSourceList {
                     self.lastRevealGeneration = nil
                     return
                 }
+                if request.relativePath == self.configuration.selectedDocumentPath {
+                    self.isSynchronizingSelection = true
+                    outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+                    self.isSynchronizingSelection = false
+                }
                 switch request.alignment {
                 case .nearest:
                     outlineView.scrollRowToVisible(row)

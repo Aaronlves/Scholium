@@ -201,11 +201,11 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         hasher.combine(derivedProjectionState)
     }
 
-    /// Immediate window projection after one proven portable metadata commit.
+    /// Immediate window projection after a checked portable Metadata read or commit.
     /// Source bytes remain unchanged; workspace-wide Search and catalog state
     /// catch up in the owning refresh generation.
     public func applyingCommittedMetadata(
-        _ metadata: NoteMetadataSnapshot
+        _ metadata: NoteMetadataSnapshot?
     ) -> WorkspaceNoteSnapshot {
         WorkspaceNoteSnapshot(
             id: id,

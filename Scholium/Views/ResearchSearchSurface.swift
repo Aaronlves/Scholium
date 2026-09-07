@@ -5,7 +5,6 @@ import SwiftUI
 /// This host refreshes completion and saved-query projections in either window.
 struct ResearchSearchSurface<Library: View>: View {
     let presentation: SearchPresentation
-    let openRecord: (UUID, UUID?) -> Void
     let revealDocument: () -> Void
     let library: Library
     @ObservedObject private var searchController: WindowSearchController
@@ -15,11 +14,10 @@ struct ResearchSearchSurface<Library: View>: View {
 
     init(controller: DiscoveryController, searchController: WindowSearchController,
          shellState: WindowShellState, workspaceProjectionController: WindowWorkspaceProjectionController,
-         presentation: SearchPresentation, openRecord: @escaping (UUID, UUID?) -> Void,
+         presentation: SearchPresentation,
          revealDocument: @escaping () -> Void,
          @ViewBuilder library: () -> Library) {
         self.presentation = presentation
-        self.openRecord = openRecord
         self.revealDocument = revealDocument
         self.library = library()
         _searchController = ObservedObject(wrappedValue: searchController)
@@ -48,7 +46,6 @@ struct ResearchSearchSurface<Library: View>: View {
             rename: { searchController.rename($0, to: $1) },
             move: { searchController.move($0, by: $1) },
             delete: { searchController.delete($0) },
-            openRecord: openRecord,
             openNote: { result in
                 Task {
                     if await searchController.open(result, disposition: .replaceCurrent),

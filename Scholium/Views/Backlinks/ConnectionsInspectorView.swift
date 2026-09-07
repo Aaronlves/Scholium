@@ -1,7 +1,27 @@
 import ScholiumContracts
 import SwiftUI
 
-private struct InspectorLinkItem: Identifiable {
+/// Window-local navigation context; it never owns graph or source data.
+@MainActor
+final class LinksInspectorSession: ObservableObject {
+    struct Location {
+        var query = ""
+        var scrollID: String?
+        var collapsedGroups: Set<String> = []
+    }
+    @Published var direction: ConnectionDirection = .incoming
+    @Published private var locations: [String: Location] = [:]
+
+    func location(for key: String) -> Location { locations[key] ?? Location() }
+    func update(_ key: String, _ change: (inout Location) -> Void) {
+        var location = location(for: key)
+        change(&location)
+        locations[key] = location
+    }
+    func reset() { locations = [:]; direction = .incoming }
+}
+
+struct InspectorLinkItem: Identifiable {
     let edge: LinkGraphEdge
     let peer: WorkspaceCatalogNote?
     let source: WorkspaceCatalogNote?
@@ -35,9 +55,10 @@ struct ConnectionsInspectorContext {
     let freshness: ResearchProjectionFreshness
     let retryRefresh: () -> Void
     let openReference: (VaultNoteReference, Int?) -> Void
+    let editSource: (VaultNoteReference, Int) -> Void
 }
 
-enum ConnectionDirection: String, CaseIterable, Identifiable {
+enum ConnectionDirection: String, CaseIterable, Identifiable, Sendable {
     case incoming
     case outgoing
 
@@ -58,7 +79,7 @@ enum ConnectionDirection: String, CaseIterable, Identifiable {
     }
 }
 
-private struct ConnectionsProjection {
+struct ConnectionsProjection {
     let items: [InspectorLinkItem]
 
     static func make(
@@ -105,184 +126,213 @@ private struct ConnectionsProjection {
     }
 }
 
+struct InspectorLinkGroup: Identifiable {
+    let id: String
+    let title: String
+    let items: [InspectorLinkItem]
+
+    static func make(_ items: [InspectorLinkItem]) -> [Self] {
+        var groups: [Self] = []
+        for item in items {
+            let peer = item.peer?.reference
+            let key = peer.map { "\($0.vaultID):\($0.relativePath)" }
+                ?? "unresolved:" + item.edge.occurrence.target
+            if let index = groups.firstIndex(where: { $0.id == key }) {
+                let previous = groups[index]
+                groups[index] = Self(id: key, title: previous.title, items: previous.items + [item])
+            } else {
+                groups.append(Self(id: key, title: item.displayTitle, items: [item]))
+            }
+        }
+        return groups
+    }
+}
+
 struct ConnectionsInspectorView: View {
     let context: ConnectionsInspectorContext
-    let direction: ConnectionDirection
+    @ObservedObject var session: LinksInspectorSession
 
-    private var projection: ConnectionsProjection {
-        ConnectionsProjection.make(
-            graph: context.graph,
-            catalog: context.catalog,
-            current: context.current,
-            direction: direction
-        )
+    private var direction: ConnectionDirection { session.direction }
+    private var locationKey: String {
+        "\(context.current?.vaultID.uuidString ?? ""):\(context.current?.relativePath ?? ""):\(direction.rawValue)"
+    }
+    private var query: Binding<String> {
+        Binding(get: { session.location(for: locationKey).query },
+                set: { value in session.update(locationKey) { $0.query = value } })
+    }
+    private var groups: [InspectorLinkGroup] {
+        let term = query.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let items = ConnectionsProjection.make(graph: context.graph, catalog: context.catalog,
+            current: context.current, direction: direction).items.filter { item in
+                term.isEmpty || [item.displayTitle, item.edge.occurrence.localContext,
+                    item.edge.occurrence.annotation?.text ?? ""].contains { $0.localizedStandardContains(term) }
+            }
+        return InspectorLinkGroup.make(items)
     }
 
     var body: some View {
-        ScrollView(.vertical) {
-            LazyVStack(
-                alignment: .leading,
-                spacing: ScholiumMetrics.Apparatus.sectionSpacing
-            ) {
-                if context.freshness.isActionable {
-                    ResearchProjectionFreshnessView(
-                        freshness: context.freshness,
-                        retry: context.retryRefresh
-                    )
-                }
-
-                if projection.items.isEmpty {
-                    ScholiumApparatusStateView(
-                        direction.emptyAnnouncement,
-                        systemImage: "link"
-                    )
-                    .accessibilityIdentifier("scholium.connections.empty")
-                } else {
-                    LazyVStack(
-                        alignment: .leading,
-                        spacing: ScholiumMetrics.Apparatus.connectionOccurrenceSpacing
-                    ) {
-                        ForEach(projection.items) { item in
-                            LinkOccurrenceRow(
-                                item: item,
-                                openReference: context.openReference
+        VStack(spacing: 10) {
+            InspectorLinkDirectionControl(direction: $session.direction)
+            ContextSearchField(text: query, prompt: "Find in Links", identifier: "scholium.links.search")
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 18) {
+                        ResearchProjectionFreshnessView(freshness: context.freshness, retry: context.retryRefresh)
+                        if groups.isEmpty {
+                            ScholiumApparatusStateView(query.wrappedValue.isEmpty ? direction.emptyAnnouncement : "No Results", systemImage: "link")
+                                .accessibilityIdentifier("scholium.connections.empty")
+                        }
+                        ForEach(groups) { group in
+                            let expanded = Binding(
+                                get: { !session.location(for: locationKey).collapsedGroups.contains(group.id) },
+                                set: { expanded in session.update(locationKey) {
+                                    if expanded { $0.collapsedGroups.remove(group.id) }
+                                    else { $0.collapsedGroups.insert(group.id) }
+                                } }
                             )
+                            DisclosureGroup(isExpanded: expanded) {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    ForEach(group.items) { item in
+                                        LinkOccurrenceRow(
+                                            item: item,
+                                            activate: {
+                                                guard let source = item.source else { return }
+                                                context.openReference(source.reference, item.edge.occurrence.linkSpan.start.line)
+                                            },
+                                            openReference: context.openReference, editSource: context.editSource
+                                        )
+                                    }
+                                }.padding(.top, 8)
+                            } label: {
+                                Button { expanded.wrappedValue.toggle() } label: {
+                                    HStack(alignment: .firstTextBaseline) {
+                                        Text(group.title).font(ScholiumTypography.interface(.control, emphasis: .medium))
+                                            .fixedSize(horizontal: false, vertical: true)
+                                            .multilineTextAlignment(.leading)
+                                        Spacer(minLength: 4)
+                                        Text(group.items.count.formatted()).font(ScholiumTypography.interface(.body)).foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
+                                    }
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.borderless)
+                                .foregroundStyle(ScholiumNativeColorRole.label.color)
+                                .accessibilityValue(expanded.wrappedValue ? Text("Expanded") : Text("Collapsed"))
+                            }
+                            .contextMenu {
+                                if let peer = group.items.first?.peer {
+                                    Button("Open Linked Note") { context.openReference(peer.reference, nil) }
+                                }
+                            }
+                            .accessibilityElement(children: .contain)
+                            .accessibilityLabel(Text("Passages in \(group.title)"))
+                            .accessibilityIdentifier("scholium.links.group." + group.id)
+                            .id(group.id)
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.bottom, 20)
+                    .scrollTargetLayout()
                 }
+                .scrollPosition(id: Binding(
+                    get: { session.location(for: locationKey).scrollID },
+                    set: { value in if let value { session.update(locationKey) { $0.scrollID = value } } }
+                ))
+                .onChange(of: locationKey, initial: true) { _, key in
+                    if let id = session.location(for: key).scrollID { proxy.scrollTo(id, anchor: .top) }
+                    else if let id = groups.first?.id { proxy.scrollTo(id, anchor: .top) }
+                }
+                .accessibilityLabel(Text(verbatim: ScholiumL10n.dynamicString(direction.title)))
             }
-            .padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)
-            .padding(.top, ScholiumMetrics.Apparatus.firstSectionSpacing)
-            .padding(.bottom, ScholiumMetrics.Apparatus.bottomInset)
-            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
-        }
-        .scrollContentBackground(.hidden)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .accessibilityLabel(Text(verbatim: direction.title))
+        }.padding(.horizontal, 16).padding(.top, 14)
     }
 }
 
 private struct LinkOccurrenceRow: View {
     let item: InspectorLinkItem
+    let activate: () -> Void
     let openReference: (VaultNoteReference, Int?) -> Void
-
-    @FocusState private var isFocused: Bool
+    let editSource: (VaultNoteReference, Int) -> Void
 
     var body: some View {
-        Group {
-            if let peer = item.peer {
-                Button {
-                    openReference(peer.reference, peerLine)
-                } label: {
-                    label
-                }
-                .scholiumActivationPointer()
-                .buttonStyle(ScholiumQuietRowButtonStyle(
-                    isFocused: isFocused,
-                    minimumHeight: ScholiumMetrics.Apparatus.connectionOccurrenceMinimumHeight,
-                    verticalInset: ScholiumMetrics.Apparatus.connectionOccurrenceVerticalInset
-                ))
-                .scholiumActivationFocus($isFocused)
-                .contextMenu {
-                    if item.edge.occurrence.annotation != nil {
-                        Button(sourceActionTitle, action: openSource)
-                        .scholiumActivationPointer()
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .top, spacing: 4) {
+                Button(action: activate) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(contextText).font(ScholiumTypography.interface(.control)).foregroundStyle(ScholiumNativeColorRole.label.color)
+                            .lineLimit(nil)
+                            .fixedSize(horizontal: false, vertical: true).multilineTextAlignment(.leading)
+                        Text("Line \(item.edge.occurrence.linkSpan.start.line)")
+                            .font(ScholiumTypography.interface(.compact)).foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(accessibilityLabel)
-                .accessibilityHint(accessibilityHint)
-                .accessibilityAddTraits(.isButton)
-                .accessibilityAction(named: Text(sourceActionTitle), openSource)
-            } else {
-                label
-                    .padding(.vertical, ScholiumMetrics.Apparatus.connectionOccurrenceVerticalInset)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(accessibilityLabel)
-                    .accessibilityHint(accessibilityHint)
-            }
-        }
-    }
-
-    private var label: some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
-            HStack(alignment: .firstTextBaseline, spacing: ScholiumGrid.Spacing.inlineControlGap) {
-                Text(item.displayTitle)
-                    .font(ScholiumTypography.interface(.body))
-                    .scholiumContentControlInk()
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: ScholiumGrid.Spacing.inlineControlGap)
-                if item.edge.occurrence.annotation != nil {
-                    Image(systemName: "text.bubble")
-                        .symbolRenderingMode(.monochrome)
-                        .scholiumForeground(.secondaryText)
-                        .accessibilityHidden(true)
+                .fixedSize(horizontal: false, vertical: true)
+                .buttonStyle(.accessoryBar)
+                .tint(ScholiumNativeColorRole.secondaryLabel.color)
+                .disabled(item.source == nil)
+                .help("Show this passage")
+                .accessibilityIdentifier("scholium.links.occurrence." + item.id)
+                if item.edge.occurrence.annotation != nil || (item.direction == .outgoing && item.edge.occurrence.fragment != nil && item.edge.destination?.span != nil) {
+                    options
                 }
             }
             if let annotation = item.edge.occurrence.annotation {
-                Text(annotation.text)
-                    .font(ScholiumTypography.interface(.compact))
-                    .scholiumForeground(.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if !item.edge.occurrence.localContext.isEmpty {
-                Text(item.edge.occurrence.localContext)
-                    .font(ScholiumTypography.exact(.small))
-                    .scholiumForeground(.mutedText)
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(annotation.text).font(ScholiumTypography.interface(.body)).foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
+                    .textSelection(.enabled)
+                    .accessibilityLabel(Text("Link Annotation: \(annotation.text)"))
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var peerLine: Int? {
-        item.direction == .incoming ? item.edge.occurrence.linkSpan.start.line : nil
-    }
-
-    private var sourceActionTitle: String {
-        ScholiumL10n.dynamicString(
-            item.direction == .incoming ? "Edit at Source" : "Edit Link Annotation"
-        )
-    }
-
-    private var accessibilityLabel: String {
-        let sourceContext = item.edge.occurrence.localContext.isEmpty
-            ? ""
-            : " " + ScholiumL10n.string(
-                "Context: \(item.edge.occurrence.localContext)"
-            )
-        if let annotation = item.edge.occurrence.annotation {
-            return switch item.direction {
-            case .incoming:
-                ScholiumL10n.string(
-                    "Incoming link from \(item.displayTitle). Link annotation: \(annotation.text)"
-                ) + sourceContext
-            case .outgoing:
-                ScholiumL10n.string(
-                    "Outgoing link to \(item.displayTitle). Link annotation: \(annotation.text)"
-                ) + sourceContext
+    private var options: some View {
+        Menu {
+            if item.direction == .outgoing, item.edge.occurrence.fragment != nil,
+               let peer = item.peer, let line = item.edge.destination?.span?.start.line {
+                Button("Open Linked Passage") { openReference(peer.reference, line) }
             }
-        }
-
-        return switch item.direction {
-        case .incoming:
-            ScholiumL10n.string("Incoming link from \(item.displayTitle). No link annotation")
-                + sourceContext
-        case .outgoing:
-            ScholiumL10n.string("Outgoing link to \(item.displayTitle). No link annotation")
-                + sourceContext
-        }
+            if let source = item.source, item.edge.occurrence.annotation != nil {
+                Button(item.direction == .incoming ? "Edit at Source" : "Edit Link Annotation") {
+                    editSource(source.reference, item.edge.occurrence.linkSpan.start.line)
+                }
+            }
+        } label: { Image(systemName: "ellipsis") }
+        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+        .accessibilityLabel("Link Options")
     }
 
-    private var accessibilityHint: Text {
-        item.direction == .incoming
-            ? Text("The annotation is owned by the source Note. Use Edit at Source to change it.")
-            : Text("Opens the linked Note. Use Edit Link Annotation to return to this source occurrence.")
+    private var contextText: AttributedString {
+        let occurrence = item.edge.occurrence
+        var text = AttributedString(LinkContextPresentation.readableText(occurrence.localContext.isEmpty ? occurrence.target : occurrence.localContext))
+        if let range = text.range(of: occurrence.alias ?? occurrence.target) {
+            text[range].font = ScholiumTypography.interface(.control, emphasis: .strong)
+        }
+        return text
     }
+}
 
-    private func openSource() {
-        guard let source = item.source else { return }
-        openReference(source.reference, item.edge.occurrence.linkSpan.start.line)
+/// Read-only snippet formatting uses the existing dialect parser. Navigation
+/// continues to use the original occurrence and its exact source span.
+enum LinkContextPresentation {
+    static func readableText(_ source: String) -> String {
+        let document = NoteDocument(relativePath: "snippet.md", rawContent: source)
+        let links = MarkdownSemanticDocument(parsing: document).links
+        // Annotation content is presented separately. Ignore nested occurrences
+        // inside an already consumed annotation before replacing source ranges.
+        var visibleLinks: [LinkOccurrence] = []
+        for link in links where link.syntax == .wikilink {
+            if let previous = visibleLinks.last,
+               link.span.utf16LowerBound < previous.span.utf16UpperBound { continue }
+            visibleLinks.append(link)
+        }
+        let text = NSMutableString(string: source)
+        for link in visibleLinks.reversed() {
+            let label = link.alias ?? link.target
+            let escaped = label.map { character in
+                "\\`*_{}[]()>#+-.!|".contains(character) ? "\\" + String(character) : String(character)
+            }.joined()
+            text.replaceCharacters(in: link.span.nsRange, with: "[" + escaped + "](scholium-snippet:)")
+        }
+        return MarkdownVisibleText.render(text as String)
     }
 }
 
@@ -293,7 +343,8 @@ private struct LinkOccurrenceRow: View {
         current: nil,
         freshness: .unavailable("No workspace is open."),
         retryRefresh: {},
-        openReference: { _, _ in }
-    ), direction: .outgoing)
+        openReference: { _, _ in },
+        editSource: { _, _ in }
+    ), session: LinksInspectorSession())
     .frame(width: 320, height: 600)
 }

@@ -100,9 +100,9 @@ def generate(root):
 - 附件：从 attachment-samples/说明.txt 测试 Copy / Reference 及打开；初始不存在附件关系。
 - Settle：保存 QA Work 后执行 Settle，再编辑，检查当前修订状态。
 - 冲突：只在测试副本中制造编辑器未保存修改与外部修改，检查恢复路径。
-- Agent Changes / Research Records：连接当前运行应用的 MCP 后实际创建；初始 Records 和 Agent Changes 为空。记录搜索需先有真实生成的测试记录。
+- Agent Changes：连接当前运行应用的 MCP 后实际创建；初始操作记录为空。
 
-不预制 .scholium、稳定 ID、Metadata、Record、Agent Change 或恢复记录；由当前应用创建。没有旧 Research Action / Handoff 状态。
+不预制 .scholium、稳定 ID、Metadata、Agent Change 或恢复记录；由当前应用创建。没有旧 Research Action / Handoff 状态。
 
 生成脚本只接受不存在的目标目录，不覆盖旧测试数据。此夹具不是 UI 验收或发布测试通过证明。
 ''')

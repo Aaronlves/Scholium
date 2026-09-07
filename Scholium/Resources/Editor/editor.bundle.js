@@ -1,52 +1,5 @@
 "use strict";
 (() => {
-  // native-floating.ts
-  function createNativeFloatingBridge(post2) {
-    let serial = 0;
-    let current = null;
-    const bridge = {
-      show(surface, callbacks) {
-        if (current && current.surface.kind !== surface.kind) current.callbacks.dismiss();
-        const id2 = ++serial;
-        current = { surface: { ...surface, id: id2 }, callbacks };
-        post2(current.surface);
-        return id2;
-      },
-      hide(id2) {
-        if (current?.surface.id !== id2) return;
-        post2({ ...current.surface, kind: "hidden", html: "", css: "", items: [], selected: -1 });
-        current = null;
-      },
-      event(id2, action, index) {
-        if (current?.surface.id !== id2) return false;
-        const callbacks = current.callbacks;
-        if (action === "enter") callbacks.enter?.();
-        else if (action === "leave") callbacks.leave?.();
-        else if (action === "dismiss") callbacks.dismiss();
-        else if ((action === "select" || action === "choose") && Number.isInteger(index) && current.surface.kind === "suggestions" && index >= 0 && index < current.surface.items.length) {
-          if (action === "select") callbacks.select?.(index);
-          else callbacks.choose?.(index);
-        } else return false;
-        return true;
-      }
-    };
-    window.scholiumNativeFloatingEvent = bridge.event;
-    return bridge;
-  }
-  function previewSurface(anchor, root) {
-    const css2 = Array.from(document.querySelectorAll("style"), (node) => node.textContent ?? "").join("\n");
-    return {
-      kind: "preview",
-      left: anchor.left,
-      top: anchor.top,
-      bottom: anchor.bottom,
-      html: root.innerHTML,
-      css: css2,
-      items: [],
-      selected: -1
-    };
-  }
-
   // node_modules/@marijn/find-cluster-break/src/index.js
   var rangeFrom = [];
   var rangeTo = [];
@@ -13843,6 +13796,110 @@
     return last;
   }
 
+  // arrival-highlight.ts
+  var arrivalDuration = 1400;
+  var arrivalClass = "scholium-arrival-target";
+
+  // editor-arrival-highlight.ts
+  var showEditorArrival = StateEffect.define();
+  var editorArrivalState = StateField.define({
+    create: () => Decoration.none,
+    update(value, transaction) {
+      if (transaction.docChanged || transaction.reconfigured) value = Decoration.none;
+      for (const effect of transaction.effects) {
+        if (!effect.is(showEditorArrival)) continue;
+        const position = effect.value;
+        value = position !== null && position >= 0 && position <= transaction.newDoc.length ? Decoration.set([Decoration.line({ class: arrivalClass }).range(transaction.newDoc.lineAt(position).from)]) : Decoration.none;
+      }
+      return value;
+    },
+    provide: (field) => EditorView.decorations.from(field)
+  });
+  var lifetime = ViewPlugin.fromClass(class {
+    constructor(view) {
+      this.view = view;
+    }
+    view;
+    timer;
+    update(update) {
+      if (update.docChanged || update.transactions.some((transaction) => transaction.reconfigured)) {
+        clearTimeout(this.timer);
+      }
+      for (const transaction of update.transactions) for (const effect of transaction.effects) {
+        if (!effect.is(showEditorArrival)) continue;
+        clearTimeout(this.timer);
+        if (effect.value !== null) {
+          this.view.requestMeasure({
+            key: this,
+            read: (view) => view.dom.querySelector("." + arrivalClass),
+            write: (marker) => {
+              for (const animation of marker?.getAnimations() ?? []) {
+                if (animation instanceof CSSAnimation && animation.animationName === "scholium-arrival-fade") {
+                  animation.currentTime = 0;
+                  animation.play();
+                }
+              }
+            }
+          });
+          this.timer = setTimeout(() => {
+            this.view.dispatch({ effects: showEditorArrival.of(null) });
+          }, arrivalDuration);
+        }
+      }
+    }
+    destroy() {
+      clearTimeout(this.timer);
+    }
+  });
+  var editorArrivalHighlight = [editorArrivalState, lifetime];
+
+  // native-floating.ts
+  function createNativeFloatingBridge(post2) {
+    let serial = 0;
+    let current = null;
+    const bridge = {
+      show(surface, callbacks) {
+        if (current && current.surface.kind !== surface.kind) current.callbacks.dismiss();
+        const id2 = ++serial;
+        current = { surface: { ...surface, id: id2 }, callbacks };
+        post2(current.surface);
+        return id2;
+      },
+      hide(id2) {
+        if (current?.surface.id !== id2) return;
+        post2({ ...current.surface, kind: "hidden", html: "", css: "", items: [], selected: -1 });
+        current = null;
+      },
+      event(id2, action, index) {
+        if (current?.surface.id !== id2) return false;
+        const callbacks = current.callbacks;
+        if (action === "enter") callbacks.enter?.();
+        else if (action === "leave") callbacks.leave?.();
+        else if (action === "dismiss") callbacks.dismiss();
+        else if ((action === "select" || action === "choose") && Number.isInteger(index) && current.surface.kind === "suggestions" && index >= 0 && index < current.surface.items.length) {
+          if (action === "select") callbacks.select?.(index);
+          else callbacks.choose?.(index);
+        } else return false;
+        return true;
+      }
+    };
+    window.scholiumNativeFloatingEvent = bridge.event;
+    return bridge;
+  }
+  function previewSurface(anchor, root) {
+    const css2 = Array.from(document.querySelectorAll("style"), (node) => node.textContent ?? "").join("\n");
+    return {
+      kind: "preview",
+      left: anchor.left,
+      top: anchor.top,
+      bottom: anchor.bottom,
+      html: root.innerHTML,
+      css: css2,
+      items: [],
+      selected: -1
+    };
+  }
+
   // node_modules/@lezer/common/dist/index.js
   var DefaultBufferLength = 1024;
   var nextPropID = 0;
@@ -21114,8 +21171,6 @@
     "positionDocumentTitle",
     "setMode",
     "setDocumentTitle",
-    "setDocumentAttachments",
-    "revealDocumentAttachmentControl",
     "setPresentationCSS",
     "setUserCSS",
     "setLinkPreviews",
@@ -21212,8 +21267,6 @@
   }
   var forwardReadableOperationTypes = /* @__PURE__ */ new Set([
     "setDocumentTitle",
-    "setDocumentAttachments",
-    "revealDocumentAttachmentControl",
     "queryText",
     "querySelection",
     "queryContext",
@@ -21250,8 +21303,6 @@
         return validMode(operation.mode);
       case "setDocumentTitle":
         return typeof operation.value === "string" && operation.value.length <= 1024;
-      case "setDocumentAttachments":
-        return Array.isArray(operation.value) && operation.value.length <= 100 && operation.value.every((item) => Boolean(item) && typeof item === "object" && typeof item.id === "string" && String(item.id).length <= 128 && typeof item.filename === "string" && String(item.filename).length <= 1024 && typeof item.available === "boolean");
       case "setPresentationCSS":
       case "setUserCSS":
         return typeof operation.value === "string" && operation.value.length <= 1e6;
@@ -21289,7 +21340,6 @@
       case "captureRecovery":
       case "showPreview":
       case "measureVisibleProjection":
-      case "revealDocumentAttachmentControl":
       case "positionDocumentTitle":
       case "clearDocumentFind":
       case "markClean":
@@ -30837,10 +30887,6 @@ ${fence}
   // localization.ts
   var webInterfaceLocalizationKeys = [
     "YAML frontmatter",
-    "Attachments",
-    "Add Document",
-    "Preview attached document {title}",
-    "Attached document unavailable {title}",
     "File and image paste is not supported in Editor 1.0.",
     "Markdown editor, Edit mode",
     "Markdown source editor",
@@ -32912,133 +32958,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       latest?.();
     }
   };
-
-  // document-attachments.ts
-  function filenameParts(filename) {
-    const characters = Array.from(filename);
-    if (characters.length <= 18) return { leading: filename, trailing: "" };
-    const trailingCount = Math.min(12, Math.max(7, Math.floor(characters.length / 3)));
-    return {
-      leading: characters.slice(0, -trailingCount).join(""),
-      trailing: characters.slice(-trailingCount).join("")
-    };
-  }
-  function localizedTemplate2(localized2, key, title) {
-    return localized2(key).replace("{title}", title);
-  }
-  var attachmentRailByTitle = /* @__PURE__ */ new WeakMap();
-  function revealRailAddControl(rail) {
-    rail.classList.add("scholium-document-attachment-add-visible");
-    (rail.ownerDocument.defaultView ?? window).setTimeout(() => {
-      if (!rail.matches(":hover") && !rail.matches(":focus-within")) {
-        rail.classList.remove("scholium-document-attachment-add-visible");
-      }
-    }, 1800);
-  }
-  function revealDocumentAttachmentAddControl(ownerDocument) {
-    const rail = ownerDocument.querySelector(
-      ".scholium-document-attachment-rail"
-    );
-    if (!rail) return false;
-    revealRailAddControl(rail);
-    return true;
-  }
-  function bindTitleRegionVisibility(rail) {
-    const title = rail.parentElement?.querySelector(".scholium-note-title") ?? rail.closest(".cm-content")?.querySelector(".scholium-note-title") ?? rail.ownerDocument.querySelector(".scholium-note-title");
-    if (!title) return;
-    attachmentRailByTitle.set(title, rail);
-    if (title.dataset.scholiumAttachmentVisibilityBound === "true") return;
-    title.dataset.scholiumAttachmentVisibilityBound = "true";
-    const show = () => attachmentRailByTitle.get(title)?.classList.add(
-      "scholium-document-attachment-add-visible"
-    );
-    const hide = () => attachmentRailByTitle.get(title)?.classList.remove(
-      "scholium-document-attachment-add-visible"
-    );
-    title.addEventListener("pointerenter", show);
-    title.addEventListener("pointerleave", hide);
-    title.addEventListener("focusin", show);
-    title.addEventListener("focusout", hide);
-  }
-  function createDocumentAttachmentRail(ownerDocument, attachments, options) {
-    const rail = ownerDocument.createElement("div");
-    rail.className = "scholium-document-attachment-rail";
-    rail.dataset.scholiumProtected = "document-attachments";
-    rail.setAttribute("role", "group");
-    rail.setAttribute("aria-label", options.localized("Attachments"));
-    const strip = ownerDocument.createElement("div");
-    strip.className = "scholium-document-attachment-strip";
-    for (const attachment of attachments) {
-      const button = ownerDocument.createElement("button");
-      button.type = "button";
-      button.className = "scholium-document-attachment-capsule";
-      button.dataset.attachmentID = attachment.id;
-      button.dataset.available = attachment.available ? "true" : "false";
-      button.title = attachment.filename;
-      const label = localizedTemplate2(
-        options.localized,
-        attachment.available ? "Preview attached document {title}" : "Attached document unavailable {title}",
-        attachment.filename
-      );
-      button.setAttribute("aria-label", label);
-      button.setAttribute("aria-disabled", attachment.available ? "false" : "true");
-      button.append(systemSymbolElement("paperclip", "scholium-document-attachment-icon", ownerDocument));
-      const text = ownerDocument.createElement("span");
-      text.className = "scholium-document-attachment-name";
-      const parts = filenameParts(attachment.filename);
-      const leading = ownerDocument.createElement("span");
-      leading.className = "scholium-document-attachment-name-leading";
-      leading.textContent = parts.leading;
-      const trailing = ownerDocument.createElement("span");
-      trailing.className = "scholium-document-attachment-name-trailing";
-      trailing.textContent = parts.trailing;
-      text.append(leading, trailing);
-      button.append(text);
-      button.addEventListener("pointerdown", (event) => event.preventDefault());
-      button.addEventListener("click", (event) => {
-        event.preventDefault();
-        if (attachment.available) options.requestPreview(attachment.id);
-      });
-      strip.append(button);
-    }
-    const add2 = ownerDocument.createElement("button");
-    add2.type = "button";
-    add2.className = "scholium-document-attachment-add";
-    add2.setAttribute("aria-label", options.localized("Add Document"));
-    add2.title = options.localized("Add Document");
-    add2.append(systemSymbolElement("paperclip", "scholium-document-attachment-icon", ownerDocument));
-    const addLabel = ownerDocument.createElement("span");
-    addLabel.textContent = options.localized("Add Document");
-    add2.append(addLabel);
-    add2.addEventListener("pointerdown", (event) => event.preventDefault());
-    add2.addEventListener("click", (event) => {
-      event.preventDefault();
-      options.requestMenu(add2.getBoundingClientRect());
-    });
-    strip.append(add2);
-    rail.append(strip);
-    if (options.revealInitially) {
-      revealRailAddControl(rail);
-    }
-    rail.addEventListener("pointerenter", () => {
-      rail.classList.add("scholium-document-attachment-add-visible");
-    });
-    rail.addEventListener("pointerleave", () => {
-      if (!rail.matches(":focus-within")) {
-        rail.classList.remove("scholium-document-attachment-add-visible");
-      }
-    });
-    rail.addEventListener("focusin", () => {
-      rail.classList.add("scholium-document-attachment-add-visible");
-    });
-    rail.addEventListener("focusout", () => {
-      if (!rail.matches(":hover")) {
-        rail.classList.remove("scholium-document-attachment-add-visible");
-      }
-    });
-    queueMicrotask(() => bindTitleRegionVisibility(rail));
-    return rail;
-  }
 
   // callout-presentation.ts
   var neutralCallout = {
@@ -36170,7 +36089,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   var programmaticDocumentChange = Annotation.define();
   var refreshLivePreviewEffect = StateEffect.define();
   var refreshDocumentTitleEffect = StateEffect.define();
-  var refreshDocumentAttachmentsEffect = StateEffect.define();
   var refreshMermaidThemeEffect = StateEffect.define();
   var mermaidThemeRevision = 0;
   var documentTitle = "";
@@ -36178,9 +36096,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
   var documentTitleError = null;
   var documentTitleRenameRequest = null;
   var documentTitlePresentationRevision = 0;
-  var documentAttachments = [];
-  var documentAttachmentPresentationRevision = 0;
-  var documentAttachmentInitialRevealDeadline = 0;
   var lastDocumentFocusTarget;
   function setDocumentFocusTarget(target) {
     const changed = lastDocumentFocusTarget !== target;
@@ -36380,61 +36295,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     update: (decorations2, transaction) => {
       const titleChanged = transaction.effects.some((effect) => effect.is(refreshDocumentTitleEffect));
       return transaction.docChanged || titleChanged ? documentTitleDecorations(transaction.state) : decorations2;
-    },
-    provide: (field) => EditorView.decorations.from(field)
-  });
-  var DocumentAttachmentWidget = class extends WidgetType {
-    constructor(attachments, presentationRevision) {
-      super();
-      this.attachments = attachments;
-      this.presentationRevision = presentationRevision;
-    }
-    attachments;
-    presentationRevision;
-    eq(other) {
-      return other.presentationRevision === this.presentationRevision;
-    }
-    toDOM(view) {
-      const revealInitially = performance.now() < documentAttachmentInitialRevealDeadline;
-      return createDocumentAttachmentRail(
-        view.dom.ownerDocument,
-        this.attachments,
-        {
-          localized,
-          revealInitially,
-          requestPreview: (attachmentID) => post({
-            type: "requestDocumentAttachmentPreview",
-            attachmentID
-          }),
-          requestMenu: (anchor) => post({
-            type: "requestDocumentAttachmentMenu",
-            clientX: anchor.left,
-            clientY: anchor.bottom
-          })
-        }
-      );
-    }
-    ignoreEvent() {
-      return true;
-    }
-  };
-  function documentAttachmentDecorations(state) {
-    return Decoration.set([
-      Decoration.widget({
-        widget: new DocumentAttachmentWidget(
-          documentAttachments,
-          documentAttachmentPresentationRevision
-        ),
-        block: true,
-        side: -1
-      }).range(frontmatterBodyOffset(state.doc))
-    ]);
-  }
-  var liveDocumentAttachments = StateField.define({
-    create: (state) => documentAttachmentDecorations(state),
-    update: (decorations2, transaction) => {
-      const attachmentsChanged = transaction.effects.some((effect) => effect.is(refreshDocumentAttachmentsEffect));
-      return transaction.docChanged || attachmentsChanged ? documentAttachmentDecorations(transaction.state) : decorations2;
     },
     provide: (field) => EditorView.decorations.from(field)
   });
@@ -37377,7 +37237,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     Prec.high(liveSelection.extension),
     liveProjectionIndex.extension,
     liveDocumentTitle,
-    liveDocumentAttachments,
     inputSuggestions.extension,
     liveSemanticLayout.extension,
     liveFrontmatterLines,
@@ -37409,6 +37268,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     request: (request) => post({ type: "contextMenuRequested", ...request })
   });
   var editorExtensions = [
+    editorArrivalHighlight,
     highlightSpecialChars(),
     history(),
     drawSelection({ drawRangeCursor: false }),
@@ -37688,12 +37548,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
         break;
       case "setDocumentTitle":
         editorOperations.setDocumentTitle(operation.value);
-        break;
-      case "setDocumentAttachments":
-        editorOperations.setDocumentAttachments(operation.value);
-        break;
-      case "revealDocumentAttachmentControl":
-        revealDocumentAttachmentAddControl(editor.dom.ownerDocument);
         break;
       case "setPresentationCSS":
         editorOperations.setPresentationCSS(operation.value);
@@ -38048,9 +37902,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       documentTitleError = null;
       documentTitleRenameRequest = null;
       documentTitlePresentationRevision += 1;
-      documentAttachments = [];
-      documentAttachmentPresentationRevision += 1;
-      documentAttachmentInitialRevealDeadline = performance.now() + 1800;
       lastDocumentFocusTarget = void 0;
       documentVersion = 0;
       const separator = text.includes("\r\n") ? "\r\n" : "\n";
@@ -38075,13 +37926,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       documentTitleRenameRequest = null;
       documentTitlePresentationRevision += 1;
       editor.dispatch({ effects: refreshDocumentTitleEffect.of(null) });
-    },
-    setDocumentAttachments(value) {
-      const next = value.slice(0, 100).map((attachment) => ({ ...attachment }));
-      if (JSON.stringify(next) === JSON.stringify(documentAttachments)) return;
-      documentAttachments = next;
-      documentAttachmentPresentationRevision += 1;
-      editor.dispatch({ effects: refreshDocumentAttachmentsEffect.of(null) });
     },
     /** @param {string} mode */
     async setMode(mode) {
@@ -38137,7 +37981,10 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       const line = editor.state.doc.line(lineNumber);
       editor.dispatch({
         selection: { anchor: line.from },
-        effects: EditorView.scrollIntoView(line.from, { y: "center" })
+        effects: [
+          EditorView.scrollIntoView(line.from, { y: "center" }),
+          showEditorArrival.of(requestedLine === lineNumber ? line.from : null)
+        ]
       });
       if (focusesEditor) editor.focus();
     },

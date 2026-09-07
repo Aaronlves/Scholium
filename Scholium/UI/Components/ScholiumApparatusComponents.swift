@@ -56,6 +56,8 @@ struct ScholiumApparatusSection<Content: View, Trailing: View>: View {
     }
 }
 
+/// Inspector labels share one compact axis with their value or native editor.
+/// At narrow widths, the complete field stacks.
 enum ScholiumApparatusFactValueStyle: Hashable {
     case researchContent
     case exactContent
@@ -266,57 +268,6 @@ struct ScholiumApparatusActionRowContent: View {
                     .accessibilityHidden(true)
             }
         }
-    }
-}
-
-/// An actionable Inspector section heading. The heading remains an interface
-/// label while the complete row is one native Button; the section content
-/// stays ordinary selectable/readable material rather than becoming part of
-/// the control.
-struct ScholiumApparatusSectionHeaderButton: View {
-    let title: LocalizedStringResource
-    let actionLabel: LocalizedStringResource
-    let systemImage: String
-    let accessibilityIdentifier: String
-    let action: () -> Void
-
-    init(
-        _ title: LocalizedStringResource,
-        actionLabel: LocalizedStringResource,
-        systemImage: String,
-        accessibilityIdentifier: String,
-        action: @escaping () -> Void
-    ) {
-        self.title = title
-        self.actionLabel = actionLabel
-        self.systemImage = systemImage
-        self.accessibilityIdentifier = accessibilityIdentifier
-        self.action = action
-    }
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: ScholiumMetrics.Apparatus.iconToTextSpacing) {
-                Text(title)
-                    .scholiumApparatusHeadingStyle()
-                Spacer(minLength: ScholiumMetrics.Apparatus.iconToTextSpacing)
-                Image(systemName: systemImage)
-                    .font(ScholiumTypography.interface(.small, emphasis: .medium))
-                    .scholiumForeground(.mutedText)
-                    .accessibilityHidden(true)
-            }
-        }
-        .scholiumActivationPointer()
-        .buttonStyle(
-            ScholiumQuietRowButtonStyle(
-                minimumHeight: ScholiumMetrics.Accessibility.preferredCustomTarget,
-                verticalInset: 0
-            )
-        )
-        .padding(.horizontal, -ScholiumGrid.Spacing.inlineControlGap)
-        .help(actionLabel)
-        .accessibilityLabel(Text(actionLabel))
-        .accessibilityIdentifier(accessibilityIdentifier)
     }
 }
 

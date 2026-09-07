@@ -80,7 +80,7 @@ workspace，或直接读取脉络文件。首版只提供 workspace status、Not
 
 每个已确认 MCP 变更只生成一条本机 Agent Change 准确修订证据。Agent Changes 支持
 比较与满足条件的更新直接 Undo；它们不是聊天、权限、审查、接受、Settlement 或
-Research Records。Research Record 与 Handoff 的替代合同在另行决策前保持不可用。
+研究讨论。Handoff 在其独立合同确定前保持不可用。
 
 发行版只捆绑精简的 Scholium Core Protocol Skill。研究者自己的 method Skills 位于
 外部 Agent host；Scholium 不注册、检查或执行它们。这些路径只证明工程可达性，不
@@ -245,13 +245,10 @@ claude mcp add scholium --scope user -- "$PWD/.build/cli-prefix/bin/scholium" mc
 bridge 工作；当应用、bridge、所选脉络或当前状态不可用时明确失败，绝不回退到直接
 文件系统或无界面 workspace 访问。
 
-当前协作界面恰好发布十个 tools：`scholium_workspace_status`、
-`scholium_search`、`scholium_read_note`、`scholium_read_record`、
-`scholium_list_links`、`scholium_create_note`、`scholium_update_note`、
-`scholium_trash_note`、`scholium_record_progress` 与
-`scholium_correct_record_step`。不暴露 MCP Resources、Prompts、Agent
-Sessions、Research Actions 或 Handoff。Research Record 是由 Agent 维护的
-署名研究历史，不代表研究者接受，也不是 Note 写入权威。
+当前协作界面发布七个 tools：`scholium_workspace_status`、`scholium_search`、
+`scholium_read_note`、`scholium_list_links`、`scholium_create_note`、
+`scholium_update_note` 与 `scholium_trash_note`。研究问题与选定讨论是普通 Works
+笔记，使用同样的明确写入授权与准确源码操作；应用不提供独立的问题生命周期或自动记录。
 
 普通双链可携带由源 Note 拥有的多行 Markdown 注释：
 `[[目标]]{{注释}}`。Connect、Search 与 `scholium_list_links` 都保留每次

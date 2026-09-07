@@ -89,7 +89,7 @@ final class WindowShellState: ObservableObject {
         self.userDefaults = userDefaults
         var initialInspectorModes: [WorkspaceVaultSlot: ResearchInspectorMode] = [:]
         for workspace in WorkspaceVaultSlot.allCases {
-            initialInspectorModes[workspace] = .overview
+            initialInspectorModes[workspace] = .about
         }
         inspectorModesByWorkspace = initialInspectorModes
         colorScheme = userDefaults.string(forKey: WindowColorSchemeChoice.defaultsKey)
@@ -136,7 +136,7 @@ final class WindowShellState: ObservableObject {
     }
 
     func inspectorMode(for workspace: WorkspaceVaultSlot) -> ResearchInspectorMode {
-        inspectorModesByWorkspace[workspace] ?? .overview
+        inspectorModesByWorkspace[workspace] ?? .about
     }
 
     func selectWorkspace(_ workspace: WorkspaceVaultSlot) {
@@ -149,10 +149,10 @@ final class WindowShellState: ObservableObject {
         selectedWorkspace = .paperAnalysis
         var resetInspectorModes: [WorkspaceVaultSlot: ResearchInspectorMode] = [:]
         for workspace in WorkspaceVaultSlot.allCases {
-            resetInspectorModes[workspace] = .overview
+            resetInspectorModes[workspace] = .about
         }
         inspectorModesByWorkspace = resetInspectorModes
-        inspector.mode = .overview
+        inspector.mode = .about
         operationIssues.removeAll()
     }
 
@@ -192,15 +192,18 @@ final class WindowShellState: ObservableObject {
         documentTextScale = ScholiumMetrics.Document.defaultTextScale
     }
 
+    @discardableResult
     func reportOperationIssue(_ message: String, kind: WindowOperationIssueKind,
-                              detail: String? = nil, offersRefresh: Bool = false) {
-        guard !operationIssues.contains(where: {
+                              detail: String? = nil, offersRefresh: Bool = false) -> UUID {
+        if let existing = operationIssues.first(where: {
             $0.message == message && $0.kind == kind && $0.detail == detail
                 && $0.offersRefresh == offersRefresh
-        }) else { return }
-        operationIssues.append(WindowOperationIssue(
+        }) { return existing.id }
+        let issue = WindowOperationIssue(
             message: message, kind: kind, detail: detail, offersRefresh: offersRefresh
-        ))
+        )
+        operationIssues.append(issue)
+        return issue.id
     }
 
     func dismissOperationIssue(id: UUID) {

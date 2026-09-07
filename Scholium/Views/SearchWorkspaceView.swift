@@ -17,7 +17,6 @@ struct ResearchSearchContext {
     let rename: (UUID, String) -> Void
     let move: (UUID, Int) -> Void
     let delete: (UUID) -> Void
-    let openRecord: (UUID, UUID?) -> Void
     let openNote: (SearchResultSelection) -> Void
 }
 
@@ -72,8 +71,7 @@ enum SearchStatePresentation {
         guard !state.criteria.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         if let issue = state.executionIssue { return executionIssue(issue) }
         guard !state.isRunning, state.responseRequestID != nil,
-              state.criteria.scope != .thisNote,
-              state.criteria.providerSelection != .records else { return nil }
+              state.criteria.scope != .thisNote else { return nil }
         return note(state.availability.noteAvailability)
     }
 
@@ -263,24 +261,19 @@ struct ResearchSearchView<Library: View>: View {
         .onChange(of: controller.search.results) { _, _ in
             normalizeSelection()
         }
-        .onChange(of: controller.search.recordResults) { _, _ in
-            normalizeSelection()
-        }
         .background {
             if !controller.search.isRunning,
                !controller.search.criteria.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 PerformanceReadyBoundary(
                     generation: [
                         controller.search.criteria.query,
-                        String(controller.search.results.count
-                            + controller.search.recordResults.count),
+                        String(controller.search.results.count),
                         String(controller.search.hasMore),
                     ].joined(separator: ":")
                 ) {
                     PerformanceProbe.shared.markSearchResultsReady(
                         query: controller.search.criteria.query,
                         resultCount: controller.search.results.count
-                            + controller.search.recordResults.count
                     )
                 }
                 .frame(width: 0, height: 0)
@@ -288,8 +281,7 @@ struct ResearchSearchView<Library: View>: View {
         }
         .onChange(of: isActive) { _, active in
             if !active { completionSelection = nil }
-            if active, !queryDraft.isEmpty, controller.search.results.isEmpty,
-               controller.search.recordResults.isEmpty { scheduleSearch() }
+            if active, !queryDraft.isEmpty, controller.search.results.isEmpty { scheduleSearch() }
         }
         .onMoveCommand { if isActive { moveSelection($0) } }
         .onDisappear {
@@ -352,7 +344,6 @@ struct ResearchSearchView<Library: View>: View {
                 text: query,
                 placeholder: "\(ScholiumL10n.string("Search")) · \(localizedScopeTitle(controller.search.criteria.scope))",
                 scope: scope,
-                provider: provider,
                 openAdvanced: isAdvanced ? nil : { searchController.beginAdvanced() },
                 isActive: isActive,
                 focusRequestID: isActive ? searchController.focusRequestID : nil,
@@ -400,7 +391,7 @@ struct ResearchSearchView<Library: View>: View {
 
     private var searchScopeBar: some View {
         HStack(spacing: 12) {
-            Text("\(localizedScopeTitle(controller.search.criteria.scope)) · \(providerTitle(controller.search.criteria.providerSelection))")
+            Text(localizedScopeTitle(controller.search.criteria.scope))
                 .lineLimit(1)
             searchSummary
             Spacer(minLength: 0)
@@ -446,9 +437,7 @@ struct ResearchSearchView<Library: View>: View {
         return SearchCapabilities.current.completions(
             for: queryDraft,
             scope: controller.search.criteria.scope,
-            provider: controller.search.criteria.providerSelection == .records
-                ? .record
-                : .note,
+            provider: .note,
             context: context.completionContext
         )
     }
@@ -532,7 +521,7 @@ struct ResearchSearchView<Library: View>: View {
     @ViewBuilder
     private var searchAvailabilityBanner: some View {
         if let presentation = SearchStatePresentation.status(for: controller.search),
-           !blocksResults || !controller.search.results.isEmpty || !controller.search.recordResults.isEmpty {
+           !blocksResults || !controller.search.results.isEmpty {
             operationalBanner(presentation)
         }
     }
@@ -575,7 +564,7 @@ struct ResearchSearchView<Library: View>: View {
     @ViewBuilder
     private var searchContent: some View {
         if !isExpanded {
-            ContentUnavailableView("Search Notes and Records", systemImage: "magnifyingglass",
+            ContentUnavailableView("Search Notes", systemImage: "magnifyingglass",
                                    description: Text("Enter a search term to begin."))
                 .accessibilityIdentifier("scholium.searchReady")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -598,8 +587,7 @@ struct ResearchSearchView<Library: View>: View {
                 }
             }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if controller.search.results.isEmpty
-                    && controller.search.recordResults.isEmpty {
+        } else if controller.search.results.isEmpty {
             ContentUnavailableView("No Search Results", systemImage: "magnifyingglass",
                                    description: Text("No results match the current query and scope."))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -615,10 +603,7 @@ struct ResearchSearchView<Library: View>: View {
     }
 
     private var blocksResults: Bool {
-        guard controller.search.results.isEmpty, controller.search.recordResults.isEmpty else { return false }
-        if controller.search.criteria.providerSelection == .records {
-            return controller.search.executionIssue != nil
-        }
+        guard controller.search.results.isEmpty else { return false }
         return SearchStatePresentation.suppressesNoMatchContent(
             for: controller.search.availability, scope: controller.search.criteria.scope,
             hasExecutionIssue: controller.search.executionIssue != nil)
@@ -701,38 +686,12 @@ struct ResearchSearchView<Library: View>: View {
         )
     }
 
-    private var provider: Binding<SearchProviderSelection> {
-        Binding(
-            get: { controller.search.criteria.providerSelection },
-            set: { value in
-                controller.selectSearchProvider(value)
-                if isActive { scheduleSearch() }
-            }
-        )
-    }
-
     private var results: some View {
         ScrollViewReader { proxy in
             List(selection: Binding(get: { controller.search.selectedResultID },
                                     set: { controller.selectSearchResult($0) })) {
-                if !controller.search.results.isEmpty {
-                    Section {
-                        ForEach(controller.search.results) { result in
-                            searchResultButton(result)
-                        }
-                    } header: {
-                        searchSectionHeader("Notes")
-                    }
-                }
-
-                if !controller.search.recordResults.isEmpty {
-                    Section {
-                        ForEach(controller.search.recordResults) { result in
-                            recordSearchResultButton(result)
-                        }
-                    } header: {
-                        searchSectionHeader("Research Records")
-                    }
+                ForEach(controller.search.results) { result in
+                    searchResultButton(result)
                 }
 
             }
@@ -779,79 +738,9 @@ struct ResearchSearchView<Library: View>: View {
         .accessibilityIdentifier("scholium.searchResult." + result.id)
     }
 
-    private func recordSearchResultButton(_ result: RecordSearchResult) -> some View {
-        let resultID = "record:\(result.recordID.uuidString.lowercased())"
-        return HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "text.bubble")
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text(result.question)
-                        .font(ScholiumTypography.interface(.rowTitle))
-                        .lineLimit(2)
-                    Spacer()
-                }
-                Text(result.snippet)
-                    .font(ScholiumTypography.interface(.small))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-                HStack {
-                    Text(result.matchedField == .question
-                        ? String(localized: "Matched question") : String(localized: "Matched step"))
-                    Text("·")
-                    Text(result.lastSubstantiveAt, style: .relative)
-                }
-                .font(ScholiumTypography.interface(.small))
-                .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-        }
-        .padding(.vertical, 6)
-        .contentShape(Rectangle())
-        .tag(resultID)
-        .onTapGesture { openRecordResult(result) }
-        .accessibilityAction { openRecordResult(result) }
-        .id(resultID)
-        .listRowSeparator(.hidden)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(result.question), Research Record")
-        .accessibilityHint("Opens the selected Research Record")
-        .accessibilityIdentifier(
-            "scholium.searchRecordResult.\(result.recordID.uuidString.lowercased())"
-        )
-    }
-
-    private func openRecordResult(_ result: RecordSearchResult) {
-        controller.selectSearchResult("record:\(result.recordID.uuidString.lowercased())")
-        context.openRecord(result.recordID, result.matchedStepID)
-        if !isAdvanced { context.dismiss() }
-    }
-
-    private func searchSectionHeader(
-        _ title: LocalizedStringKey,
-        detail: LocalizedStringKey? = nil
-    ) -> some View {
-        VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.opticalAlignmentAdjustment) {
-            Text(title)
-                .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                .scholiumForeground(.secondaryText)
-            if let detail {
-                Text(detail)
-                    .font(ScholiumTypography.interface(.small))
-                    .scholiumForeground(.mutedText)
-            }
-        }
-        .textCase(nil)
-        .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
-        .accessibilityAddTraits(.isHeader)
-    }
 
     private var searchResultSummary: String {
         let searchCount = controller.search.results.count
-            + controller.search.recordResults.count
         if controller.search.hasMore {
             return String(localized: "\(searchCount)+ Results")
         }
@@ -864,8 +753,7 @@ struct ResearchSearchView<Library: View>: View {
         guard controller.search.diagnostics.isEmpty,
               let explanation = controller.search.explanation else { return nil }
         let scope = localizedScopeTitle(explanation.scope)
-        let content = providerTitle(controller.search.criteria.providerSelection)
-        let heading = "\(scope) · \(content)"
+        let heading = scope
         let clauses = explanation.clauses.map(explanationClause)
         return ([heading] + clauses).joined(separator: "\n")
     }
@@ -937,12 +825,6 @@ struct ResearchSearchView<Library: View>: View {
             open(.result(result))
             return
         }
-        if let result = controller.search.recordResults.first(where: {
-            "record:\($0.recordID.uuidString.lowercased())" == selected
-        }) {
-            context.openRecord(result.recordID, result.matchedStepID)
-            if !isAdvanced { context.dismiss() }
-        }
     }
 
     private func open(_ result: SearchResultSelection) {
@@ -951,17 +833,7 @@ struct ResearchSearchView<Library: View>: View {
 
     private var allResultIDs: [String] {
         controller.search.results.map(SearchResultIdentity.result)
-            + controller.search.recordResults.map {
-                "record:\($0.recordID.uuidString.lowercased())"
-            }
-    }
 
-    private func providerTitle(_ selection: SearchProviderSelection) -> String {
-        switch selection {
-        case .all: String(localized: "All")
-        case .notes: String(localized: "Notes")
-        case .records: String(localized: "Records")
-        }
     }
 
     private func localizedScopeTitle(_ scope: SearchPresentationScope) -> String {

@@ -38,8 +38,6 @@ struct ContentView: View {
     @Environment(\.scholiumReduceMotion) private var reduceMotion
     @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
-    @AppStorage(AttentionPreferences.dismissalLedgerKey)
-    private var attentionDismissalLedgerData = Data()
 
     init(
         appState: WindowModel,
@@ -95,7 +93,7 @@ struct ContentView: View {
                 ZStack {
                     ResearchSearchSurface(controller: discoveryController, searchController: searchController,
                                           shellState: shellState, workspaceProjectionController: workspaceProjectionController,
-                                          presentation: .sidebar, openRecord: openSearchRecord,
+                                          presentation: .sidebar,
                                           revealDocument: { windowCoordinator.makeKeyAndOrderFront() }) {
                         SidebarView(controller: appState.discoveryController, context: sidebarContext)
                     }
@@ -174,7 +172,7 @@ struct ContentView: View {
                 windowCoordinator.presentAdvancedSearch {
                     ResearchSearchSurface(controller: discoveryController, searchController: searchController,
                                           shellState: shellState, workspaceProjectionController: workspaceProjectionController,
-                                          presentation: .advanced, openRecord: openSearchRecord,
+                                          presentation: .advanced,
                                           revealDocument: { windowCoordinator.makeKeyAndOrderFront() }) {
                         EmptyView()
                     }
@@ -232,30 +230,10 @@ struct ContentView: View {
         )
     }
 
-    private func openSearchRecord(_ recordID: UUID, _ stepID: UUID?) {
-
-                guard let triptychID = windowWorkspaceController.activeCapabilities?.id else {
-                    return
-                }
-                ResearchRecordsWindowCoordinator.shared.submit(.init(
-                    triptychID: triptychID,
-                    sourceWindowID: appState.nativeWindowID,
-                    recordID: recordID,
-                    stepID: stepID
-                ))
-                openWindow(
-                    id: "scholium-records",
-                    value: ResearchRecordsWindowRoute(
-                        triptychID: triptychID,
-                        sourceWindowID: appState.nativeWindowID
-                    )
-                )
-    }
-
     private var researchInspectorContentContext: ResearchInspectorContentContext {
         ResearchInspectorContentContext(
             presentation: ResearchOverviewPresentation(
-                visibleAttentionItems: visibleCurrentDocumentAttentionItems,
+                notificationScope: currentDocumentNotificationScope,
                 freshness: researchProjectionFreshness,
                 aboutConfiguration: appState.currentDocumentAboutConfiguration,
                 metadataCatalog: workspaceProjectionController.metadataCatalog,
@@ -264,11 +242,6 @@ struct ContentView: View {
                 stableNoteID: currentAnalysisStableNoteID
             ),
             attentionPopoverSession: appState.attentionPopoverSession,
-            openProperties: {
-                guard let path = appState.currentNote?.relativePath else { return }
-                appState.editingNotePath = path
-                appState.showMetadataEditor = true
-            },
             openAttention: {
                 guard let note = appState.currentNote,
                       let vaultID = appState.currentDocumentVaultID else { return }
@@ -286,12 +259,18 @@ struct ContentView: View {
             retryRefresh: {
                 Task { await appState.retryDerivedRefresh() }
             },
-            saveManagedAboutField: { note, key, value in
-                try await appState.saveManagedAboutField(
-                    for: note,
-                    key: key,
-                    value: value
-                )
+            saveMetadata: { note, fields, revision in
+                let saved = try await appState.saveMetadata(for: note, proposedFields: fields, expectedRevision: revision)
+                return saved.workspaceSnapshot?.metadata?.revision
+            },
+            registerMetadataFlush: { token, flush in
+                guard let note = appState.currentNote else { return }
+                appState.registerMetadataEditorFlush(for: note.relativePath, token: token, flush: flush)
+            },
+            unregisterMetadataFlush: { appState.unregisterMetadataEditorFlush(token: $0) },
+            reloadMetadata: { note in
+                let refreshed = try await appState.reloadMetadata(for: note.relativePath)
+                return (refreshed.note.managedMetadataFields, refreshed.revision)
             },
             openZoteroItem: { binding in
                 await appState.zoteroCoordinator.bridge.openInZotero(binding: binding)
@@ -312,7 +291,8 @@ struct ContentView: View {
                         currentBinding: binding
                     )
                 ))
-            }
+            },
+            attachments: currentAttachmentContext
         )
     }
 
@@ -325,6 +305,20 @@ struct ContentView: View {
         return researchController.researchSnapshot?.settlementRequirements.first {
             $0.noteID == noteID
         }
+    }
+
+    private var currentAttachmentContext: ResearchAttachmentContext? {
+        guard let session = currentNoteDocumentSession,
+              let key = session.key, let note = appState.currentNote else { return nil }
+        let target = NoteDocumentAttachmentTarget(noteID: key.noteID, vaultID: key.vaultID, relativePath: note.relativePath)
+        let controller = documentController
+        return ResearchAttachmentContext(session: session,
+            prepare: { id in try await controller.prepareDocumentAttachmentPreview(attachmentID: id, for: target) },
+            release: { await controller.releaseDocumentAttachmentPreview(accessToken: $0) },
+            refresh: { try await controller.refreshDocumentAttachments(for: target, session: session) },
+            attach: { mode, presenter in
+                try await controller.selectDocumentAttachment(mode, for: target, session: session, presenter: presenter)
+            })
     }
 
     private var currentAboutSettlementPresentation: AboutSettlementPresentation {
@@ -362,13 +356,10 @@ struct ContentView: View {
         return currentNoteStableID
     }
 
-    private var visibleCurrentDocumentAttentionItems: [AttentionQueueItem] {
+    private var currentDocumentNotificationScope: VaultQualifiedNoteID? {
         guard let note = appState.currentNote,
-              let vaultID = appState.currentDocumentVaultID else { return [] }
-        let matching = (appState.workspaceCatalog?.attention ?? []).filter {
-            $0.note.vaultID == vaultID && $0.note.relativePath == note.relativePath
-        }
-        return AttentionPreferences.decodeLedger(attentionDismissalLedgerData).visible(matching)
+              let vaultID = appState.currentDocumentVaultID else { return nil }
+        return VaultQualifiedNoteID(vaultID: vaultID, relativePath: note.relativePath)
     }
 
     private var researchProjectionFreshness: ResearchProjectionFreshness {
@@ -465,11 +456,6 @@ struct ContentView: View {
             },
             setPendingSourceLine: { appState.pendingSourceLine = $0 },
             setSidebarVisible: { windowCoordinator.actions.setLibraryVisible($0) },
-            editProperties: {
-                guard let path = documentPath else { return }
-                appState.editingNotePath = path
-                appState.showMetadataEditor = true
-            },
             setResearchInspectorVisible: {
                 windowCoordinator.actions.setResearchInspectorVisible($0)
             },
@@ -629,27 +615,6 @@ struct ContentView: View {
     @ViewBuilder
     private func sheetContent(for route: WindowSheetRoute) -> some View {
         switch route {
-        case .metadata(let route):
-            if let note = note(at: route.path) {
-                MetadataEditorView(
-                    note: note,
-                    metadataCatalog: workspaceProjectionController.metadataCatalog,
-                    expectedRevision: note.workspaceSnapshot?.metadata?.revision,
-                    onClose: {
-                        finishMetadata(route)
-                    },
-                    reload: {
-                        try await appState.reloadMetadata(for: note.relativePath)
-                    }
-                ) { fields, revision in
-                    _ = try await appState.saveMetadata(
-                        for: note,
-                        proposedFields: fields,
-                        expectedRevision: revision
-                    )
-                }
-                    .frame(minWidth: 520, minHeight: 560)
-            }
         case .noteFileOperation(let request):
             NoteFileOperationView(
                 request: request,
@@ -798,10 +763,6 @@ struct ContentView: View {
         return appState.notes.first(where: { $0.relativePath == path })
     }
 
-    private func finishMetadata(_ route: MetadataPanelRoute) {
-        appState.presentationRouter.finishMetadata(route)
-    }
-
     @ViewBuilder
     private var detailRegion: some View {
         VStack(spacing: 0) {
@@ -849,6 +810,7 @@ struct ContentView: View {
     private var apparatusRegion: some View {
         if let note = appState.currentNote {
             ResearchInspectorView(
+                research: researchController,
                 note: note,
                 shellState: appState.shellState,
                 graph: appState.linkGraph,
@@ -860,6 +822,9 @@ struct ContentView: View {
                         reference,
                         sourceLine: sourceLine
                     )
+                },
+                editSource: { reference, line in
+                    appState.researchController.requestEditAtSource(reference, line: line)
                 }
             )
         } else {
@@ -947,7 +912,6 @@ private struct ScholiumNoDocumentDetailView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
-
 
 // MARK: - Loading Overlay
 

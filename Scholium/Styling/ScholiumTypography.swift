@@ -96,6 +96,7 @@ private enum ScholiumTypeface {
 enum ScholiumTypography {
     enum InterfaceRole {
         case primaryTitle
+        case control
         case sectionTitle
         case rowTitle
         case body
@@ -147,6 +148,8 @@ enum ScholiumTypography {
         static let statement = Font.system(size: 25, weight: .medium)
     }
 
+    static let controlPointSize: CGFloat = 13
+
     static func interface(
         _ role: InterfaceRole,
         emphasis: Emphasis? = nil,
@@ -157,6 +160,8 @@ enum ScholiumTypography {
         switch role {
         case .primaryTitle:
             (size, defaultWeight) = (17, .semibold)
+        case .control:
+            (size, defaultWeight) = (controlPointSize, .regular)
         case .sectionTitle:
             (size, defaultWeight) = (12, .semibold)
         case .rowTitle:

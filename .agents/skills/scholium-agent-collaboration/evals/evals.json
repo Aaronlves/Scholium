@@ -14,13 +14,13 @@
     },
     {
       "id": 1,
-      "prompt": "修复 Research Record 追加时接受过时 Note fingerprint 的问题，保留已有历史。",
-      "expected_output": "Agent collaboration owns Record reference validation; add trust for current-revision enforcement and engineering only if the implementation crosses owners.",
+      "prompt": "修复 MCP 修改笔记时接受过时 fingerprint 的问题，保留研究者当前正文。",
+      "expected_output": "Agent collaboration traces guarded Note updates; adds trust for current-revision enforcement and engineering only when the change crosses owners.",
       "files": [],
       "assertions": [
-        "Checks live Note identity and revision before Record commit.",
-        "Preserves attributed history and rejects stale references.",
-        "Does not invent task finalization or convert Record writes into Agent Changes."
+        "Checks the exact current Note identity and fingerprint before mutation.",
+        "Preserves current source and rejects stale writes.",
+        "Retains Agent Change evidence without inventing task finalization."
       ]
     },
     {
@@ -40,7 +40,7 @@
       "files": [],
       "assertions": [
         "Does not edit application code or the bundled Core Protocol.",
-        "Does not confuse method content with MCP delivery or Record storage."
+        "Does not confuse method content with MCP delivery or source storage."
       ]
     },
     {

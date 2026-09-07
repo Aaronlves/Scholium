@@ -208,7 +208,7 @@ same generation's reconciled portable-identity state for Critique association;
 only `.resolved` identities participate, so ambiguous, pending, unresolved, or
 failed recovery remains closed without one storage lookup per Work.
 
-`ScholiumContracts` owns current parsing and typed Note/Record clauses, the
+`ScholiumContracts` owns current parsing and typed Note clauses, the
 closed provider capability table, provider-mismatch diagnostics,
 completion and Explain Query descriptions, discriminated results, visible
 semantic `SearchDocumentProjection`, exact source mappings, CJK query
@@ -218,15 +218,10 @@ identities. Structured projection joins validated Metadata with authored YAML
 and unknown YAML is not queryable. Core owns the Note
 provider's disposable SQLite schema, staging/validation/recovery, read
 transactions, cancellation, deterministic ranking, and in-memory **This Note**
-matcher. Core separately owns strict schema-1 Research Record storage and its
-disposable Record provider projection over current question/current-step text.
-Application authorizes visible scope, validates stable Note references before
-Record writes, and exposes the unified provider-separated Search capability to
-the GUI and App bridge. No adapter, window model, or Agent route owns another
-parser, resolver, Record corpus, ranking rule, or writable Record authority.
+matcher. Application authorizes visible scope and exposes Note Search to the GUI
+and App bridge. Adapters do not own another parser, corpus, or ranking rule.
 
-Saved Searches persist only raw query, visible presentation scope, visible
-provider selection, and Search contract version. `WindowSearchController` owns execution cancellation,
+Saved Searches persist only raw query, visible presentation scope, and Search contract version. `WindowSearchController` owns execution cancellation,
 freshness, serialized persistence, and load failure. Explicit recovery uses the
 same-directory exact-state preserver before clearing that failure;
 `DiscoveryController` owns the visible completion/result selection. Search
@@ -307,13 +302,7 @@ SwiftUI disappearance only detaches presentation. `DocumentTransitionCoordinator
 owns and cancels serialized transition tasks. `WindowEditorFlushCoordinator`
 owns ordered current-editor and aggregate-window registrations. They survive
 preparation so cancelled application termination remains retryable, and end
-only after AppKit commits the close. `ResearchRecordsModel` owns only the
-read-only collection selection, Record-provider query, selected step, Note
-reference projection, and automatic refresh for its Records scene. Its
-coordinator keys the scene by Triptych and originating Workspace, retains only
-pending Record selection and registered window-scoped navigation closures, and
-never creates or searches for a Workspace window. Neither object owns durable
-authorization, source bytes, or writable Record state.
+only after AppKit commits the close.
 `WindowSearchController` owns Search/temporary Find execution and
 cancellation, provider-aware result routing, generation reruns, and serialized
 Saved Search loading and persistence. It
@@ -665,13 +654,14 @@ observe shell visibility without reasserting split state or storing width.
 
 ### Inspector ownership
 
-The Inspector has Overview, Outgoing, and Incoming projections. One native
+The Inspector has About and Links pages. One native
 icon-only toolbar group owns projection selection and mirrors the workspace's
-retained mode; the content plane owns no second selector. Overview conditionally
+retained mode; Links owns its separate native direction selector. About conditionally
 presents current-Note Needs Attention routed to the Workspace popover, then
-grouped About. Empty core and all present values show. Saves delegate to
-Metadata or, after editor flush, exact source. File and Settlement facts are
-read-only; Add Field opens the Metadata sheet.
+one ungrouped native About field list. Empty core and all present values show.
+A Note-local Metadata session serializes revision-checked saves and Undo/Redo;
+AppKit owns the continuous field editors and key loop. File and Settlement facts
+are read-only; Settings owns field visibility. No Metadata sheet exists.
 
 For Analysis, `WorkspaceSnapshotBuilder` joins portable Zotero binding by Note
 UUID; the window supplies exact library/key and `ZoteroBridge`. About exposes

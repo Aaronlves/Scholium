@@ -11,11 +11,6 @@ export interface ReaderLocalization {
   strings: Record<string, string>;
 }
 
-export interface ReadDocumentAttachment {
-  id: string;
-  filename: string;
-  available: boolean;
-}
 
 export interface ReaderConfiguration {
   version: 3;
@@ -28,7 +23,6 @@ export interface ReaderConfiguration {
   userCSS: string;
   localization: ReaderLocalization;
   linkPreviews: ReadLinkPreview[];
-  documentAttachments: ReadDocumentAttachment[];
 }
 
 export function validatedReaderConfiguration(value: unknown): ReaderConfiguration | null {
@@ -47,12 +41,7 @@ export function validatedReaderConfiguration(value: unknown): ReaderConfiguratio
       || !config.localization || typeof config.localization !== "object"
       || !config.localization.strings || typeof config.localization.strings !== "object"
       || !Array.isArray(config.linkPreviews) || config.linkPreviews.length > 128
-      || !Array.isArray(config.documentAttachments)
-      || config.documentAttachments.length > 100
-      || !config.documentAttachments.every((attachment) => Boolean(attachment)
-        && typeof attachment === "object"
-        && typeof attachment.id === "string" && attachment.id.length <= 128
-        && typeof attachment.filename === "string" && attachment.filename.length <= 1_024
-        && typeof attachment.available === "boolean")) return null;
+      ) return null;
+
   return config as ReaderConfiguration;
 }
