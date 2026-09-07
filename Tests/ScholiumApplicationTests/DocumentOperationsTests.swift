@@ -5,6 +5,49 @@ import Testing
 
 @Suite("Application document operations")
 struct DocumentOperationsTests {
+    @Test("Former action folders are ordinary Notes and orphan action state is inert")
+    func formerActionFoldersUseOrdinaryFileOperations() async throws {
+        let fixture = try await LifecycleFixture.make()
+        defer { fixture.remove() }
+        let works = try #require(fixture.assignment.vault(for: .output))
+        let control = URL(fileURLWithPath: works.canonicalPath)
+            .deletingLastPathComponent().appendingPathComponent(".scholium")
+        try FileManager.default.createDirectory(at: control, withIntermediateDirectories: true)
+        let orphan = control.appendingPathComponent("critiques.json")
+        let orphanBytes = Data("unsupported pre-production state".utf8)
+        try orphanBytes.write(to: orphan)
+        let runtime = fixture.runtime()
+        let handle = try await runtime.openWorkspace(id: fixture.assignment.id)
+        let source = "\u{FEFF}---\r\ncustom: 'preserve'\r\n---\r\n# Assessment\r\n"
+        let note = try await handle.documents.importMarkdownSource(source, at: .init(
+            vaultID: works.id, relativePath: "Critiques/Assessment.md"
+        )).committedValue
+        #expect(note.rawContent == source)
+        let snapshot = try await handle.refresh()
+        let state = try #require(snapshot.document(id: .init(
+            vaultID: works.id, relativePath: note.relativePath
+        )))
+        #expect(state.capabilities.canEditSource)
+        #expect(state.capabilities.allows(.duplicate))
+        let identity = try #require(state.stableIdentity.resolvedID)
+        let target = NoteMutationTarget(
+            documentID: state.id, stableNoteID: identity, revision: note.fingerprint
+        )
+        let duplicate = try await handle.documents.duplicate(
+            target, to: "Assessment Copy.md"
+        ).committedValue
+        #expect(duplicate.rawContent == source)
+        let preview = try await handle.documents.prepareSystemTrash(target)
+        #expect(preview.sources.map(\.relativePath) == ["Critiques/Assessment.md"])
+        _ = try await handle.documents.move(target, to: "Assessment.md")
+        let moved = try await handle.documents.load(.init(
+            vaultID: works.id, relativePath: "Assessment.md"
+        ))
+        #expect(moved.rawContent == source)
+        #expect(try Data(contentsOf: orphan) == orphanBytes)
+        await runtime.shutdown()
+    }
+
     @Test("An ordinary move rewrites resolved incoming links")
     func ordinaryMoveRewritesIncomingLinks() async throws {
         let fixture = try await LifecycleFixture.make()

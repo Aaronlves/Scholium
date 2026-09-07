@@ -1,6 +1,6 @@
 # Scholium Agent Recommended Reading 与 Works 动态推荐提案
 
-> 状态：Agent-only 多渠道推荐已进入正式规范并完成本地实现；Works 动态消费者仍是提案
+> 状态：历史提案，已被通用 MCP 与当前 Related Material 合同取代。下文的 Action／Run、自动推荐目录和授权说法不再生效，不能用于指导实现。链接现指向当前规范；本文仅保留历史讨论。
 > 日期：2026 年 8 月 27 日  
 > 范围：为 Work Write／Critique 提供 Analyses／Topics、为 Topic Synthesize 提供 Analysis-only 推荐，并支持 Agent 按 Note 名动态查询；以后让同一 owner 支持 Works 写作
 > 权威边界：本文不是 [SCHOLIUM_SPEC.md](../../Docs/SCHOLIUM_SPEC.md)、[IMPLEMENTATION_ARCHITECTURE.md](../../Docs/IMPLEMENTATION_ARCHITECTURE.md) 或 [IMPLEMENTATION_STATUS.md](../../Docs/IMPLEMENTATION_STATUS.md)。三者分别拥有正式目标、结构与当前证据；本文只保留已采纳设计的解释和未采纳扩展。
@@ -40,12 +40,12 @@ Topic Synthesize 同样获得初始目录，但候选只能是 Analyses。每个
 ### 3.1 已有能力
 
 - Triptych 只含 Analyses、Topics 和 Works；Analyses 与 Topics 明确被设计为可跨 Works 复用的研究资源，见 [Foundation and Triptych](../../Docs/Specification/01-foundation-and-triptych.md)。
-- 研究者选择 Action 已授权 Agent 读取任务相关 Triptych 材料；读 Work 不触发 Works 写入政策，见 [Research Actions and Workflows](../../Docs/Specification/03-research-actions-and-workflows.md)。
+- 研究者选择 Action 已授权 Agent 读取任务相关 Triptych 材料；读 Work 不触发 Works 写入政策，见 [Agent Collaboration and Research Workflows](../../Docs/Specification/03-agent-collaboration-and-workflows.md)。
 - `ResearchAuthenticatedRunContext` 已向 Agent 交付 Brief、Result Contract、Bounded Write Set 和 typed `next_actions`。现有 `next_actions` 已能携带完整、可直接执行的 Research Context request，见 [`ResearchAgentConnectionContracts.swift`](../../ScholiumContracts/ResearchAgentConnectionContracts.swift) 和 [`ResearchAgentConnectionOperations.swift`](../../ScholiumApplication/ResearchAgentConnectionOperations.swift)。
 - Research Context 已支持 Note discovery、exact Note／section read、direct links、Metadata、Records、selected source Material 与窄 researcher-state 检查；它的 Source Reference Envelope 保留 owner、identity、revision、locator、scope、currentness、evidential layer 和 retrieval reason。
 - Search contract 已索引 title、alias、heading、`summary`、body、author、keyword、footnote、`link_annotation` 和 path，并支持显式 direct-link query。结果携带 role、source range、fingerprint、freshness 和 typed match reasons，见 [Connect, Search, and Recovery](../../Docs/Specification/04-connect-search-and-recovery.md) 与 [`SearchProtocolContracts.swift`](../../ScholiumContracts/SearchProtocolContracts.swift)。
 - 当前 App 已能在不 flush 或 save 的情况下，从 CodeMirror 取得绑定 editor session 与 revision 的精确内存 source snapshot，供 This Note Search 使用，见 [`ScholiumApp.swift`](../../Scholium/App/ScholiumApp.swift)。
-- `summary` 与 `keywords` 是 Analysis、Topic 和 Work 的唯一共享 canonical authored YAML 字段；其他未知 YAML 只无损保留，见 [Metadata and Critique](../../Docs/Specification/11-metadata-and-critique.md)。
+- `summary` 与 `keywords` 是 Analysis、Topic 和 Work 的唯一共享 canonical authored YAML 字段；其他未知 YAML 只无损保留，见 [Metadata](../../Docs/Specification/11-metadata.md)。
 
 ### 3.2 Agent-only 实现后尚缺的能力
 
@@ -364,7 +364,7 @@ Agent effectiveness 不替代 Works UI 验收，UI 可用性也不替代 Agent �
 
 本次窄切片已经更新：
 
-1. [Research Actions and Workflows](../../Docs/Specification/03-research-actions-and-workflows.md)：定义 Work Write／Critique、Topic Synthesize 的 role-bounded 目录、exact-read action 与按名 related command；保留显式读取和 Context Use 规则。
+1. [Agent Collaboration and Research Workflows](../../Docs/Specification/03-agent-collaboration-and-workflows.md)：定义 Work Write／Critique、Topic Synthesize 的 role-bounded 目录、exact-read action 与按名 related command；保留显式读取和 Context Use 规则。
 2. [Connect, Search, and Recovery](../../Docs/Specification/04-connect-search-and-recovery.md)：定义 direct-link、Search identity／weighted lexical、candidate roles、多 seed Application ordering、budgets、freshness 和 App／CLI 边界；继续 deferred vector／AI ranking。
 3. [Implementation Architecture](../../Docs/IMPLEMENTATION_ARCHITECTURE.md)：在 Search owner 与 Research Action owner 的现有边界内记录 Related-Content Retrieval 与 `RecommendedReadingCoordinator`，不新建 runtime 或持久 store。
 

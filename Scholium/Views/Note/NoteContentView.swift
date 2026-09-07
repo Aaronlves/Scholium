@@ -98,7 +98,6 @@ struct DocumentFeatureState {
     let documentRevisions: [String: DocumentFingerprint]
     let workspaceCatalog: WorkspaceCatalogSnapshot?
     let canEdit: Bool
-    let isManagedCritique: Bool
     let documentTextScale: Double
     let appearanceCSS: String
     let readCSS: String
@@ -144,20 +143,17 @@ struct DocumentFeatureView: View {
     let documentInformation: DocumentInformationProjection
     let state: DocumentFeatureState
     let actions: DocumentFeatureActions
-    let critiqueProvenanceContext: CritiqueProvenanceContext
 
     init(
         controller: DocumentController,
         documentInformation: DocumentInformationProjection,
         state: DocumentFeatureState,
-        actions: DocumentFeatureActions,
-        critiqueProvenanceContext: CritiqueProvenanceContext
+        actions: DocumentFeatureActions
     ) {
         self.controller = controller
         self.documentInformation = documentInformation
         self.state = state
         self.actions = actions
-        self.critiqueProvenanceContext = critiqueProvenanceContext
     }
 
     var body: some View {
@@ -181,8 +177,7 @@ struct DocumentFeatureView: View {
                     note: note,
                     documentSession: controller.session(for: key),
                     state: state,
-                    actions: actions,
-                    critiqueProvenanceContext: critiqueProvenanceContext
+                    actions: actions
                 )
                 .id(key)
             } else {
@@ -195,8 +190,7 @@ struct DocumentFeatureView: View {
                         relativePath: note.relativePath
                     ),
                     state: state,
-                    actions: actions,
-                    critiqueProvenanceContext: critiqueProvenanceContext
+                    actions: actions
                 )
                     .id(selectedDocumentPath)
             }
@@ -211,7 +205,6 @@ private struct DocumentSessionFallback: View {
     let target: DocumentEditingTarget
     let state: DocumentFeatureState
     let actions: DocumentFeatureActions
-    let critiqueProvenanceContext: CritiqueProvenanceContext
 
     var body: some View {
         NoteContentView(
@@ -221,8 +214,7 @@ private struct DocumentSessionFallback: View {
             note: note,
             documentSession: controller.session(for: target),
             state: state,
-            actions: actions,
-            critiqueProvenanceContext: critiqueProvenanceContext
+            actions: actions
         )
     }
 }
@@ -236,7 +228,6 @@ struct NoteContentView: View {
     let note: WindowDocumentLocation
     let state: DocumentFeatureState
     let actions: DocumentFeatureActions
-    let critiqueProvenanceContext: CritiqueProvenanceContext
     @StateObject private var documentFind = DocumentFindPresentationModel()
     @StateObject private var reviewDocumentStatistics = ReviewDocumentStatisticsModel()
     @State private var isInsertingImage = false
@@ -250,8 +241,7 @@ struct NoteContentView: View {
         note: WindowDocumentLocation,
         documentSession: DocumentSessionModel,
         state: DocumentFeatureState,
-        actions: DocumentFeatureActions,
-        critiqueProvenanceContext: CritiqueProvenanceContext
+        actions: DocumentFeatureActions
     ) {
         self.controller = controller
         self.documentInformation = documentInformation
@@ -260,7 +250,6 @@ struct NoteContentView: View {
         self.note = note
         self.state = state
         self.actions = actions
-        self.critiqueProvenanceContext = critiqueProvenanceContext
     }
 
     private var isEditing: Bool {
@@ -344,12 +333,6 @@ struct NoteContentView: View {
                 .padding(.vertical, ScholiumGrid.Spacing.inlineControlGap)
             }
 
-            if state.isManagedCritique {
-                CritiqueProvenanceView(
-                    note: note,
-                    context: critiqueProvenanceContext
-                )
-            }
 
             if let presentation = documentIntegrityPresentation {
                 ScholiumDocumentStatusNotice(
@@ -1601,7 +1584,6 @@ private struct ConflictComparisonSheet: View {
         documentRevisions: [note.relativePath: note.document.fingerprint],
         workspaceCatalog: nil,
         canEdit: false,
-        isManagedCritique: false,
         documentTextScale: 1,
         appearanceCSS: "",
         readCSS: "",
@@ -1634,13 +1616,6 @@ private struct ConflictComparisonSheet: View {
         renameNote: { _, _, requestedTitle in requestedTitle },
         notify: { _, _ in }
     )
-    let critiqueProvenanceContext = CritiqueProvenanceContext(
-        availableNotes: [note],
-        documentRevisions: [note.relativePath: note.document.fingerprint],
-        loadAssociation: { _ in nil },
-        openTarget: { _ in },
-        openFinding: { _, _ in }
-    )
     NoteContentView(
         controller: controller,
         documentInformation: DocumentInformationProjection(),
@@ -1651,8 +1626,7 @@ private struct ConflictComparisonSheet: View {
         note: note,
         documentSession: DocumentSessionModel(key: nil),
         state: state,
-        actions: actions,
-        critiqueProvenanceContext: critiqueProvenanceContext
+        actions: actions
     )
 }
 

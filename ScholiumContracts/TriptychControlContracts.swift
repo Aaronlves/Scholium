@@ -274,7 +274,7 @@ public struct NoteIdentityAmbiguity: Codable, Hashable, Identifiable, Sendable {
 /// A confirmed or uniquely detected path change whose app-owned references
 /// have not all been migrated yet. This record is written atomically with the
 /// identity path change, so an interruption cannot make the note appear fully
-/// reconciled while History, comments, Dialogue, or other state still points
+/// reconciled while window or recovery state still points
 /// at the previous path.
 public struct NoteIdentityPendingRebinding: Codable, Hashable, Identifiable, Sendable {
     public var id: String { "\(vaultID.uuidString):\(noteID.uuidString):\(relativePath)" }

@@ -520,7 +520,7 @@ Helm 的 import 理论可以启发较弱的实践关切主张，
 
 ## 十一、迁回后的现行规范对照
 
-本节记录 2026-09-02 对本探索记录与旧 Scholium 当前 canonical specification 的只读对照。它不修改正式目标，也不把探索结论描述为已经实现。后续每项替代决定必须进入其唯一 owning chapter，并在同一规范切片中删除被替代规则。
+本节记录 2026-09-02 的历史只读对照；所述实现和差异不代表当前状态。文档链接已更新为当前入口。它不修改正式目标，也不把探索结论描述为已经实现。后续每项替代决定必须进入其唯一 owning chapter，并在同一规范切片中删除被替代规则。
 
 ### 基本一致，可以作为继续工作的基础
 
@@ -529,7 +529,7 @@ Helm 的 import 理论可以启发较弱的实践关切主张，
 | 继续使用 Swift 原生 macOS App，暂不考虑跨平台 | [Foundation §2.1](../../Docs/Specification/01-foundation-and-triptych.md#21-research-document-first)、[Release §21.5](../../Docs/Specification/10-release-and-open-decisions.md#215-source-first-beta-distribution) | 一致。Scholium-lite 阶段的本地 Web/Windows 方向已暂停，不再要求平台重写。 |
 | Markdown 正文是研究内容权威；索引、Metadata、关系和渲染只是辅助或投影 | [Foundation §2.1](../../Docs/Specification/01-foundation-and-triptych.md#21-research-document-first)、[Notes §5.2](../../Docs/Specification/02-notes-and-file-operations.md#52-authored-yaml-and-scholium-metadata)、[Search §13](../../Docs/Specification/04-connect-search-and-recovery.md#13-search-and-attention) | 基本一致。旧规范的精确字节、外部变化、冲突和恢复边界应保留。 |
 | `Analyses`、`Topics`、`Works` 是三个不同研究库，真实文件夹层级保持可见 | [Foundation §3](../../Docs/Specification/01-foundation-and-triptych.md#3-the-scholium-triptych)、[Library §18.3](../../Docs/Specification/06-interface-shell-and-library.md#183-library-and-search) | 核心一致。旧规范额外附加的 Triptych 注册、窗口恢复和控制状态仍需分别证明，不能由“三库必要”自动推出。 |
-| 三类库具有不同研究角色，Agent 不能把 Analysis 或 Topic 自动当成研究者立场 | [Foundation §§2.3、3.1](../../Docs/Specification/01-foundation-and-triptych.md#23-authorship-and-provenance)、[Work §11.1](../../Docs/Specification/03-research-actions-and-workflows.md#111-researcher-governed-works) | 部分一致。现行规范已有作者和库角色边界，但尚未充分表达 `Works` 是研究者立场的主要文本来源，以及 Topic/Analysis 中的评价不能自动归属于研究者。 |
+| 三类库具有不同研究角色，Agent 不能把 Analysis 或 Topic 自动当成研究者立场 | [Foundation §§2.3、3.1](../../Docs/Specification/01-foundation-and-triptych.md#23-authorship-and-provenance)、[Work §11.1](../../Docs/Specification/03-agent-collaboration-and-workflows.md#111-researcher-governed-works) | 部分一致。现行规范已有作者和库角色边界，但尚未充分表达 `Works` 是研究者立场的主要文本来源，以及 Topic/Analysis 中的评价不能自动归属于研究者。 |
 | Agent 是外部参与者，Scholium 不成为永久聊天或嵌入式 Agent runtime | [Foundation §2.2](../../Docs/Specification/01-foundation-and-triptych.md#22-researcher-responsibility-and-optional-agent-access)、[Boundaries §17](../../Docs/Specification/05-integrations-onboarding-and-boundaries.md#17-permanent-boundaries-and-deferred-capabilities) | 基本一致。冲突在具体通信、权限和工作流机器，而不在“外部 Agent”原则。 |
 | 行动开始时必须看到当前文件状态；派生索引不可成为第二权威 | [Search §13](../../Docs/Specification/04-connect-search-and-recovery.md#13-search-and-attention)、[Save §14](../../Docs/Specification/04-connect-search-and-recovery.md#14-save-agent-changes-and-recovery) | 基本一致。现行规范已有 generation、fingerprint、Limited/Stale/Unavailable 和外部变化边界。 |
 | 不把本地向量模型、embedding 或自动关系推断作为第一版依赖 | [Search §13](../../Docs/Specification/04-connect-search-and-recovery.md#13-search-and-attention) | 一致。现行规范明确排除 vector search、embedding、AI ranking 和自动关系抽取。 |
@@ -537,7 +537,7 @@ Helm 的 import 理论可以启发较弱的实践关切主张，
 | 界面正文优先、三区域、克制、学术编辑风格，避免卡片墙和管理后台感 | [Interface §§18.1–18.2](../../Docs/Specification/06-interface-shell-and-library.md#181-interface-principles)、[Design §19](../../Design.md#19-scholarly-editorialism-and-design-variables) | 高度一致。继续保留 Swift/macOS、Scholarly Editorialism、Sidebar–Document–Apparatus、文档主位和现有设计系统；具体质量问题以后依据实际界面逐项修正。 |
 | Review、Edit、Source 提供独立阅读、Live Preview 编辑和完整源码 | [Notes §5.1](../../Docs/Specification/02-notes-and-file-operations.md#51-document-modes-and-yaml)、[Document §18.4](../../Docs/Specification/07-document-and-research-interface.md#184-document-modes-context-and-metadata) | 迁回后决定保留。探索中的“单一阅读编辑表面”不再要求取消无干扰阅读模式。 |
 | Overview/Connect Inspector、独立 Records 窗口和 Sidebar–Document–Apparatus 骨架 | [Interface §18.2](../../Docs/Specification/06-interface-shell-and-library.md#182-workspace-shell-and-document-tabs)、[Research Interface §18.5](../../Docs/Specification/07-document-and-research-interface.md#185-contextual-research-and-actions) | 可以保留，不再列为当前需要替换的界面合同。 |
-| 三类笔记都需要 authored `summary` 和 `keywords/tags` | [Metadata Appendix A](../../Docs/Specification/11-metadata-and-critique.md#shared-authored-yaml) | 一致。现行规范已经把 `summary` 和 `keywords` 设为三库共享的 authored YAML。 |
+| 三类笔记都需要 authored `summary` 和 `keywords/tags` | [Metadata Appendix A](../../Docs/Specification/11-metadata.md#shared-authored-yaml) | 一致。现行规范已经把 `summary` 和 `keywords` 设为三库共享的 authored YAML。 |
 
 ### 部分一致，但现行设计明显超过已证明需要
 

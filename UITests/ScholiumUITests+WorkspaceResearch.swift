@@ -1293,58 +1293,6 @@ extension ScholiumUITests {
 
 
     @MainActor
-    func testCritiqueFindingOpensExactWorkPassageInSource() throws {
-        waitForCurrentDocumentSurface()
-        selectVault(
-            "Works",
-            waitingFor: "scholium.folderRow.Critiques"
-        )
-
-        let critiquesFolder = app.descendants(matching: .any)[
-            "scholium.folderRow.Critiques"
-        ].firstMatch
-        XCTAssertTrue(critiquesFolder.waitForExistence(timeout: 8))
-        critiquesFolder.click()
-
-        let critiqueRow = app.descendants(matching: .any)[
-            "scholium.noteRow.Critiques/QA Critique.md"
-        ]
-        XCTAssertTrue(critiqueRow.waitForExistence(timeout: 8))
-        critiqueRow.click()
-
-        let provenance = app.descendants(matching: .any)["scholium.critiqueProvenance"]
-        XCTAssertTrue(provenance.waitForExistence(timeout: 8))
-        let agentAttribution = provenance.staticTexts
-            .matching(NSPredicate(format: "value CONTAINS %@", "Agent-authored Critique"))
-            .firstMatch
-        XCTAssertTrue(agentAttribution.waitForExistence(timeout: 3))
-
-        let findings = provenance.descendants(matching: .any)["scholium.critiqueFindings"]
-        XCTAssertTrue(findings.waitForExistence(timeout: 5))
-        findings.click()
-
-        let finding = app.buttons["Traced: Topic connection"].firstMatch
-        XCTAssertTrue(finding.waitForExistence(timeout: 5))
-        XCTAssertTrue(finding.isEnabled)
-        XCTAssertTrue(
-            accessibilityText(of: finding).contains("Line")
-                || accessibilityText(of: finding).contains("Heading"),
-            "The finding must expose the exact recorded passage destination before navigation."
-        )
-        finding.click()
-
-        XCTAssertTrue(waitForDocumentTitle("QA Work", timeout: 8))
-        let sourceEditor = app.descendants(matching: .any)["Markdown source editor"]
-        XCTAssertTrue(sourceEditor.waitForExistence(timeout: 8))
-        let workURL = triptychDirectory.appendingPathComponent(
-            "03-works/QA Work.md"
-        )
-        XCTAssertTrue(try source(at: workURL).contains("[[QA Topic]]"))
-        let mode = documentModeControl()
-        XCTAssertEqual(documentModeState(mode), "Source")
-    }
-
-    @MainActor
     func testDocumentModesInspectorAndSearchAreKeyboardReachable() throws {
         let mode = documentModeControl()
         XCTAssertTrue(mode.waitForExistence(timeout: 10))

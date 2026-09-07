@@ -200,24 +200,19 @@ public enum DocumentFileAction: String, Codable, CaseIterable, Hashable, Sendabl
 
 public struct DocumentCapabilities: Codable, Equatable, Sendable {
     public let canEditSource: Bool
-    public let isManagedCritique: Bool
     public let fileActions: Set<DocumentFileAction>
 
     public init(
         role: VaultRole,
-        identity: DocumentIdentityResolution,
-        isManagedCritique: Bool
+        identity: DocumentIdentityResolution
     ) {
-        self.isManagedCritique = isManagedCritique
         guard identity == .resolved else {
             canEditSource = false
             fileActions = []
             return
         }
-        canEditSource = !isManagedCritique
-        fileActions = isManagedCritique
-            ? [.move, .moveToSystemTrash]
-            : [.duplicate, .move, .moveToSystemTrash]
+        canEditSource = true
+        fileActions = [.duplicate, .move, .moveToSystemTrash]
     }
 
     public func allows(_ action: DocumentFileAction) -> Bool {

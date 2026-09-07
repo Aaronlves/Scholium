@@ -126,7 +126,6 @@ struct SidebarTreeTests {
     @Test("Context menus and accessibility actions share one file-command projection")
     func noteCommandProjection() {
         let workspaceMenu = sidebarNoteCommandGroups(
-            isManagedCritique: false
         ).flatMap(\.commands)
         #expect(workspaceMenu == [
             .openInNewTab,
@@ -138,10 +137,6 @@ struct SidebarTreeTests {
             .revealInFinder,
         ])
 
-        let managedCritique = sidebarNoteCommandGroups(
-            isManagedCritique: true
-        ).flatMap(\.commands)
-        #expect(!managedCritique.contains(.duplicate))
     }
 
     @Test("Library filter presentation counts only complete property filters")

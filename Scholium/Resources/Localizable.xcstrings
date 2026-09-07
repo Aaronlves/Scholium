@@ -1,6 +1,102 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+"Confirming a previous note moves its portable identity and window state to the current location. Scholium does not change the Markdown file.": {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Confirming a previous note moves its portable identity and window state to the current location. Scholium does not change the Markdown file."
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "确认原有笔记后，会将其便携身份与窗口状态关联到当前位置。Scholium 不会更改 Markdown 文件。"
+      }
+    }
+  }
+},
+"Renaming preserves the note's folder, stable identity, and Metadata.": {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Renaming preserves the note's folder, stable identity, and Metadata."
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "重命名会保留笔记的文件夹、稳定身份与元数据。"
+      }
+    }
+  }
+},
+"Moving preserves the note's stable identity and Metadata.": {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Moving preserves the note's stable identity and Metadata."
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "移动会保留笔记的稳定身份与元数据。"
+      }
+    }
+  }
+},
+"Finder owns file restoration. Scholium moves only the listed source items to system Trash and retains their portable identities.": {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Finder owns file restoration. Scholium moves only the listed source items to system Trash and retains their portable identities."
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "文件恢复由访达负责。Scholium 只将列出的源项目移入系统废纸篓，并保留其便携身份。"
+      }
+    }
+  }
+},
+"Scholium will resume only the persisted forward plan. Items already moved to the macOS Trash remain under Finder control; Scholium completes the operation receipts without removing portable identities.": {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Scholium will resume only the persisted forward plan. Items already moved to the macOS Trash remain under Finder control; Scholium completes the operation receipts without removing portable identities."
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Scholium 只会继续已保存的执行计划。已移入 macOS 废纸篓的项目仍由访达管理；Scholium 会完成操作凭据，不删除便携身份。"
+      }
+    }
+  }
+},
+"Some workspace state could not be loaded. The affected files remain unchanged; see the details for unavailable operations.": {
+  "localizations": {
+    "en": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "Some workspace state could not be loaded. The affected files remain unchanged; see the details for unavailable operations."
+      }
+    },
+    "zh-Hans": {
+      "stringUnit": {
+        "state": "translated",
+        "value": "部分工作区状态无法载入。受影响的文件保持不变；不可用操作请参阅详细信息。"
+      }
+    }
+  }
+},
   "Connect an agent before sending.": {
     "localizations": {
       "en": {
@@ -4362,22 +4458,7 @@
         }
       }
     },
-    "Agent-authored Critique" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Agent-authored Critique"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "智能体撰写的评析"
-          }
-        }
-      }
-    },
+
     "Aliases" : {
       "extractionState" : "extracted_with_value",
       "localizations" : {
@@ -6865,16 +6946,7 @@
         }
       }
     },
-    "Confirming a previous note moves its portable identity, Critique association, and window state to the current location. Scholium does not change the Markdown file." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "确认先前笔记会将其可移植身份、评析关联和窗口状态移至当前位置。Scholium 不会更改 Markdown 文件。"
-          }
-        }
-      }
-    },
+
     "Connect" : {
       "localizations" : {
         "en" : {
@@ -7518,22 +7590,7 @@
         }
       }
     },
-    "Critique metadata does not match the latest recorded request. Treat its target as uncertain until the agent or researcher reconciles it." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Critique metadata does not match the latest recorded request. Treat its target as uncertain until the agent or researcher reconciles it."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "评析元数据与最近记录的请求不符。在智能体或研究者校正前，应将其目标视为不确定。"
-          }
-        }
-      }
-    },
+
     "Current Content" : {
       "localizations" : {
         "zh-Hans" : {
@@ -9080,16 +9137,7 @@
         }
       }
     },
-    "Finder owns file restoration. Scholium will remove only the listed sources and their portable identity and Critique associations." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "文件恢复由 Finder 管理。Scholium 只会移除列出的来源及其可移植身份和评析关联。"
-          }
-        }
-      }
-    },
+
     "Find…" : {
       "localizations" : {
         "en" : {
@@ -9533,22 +9581,7 @@
         }
       }
     },
-    "Hides the source-anchored Critique findings." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Hides the source-anchored Critique findings."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "隐藏锚定到原文的评析结果。"
-          }
-        }
-      }
-    },
+
     "Highlight" : {
       "localizations" : {
         "en" : {
@@ -12233,22 +12266,7 @@
         }
       }
     },
-    "No Scholium request history is associated with this Critique." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "No Scholium request history is associated with this Critique."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此评析没有关联的 Scholium 请求记录。"
-          }
-        }
-      }
-    },
+
     "No Search Results" : {
       "localizations" : {
         "zh-Hans" : {
@@ -16187,16 +16205,7 @@
         }
       }
     },
-    "Scholium will resume only the persisted forward plan. Items already moved to the macOS Trash remain under Finder control; Scholium only completes portable identity and Critique cleanup." : {
-      "localizations" : {
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scholium 只会继续执行已持久化的前向计划。已移入 macOS 纸篓的项目仍由 Finder 管理；Scholium 只完成可移植身份和评析清理。"
-          }
-        }
-      }
-    },
+
     "Search" : {
       "localizations" : {
         "en" : {
@@ -16977,22 +16986,7 @@
         }
       }
     },
-    "Shows the source-anchored Critique findings." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Shows the source-anchored Critique findings."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "显示锚定到原文的评析结果。"
-          }
-        }
-      }
-    },
+
     "Shows the storage error details." : {
       "localizations" : {
         "en" : {

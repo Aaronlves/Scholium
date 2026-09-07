@@ -443,50 +443,6 @@ public actor ResearchOperations: ResearchUseCases {
         return try await handle.settle(note, expectedRevision: expectedRevision, rationale: rationale)
     }
 
-    public func critique(workNoteID: UUID) async throws -> CritiqueAssociation? {
-        let handle = try await reference.requireHandle()
-        return try await handle.critique(workNoteID: workNoteID)
-    }
-
-    public func critique(critiqueRelativePath: String) async throws -> CritiqueAssociation? {
-        let handle = try await reference.requireHandle()
-        return try await handle.critique(critiqueRelativePath: critiqueRelativePath)
-    }
-
-    public func setCritiqueFindingDisposition(
-        workNote: VaultQualifiedNoteID,
-        roundID: UUID,
-        findingID: String,
-        decision: CritiqueFindingDispositionDecision,
-        rationale: String?,
-        noTextChangeRationale: String?,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> CritiqueAssociation {
-        let handle = try await reference.requireHandle()
-        return try await handle.setCritiqueFindingDisposition(
-            workNote: workNote,
-            roundID: roundID,
-            findingID: findingID,
-            decision: decision,
-            rationale: rationale,
-            noTextChangeRationale: noTextChangeRationale,
-            expectedRevision: expectedRevision
-        )
-    }
-
-    public func completeCritiqueRound(
-        workNote: VaultQualifiedNoteID,
-        roundID: UUID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> CritiqueAssociation {
-        let handle = try await reference.requireHandle()
-        return try await handle.completeCritiqueRound(
-            workNote: workNote,
-            roundID: roundID,
-            expectedRevision: expectedRevision
-        )
-    }
-
     public func settings() async throws -> TriptychSettingsSnapshot {
         let handle = try await reference.requireHandle()
         return try await handle.triptychSettings()

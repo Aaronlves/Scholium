@@ -204,10 +204,8 @@ projection counts and durations, identity and research-state projection,
 graph construction, dynamic Search projection and synchronization, snapshot
 assembly, source-byte size, publication, and total duration without source
 content or identifiers. Per-vault source durations are work sums and may
-overlap; total duration remains wall clock. Snapshot assembly reuses the exact
-same generation's reconciled portable-identity state for Critique association;
-only `.resolved` identities participate, so ambiguous, pending, unresolved, or
-failed recovery remains closed without one storage lookup per Work.
+overlap; total duration remains wall clock. Snapshot assembly uses the generation's reconciled portable identities;
+ambiguous, pending, or unresolved identities remain nonauthorizing.
 
 `ScholiumContracts` owns current parsing and typed Note clauses, the
 closed provider capability table, provider-mismatch diagnostics,
@@ -321,7 +319,7 @@ document/projection facts that affect focused command
 labels or availability. Commands still read and mutate the existing owners.
 `DocumentController` alone owns
 selection and document workflow state; `ResearchController` owns Settlement,
-Critique, durable-recovery projection, and the window-borrowed machine-local
+durable-recovery projection, and the window-borrowed machine-local
 Agent Change list used for presence and presentation. It neither republishes
 nor duplicates document or shell state.
 `DocumentTransitionCoordinator` serializes workspace and document replacement,
@@ -413,8 +411,7 @@ one control-store write and resumes existing idempotent path migrations. Other
 directory contents move with the inode and are not parsed. System-Trash folder
 deletion instead freezes the complete directory manifest, including hidden,
 non-Markdown, and empty-directory entries, then submits the directory once
-through `VaultMutationCoordinator` and Foundation's native Trash API. A managed
-Critique outside the directory remains a separately receipted native move.
+through `VaultMutationCoordinator` and Foundation's native Trash API. Independent linked Notes outside the selected directory remain unchanged.
 Copy Relative Path
 and Reveal in Finder remain delivery actions over an existing folder or note
 vault-relative path and create no Core authority.

@@ -50,7 +50,7 @@ LEGACY_AGENT_ROOTS=(
   "${ROOT}/ScholiumCore"
 )
 if rg -n --glob '*.swift' \
-  '\b(ResearchAction[A-Za-z0-9_]*|PortableResearchRecord[A-Za-z0-9_]*|ResearchAgentSession[A-Za-z0-9_]*|ResearchDiscussion[A-Za-z0-9_]*|LocalAgentBridge[A-Za-z0-9_]*|ResearchRecord[A-Za-z0-9_]*|RecordSearch[A-Za-z0-9_]*|UnifiedSearch[A-Za-z0-9_]*|SearchProviderSelection)\b' \
+  '\b(ResearchAction[A-Za-z0-9_]*|PortableResearchRecord[A-Za-z0-9_]*|ResearchAgentSession[A-Za-z0-9_]*|ResearchDiscussion[A-Za-z0-9_]*|LocalAgentBridge[A-Za-z0-9_]*|ResearchRecord[A-Za-z0-9_]*|RecordSearch[A-Za-z0-9_]*|UnifiedSearch[A-Za-z0-9_]*|SearchProviderSelection|Critique[A-Za-z0-9_]*|ZoteroBibliographicContext|ZoteroMetadataMatcher|ZoteroSourceIdentity)\b' \
   "${LEGACY_AGENT_ROOTS[@]}"; then
   echo "Agent collaboration clean-cutover guard failed: a retired production owner returned." >&2
   exit 1
@@ -74,6 +74,14 @@ if rg -n --glob '*.swift' --glob '*.sh' \
   "${LEGACY_AGENT_ROOTS[@]}" \
   "${ROOT}/Tools/Scripts/package-app.sh"; then
   echo "Agent collaboration CLI/storage guard failed: a retired route or path returned." >&2
+  exit 1
+fi
+
+# Retired action journeys and fixtures must not survive outside production roots.
+if rg -n --glob '*.swift' \
+  'scholium\.critique|critique_authorship|critique_target_|testCritiqueFinding|scholium-research-workflow-proofs|scholium-write-set-extension-fixture' \
+  "${ROOT}/UITests"; then
+  echo "Agent cleanup guard failed: retired UI journey or fixture remains." >&2
   exit 1
 fi
 
@@ -189,7 +197,7 @@ if rg -n --glob '*.swift' \
   exit 1
 fi
 
-if rg -n --glob '*.swift' '\b(VaultService|SearchEngine|VaultRepository|WorkspaceRegistry|TriptychControlStore|ResearchSkillStore|DialogueStore|CritiqueRegistry|TriptychMutationRecoveryStore|NoteIdentityRecoveryCoordinator|TriptychMoveCoordinator|NoteSystemTrashDeletionCoordinator)[[:space:]]*\(' \
+if rg -n --glob '*.swift' '\b(VaultService|SearchEngine|VaultRepository|WorkspaceRegistry|TriptychControlStore|TriptychMutationRecoveryStore|NoteIdentityRecoveryCoordinator|TriptychMoveCoordinator|NoteSystemTrashDeletionCoordinator)[[:space:]]*\(' \
   "${DELIVERY_ROOTS[@]}"; then
   echo "Application ownership guard failed: a delivery target constructs an Application-owned authority." >&2
   exit 1

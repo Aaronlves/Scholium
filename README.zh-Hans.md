@@ -29,7 +29,7 @@ Scholium 是学术研究知识库与研究工作台，不是聊天外壳或独�
 判断，而不是隐藏的模型状态或平行的私有数据库。
 
 研究者是知识库的构成性参与者，而不只是审核模型选择保存哪些“记忆”的人。准确
-书写、声明范围与限制、Settle、Critique disposition 与主动安排的下一步，各自
+书写、声明范围与限制、Settle 与主动安排的下一步，各自
 保留狭窄而明确的语义。打开、阅读、沉默或允许写入不等于接受、重要性或 belief。
 
 来源主张、解释、Agent 重构、研究者承诺、异议和后续修订保持可区分，不被压成没有
@@ -72,7 +72,7 @@ Scholium 是一个由编译器强制边界的模块化单体。不可变值与�
 交付目标都不导入 Core。
 
 当前产品支持独立脉络与窗口、准确来源 Markdown 编辑、搜索与关联、Note 与文件夹
-操作、外部编辑冲突、中断保存恢复、Settle、Critique、Zotero，以及固定的本机 MCP
+操作、外部编辑冲突、中断保存恢复、Settle、Zotero，以及固定的本机 MCP
 协作面。Search 始终是供应用、CLI 与 MCP adapter 共用的可丢弃 Note-only 投影。
 
 已安装的 `scholium` 可执行文件通过 `scholium mcp serve` 启动 stdio server。它只把
@@ -264,7 +264,7 @@ bridge 工作；当应用、bridge、所选脉络或当前状态不可用时明�
 权威研究内容始终保存在研究者选择的 Markdown 文件夹。位于“写作”旁边的小型
 便携式 `.scholium/` 控制结构只保存
 [§3.3](Docs/Specification/01-foundation-and-triptych.md#33-scholium-and-machine-local-state)列出的控制状态。
-研究正文和 Critique 保持为 Markdown，保存恢复数据留在本机。
+研究正文和评析均保持为普通 Markdown，保存恢复数据留在本机。
 
 Bookmark、绝对路径、窗口 session、索引、保存的查询、恢复、本机 bridge 认证、
 准确 Agent Change 证据与未知预发布字节保存在本机：

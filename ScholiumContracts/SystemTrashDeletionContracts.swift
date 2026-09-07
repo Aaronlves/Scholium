@@ -20,8 +20,8 @@ public struct SystemTrashDeletionNoteTarget: Codable, Hashable, Sendable {
     }
 }
 
-/// One filesystem item passed to Foundation's native system-Trash API. A Work
-/// and its associated Critique remain separately observable filesystem moves.
+/// One selected file or folder passed to Foundation's native system-Trash API.
+/// Each selected source retains its own receipt.
 public struct SystemTrashDeletionSourceTarget: Codable, Hashable, Identifiable, Sendable {
     public let id: UUID
     public let vaultID: UUID

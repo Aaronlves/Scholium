@@ -150,7 +150,7 @@ final class WindowWorkspaceController: ObservableObject {
                 if recordRecovery(for: error) {
                     return .recoveryRequired
                 }
-                let message = "Scholium could not activate this Triptych's shared files, search, and research history. The registered locations remain unchanged. \(error.localizedDescription)"
+                let message = "Scholium could not activate this Triptych's shared files, search, and workspace state. The registered locations remain unchanged. \(error.localizedDescription)"
                 state.recoveryMessage = message
                 return .failed(message)
             }

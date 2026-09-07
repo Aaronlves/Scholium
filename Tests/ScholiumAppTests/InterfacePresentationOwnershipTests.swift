@@ -43,7 +43,7 @@ struct InterfacePresentationOwnershipTests {
     let linkButtons = try occurrenceInventory(
       pattern: #"\.scholiumButtonStyle\(\.link\)"#, extensions: ["swift"]
     )
-    #expect(linkButtons == ["Scholium/Views/Note/CritiqueProvenanceView.swift": 1],
+    #expect(linkButtons.isEmpty,
             Comment(rawValue: diagnostic(for: linkButtons)))
     let tintOwners = try occurrenceInventory(pattern: #"\.tint\s*\("#, extensions: ["swift"])
     #expect(tintOwners == [

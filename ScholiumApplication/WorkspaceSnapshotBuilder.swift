@@ -37,7 +37,6 @@ struct WorkspaceSnapshotBuilderDependencies: Sendable {
     let searchIndex: TriptychSearchIndex
     let controlStore: TriptychControlStore
     let settlementStore: SettlementStore
-    let critiqueRegistry: CritiqueRegistry
     let transactionRecoveryStore: TriptychMutationRecoveryStore
     let identityRecoveryCoordinator: NoteIdentityRecoveryCoordinator
 }
@@ -50,7 +49,6 @@ extension WorkspaceServices {
             searchIndex: searchIndex,
             controlStore: controlStore,
             settlementStore: settlementStore,
-            critiqueRegistry: critiqueRegistry,
             transactionRecoveryStore: transactionRecoveryStore,
             identityRecoveryCoordinator: identityRecoveryCoordinator
         )
@@ -150,8 +148,7 @@ enum WorkspaceSnapshotBuilder {
             let recovery = try await dependencies.identityRecoveryCoordinator.reconcile(
                 vaultID: vault.id,
                 documents: allDocuments.map { ($0.relativePath, $0.fingerprint) },
-                repository: repository,
-                migrateCritiquePaths: slot == .output
+                repository: repository
             )
             identityRecovery = recovery
             for (path, record) in recovery.identities {
@@ -267,7 +264,6 @@ enum WorkspaceSnapshotBuilder {
                 searchGeneration: nil
             ),
             research: WorkspaceResearchSnapshot(
-                critiques: [],
                 healthIssues: identityHealthIssues
             )
         )
@@ -426,8 +422,7 @@ enum WorkspaceSnapshotBuilder {
                 let recovery = try await dependencies.identityRecoveryCoordinator.reconcile(
                     vaultID: vault.id,
                     documents: allDocuments.map { ($0.relativePath, $0.fingerprint) },
-                    repository: repository,
-                    migrateCritiquePaths: slot == .output
+                    repository: repository
                 )
                 identityRecovery = recovery
                 for (path, record) in recovery.identities {
@@ -615,9 +610,6 @@ enum WorkspaceSnapshotBuilder {
         healthIssues.append(contentsOf: settlementListing.issues.map {
             "Settlement \($0.fileName): \($0.reason)"
         })
-        if let issue = await dependencies.critiqueRegistry.healthError() {
-            healthIssues.append(issue)
-        }
         let recoveryRecords: [TriptychMutationRecoveryRecord]
         do {
             recoveryRecords = try await dependencies.transactionRecoveryStore.pending()
@@ -631,24 +623,6 @@ enum WorkspaceSnapshotBuilder {
             if let repository = dependencies.repositories[loaded.vault.id],
                let issue = await repository.recoveryLedgerHealthDiagnostic() {
                 healthIssues.append("\(loaded.vault.name): \(issue)")
-            }
-        }
-
-        var critiquesByID: [UUID: CritiqueAssociation] = [:]
-        if let output = loadedVaults.first(where: { $0.slot == .output }) {
-            for document in output.activeDocuments {
-                if let association = await dependencies.critiqueRegistry.association(
-                    critiqueRelativePath: document.relativePath
-                ) {
-                    critiquesByID[association.id] = association
-                }
-                if case .resolved(let noteID) = output.identityStates[
-                    document.relativePath
-                ], let association = await dependencies.critiqueRegistry.association(
-                    workNoteID: noteID
-                ) {
-                    critiquesByID[association.id] = association
-                }
             }
         }
 
@@ -703,17 +677,12 @@ enum WorkspaceSnapshotBuilder {
                 identityRecovery: loaded.identityRecovery
             )
         }
-        let critiqueAssociations = critiquesByID.values.sorted {
-            if $0.updatedAt != $1.updatedAt { return $0.updatedAt > $1.updatedAt }
-            return $0.id.uuidString < $1.id.uuidString
-        }
         let settlementRequirements = settlementRequirements(
             settlements: settlements,
             catalog: catalog
         )
         let research = WorkspaceResearchSnapshot(
             settlements: settlements,
-            critiques: critiqueAssociations,
             recoveryRecords: recoveryRecords,
             settlementRequirements: settlementRequirements,
             healthIssues: Array(Set(healthIssues)).sorted()

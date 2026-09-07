@@ -17,40 +17,6 @@ public struct ZoteroLibraryInfo: Codable, Hashable, Sendable {
     }
 }
 
-/// One immutable, task-scoped Zotero read attached to an Analyze Run. It is
-/// durable only with that Run record: a later Run performs a fresh read, while
-/// resuming this Run reuses this snapshot.
-public struct ZoteroBibliographicContext: Codable, Hashable, Sendable {
-    public enum RetrievalState: String, Codable, Hashable, Sendable {
-        case resolved
-        case unavailable
-        case notFound
-        case invalidResponse
-    }
-
-    public static let evidentialLabel = "Zotero bibliographic metadata"
-
-    public let itemKey: String
-    public let state: RetrievalState
-    public let metadata: ZoteroItemMetadata?
-    public let warning: String?
-    public let capturedAt: Date
-
-    public init(
-        itemKey: String,
-        state: RetrievalState,
-        metadata: ZoteroItemMetadata? = nil,
-        warning: String? = nil,
-        capturedAt: Date = Date()
-    ) {
-        self.itemKey = itemKey
-        self.state = state
-        self.metadata = metadata
-        self.warning = warning
-        self.capturedAt = capturedAt
-    }
-}
-
 public enum ZoteroUseCaseError: LocalizedError, Sendable {
     case appUnavailable
     case apiDisabled
@@ -58,9 +24,6 @@ public enum ZoteroUseCaseError: LocalizedError, Sendable {
     case invalidResponse
     case invalidItemKey
     case invalidAnalysisReference
-    case attachmentMissing(String)
-    case attachmentIdentityMismatch
-    case invalidAttachmentURL
 
     public var errorDescription: String? {
         switch self {
@@ -76,20 +39,14 @@ public enum ZoteroUseCaseError: LocalizedError, Sendable {
             "The selected Zotero item has an invalid item key. Refresh Zotero and choose the item again."
         case .invalidAnalysisReference:
             "The Zotero source can be confirmed only for an Analysis in this Triptych."
-        case .attachmentMissing(let key):
-            "Zotero attachment \(key) was not found."
-        case .attachmentIdentityMismatch:
-            "The selected Zotero attachment does not belong to the expected item."
-        case .invalidAttachmentURL:
-            "Zotero did not return a readable local file URL for the attachment."
         }
     }
 }
 
 /// The complete network boundary for Zotero reads. The generated request is
 /// always a bodyless GET to Zotero Desktop's loopback API and can address only
-/// the current user's group list, item searches, one exact item, one exact
-/// collection label, or one exact attachment's local `/file/view/url` endpoint.
+/// the current user's group list, library-qualified item searches, or one
+/// exact library-qualified item.
 public enum ZoteroLocalRequestPolicy {
     public static func makeReadRequest(
         library: ZoteroLibraryIdentity = .user,
@@ -97,7 +54,6 @@ public enum ZoteroLocalRequestPolicy {
         query: [URLQueryItem] = []
     ) -> URLRequest? {
         guard allowed(path: path, library: library),
-              (!isAttachmentFileURL(path) || query.isEmpty),
               Set(query.map(\.name)).isSubset(of: [
                 "format", "itemType", "q", "qmode", "limit",
               ]),
@@ -118,7 +74,7 @@ public enum ZoteroLocalRequestPolicy {
         request.httpMethod = "GET"
         request.httpBody = nil
         request.setValue(
-            isAttachmentFileURL(path) ? "text/plain" : "application/json",
+            "application/json",
             forHTTPHeaderField: "Accept"
         )
         request.setValue("3", forHTTPHeaderField: "Zotero-API-Version")
@@ -147,27 +103,12 @@ public enum ZoteroLocalRequestPolicy {
         if path == "items" { return true }
         let components = path.split(separator: "/", omittingEmptySubsequences: false)
         if components.count == 2,
-           components[0] == "items" || components[0] == "collections" {
-            return validObjectKey(String(components[1]))
-        }
-        if components.count == 5,
-           components[0] == "items",
-           components[2] == "file",
-           components[3] == "view",
-           components[4] == "url" {
+           components[0] == "items" {
             return validObjectKey(String(components[1]))
         }
         return false
     }
 
-    private static func isAttachmentFileURL(_ path: String) -> Bool {
-        let components = path.split(separator: "/", omittingEmptySubsequences: false)
-        return components.count == 5
-            && components[0] == "items"
-            && components[2] == "file"
-            && components[3] == "view"
-            && components[4] == "url"
-    }
 
     private static func validObjectKey(_ key: String) -> Bool {
         return !key.isEmpty
@@ -177,62 +118,6 @@ public enum ZoteroLocalRequestPolicy {
     }
 }
 
-/// Bibliographic identity projected from one Analysis note. This value never
-/// authorizes a Zotero write; it is only a deterministic lookup request.
-public struct ZoteroSourceIdentity: Codable, Hashable, Sendable {
-    public let itemKey: String?
-    public let doi: String?
-    public let isbn: String?
-    public let citationKey: String?
-    public let title: String?
-    public let authors: [String]
-    public let year: Int?
-
-    public init(
-        itemKey: String? = nil,
-        doi: String? = nil,
-        isbn: String? = nil,
-        citationKey: String? = nil,
-        title: String? = nil,
-        authors: [String] = [],
-        year: Int? = nil
-    ) {
-        self.itemKey = Self.nonempty(itemKey)
-        self.doi = Self.nonempty(doi)
-        self.isbn = Self.nonempty(isbn)
-        self.citationKey = Self.nonempty(citationKey)
-        self.title = Self.nonempty(title)
-        self.authors = authors.compactMap(Self.nonempty)
-        self.year = year
-    }
-
-    public var stableIdentity: String {
-        [
-            itemKey ?? "",
-            doi ?? "",
-            isbn ?? "",
-            citationKey ?? "",
-            title ?? "",
-            authors.joined(separator: "\u{1f}"),
-            year.map(String.init) ?? "",
-        ].joined(separator: "\u{1e}")
-    }
-
-    public var hasFallbackIdentity: Bool {
-        doi != nil
-            || isbn != nil
-            || citationKey != nil
-            || (title != nil && !authors.isEmpty && year != nil)
-    }
-
-    private static func nonempty(_ value: String?) -> String? {
-        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty else { return nil }
-        return value
-    }
-}
-
-/// Read-only metadata returned by Zotero's localhost API.
 public struct ZoteroCreatorMetadata: Codable, Hashable, Sendable {
     public let role: String
     public let name: String
@@ -352,36 +237,6 @@ public struct ZoteroItemMetadata: Codable, Hashable, Sendable, Identifiable {
         year.map { "\(formattedAuthors) (\($0))" } ?? formattedAuthors
     }
 
-    public func replacingCollectionNames(_ names: [String]) -> Self {
-        Self(
-            key: key,
-            itemType: itemType,
-            title: title,
-            creators: creators,
-            authors: authors,
-            date: date,
-            year: year,
-            language: language,
-            containerTitle: containerTitle,
-            volume: volume,
-            issue: issue,
-            pages: pages,
-            series: series,
-            doi: doi,
-            isbn: isbn,
-            issn: issn,
-            citationKey: citationKey,
-            abstract: abstract,
-            tags: tags,
-            publisher: publisher,
-            place: place,
-            edition: edition,
-            url: url,
-            collectionKeys: collectionKeys,
-            collections: names,
-            dateModified: dateModified
-        )
-    }
 }
 
 /// One local Zotero library available to the first-party read-only adapter.
@@ -419,136 +274,6 @@ public struct ZoteroSearchHit: Codable, Hashable, Sendable, Identifiable {
     }
 }
 
-public enum ZoteroMatchBasis: String, Codable, Hashable, Sendable {
-    case itemKey
-    case doiOrISBN
-    case citationKey
-    case titleAuthorYear
-}
-
-public enum ZoteroMatchResult: Hashable, Sendable {
-    case matched(ZoteroItemMetadata, basis: ZoteroMatchBasis)
-    case ambiguous([ZoteroItemMetadata], basis: ZoteroMatchBasis)
-    case notFound
-    case insufficientMetadata
-}
-
-/// Deterministic Zotero matching. No branch fuzzy-selects or prefers an
-/// arbitrary candidate; every non-unique tier is returned as ambiguity.
-public enum ZoteroMetadataMatcher {
-    public static func match(
-        source: ZoteroSourceIdentity,
-        candidates: [ZoteroItemMetadata]
-    ) -> ZoteroMatchResult {
-        let candidates = uniqueCandidates(candidates)
-
-        if let key = normalizedItemKey(source.itemKey) {
-            return result(
-                candidates.filter { normalizedItemKey($0.key) == key },
-                basis: .itemKey
-            )
-        }
-
-        let expectedDOI = normalizedDOI(source.doi)
-        let expectedISBN = normalizedISBN(source.isbn)
-        if expectedDOI != nil || expectedISBN != nil {
-            let matches = candidates.filter { candidate in
-                (expectedDOI != nil && normalizedDOI(candidate.doi) == expectedDOI)
-                    || (expectedISBN != nil && normalizedISBN(candidate.isbn) == expectedISBN)
-            }
-            if !matches.isEmpty { return result(matches, basis: .doiOrISBN) }
-        }
-
-        if let citationKey = normalizedText(source.citationKey) {
-            let matches = candidates.filter {
-                normalizedText($0.citationKey) == citationKey
-            }
-            if !matches.isEmpty { return result(matches, basis: .citationKey) }
-        }
-
-        if let title = normalizedText(source.title),
-           let year = source.year,
-           !source.authors.isEmpty {
-            let sourceAuthors = source.authors.compactMap(normalizedAuthor)
-            let matches = candidates.filter { candidate in
-                guard normalizedText(candidate.title) == title,
-                      candidate.year == year else { return false }
-                let candidateAuthors = candidate.authors.compactMap(normalizedAuthor)
-                return !sourceAuthors.isEmpty && sourceAuthors == candidateAuthors
-            }
-            if !matches.isEmpty { return result(matches, basis: .titleAuthorYear) }
-        }
-
-        return source.hasFallbackIdentity ? .notFound : .insufficientMetadata
-    }
-
-    private static func result(
-        _ candidates: [ZoteroItemMetadata],
-        basis: ZoteroMatchBasis
-    ) -> ZoteroMatchResult {
-        let candidates = uniqueCandidates(candidates)
-        if candidates.count == 1, let candidate = candidates.first {
-            return .matched(candidate, basis: basis)
-        }
-        if candidates.isEmpty { return .notFound }
-        return .ambiguous(candidates, basis: basis)
-    }
-
-    private static func uniqueCandidates(_ candidates: [ZoteroItemMetadata]) -> [ZoteroItemMetadata] {
-        var seen: Set<String> = []
-        return candidates
-            .sorted { lhs, rhs in
-                let titleOrder = lhs.title.localizedStandardCompare(rhs.title)
-                if titleOrder != .orderedSame { return titleOrder == .orderedAscending }
-                if lhs.year != rhs.year { return (lhs.year ?? Int.min) < (rhs.year ?? Int.min) }
-                return lhs.key < rhs.key
-            }
-            .filter { seen.insert(normalizedItemKey($0.key) ?? $0.key).inserted }
-    }
-
-    private static func normalizedItemKey(_ value: String?) -> String? {
-        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty else { return nil }
-        return value.uppercased()
-    }
-
-    private static func normalizedDOI(_ value: String?) -> String? {
-        guard var value = normalizedText(value) else { return nil }
-        for prefix in ["https://doi.org/", "http://doi.org/", "doi:"] where value.hasPrefix(prefix) {
-            value.removeFirst(prefix.count)
-            break
-        }
-        let compact = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return compact.isEmpty ? nil : compact
-    }
-
-    private static func normalizedISBN(_ value: String?) -> String? {
-        guard let value = normalizedText(value) else { return nil }
-        let compact = value.filter { $0.isNumber || $0 == "x" }
-        return [10, 13].contains(compact.count) ? compact : nil
-    }
-
-    private static func normalizedAuthor(_ value: String) -> String? {
-        guard let value = normalizedText(value) else { return nil }
-        let tokens = value
-            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
-            .map(String.init)
-            .filter { !$0.isEmpty }
-            .sorted()
-        return tokens.isEmpty ? nil : tokens.joined(separator: " ")
-    }
-
-    private static func normalizedText(_ value: String?) -> String? {
-        guard let value else { return nil }
-        let normalized = value
-            .precomposedStringWithCanonicalMapping
-            .folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: .current)
-            .split(whereSeparator: \.isWhitespace)
-            .joined(separator: " ")
-        return normalized.isEmpty ? nil : normalized
-    }
-}
-
 /// Pure decoder for Zotero API v3 JSON. The caller remains responsible for
 /// loopback transport and for rejecting child objects as lookup candidates.
 public enum ZoteroMetadataDecoder {
@@ -568,16 +293,6 @@ public enum ZoteroMetadataDecoder {
         return try objects.map(decodeItem)
     }
 
-    public static func decodeCollectionName(from data: Data) throws -> String? {
-        guard let object = try jsonObject(from: data) as? [String: Any] else {
-            throw DecodingError.dataCorrupted(.init(
-                codingPath: [],
-                debugDescription: "Zotero returned a non-object collection response."
-            ))
-        }
-        let values = object["data"] as? [String: Any] ?? object
-        return nonempty(values["name"] as? String)
-    }
 
     private static func jsonObject(from data: Data) throws -> Any {
         do {

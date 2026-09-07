@@ -92,8 +92,8 @@ research object and never becomes a writable source authority.
 
 `NoteSystemTrashDeletionCoordinator` is the Core owner for one
 researcher-confirmed source cutover. `prepareNote` and `prepareFolder` bind
-exact source revisions, stable identities, complete directory manifests, and
-any managed Critique that must move with its Work into one immutable preview.
+exact source revisions, stable identities, and complete directory manifests
+into one immutable preview.
 `WorkspaceHandle` holds the source-mutation lease and flushes every Triptych
 editor before preparation and execution.
 

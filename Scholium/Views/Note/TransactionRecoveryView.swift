@@ -360,7 +360,7 @@ struct TransactionRecoveryActionPresentation: Equatable {
             } else {
                 alertTitle = String(localized: "Continue Trash Cleanup?", table: "Localizable", bundle: .module)
                 buttonTitle = String(localized: "Continue Cleanup", table: "Localizable", bundle: .module)
-                message = String(localized: "Scholium will resume only the persisted forward plan. Items already moved to the macOS Trash remain under Finder control; Scholium only completes portable identity and Critique cleanup.", table: "Localizable", bundle: .module)
+                message = String(localized: "Scholium will resume only the persisted forward plan. Items already moved to the macOS Trash remain under Finder control; Scholium completes the operation receipts without removing portable identities.", table: "Localizable", bundle: .module)
             }
             return
         }
@@ -722,7 +722,6 @@ private struct RecoveryFileRow: View {
         case .incomingLinkRewrite: "Incoming link rewrite"
         case .trashedNote: "Note moved to system Trash"
         case .trashedFolder: "Folder moved to system Trash"
-        case .associatedCritique: "Associated Critique"
         }
     }
 

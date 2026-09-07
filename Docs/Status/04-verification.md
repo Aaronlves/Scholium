@@ -4,6 +4,21 @@
 
 ## Current verification snapshot
 
+**2026-09-08 — retired Action cleanup:** Removed the managed assessment
+registry, round/disposition APIs, special document restrictions, and detached
+Analyze Zotero context/resolution paths. Ordinary file operations now cover
+all Works subdirectories. The 187 owning tests pass, including exact-source
+creation, duplication, movement, and Trash preparation with an unreadable
+orphan assessment store left byte-unchanged. Documentation authority, interface
+localization, and bundled Core Protocol validation pass. The complete verifier
+stops at the pre-existing AgentChatController executable-probe I/O allowlist
+mismatch; this is not a complete-gate pass. Logs: `.build/action-cleanup/`.
+An additional 46 adjacent checks pass; one architecture assertion encounters
+the same existing I/O mismatch. Independent GPT 5.6 Luna (max) static review
+found no remaining blocking issue after obsolete UI journeys, fixtures, and
+README claims were removed. No GUI or human acceptance is claimed.
+
+
 **2026-09-08 — native sidebar layout cleanup:** Sidebar-owned container/content
 insets replace the old Library aliases into the peripheral editorial grid. The
 header label owns a wider full hit region and native typography; plain Buttons

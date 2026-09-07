@@ -18,7 +18,7 @@ it, and app relaunch does not retain it. Vault-qualified keys prevent equal
 paths in different Triptych vaults from sharing state.
 
 `DocumentController` defaults `currentPresentationMode`
-to Edit. Writable selections inherit it; read-only Notes and Critiques present
+to Edit. Writable selections inherit it; unavailable Notes present
 Review. Chrome reports the session's actual mode. Sessions retain only
 editor safety state, not path-mapped presentation.
 

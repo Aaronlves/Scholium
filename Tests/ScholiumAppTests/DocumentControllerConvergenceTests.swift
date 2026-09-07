@@ -572,7 +572,6 @@ struct DocumentControllerConvergenceTests {
                 )
             ),
             research: WorkspaceResearchSnapshot(
-                critiques: [],
                 healthIssues: []
             )
         )

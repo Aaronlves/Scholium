@@ -64,7 +64,7 @@ struct IdentityResolutionView: View {
                 .accessibilityHint("Choose one previous location, or identify the file as a new note.")
             }
 
-            Text("Confirming a previous note moves its portable identity, Critique association, and window state to the current location. Scholium does not change the Markdown file.")
+            Text("Confirming a previous note moves its portable identity and window state to the current location. Scholium does not change the Markdown file.")
                 .font(ScholiumTypography.interface(.body))
                 .scholiumForeground(.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)

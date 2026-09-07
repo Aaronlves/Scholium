@@ -33,11 +33,10 @@ private struct InjectedSystemTrashDeletionFailure: LocalizedError, Sendable {
 }
 
 /// Coordinates one researcher-confirmed system-Trash operation and the
-/// temporary critique/control state that cannot outlive the moved source.
+/// durable operation receipts. Portable identities remain for Finder restoration.
 public actor NoteSystemTrashDeletionCoordinator {
     private let triptychID: UUID
     private let repository: VaultRepository
-    private let critiqueRegistry: CritiqueRegistry
     private let controlStore: TriptychControlStore
     private let recoveryStore: TriptychMutationRecoveryStore
     private let faultPlan: SystemTrashDeletionFaultPlan
@@ -45,13 +44,11 @@ public actor NoteSystemTrashDeletionCoordinator {
     public init(
         triptychID: UUID,
         repository: VaultRepository,
-        critiqueRegistry: CritiqueRegistry,
         controlStore: TriptychControlStore,
         recoveryStore: TriptychMutationRecoveryStore
     ) {
         self.triptychID = triptychID
         self.repository = repository
-        self.critiqueRegistry = critiqueRegistry
         self.controlStore = controlStore
         self.recoveryStore = recoveryStore
         faultPlan = .none
@@ -60,14 +57,12 @@ public actor NoteSystemTrashDeletionCoordinator {
     init(
         triptychID: UUID,
         repository: VaultRepository,
-        critiqueRegistry: CritiqueRegistry,
         controlStore: TriptychControlStore,
         recoveryStore: TriptychMutationRecoveryStore,
         faultPlan: SystemTrashDeletionFaultPlan
     ) {
         self.triptychID = triptychID
         self.repository = repository
-        self.critiqueRegistry = critiqueRegistry
         self.controlStore = controlStore
         self.recoveryStore = recoveryStore
         self.faultPlan = faultPlan
@@ -79,7 +74,6 @@ public actor NoteSystemTrashDeletionCoordinator {
         relativePath: String,
         expectedRevision: DocumentFingerprint
     ) async throws -> SystemTrashDeletionPreview {
-        try await requireHealthyStores()
         guard repository.identity.id == vaultID else {
             throw TriptychTransactionError.invalidPlan(
                 "The system-Trash repository does not match the selected vault identity."
@@ -103,41 +97,12 @@ public actor NoteSystemTrashDeletionCoordinator {
             relativePath: relativePath,
             expectedRevision: expectedRevision
         )
-        var sources = [SystemTrashDeletionSourceTarget(
+        let sources = [SystemTrashDeletionSourceTarget(
             vaultID: vaultID,
             relativePath: relativePath,
             kind: .note,
             notes: [noteTarget]
         )]
-        let associations = await critiqueRegistry.associationsRelated(
-            noteID: noteID,
-            relativePath: relativePath
-        )
-        if let association = associations.first(where: {
-            $0.workNoteID == noteID && $0.workRelativePath == relativePath
-        }), association.critiqueRelativePath != relativePath {
-            let critique = try await repository.load(
-                relativePath: association.critiqueRelativePath
-            )
-            guard let identity = try await controlStore.identityRecord(
-                vaultID: vaultID,
-                relativePath: critique.relativePath
-            ) else {
-                throw TriptychTransactionError.invalidPlan(
-                    "The associated Critique has no stable identity."
-                )
-            }
-            sources.append(SystemTrashDeletionSourceTarget(
-                vaultID: vaultID,
-                relativePath: critique.relativePath,
-                kind: .note,
-                notes: [SystemTrashDeletionNoteTarget(
-                    noteID: identity.id,
-                    relativePath: critique.relativePath,
-                    expectedRevision: critique.fingerprint
-                )]
-            ))
-        }
         return try await makePreview(sources: sources)
     }
 
@@ -145,7 +110,6 @@ public actor NoteSystemTrashDeletionCoordinator {
         vaultID: UUID,
         relativePath: String
     ) async throws -> SystemTrashDeletionPreview {
-        try await requireHealthyStores()
         guard repository.identity.id == vaultID,
               let folder = try? VaultRelativeFolderPath(relativePath),
               try await repository.folderRelativePaths().contains(folder) else {
@@ -173,7 +137,7 @@ public actor NoteSystemTrashDeletionCoordinator {
                 expectedRevision: document.fingerprint
             ))
         }
-        var sources = [SystemTrashDeletionSourceTarget(
+        let sources = [SystemTrashDeletionSourceTarget(
             vaultID: vaultID,
             relativePath: relativePath,
             kind: .folder,
@@ -182,48 +146,12 @@ public actor NoteSystemTrashDeletionCoordinator {
                 .systemTrashDirectoryManifest(relativePath: relativePath)
         )]
 
-        // A Work's managed Critique may sit outside the selected folder. Keep
-        // that explicit second system operation rather than silently orphaning
-        // the association or pretending the two moves are atomic.
-        var extraCritiquePaths: Set<String> = []
-        for note in noteTargets {
-            let associations = await critiqueRegistry.associationsRelated(
-                noteID: note.noteID,
-                relativePath: note.relativePath
-            )
-            for association in associations where association.workNoteID == note.noteID {
-                let path = association.critiqueRelativePath
-                guard !path.hasPrefix(prefix), extraCritiquePaths.insert(path).inserted else {
-                    continue
-                }
-                let document = try await repository.load(relativePath: path)
-                guard let identity = try await controlStore.identityRecord(
-                    vaultID: vaultID,
-                    relativePath: path
-                ) else {
-                    throw TriptychTransactionError.invalidPlan(
-                        "The associated Critique \(path) has no stable identity."
-                    )
-                }
-                sources.append(SystemTrashDeletionSourceTarget(
-                    vaultID: vaultID,
-                    relativePath: path,
-                    kind: .note,
-                    notes: [SystemTrashDeletionNoteTarget(
-                        noteID: identity.id,
-                        relativePath: path,
-                        expectedRevision: document.fingerprint
-                    )]
-                ))
-            }
-        }
         return try await makePreview(sources: sources)
     }
 
     public func moveToSystemTrash(
         _ preview: SystemTrashDeletionPreview
     ) async throws -> SystemTrashDeletionCommit {
-        try await requireHealthyStores()
         guard preview.triptychID == triptychID,
               preview.sources.allSatisfy({ $0.vaultID == repository.identity.id }) else {
             throw TriptychTransactionError.invalidPlan(
@@ -616,9 +544,4 @@ public actor NoteSystemTrashDeletionCoordinator {
         )
     }
 
-    private func requireHealthyStores() async throws {
-        if let error = await critiqueRegistry.healthError() {
-            throw CritiqueStoreError.unreadableStore(kind: "Critique", reason: error)
-        }
-    }
 }

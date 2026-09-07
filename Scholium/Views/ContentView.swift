@@ -389,24 +389,6 @@ struct ContentView: View {
         }
     }
 
-    private var critiqueProvenanceContext: CritiqueProvenanceContext {
-        CritiqueProvenanceContext(
-            availableNotes: appState.currentDocumentNotes,
-            documentRevisions: appState.currentDocumentRevisions,
-            loadAssociation: { path in
-                try await appState.researchController.critique(
-                    critiqueRelativePath: path
-                )
-            },
-            openTarget: { appState.requestOpenNote($0) },
-            openFinding: { finding, fallbackTargetPath in
-                appState.openCritiqueFinding(
-                    finding,
-                    fallbackTargetPath: fallbackTargetPath
-                )
-            }
-        )
-    }
 
     private var documentFeatureState: DocumentFeatureState {
         let note = appState.currentNote
@@ -421,7 +403,6 @@ struct ContentView: View {
             documentRevisions: appState.currentDocumentRevisions,
             workspaceCatalog: appState.workspaceCatalog,
             canEdit: appState.canEditCurrentNote,
-            isManagedCritique: appState.currentDocumentCapabilities.isManagedCritique,
             documentTextScale: appState.documentTextScale,
             appearanceCSS: appState.cssSnippetStore.appearanceCSS,
             readCSS: appState.cssSnippetStore.readCSS,
@@ -609,9 +590,7 @@ struct ContentView: View {
                   let snapshot = snapshots[vaultID] else {
                 continue
             }
-            values[slot] = snapshot.documents.count {
-                !$0.capabilities.isManagedCritique
-            }
+            values[slot] = snapshot.documents.count
         }
         return SidebarWorkspaceNoteCounts(values: values)
     }
@@ -741,9 +720,7 @@ struct ContentView: View {
                 loadReview: { changeID in
                     guard let operations = appState.windowWorkspaceController
                         .activeCapabilities?.agentCollaboration else {
-                        throw ScholiumApplicationError.critiqueStoreUnavailable(
-                            "No workspace is active."
-                        )
+                        throw ScholiumApplicationError.noWorkspaceConfigured
                     }
                     return try await operations.agentChangeReview(id: changeID)
                 },
@@ -864,8 +841,7 @@ struct ContentView: View {
                 controller: appState.documentController,
                 documentInformation: appState.documentInformation,
                 state: documentFeatureState,
-                actions: documentFeatureActions,
-                critiqueProvenanceContext: critiqueProvenanceContext
+                actions: documentFeatureActions
             )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .transition(

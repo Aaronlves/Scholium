@@ -18,7 +18,6 @@ struct WorkspaceServices: Sendable {
     let zotero: ZoteroOperations
     let settlementStore: SettlementStore
     let agentChangeStore: AgentChangeStore
-    let critiqueRegistry: CritiqueRegistry
     let transactionRecoveryStore: TriptychMutationRecoveryStore
     let identityRecoveryCoordinator: NoteIdentityRecoveryCoordinator
 }
@@ -623,7 +622,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 applicationSupportURL: applicationSupportURL,
                 triptychID: manifest.id
             )
-            let critiqueRegistry = CritiqueRegistry(controlURL: controlURL)
             let transactionRecoveryStore = try TriptychMutationRecoveryStore(
                 storageURL: triptychStorage.appendingPathComponent(
                     "transactions",
@@ -645,11 +643,9 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 zotero: zotero,
                 settlementStore: settlementStore,
                 agentChangeStore: agentChangeStore,
-                critiqueRegistry: critiqueRegistry,
                 transactionRecoveryStore: transactionRecoveryStore,
                 identityRecoveryCoordinator: NoteIdentityRecoveryCoordinator(
                     control: controlStore,
-                    critiques: critiqueRegistry,
                     windowSessions: windowSessionStore
                 )
             )
@@ -1365,11 +1361,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             if ownsMutation { endSourceMutation(mutationLease) }
         }
         let repository = try repository(vaultID: id.vaultID)
-        let registeredVault = try vault(id: id.vaultID)
-        if registeredVault.role.allowsCritique,
-           CritiquePlacement.isManagedCritiquePath(id.relativePath) {
-            throw CritiquePlacementError.directCreationRequiresRequestCritique
-        }
 
         let document = try await repository.create(
             relativePath: id.relativePath,
@@ -1463,10 +1454,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 vaultID: request.vaultID,
                 relativePath: relativePath
             )
-            if registeredVault.role.allowsCritique,
-               CritiquePlacement.isManagedCritiquePath(relativePath) {
-                throw CritiquePlacementError.directCreationRequiresRequestCritique
-            }
             if try await services.controlStore.identityRecord(
                 vaultID: request.vaultID,
                 relativePath: relativePath
@@ -1791,14 +1778,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         defer {
             if ownsMutation { endSourceMutation(mutationLease) }
         }
-        let registeredVault = try vault(id: vaultID)
-        if let parentRelativePath,
-           registeredVault.role.allowsCritique,
-           CritiquePlacement.isManagedCritiquePath(
-               parentRelativePath + "/placeholder.md"
-           ) {
-            throw CritiquePlacementError.directCreationRequiresRequestCritique
-        }
         let repository = try repository(vaultID: vaultID)
         var ordinal = 1
         while true {
@@ -1881,15 +1860,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             if ownsMutation { endSourceMutation(mutationLease) }
         }
         let repository = try repository(vaultID: id.vaultID)
-        let registeredVault = try vault(id: id.vaultID)
-        if registeredVault.role.allowsCritique,
-           CritiquePlacement.isManagedCritiquePath(id.relativePath) {
-            throw CritiquePlacementError.duplicateNotSupported
-        }
-        if registeredVault.role.allowsCritique,
-           CritiquePlacement.isManagedCritiquePath(destinationRelativePath) {
-            throw CritiquePlacementError.directCreationRequiresRequestCritique
-        }
         let identity = try await resolvedIdentity(
             for: id,
             expectedRevision: expectedRevision
@@ -2285,8 +2255,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         try await coordinatedMoveDocument(
             id,
             to: destinationRelativePath,
-            expectedRevision: expectedRevision,
-            validatesCritiquePlacement: true
+            expectedRevision: expectedRevision
         )
     }
 
@@ -2298,8 +2267,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             target.documentID,
             to: destinationRelativePath,
             expectedRevision: target.revision,
-            expectedStableNoteID: target.stableNoteID,
-            validatesCritiquePlacement: true
+            expectedStableNoteID: target.stableNoteID
         )
     }
 
@@ -2402,7 +2370,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         return NoteSystemTrashDeletionCoordinator(
             triptychID: services.manifest.id,
             repository: repository,
-            critiqueRegistry: services.critiqueRegistry,
             controlStore: services.controlStore,
             recoveryStore: services.transactionRecoveryStore
         )
@@ -2525,7 +2492,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             let coordinator = NoteSystemTrashDeletionCoordinator(
                 triptychID: services.manifest.id,
                 repository: repository,
-                critiqueRegistry: services.critiqueRegistry,
                 controlStore: services.controlStore,
                 recoveryStore: services.transactionRecoveryStore
             )
@@ -3691,10 +3657,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         return currentSnapshot.research
     }
 
-    func critique(workNoteID: UUID) async throws -> CritiqueAssociation? {
-        try requireActive()
-        return await services.critiqueRegistry.association(workNoteID: workNoteID)
-    }
 
     func triptychSettings() async throws -> TriptychSettingsSnapshot {
         try requireActive()
@@ -3783,8 +3745,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         _ source: VaultQualifiedNoteID,
         to destinationRelativePath: String,
         expectedRevision: DocumentFingerprint,
-        expectedStableNoteID: UUID? = nil,
-        validatesCritiquePlacement: Bool
+        expectedStableNoteID: UUID? = nil
     ) async throws -> WorkspaceMutationOutcome<TriptychMoveCommit> {
         try requireActive()
         let mutationLease = try await beginSourceMutation()
@@ -3805,13 +3766,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             resolved: identity.id,
             relativePath: source.relativePath
         )
-        let registeredVault = try vault(id: source.vaultID)
-        if validatesCritiquePlacement, registeredVault.role.allowsCritique {
-            try CritiquePlacement.validateOrdinaryMove(
-                from: source.relativePath,
-                to: destinationRelativePath
-            )
-        }
 
         let repositories = services.repositories
         let plan = try await workspaceMovePlan(moving: source, to: destination)
@@ -3838,8 +3792,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             )
             let failures = await services.identityRecoveryCoordinator.resumePendingRebindings(
                 vaultID: source.vaultID,
-                repository: try repository(vaultID: source.vaultID),
-                migrateCritiquePaths: assignment.vault(for: .output)?.id == source.vaultID
+                repository: try repository(vaultID: source.vaultID)
             )
             if let failure = failures.first(where: { $0.rebinding.noteID == identity.id }) {
                 identityFailure = NoteIdentityMigrationError.incomplete(failure.message)
@@ -3902,20 +3855,6 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
                 sourceRelativePath + " → " + destinationRelativePath
             )
         }
-        let registeredVault = try vault(id: vaultID)
-        let sourceIsManagedCritiqueFolder = CritiquePlacement.isManagedCritiquePath(
-            sourceFolder.rawValue + "/placeholder.md"
-        )
-        let destinationIsManagedCritiqueFolder = CritiquePlacement.isManagedCritiquePath(
-            destinationFolder.rawValue + "/placeholder.md"
-        )
-        if registeredVault.role.allowsCritique,
-           sourceIsManagedCritiqueFolder || destinationIsManagedCritiqueFolder {
-            throw CritiquePlacementError.crossesCritiqueBoundary(
-                source: sourceFolder.rawValue,
-                destination: destinationFolder.rawValue
-            )
-        }
         guard let vaultSnapshot = currentSnapshot.vault(id: vaultID) else {
             throw ScholiumApplicationError.vaultNotInWorkspace(vaultID)
         }
@@ -3950,8 +3889,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             )
             let failures = await services.identityRecoveryCoordinator.resumePendingRebindings(
                 vaultID: vaultID,
-                repository: try repository(vaultID: vaultID),
-                migrateCritiquePaths: assignment.vault(for: .output)?.id == vaultID
+                repository: try repository(vaultID: vaultID)
             )
             let movedIDs = Set(commit.noteMoves.map(\.stableNoteID))
             if let failure = failures.first(where: {
@@ -4317,7 +4255,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
     ) async throws -> WorkspaceMutationOutcome<NoteIdentityRecord> {
         try requireActive()
         let repository = try repository(vaultID: ambiguity.vaultID)
-        guard let slot = WorkspaceVaultSlot.allCases.first(where: {
+        guard WorkspaceVaultSlot.allCases.contains(where: {
             assignment.vault(for: $0)?.id == ambiguity.vaultID
         }) else {
             throw ScholiumApplicationError.vaultNotInWorkspace(ambiguity.vaultID)
@@ -4325,8 +4263,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         let record = try await services.identityRecoveryCoordinator.resolve(
             ambiguity,
             candidateID: candidateID,
-            repository: repository,
-            migrateCritiquePaths: slot == .output
+            repository: repository
         )
         let derivedRefreshWarning: String?
         do {

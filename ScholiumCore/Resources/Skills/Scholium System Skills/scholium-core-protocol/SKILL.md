@@ -58,7 +58,7 @@ inaccessible, OCR-dependent, or edition-dependent, state the resulting limit.
 Default to read-only discussion. Mutate only when the researcher explicitly
 requests a change and identifies its target and scope. One mutation call
 targets one Note; do not propagate changes to related Notes, Metadata, links,
-Critiques, or Settlement.
+or Settlement.
 
 Use `scholium_create_note` only for one exact `.md` path under `analyses`,
 `topics`, or `works`. Use `scholium_update_note` with `mode: body` unless the

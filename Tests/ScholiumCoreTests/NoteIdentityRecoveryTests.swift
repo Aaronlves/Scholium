@@ -23,13 +23,6 @@ struct NoteIdentityRecoveryTests {
             fingerprint: saved.document.fingerprint
         ))
 
-        _ = try await stores.critiques.recordRequest(
-            workNoteID: identity.id,
-            workRelativePath: "Old.md",
-            targetFingerprint: saved.document.fingerprint,
-            critiqueRelativePath: "Critiques/Work.md",
-            scope: .overall
-        )
         try await stores.sessions.save(WindowSessionSnapshot(
             id: stores.sessionID,
             selectedWorkspace: .output,
@@ -62,20 +55,17 @@ struct NoteIdentityRecoveryTests {
         let moved = try await repository.load(relativePath: "Folder/New.md")
         let coordinator = NoteIdentityRecoveryCoordinator(
             control: stores.control,
-            critiques: stores.critiques,
             windowSessions: stores.sessions
         )
         let state = try await coordinator.reconcile(
             vaultID: fixture.worksID,
             documents: [("Folder/New.md", moved.fingerprint)],
-            repository: repository,
-            migrateCritiquePaths: true
+            repository: repository
         )
 
         #expect(state.identities["Folder/New.md"]?.id == identity.id)
         #expect(state.pendingRebindings.isEmpty)
         #expect(state.failures.isEmpty)
-        #expect(await stores.critiques.association(workNoteID: identity.id)?.workRelativePath == "Folder/New.md")
         let session = try #require(try await stores.sessions.load(id: stores.sessionID))
         #expect(
             session.workspaceSession(for: .output)?.selectedDocument?.relativePath
@@ -109,14 +99,12 @@ struct NoteIdentityRecoveryTests {
         let moved = try await analysesRepository.load(relativePath: "Moved.md")
         let coordinator = NoteIdentityRecoveryCoordinator(
             control: stores.control,
-            critiques: stores.critiques,
             windowSessions: stores.sessions
         )
         let state = try await coordinator.reconcile(
             vaultID: fixture.analysesID,
             documents: [("Moved.md", moved.fingerprint)],
-            repository: analysesRepository,
-            migrateCritiquePaths: false
+            repository: analysesRepository
         )
 
         #expect(state.identities["Moved.md"]?.id == analysisIdentity.id)
@@ -162,15 +150,13 @@ struct NoteIdentityRecoveryTests {
         let moved = try await repository.load(relativePath: "New.md")
         let coordinator = NoteIdentityRecoveryCoordinator(
             control: stores.control,
-            critiques: stores.critiques,
             windowSessions: stores.sessions
         )
 
         let state = try await coordinator.reconcile(
             vaultID: fixture.worksID,
             documents: [("New.md", moved.fingerprint)],
-            repository: repository,
-            migrateCritiquePaths: true
+            repository: repository
         )
 
         #expect(state.identities["New.md"]?.id == identity.id)
@@ -182,7 +168,6 @@ struct NoteIdentityRecoveryTests {
 
     private struct Stores {
         let control: TriptychControlStore
-        let critiques: CritiqueRegistry
         let sessions: WindowSessionSnapshotStore
         let sessionID: UUID
     }
@@ -216,11 +201,9 @@ struct NoteIdentityRecoveryTests {
                 .topicKnowledge: topicsID,
                 .output: worksID,
             ])
-            let triptychState = support.appendingPathComponent("Triptych", isDirectory: true)
             let sessionID = UUID()
             return Stores(
                 control: control,
-                critiques: CritiqueRegistry(controlURL: triptychState),
                 sessions: WindowSessionSnapshotStore(applicationSupportURL: support),
                 sessionID: sessionID
             )

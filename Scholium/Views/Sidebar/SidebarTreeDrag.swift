@@ -133,7 +133,6 @@ func sidebarValidatedNoteDropDestination(
               $0.relativePath == item.documentID.relativePath
           }),
           NoteMutationTarget(source) == item.mutationTarget,
-          !CritiquePlacement.isManagedCritiquePath(source.relativePath),
           sidebarDropFolderIsMutable(folderRelativePath, inventory: inventory),
           let pathComparisonPolicy = inventory.pathComparisonPolicy,
           let sourcePath = try? MarkdownRelativePath(item.documentID.relativePath)
@@ -153,12 +152,6 @@ func sidebarValidatedNoteDropDestination(
           !inventory.folderPathComparisonKeys.contains(destinationKey)
     else { return nil }
 
-    if inventory.currentVaultRole.allowsCritique {
-        guard (try? CritiquePlacement.validateOrdinaryMove(
-            from: item.documentID.relativePath,
-            to: destination
-        )) != nil else { return nil }
-    }
     return destination
 }
 
@@ -211,9 +204,7 @@ func sidebarDropFolderIsMutable(
     guard inventory.folderRelativePaths.contains(folderRelativePath) else {
         return false
     }
-    let candidate = "\(folderRelativePath)/Untitled.md"
-    return !inventory.currentVaultRole.allowsCritique
-        || !CritiquePlacement.isManagedCritiquePath(candidate)
+    return true
 }
 
 func sidebarNoteDropDestination(

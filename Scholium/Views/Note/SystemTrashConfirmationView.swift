@@ -15,7 +15,7 @@ struct SystemTrashConfirmationView: View {
                 .font(ScholiumTypography.interface(.primaryTitle, emphasis: .strong))
                 .accessibilityAddTraits(.isHeader)
 
-            Text("Finder owns file restoration. Scholium will remove only the listed sources and their portable identity and Critique associations.")
+            Text("Finder owns file restoration. Scholium moves only the listed source items to system Trash and retains their portable identities.")
                 .font(ScholiumTypography.interface(.body))
                 .fixedSize(horizontal: false, vertical: true)
 

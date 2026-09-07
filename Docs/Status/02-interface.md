@@ -185,8 +185,7 @@
   and actual provider failure; unqueried default availability is not displayed.
 - Search presents Note results; questions in Works use the same result and opening path.
 
-- System-Trash confirmation describes the exact source and any managed Critique
-  moved with it. Recovery stays with the existing bounded transaction owner.
+- System-Trash confirmation describes the exact selected source scope. Recovery stays with the existing bounded transaction owner.
 - One separately spaced native Settlement toolbar button sits immediately before
   Document Mode. It presents **Settle** or **Settle Again**, keeps Unsettled
   monochrome, uses a filled Confirmed bookmark for Settled, and a distinct

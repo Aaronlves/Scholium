@@ -1319,15 +1319,6 @@ enum ScholiumMetrics {
         static let trailingControlMinimumSpacing = ScholiumGrid.Spacing.nestedContentInset
     }
 
-    enum Critique {
-        static let sectionSpacing = ScholiumGrid.foundationUnit * 2.25
-        static let destinationMinimumSpacing = ScholiumGrid.Spacing.nestedContentInset
-        static let headerSpacing = ScholiumGrid.foundationUnit * 1.75
-        static let actionMinimumSpacing = ScholiumGrid.Spacing.inlineControlGap
-        static let findingsSpacing = ScholiumGrid.foundationUnit * 1.75
-        static let panelVerticalInset = ScholiumGrid.foundationUnit * 2.75
-        static let detailSpacing = ScholiumGrid.foundationUnit * 0.5
-    }
 
     enum DocumentWorkflow {
         static let sectionSpacing = ScholiumGrid.foundationUnit * 4.5

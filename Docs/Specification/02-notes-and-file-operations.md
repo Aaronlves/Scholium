@@ -8,8 +8,6 @@ Analysis, Topic, and ordinary Work Notes support Review, Edit, and Source over
 one exact Markdown buffer; autosave; create, duplicate, import, rename, move,
 Reveal in Finder, and system-Trash deletion; Search, Find/Replace, Connect,
 Metadata, Agent Changes, conflicts, and recovery.
-Critique bodies are read-only in Scholium but remain ordinary externally
-editable Markdown.
 
 ### 5.1 Document modes and YAML
 
@@ -123,7 +121,7 @@ Protected constructs follow these rules:
 
 ### 5.2 Authored YAML and Scholium Metadata
 
-[Appendix A](11-metadata-and-critique.md#shared-authored-yaml) owns the authored
+[Appendix A](11-metadata.md#shared-authored-yaml) owns the authored
 YAML allowlist. These values remain exact source; §18.4 owns Frontmatter and
 Source editing. YAML has no Metadata form or Inspector editing route.
 
@@ -134,7 +132,7 @@ Missing means no managed values. Damaged, future, wrong-role, orphaned, or
 concurrently changed records fail closed and preserve exact bytes for bounded,
 confirmed recovery.
 
-[Appendix A](11-metadata-and-critique.md#appendix-a-metadata-catalogs-and-settings)
+[Appendix A](11-metadata.md#appendix-a-metadata-catalogs-and-settings)
 owns catalogs, applicability, custom fields, and About order. One role-specific
 resolved catalog serves validation, Metadata, Search, Library filters, and
 About. A definition creates no value.
@@ -169,7 +167,7 @@ A managed New Note uses one Application-owned creator shared by GUI, CLI, and
 Scholium MCP. Without explicitly supplied source values, it creates an empty,
 YAML-free document and opens Edit at the exact body start. It adds no YAML
 scaffold, H1, title, required Metadata, naming sheet, or classification step.
-Import, Duplicate, Restore, external discovery, and managed Critique creation
+Import, Duplicate, Restore, and external discovery
 keep their own exact-source contracts.
 
 MCP creation accepts exact role/path, body, and optional explicitly authored
@@ -197,7 +195,7 @@ reinterpretation. Non-Markdown contents move without parsing.
 
 Note and Folder drag-and-drop are redundant Move routes using process-private
 identity/path payloads. File menu and named accessibility actions remain
-available. Cross-vault moves, managed Critique placement, stale revisions,
+available. Cross-vault moves, stale revisions,
 invalid descendants, and self/descendant folder targets fail without source
 change.
 
@@ -209,14 +207,13 @@ Trash; Finder owns restoration and final deletion.
 
 Folder deletion confirmation lists every source item that will move to system
 Trash. Preparation flushes dirty editors and freezes exact paths, identities,
-fingerprints, folder contents, and separately located managed Critiques. An
+fingerprints and folder contents. An
 in-flight or uncertain MCP mutation, unresolved write recovery, identity
 ambiguity, source or manifest drift, or unsafe filesystem entry blocks the
 move.
 
 Deleting a Note does not delete independent linked Notes. Stable Note identity,
-Settlement, Zotero binding, source-access provenance, and Critique association
-remain so Finder restoration can reconcile exact source.
+Settlement and Zotero binding remain so Finder restoration can reconcile exact source.
 
 Before the first move Scholium installs a deletion gate and durable forward
 plan with one receipt per source item. It binds each native operation to the

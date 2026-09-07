@@ -73,16 +73,14 @@ struct SidebarNoteCommandGroup: Hashable, Identifiable {
     var id: Kind { kind }
 }
 
-func sidebarNoteCommandGroups(
-    isManagedCritique: Bool
-) -> [SidebarNoteCommandGroup] {
+func sidebarNoteCommandGroups() -> [SidebarNoteCommandGroup] {
     var groups = [SidebarNoteCommandGroup(
         kind: .opening,
         commands: [.openInNewTab]
     )]
 
     var editing: [SidebarNoteCommand] = []
-    if !isManagedCritique { editing.append(.duplicate) }
+    editing.append(.duplicate)
     editing.append(.rename)
     editing.append(.move)
     groups.append(SidebarNoteCommandGroup(
@@ -230,11 +228,7 @@ struct SidebarTreeNodeRow: View {
 
     @ViewBuilder
     private func noteContextMenu(_ note: WindowDocumentLocation) -> some View {
-        let groups = sidebarNoteCommandGroups(
-            isManagedCritique: CritiquePlacement.isManagedCritiquePath(
-                note.relativePath
-            )
-        )
+        let groups = sidebarNoteCommandGroups()
         ForEach(groups.indices, id: \.self) { index in
             if index > groups.startIndex { Divider() }
             ForEach(groups[index].commands) { command in
@@ -245,11 +239,7 @@ struct SidebarTreeNodeRow: View {
 
     @ViewBuilder
     private func noteAccessibilityActions(_ note: WindowDocumentLocation) -> some View {
-        let groups = sidebarNoteCommandGroups(
-            isManagedCritique: CritiquePlacement.isManagedCritiquePath(
-                note.relativePath
-            )
-        )
+        let groups = sidebarNoteCommandGroups()
         ForEach(groups) { group in
             ForEach(group.commands) { command in
                 noteCommandButton(command, note: note, surface: .accessibility)
@@ -328,9 +318,7 @@ struct SidebarTreeNodeRow: View {
 
     private func canMutateFolder(_ path: String) -> Bool {
         guard context.canMutateLibrary else { return false }
-        let candidate = "\(path)/Untitled.md"
-        return !context.currentVaultRole.allowsCritique
-            || !CritiquePlacement.isManagedCritiquePath(candidate)
+        return true
     }
 
     private func folderTarget(_ path: String) -> FolderMutationTarget? {

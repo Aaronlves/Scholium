@@ -36,7 +36,7 @@ struct ResearchInspectorState: Equatable, Sendable {
 }
 
 /// The narrow application ports consumed by the per-window research feature.
-/// Permission and source-access capabilities remain with their
+/// Permission and source capabilities remain with their
 /// dedicated controllers and never enter this bundle.
 struct ResearchControllerCapabilities: Sendable {
     let triptychID: UUID
@@ -176,50 +176,6 @@ final class ResearchController: ObservableObject {
             rationale: rationale
         )
     }
-
-    func critique(workNoteID: UUID) async throws -> CritiqueAssociation? {
-        try await requireResearch().critique(workNoteID: workNoteID)
-    }
-
-    @discardableResult
-    func critique(critiqueRelativePath: String) async throws -> CritiqueAssociation? {
-        try await requireResearch().critique(critiqueRelativePath: critiqueRelativePath)
-    }
-
-    @discardableResult
-    func setCritiqueFindingDisposition(
-        workNote: VaultQualifiedNoteID,
-        roundID: UUID,
-        findingID: String,
-        decision: CritiqueFindingDispositionDecision,
-        rationale: String?,
-        noTextChangeRationale: String?,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> CritiqueAssociation {
-        try await requireResearch().setCritiqueFindingDisposition(
-            workNote: workNote,
-            roundID: roundID,
-            findingID: findingID,
-            decision: decision,
-            rationale: rationale,
-            noTextChangeRationale: noTextChangeRationale,
-            expectedRevision: expectedRevision
-        )
-    }
-
-    @discardableResult
-    func completeCritiqueRound(
-        workNote: VaultQualifiedNoteID,
-        roundID: UUID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> CritiqueAssociation {
-        try await requireResearch().completeCritiqueRound(
-            workNote: workNote,
-            roundID: roundID,
-            expectedRevision: expectedRevision
-        )
-    }
-
     func settings() async throws -> TriptychSettingsSnapshot {
         try await requireResearch().settings()
     }
@@ -327,27 +283,21 @@ final class ResearchController: ObservableObject {
 
     private func requireResearch() throws -> any ResearchUseCases {
         guard let research = capabilities?.research else {
-            throw ScholiumApplicationError.critiqueStoreUnavailable(
-                "No workspace is active."
-            )
+            throw ScholiumApplicationError.noWorkspaceConfigured
         }
         return research
     }
 
     private func requireDocuments() throws -> any DocumentUseCases {
         guard let documents = capabilities?.documents else {
-            throw ScholiumApplicationError.critiqueStoreUnavailable(
-                "No workspace is active."
-            )
+            throw ScholiumApplicationError.noWorkspaceConfigured
         }
         return documents
     }
 
     private func requireAgentCollaboration() throws -> any AgentCollaborationUseCases {
         guard let agentCollaboration = capabilities?.agentCollaboration else {
-            throw ScholiumApplicationError.critiqueStoreUnavailable(
-                "No workspace is active."
-            )
+            throw ScholiumApplicationError.noWorkspaceConfigured
         }
         return agentCollaboration
     }

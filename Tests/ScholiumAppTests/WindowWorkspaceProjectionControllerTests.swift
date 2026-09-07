@@ -741,7 +741,7 @@ struct WindowWorkspaceProjectionControllerTests {
                         )
                         : nil
                 ),
-                research: WorkspaceResearchSnapshot(critiques: [], healthIssues: [])
+                research: WorkspaceResearchSnapshot(healthIssues: [])
             )
         }
 

@@ -187,22 +187,6 @@ public protocol ResearchUseCases: Sendable {
         expectedRevision: DocumentFingerprint,
         rationale: String?
     ) async throws -> SettlementRecord
-    func critique(workNoteID: UUID) async throws -> CritiqueAssociation?
-    func critique(critiqueRelativePath: String) async throws -> CritiqueAssociation?
-    func setCritiqueFindingDisposition(
-        workNote: VaultQualifiedNoteID,
-        roundID: UUID,
-        findingID: String,
-        decision: CritiqueFindingDispositionDecision,
-        rationale: String?,
-        noTextChangeRationale: String?,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> CritiqueAssociation
-    func completeCritiqueRound(
-        workNote: VaultQualifiedNoteID,
-        roundID: UUID,
-        expectedRevision: DocumentFingerprint
-    ) async throws -> CritiqueAssociation
     func settings() async throws -> TriptychSettingsSnapshot
     func settingsLoadState() async throws -> TriptychSettingsLoadState
     func saveSettings(

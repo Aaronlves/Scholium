@@ -347,7 +347,7 @@ Topics change only under an explicit request naming the target. Adding or
 changing an Analysis never automatically updates a Topic. Discovery that new
 material may alter an older synthesis is a separate researcher-invoked task.
 
-## 11. Works and Critique
+## 11. Works
 
 ### 11.1 Researcher-governed Works
 
@@ -364,16 +364,10 @@ an explicit target and preserves the intended thesis unless the researcher asks
 for an alternative argument. Philosophical adequacy governs the result; the
 Agent need not imitate the researcher's sentence-level style.
 
-### 11.2 Critique target and storage
+### 11.2 Discussion and assessment
 
-A Critique is an attributed Agent assessment of one Work or selected passage.
-Broader dialogue follows the external-host or in-app Chat boundary in §8. Each Work has at
-most one current Critique document under `Critiques/`; later rounds update it.
-Critique source is read-only in Scholium but remains ordinary externally
-editable Markdown.
-
-### 11.3 Critique method and form
-
-[Appendix B](11-metadata-and-critique.md#appendix-b-critique-requirements) owns
-Critique outcomes, evidence limits and form. This workflow adds no assessment
-schema, research status or registered method.
+Assessment follows the ordinary conversation and explicitly authorized Note
+operations in §8. Reports are ordinary researcher-controlled Notes, with no
+reserved directory, special read-only document type, registered action, result
+schema, or round-completion state. Agent assessments remain attributed and do
+not establish researcher acceptance or automatically change a Work or Settle.

@@ -494,7 +494,6 @@ paths, source, researcher prose, and Skill names remain verbatim.
 | Library | 研究文档 |
 | Analyses / Topics / Works | 分析 / 议题 / 写作 |
 | Agent Integration / Agent Changes | Agent 集成 / Agent 修改 |
-| Critique / Fidelity | 评析 / 忠实性 |
 | Research / Review / Judgment | 研究 / 审查 / 判断 |
 | Settle / Settled | 暂定 / 已暂定 |
 | Attention / Connect | 关注 / 连接 |

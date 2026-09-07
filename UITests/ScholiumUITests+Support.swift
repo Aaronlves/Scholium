@@ -197,14 +197,8 @@ extension ScholiumUITests {
             "-scholium.settings.selectedPane", "research-guidance",
             "-scholium.settings.researchGuidanceCategory", "Skills",
         ]
-        if name.contains("testResearchWorkflowInterfaceProofs") {
-            application.launchArguments += ["--scholium-research-workflow-proofs"]
-        }
         if name.contains("testDocumentHeadingStudyWrapsLongMixedTitleUsingAcceptedBodyRhythm") {
             application.launchArguments += ["--scholium-document-heading-proof"]
-        }
-        if name.contains("testResearchWriteSetExtensionSheet") {
-            application.launchArguments += ["--scholium-write-set-extension-fixture"]
         }
         if let appearance {
             application.launchArguments += ["-colorScheme", appearance.rawValue]
@@ -864,8 +858,6 @@ extension ScholiumUITests {
         element.typeKey("v", modifierFlags: [.command])
     }
 
-
-
     func qaFingerprint(_ source: String) -> [String: Any] {
         let data = Data(source.utf8)
         let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
@@ -917,9 +909,8 @@ extension ScholiumUITests {
         let analyses = triptychDirectory.appendingPathComponent("01-analyses", isDirectory: true)
         let topics = triptychDirectory.appendingPathComponent("02-topics", isDirectory: true)
         let works = triptychDirectory.appendingPathComponent("03-works", isDirectory: true)
-        let critiques = works.appendingPathComponent("Critiques", isDirectory: true)
         let attachments = topics.appendingPathComponent("Attachments", isDirectory: true)
-        for directory in [homeDirectory!, analyses, topics, works, critiques, attachments] {
+        for directory in [homeDirectory!, analyses, topics, works, attachments] {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         }
 
@@ -1076,29 +1067,7 @@ extension ScholiumUITests {
                 to: analyses.appendingPathComponent("QA Autosave B.md")
             )
         }
-        try write(
-            """
-            ---
-            critique_authorship: agent
-            critique_target_path: QA Work.md
-            critique_requested_at: "2026-07-14T00:00:00Z"
-            critique_request_scope: "Both"
-            ---
-            # Critique: QA Work
 
-            ## Specific Findings
-
-            ### Traced — Topic connection
-            - Target Work: QA Work.md
-            - Target line: 105
-            - Target quotation: "[[QA Topic]]"
-
-            ## Evidence Limits
-
-            Synthetic QA fixture only.
-            """ + "\n",
-            to: critiques.appendingPathComponent("QA Critique.md")
-        )
     }
 
     /// A fresh staged fixture intentionally has no portable control directory;

@@ -461,8 +461,7 @@ extension SidebarOutlineSourceList {
                   configuration.dropInventory.canMutate else { return nil }
 
             if let note = item.node.note,
-               let target = NoteMutationTarget(note),
-               !CritiquePlacement.isManagedCritiquePath(note.relativePath) {
+               let target = NoteMutationTarget(note) {
                 let payload = SidebarNoteDragItem(target)
                 guard !configuration.dropInventory.pendingNoteMoves.contains(payload.id),
                       configuration.dropInventory.notes.contains(where: {

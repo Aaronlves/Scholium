@@ -5,13 +5,9 @@ import Foundation
 /// The value is descriptive search metadata. It never establishes evidential
 /// sufficiency, philosophical support, or permission to use the note.
 public enum EvidentialLayer: String, Codable, CaseIterable, Sendable {
-    case primarySource = "primary_source"
     case paperAnalysis = "paper_analysis"
     case topicNote = "topic_note"
     case draftProse = "draft_prose"
-    case researcherState = "researcher_state"
-    case sourceMaterial = "source_material"
-    case agentReconstruction = "agent_reconstruction"
 }
 
 /// A vault-qualified reference used by catalog, Attention, and navigation.

@@ -39,7 +39,7 @@ private database.
 
 The researcher is a constitutive participant in the knowledge base, not merely
 the reviewer of memories chosen by a model. Exact writing, declared scope and
-limitations, Settle, Critique dispositions, and deliberate next steps retain
+limitations, Settle, and deliberate next steps retain
 their own narrow meanings. Opening, reading, silence, or permission to write
 does not become acceptance, importance, or belief.
 
@@ -94,7 +94,7 @@ delivery target imports Core.
 
 The current product supports independent Triptychs and windows, exact-source
 Markdown editing, Search and Connections, Note and Folder file operations,
-external-edit conflicts, interrupted-save recovery, Settle, Critique, Zotero,
+external-edit conflicts, interrupted-save recovery, Settle, Zotero,
 and a fixed local MCP collaboration surface. Search remains one disposable
 Note-only projection for the App, CLI, and MCP adapter.
 Ordinary Wikilinks may carry source-owned multiline Markdown annotations with
@@ -319,7 +319,7 @@ Authoritative research remains in the selected Markdown folders. The small
 portable `.scholium/` control structure beside Works contains the bounded
 control state listed in
 [§3.3](Docs/Specification/01-foundation-and-triptych.md#33-scholium-and-machine-local-state).
-Research prose and Critiques remain Markdown; save recovery is machine-local.
+Research prose and assessments remain ordinary Markdown; save recovery is machine-local.
 
 Bookmarks, absolute paths, window sessions, indexes, saved queries, recovery,
 local bridge authentication, exact Agent Change evidence, and unsupported

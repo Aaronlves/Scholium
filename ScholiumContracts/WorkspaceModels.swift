@@ -114,9 +114,7 @@ public struct WorkspaceNoteSnapshot: Hashable, Sendable {
         }
         return DocumentCapabilities(
             role: vaultRole,
-            identity: identity,
-            isManagedCritique: vaultRole.allowsCritique
-                && CritiquePlacement.isManagedCritiquePath(document.relativePath)
+            identity: identity
         )
     }
     public var schemaProfile: SchemaProfileID {
@@ -367,20 +365,17 @@ public struct WorkspaceSettlementRequirement: Hashable, Identifiable, Sendable {
 
 public struct WorkspaceResearchSnapshot: Sendable {
     public let settlements: [SettlementRecord]
-    public let critiques: [CritiqueAssociation]
     public let recoveryRecords: [TriptychMutationRecoveryRecord]
     public let settlementRequirements: [WorkspaceSettlementRequirement]
     public let healthIssues: [String]
 
     public init(
         settlements: [SettlementRecord] = [],
-        critiques: [CritiqueAssociation],
         recoveryRecords: [TriptychMutationRecoveryRecord] = [],
         settlementRequirements: [WorkspaceSettlementRequirement] = [],
         healthIssues: [String]
     ) {
         self.settlements = settlements
-        self.critiques = critiques
         self.recoveryRecords = recoveryRecords
         self.settlementRequirements = settlementRequirements
         self.healthIssues = healthIssues
@@ -773,7 +768,6 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
     case operationCommittedButRefreshFailed(operation: String, reason: String)
     case operationCommitUncertain(operation: String, reason: String)
     case noWorkspaceConfigured
-    case critiqueStoreUnavailable(String)
     case runtimeConfigurationUnavailable
 
     /// `true` means the authoritative mutation is already durable and the
@@ -846,8 +840,6 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
             "Scholium could not prove whether \(operation) committed. Reload the authoritative state before trying another mutation: \(reason)"
         case .noWorkspaceConfigured:
             "No Scholium Triptych is configured."
-        case .critiqueStoreUnavailable(let reason):
-            "Scholium Critique state is unavailable. \(reason)"
         case .runtimeConfigurationUnavailable:
             "This fixed workspace snapshot cannot change Triptych registration or access."
         }
@@ -860,11 +852,6 @@ public enum ScholiumApplicationError: LocalizedError, Sendable {
 public enum ResearchOperationError: LocalizedError, Sendable {
     case noteUnavailable(VaultQualifiedNoteID)
     case settlementUnavailable(VaultRole)
-    case critiqueUnavailable(VaultRole)
-    case critiqueTargetMustBeOrdinaryWork(String)
-    case critiqueRegistryUnavailable(String)
-    case critiqueTargetChanged
-    case critiqueRollbackFailed(requestError: String, rollbackError: String)
 
     public var errorDescription: String? {
         switch self {
@@ -872,16 +859,6 @@ public enum ResearchOperationError: LocalizedError, Sendable {
             "The note at \(id.relativePath) is not available in this workspace generation."
         case .settlementUnavailable:
             "Settlement requires a reliably identified Analysis, Topic, or Work."
-        case .critiqueUnavailable:
-            "Request Critique is available only for ordinary notes in Works."
-        case .critiqueTargetMustBeOrdinaryWork(let path):
-            "Request Critique requires an ordinary Work, not the managed Critique at \(path)."
-        case .critiqueRegistryUnavailable(let reason):
-            reason
-        case .critiqueTargetChanged:
-            "The Work changed while Scholium was preparing the Critique. Review the current Work and request its Critique again."
-        case .critiqueRollbackFailed(let requestError, let rollbackError):
-            "Scholium could not complete the Critique request and could not restore the prepared Critique source automatically. \(requestError) Recovery also failed: \(rollbackError) Inspect the current Critique and machine-local recovery before continuing."
         }
     }
 }

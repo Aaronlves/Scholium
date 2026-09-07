@@ -8,9 +8,6 @@ struct WorkspaceTests {
     @Test("The Works role exposes Works capabilities")
     func worksRoleCapabilities() {
         #expect(VaultRole.draftProject.displayName == "Works")
-        #expect(VaultRole.draftProject.allowsCritique)
-        #expect(!VaultRole.sourceCorpus.allowsCritique)
-        #expect(!VaultRole.topicKnowledge.allowsCritique)
     }
 
     @Test("Default workspace uses concise researcher-facing vault names")

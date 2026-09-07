@@ -13,7 +13,7 @@
   native system Trash, and recoverable uncertainty.
 - Managed Note creation uses the common source scaffold and stable-identity
   transaction for App, researcher CLI, and MCP callers. Metadata settings,
-  About editing, Settlement, Critique, Zotero bindings, transaction recovery,
+  About editing, Settlement, Zotero bindings, transaction recovery,
   and source conflict handling remain reachable through their existing owners.
 - Search contract 16 searches Notes through one source-authoritative path.
   Note title identity uses its filename; Analysis academic title Metadata and

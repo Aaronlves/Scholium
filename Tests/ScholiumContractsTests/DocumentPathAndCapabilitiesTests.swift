@@ -84,33 +84,17 @@ struct DocumentPathAndCapabilitiesTests {
     func unresolvedFailsClosed(_ identity: DocumentIdentityResolution) {
         let capabilities = DocumentCapabilities(
             role: .topicKnowledge,
-            identity: identity,
-            isManagedCritique: false
+            identity: identity
         )
         #expect(!capabilities.canEditSource)
-        #expect(!capabilities.isManagedCritique)
         #expect(capabilities.fileActions.isEmpty)
-    }
-
-    @Test("Managed Critique is not editable or duplicable")
-    func critiqueBoundary() {
-        let capabilities = DocumentCapabilities(
-            role: .draftProject,
-            identity: .resolved,
-            isManagedCritique: true
-        )
-        #expect(!capabilities.canEditSource)
-        #expect(capabilities.isManagedCritique)
-        #expect(!capabilities.allows(.duplicate))
-        #expect(capabilities.allows(.moveToSystemTrash))
     }
 
     @Test("Resolved ordinary Notes expose only current file actions")
     func fileActionMatrix() {
         let capabilities = DocumentCapabilities(
             role: .topicKnowledge,
-            identity: .resolved,
-            isManagedCritique: false
+            identity: .resolved
         )
         #expect(capabilities.fileActions == [
             .duplicate,
@@ -135,7 +119,7 @@ struct DocumentPathAndCapabilitiesTests {
             graphCounts: WorkspaceGraphCounts(incoming: 0, outgoing: 0, broken: 0, ambiguous: 0)
         )
 
-        #expect(snapshot.capabilities.isManagedCritique)
-        #expect(!snapshot.capabilities.canEditSource)
+        #expect(snapshot.capabilities.canEditSource)
+        #expect(snapshot.capabilities.allows(.duplicate))
     }
 }

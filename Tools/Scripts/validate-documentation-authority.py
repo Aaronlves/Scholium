@@ -231,7 +231,7 @@ def validate_line_lengths(paths: list[Path]) -> None:
 def validate_specification_sections(paths: list[Path]) -> set[str]:
     seen: dict[str, Path] = {}
     top_level: list[str] = []
-    expected_top_level = [*(str(number) for number in range(1, 23)), "Appendix A", "Appendix B"]
+    expected_top_level = [*(str(number) for number in range(1, 23)), "Appendix A"]
     for path in paths:
         for line in path.read_text(encoding="utf-8").splitlines():
             match = SECTION_ID.match(line)

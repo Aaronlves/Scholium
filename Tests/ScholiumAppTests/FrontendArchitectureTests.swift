@@ -10,9 +10,6 @@ import Testing
 @MainActor
 struct FrontendArchitectureTests {
 
-
-
-
     @Test("Packaged performance prepares its UI driver before the cooled gate")
     func performanceGateUsesPreparedDriver() throws {
         let repository = URL(fileURLWithPath: #filePath)
@@ -790,10 +787,6 @@ struct FrontendArchitectureTests {
                 )
             }
         }
-        let critique = try #require(
-            viewSources["Scholium/Views/Note/CritiqueProvenanceView.swift"]
-        )
-        #expect(critique.contains("metadata.isAgentAttributed ? .agentAuthorship : .attention"))
 
         let comparison = try #require(
             applicationSources["Scholium/UI/Components/ExactSourceComparisonView.swift"]

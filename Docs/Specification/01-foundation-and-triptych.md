@@ -19,8 +19,6 @@
   acceptance or review state.
 - **Settle** is the researcher's replaceable judgment that one saved fingerprint
   is sufficiently stable for current research. It stores no source version.
-- **Critique** is an attributed Agent assessment of one Work. **Fidelity**
-  audits an exact revision. Neither silently edits or settles the Note.
 - **Connect** presents authored link occurrences and their annotations.
   **Attention** presents recoverable
   derived warnings without philosophical judgment.
@@ -73,7 +71,7 @@ becomes epistemic authority or researcher adoption.
 
 Each Triptych has one researcher authority. Agents are attributed participants,
 not additional researchers. Keep distinct: source and modified Notes; vault
-role and location; Settlement state; Critique authorship; external conversation;
+role and location; Settlement state; Agent attribution; external conversation;
 research history authored in Notes; and Agent Changes. Later editing, incorporation, or Settle
 never erases provenance.
 
@@ -89,7 +87,7 @@ requires a researcher action.
 | --- | --- |
 | **Analyses** | Reusable analyses of papers and other sources. |
 | **Topics** | Reusable concepts, distinctions, positions, debates, objections, and syntheses. |
-| **Works** | Researcher-governed plans, arguments, drafts, Critiques, and finished writing. |
+| **Works** | Researcher-governed plans, arguments, drafts, assessments, and finished writing. |
 
 A substantially different domain uses another complete Triptych. There is no
 fourth vault or All Notes mode. Researchers choose all locations; Scholium may
@@ -161,7 +159,7 @@ The result is immediately an ordinary Note in that workspace.
 
 Works is an ordinary researcher-defined Markdown hierarchy. Scholium imposes no
 project membership, required metadata, completeness model, or template.
-`Critiques/` alone has special behavior under §11.
+No Works subdirectory confers special document behavior.
 
 Research questions and continuing discussion may be ordinary Works Notes. They
 use the same Markdown editing, Search, links, and file operations as other Notes.

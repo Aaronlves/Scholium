@@ -16,7 +16,6 @@ public enum TriptychMutationFileRole: String, Codable, Hashable, Sendable {
     case incomingLinkRewrite
     case trashedNote
     case trashedFolder
-    case associatedCritique
 }
 
 

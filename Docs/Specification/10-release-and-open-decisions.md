@@ -91,7 +91,7 @@ the current artifact.
 | **G2 Workflow independence** | Manual core works without Obsidian, Zotero, Agents, or manual filesystem repair. |
 | **G3 Source integrity** | Exact-source tests cover malformed/unknown YAML, BOM/newlines, targeted edits, atomic failure, and readback. |
 | **G4 Recovery and deletion** | Conflict, Agent Change Undo, save recovery, system-Trash receipts/cleanup, external deletion/restore/rename, and derived failure pass. |
-| **G5 Scholarly transparency** | Source, researcher/Agent content, Agent Changes, Settle, Critique, Fidelity, provenance, and uncertainty remain distinct. |
+| **G5 Scholarly transparency** | Source, researcher/Agent content, Agent Changes, Settle, provenance, and uncertainty remain distinct. |
 | **G6 Accessibility/localization** | §20's current guards, required UI baseline/affected journeys, bounded human threshold, and severity threshold are met for the named profile. |
 | **G7 Performance** | The packaged-app protocol in §21.4 passes. |
 | **G8 Documentation consistency** | Specification, architecture, status, README, source, and tests do not silently conflict. |
@@ -247,7 +247,7 @@ matrix in every clean-account artifact smoke.
 When the Finder-restoration journey needs human judgment, limit that judgment
 to Finder-owned Trash naming/collision presentation and restoration
 discoverability. Receipt stages, separately moved
-Critiques, dirty peers, File Provider/sync races, original-path reappearance,
+linked Notes, dirty peers, File Provider/sync races, original-path reappearance,
 Trash emptying, and cleanup recovery remain deterministic or system-integration
 dimensions; they do not each create another human process interruption. Reuse
 an applicable §20 representative check instead of duplicating it.

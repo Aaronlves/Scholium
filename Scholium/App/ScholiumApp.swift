@@ -2548,14 +2548,12 @@ final class WindowModel: ObservableObject {
         guard currentNote != nil else {
             return DocumentCapabilities(
                 role: currentDocumentVaultRole,
-                identity: .unresolved,
-                isManagedCritique: false
+                identity: .unresolved
             )
         }
         return DocumentCapabilities(
             role: currentDocumentVaultRole,
-            identity: .unresolved,
-            isManagedCritique: false
+            identity: .unresolved
         )
     }
 
@@ -3423,7 +3421,7 @@ final class WindowModel: ObservableObject {
 
     /// The workspace retains its desired mode across Notes, while chrome must
     /// report the mode the selected session is actually presenting. This keeps
-    /// read-only and managed Critique documents truthfully in Review
+    /// unavailable documents truthfully in Review
     /// without changing the workspace's retained Edit selection.
     var presentedDocumentMode: NotePresentationMode {
         guard currentNote != nil else { return currentPresentationMode }
@@ -3778,7 +3776,7 @@ final class WindowModel: ObservableObject {
         }
         if !activationIssues.isEmpty {
             vaultError = ([
-                "Some Scholium research history could not be loaded. The affected files remain unchanged and edits to those records are blocked.",
+                "Some workspace state could not be loaded. The affected files remain unchanged; see the details for unavailable operations.",
             ] + activationIssues).joined(separator: "\n\n")
         }
         let recoveryIssues = try await libraryMutationController.recoverInterruptedTransactions()
@@ -3897,45 +3895,6 @@ final class WindowModel: ObservableObject {
             slot: slot,
             isAuthoritative: triptychPropertiesAreAuthoritative
         )
-    }
-
-    func critiqueAssociation(for path: String) async -> CritiqueAssociation? {
-        guard let context = activeDocumentContext(for: path),
-              context.vaultRole.allowsCritique else { return nil }
-        return try? await researchController.critique(workNoteID: context.noteID)
-    }
-
-    func critiqueAssociation(forCritiquePath path: String) async -> CritiqueAssociation? {
-        guard let context = activeDocumentContext(for: path),
-              context.vaultRole.allowsCritique else { return nil }
-        return try? await researchController.critique(critiqueRelativePath: path)
-    }
-
-    func critiqueAssociationRelated(to path: String) async -> CritiqueAssociation? {
-        if CritiquePlacement.isManagedCritiquePath(path) {
-            return await critiqueAssociation(forCritiquePath: path)
-        }
-        return await critiqueAssociation(for: path)
-    }
-
-    func openCritiqueFinding(
-        _ finding: CritiqueFinding,
-        fallbackTargetPath: String?
-    ) {
-        guard let path = finding.targetRelativePath ?? fallbackTargetPath,
-              let target = currentDocumentNotes.first(where: { $0.relativePath == path }),
-              let reference = target.workspaceSnapshot.map({ snapshot in
-                  VaultNoteReference(
-                      vaultID: snapshot.id.vaultID,
-                      vaultName: currentDocumentVault?.name ?? "Current Vault",
-                      vaultRole: snapshot.vaultRole,
-                      relativePath: snapshot.id.relativePath,
-                      stableNoteID: snapshot.stableIdentity.resolvedID?.uuidString.lowercased()
-                  )
-              }) else { return }
-        let document = NoteDocument(relativePath: path, rawContent: target.rawContent)
-        let line = finding.resolvedTargetLine(in: document)
-        Task { await openWorkspaceReference(reference, line: line, mode: line == nil ? .read : .source) }
     }
 
     func presentMarkdownImportOutcome(_ outcome: WindowMarkdownImportBatchOutcome) {

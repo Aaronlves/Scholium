@@ -20,9 +20,6 @@ public enum VaultRole: String, Codable, CaseIterable, Sendable {
         }
     }
 
-    public var allowsCritique: Bool {
-        self == .draftProject
-    }
 
     public init?(commandLineValue: String) {
         switch commandLineValue.lowercased() {

@@ -3,24 +3,20 @@ import Foundation
 
 public actor NoteIdentityRecoveryCoordinator {
     private let control: TriptychControlStore
-    private let critiques: CritiqueRegistry
     private let windowSessions: WindowSessionSnapshotStore
 
     public init(
         control: TriptychControlStore,
-        critiques: CritiqueRegistry,
         windowSessions: WindowSessionSnapshotStore
     ) {
         self.control = control
-        self.critiques = critiques
         self.windowSessions = windowSessions
     }
 
     public func reconcile(
         vaultID: UUID,
         documents: [(relativePath: String, fingerprint: DocumentFingerprint)],
-        repository: VaultRepository,
-        migrateCritiquePaths: Bool
+        repository: VaultRepository
     ) async throws -> NoteIdentityRecoveryState {
         try await validate(repository: repository, vaultID: vaultID)
         let reconciliation = try await control.reconcileIdentityInventory(
@@ -29,8 +25,7 @@ public actor NoteIdentityRecoveryCoordinator {
         )
         let failures = await resumePendingRebindings(
             vaultID: vaultID,
-            repository: repository,
-            migrateCritiquePaths: migrateCritiquePaths
+            repository: repository
         )
         return try await state(
             reconciliation: reconciliation,
@@ -46,8 +41,7 @@ public actor NoteIdentityRecoveryCoordinator {
     public func resolve(
         _ ambiguity: NoteIdentityAmbiguity,
         candidateID: UUID?,
-        repository: VaultRepository,
-        migrateCritiquePaths: Bool
+        repository: VaultRepository
     ) async throws -> NoteIdentityRecord {
         try await validate(repository: repository, vaultID: ambiguity.vaultID)
         let current = try await repository.load(relativePath: ambiguity.relativePath)
@@ -66,8 +60,7 @@ public actor NoteIdentityRecoveryCoordinator {
         guard candidateID != nil else { return record }
         let failures = await resumePendingRebindings(
             vaultID: ambiguity.vaultID,
-            repository: repository,
-            migrateCritiquePaths: migrateCritiquePaths
+            repository: repository
         )
         if let failure = failures.first(where: { $0.rebinding.noteID == record.id }) {
             throw NoteIdentityMigrationError.incomplete(failure.message)
@@ -80,8 +73,7 @@ public actor NoteIdentityRecoveryCoordinator {
     /// destination after restart.
     public func resumePendingRebindings(
         vaultID: UUID,
-        repository: VaultRepository,
-        migrateCritiquePaths: Bool
+        repository: VaultRepository
     ) async -> [NoteIdentityMigrationFailure] {
         let pending: [NoteIdentityPendingRebinding]
         do {
@@ -95,8 +87,7 @@ public actor NoteIdentityRecoveryCoordinator {
             do {
                 try await migrate(
                     rebinding,
-                    repository: repository,
-                    migrateCritiquePaths: migrateCritiquePaths
+                    repository: repository
                 )
             } catch {
                 failures.append(NoteIdentityMigrationFailure(
@@ -110,8 +101,7 @@ public actor NoteIdentityRecoveryCoordinator {
 
     private func migrate(
         _ rebinding: NoteIdentityPendingRebinding,
-        repository: VaultRepository,
-        migrateCritiquePaths: Bool
+        repository: VaultRepository
     ) async throws {
         try await validate(repository: repository, vaultID: rebinding.vaultID)
         _ = try await repository.load(relativePath: rebinding.relativePath)
@@ -122,13 +112,6 @@ public actor NoteIdentityRecoveryCoordinator {
             from: rebinding.previousRelativePath,
             to: rebinding.relativePath
         )
-        if migrateCritiquePaths {
-            _ = try await critiques.movePath(
-                noteID: rebinding.noteID,
-                from: rebinding.previousRelativePath,
-                to: rebinding.relativePath
-            )
-        }
         try await windowSessions.migratePath(
             vaultID: rebinding.vaultID,
             from: rebinding.previousRelativePath,

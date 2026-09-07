@@ -1,4 +1,4 @@
-# Specification: Metadata and Critique
+# Specification: Metadata
 
 [SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md) · Appendices A–B.
 
@@ -97,35 +97,3 @@ choices may be inserted at any position.
 Archive/Restore preserves stored values, About presentation, and
 Search/editing validation while removing the field from new-value,
 About-always-shown choices. Restore About defaults changes no definitions.
-
-## Appendix B. Critique requirements
-
-Critique has no fixed product operation, academic profile, result schema or
-registered method. Optional headings such as Overall Assessment, Strengths,
-Major Concerns, Source Support, Objections and Alternatives, Revision Priorities,
-Specific Findings and Evidence Limits are writing aids, not required fields.
-
-A Critique inspects the bounded Work plus applicable Analyses and Topics. It
-distinguishes what those Notes report, support, dispute, or leave uncertain
-from the Agent's own reconstruction and evaluation. Link occurrences and
-transitive paths are never evidence.
-
-Whole-Work Critique addresses material strengths, weaknesses, method fit,
-source/perspective coverage, conceptual and argumentative command, sustained
-contribution, defensibility, omissions, implications, objections, alternatives,
-and revision priorities as warranted by genre, scope, and inspected evidence.
-It is not a score or universal method.
-
-Passage Critique identifies the exact target, issue, significance, research
-basis, and recommendation without generalizing to the complete Work. Every
-Critique records material access limits and uncertainty but does not inventory
-reading. It never certifies research maturity, novelty, publishability, doctoral level, field
-completeness, or researcher competence.
-
-**Traced**, **Untraced**, **Disputed**, and **Beyond Sources** remain attributed
-Agent judgments, not Scholium statuses. Critique never modifies the Work; a
-source change requires current Write authority.
-
-The researcher may select a host-owned Critique method Skill. Scholium does not
-register, read, edit, validate, snapshot, or restore it. This appendix specifies
-product outcomes without duplicating a method's prose.

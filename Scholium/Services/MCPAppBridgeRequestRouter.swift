@@ -914,7 +914,7 @@ final class MCPAppBridgeRequestRouter {
         if let error = error as? ScholiumApplicationError {
             switch error {
             case .workspaceStillLoading, .noWorkspaceConfigured,
-                 .incompleteTriptych, .critiqueStoreUnavailable:
+                 .incompleteTriptych:
                 return ScholiumMCPFailure(
                     code: .workspaceNotReady,
                     message: "The requested current workspace state is unavailable.",
