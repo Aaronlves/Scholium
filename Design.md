@@ -268,8 +268,10 @@ retain uncommitted text without issuing partial queries. System typography,
 selection, control tint, and accessibility adaptation govern these auxiliary
 controls; they do not inherit product navigation's quiet gray treatment.
 
-Revealed editable Markdown delimiters use Muted Text; authored content retains
-its semantic text color and formatting. Syntax color never changes source.
+Editable Markdown delimiters use Muted Text at rest and transition to Secondary
+Text when exposed for editing; Increase Contrast may use Primary Text. Authored
+content retains its semantic color and formatting. Color supplements the exact
+visible syntax, caret and selection; it never changes source.
 
 Color reinforces these meanings without becoming another feedback system.
 Persistent workspace navigation and hover use native neutral grays; hover stays
@@ -324,6 +326,15 @@ or equality across two call sites is insufficient.
 Motion communicates continuity or feedback for a real state change. It remains
 interruptible where the action is, preserves object identity and focus, and has
 a non-motion cue. Reduce Motion produces the final state immediately.
+
+Editor syntax reveal and conceal may use a short reversible local transition.
+Short markers make room within the reading measure; a leading prefix may borrow
+available outer whitespace when its reveal alone would otherwise wrap the prose.
+It never clips source, overlaps navigation, or creates page-level horizontal scroll.
+The placement remains stable during one activation. Long destinations and technical
+source wrap rather than use the short-marker displacement. Input, selection,
+composition, and source updates never wait for motion; direct manipulation and
+Reduce Motion use the immediate result. Callout prose retains its block identity.
 
 Frequent navigation, list selection, disclosure, window changes, and research
 maturity judgments receive no parallel decorative transition. Pulsing, looping,

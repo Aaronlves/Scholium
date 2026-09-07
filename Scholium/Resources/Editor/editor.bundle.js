@@ -13796,6 +13796,198 @@
     return last;
   }
 
+  // syntax-presentation.ts
+  function canDisplaceSyntax(source) {
+    return source.length > 0 && source.length <= 24 && /^[\x20-\x7e]+$/.test(source);
+  }
+  function syntaxToken(source, from, to, exposed, kind = "inline", className = "") {
+    return Decoration.mark({
+      class: `cm-syntax-token ${exposed ? className : ""}`.trim(),
+      attributes: {
+        "data-syntax-key": `${from}:${to}`,
+        "data-syntax-open": String(exposed),
+        "data-syntax-kind": kind,
+        ...exposed ? {} : { "aria-hidden": "true" },
+        "data-syntax-length": String(source.length)
+      }
+    });
+  }
+  function prefixNeedsMargin(textWidth, tokenWidth, measure, availableMargin) {
+    return textWidth > measure && textWidth - tokenWidth <= measure && tokenWidth + 4 <= availableMargin;
+  }
+  var syntaxPresentation = ViewPlugin.fromClass(class {
+    constructor(view) {
+      this.view = view;
+      this.reduced.addEventListener("change", this.stop);
+      this.resize = new ResizeObserver((entries) => {
+        const width = entries[0]?.contentRect.width ?? 0;
+        if (width === this.inlineSize) return;
+        this.inlineSize = width;
+        this.stop();
+        for (const placement of this.placements.values()) placement.animation.cancel();
+        this.placements.clear();
+        this.borrowed.clear();
+        this.frames.clear();
+        this.measure(false);
+      });
+      this.resize.observe(view.scrollDOM);
+      this.measure(false);
+    }
+    view;
+    frames = /* @__PURE__ */ new Map();
+    borrowed = /* @__PURE__ */ new Set();
+    placements = /* @__PURE__ */ new Map();
+    transitions = /* @__PURE__ */ new Map();
+    animations = [];
+    objects = /* @__PURE__ */ new Set();
+    frame = 0;
+    destroyed = false;
+    reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+    resize;
+    inlineSize = 0;
+    stop = () => {
+      cancelAnimationFrame(this.frame);
+      this.frame = 0;
+      for (const animation of this.animations) animation.cancel();
+      this.animations = [];
+    };
+    update(update) {
+      if (!update.docChanged && !update.selectionSet && update.transactions.length === 0) return;
+      const animate = !update.docChanged && !update.viewportChanged && !this.view.composing && update.state.selection.main.empty && !this.reduced.matches;
+      for (const [key, transition] of this.transitions) {
+        const frame = this.frames.get(key);
+        const progress = transition.animation.effect?.getComputedTiming().progress;
+        if (frame && typeof progress === "number") {
+          frame.width = transition.from + (transition.to - transition.from) * progress;
+        }
+      }
+      this.transitions.clear();
+      this.stop();
+      this.measure(animate);
+    }
+    measure(animate) {
+      this.view.requestMeasure({
+        key: this,
+        read: () => ({
+          objects: [...this.view.contentDOM.querySelectorAll(
+            ".cm-live-table-widget, .cm-live-table, .cm-live-math, .cm-live-math-source, .cm-live-mermaid-widget, .cm-live-footnote-reference-widget, .cm-live-embed"
+          )],
+          tokens: [...this.view.contentDOM.querySelectorAll(".cm-syntax-token")].map((node) => {
+            const key = node.dataset.syntaxKey;
+            const open = node.dataset.syntaxOpen === "true";
+            const width = node.getBoundingClientRect().width;
+            const height = node.getBoundingClientRect().height;
+            const line = node.closest(".cm-line");
+            const multiline = height > parseFloat(getComputedStyle(node).lineHeight) + 1;
+            let borrow = open && this.borrowed.has(key);
+            if (borrow && node.getBoundingClientRect().left < this.view.scrollDOM.getBoundingClientRect().left + 4) borrow = false;
+            if (open && !this.frames.get(key)?.open && node.dataset.syntaxKind === "prefix" && line && getComputedStyle(line).direction === "ltr") {
+              const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+              let textWidth = 0;
+              while (walker.nextNode()) {
+                const text = walker.currentNode;
+                if (text.parentElement?.closest('[data-syntax-open="false"]')) continue;
+                const range = document.createRange();
+                range.selectNodeContents(text);
+                for (const rect of range.getClientRects()) textWidth += rect.width;
+              }
+              const style = getComputedStyle(line);
+              const measure = line.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+              borrow = node.offsetLeft <= parseFloat(style.paddingLeft) + 1 && prefixNeedsMargin(
+                textWidth,
+                width,
+                measure,
+                node.getBoundingClientRect().left - this.view.scrollDOM.getBoundingClientRect().left
+              );
+            }
+            const parentStyle = getComputedStyle(node.parentElement);
+            return {
+              node,
+              key,
+              open,
+              width,
+              height,
+              multiline,
+              borrow,
+              fontSize: parentStyle.fontSize,
+              lineHeight: parentStyle.lineHeight
+            };
+          })
+        }),
+        write: ({ tokens, objects }) => {
+          if (this.destroyed) return;
+          for (const object of objects) {
+            if (animate && this.objects.size && !this.objects.has(object) && typeof object.animate === "function") {
+              this.animations.push(object.animate(
+                [{ opacity: 0.65 }, { opacity: 1 }],
+                { duration: 100, easing: "ease-out" }
+              ));
+            }
+          }
+          this.objects = new Set(objects);
+          const next = /* @__PURE__ */ new Map();
+          for (const { node, key, open, width, height, multiline, borrow, fontSize, lineHeight } of tokens) {
+            const previous = this.frames.get(key);
+            const wasBorrowed = this.borrowed.has(key);
+            if (borrow) this.borrowed.add(key);
+            else this.borrowed.delete(key);
+            const placement = this.placements.get(key);
+            if (!borrow || placement?.node !== node || placement.width !== width) {
+              placement?.animation.cancel();
+              this.placements.delete(key);
+              if (borrow && typeof node.animate === "function") {
+                const animation2 = node.animate(
+                  [{ marginInlineStart: `${-width}px` }],
+                  { duration: 0, fill: "forwards" }
+                );
+                this.placements.set(key, { node, width, animation: animation2 });
+              }
+            }
+            next.set(key, { open, width, height, multiline });
+            if (!animate || !previous || previous.open === open || previous.multiline || multiline || typeof node.animate !== "function") continue;
+            const motionHeight = open ? height : previous.height;
+            const animation = node.animate([
+              { width: `${previous.width}px`, height: `${motionHeight}px`, fontSize, lineHeight, whiteSpace: "pre", marginInlineStart: `${wasBorrowed ? -previous.width : 0}px`, opacity: open ? 0.15 : 1 },
+              { width: `${width}px`, height: `${motionHeight}px`, fontSize, lineHeight, whiteSpace: "pre", marginInlineStart: `${borrow ? -width : 0}px`, opacity: open ? 1 : 0 }
+            ], { duration: 120, easing: "cubic-bezier(.2, 0, .2, 1)" });
+            this.animations.push(animation);
+            this.transitions.set(key, { animation, from: previous.width, to: width });
+          }
+          this.frames = next;
+          for (const key of this.borrowed) if (!next.has(key)) this.borrowed.delete(key);
+          for (const [key, placement] of this.placements) if (!next.has(key)) {
+            placement.animation.cancel();
+            this.placements.delete(key);
+          }
+          if (this.animations.length) this.tick();
+        }
+      });
+    }
+    tick() {
+      this.frame = requestAnimationFrame(() => {
+        if (this.destroyed) return;
+        this.view.requestMeasure();
+        if (this.animations.some((animation) => animation.playState === "running")) this.tick();
+        else this.stop();
+      });
+    }
+    destroy() {
+      this.destroyed = true;
+      this.stop();
+      for (const placement of this.placements.values()) placement.animation.cancel();
+      this.placements.clear();
+      this.reduced.removeEventListener("change", this.stop);
+      this.resize.disconnect();
+    }
+  }, { eventHandlers: {
+    compositionstart() {
+      this.stop();
+    },
+    mousedown() {
+      this.stop();
+    }
+  } });
+
   // arrival-highlight.ts
   var arrivalDuration = 1400;
   var arrivalClass = "scholium-arrival-target";
@@ -33197,7 +33389,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         line.from,
         lineQueryTo
       )[0] ?? null;
-      const calloutActive = calloutPresentation !== null && selection.selection(state).ranges.some((range) => selectionActivatesSyntax(range, calloutPresentation));
       const opening = calloutPresentation ? calloutHeader(calloutPresentation.source.split(/\r?\n/, 1)[0] ?? "") : null;
       const calloutIdentifier = opening ? calloutDefinition(options.editingDialect(), opening[2]).identifier : null;
       const quote = calloutPresentation ? null : blocks.find((block) => block.kind === "blockQuote") ?? null;
@@ -33229,9 +33420,10 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         classes.add("cm-live-blank-line");
         if (ownsCollapsedCaret) classes.add("cm-live-blank-line-active");
       }
-      if (calloutPresentation && calloutActive) {
+      if (calloutPresentation) {
         classes.add("cm-live-callout");
         classes.add("cm-live-callout-source");
+        classes.add(`cm-live-callout-role-${calloutIdentifier ?? "neutral"}`);
         classes.add(active ? "cm-live-callout-active-line" : "cm-live-callout-projected-line");
         if (state.doc.lineAt(calloutPresentation.from).number === line.number) {
           classes.add("cm-live-callout-start");
@@ -33245,6 +33437,8 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         }
         if (calloutIdentifier === "orient") classes.add("cm-live-callout-orient-source");
       }
+      if (blocks.some((block) => block.kind === "displayMath")) classes.add("cm-live-math-source");
+      if (blocks.some((block) => block.kind === "footnoteDefinition")) classes.add("cm-live-footnote-source");
       if (codeBlock) {
         classes.add("cm-live-codeblock");
         if (codeBlockActive) classes.add("cm-live-codeblock-active");
@@ -33287,7 +33481,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
           if (line.to >= paragraph.to) classes.add("cm-live-paragraph-end");
         }
         if (quote) classes.add("cm-live-quote");
-        if (rule && !active) classes.add("cm-live-rule");
+        if (rule && outsideFrontmatter && !active) classes.add("cm-live-rule");
         if (list && listMarker) {
           classes.add("cm-live-list");
           if ((list.listDepth ?? 0) > 0) classes.add("cm-live-list-nested");
@@ -33317,8 +33511,9 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       const index = projections.index(state);
       if (index.hasUnclosedFrontmatter) return [];
       const ranges = [];
-      const scanFrom = Math.max(0, Math.min(from, state.doc.length));
-      const scanTo = Math.max(scanFrom, Math.min(to, state.doc.length));
+      const scanFrom = Math.max(index.frontmatterRange?.to ?? 0, Math.min(from, state.doc.length));
+      const scanTo = Math.min(to, state.doc.length);
+      if (scanTo < scanFrom) return [];
       let line = state.doc.lineAt(scanFrom);
       while (line.from <= scanTo) {
         const presentation = semanticLinePresentation(state, line, index);
@@ -33557,15 +33752,12 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   function createProjectedWidgetRegistry() {
     const tables = /* @__PURE__ */ new WeakMap();
     const mermaids = /* @__PURE__ */ new WeakMap();
-    const callouts = /* @__PURE__ */ new WeakMap();
     const footnotes = /* @__PURE__ */ new WeakMap();
     return {
       table: (element) => tables.get(element),
       setTable: (element, value) => tables.set(element, value),
       mermaid: (element) => mermaids.get(element),
       setMermaid: (element, value) => mermaids.set(element, value),
-      callout: (element) => callouts.get(element),
-      setCallout: (element, value) => callouts.set(element, value),
       footnote: (element) => footnotes.get(element),
       setFootnote: (element, value) => footnotes.set(element, value),
       sourceOffset(event) {
@@ -33574,9 +33766,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         const projectedLink = target.closest("[data-scholium-source-caret]");
         const requestedLinkCaret = Number(projectedLink?.dataset.scholiumSourceCaret);
         if (Number.isSafeInteger(requestedLinkCaret)) return requestedLinkCaret;
-        const calloutSlot = target.closest(".cm-live-callout-slot");
-        const callout = calloutSlot ? callouts.get(calloutSlot) : void 0;
-        if (callout) return callout.to;
         const table = target.closest(".cm-live-table-widget");
         const tablePresentation2 = table ? tables.get(table) : void 0;
         if (table && tablePresentation2) {
@@ -33880,161 +34069,110 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         EditorView.atomicRanges.of((view) => view.state.field(field).decorations)
       ]
     });
-    class RawHTMLWidget extends WidgetType {
-      constructor(presentation) {
-        super();
-        this.presentation = presentation;
-      }
-      presentation;
-      eq(other) {
-        return other.presentation.source === this.presentation.source;
-      }
-      toDOM() {
-        const pre = document.createElement("pre");
-        pre.className = [
-          "raw-html",
-          "cm-live-raw-html",
-          "cm-live-raw-html-start",
-          "cm-live-raw-html-end",
-          "cm-live-raw-html-widget"
-        ].join(" ");
-        pre.dataset.scholiumProtected = "raw-html";
-        pre.textContent = this.presentation.source;
-        return pre;
-      }
-      ignoreEvent() {
-        return false;
-      }
-    }
-    function rawHTMLDecorations(state, presentations) {
-      return Decoration.set(presentations.flatMap((presentation) => {
-        const active = options.selection.selection(state).ranges.some((range) => selectionActivatesSyntax(range, presentation));
-        if (active) return [];
-        return [Decoration.replace({
-          widget: new RawHTMLWidget(presentation),
-          block: true
-        }).range(presentation.from, presentation.to)];
-      }), true);
-    }
-    function buildRawHTML(state) {
-      const index = options.projections.index(state);
-      if (index.hasUnclosedFrontmatter) {
-        return { decorations: Decoration.none, hasConstructs: true, presentations: [] };
-      }
-      const presentations = index.syntax.blocks.filter((block) => block.kind === "html").map((block) => ({
-        from: block.from,
-        to: block.to,
-        source: state.doc.sliceString(block.from, block.to)
-      }));
-      return {
-        decorations: rawHTMLDecorations(state, presentations),
-        hasConstructs: presentations.length > 0,
-        presentations
-      };
-    }
-    const rawHTMLField = StateField.define({
-      create: buildRawHTML,
-      update(previous, transaction) {
-        if (transaction.docChanged || transactionChangedSyntaxTree(transaction)) {
-          return buildRawHTML(transaction.state);
-        }
-        if (!options.selection.changed(transaction.startState, transaction.state)) return previous;
-        if (activeProjectionSignature(
-          options.selection.selection(transaction.startState).ranges,
-          previous.presentations
-        ) === activeProjectionSignature(
-          options.selection.selection(transaction.state).ranges,
-          previous.presentations
-        )) return previous;
-        return {
-          ...previous,
-          decorations: rawHTMLDecorations(transaction.state, previous.presentations)
-        };
-      },
-      provide: (field) => [
-        EditorView.decorations.from(field, (value) => value.decorations),
-        EditorView.atomicRanges.of((view) => view.state.field(field).decorations)
-      ]
+    const setCalloutFold = StateEffect.define({
+      map: (value, changes) => ({ ...value, from: changes.mapPos(value.from) })
     });
-    class CalloutWidget extends WidgetType {
-      constructor(presentation) {
+    class CalloutHeadingWidget extends WidgetType {
+      constructor(from, label, title, foldable2, collapsed) {
         super();
-        this.presentation = presentation;
+        this.from = from;
+        this.label = label;
+        this.title = title;
+        this.foldable = foldable2;
+        this.collapsed = collapsed;
       }
-      presentation;
+      from;
+      label;
+      title;
+      foldable;
+      collapsed;
       eq(other) {
-        const equal = other.presentation.from === this.presentation.from && other.presentation.to === this.presentation.to && other.presentation.source === this.presentation.source;
-        if (equal) options.reuseCounts.callout += 1;
-        return equal;
+        return this.from === other.from && this.label === other.label && this.title === other.title && this.foldable === other.foldable && this.collapsed === other.collapsed;
       }
       toDOM(view) {
-        const slot = document.createElement("div");
-        slot.className = "cm-live-callout-slot";
-        appendMarkdownBlocks(this.presentation.source, slot, {
-          mathematics: options.editingDialect()?.mathematics,
-          resolveCallout,
-          sourceOffset: (offset) => this.presentation.from + offset
-        });
-        const callout = slot.firstElementChild;
-        if (!(callout instanceof HTMLElement) || !callout.classList.contains("scholium-callout")) {
-          const fallback = document.createElement("pre");
-          fallback.className = "cm-live-callout-widget cm-live-callout-widget-fallback";
-          fallback.textContent = this.presentation.source;
-          slot.replaceChildren(fallback);
-          return slot;
-        }
-        slot.replaceChildren(callout);
-        callout.classList.add("cm-live-callout-widget");
-        options.widgets.setCallout(slot, this.presentation);
-        if (callout instanceof HTMLDetailsElement) {
-          let measurePending = false;
-          callout.addEventListener("toggle", () => {
-            if (measurePending) return;
-            measurePending = true;
-            queueMicrotask(() => {
-              measurePending = false;
-              view.requestMeasure();
+        const root = document.createElement("span");
+        root.className = "cm-live-callout-heading-control";
+        root.dataset.calloutFrom = String(this.from);
+        if (this.foldable) {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "cm-live-callout-disclosure";
+          button.textContent = this.collapsed ? "\u25B8" : "\u25BE";
+          button.setAttribute("aria-expanded", String(!this.collapsed));
+          button.setAttribute("aria-label", `${localized("Callout")}: ${this.title || this.label}`);
+          button.addEventListener("mousedown", (event) => event.preventDefault());
+          button.addEventListener("click", () => {
+            const from = Number(root.dataset.calloutFrom);
+            const collapsed = button.getAttribute("aria-expanded") === "true";
+            view.dispatch({
+              ...collapsed ? { selection: { anchor: from } } : {},
+              effects: setCalloutFold.of({ from, collapsed })
             });
           });
+          root.append(button);
         }
-        return slot;
+        if (this.label) {
+          const label = document.createElement("span");
+          label.className = "cm-live-callout-role-label";
+          label.textContent = `${this.label} `;
+          root.append(label);
+        }
+        return root;
       }
-      updateDOM(dom) {
-        const previous = options.widgets.callout(dom);
-        if (!previous || previous.source !== this.presentation.source) return false;
-        options.widgets.setCallout(dom, this.presentation);
-        options.reuseCounts.callout += 1;
+      updateDOM(root) {
+        const button = root.querySelector("button");
+        const label = root.querySelector(".cm-live-callout-role-label");
+        if (!!button !== this.foldable || !!label !== !!this.label) return false;
+        root.dataset.calloutFrom = String(this.from);
+        if (button) {
+          button.textContent = this.collapsed ? "\u25B8" : "\u25BE";
+          button.setAttribute("aria-expanded", String(!this.collapsed));
+          button.setAttribute("aria-label", `${localized("Callout")}: ${this.title || this.label}`);
+        }
+        if (label) label.textContent = `${this.label} `;
         return true;
       }
-      ignoreEvent(event) {
-        const foldMark = event.target instanceof Element && event.target.closest(".scholium-callout-fold-mark");
-        return foldMark !== null || event.type !== "mousedown";
+      ignoreEvent() {
+        return true;
       }
     }
-    function calloutDecorations(state, presentations) {
+    function calloutDecorations(state, presentations, folds) {
       const selections = options.selection.selection(state).ranges;
-      return Decoration.set(presentations.flatMap((presentation) => {
-        const active = selections.some((range) => selectionActivatesSyntax(range, presentation));
-        if (active) return [];
-        return [Decoration.replace({
-          widget: new CalloutWidget(presentation),
-          block: true
-        }).range(presentation.from, presentation.to)];
-      }), true);
+      const decorations2 = [];
+      for (const presentation of presentations) {
+        const header = state.doc.lineAt(presentation.from);
+        const opening = calloutHeader(header.text);
+        if (!opening) continue;
+        const foldable2 = !!opening[3];
+        const bodyActive = selections.some((range) => range.empty ? range.head > header.to && range.head <= presentation.to : range.from < presentation.to && range.to > header.to);
+        const collapsed = foldable2 && !bodyActive && (folds.get(presentation.from) ?? opening[3] === "-");
+        const label = resolveCallout(opening[2]).label;
+        if (foldable2 || label) decorations2.push(Decoration.widget({
+          widget: new CalloutHeadingWidget(presentation.from, label, opening[4], foldable2, collapsed),
+          side: 1
+        }).range(header.to - opening[4].length));
+        if (collapsed) decorations2.push(Decoration.line({ class: "cm-live-callout-end" }).range(header.from));
+        if (collapsed && presentation.to > header.to) {
+          decorations2.push(Decoration.replace({}).range(header.to, presentation.to));
+        }
+      }
+      return Decoration.set(decorations2, true);
     }
-    function buildCallout(state) {
+    function buildCallout(state, folds = /* @__PURE__ */ new Map()) {
       const index = options.projections.index(state);
       if (index.hasUnclosedFrontmatter) {
         return {
           decorations: Decoration.none,
           hasConstructs: true,
           presentations: [],
-          active: false
+          active: false,
+          folds
         };
       }
       const active = index.callouts.some((presentation) => options.selection.selection(state).ranges.some((range) => selectionActivatesSyntax(range, presentation)));
       return {
-        decorations: calloutDecorations(state, index.callouts),
+        decorations: calloutDecorations(state, index.callouts, folds),
+        folds,
         hasConstructs: index.callouts.length > 0,
         presentations: index.callouts,
         active
@@ -34043,11 +34181,25 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     const calloutField = StateField.define({
       create: buildCallout,
       update(previous, transaction) {
-        if (transaction.docChanged || transactionChangedSyntaxTree(transaction)) {
-          return buildCallout(transaction.state);
+        let folds = new Map(previous.folds);
+        if (transaction.docChanged) {
+          const current = options.projections.index(transaction.state).callouts;
+          folds = new Map([...folds].flatMap(([from, collapsed]) => {
+            const mapped = transaction.changes.mapPos(from);
+            const oldHeader = previous.presentations.find((item) => item.from === from)?.source.split("\n", 1)[0];
+            const newHeader = current.find((item) => item.from === mapped)?.source.split("\n", 1)[0];
+            return newHeader !== void 0 && oldHeader === newHeader ? [[mapped, collapsed]] : [];
+          }));
         }
-        if (!options.selection.changed(transaction.startState, transaction.state)) return previous;
-        return buildCallout(transaction.state);
+        let foldChanged = false;
+        for (const effect of transaction.effects) if (effect.is(setCalloutFold)) {
+          folds.set(effect.value.from, effect.value.collapsed);
+          foldChanged = true;
+        }
+        if (foldChanged || transaction.docChanged || transactionChangedSyntaxTree(transaction) || options.selection.changed(transaction.startState, transaction.state)) {
+          return buildCallout(transaction.state, folds);
+        }
+        return previous;
       },
       provide: (field) => [
         EditorView.decorations.from(field, (value) => value.decorations),
@@ -34057,7 +34209,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     });
     return {
       tableExtension: tableField,
-      rawHTMLExtension: rawHTMLField,
       calloutExtension: calloutField
     };
   }
@@ -34251,7 +34402,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
   function createLiveProjectionNavigation(options) {
     function blockRanges(state) {
       return [
-        ...options.projections.index(state).blockRanges,
+        ...options.projections.index(state).blockRanges.filter((range) => range.kind !== "callout"),
         ...options.mermaidPresentations(state).map(({ from, to }) => ({
           from,
           to,
@@ -34262,7 +34413,11 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
     function horizontalRangeAt(state, offset, forward) {
       const index = options.projections.index(state);
       const boundary = forward ? "start" : "end";
-      const blockRange = projectionRangeAtBoundary(index.blockRanges, offset, boundary);
+      const blockRange = projectionRangeAtBoundary(
+        index.blockRanges.filter((range) => range.kind !== "callout"),
+        offset,
+        boundary
+      );
       const listPrefixRange = projectionRangeAtBoundary(
         index.listPrefixRanges,
         offset,
@@ -34303,8 +34458,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       });
       const projection = forward ? crossed[0] : crossed.at(-1);
       if (!projection) return false;
-      const isCallout = projection.kind === "callout";
-      const sourceHead = forward ? projection.from : isCallout ? projection.to : Math.max(projection.from, projection.to - 1);
+      const sourceHead = forward ? projection.from : Math.max(projection.from, projection.to - 1);
       const originalCoords = view.coordsAtPos(selection.head);
       const desiredX = originalCoords?.left ?? originalCoords?.right ?? 0;
       const anchor = extend ? selection.anchor : sourceHead;
@@ -34312,10 +34466,6 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
         selection: { anchor, head: sourceHead },
         scrollIntoView: true
       });
-      if (isCallout) {
-        view.requestMeasure();
-        return true;
-      }
       view.requestMeasure({
         read: () => {
           const line = view.state.doc.lineAt(sourceHead);
@@ -34347,7 +34497,7 @@ ${delimiter}` : `${delimiter}${expression.content}${delimiter}`;
       if (alreadyActive && !(isProjectedLink && forward && selection.head === projection.from)) {
         return false;
       }
-      const head = forward ? isProjectedLink ? projection.to : projection.from : projection.kind === "callout" ? projection.to : Math.max(projection.from, projection.to - 1);
+      const head = forward ? isProjectedLink ? projection.to : projection.from : Math.max(projection.from, projection.to - 1);
       view.dispatch({
         selection: { anchor: extend ? selection.anchor : head, head },
         scrollIntoView: true
@@ -36037,7 +36187,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     recordMetric: recordEditorMetric
   });
   var modeTransitionSequence = 0;
-  var liveWidgetReuseCounts = { table: 0, callout: 0, footnote: 0 };
+  var liveWidgetReuseCounts = { table: 0, footnote: 0 };
   var lastUndoLabel;
   var lastRedoLabel;
   var post = (message) => nativeHandler?.postMessage({
@@ -36518,7 +36668,8 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     );
     const addHidden = (from, to) => {
       if (to <= from) return;
-      const range = hiddenSyntax.range(from, to);
+      const source = doc2.sliceString(from, to);
+      const range = (canDisplaceSyntax(source) ? syntaxToken(source, from, to, false) : hiddenSyntax).range(from, to);
       decorations2.push(range);
       atomicRanges2.push(range);
     };
@@ -36553,7 +36704,17 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       }
     };
     const addMark = (from, to, className) => {
-      if (to > from) decorations2.push(liveMark(className).range(from, to));
+      if (to <= from) return;
+      const source = doc2.sliceString(from, to);
+      const isSyntax = className === "cm-live-syntax-marker" || className.endsWith("-source-marker");
+      decorations2.push((isSyntax && canDisplaceSyntax(source) ? syntaxToken(
+        source,
+        from,
+        to,
+        true,
+        className.endsWith("-source-marker") ? "prefix" : "inline",
+        className
+      ) : liveMark(className)).range(from, to));
     };
     const addPreviewMark = (from, to, className, previewIndex, attributes = {}) => {
       if (to <= from) return;
@@ -36653,7 +36814,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
             lineQueryTo
           )[0];
           const semanticCallout = semanticBlocksOnLine.find((block) => block.kind === "callout");
-          const activeCallout = parsedCallout && projectionSelections.some((range) => selectionActivatesSyntax(range, parsedCallout));
+          const activeCallout = parsedCallout;
           if (activeCallout) {
             const semanticLineMarkers = semanticCallout?.markerRanges.filter((range) => range.from < lineQueryTo && range.to > line.from) ?? [];
             const pendingPrefix = semanticLineMarkers.length === 0 ? /^\s*>[ \t]*/.exec(doc2.sliceString(line.from, line.to))?.[0] ?? "" : "";
@@ -36885,7 +37046,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       decorationCount: decorations2.length,
       projectionWindowUTF16Count,
       selectionScoped: requestedRanges ? 1 : 0,
-      widgetReuseCount: liveWidgetReuseCounts.table + liveWidgetReuseCounts.callout + liveWidgetReuseCounts.footnote
+      widgetReuseCount: liveWidgetReuseCounts.table + liveWidgetReuseCounts.footnote
     });
     return { decorations: result, atomicRanges: atoms, coveredRanges };
   }
@@ -37235,6 +37396,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     EditorView.editorAttributes.of({ class: "scholium-live-mode" }),
     EditorView.contentAttributes.of(editorAccessibilityAttributes("livePreview")),
     Prec.high(liveSelection.extension),
+    syntaxPresentation,
     liveProjectionIndex.extension,
     liveDocumentTitle,
     inputSuggestions.extension,
@@ -37243,7 +37405,6 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
     liveMermaidProjection.extension,
     liveStructuredBlockProjections.tableExtension,
     liveDisplayMathProjection.extension,
-    liveStructuredBlockProjections.rawHTMLExtension,
     liveStructuredBlockProjections.calloutExtension,
     liveFootnoteProjection.extension,
     livePreview,
@@ -37863,7 +38024,7 @@ ${delimiter}` : `${delimiter}${this.expression.content}${delimiter}`;
       ".cm-content",
       ".cm-live-h1",
       ".cm-live-h2",
-      ".cm-live-callout-widget",
+      ".cm-live-callout-start",
       ".cm-live-mermaid-widget",
       ".cm-live-list"
     ]) {

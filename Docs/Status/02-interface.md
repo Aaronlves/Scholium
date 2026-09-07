@@ -165,9 +165,11 @@
   insertion take precedence.
 - Review/Edit keep the visible Note title when a mode handoff occurs at the
   document start. Inactive Edit headings remove their opening Markdown marker
-  from inline measure; active heading and quotation prefixes appear at the
-  line's full computed size outside the prose measure without moving its text or
-  neighboring blocks. Every authored blank separator remains one stable
+  from inline measure; short active delimiters expand inside the measure with
+  reversible local motion. Leading prefixes can borrow available whitespace
+  when their reveal alone would wrap prose. Expanded Callouts keep their editable
+  source lines, role label, and header/body surface across activation; folding
+  is a separate source-neutral disclosure. Literal HTML no longer swaps widgets. Every authored blank separator remains one stable
   prose-height Edit row, without duplicate paragraph-end spacing or overlap. Exact
   spaces retain their authored width without acquiring visible whitespace
   markers. Normal prose uses language-aware line breaking and keeps closing

@@ -128,59 +128,70 @@ body,
   color: var(--scholium-color-muted-text);
 }
 
-/* Active block prefixes remain exact editable source, but they hang outside
-   the prose measure instead of entering it. The visible heading/quotation
-   therefore keeps the same start, wrapping, baseline, and neighboring block
-   positions when the caret enters or leaves the construct. */
+/* Syntax occupies the document measure. Exact short tokens stay mounted so
+   reveal and conceal can share one reversible, source-neutral transition. */
+.scholium-live-mode .cm-syntax-token {
+  display: inline-block;
+  box-sizing: border-box;
+  inline-size: auto;
+  max-inline-size: 100%;
+  overflow: visible;
+  clip-path: inset(0);
+  vertical-align: baseline;
+  white-space: pre;
+  font-family: var(--scholium-document-source-font-family);
+  font-style: normal;
+  font-weight: 400;
+  font-variant-caps: normal;
+  letter-spacing: 0;
+  color: var(--scholium-color-muted-text);
+  transition: color 100ms ease-out;
+}
+.scholium-live-mode .cm-syntax-token[data-syntax-open="false"] {
+  inline-size: 0;
+  font-size: 0;
+  line-height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.scholium-live-mode .cm-syntax-token[data-syntax-open="true"] {
+  color: var(--scholium-color-secondary-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .cm-live-heading-source-marker,
 .cm-live-quote-source-marker,
 .cm-live-callout-source-marker {
-  position: absolute;
-  z-index: 1;
-  font-family: "Victor Mono", ui-monospace, monospace;
-  font-size: 1em;
+  font-family: var(--scholium-document-source-font-family);
   font-style: normal;
-  font-variant-caps: normal;
   font-weight: 400;
+  font-variant-caps: normal;
   letter-spacing: 0;
-  white-space: pre;
+  overflow-wrap: anywhere;
+}
+@media (prefers-reduced-motion: reduce) {
+  .scholium-live-mode .cm-syntax-token { transition: none; }
 }
 
-.cm-live-heading-source-marker {
-  transform: translateX(-100%);
+.cm-live-callout-start { padding-block-start: .55em; }
+.cm-live-callout-end { padding-block-end: .55em; }
+.cm-live-callout-body-line { min-block-size: 1lh; }
+.cm-live-callout-heading-control { display: inline; }
+.cm-live-callout-disclosure {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--scholium-color-secondary-text);
+  font: inherit;
+  padding: 0;
+  min-inline-size: 28px;
+  min-block-size: 28px;
+  vertical-align: baseline;
+  cursor: pointer;
 }
-
-.cm-live-quote-source-marker,
-.cm-live-callout-source-marker {
-  inset-inline-start: var(--scholium-rhythm-quote-inset);
-  transform: translateX(-100%);
-}
-
-.cm-live-quote:dir(rtl) .cm-live-quote-source-marker,
-.cm-live-callout:dir(rtl) .cm-live-callout-source-marker {
-  transform: translateX(100%);
-}
-
-.cm-live-callout-widget {
-  cursor: text;
-}
-
-.cm-live-callout-slot {
-  box-sizing: border-box;
-  inline-size: 100%;
-  pointer-events: none;
-}
-
-.cm-live-callout-slot > .scholium-callout,
-.cm-live-callout-slot > .cm-live-callout-widget-fallback {
-  margin-block: 0;
-  pointer-events: auto;
-}
-
-.cm-live-callout-widget-fallback {
-  box-sizing: border-box;
-  inline-size: 100%;
-  white-space: pre-wrap;
+.cm-live-callout-disclosure:focus-visible {
+  outline: 2px solid var(--scholium-content-focus-ring);
+  outline-offset: 2px;
 }
 
 /* A Callout remains one visible editorial block while it is active. Each
@@ -194,7 +205,7 @@ body,
     var(--scholium-color-document-background)
   );
   box-sizing: border-box;
-  padding-inline: var(--scholium-rhythm-quote-inset) .75rem;
+  padding-inline: .9em .9em;
   overflow-wrap: anywhere;
   background: var(--scholium-live-callout-surface);
   box-shadow: inset 2px 0 color-mix(
@@ -270,6 +281,11 @@ body,
 .cm-live-list-marker-projected {
   grid-area: 1 / 1;
   justify-self: end;
+}
+.cm-live-list-marker-task::before {
+  /* Give the grid a text baseline; the native checkbox must not lift prose. */
+  content: "\200b";
+  grid-area: 1 / 1;
 }
 .cm-live-task-checkbox {
   align-self: center;
@@ -371,13 +387,6 @@ body,
 }
 .cm-live-table-separator { color: var(--scholium-color-muted-text); }
 
-.cm-live-raw-html-widget {
-  max-inline-size: 100%;
-  margin: 0;
-  overflow: auto;
-  white-space: pre;
-}
-
 /* Inactive semantic tables are supplied as direct CodeMirror block widgets
    and share tables.css with Read. These source-line rules remain only while
    the caret or an IME composition is inside the exact Markdown table. */
@@ -400,4 +409,33 @@ body,
   .cm-live-code {
     background: var(--scholium-color-document-background);
   }
+}
+
+/* Technical syntax keeps its own readable source surface. No horizontal
+   pushing is applied to table cells, equations, diagrams, or literal source. */
+.scholium-live-mode :is(.cm-live-table, .cm-live-math-source, .cm-live-raw-html) {
+  font-family: var(--scholium-document-source-font-family);
+  font-style: normal;
+  font-variant-caps: normal;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+.scholium-live-mode :is(.cm-live-table, .cm-live-math-source) {
+  background: color-mix(in srgb, var(--scholium-color-primary-text) 3%,
+    var(--scholium-color-document-background));
+}
+@media (prefers-contrast: more) {
+  .scholium-live-mode .cm-syntax-token[data-syntax-open="true"] {
+    color: var(--scholium-color-primary-text);
+  }
+}
+
+.cm-live-callout-role-label {
+  display: inline;
+  margin-inline-end: .65em;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: .75em;
+  font-weight: 500;
+  font-style: normal;
+  color: var(--scholium-color-secondary-text);
 }

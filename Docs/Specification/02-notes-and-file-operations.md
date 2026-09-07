@@ -42,6 +42,19 @@ selection. Drag selection keeps projection stable until release. Link
 activation remains distinct from caret placement and has keyboard and
 accessibility equivalents.
 
+Syntax presentation groups by editing behavior rather than by visual similarity:
+
+| Family | Edit behavior |
+| --- | --- |
+| Emphasis, strong, strike, highlight, inline code | Retain styled prose; reveal only the active delimiters locally. |
+| ATX headings and quotation prefixes | Expand exact prefixes within the measure, with the bounded whitespace exception in §19.3. |
+| Setext headings and thematic breaks | Preserve their source row; do not treat a whole delimiter line as an inline prefix. |
+| Lists and tasks | Keep their semantic marker track; prefix editing and task toggling remain distinct. |
+| Callouts | Retain expanded editable prose, a quiet role label and header/body structure; reveal markers only on active lines. Folding is a separate accessible disclosure, and selection inside a folded body exposes it. |
+| Links, Wikilinks and annotations | Keep the label readable; long destinations and annotation source use local wrapping, with preview and navigation distinct from editing. |
+| Tables, mathematics, Mermaid, footnote references and embeds | Retain object-specific source mapping, preview and bounded layout; never apply prose-pushing to a whole object. |
+| Code blocks, raw HTML, comments, escapes, YAML and unsupported syntax | Preserve literal source and its input behavior; no decorative conversion or motion during typing. |
+
 List projection preserves one marker track and prose indentation. Task
 checkboxes change only the exact task marker in one Undo transaction; a
 keyboard/menu Toggle Task route remains. Source always exposes exact prefixes.

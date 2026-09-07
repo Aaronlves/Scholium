@@ -19,6 +19,11 @@
 
 ## Human interface and accessibility acceptance
 
+- Complete human acceptance of the 2026-09-07 editor syntax continuity:
+  validate rapid reversal, full-line prefix borrowing,
+  minimum width, system adaptations, IME, and conflict/recovery on the changed
+  presentation; exploratory QA and editor unit tests do not close these checks.
+
 - The approved Source-font controls,
   Settlement milestone presentation, ordinary Edit body entry, and native-row
   emphasis correction are implemented. Human acceptance remains open; the

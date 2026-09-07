@@ -29,8 +29,8 @@ mkdir -p "$temporary_root"
 
 if [[ ! -s "$callout_styles" ]] || \
    ! rg -q '^\.scholium-callout' "$callout_styles" || \
-   ! rg -q '^\.cm-live-callout-widget' "$editor_styles" || \
-   ! rg -q 'callout\.classList\.add\("cm-live-callout-widget"\)' "$live_callouts"; then
+   ! rg -q '^\.cm-live-callout-disclosure' "$editor_styles" || \
+   ! rg -q 'class CalloutHeadingWidget' "$live_callouts"; then
   print -u2 "The app-owned Callout stylesheet is missing or incomplete: $callout_styles"
   exit 1
 fi

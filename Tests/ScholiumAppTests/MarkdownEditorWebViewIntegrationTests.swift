@@ -9,6 +9,34 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test("Syntax families retain exact source and Callout geometry through entry and exit")
+    func syntaxFamiliesRetainSourceAndCalloutGeometry() async throws {
+        let source = "Lead.\r\n\r\n## 标题 Heading\r\n\r\n**Bold** and *emphasis* and ~~strike~~ and ==mark== and `code`.\r\n\r\n> [!state] Stable Callout\r\n> 中文正文 **reason**.\r\n> Second paragraph.\r\n\r\n> A quotation.\r\n\r\n- [ ] A task\r\n\r\n| A | B |\r\n|---|---|\r\n| 1 | 2 |\r\n\r\n$$\r\nx^2\r\n$$\r\n\r\nAfter.\r\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        harness.resize(width: 700)
+        try await harness.waitUntilReady()
+        let normalized = source.replacingOccurrences(of: "\r\n", with: "\n")
+        for text in ["Bold", "emphasis", "strike", "mark", "code", "Heading", "reason", "quotation", "A task", "| 1", "x^2", "After"] {
+            let offset = try #require(normalized.range(of: text)?.lowerBound).utf16Offset(in: normalized)
+            harness.session.revealSourceRange(fromUTF16: offset, toUTF16: offset)
+            try await harness.waitUntilSelection(head: offset, stage: text)
+            #expect(try await harness.session.currentText(for: harness.documentID) == source)
+        }
+        let unchanged = try await harness.callPageJavaScript("""
+            await new Promise(resolve => { requestAnimationFrame(() => requestAnimationFrame(resolve)); setTimeout(resolve, 200); });
+            const lines = [...document.querySelectorAll('.cm-line.cm-live-callout')];
+            const body = lines.find(line => line.textContent.includes('Second paragraph.'));
+            const scroller = document.querySelector('.cm-scroller');
+            return lines.length === 3 && !!body
+                && !document.querySelector('.cm-live-callout-widget')
+                && scroller.scrollWidth <= scroller.clientWidth + 1;
+            """) as? Bool
+        #expect(unchanged == true)
+        #expect(!harness.session.isDirty)
+        await harness.closeAndDrain()
+    }
+
     static let arrivalAnimationProbe = """
         const marker = document.querySelector('.scholium-arrival-target');
         const animation = marker.getAnimations().find(a => a.animationName === 'scholium-arrival-fade');
@@ -954,7 +982,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             const find = token => lines.find(line => (line.textContent || '').includes(token));
             const arabic = find('هذا نص عربي');
             const hebrew = find('זהו טקסט עברי');
-            const raw = document.querySelector('.cm-live-raw-html-widget');
+            const raw = document.querySelector('.cm-line.cm-live-raw-html');
             return {
               arabicAttribute: arabic?.getAttribute('dir') || '',
               arabicDirection: arabic ? getComputedStyle(arabic).direction : '',
@@ -1652,7 +1680,7 @@ struct MarkdownEditorWebViewIntegrationTests {
     @Test("Callout content boundaries and annotated links share one source projection")
     func calloutContentBoundaryAndNestedLinksShareOneProjection() async throws {
         let calloutSource = """
-        > [!cite]- Synthetic source boundary
+        > [!cite]+ Synthetic source boundary
         > [[analysis-001|support]]{{A source reason.}}; body ends with [[work-031|linked note]].
         """
         let source = "Lead.\n\n\(calloutSource)\n\nAfter.\n"
@@ -1669,7 +1697,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilReady()
         do {
             _ = try await harness.waitUntilPresentation(stage: "inactive nested-link Callout") {
-                $0.liveCalloutWidgetCount == 1 && $0.activeLiveBlockKind.isEmpty
+                $0.liveCalloutBlockCount == 1 && $0.activeLiveBlockKind.isEmpty
             }
         } catch {
             Issue.record("Inactive nested-link Callout presentation failed: \(error)")
@@ -1691,7 +1719,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(inactive.renderedAnnotationIconMaskCount == 1)
 
         do {
-            try await harness.session.testingClickFirstCalloutText("linked note")
+            try await harness.session.testingClickVisibleText("linked note")
         } catch {
             Issue.record("Projected Callout Wikilink click failed: \(error)")
             throw error
@@ -1723,7 +1751,7 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         harness.session.goToLine(1)
         _ = try await harness.waitUntilPresentation(stage: "Callout restored before modified link") {
-            $0.liveCalloutWidgetCount == 1 && $0.activeLiveBlockKind.isEmpty
+            $0.liveCalloutBlockCount == 1 && $0.activeLiveBlockKind.isEmpty
         }
         try await harness.session.testingModifiedClickVisibleText(
             "linked note",
@@ -1739,7 +1767,10 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
         #expect(harness.activatedLinks == ["work-031"])
 
-        try await harness.session.testingClickFirstCalloutText("body ends")
+        try await harness.session.testingClickVisibleText("body ends")
+        let clickedBody = try #require(source.range(of: "body ends"))
+        _ = try await harness.waitUntilSelection(in: clickedBody.lowerBound.utf16Offset(in: source)..<clickedBody.upperBound.utf16Offset(in: source))
+        harness.session.revealSourceRange(fromUTF16: calloutTo, toUTF16: calloutTo)
         try await harness.waitUntilSelection(head: calloutTo)
         let projectedHeader = try await harness.session.testingInlineProjectionSnapshot(
             containing: "Synthetic source boundary"
@@ -1760,7 +1791,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.session.testingPressArrow("ArrowRight")
         try await harness.waitUntilSelection(head: editedTo + 1, stage: "real separator after Callout")
         _ = try await harness.waitUntilPresentation(stage: "Callout restored after separator entry") {
-            $0.liveCalloutWidgetCount == 1 && $0.activeLiveBlockKind.isEmpty
+            $0.liveCalloutBlockCount == 1 && $0.activeLiveBlockKind.isEmpty
         }
 
         harness.session.goToLine(2)
@@ -1785,13 +1816,13 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilFocused()
 
         _ = try await harness.waitUntilPresentation(stage: "title-only Orient projection") {
-            $0.liveCalloutWidgetCount == 1 && $0.activeLiveBlockKind.isEmpty
+            $0.liveCalloutBlockCount == 1 && $0.activeLiveBlockKind.isEmpty
         }
         let titleOnly = try await harness.session.testingCalloutProjectionSnapshot(
             containing: "Reading route"
         )
         #expect(titleOnly.renderedTitleText.isEmpty)
-        #expect(titleOnly.renderedBodyText.contains("Reading route"))
+        #expect(titleOnly.renderedText.contains("Reading route"))
 
         harness.session.revealSourceRange(fromUTF16: headerEnd, toUTF16: headerEnd)
         try await harness.waitUntilSelection(head: headerEnd, stage: "active Orient header")
@@ -1846,12 +1877,12 @@ struct MarkdownEditorWebViewIntegrationTests {
         }
         #expect(harness.session.context?.undoLabel == "Exit Callout")
         _ = try await harness.waitUntilPresentation(stage: "title-only Orient restored") {
-            $0.activeLiveBlockKind.isEmpty && $0.liveCalloutWidgetCount == 1
+            $0.activeLiveBlockKind.isEmpty && $0.liveCalloutBlockCount == 1
         }
         let restored = try await harness.session.testingCalloutProjectionSnapshot(
             containing: "Reading route"
         )
-        #expect(restored.renderedBodyText.contains("Reading route"))
+        #expect(restored.renderedText.contains("Reading route"))
         #expect(try await harness.session.currentText(for: harness.documentID) == exitedSource)
         await harness.closeAndDrain()
     }
@@ -1895,7 +1926,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let active = try await harness.waitUntilPresentation(stage: "continued Callout list") {
             $0.activeLiveBlockKind == "callout" && $0.liveCalloutSourceLineCount == 3
         }
-        #expect(active.liveCalloutWidgetCount == 0)
+        #expect(active.liveCalloutBlockCount == 1)
 
         try await harness.session.perform(.pastePlain, argument: "Second claim")
         let completed = expected + "Second claim"
@@ -1917,7 +1948,7 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         harness.session.goToLine(1)
         _ = try await harness.waitUntilPresentation(stage: "inactive Connect Callout") {
-            $0.liveCalloutWidgetCount == 1 && $0.activeLiveBlockKind.isEmpty
+            $0.liveCalloutBlockCount == 1 && $0.activeLiveBlockKind.isEmpty
         }
         let inactive = try await harness.session.testingCalloutProjectionSnapshot(
             containing: "Curated connections"
@@ -2663,7 +2694,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         let fresh = try await harness.session.testingAccessibilitySnapshot()
         #expect(fresh.liveH1Count == 1)
         #expect(fresh.liveH2Count == 1)
-        #expect(fresh.liveCalloutWidgetCount == 2)
+        #expect(fresh.liveCalloutBlockCount == 2)
         #expect(abs(try #require(pixelValue(fresh.h1FontSize)) - 24.2667) < 0.01)
         #expect(abs(try #require(pixelValue(fresh.h2FontSize)) - 19.4133) < 0.01)
         #expect(fresh.h1TextAlign == "start")
@@ -2684,7 +2715,7 @@ struct MarkdownEditorWebViewIntegrationTests {
 
         #expect(retained.liveH1Count == fresh.liveH1Count)
         #expect(retained.liveH2Count == fresh.liveH2Count)
-        #expect(retained.liveCalloutWidgetCount == fresh.liveCalloutWidgetCount)
+        #expect(retained.liveCalloutBlockCount == fresh.liveCalloutBlockCount)
         #expect(retained.h1FontSize == fresh.h1FontSize)
         #expect(retained.h2FontSize == fresh.h2FontSize)
         #expect(retained.h1TextAlign == fresh.h1TextAlign)
@@ -3286,9 +3317,15 @@ struct MarkdownEditorWebViewIntegrationTests {
         _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, '*')")
         func checkMutedMarkers() async throws {
             #expect(try await harness.callPageJavaScript("""
+                await new Promise(resolve => { requestAnimationFrame(() => requestAnimationFrame(resolve)); setTimeout(resolve, 200); });
+                // This probe asserts final geometry/color, not animation timing.
+                // Background WebKit windows may suspend their animation clock.
+                for (const node of document.querySelectorAll('.cm-syntax-token')) {
+                    for (const animation of node.getAnimations()) animation.finish();
+                }
                 const markers = [...document.querySelectorAll('.cm-live-syntax-marker')];
                 const probe = document.createElement('span');
-                probe.style.color = 'var(--scholium-color-muted-text)';
+                probe.style.color = 'var(--scholium-color-secondary-text)';
                 document.body.appendChild(probe);
                 const muted = getComputedStyle(probe).color;
                 probe.remove();
@@ -3380,6 +3417,12 @@ struct MarkdownEditorWebViewIntegrationTests {
         func geometry() async throws -> [String: Double] {
             let value = try #require(try await harness.callPageJavaScript(
                 """
+                await new Promise(resolve => { requestAnimationFrame(() => requestAnimationFrame(resolve)); setTimeout(resolve, 200); });
+                // This probe asserts final geometry/color, not animation timing.
+                // Background WebKit windows may suspend their animation clock.
+                for (const node of document.querySelectorAll('.cm-syntax-token')) {
+                    for (const animation of node.getAnimations()) animation.finish();
+                }
                 const heading = document.querySelector('.cm-live-h1');
                 const following = Array.from(document.querySelectorAll('.cm-line'))
                   .find(line => (line.textContent || '').includes('Following paragraph.'));
@@ -3446,9 +3489,11 @@ struct MarkdownEditorWebViewIntegrationTests {
         let inactiveFollowingLeft = try #require(inactive["followingLeft"])
         let activeTitleLeft = try #require(active["titleLeft"])
         #expect(abs(inactiveTitleLeft - inactiveFollowingLeft) < 0.5)
-        #expect(abs(activeTitleLeft - inactiveTitleLeft) < 0.5)
+        #expect(activeTitleLeft > inactiveTitleLeft)
         #expect(try #require(active["markerLeft"]) >= 0)
-        #expect(try #require(active["markerRight"]) <= activeTitleLeft + 0.5)
+        let activeMarkerRight = try #require(active["markerRight"])
+        // Glyph range boxes can overhang the adjacent inline box by a fractional pixel.
+        #expect(activeMarkerRight <= activeTitleLeft + 1, Comment(rawValue: String(describing: active)))
         for key in ["headingTop", "headingHeight", "followingTop"] {
             let before = try #require(inactive[key])
             let after = try #require(active[key])
@@ -3459,7 +3504,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         await harness.closeAndDrain()
     }
 
-    @Test("Edit quotation prefixes reveal outside the prose measure without reflow")
+    @Test("Edit quotation prefixes reveal inside the measure without vertical reflow")
     func editQuotationPrefixRevealPreservesProseGeometry() async throws {
         let quotation = "Quoted argument remains stable."
         let source = "> \(quotation)\n\nFollowing paragraph.\n"
@@ -3511,7 +3556,7 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilSelection(head: quotationFrom)
         let active = try await geometry()
 
-        for key in ["quoteTop", "quoteHeight", "textLeft", "followingTop"] {
+        for key in ["quoteTop", "quoteHeight", "followingTop"] {
             #expect(abs(try #require(inactive[key]) - (try #require(active[key]))) < 0.5)
         }
         #expect(try #require(active["markerLeft"]) >= 0)
@@ -3578,7 +3623,9 @@ struct MarkdownEditorWebViewIntegrationTests {
                 """
                 const line = Array.from(document.querySelectorAll(selector))
                   .find(candidate => (candidate.textContent || '').includes(label));
-                return line?.textContent || '';
+                const copy = line?.cloneNode(true);
+                copy?.querySelectorAll('[data-syntax-open="false"]').forEach(node => node.remove());
+                return copy?.textContent || '';
                 """,
                 arguments: ["selector": ".cm-live-h\(level)", "label": label]
             ) as? String
@@ -3879,24 +3926,24 @@ struct MarkdownEditorWebViewIntegrationTests {
         try await harness.waitUntilReady()
 
         _ = try await harness.waitUntilPresentation(stage: "inactive raw HTML projection") {
-            $0.liveRawHTMLWidgetCount == 1 && $0.liveRawHTMLSourceLineCount == 0
+            $0.liveRawHTMLSourceLineCount == 1
         }
         harness.session.goToLine(3)
         try await harness.waitUntilSelection(head: htmlFrom)
         _ = try await harness.waitUntilPresentation(stage: "active exact raw HTML source") {
-            $0.liveRawHTMLWidgetCount == 0 && $0.liveRawHTMLSourceLineCount == 1
+            $0.liveRawHTMLSourceLineCount == 1
         }
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
 
         harness.session.goToLine(5)
         _ = try await harness.waitUntilPresentation(stage: "restored raw HTML projection") {
-            $0.liveRawHTMLWidgetCount == 1 && $0.liveRawHTMLSourceLineCount == 0
+            $0.liveRawHTMLSourceLineCount == 1
         }
         #expect(try await harness.session.currentText(for: harness.documentID) == source)
         await harness.closeAndDrain()
     }
 
-    @Test("A projected Callout enters its editable content-end boundary before Backspace")
+    @Test("A Callout click edits the requested passage before Backspace")
     func calloutPointerBackspaceCannotDeleteThePrecedingBlock() async throws {
         let source = """
         # Interaction boundary
@@ -3912,16 +3959,17 @@ struct MarkdownEditorWebViewIntegrationTests {
         > This synthetic note exercises the complete Scholium editing dialect.
         """
         let calloutRange = try #require(source.range(of: firstCalloutSource))
+        let calloutFrom = calloutRange.lowerBound.utf16Offset(in: source)
         let calloutTo = calloutRange.upperBound.utf16Offset(in: source)
-        let harness = EditorHarness(source: source)
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
         defer { harness.close() }
         try await harness.waitUntilReady()
         _ = try await harness.waitUntilPresentation(stage: "passive Callout before Backspace") {
-            $0.liveCalloutWidgetCount == 2 && $0.editBlankLineCount > 0
+            $0.liveCalloutBlockCount == 2 && $0.editBlankLineCount > 0
         }
 
-        try await harness.session.testingClickFirstCalloutText("synthetic note")
-        _ = try await harness.waitUntilSelection(head: calloutTo)
+        try await harness.session.testingClickVisibleText("synthetic note")
+        _ = try await harness.waitUntilSelection(in: calloutFrom..<calloutTo)
         try await harness.session.testingPressBackspace()
 
         let clock = ContinuousClock()
@@ -4475,8 +4523,8 @@ struct MarkdownEditorWebViewIntegrationTests {
         #expect(accessibility.tableOverflowX == "auto")
         #expect(accessibility.footnoteReferenceCount == 2)
         #expect(accessibility.footnoteDefinitionSourceCount == 1)
-        #expect(accessibility.liveCalloutWidgetCount == 2)
-        #expect(accessibility.liveCalloutSourceLineCount == 0)
+        #expect(accessibility.liveCalloutBlockCount == 2)
+        #expect(accessibility.liveCalloutSourceLineCount >= 4)
         #expect(accessibility.exactWikilinkSourceCount == 1)
         #expect(accessibility.incompleteWikilinkSourceCount == 0)
         let normalizedOriginal = original.replacingOccurrences(of: "\r\n", with: "\n")
@@ -4503,35 +4551,28 @@ struct MarkdownEditorWebViewIntegrationTests {
         let calloutTo = try #require(normalizedOriginal.range(of: calloutSource)?.upperBound)
             .utf16Offset(in: normalizedOriginal)
         diagnosticStage = "projected Callout interaction"
-        try await harness.session.testingClickFirstCalloutText("same callout")
-        let pointerDeadline = ContinuousClock().now.advanced(by: .seconds(3))
-        while harness.session.context?.selections.first?.head != calloutTo {
-            if ContinuousClock().now >= pointerDeadline {
-                Issue.record("The projected Callout click did not enter its editable content-end boundary; head=\(harness.session.context?.selections.first?.head ?? -1), expected=\(calloutTo).")
-                throw MarkdownEditorSession.SessionError.unavailable
-            }
-            try await Task.sleep(for: .milliseconds(20))
-        }
+        try await harness.session.testingClickVisibleText("same callout")
+        _ = try await harness.waitUntilSelection(in: calloutFrom..<calloutTo)
         let activeCallout = try await harness.waitUntilPresentation(stage: "active callout source") {
             $0.activeLiveBlockKind == "callout"
         }
         #expect(activeCallout.semanticTableCount == 1)
-        #expect(activeCallout.liveCalloutSourceLineCount == 2)
+        #expect(activeCallout.liveCalloutSourceLineCount >= 2)
         #expect(activeCallout.exactCalloutSourceCount == 0)
         #expect(try await harness.session.currentText(for: harness.documentID) == initial)
 
         harness.session.goToLine(sharedCalloutLine - 1)
         _ = try await harness.waitUntilPresentation(stage: "callout restored before arrow navigation") {
-            $0.activeLiveBlockKind.isEmpty && $0.liveCalloutWidgetCount == 2
+            $0.activeLiveBlockKind.isEmpty && $0.liveCalloutBlockCount == 2
         }
         try await harness.session.testingPressArrow("ArrowDown")
-        try await harness.waitUntilSelection(head: calloutFrom, stage: "down-arrow callout entry")
+        _ = try await harness.waitUntilSelection(in: calloutFrom..<calloutTo)
         _ = try await harness.waitUntilPresentation(stage: "arrow-revealed callout source") {
             $0.activeLiveBlockKind == "callout"
         }
         harness.session.goToLine(sharedCalloutLine + 3)
         _ = try await harness.waitUntilPresentation(stage: "callout restored below") {
-            $0.activeLiveBlockKind.isEmpty && $0.liveCalloutWidgetCount == 2
+            $0.activeLiveBlockKind.isEmpty && $0.liveCalloutBlockCount == 2
         }
         try await harness.session.testingPressArrow("ArrowUp")
         try await harness.waitUntilSelection(
@@ -4539,7 +4580,7 @@ struct MarkdownEditorWebViewIntegrationTests {
             stage: "up-arrow real separator line"
         )
         try await harness.session.testingPressArrow("ArrowUp")
-        try await harness.waitUntilSelection(head: calloutTo, stage: "up-arrow callout entry")
+        _ = try await harness.waitUntilSelection(in: calloutFrom..<calloutTo)
         _ = try await harness.waitUntilPresentation(stage: "up-arrow-revealed callout source") {
             $0.activeLiveBlockKind == "callout"
         }
@@ -5264,7 +5305,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 let snapshot = try await session.testingAccessibilitySnapshot()
                 if predicate(snapshot) { return snapshot }
                 if clock.now >= deadline {
-                    Issue.record("The editor did not apply \(stage); label=\(snapshot.label), top=\(snapshot.contentPaddingTop), inline=\(snapshot.contentPaddingInlineStart), rootRegular=\(snapshot.presentation.rootInlineRegular), rootNarrow=\(snapshot.presentation.rootInlineNarrow), rootLineWidth=\(snapshot.presentation.rootLineWidth), preview=\(snapshot.previewTitle), previewHidden=\(snapshot.previewPopoverHidden), tables=\(snapshot.semanticTableCount), footnoteReferences=\(snapshot.footnoteReferenceCount), footnoteDefinitions=\(snapshot.footnoteDefinitionSourceCount), callouts=\(snapshot.liveCalloutWidgetCount), h1=\(snapshot.liveH1Count), h2=\(snapshot.liveH2Count), fences=\(snapshot.collapsedCodeFenceLineCount), fenceHeight=\(snapshot.collapsedCodeFenceVisibleHeight), listMarkers=\(snapshot.liveListMarkerCount), lines=\(snapshot.visibleLineClassSummary).")
+                    Issue.record("The editor did not apply \(stage); label=\(snapshot.label), top=\(snapshot.contentPaddingTop), inline=\(snapshot.contentPaddingInlineStart), rootRegular=\(snapshot.presentation.rootInlineRegular), rootNarrow=\(snapshot.presentation.rootInlineNarrow), rootLineWidth=\(snapshot.presentation.rootLineWidth), preview=\(snapshot.previewTitle), previewHidden=\(snapshot.previewPopoverHidden), tables=\(snapshot.semanticTableCount), footnoteReferences=\(snapshot.footnoteReferenceCount), footnoteDefinitions=\(snapshot.footnoteDefinitionSourceCount), callouts=\(snapshot.liveCalloutBlockCount), h1=\(snapshot.liveH1Count), h2=\(snapshot.liveH2Count), fences=\(snapshot.collapsedCodeFenceLineCount), fenceHeight=\(snapshot.collapsedCodeFenceVisibleHeight), listMarkers=\(snapshot.liveListMarkerCount), lines=\(snapshot.visibleLineClassSummary).")
                     throw MarkdownEditorSession.SessionError.unavailable
                 }
                 try await Task.sleep(for: .milliseconds(20))
@@ -5297,7 +5338,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                 // middle before requiring every representative component.
                 try await session.testingApplyScrollFraction(0.15)
                 _ = try await waitUntilPresentation(stage: scenario.name) {
-                    (!requiresCallout || $0.liveCalloutWidgetCount > 0)
+                    (!requiresCallout || $0.liveCalloutBlockCount > 0)
                         && (!requiresTable || $0.semanticTableCount > 0)
                         && (!requiresMath || $0.renderedMathCount > 0)
                         && $0.mathErrorCount == 0
@@ -5309,7 +5350,7 @@ struct MarkdownEditorWebViewIntegrationTests {
                     $0.label == "Markdown editor, Edit mode"
                         && $0.presentation.rootTextScale == scenario.expectedTextScale
                         && $0.presentation.documentWidth > 0
-                        && (!requiresCallout || $0.liveCalloutWidgetCount > 0)
+                        && (!requiresCallout || $0.liveCalloutBlockCount > 0)
                         && (!requiresTable || $0.semanticTableCount > 0)
                         && (!requiresMath || $0.renderedMathCount > 0)
                         && $0.mathErrorCount == 0

@@ -3364,7 +3364,7 @@ struct FrontendArchitectureTests {
             "liveMermaidProjection.extension",
             "liveStructuredBlockProjections.tableExtension",
             "liveDisplayMathProjection.extension",
-            "liveStructuredBlockProjections.rawHTMLExtension",
+            "syntaxPresentation",
             "liveStructuredBlockProjections.calloutExtension",
             "liveFootnoteProjection.extension",
             "livePreview",
@@ -4159,7 +4159,7 @@ struct FrontendArchitectureTests {
         #expect(!css.contains("(ScholiumCalloutStyles.css)"))
         #expect(css.contains(calloutCSS))
         #expect(editorHTML.contains(calloutCSS))
-        #expect(editorHTML.contains(".cm-live-callout-widget"))
+        #expect(editorHTML.contains(".cm-live-callout-role-label"))
         #expect(calloutCSS.contains(".scholium-callout-role,\n.scholium-callout-title"))
         #expect(calloutCSS.contains(".scholium-callout-role {\n  position: absolute;"))
         #expect(!calloutCSS.contains(".cm-live-callout-role {"))

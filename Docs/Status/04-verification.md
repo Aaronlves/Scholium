@@ -4,6 +4,23 @@
 
 ## Current verification snapshot
 
+**2026-09-07 — editor syntax continuity (focused, not release acceptance):**
+228 editor tests, TypeScript checks, deterministic bundle reproduction, and
+SwiftPM Debug App/test compilation pass with Xcode 27 beta (27A5218g).
+16 scoped Swift/WebKit checks pass, including the complete syntax-catalog
+Review/Edit geometry baseline, exact-source retention, Callout text placement
+and continuation, heading/quotation reveal, and composition deferral. Geometry
+probes explicitly settle local animations; they do not establish frame timing.
+Disposable standard Triptych QA supplemented with a synthetic syntax Note
+confirms direct Callout text placement, Chinese paste and Undo, disclosure,
+Light/Dark presentation, doubled body font size, and menu/toolbar mode switching.
+The edited fixture returns to identical bytes after Undo. The final role-label
+presentation was inspected in Light appearance. This is exploratory Computer
+Use evidence, not a perceptual animation, installed-IME, or accessibility pass.
+Minimum-width, Increase Contrast,
+Reduce Transparency, Reduce Motion, and conflict/recovery runtime acceptance
+remain open for this change. Logs: `.build/editor-presentation-*.log`.
+
 **2026-09-07 — question-centered Works cutover:** standalone research-record
 presentation, storage, search federation, contracts, and Agent tools are removed.
 Research content uses ordinary Works Notes; no migration, export, compatibility

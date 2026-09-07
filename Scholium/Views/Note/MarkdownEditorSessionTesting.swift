@@ -159,9 +159,8 @@ extension MarkdownEditorSession {
         let tableOverflowX: String
         let footnoteReferenceCount: Int
         let footnoteDefinitionSourceCount: Int
-        let liveCalloutWidgetCount: Int
+        let liveCalloutBlockCount: Int
         let liveCalloutSourceLineCount: Int
-        let liveRawHTMLWidgetCount: Int
         let liveRawHTMLSourceLineCount: Int
         let exactWikilinkSourceCount: Int
         let incompleteWikilinkSourceCount: Int
@@ -242,6 +241,11 @@ extension MarkdownEditorSession {
         var rawResult = try await webView.callAsyncJavaScript(
             """
             const editable = document.querySelectorAll('[contenteditable="true"]');
+            function visibleText(element) {
+                const copy = element.cloneNode(true);
+                copy.querySelectorAll('[data-syntax-open="false"], .cm-live-callout-heading-control').forEach(node => node.remove());
+                return copy.textContent || '';
+            }
             const textboxes = document.querySelectorAll('[role="textbox"]');
             const content = editable[0];
             const contentStyle = content ? getComputedStyle(content) : null;
@@ -308,10 +312,10 @@ extension MarkdownEditorSession {
             const headingBlockStyle = style('.cm-live-h2');
             const headingStyle = textStyle('.cm-live-h2');
             const firstLevelHeadingStyle = textStyle('.cm-live-h1');
-            const calloutStyle = style('.cm-live-callout-widget.scholium-callout-state');
-            const calloutRoleStyle = style('.cm-live-callout-widget.scholium-callout-state .scholium-callout-role');
-            const calloutTitleStyle = style('.cm-live-callout-widget.scholium-callout-state .scholium-callout-title');
-            const orientationStyle = style('.cm-live-callout-widget.scholium-callout-orient .scholium-callout-body');
+            const calloutStyle = style('.cm-live-callout-role-state');
+            const calloutRoleStyle = style('.cm-live-callout-role-state .cm-live-callout-role-label');
+            const calloutTitleStyle = style('.cm-live-callout-role-state .scholium-callout-title');
+            const orientationStyle = style('.cm-live-callout-orient-source');
             const tableStyle = style('.cm-live-table-widget');
             const tableCellStyle = style('.cm-live-table-widget th');
             const mathStyle = style('.cm-live-math.scholium-math-display');
@@ -493,16 +497,15 @@ extension MarkdownEditorSession {
                 footnoteDefinitionSourceCount: Array.from(document.querySelectorAll('.cm-line'))
                     .filter(line => /^\\s*\\[\\^[^\\]]+\\]:/.test(line.textContent || ''))
                     .length,
-                liveCalloutWidgetCount: document.querySelectorAll('.cm-live-callout-widget.scholium-callout').length,
+                liveCalloutBlockCount: document.querySelectorAll('.cm-live-callout-start').length,
                 liveCalloutSourceLineCount: document.querySelectorAll('.cm-line.cm-live-callout').length,
-                liveRawHTMLWidgetCount: document.querySelectorAll('.cm-live-raw-html-widget').length,
                 liveRawHTMLSourceLineCount: document.querySelectorAll('.cm-line.cm-live-raw-html').length,
                 exactWikilinkSourceCount: Array.from(document.querySelectorAll('.cm-line'))
-                    .filter(line => line.textContent?.includes('[[') && line.textContent?.includes(']]')).length,
+                    .filter(line => visibleText(line).includes('[[') && visibleText(line).includes(']]')).length,
                 incompleteWikilinkSourceCount: Array.from(document.querySelectorAll('.cm-line'))
-                    .filter(line => line.textContent?.includes('[[') !== line.textContent?.includes(']]')).length,
+                    .filter(line => visibleText(line).includes('[[') !== visibleText(line).includes(']]')).length,
                 exactCalloutSourceCount: Array.from(document.querySelectorAll('.cm-line'))
-                    .filter(line => line.textContent?.includes('[!')).length,
+                    .filter(line => visibleText(line).includes('[!')).length,
                 activeLiveBlockKind: document.querySelector('.cm-editor')
                     ?.dataset.scholiumActiveLiveBlock || '',
                 presentation: {
@@ -545,11 +548,11 @@ extension MarkdownEditorSession {
                     calloutBorderColor: calloutStyle?.borderInlineStartColor || '',
                     calloutFontSize: calloutStyle?.fontSize || '',
                     calloutLineHeight: calloutStyle?.lineHeight || '',
-                    calloutWidth: width('.cm-live-callout-widget.scholium-callout-state'),
+                    calloutWidth: width('.cm-live-callout-role-state'),
                     calloutRoleColor: calloutRoleStyle?.color || '',
                     calloutRolePosition: calloutRoleStyle?.position || '',
-                    calloutRoleWidth: width('.cm-live-callout-widget.scholium-callout-state .scholium-callout-role'),
-                    calloutRoleHeight: document.querySelector('.cm-live-callout-widget.scholium-callout-state .scholium-callout-role')?.getBoundingClientRect().height || 0,
+                    calloutRoleWidth: width('.cm-live-callout-role-state .cm-live-callout-role-label'),
+                    calloutRoleHeight: document.querySelector('.cm-live-callout-role-state .cm-live-callout-role-label')?.getBoundingClientRect().height || 0,
                     calloutRoleFontFamily: calloutRoleStyle?.fontFamily || '',
                     calloutRoleFontSize: calloutRoleStyle?.fontSize || '',
                     calloutRoleFontWeight: calloutRoleStyle?.fontWeight || '',
@@ -627,14 +630,19 @@ extension MarkdownEditorSession {
         let rawResult = try await webView.callAsyncJavaScript(
             """
             const line = Array.from(document.querySelectorAll('.cm-line'))
-                .find(candidate => candidate.textContent?.includes(requestedText));
+                .find(candidate => visibleText(candidate).includes(requestedText));
             if (!line) return null;
+            function visibleText(element) {
+                const copy = element.cloneNode(true);
+                copy.querySelectorAll('[data-syntax-open="false"], .cm-live-callout-heading-control').forEach(node => node.remove());
+                return copy.textContent || '';
+            };
             const texts = selector => Array.from(line.querySelectorAll(selector))
-                .map(element => element.textContent || '');
+                .map(element => visibleText(element));
             const styles = (selector, property) => Array.from(line.querySelectorAll(selector))
                 .map(element => getComputedStyle(element)[property] || '');
             return {
-                lineText: line.textContent || '',
+                lineText: visibleText(line),
                 strongTexts: texts('.cm-live-strong'),
                 strongWeights: styles('.cm-live-strong', 'fontWeight'),
                 emphasisTexts: texts('.cm-live-emphasis'),
@@ -666,28 +674,33 @@ extension MarkdownEditorSession {
         let rawResult = try await webView.callAsyncJavaScript(
             """
             const line = Array.from(document.querySelectorAll('.cm-line'))
-                .find(candidate => candidate.textContent?.includes(requestedText));
-            const widget = Array.from(document.querySelectorAll('.cm-live-callout-widget'))
-                .find(candidate => candidate.textContent?.includes(requestedText));
-            const links = widget
-                ? Array.from(widget.querySelectorAll('[data-scholium-link-target]'))
-                : [];
-            const annotationIcons = widget
-                ? Array.from(widget.querySelectorAll('.scholium-link-annotation-icon'))
-                : [];
-            const activeSourceLines = Array.from(
-                document.querySelectorAll('.cm-line.cm-live-callout')
-            );
-            const activeSourceTitles = activeSourceLines.map(
-                candidate => candidate.querySelector('.scholium-callout-title')
-            );
-            const renderedTitle = widget?.querySelector('.scholium-callout-title') || null;
+                .find(candidate => visibleText(candidate).includes(requestedText));
+            let start = line;
+            while (start && !start.classList.contains('cm-live-callout-start')) start = start.previousElementSibling;
+            const blockLines = [];
+            let current = start;
+            while (current?.classList.contains('cm-live-callout')) {
+                blockLines.push(current);
+                if (current.classList.contains('cm-live-callout-end')) break;
+                current = current.nextElementSibling;
+            }
+            function visibleText(element) {
+                if (!element) return '';
+                const copy = element.cloneNode(true);
+                copy.querySelectorAll('[data-syntax-open="false"], .cm-live-callout-heading-control').forEach(node => node.remove());
+                return copy.textContent || '';
+            };
+            const links = blockLines.flatMap(node => [...node.querySelectorAll('[data-scholium-link-target]')]);
+            const annotationIcons = blockLines.flatMap(node => [...node.querySelectorAll('.scholium-link-annotation-icon')]);
+            const activeSourceLines = blockLines;
+            const activeSourceTitles = activeSourceLines.map(candidate => candidate.querySelector('.scholium-callout-title'));
+            const renderedTitle = start?.querySelector('.scholium-callout-title') || null;
             const styleValue = (element, property) => element
                 ? getComputedStyle(element)[property] || ''
                 : '';
             return {
-                sourceLineText: line?.textContent || '',
-                activeSourceLineTexts: activeSourceLines.map(candidate => candidate.textContent || ''),
+                sourceLineText: visibleText(line),
+                activeSourceLineTexts: activeSourceLines.map(visibleText),
                 activeSourceLineClassNames: activeSourceLines.map(candidate => candidate.className),
                 activeSourceLineBackgrounds: activeSourceLines.map(
                     candidate => getComputedStyle(candidate).backgroundColor
@@ -707,13 +720,13 @@ extension MarkdownEditorSession {
                 activeSourceTitleFontStyles: activeSourceTitles.map(
                     candidate => styleValue(candidate, 'fontStyle')
                 ),
-                renderedText: widget?.textContent || '',
+                renderedText: blockLines.map(visibleText).join(' '),
                 renderedTitleText: renderedTitle?.textContent || '',
                 renderedTitleFontFamily: styleValue(renderedTitle, 'fontFamily'),
                 renderedTitleFontSize: styleValue(renderedTitle, 'fontSize'),
                 renderedTitleFontWeight: styleValue(renderedTitle, 'fontWeight'),
                 renderedTitleFontStyle: styleValue(renderedTitle, 'fontStyle'),
-                renderedBodyText: widget?.querySelector('.scholium-callout-body')?.textContent || '',
+                renderedBodyText: blockLines.slice(1).map(visibleText).join(' '),
                 renderedLinkTexts: links.map(link => link.textContent || ''),
                 renderedLinkTargets: links.map(link => link.dataset.scholiumLinkTarget || ''),
                 renderedLinkCaretOffsets: links.map(

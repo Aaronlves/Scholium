@@ -1,11 +1,10 @@
 /*
  * Scholium protected Callout presentation.
  *
- * Read and Live Preview render the same `.scholium-callout` component. Keep
- * the generated role label in the accessibility tree, let a supplied title
- * inherit that role's heading treatment, and distinguish roles primarily
- * through typography, indentation, and content rhythm rather than color or
- * decoration.
+ * Review uses the `.scholium-callout` component. Edit retains source lines
+ * and reuses its title roles while exposing a quiet role label. Keep generated
+ * role names accessible and distinguish research roles through typography,
+ * structure and content rhythm rather than color alone.
  */
 
 /* ------------------------------------------------------------------------- */

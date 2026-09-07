@@ -1,5 +1,4 @@
 import type {FootnoteReferencePresentation} from "./footnote-presentation";
-import type {CalloutPresentation} from "./live-projection-index";
 import type {MermaidPresentation} from "./mermaid-presentation";
 import type {TablePresentation} from "./table-presentation";
 
@@ -77,8 +76,6 @@ export interface ProjectedWidgetRegistry {
   setTable(element: HTMLElement, value: TablePresentation): void;
   mermaid(element: HTMLElement): MermaidPresentation | undefined;
   setMermaid(element: HTMLElement, value: MermaidPresentation): void;
-  callout(element: HTMLElement): CalloutPresentation | undefined;
-  setCallout(element: HTMLElement, value: CalloutPresentation): void;
   footnote(element: HTMLElement): FootnoteReferencePresentation | undefined;
   setFootnote(element: HTMLElement, value: FootnoteReferencePresentation): void;
   sourceOffset(event: MouseEvent): number | null;
@@ -87,7 +84,6 @@ export interface ProjectedWidgetRegistry {
 export function createProjectedWidgetRegistry(): ProjectedWidgetRegistry {
   const tables = new WeakMap<HTMLElement, TablePresentation>();
   const mermaids = new WeakMap<HTMLElement, MermaidPresentation>();
-  const callouts = new WeakMap<HTMLElement, CalloutPresentation>();
   const footnotes = new WeakMap<HTMLElement, FootnoteReferencePresentation>();
 
   return {
@@ -95,8 +91,6 @@ export function createProjectedWidgetRegistry(): ProjectedWidgetRegistry {
     setTable: (element, value) => tables.set(element, value),
     mermaid: (element) => mermaids.get(element),
     setMermaid: (element, value) => mermaids.set(element, value),
-    callout: (element) => callouts.get(element),
-    setCallout: (element, value) => callouts.set(element, value),
     footnote: (element) => footnotes.get(element),
     setFootnote: (element, value) => footnotes.set(element, value),
     sourceOffset(event) {
@@ -106,10 +100,6 @@ export function createProjectedWidgetRegistry(): ProjectedWidgetRegistry {
       const projectedLink = target.closest<HTMLElement>("[data-scholium-source-caret]");
       const requestedLinkCaret = Number(projectedLink?.dataset.scholiumSourceCaret);
       if (Number.isSafeInteger(requestedLinkCaret)) return requestedLinkCaret;
-
-      const calloutSlot = target.closest<HTMLElement>(".cm-live-callout-slot");
-      const callout = calloutSlot ? callouts.get(calloutSlot) : undefined;
-      if (callout) return callout.to;
 
       const table = target.closest<HTMLElement>(".cm-live-table-widget");
       const tablePresentation = table ? tables.get(table) : undefined;

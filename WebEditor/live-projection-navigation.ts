@@ -23,7 +23,7 @@ export function createLiveProjectionNavigation(options: {
 }): {extension: Extension} {
   function blockRanges(state: EditorState) {
     return [
-      ...options.projections.index(state).blockRanges,
+      ...options.projections.index(state).blockRanges.filter(range => range.kind !== "callout"),
       ...options.mermaidPresentations(state).map(({from, to}) => ({
         from,
         to,
@@ -39,7 +39,8 @@ export function createLiveProjectionNavigation(options: {
   ) {
     const index = options.projections.index(state);
     const boundary = forward ? "start" : "end";
-    const blockRange = projectionRangeAtBoundary(index.blockRanges, offset, boundary);
+    const blockRange = projectionRangeAtBoundary(
+      index.blockRanges.filter(range => range.kind !== "callout"), offset, boundary);
     const listPrefixRange = projectionRangeAtBoundary(
       index.listPrefixRanges,
       offset,
@@ -89,10 +90,9 @@ export function createLiveProjectionNavigation(options: {
     const projection = forward ? crossed[0] : crossed.at(-1);
     if (!projection) return false;
 
-    const isCallout = projection.kind === "callout";
     const sourceHead = forward
       ? projection.from
-      : isCallout ? projection.to : Math.max(projection.from, projection.to - 1);
+      : Math.max(projection.from, projection.to - 1);
     const originalCoords = view.coordsAtPos(selection.head);
     const desiredX = originalCoords?.left ?? originalCoords?.right ?? 0;
     const anchor = extend ? selection.anchor : sourceHead;
@@ -100,10 +100,6 @@ export function createLiveProjectionNavigation(options: {
       selection: {anchor, head: sourceHead},
       scrollIntoView: true,
     });
-    if (isCallout) {
-      view.requestMeasure();
-      return true;
-    }
     view.requestMeasure({
       read: () => {
         const line = view.state.doc.lineAt(sourceHead);
@@ -145,9 +141,7 @@ export function createLiveProjectionNavigation(options: {
     }
     const head = forward
       ? isProjectedLink ? projection.to : projection.from
-      : projection.kind === "callout"
-        ? projection.to
-        : Math.max(projection.from, projection.to - 1);
+      : Math.max(projection.from, projection.to - 1);
     view.dispatch({
       selection: {anchor: extend ? selection.anchor : head, head},
       scrollIntoView: true,

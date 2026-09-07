@@ -1,3 +1,4 @@
+import {canDisplaceSyntax, syntaxToken, syntaxPresentation} from "./syntax-presentation";
 import {editorArrivalHighlight, showEditorArrival} from "./editor-arrival-highlight";
 import {createNativeFloatingBridge} from "./native-floating";
 import {
@@ -194,7 +195,7 @@ const liveProjectionIndex = createLiveProjectionIndexController({
   recordMetric: recordEditorMetric,
 });
 let modeTransitionSequence = 0;
-const liveWidgetReuseCounts = {table: 0, callout: 0, footnote: 0};
+const liveWidgetReuseCounts = {table: 0, footnote: 0};
 let lastUndoLabel: string | undefined;
 let lastRedoLabel: string | undefined;
 const post = (message: Record<string, unknown>) => nativeHandler?.postMessage({
@@ -791,7 +792,9 @@ function buildLiveDecorations(
   /** @param {number} from @param {number} to */
   const addHidden = (from: number, to: number) => {
     if (to <= from) return;
-    const range = hiddenSyntax.range(from, to);
+    const source = doc.sliceString(from, to);
+    const range = (canDisplaceSyntax(source)
+      ? syntaxToken(source, from, to, false) : hiddenSyntax).range(from, to);
     decorations.push(range);
     atomicRanges.push(range);
   };
@@ -834,7 +837,13 @@ function buildLiveDecorations(
   };
   /** @param {number} from @param {number} to @param {string} className */
   const addMark = (from: number, to: number, className: string) => {
-    if (to > from) decorations.push(liveMark(className).range(from, to));
+    if (to <= from) return;
+    const source = doc.sliceString(from, to);
+    const isSyntax = className === "cm-live-syntax-marker" || className.endsWith("-source-marker");
+    decorations.push((isSyntax && canDisplaceSyntax(source)
+      ? syntaxToken(source, from, to, true,
+          className.endsWith("-source-marker") ? "prefix" : "inline", className)
+      : liveMark(className)).range(from, to));
   };
   const addPreviewMark = (
     from: number,
@@ -957,8 +966,7 @@ function buildLiveDecorations(
           lineQueryTo,
         )[0];
         const semanticCallout = semanticBlocksOnLine.find((block) => block.kind === "callout");
-        const activeCallout = parsedCallout && projectionSelections.some((range) =>
-          selectionActivatesSyntax(range, parsedCallout));
+        const activeCallout = parsedCallout;
         if (activeCallout) {
           const semanticLineMarkers = semanticCallout?.markerRanges.filter((range) =>
             range.from < lineQueryTo && range.to > line.from) ?? [];
@@ -1246,7 +1254,6 @@ function buildLiveDecorations(
     projectionWindowUTF16Count,
     selectionScoped: requestedRanges ? 1 : 0,
     widgetReuseCount: liveWidgetReuseCounts.table
-      + liveWidgetReuseCounts.callout
       + liveWidgetReuseCounts.footnote,
   });
   return {decorations: result, atomicRanges: atoms, coveredRanges};
@@ -1677,6 +1684,7 @@ const livePreviewMode = [
   EditorView.editorAttributes.of({class: "scholium-live-mode"}),
   EditorView.contentAttributes.of(editorAccessibilityAttributes("livePreview")),
   Prec.high(liveSelection.extension),
+  syntaxPresentation,
   liveProjectionIndex.extension,
   liveDocumentTitle,
   inputSuggestions.extension,
@@ -1685,7 +1693,6 @@ const livePreviewMode = [
   liveMermaidProjection.extension,
   liveStructuredBlockProjections.tableExtension,
   liveDisplayMathProjection.extension,
-  liveStructuredBlockProjections.rawHTMLExtension,
   liveStructuredBlockProjections.calloutExtension,
   liveFootnoteProjection.extension,
   livePreview,
@@ -2278,7 +2285,7 @@ function flushPresentationStyleAndGeometry() {
     ".cm-content",
     ".cm-live-h1",
     ".cm-live-h2",
-    ".cm-live-callout-widget",
+    ".cm-live-callout-start",
     ".cm-live-mermaid-widget",
     ".cm-live-list",
   ]) {

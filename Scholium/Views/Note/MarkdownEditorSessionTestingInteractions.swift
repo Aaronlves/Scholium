@@ -36,41 +36,6 @@ extension MarkdownEditorSession {
         return applied
     }
 
-    func testingClickFirstCalloutText(_ requestedText: String) async throws {
-        guard let webView else { throw SessionError.unavailable }
-        let result = try await webView.callAsyncJavaScript(
-            """
-            for (const root of document.querySelectorAll('.cm-live-callout-widget.scholium-callout')) {
-                const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-                let node;
-                while ((node = walker.nextNode())) {
-                    const index = node.textContent?.indexOf(requestedText) ?? -1;
-                    if (index < 0) continue;
-                    const range = document.createRange();
-                    range.setStart(node, index);
-                    range.setEnd(node, Math.min(node.length, index + Math.max(1, requestedText.length)));
-                    const rect = range.getBoundingClientRect();
-                    (node.parentElement || root).dispatchEvent(new MouseEvent('mousedown', {
-                        bubbles: true,
-                        cancelable: true,
-                        clientX: rect.left + Math.min(8, rect.width / 2),
-                        clientY: (rect.top + rect.bottom) / 2
-                    }));
-                    const revealedOnMouseDown = !root.isConnected
-                        && document.querySelectorAll('.cm-line.cm-live-callout').length > 0;
-                    window.dispatchEvent(new MouseEvent('mouseup', {bubbles: true}));
-                    return revealedOnMouseDown;
-                }
-            }
-            return false;
-            """,
-            arguments: ["requestedText": requestedText],
-            in: nil,
-            contentWorld: .page
-        )
-        guard result as? Bool == true else { throw SessionError.invalidResult }
-    }
-
     func testingClickFirstFootnoteReference() async throws {
         guard let webView else { throw SessionError.unavailable }
         let result = try await webView.callAsyncJavaScript(
@@ -223,7 +188,7 @@ extension MarkdownEditorSession {
         guard let webView else { throw SessionError.unavailable }
         let result = try await webView.callAsyncJavaScript(
             """
-            for (const root of document.querySelectorAll('.cm-line, .cm-live-callout-widget')) {
+            for (const root of document.querySelectorAll('.cm-line')) {
                 const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
                 let node;
                 while ((node = walker.nextNode())) {
@@ -283,7 +248,7 @@ extension MarkdownEditorSession {
         let rawResult = try await webView.callAsyncJavaScript(
             """
             const locate = requested => {
-                for (const root of document.querySelectorAll('.cm-line, .cm-live-callout-widget')) {
+                for (const root of document.querySelectorAll('.cm-line')) {
                     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
                     let node;
                     while ((node = walker.nextNode())) {
@@ -479,7 +444,7 @@ extension MarkdownEditorSession {
     ) async throws -> (x: Double, y: Double) {
         let result = try await webView.callAsyncJavaScript(
             """
-            for (const root of document.querySelectorAll('.cm-line, .cm-live-callout-widget')) {
+            for (const root of document.querySelectorAll('.cm-line')) {
                 const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
                 let node;
                 while ((node = walker.nextNode())) {

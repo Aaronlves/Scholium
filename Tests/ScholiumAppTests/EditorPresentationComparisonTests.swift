@@ -522,6 +522,7 @@ extension MarkdownEditorWebViewIntegrationTests {
                     && abs(precedingGapDelta ?? 0) > maximumPrecedingGapDelta
             {
                 mustMatchDifferenceCount += 1
+                print("Presentation mismatch: \(probe.id), geometry=\(localLineGeometryMatches), height=\(blockHeightMatches), top=\(topDelta)/\(maximumTopDelta), gap=\(precedingGapDelta ?? 0)/\(maximumPrecedingGapDelta)")
             }
             differences.append(.init(
                 id: probe.id,
@@ -675,6 +676,9 @@ extension MarkdownEditorWebViewIntegrationTests {
     const root = document.querySelector(rootSelector);
     if (!root) return null;
     const rootRect = root.getBoundingClientRect();
+    // Compare body flow from the shared title boundary. Review's metadata
+    // pre and Edit's exact YAML envelope have distinct source-only geometry.
+    const bodyOriginTop = root.querySelector('.scholium-note-title')?.getBoundingClientRect().bottom ?? rootRect.top;
     const rounded = value => Math.round(value * 1000) / 1000;
     const styleKeys = [
       'font-family', 'font-size', 'font-weight', 'font-style', 'line-height',
@@ -732,7 +736,8 @@ extension MarkdownEditorWebViewIntegrationTests {
         while ((node = walker.nextNode())) {
           if (!node.textContent || !node.textContent.trim()) continue;
           const parent = node.parentElement;
-          if (!parent || getComputedStyle(parent).display === 'none') continue;
+          if (!parent || getComputedStyle(parent).display === 'none'
+              || parent.closest('[data-syntax-open="false"]')) continue;
           const range = document.createRange();
           range.selectNodeContents(node);
           for (const rect of Array.from(range.getClientRects())) {
@@ -788,14 +793,14 @@ extension MarkdownEditorWebViewIntegrationTests {
         id: probe.id,
         found: true,
         text: selected.map(element => element.textContent || '').join('\\n'),
-        top: rounded(top - rootRect.top),
-        bottom: rounded(bottom - rootRect.top),
+        top: rounded(top - bodyOriginTop),
+        bottom: rounded(bottom - bodyOriginTop),
         left: rounded(left - rootRect.left),
         right: rounded(right - rootRect.left),
         width: rounded(right - left),
         height: rounded(bottom - top),
         lineCount: orderedLines.length,
-        lineTops: orderedLines.map(line => rounded(line.top - rootRect.top)),
+        lineTops: orderedLines.map(line => rounded(line.top - bodyOriginTop)),
         lineWidths: orderedLines.map(line => rounded(line.right - line.left)),
         visibleStart,
         widgetBufferCount: selected.reduce(

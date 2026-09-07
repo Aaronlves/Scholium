@@ -482,9 +482,10 @@ heading level, list depth, task marker, link target, and alias range. Opening
 ATX-heading and quotation prefixes include their required separator. Heading
 style follows the live syntax catalog, including empty ATX headings; only
 Setext underlines use marker-line geometry. Inactive
-Edit gives those ranges zero measure; active Edit absolutely positions their
-exact editable glyphs outside the prose measure, preserving text geometry and
-adjacent blocks. Semantic blocks exclude terminal CR/LF; task-list prose starts
+Edit gives short delimiter ranges zero measure; active Edit exposes their
+exact glyphs inline. A measured leading prefix can borrow available whitespace
+only when its width alone would wrap prose. The activation retains that placement
+until concealment; technical and long source uses ordinary wrapping. Semantic blocks exclude terminal CR/LF; task-list prose starts
 after its marker. LF and BOM/CRLF/Unicode fixtures enforce those boundaries.
 Incomplete extension markers remain ordinary editable source; only opened
 block mathematics and comments produce fail-closed malformed diagnostics.
@@ -597,29 +598,24 @@ view model, so selecting or saving an Appearance updates open Read and Live
 surfaces through those controlled style elements without replacing the retained
 WebView, EditorState, buffer, selection, composition, or undo history.
 
-Inactive Live callouts share Read's `.scholium-callout` DOM and stylesheet.
-The Callout StateField derives activation from the same committed Live
-selection snapshot as every inline projection; no parallel block-activation
-field exists. `selectionActivatesSyntax` owns visibility and refresh signatures:
-carets include both range boundaries; selections require overlap. Parser-owned
-delimiters share muted syntax styling. Downward or forward entry selects `from`; upward or
-rendered-body entry selects that content-end boundary. One subsequent ordinary
-horizontal move reaches the real separator line. The whole-line replacement
-retains CodeMirror's inclusive defaults so it consumes the source line boxes
-instead of leaving empty lines at its boundaries. Its slot uses no block margin
-or fixed-height estimate; fold, style, and pointer changes measure before
-further coordinate mapping. Once activated, the semantic-line StateField keeps
-one continuous Callout source surface over the exact source lines. The inline
-projection exposes block markers only on the caret-owning physical line, or on
-the lines intersected by a nonempty selection, while every remaining line and
-nested inline construct retains ordinary construct-scoped projection. The
-`interaction` transformation continues the proven quote prefix on Return and
-removes an otherwise empty quote prefix on the next Return; each path is one
-CodeMirror transaction. The fragment renderer uses the same extended Markdown
-language and source-offset map, moves a title-only Orient title into Body
-presentation without source mutation or accessible duplication, and retains
-standard and Wiki link roles, optional annotation disclosure, and exact pointer destinations inside the
-inactive Callout DOM.
+Expanded Edit Callouts retain CodeMirror source lines in every selection state.
+The semantic-line field owns the continuous header/body surface, and the inline
+projection exposes only the active physical line's exact markers. A direct
+Callout field supplies reusable heading/disclosure widgets and collapsed-body
+ranges; source-mapped session-local fold choices never modify Markdown. Selection
+inside a body exposes it. Explicit collapse moves the caret to its header rather
+than hiding the input position. Ordinary pointer and keyboard text navigation
+remain with CodeMirror rather than mapping the entire Callout to its final byte.
+Review continues to use the shared fragment renderer and Callout stylesheet.
+
+`syntax-presentation` owns retained short delimiter marks and bounded visual
+transitions. Hidden marks remain atomic for cursor traversal and inaccessible;
+exposed marks retain the exact editable characters. Its view plugin measures
+visible tokens and maintains only disposable animation/placement state. It
+reconciles caret geometry during motion, cancels on input/composition, and removes
+listeners and animation frames with the mode. Technical objects retain their
+own projections and use local appearance transitions instead of width motion.
+Raw HTML remains inert exact source in persistent lines in Edit and Source.
 
 Semantic tables follow that adapter boundary. Read emits a protected scroll
 container with a real `table`, `thead`, column-scoped `th`, `tbody`, and
@@ -677,8 +673,7 @@ escaped plain-source diagnostics for failures. KaTeX output is a projection;
 only the original delimiter span is editable or writable. Inactive display
 mathematics is a direct StateField block replacement; its component remains
 marginless in Edit while the shared semantic-gap field owns the equivalent
-Review flow spacing. Inactive raw HTML follows the same direct-field rule as an
-inert literal widget and reveals exact source only when active.
+Review flow spacing. Raw HTML retains its literal line presentation without a source/widget swap.
 
 Mermaid uses one separately bundled, exactly pinned, mode-neutral local runtime
 and one shared component stylesheet. Neither WebView injects the approximately

@@ -58,7 +58,7 @@ Reason[Reason] --> Conclusion[Conclusion]
 ### Scholium semantics
 
 > [!orient] Reading route
-> Orientation has no visible generated role heading in rendered presentation.
+> Orientation preserves the reading route and exact authored source.
 
 > [!state] Synthetic claim
 > This is fixture text, not a scholarly assertion.

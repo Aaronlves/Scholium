@@ -130,7 +130,19 @@ enum DocumentAppearanceStyles {
 
     private static func calloutCSS(_ callout: DocumentCalloutAppearance) -> String {
         let selector = selector(for: callout.role)
+        let liveSelector = selector.replacingOccurrences(
+            of: ".scholium-callout-",
+            with: "#editor .cm-editor.scholium-live-mode .cm-line.cm-live-callout-role-"
+        )
         var css = """
+        \(liveSelector) {
+          font-size: \(number(callout.fontScale))em;
+          line-height: \(callout.lineHeight.map(number) ?? "inherit");
+        }
+        \(liveSelector) .scholium-callout-title {
+          font-family: inherit;
+          font-weight: \(callout.titleWeight);
+        }
         \(selector) {
           --scholium-callout-block-gap: \(number(callout.blockGapEm))em;
           margin-block: var(--scholium-callout-block-gap);

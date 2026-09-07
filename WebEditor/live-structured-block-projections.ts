@@ -1,13 +1,13 @@
-import {Range, StateField, type EditorState, type Extension} from "@codemirror/state";
+import {Range, StateEffect, StateField, type EditorState, type Extension} from "@codemirror/state";
 import {Decoration, DecorationSet, EditorView, WidgetType} from "@codemirror/view";
-import {appendMarkdownBlocks, createTableDOM} from "./markdown-fragment";
-import {calloutDefinition} from "./callout-presentation";
+import {createTableDOM} from "./markdown-fragment";
+import {localized} from "./localization";
+import {calloutDefinition, calloutHeader} from "./callout-presentation";
 import type {MarkdownEditingDialect} from "./protocol";
 import {
   activeProjectionSignature,
   selectionActivatesSyntax,
   transactionChangedSyntaxTree,
-  type ProjectionSourceRange,
 } from "./projection-update";
 import type {TablePresentation} from "./table-presentation";
 import type {
@@ -26,17 +26,10 @@ interface LiveTableProjectionState extends LiveBlockProjectionState {
   readonly presentations: readonly TablePresentation[];
 }
 
-interface RawHTMLPresentation extends ProjectionSourceRange {
-  readonly source: string;
-}
-
-interface LiveRawHTMLProjectionState extends LiveBlockProjectionState {
-  readonly presentations: readonly RawHTMLPresentation[];
-}
-
 interface LiveCalloutProjectionState extends LiveBlockProjectionState {
   readonly presentations: readonly CalloutPresentation[];
   readonly active: boolean;
+  readonly folds: ReadonlyMap<number, boolean>;
 }
 
 export function createLiveStructuredBlockProjections(options: {
@@ -44,10 +37,9 @@ export function createLiveStructuredBlockProjections(options: {
   projections: LiveProjectionIndexController;
   widgets: ProjectedWidgetRegistry;
   editingDialect(): MarkdownEditingDialect | null;
-  reuseCounts: {table: number; callout: number};
+  reuseCounts: {table: number};
 }): {
   tableExtension: Extension;
-  rawHTMLExtension: Extension;
   calloutExtension: Extension;
 } {
   const resolveCallout = (rawKind: string) =>
@@ -147,159 +139,91 @@ export function createLiveStructuredBlockProjections(options: {
     ],
   });
 
-  class RawHTMLWidget extends WidgetType {
-    constructor(readonly presentation: RawHTMLPresentation) { super(); }
-    eq(other: RawHTMLWidget) { return other.presentation.source === this.presentation.source; }
-    toDOM() {
-      const pre = document.createElement("pre");
-      pre.className = [
-        "raw-html",
-        "cm-live-raw-html",
-        "cm-live-raw-html-start",
-        "cm-live-raw-html-end",
-        "cm-live-raw-html-widget",
-      ].join(" ");
-      pre.dataset.scholiumProtected = "raw-html";
-      pre.textContent = this.presentation.source;
-      return pre;
-    }
-    ignoreEvent() { return false; }
-  }
-
-  function rawHTMLDecorations(
-    state: EditorState,
-    presentations: readonly RawHTMLPresentation[],
-  ) {
-    return Decoration.set(presentations.flatMap((presentation): Range<Decoration>[] => {
-      const active = options.selection.selection(state).ranges.some((range) =>
-        selectionActivatesSyntax(range, presentation));
-      if (active) return [];
-      return [Decoration.replace({
-        widget: new RawHTMLWidget(presentation),
-        block: true,
-      }).range(presentation.from, presentation.to)];
-    }), true);
-  }
-
-  function buildRawHTML(state: EditorState): LiveRawHTMLProjectionState {
-    const index = options.projections.index(state);
-    if (index.hasUnclosedFrontmatter) {
-      return {decorations: Decoration.none, hasConstructs: true, presentations: []};
-    }
-    const presentations = index.syntax.blocks
-      .filter((block) => block.kind === "html")
-      .map((block): RawHTMLPresentation => ({
-        from: block.from,
-        to: block.to,
-        source: state.doc.sliceString(block.from, block.to),
-      }));
-    return {
-      decorations: rawHTMLDecorations(state, presentations),
-      hasConstructs: presentations.length > 0,
-      presentations,
-    };
-  }
-
-  const rawHTMLField = StateField.define<LiveRawHTMLProjectionState>({
-    create: buildRawHTML,
-    update(previous, transaction) {
-      if (transaction.docChanged || transactionChangedSyntaxTree(transaction)) {
-        return buildRawHTML(transaction.state);
-      }
-      if (!options.selection.changed(transaction.startState, transaction.state)) return previous;
-      if (activeProjectionSignature(
-        options.selection.selection(transaction.startState).ranges,
-        previous.presentations,
-      ) === activeProjectionSignature(
-        options.selection.selection(transaction.state).ranges,
-        previous.presentations,
-      )) return previous;
-      return {
-        ...previous,
-        decorations: rawHTMLDecorations(transaction.state, previous.presentations),
-      };
-    },
-    provide: (field) => [
-      EditorView.decorations.from(field, (value) => value.decorations),
-      EditorView.atomicRanges.of((view) => view.state.field(field).decorations),
-    ],
+  const setCalloutFold = StateEffect.define<{from: number; collapsed: boolean}>({
+    map: (value, changes) => ({...value, from: changes.mapPos(value.from)}),
   });
 
-  class CalloutWidget extends WidgetType {
-    constructor(readonly presentation: CalloutPresentation) { super(); }
-
-    eq(other: CalloutWidget) {
-      const equal = other.presentation.from === this.presentation.from
-        && other.presentation.to === this.presentation.to
-        && other.presentation.source === this.presentation.source;
-      if (equal) options.reuseCounts.callout += 1;
-      return equal;
+  class CalloutHeadingWidget extends WidgetType {
+    constructor(readonly from: number, readonly label: string, readonly title: string,
+      readonly foldable: boolean, readonly collapsed: boolean) { super(); }
+    eq(other: CalloutHeadingWidget) {
+      return this.from === other.from && this.label === other.label && this.title === other.title
+        && this.foldable === other.foldable && this.collapsed === other.collapsed;
     }
-
     toDOM(view: EditorView) {
-      const slot = document.createElement("div");
-      slot.className = "cm-live-callout-slot";
-      appendMarkdownBlocks(this.presentation.source, slot, {
-            mathematics: options.editingDialect()?.mathematics,
-            resolveCallout,
-        sourceOffset: (offset) => this.presentation.from + offset,
-      });
-      const callout = slot.firstElementChild;
-      if (!(callout instanceof HTMLElement) || !callout.classList.contains("scholium-callout")) {
-        const fallback = document.createElement("pre");
-        fallback.className = "cm-live-callout-widget cm-live-callout-widget-fallback";
-        fallback.textContent = this.presentation.source;
-        slot.replaceChildren(fallback);
-        return slot;
-      }
-      slot.replaceChildren(callout);
-      callout.classList.add("cm-live-callout-widget");
-      options.widgets.setCallout(slot, this.presentation);
-      if (callout instanceof HTMLDetailsElement) {
-        let measurePending = false;
-        callout.addEventListener("toggle", () => {
-          if (measurePending) return;
-          measurePending = true;
-          queueMicrotask(() => {
-            measurePending = false;
-            view.requestMeasure();
+      const root = document.createElement("span");
+      root.className = "cm-live-callout-heading-control";
+      root.dataset.calloutFrom = String(this.from);
+      if (this.foldable) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "cm-live-callout-disclosure";
+        button.textContent = this.collapsed ? "▸" : "▾";
+        button.setAttribute("aria-expanded", String(!this.collapsed));
+        button.setAttribute("aria-label", `${localized("Callout")}: ${this.title || this.label}`);
+        button.addEventListener("mousedown", event => event.preventDefault());
+        button.addEventListener("click", () => {
+          const from = Number(root.dataset.calloutFrom);
+          const collapsed = button.getAttribute("aria-expanded") === "true";
+          view.dispatch({
+            ...(collapsed ? {selection: {anchor: from}} : {}),
+            effects: setCalloutFold.of({from, collapsed}),
           });
         });
+        root.append(button);
       }
-      return slot;
+      if (this.label) {
+        const label = document.createElement("span");
+        label.className = "cm-live-callout-role-label";
+        label.textContent = `${this.label} `;
+        root.append(label);
+      }
+      return root;
     }
-
-    updateDOM(dom: HTMLElement) {
-      const previous = options.widgets.callout(dom);
-      if (!previous || previous.source !== this.presentation.source) return false;
-      options.widgets.setCallout(dom, this.presentation);
-      options.reuseCounts.callout += 1;
+    updateDOM(root: HTMLElement) {
+      const button = root.querySelector("button");
+      const label = root.querySelector(".cm-live-callout-role-label");
+      if (!!button !== this.foldable || !!label !== !!this.label) return false;
+      root.dataset.calloutFrom = String(this.from);
+      if (button) {
+        button.textContent = this.collapsed ? "▸" : "▾";
+        button.setAttribute("aria-expanded", String(!this.collapsed));
+        button.setAttribute("aria-label", `${localized("Callout")}: ${this.title || this.label}`);
+      }
+      if (label) label.textContent = `${this.label} `;
       return true;
     }
-
-    ignoreEvent(event: Event) {
-      const foldMark = event.target instanceof Element
-        && event.target.closest(".scholium-callout-fold-mark");
-      return foldMark !== null || event.type !== "mousedown";
-    }
+    ignoreEvent() { return true; }
   }
 
-  function calloutDecorations(
-    state: EditorState,
-    presentations: readonly CalloutPresentation[],
-  ) {
+  function calloutDecorations(state: EditorState,
+    presentations: readonly CalloutPresentation[], folds: ReadonlyMap<number, boolean>) {
     const selections = options.selection.selection(state).ranges;
-    return Decoration.set(presentations.flatMap((presentation): Range<Decoration>[] => {
-      const active = selections.some((range) => selectionActivatesSyntax(range, presentation));
-      if (active) return [];
-      return [Decoration.replace({
-        widget: new CalloutWidget(presentation),
-        block: true,
-      }).range(presentation.from, presentation.to)];
-    }), true);
+    const decorations: Range<Decoration>[] = [];
+    for (const presentation of presentations) {
+      const header = state.doc.lineAt(presentation.from);
+      const opening = calloutHeader(header.text);
+      if (!opening) continue;
+      const foldable = !!opening[3];
+      const bodyActive = selections.some(range => range.empty
+        ? range.head > header.to && range.head <= presentation.to
+        : range.from < presentation.to && range.to > header.to);
+      const collapsed = foldable && !bodyActive
+        && (folds.get(presentation.from) ?? opening[3] === "-");
+      const label = resolveCallout(opening[2]).label;
+      if (foldable || label) decorations.push(Decoration.widget({
+        widget: new CalloutHeadingWidget(presentation.from, label, opening[4], foldable, collapsed),
+        side: 1,
+      }).range(header.to - opening[4].length));
+      if (collapsed) decorations.push(Decoration.line({class: "cm-live-callout-end"}).range(header.from));
+      if (collapsed && presentation.to > header.to) {
+        decorations.push(Decoration.replace({}).range(header.to, presentation.to));
+      }
+    }
+    return Decoration.set(decorations, true);
   }
 
-  function buildCallout(state: EditorState): LiveCalloutProjectionState {
+  function buildCallout(state: EditorState, folds: ReadonlyMap<number, boolean> = new Map()): LiveCalloutProjectionState {
     const index = options.projections.index(state);
     if (index.hasUnclosedFrontmatter) {
       return {
@@ -307,13 +231,15 @@ export function createLiveStructuredBlockProjections(options: {
         hasConstructs: true,
         presentations: [],
         active: false,
+        folds,
       };
     }
     const active = index.callouts.some((presentation) =>
       options.selection.selection(state).ranges.some((range) =>
         selectionActivatesSyntax(range, presentation)));
     return {
-      decorations: calloutDecorations(state, index.callouts),
+      decorations: calloutDecorations(state, index.callouts, folds),
+      folds,
       hasConstructs: index.callouts.length > 0,
       presentations: index.callouts,
       active,
@@ -323,11 +249,27 @@ export function createLiveStructuredBlockProjections(options: {
   const calloutField = StateField.define<LiveCalloutProjectionState>({
     create: buildCallout,
     update(previous, transaction) {
-      if (transaction.docChanged || transactionChangedSyntaxTree(transaction)) {
-        return buildCallout(transaction.state);
+      let folds = new Map(previous.folds);
+      if (transaction.docChanged) {
+        const current = options.projections.index(transaction.state).callouts;
+        folds = new Map([...folds].flatMap(([from, collapsed]) => {
+          const mapped = transaction.changes.mapPos(from);
+          const oldHeader = previous.presentations.find(item => item.from === from)?.source.split("\n", 1)[0];
+          const newHeader = current.find(item => item.from === mapped)?.source.split("\n", 1)[0];
+          // An authored header change supersedes a transient disclosure choice.
+          return newHeader !== undefined && oldHeader === newHeader ? [[mapped, collapsed] as const] : [];
+        }));
       }
-      if (!options.selection.changed(transaction.startState, transaction.state)) return previous;
-      return buildCallout(transaction.state);
+      let foldChanged = false;
+      for (const effect of transaction.effects) if (effect.is(setCalloutFold)) {
+        folds.set(effect.value.from, effect.value.collapsed);
+        foldChanged = true;
+      }
+      if (foldChanged || transaction.docChanged || transactionChangedSyntaxTree(transaction)
+        || options.selection.changed(transaction.startState, transaction.state)) {
+        return buildCallout(transaction.state, folds);
+      }
+      return previous;
     },
     provide: (field) => [
       EditorView.decorations.from(field, (value) => value.decorations),
@@ -340,7 +282,6 @@ export function createLiveStructuredBlockProjections(options: {
 
   return {
     tableExtension: tableField,
-    rawHTMLExtension: rawHTMLField,
     calloutExtension: calloutField,
   };
 }

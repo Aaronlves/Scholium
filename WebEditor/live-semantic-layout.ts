@@ -181,9 +181,6 @@ export function createLiveSemanticLayout(options: {
       line.from,
       lineQueryTo,
     )[0] ?? null;
-    const calloutActive = calloutPresentation !== null
-      && selection.selection(state).ranges.some((range) =>
-        selectionActivatesSyntax(range, calloutPresentation));
     const opening = calloutPresentation
       ? calloutHeader(calloutPresentation.source.split(/\r?\n/, 1)[0] ?? "")
       : null;
@@ -230,9 +227,10 @@ export function createLiveSemanticLayout(options: {
       classes.add("cm-live-blank-line");
       if (ownsCollapsedCaret) classes.add("cm-live-blank-line-active");
     }
-    if (calloutPresentation && calloutActive) {
+    if (calloutPresentation) {
       classes.add("cm-live-callout");
       classes.add("cm-live-callout-source");
+      classes.add(`cm-live-callout-role-${calloutIdentifier ?? "neutral"}`);
       classes.add(active ? "cm-live-callout-active-line" : "cm-live-callout-projected-line");
       if (state.doc.lineAt(calloutPresentation.from).number === line.number) {
         classes.add("cm-live-callout-start");
@@ -246,6 +244,8 @@ export function createLiveSemanticLayout(options: {
       }
       if (calloutIdentifier === "orient") classes.add("cm-live-callout-orient-source");
     }
+    if (blocks.some(block => block.kind === "displayMath")) classes.add("cm-live-math-source");
+    if (blocks.some(block => block.kind === "footnoteDefinition")) classes.add("cm-live-footnote-source");
     if (codeBlock) {
       classes.add("cm-live-codeblock");
       if (codeBlockActive) classes.add("cm-live-codeblock-active");
@@ -297,7 +297,7 @@ export function createLiveSemanticLayout(options: {
         if (line.to >= paragraph.to) classes.add("cm-live-paragraph-end");
       }
       if (quote) classes.add("cm-live-quote");
-      if (rule && !active) classes.add("cm-live-rule");
+      if (rule && outsideFrontmatter && !active) classes.add("cm-live-rule");
       if (list && listMarker) {
         classes.add("cm-live-list");
         if ((list.listDepth ?? 0) > 0) classes.add("cm-live-list-nested");
@@ -332,8 +332,11 @@ export function createLiveSemanticLayout(options: {
     const index = projections.index(state);
     if (index.hasUnclosedFrontmatter) return [];
     const ranges: Range<Decoration>[] = [];
-    const scanFrom = Math.max(0, Math.min(from, state.doc.length));
-    const scanTo = Math.max(scanFrom, Math.min(to, state.doc.length));
+    // The frontmatter field owns its closed source envelope. Markdown-looking
+    // YAML must not acquire headings, list rhythm or thematic-break geometry.
+    const scanFrom = Math.max(index.frontmatterRange?.to ?? 0, Math.min(from, state.doc.length));
+    const scanTo = Math.min(to, state.doc.length);
+    if (scanTo < scanFrom) return [];
     let line = state.doc.lineAt(scanFrom);
     while (line.from <= scanTo) {
       const presentation = semanticLinePresentation(state, line, index);

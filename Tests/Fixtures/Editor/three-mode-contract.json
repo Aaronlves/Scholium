@@ -329,10 +329,7 @@
       "level": "block",
       "readSelector": ".scholium-document > .scholium-mermaid",
       "editSelector": ".cm-live-mermaid-widget .scholium-mermaid",
-      "adapterStyleKeys": [
-        "margin-block-start",
-        "margin-block-end"
-      ],
+      "adapterStyleKeys": ["margin-block-start", "margin-block-end"],
       "expectation": "mustMatchReview"
     },
     {
@@ -367,12 +364,12 @@
       "id": "orientation-callout",
       "semanticRole": "callout",
       "sourceToken": "> [!orient] Reading route",
-      "visibleToken": "Orientation has no visible",
+      "visibleToken": "Orientation preserves",
       "level": "block",
       "readSelector": ".scholium-document > .scholium-callout-orient",
-      "editSelector": ".cm-live-callout-widget.scholium-callout-orient",
+      "editSelector": ".cm-line.cm-live-callout-role-orient",
       "adapterStyleKeys": ["margin-block-start", "margin-block-end"],
-      "expectation": "mustMatchReview"
+      "expectation": "permittedEditingDifference"
     },
     {
       "id": "statement-callout",
@@ -381,9 +378,9 @@
       "visibleToken": "Synthetic claim",
       "level": "block",
       "readSelector": ".scholium-document > .scholium-callout-state",
-      "editSelector": ".cm-live-callout-widget.scholium-callout-state",
+      "editSelector": ".cm-line.cm-live-callout-role-state",
       "adapterStyleKeys": ["margin-block-start", "margin-block-end"],
-      "expectation": "mustMatchReview"
+      "expectation": "permittedEditingDifference"
     },
     {
       "id": "display-math",
@@ -423,9 +420,9 @@
       "visibleToken": "Raw HTML remains",
       "level": "block",
       "readSelector": ".scholium-document pre.raw-html",
-      "editSelector": ".cm-live-raw-html-widget",
+      "editSelector": ".cm-line.cm-live-raw-html",
       "adapterStyleKeys": ["margin-block-start", "margin-block-end"],
-      "expectation": "mustMatchReview"
+      "expectation": "modeSpecificExactSource"
     }
   ]
 }
