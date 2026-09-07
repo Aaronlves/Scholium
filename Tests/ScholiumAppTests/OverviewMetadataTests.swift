@@ -112,4 +112,86 @@ struct OverviewMetadataTests {
         #expect(inputs(host).filter { $0.identity.hasSuffix(".family") }.count == 1)
         #expect(given.stringValue == "Ada")
     }
+    @Test("Narrow Metadata reflows long values without replacing the active native editor")
+    func nativeFieldReflow() throws {
+        _ = NSApplication.shared
+        let host = MetadataFieldsHost()
+        let text = String(repeating: "A long source title with mixed 中文 content. ", count: 8)
+        host.session.configure(note: .syntheticPreview(relativePath: "Fixture.md", rawContent: "# Fixture\n",
+            vaultRole: .sourceCorpus, managedMetadata: ["title": .string(text)]),
+            catalog: .builtIn, visible: ["title", "authors", "publication_date", "type"])
+        host.refresh()
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 800), styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = host
+        defer { window.contentView = nil }
+        host.layoutSubtreeIfNeeded()
+        let title = try #require(descendants(host, as: MetadataTextField.self).first { $0.key == "title" })
+        let wideHeight = title.frame.height
+        #expect(window.makeFirstResponder(title))
+        let editor = try #require(title.currentEditor())
+        window.setContentSize(NSSize(width: 280, height: 800))
+        host.layoutSubtreeIfNeeded()
+        #expect(title.currentEditor() === editor)
+        #expect(title.stringValue == text)
+        #expect(title.frame.height > wideHeight)
+        for field in descendants(host, as: MetadataTextField.self) {
+            // AppKit alignment rects exclude native text-cell optical insets.
+            let frame = field.convert(field.alignmentRect(forFrame: field.bounds), to: host)
+            #expect(frame.minX >= 0 && frame.maxX <= host.bounds.width + 0.5, Comment(rawValue: "\(field.identity): \(frame), host \(host.bounds)"))
+            #expect(field.placeholderString?.isEmpty == false)
+        }
+    }
+
+    @Test("Adding an empty author focuses its name without writing placeholder Metadata")
+    func addAuthorKeepsEmptyInputLocal() async throws {
+        _ = NSApplication.shared
+        let host = MetadataFieldsHost()
+        host.session.configure(note: .syntheticPreview(relativePath: "Fixture.md", rawContent: "# Fixture\n", vaultRole: .sourceCorpus),
+            catalog: .builtIn, visible: ["authors"])
+        var writes = 0
+        host.session.save = { _, _ in writes += 1; return DocumentFingerprint(content: "unexpected") }
+        host.refresh()
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 320, height: 400), styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = host
+        defer { window.contentView = nil }
+        let add = try #require(descendants(host, as: MetadataActionButton.self).first { $0.identifier?.rawValue == "authors.add" })
+        add.performClick(nil)
+        host.layoutSubtreeIfNeeded()
+        let families = descendants(host, as: MetadataTextField.self).filter { $0.identity.hasSuffix(".family") }
+        #expect(families.count == 2)
+        #expect(families.last?.currentEditor() != nil)
+        let newGiven = try #require(descendants(host, as: MetadataTextField.self).last { $0.identity.hasSuffix(".given") })
+        #expect(window.makeFirstResponder(newGiven))
+        let editor = try #require(newGiven.currentEditor() as? NSTextView)
+        editor.insertText("OnlyGiven", replacementRange: NSRange(location: NSNotFound, length: 0))
+        editor.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
+        #expect(descendants(host, as: MetadataTextField.self).filter { $0.identity.hasSuffix(".family") }.count == 1)
+        #expect(families.first?.currentEditor() != nil)
+        try await host.session.flush()
+        #expect(writes == 0)
+    }
+
+    @Test("Boolean Metadata uses an accessible native checkbox and commits its selected value")
+    func nativeBooleanField() async throws {
+        let host = MetadataFieldsHost()
+        let catalog = NoteMetadataCatalog(customFieldsByRole: [
+            .paperAnalysis: [.init(key: "checked", valueKind: .boolean, label: "Checked")]
+        ])
+        host.session.configure(note: .syntheticPreview(relativePath: "Fixture.md", rawContent: "# Fixture\n",
+            vaultRole: .sourceCorpus, managedMetadata: ["checked": .boolean(true)]), catalog: catalog, visible: ["checked"])
+        var stored: [String: YAMLValue] = [:]
+        host.session.save = { values, _ in stored = values; return DocumentFingerprint(content: "saved") }
+        host.refresh()
+        let checkbox = try #require(descendants(host, as: MetadataToggleButton.self).first)
+        #expect(checkbox.state == .on)
+        #expect(checkbox.accessibilityLabel() == "Checked")
+        checkbox.performClick(nil)
+        try await host.session.flush()
+        #expect(stored["checked"] == .boolean(false))
+    }
+
+    private func descendants<T: NSView>(_ view: NSView, as type: T.Type) -> [T] {
+        (view as? T).map { [$0] } ?? view.subviews.flatMap { descendants($0, as: type) }
+    }
+
 }

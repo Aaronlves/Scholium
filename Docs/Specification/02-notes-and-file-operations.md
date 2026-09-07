@@ -67,8 +67,8 @@ places the selection in that definition without renumbering existing forms.
 Inline Footnote inserts `^[…]` at each selection and retains selected text as
 its content. Each invocation is one source transaction and one Undo event.
 
-Statistics are derived from the current unsaved body or selection, are never stored, and
-use §18.4's Outline Inspector presentation. They report language-aware word tokens, Han
+Statistics are derived from the current unsaved body or selection and are never stored.
+Their interface entry is currently withdrawn (§18.4). They report language-aware word tokens, Han
 characters, and Unicode grapheme clusters with and without whitespace while excluding
 YAML, delimiters, and link destinations. Word counts use the platform tokenizer rather
 than treating every script as Latin. Spelling and grammar use installed macOS text

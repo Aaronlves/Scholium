@@ -169,6 +169,7 @@ public protocol DiscoveryUseCases: Sendable {
     func snapshot() async throws -> WorkspaceDiscoverySnapshot
     func refresh() async throws -> WorkspaceSnapshot
     func search(_ request: SearchRequest) async throws -> SearchResponse
+    func relatedContent(_ request: RelatedContentRequest) async throws -> RelatedContentResponse
     func links(
         for note: VaultQualifiedNoteID,
         direction: WorkspaceLinkDirection

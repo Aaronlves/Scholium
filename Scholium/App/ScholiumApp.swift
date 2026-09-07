@@ -1383,6 +1383,12 @@ private struct ScholiumSidebarCommandContent: View {
         .disabled(workspaceWindowActions == nil)
         Button("Chat") { workspaceWindowActions?.activateSidebar(.chat) }
             .disabled(appState?.workspaceAssignment == nil)
+        Button("Find Related Material") {
+            appState?.researchController.selectInspectorMode(.related)
+            workspaceWindowActions?.setResearchInspectorVisible(true)
+            appState?.findRelatedMaterials()
+        }
+        .disabled(appState?.currentNote == nil)
         Button("Add Selection to Chat") {
             Task { await appState?.addCurrentSelectionToChat() }
             if appState?.shellState.sidebarContent != .chat || appState?.shellState.libraryVisible != true {
@@ -1391,12 +1397,6 @@ private struct ScholiumSidebarCommandContent: View {
         }
         .keyboardShortcut("l", modifiers: [.command, .shift])
         .disabled(appState?.currentNote == nil)
-        Button("Outline") {
-            appState?.researchInspectorMode = .outline
-            workspaceWindowActions?.setResearchInspectorVisible(true)
-        }
-        .scholiumActivationPointer()
-        .disabled(workspaceWindowActions == nil || appState?.canActivateOutline != true)
         Button(
             ScholiumL10n.dynamicString(
                 appState?.researchInspectorVisible == true
@@ -2096,10 +2096,6 @@ final class WindowModel: ObservableObject {
 
     var chatController: AgentChatController? {
         workspaceAssignment.map { workspaceStore.chatRegistry.controller(for: $0.id) }
-    }
-
-    var canActivateOutline: Bool {
-        currentNote != nil
     }
 
     var canToggleResearchInspector: Bool {
@@ -5607,7 +5603,8 @@ final class WindowModel: ObservableObject {
     func openWorkspaceReference(
         _ reference: VaultNoteReference,
         line: Int? = nil,
-        mode: NotePresentationMode? = nil
+        mode: NotePresentationMode? = nil,
+        inspectorMode: ResearchInspectorMode? = nil
     ) async {
         let navigationMode = mode ?? presentedDocumentMode
         enqueueDocumentTransition(preservingCurrentEditorState: false) { [weak self] in
@@ -5616,6 +5613,7 @@ final class WindowModel: ObservableObject {
                 reference,
                 tabActivation: .place(.replaceSelected)
             )
+            if let inspectorMode { self.researchController.selectInspectorMode(inspectorMode) }
             self.pendingSourceRange = nil
             self.pendingSourceLine = line.map { max(1, $0) }
             // Read-only destinations already enter Review through DocumentController.

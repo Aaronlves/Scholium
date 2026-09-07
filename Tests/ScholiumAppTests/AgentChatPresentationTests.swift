@@ -9,12 +9,15 @@ enum NativeChatSourceScope {
   static let paths: Set<String> = [
     "Scholium/Views/Sidebar/AgentChatView.swift",
     "Scholium/Views/Sidebar/AgentChatMarkdown.swift",
+    "Scholium/Views/Sidebar/AgentChatMaterialChip.swift",
+    "Scholium/Views/Sidebar/AgentChatComposerInput.swift",
   ]
 }
 
 /// Shared native sidebar presentation is allowed to use system typography and color.
 enum NativeSidebarSourceScope {
   static let paths: Set<String> = [
+    "Scholium/Views/Sidebar/RelatedMaterialsView.swift",
     "Scholium/UI/Components/ScholiumSidebarHeaderControl.swift",
     "Scholium/Views/Sidebar/SidebarView.swift",
   ]

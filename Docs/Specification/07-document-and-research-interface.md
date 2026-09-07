@@ -11,8 +11,7 @@ Triptych workspace session owns one current mode, starting in Edit and retained
 across its Note/tab changes. Switching workspace restores that workspace's
 selection. Mode state never becomes a Note, vault, or Markdown fact.
 
-Review owns read selection; Edit owns formatting. Selection remains available
-to Outline Inspector statistics without creating a separate annotation or
+Review owns read selection; Edit owns formatting. Selection remains source-local without creating a separate annotation or
 collaboration object.
 
 Managed New Note opens Edit at the exact body start after durable commit.
@@ -200,30 +199,20 @@ Edit prose. Ordinary prose follows language-aware line-breaking rules, and
 closing punctuation is not left alone at a visual-line start merely because it
 follows an interactive inline projection.
 
-Outline is a persistent native heading tree in the document Inspector.
-Its hierarchy comes from the current source, including unsaved edits; changing
-headings refreshes the projection without rewriting Markdown. Clicking a heading
-locates it while keeping the Inspector open. Up/Down selects and locates a section
-without taking focus from the outline; Left/Right controls disclosure, and Return
-enters the located document position. Hover never changes the current section.
-Current-section presentation follows the caret in Edit/Source and the reading
-anchor in Review. It never defaults to the first heading before that heading.
-No Document and No Headings remain distinct. There is no second outline popover.
-Statistics stay centered at the bottom of the Outline Inspector while its tree
-scrolls independently. Body scope is implicit; `Selection` appears only for a
-nonempty selection. One number is shown using the remembered machine-local
-choice among Words, Characters with Spaces, Characters without Spaces, and Han
-Characters. The native menu shows exact measures and values, with a checkmark
-for the current choice. It has no separate statistics heading or decorative card.
+Outline and document statistics currently have no interface entry, including
+Inspector, toolbar, menus and popovers.
 Toolbar placement and available commands belong to §18.2. Document Text Size
 is per-window and source-neutral.
 
 About edits Metadata directly through a quiet, ordered list without category
-headings, an alternate editor, or Save/Cancel controls. Labels align to one
-trailing edge, values to one leading edge. Empty configured fields remain
-editable. Short fields stay on one row; longer text grows within its value
-column. Editing shows a native field bezel and focus treatment without replacing
-the retained input control; hover and selection remain system-owned.
+headings, an alternate editor, or Save/Cancel controls. Labels align to one trailing edge, values to one leading edge. The label column
+adapts to localized labels and available width; long labels wrap, preserving
+space for values. Configured empty fields remain visible with meaningful hints.
+Editable text fields have no permanent filled bezel; their values remain the
+visual subject. Direct editing retains native input, selection and focus treatment
+without replacing controls. Read-only values remain selectable text. Short fields stay on one row; longer text grows within its value column.
+Choices use native pop-up controls and Boolean values use native checkboxes;
+hover, selection and disabled appearance remain system-owned.
 
 Native controls remain mounted during editing. Tab and Shift-Tab use the native
 key loop across text, choices, creator/list actions and the next field; rapid
@@ -233,8 +222,9 @@ uses Command-Return. Escape cancels uncommitted input. Native text Undo remains
 available while typing, and committed Metadata changes have revision-checked
 Undo/Redo. No success toast or confirmation button is added.
 
-Creators use compact ordered name rows with adjacent add, remove and options
-controls. A name can use family/given fields or one literal field; conversion is
+Creators use compact ordered name rows with one label for the collection,
+a visible Add Author/Creator action after its rows, and persistent per-row
+options for removal and ordering. A name can use family/given fields or one literal field; conversion is
 explicit and never guesses how to split a name. Options expose secondary name
 parts and keyboard-accessible ordering. Empty placeholders create no value;
 incomplete nonempty names retain their draft and explain the error. Contributor
@@ -278,7 +268,7 @@ researcher disables or selectively re-enables managed copies.
 
 ## 18.5 Contextual research and Agent Changes
 
-Apparatus contains one trailing Inspector with **Outline**, **About** and **Links**.
+Apparatus contains one trailing Inspector with **About**, **Links**, and **Related Material**.
 Research questions and continuing discussion are ordinary Works Notes (§4 and
 §8.6), read and edited in the main Document. They have no dedicated Inspector,
 window, search category, or management commands.
@@ -311,11 +301,35 @@ and never changes Settlement. Direct Undo remains per eligible update and uses
 source preimage or Undo.
 
 An icon-only native single-choice group in the Inspector's toolbar selects
-Outline, About or Links; each icon retains its complete Help and accessibility
-name. Outline presents the current document heading tree and statistics.
+About, Links, or Related Material; each icon retains its complete Help and accessibility
+name. These panes share content-edge insets and top spacing, use system semantic
+control colors, and leave selection and interaction feedback to native controls.
 Pane content never repeats that selector. Each
 workspace retains its selection across Note and tab changes. Hiding Inspector
 moves no content elsewhere. Without a Document it presents No Document Selected.
+
+Related Material starts from an explicit selection in Edit or Source, including
+unsaved writing. Find from Selection and its View-menu route capture one fixed
+passage; moving the caret or opening a source does not replace it. A new request
+replaces that context; cancellation and Triptych departure prevent late publication.
+The pane uses §13's local paragraph retrieval over Analyses and Topics. Each quiet
+card leads with a readable paragraph, followed by its Note identity, role and actual
+wording-match reason. A Note may contribute several distinct paragraphs; metadata,
+a title or another paragraph matching cannot substitute for a matching paragraph.
+Raw Markdown, full paths and internal offsets are not standing card content.
+Matches are discovery leads, never support, objection, or correctness verdicts.
+Open Source locates the checked paragraph revision. Add to Chat stages the captured
+writing passage and that paragraph, retaining each identity, revision and locator,
+without sending or replacing the draft. Chat owns provider selection and transport;
+this handoff has no provider-specific configuration. Context attachments appear as
+compact material cards; activation reveals a read-only excerpt preview and source
+opening, while removal remains visible and keyboard-accessible. Preview uses readable
+text, while handoff preserves exact source. An earlier snapshot can open its current
+Note but never claims that an old offset still locates the same passage.
+Changed or unavailable sources cannot be passed as current excerpts. Empty,
+loading, cancelled, unavailable and omitted-source states retain their distinct
+meaning and an explicit retry route. Results and selection are disposable window
+state, with no new index, research record, or automatically inserted citation syntax.
 
 About contains, in order:
 

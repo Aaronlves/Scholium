@@ -158,7 +158,7 @@ struct ZoteroBindingPanelView: View {
                     .font(ScholiumTypography.interface(.sectionTitle, emphasis: .strong))
                 Text(headerDetail)
                     .font(ScholiumTypography.interface(.body))
-                    .scholiumForeground(.secondaryText)
+                    .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
             }
             Spacer()
         }
@@ -238,10 +238,10 @@ struct ZoteroBindingPanelView: View {
                             Text(hit.library.name)
                         }
                         .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.secondaryText)
+                        .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
                         Text(hit.item.key)
                             .font(ScholiumTypography.exact(.small))
-                            .scholiumForeground(.mutedText)
+                            .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
                             .accessibilityLabel("Zotero item key \(hit.item.key)")
                     }
                     .padding(.vertical, ScholiumGrid.Spacing.labelAccessoryGap)
@@ -309,7 +309,7 @@ struct ZoteroBindingPanelView: View {
                     }
                     Text("Zotero abstract, tags, citation key, collections, summary, keywords, and the Markdown body are not imported.")
                         .font(ScholiumTypography.interface(.small))
-                        .scholiumForeground(.secondaryText)
+                        .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(ScholiumGrid.Spacing.regionContentInset)
@@ -339,7 +339,7 @@ struct ZoteroBindingPanelView: View {
                     .font(ScholiumTypography.exact(.small))
             }
             .font(ScholiumTypography.interface(.small))
-            .scholiumForeground(.secondaryText)
+            .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
         }
         .textSelection(.enabled)
         .accessibilityElement(children: .combine)
@@ -376,10 +376,10 @@ struct ZoteroBindingPanelView: View {
                        let retained = conflictPlan.originalFields[field.key] {
                         Text("Current: \(displayValue(retained, key: field.key))")
                         Text("Zotero: \(displayValue(field.value, key: field.key))")
-                            .scholiumForeground(.secondaryText)
+                            .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
                     } else {
                         Text(displayValue(field.value, key: field.key))
-                            .scholiumForeground(.secondaryText)
+                            .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
                     }
                 }
                 .font(ScholiumTypography.interface(.small))

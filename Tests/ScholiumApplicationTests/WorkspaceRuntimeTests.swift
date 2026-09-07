@@ -443,6 +443,20 @@ struct WorkspaceRuntimeTests {
         #expect(noteHits.contains {
             $0.vaultID == fixture.analysisNoteID.vaultID
         })
+        let related = try await handle.discovery.relatedContent(.init(seed: .init(
+            noteID: fixture.analysisNoteID, source: "# Unsaved\n\nfreedom and agency",
+            focuses: [.init(kind: .selectedPassage, text: "agency")]
+        )))
+        #expect(related.state == .current)
+        #expect(related.passages.count == 1)
+        #expect(related.passages.first?.displayText == "A topic note about agency.")
+        #expect((related.identityCandidates + related.lexicalCandidates).allSatisfy {
+            $0.note != fixture.analysisNoteID
+        })
+        await #expect(throws: (any Error).self) {
+            try await handle.discovery.relatedContent(.init(seed: .init(
+                noteID: .init(vaultID: UUID(), relativePath: "Private.md"), source: "freedom")))
+        }
         #expect(try await runtime.availableWorkspaces().map(\.id) == [fixture.assignment.id])
 
         await runtime.shutdown()

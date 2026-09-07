@@ -28,9 +28,9 @@ import AppKit
         self.cell = cell
         delegate = self
         isEditable = true; isSelectable = true
-        isBordered = false; isBezeled = true; drawsBackground = false
+        isBordered = false; isBezeled = false; drawsBackground = false
         bezelStyle = .roundedBezel
-        font = .systemFont(ofSize: ScholiumTypography.controlPointSize)
+        font = .systemFont(ofSize: NSFont.systemFontSize)
         textColor = ScholiumNativeColorRole.label.nsColor
         translatesAutoresizingMaskIntoConstraints = false
         setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -60,10 +60,8 @@ import AppKit
         return accepted
     }
     private func updateSurface() {
-        drawsBackground = hasInputFocus
         needsDisplay = true
         noteFocusRingMaskChanged()
-        (superview as? MetadataFieldRow)?.refreshActions()
     }
 
     func controlTextDidChange(_ notification: Notification) {
@@ -88,6 +86,7 @@ import AppKit
             textView.string = representedValue
             textView.setSelectedRange(NSRange(location: 0, length: (representedValue as NSString).length))
             clearDraftUndo()
+            if let host, !isDescendant(of: host) { host.focusFirstInput(for: key) }
             return true
         }
         if command == #selector(NSResponder.insertNewline(_:)) {
@@ -108,10 +107,6 @@ import AppKit
 }
 
 @MainActor private final class MetadataTextCell: NSTextFieldCell {
-    override func draw(withFrame cellFrame: NSRect, in controlView: NSView) {
-        if owner?.hasInputFocus == true { super.draw(withFrame: cellFrame, in: controlView) }
-        else { drawInterior(withFrame: cellFrame, in: controlView) }
-    }
     weak var owner: MetadataTextField?
     var editor: MetadataFieldEditor?
     override func fieldEditor(for controlView: NSView) -> NSTextView? {

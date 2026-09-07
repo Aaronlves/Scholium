@@ -683,6 +683,11 @@ struct FrontendArchitectureTests {
             )
             if NativeSettingsSourceScope.paths.contains(path) {
                 #expect(!source.contains("NSColor.system"))
+            } else if path == "Scholium/Views/Sidebar/OverviewMetadataFields.swift" {
+                // One native field-validation error, never document or brand ink.
+                #expect(source.contains(".systemRed"))
+                #expect(rawFunctionalColor.numberOfMatches(in: source,
+                    range: NSRange(source.startIndex..<source.endIndex, in: source)) == 1)
             } else if path == "Scholium/Views/Note/DocumentFindPanel.swift" {
                 #expect(source.contains(".foregroundStyle(.red)"))
                 #expect(rawFunctionalColor.numberOfMatches(
@@ -1144,10 +1149,7 @@ struct FrontendArchitectureTests {
             appSource.contains(
                 "appState?.canToggleResearchInspector != true"
             ))
-        #expect(
-            appSource.contains(
-                "appState?.canActivateOutline != true"
-            ))
+        #expect(!appSource.contains("canActivateOutline"))
         #expect(!toolbarSource.contains("glassEffect"))
         #expect(toolbarSource.contains("item.isBordered = true"))
         #expect(toolbarSource.contains("item.style = .plain"))
@@ -3294,9 +3296,7 @@ struct FrontendArchitectureTests {
 
         #expect(viewCommands.contains("Button(\"Library\")"))
         #expect(viewCommands.contains("Button(\"Chat\")"))
-        #expect(viewCommands.contains("Button(\"Outline\")"))
-        #expect(viewCommands.contains("appState?.researchInspectorMode = .outline"))
-        #expect(viewCommands.contains("workspaceWindowActions?.setResearchInspectorVisible(true)"))
+        #expect(!viewCommands.contains("Button(\"Outline\")"))
         #expect(
             viewCommands.contains(
                 "workspaceWindowActions?.activateSidebar(.chat)"
@@ -3689,9 +3689,9 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        // The right Outline Inspector owns headings; the toolbar only navigates.
+        // Document information remains a source-neutral derived projection.
         let outlineSource = try String(contentsOf: repository.appendingPathComponent(
-            "Scholium/Views/Sidebar/DocumentOutlineInspector.swift"), encoding: .utf8)
+            "Scholium/Views/Sidebar/DocumentInformationProjection.swift"), encoding: .utf8)
         #expect(!toolbarSource.contains("workspaceSnapshot?.headings"))
         #expect(!outlineSource.contains("MarkdownSemanticDocument("))
         #expect(!toolbarSource.contains("MarkdownSemanticDocument("))

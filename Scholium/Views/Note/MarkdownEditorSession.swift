@@ -4,6 +4,14 @@ import ScholiumContracts
 import SwiftUI
 import WebKit
 
+struct MarkdownSourceSelectionSnapshot: Sendable {
+    let source: String
+    let excerpt: String
+    let sourceRange: SearchSourceRange
+    var line: Int { sourceRange.line }
+}
+
+
 struct MarkdownEditorPresentationState: Equatable, Sendable {
     enum DocumentPhase: Equatable, Sendable {
         case unavailable
@@ -845,7 +853,7 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         try await currentTextSnapshot(for: expectedDocumentID).text
     }
 
-    func chatSelection() async throws -> (source: String, excerpt: String, line: Int) {
+    func selectedSourceSnapshot() async throws -> MarkdownSourceSelectionSnapshot {
         guard !isComposing, isReady, isLoaded, let webView else { throw SessionError.unavailable }
         let epoch = requestEpoch, identity = documentID
         let result = try await send(.queryText, in: webView)
@@ -858,7 +866,13 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
               let range = Range(NSRange(location: lower, length: upper - lower), in: source) else {
             throw SessionError.invalidResult
         }
-        return (source, String(source[range]), 1 + source[..<range.lowerBound].utf8.filter { $0 == 10 }.count)
+        let native = source as NSString
+        let sourceRange = SearchSourceRange(utf16LowerBound: lower, utf16UpperBound: upper,
+            line: 1 + source[..<range.lowerBound].utf8.filter { $0 == 10 }.count,
+            column: lower - native.lineRange(for: NSRange(location: lower, length: 0)).location + 1,
+            endLine: 1 + source[..<range.upperBound].utf8.filter { $0 == 10 }.count,
+            endColumn: upper - native.lineRange(for: NSRange(location: upper, length: 0)).location + 1)
+        return MarkdownSourceSelectionSnapshot(source: source, excerpt: String(source[range]), sourceRange: sourceRange)
     }
 
     func currentTextSnapshot(

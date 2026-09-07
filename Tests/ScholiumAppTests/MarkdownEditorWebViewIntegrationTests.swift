@@ -32,7 +32,9 @@ struct MarkdownEditorWebViewIntegrationTests {
         harness.session.revealSourceRange(fromUTF16: try #require(map.editorUTF16Offset(forSourceUTF16Offset: lower)), toUTF16: expectedHead)
         try await harness.waitUntilSelection(head: expectedHead, stage: "chat selection")
         let beforeGeneration = harness.session.generation
-        let snapshot = try await harness.session.chatSelection()
+        let snapshot = try await harness.session.selectedSourceSnapshot()
+        #expect(snapshot.sourceRange.utf16LowerBound == lower)
+        #expect(snapshot.sourceRange.utf16UpperBound == upper)
         #expect(snapshot.source == unsaved && snapshot.excerpt == excerpt && snapshot.line == 3)
         #expect(harness.session.generation == beforeGeneration && harness.session.isDirty)
         #expect(try await harness.session.currentText(for: harness.documentID) == unsaved)

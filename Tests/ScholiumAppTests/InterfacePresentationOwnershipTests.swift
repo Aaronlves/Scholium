@@ -19,8 +19,8 @@ struct InterfacePresentationOwnershipTests {
                              "Scholium/Views/Sidebar/OverviewNotificationsView.swift": 1,
                              "Scholium/Views/Sidebar/ResearchInspectorContentView.swift": 2,
                              "Scholium/Views/Note/DocumentFindPanel.swift": 3,
-                             "Scholium/Views/Sidebar/DocumentOutlineInspector.swift": 1,
-                             "Scholium/Views/Sidebar/AgentChatView.swift": 7],
+                             "Scholium/Views/Sidebar/AgentChatView.swift": 6,
+                             "Scholium/Views/Sidebar/AgentChatMaterialChip.swift": 3],
             Comment(rawValue: diagnostic(for: directStyles)))
     let menuStyles = try occurrenceInventory(
       pattern: #"\.menuStyle\s*\(\s*\."#, extensions: ["swift"]
@@ -32,7 +32,6 @@ struct InterfacePresentationOwnershipTests {
                            "Scholium/Views/Sidebar/OverviewAttachmentsView.swift": 2,
                            "Scholium/Views/Sidebar/ResearchInspectorContentView.swift": 1,
                            "Scholium/Views/Note/DocumentFindPanel.swift": 1,
-                           "Scholium/Views/Sidebar/DocumentOutlineInspector.swift": 1,
                            "Scholium/Views/Sidebar/AgentChatView.swift": 1],
             Comment(rawValue: diagnostic(for: menuStyles)))
     let prominentStyles = try occurrenceInventory(
@@ -49,6 +48,7 @@ struct InterfacePresentationOwnershipTests {
     let tintOwners = try occurrenceInventory(pattern: #"\.tint\s*\("#, extensions: ["swift"])
     #expect(tintOwners == [
       "Scholium/Views/Sidebar/AgentChatView.swift": 1,
+      "Scholium/Views/Sidebar/AgentChatMaterialChip.swift": 1,
       "Scholium/App/ScholiumApp.swift": 3,
       "Scholium/UI/Components/ScholiumButtons.swift": 3,
       "Scholium/UI/Components/ScholiumSidebarHeaderControl.swift": 1,
@@ -58,7 +58,6 @@ struct InterfacePresentationOwnershipTests {
       "Scholium/Views/SearchWorkspaceView.swift": 1,
       "Scholium/Views/Sidebar/ZoteroBindingPanelView.swift": 1,
       "Scholium/Views/Note/DocumentFindPanel.swift": 1,
-      "Scholium/Views/Sidebar/DocumentOutlineInspector.swift": 1,
       "Scholium/Views/WorkspaceSetupView.swift": 1,
     ], Comment(rawValue: diagnostic(for: tintOwners)))
   }
@@ -162,7 +161,6 @@ struct InterfacePresentationOwnershipTests {
       trackingAreas == [
         "Scholium/UI/Foundation/ScholiumDesignSystem.swift": 1,
         "Scholium/Views/Note/DocumentFloatingSurfaceController.swift": 1,
-        "Scholium/Views/Sidebar/OverviewMetadataFields.swift": 1,
         "Scholium/UI/Components/NativeFloatingChoiceList.swift": 1,
       ],
       Comment(rawValue: diagnostic(for: trackingAreas))

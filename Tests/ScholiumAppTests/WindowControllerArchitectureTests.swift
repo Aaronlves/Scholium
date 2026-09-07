@@ -523,7 +523,6 @@ struct WindowControllerArchitectureTests {
             (nil as String?, ResearchInspectorMode.about),
             ("about", .about),
             ("links", .links),
-            ("outline", .outline),
             ("unknown", .about),
         ]
     )

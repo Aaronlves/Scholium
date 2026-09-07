@@ -105,6 +105,7 @@ struct ContentView: View {
                             isVisible: shellState.libraryVisible && shellState.sidebarContent == .chat,
                             addSelection: { Task { await appState.addCurrentSelectionToChat() } },
                             openReference: { appState.openChatReference($0) },
+                            openAttachment: { attachment in Task { await appState.openChatAttachment(attachment) } },
                             showInLibrary: { url in
                                 if appState.openChatReference(url) {
                                     if !shellState.libraryVisible || shellState.sidebarContent != .triptych {
@@ -815,15 +816,7 @@ struct ContentView: View {
 
     @ViewBuilder
     private var apparatusRegion: some View {
-        if shellState.inspector.mode == .outline {
-            DocumentOutlineInspector(projection: appState.documentInformation,
-                                     isVisible: shellState.inspector.isVisible) { line, focusesEditor in
-                if let descriptor = appState.currentDocumentDescriptor,
-                   appState.documentController.chromeProjection.mode != .read {
-                    appState.documentController.session(for: descriptor).editorSession.goToLine(line, focusesEditor: focusesEditor)
-                } else { appState.pendingSourceLine = line }
-            }
-        } else if let note = appState.currentNote {
+        if let note = appState.currentNote {
             ResearchInspectorView(
                 research: researchController,
                 note: note,
@@ -840,6 +833,17 @@ struct ContentView: View {
                 },
                 editSource: { reference, line in
                     appState.researchController.requestEditAtSource(reference, line: line)
+                },
+                findRelated: { appState.findRelatedMaterials() },
+                refreshRelated: { appState.refreshRelatedMaterials() },
+                openRelated: { card in Task { _ = await appState.useRelatedMaterial(card, inChat: false) } },
+                discussRelated: { card in
+                    Task {
+                        if await appState.useRelatedMaterial(card, inChat: true),
+                           !shellState.libraryVisible || shellState.sidebarContent != .chat {
+                            windowCoordinator.actions.activateSidebar(.chat)
+                        }
+                    }
                 }
             )
         } else {

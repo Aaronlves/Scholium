@@ -3,9 +3,9 @@ import Combine
 import Foundation
 
 enum ResearchInspectorMode: String, CaseIterable, Identifiable, Sendable {
-    case outline
     case about
     case links
+    case related
 
     var id: Self { self }
 
@@ -15,17 +15,17 @@ enum ResearchInspectorMode: String, CaseIterable, Identifiable, Sendable {
 
     var interfaceTitleResource: LocalizedStringResource {
         switch self {
-        case .outline: "Outline"
         case .about: "About"
         case .links: "Links"
+        case .related: "Related Material"
         }
     }
 
     var systemImage: String {
         switch self {
-        case .outline: "list.bullet"
         case .about: "info.circle"
         case .links: "link"
+        case .related: "text.magnifyingglass"
         }
     }
 }
@@ -56,6 +56,7 @@ final class ResearchController: ObservableObject {
     typealias IntentHandler = @MainActor (WindowIntent) -> Void
 
     let linksInspector = LinksInspectorSession()
+    let relatedMaterials = RelatedMaterialsSession()
 
     @Published private(set) var researchSnapshot: WorkspaceResearchSnapshot?
     @Published private(set) var agentChanges: [AgentChange]?
@@ -91,9 +92,11 @@ final class ResearchController: ObservableObject {
         snapshot: WorkspaceSnapshot? = nil
     ) {
         agentChangesRefreshTask?.cancel()
+        relatedMaterials.cancel()
         agentChangesRefreshGeneration &+= 1
         if self.capabilities?.triptychID != capabilities.triptychID {
             linksInspector.reset()
+            relatedMaterials.reset()
         }
         self.capabilities = capabilities
         agentChanges = nil
@@ -104,6 +107,7 @@ final class ResearchController: ObservableObject {
     }
 
     func unbind() {
+        relatedMaterials.reset()
         agentChangesRefreshTask?.cancel()
         agentChangesRefreshTask = nil
         agentChangesRefreshGeneration &+= 1
@@ -309,6 +313,7 @@ final class ResearchController: ObservableObject {
     }
 
     func reset() {
+        relatedMaterials.reset()
         transactionRecoveryRecords = []
         transactionRecoveryError = nil
         interruptedSaveRecoveries = []

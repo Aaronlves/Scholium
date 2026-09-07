@@ -3401,6 +3401,46 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         )
     }
 
+    func relatedContent(_ request: RelatedContentRequest) async throws -> RelatedContentResponse {
+        try requireActive()
+        guard currentSnapshot.phase.isComplete else {
+            throw ScholiumApplicationError.workspaceStillLoading(id)
+        }
+        // Current registered membership, not index presence, authorizes the seed.
+        guard currentSnapshot.discovery.catalog.notes.contains(where: {
+            $0.reference.vaultID == request.seed.noteID.vaultID &&
+            $0.reference.relativePath == request.seed.noteID.relativePath
+        }) else { throw CocoaError(.fileReadNoSuchFile) }
+        let response = try await services.searchIndex.relatedContent(request)
+        try requireActive()
+        try Task.checkCancellation()
+        guard response.state == .current || response.state == .empty else { return response }
+        var sources: [RelatedContentSource] = []
+        var seen = Set<VaultQualifiedNoteID>()
+        var omitted = 0
+        for candidate in response.identityCandidates + response.lexicalCandidates where seen.insert(candidate.note).inserted {
+            try Task.checkCancellation()
+            do {
+                let document = try await loadDocument(candidate.note)
+                guard document.fingerprint == candidate.fingerprint,
+                      document.rawContent.utf16.count <= RelatedContentContract.maximumSeedUTF16Count else {
+                    omitted += 1; continue
+                }
+                sources.append(.init(candidate: candidate, document: document))
+            } catch is CancellationError { throw CancellationError() }
+            catch { omitted += 1 }
+        }
+        let passages = try TriptychSearchIndex.relatedPassages(request, sources: sources)
+        try requireActive()
+        try Task.checkCancellation()
+        return RelatedContentResponse(requestID: response.requestID, seedFingerprint: response.seedFingerprint,
+            freshnessToken: response.freshnessToken, availability: response.availability,
+            state: omitted > 0 ? .partial : (passages.isEmpty ? .empty : .current),
+            identityCandidates: response.identityCandidates, lexicalCandidates: response.lexicalCandidates,
+            identityHasMore: response.identityHasMore, lexicalHasMore: response.lexicalHasMore,
+            passages: passages, omittedSourceCount: omitted)
+    }
+
     func search(_ request: SearchRequest) async throws -> SearchResponse {
         try requireActive()
         if let diagnostic = searchScopeDiagnostic(request) {

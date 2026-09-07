@@ -90,8 +90,7 @@ excludes archived conversations from sending. Machine path discovery and one-cli
 connection have one controller entry point; Settings receives the selected Triptych
 controller from its composition root through environment injection, without giving
 Settings a workspace runtime. The connection form and native file picker live only in
-the Settings surface. Outline moved to `DocumentOutlineInspector`; the left selector is
-Library/Chat. Window close flushes drafts; runtime shutdown persists input and closes
+the Settings surface. The left selector is Library/Chat; Inspector exposes About/Links. Window close flushes drafts; runtime shutdown persists input and closes
 its connection without global logout.
 
 Conversation-token bridge requests allow 590 seconds for researcher input and

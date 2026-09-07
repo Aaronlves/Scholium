@@ -22,8 +22,7 @@ Each configured window contains one native split view:
    Library contains Search and Analyses–Topics–Works navigation. Chat belongs
    to the Triptych and retains its conversation while the Document changes.
 2. **Document**: the selected Note or the restrained no-document state.
-3. **Apparatus**: the trailing Research Inspector's Outline, About and Links pages.
-   Outline contains current-document headings and statistics.
+3. **Apparatus**: the trailing Research Inspector's About and Links pages.
 
 Native split behavior governs resizing and collapse. Scholium requests the
 initial Inspector reveal but never continuously reasserts divider positions.
@@ -36,7 +35,7 @@ the chosen sidebar presentation. Choosing the other item switches content at the
 width; choosing the visible item again collapses the sidebar, leaving neither item
 selected. Selecting either item while collapsed reveals it. Both presentations retain
 their independent scrolling and disclosure while switching. Native split visibility
-remains authoritative, including menu and window-resize changes. Outline and Inspector
+remains authoritative, including menu and window-resize changes. Inspector controls
 use native enabled, selected, pressed, and disabled states, with no hand-tinted
 unavailable symbols or custom refusal animation. Chat is available with an open Triptych
 even without a Note. Chat inherits the Sidebar background with list-to-detail
@@ -59,7 +58,12 @@ connects automatically; sign-in appears only when needed. Connection editing bel
 Settings, with manual paths behind its advanced disclosure. Composer secondary controls
 are borderless; permission uses an icon with a checked menu and accessible current
 value. The circular Send button uses shared Accent; availability, keyboard sending and
-native state feedback remain authoritative. Back returns to conversations while work
+native state feedback remain authoritative. The whole message input rectangle, including
+whitespace, is editable; text clicks position the native caret. Return sends when
+available; Shift-Return or Option-Return inserts a newline. Marked-text Return belongs
+to the input method. Unavailable sending preserves the draft and selection, with a
+visible connection explanation when disconnected. Native selection and Undo remain
+within the current conversation. Back returns to conversations while work
 continues. User messages align trailing in content-sized shared-Accent bubbles with
 legible full-opacity text; the speaker label remains above and outside the bubble; Agent
 replies support natural long-form prose. Completed operations collapse into compact,
@@ -68,7 +72,7 @@ visible. A compact file/change count opens a popover, with exact comparisons ava
 only by explicit action. File rows distinguish recorded edits, reads, verified no-op
 updates and runtime reports. They describe observed operations, not current filesystem
 or acceptance state. Chat adds no permanent change-review pane or technical
-history-management task. Outline remains document-dependent in the Inspector. Toolbar
+history-management task. Inspector modes remain document-dependent. Toolbar
 validation and View menus derive availability from the same current window state. Native
 spacers express logical grouping; the system owns glass shapes, proximity effects, and
 transitions. This native state contract applies to every toolbar component, including
@@ -129,7 +133,7 @@ Menus follow task ownership:
 - **File**: Triptych/window, New Note, Import, Duplicate, Rename, Move, Reveal,
   and system-Trash actions.
 - **Edit**: editing, Find, and formatting.
-- **View**: Back/Forward, Library, Chat, Outline, Sidebar visibility, Search,
+- **View**: Back/Forward, Library, Chat, Sidebar visibility, Search,
   Advanced Search, Document mode/text size, and Inspector.
 - **Research**: Settle, and Agent Changes.
 - **Window**: standard windows plus Notifications.

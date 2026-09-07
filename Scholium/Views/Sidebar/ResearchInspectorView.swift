@@ -1,6 +1,13 @@
 import ScholiumContracts
 import SwiftUI
 
+enum ResearchInspectorLayout {
+    static let contentInset: CGFloat = 16
+    static let topInset: CGFloat = 16
+    static let sectionSpacing: CGFloat = 16
+    static let bottomInset: CGFloat = 20
+}
+
 struct ResearchInspectorView: View {
     @ObservedObject private var shellState: WindowShellState
 
@@ -12,6 +19,10 @@ struct ResearchInspectorView: View {
     let researchInspectorContentContext: ResearchInspectorContentContext
     let openReference: (VaultNoteReference, Int?) -> Void
     let editSource: (VaultNoteReference, Int) -> Void
+    let findRelated: () -> Void
+    let refreshRelated: () -> Void
+    let openRelated: (RelatedMaterialCard) -> Void
+    let discussRelated: (RelatedMaterialCard) -> Void
 
     init(
         research: ResearchController,
@@ -22,7 +33,11 @@ struct ResearchInspectorView: View {
         currentVaultID: UUID?,
         researchInspectorContentContext: ResearchInspectorContentContext,
         openReference: @escaping (VaultNoteReference, Int?) -> Void,
-        editSource: @escaping (VaultNoteReference, Int) -> Void
+        editSource: @escaping (VaultNoteReference, Int) -> Void,
+        findRelated: @escaping () -> Void,
+        refreshRelated: @escaping () -> Void,
+        openRelated: @escaping (RelatedMaterialCard) -> Void,
+        discussRelated: @escaping (RelatedMaterialCard) -> Void
     ) {
         self.research = research
         self.note = note
@@ -33,6 +48,10 @@ struct ResearchInspectorView: View {
         self.researchInspectorContentContext = researchInspectorContentContext
         self.openReference = openReference
         self.editSource = editSource
+        self.findRelated = findRelated
+        self.refreshRelated = refreshRelated
+        self.openRelated = openRelated
+        self.discussRelated = discussRelated
     }
 
     var body: some View {
@@ -45,6 +64,9 @@ struct ResearchInspectorView: View {
                 .allowsHitTesting(shellState.inspector.mode == .about)
                 .disabled(shellState.inspector.mode != .about)
                 .accessibilityHidden(shellState.inspector.mode != .about)
+            if shellState.inspector.mode == .related {
+                RelatedMaterialsView(session: research.relatedMaterials, find: findRelated, refresh: refreshRelated, open: openRelated, addToChat: discussRelated)
+            }
             if shellState.inspector.mode == .links {
                 ConnectionsInspectorView(
                     context: connectionsContext,
@@ -54,7 +76,7 @@ struct ResearchInspectorView: View {
         }
         .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .scholiumSurface(.apparatus)
-        .tint(ScholiumColorRole.accent.color)
+        .tint(nil as Color?)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("scholium.researchInspector")
     }

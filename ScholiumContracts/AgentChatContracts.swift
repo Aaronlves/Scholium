@@ -16,10 +16,11 @@ public struct AgentChatAttachment: Codable, Equatable, Identifiable, Sendable {
   public let text: String
   public let fingerprint: DocumentFingerprint
   public let sourceLine: Int?
+  public let sourceRange: SearchSourceRange?
 
   public init(
     noteID: UUID, vaultID: UUID, relativePath: String, text: String,
-    fingerprint: DocumentFingerprint, sourceLine: Int? = nil
+    fingerprint: DocumentFingerprint, sourceLine: Int? = nil, sourceRange: SearchSourceRange? = nil
   ) {
     id = UUID()
     self.noteID = noteID
@@ -27,7 +28,8 @@ public struct AgentChatAttachment: Codable, Equatable, Identifiable, Sendable {
     self.relativePath = relativePath
     self.text = text
     self.fingerprint = fingerprint
-    self.sourceLine = sourceLine
+    self.sourceLine = sourceRange?.line ?? sourceLine
+    self.sourceRange = sourceRange
   }
 }
 

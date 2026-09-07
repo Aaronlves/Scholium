@@ -101,8 +101,8 @@ Metadata interaction; §18.6 owns state/action wording. Verify:
   IME/text behavior. Authored headings retain semantic levels; Source exposes
   only exact authored hierarchy. Visible title/heading padding and blank lines
   remain pointer-addressable under §18.4.
-- Review selection, Edit formatting, statistics and system spelling/grammar
-  routes remain accessible. Statistics identify body versus nonempty selection.
+- Review selection, Edit formatting and system spelling/grammar
+  routes remain accessible.
 - Suggestions expose one listbox selection while retaining editor focus and
   yield immediately to marked text. Find exposes query, options, count,
   navigation, replacement availability and close in keyboard order, then restores
@@ -128,14 +128,19 @@ Metadata interaction; §18.6 owns state/action wording. Verify:
 §18.5 owns Inspector composition and passage navigation, Appendix A owns field
 configuration, and §§8 and 15 own integrations. Verify:
 
-- Outline/About/Links is one named single-choice native group with selection,
-  Help and keyboard traversal. Outline exposes hierarchy, current section and
-  disclosure, followed by statistics. No Document and No Headings are distinct.
+- About/Links/Related Material is one named single-choice native group with selection,
+  Help and keyboard traversal. No Document remains a distinct read-only state.
 - About exposes complete labels/values, contributor identity/order and the
   source-authority distinction. Configured empty fields remain discoverable;
   enlarged text and narrow width preserve values. Native field traversal,
   commit, cancellation, validation and revision-conflict repair remain associated
-  with the field. Hover-revealed actions stay in keyboard order without reflow.
+  with the field. Collection actions remain visible and stay in keyboard order without reflow.
+- Related Material exposes the captured selection, exact source identity, match
+  reason, Open Source and Add to Chat as named keyboard-accessible controls.
+  Compact Chat materials retain named preview, removal, full excerpt and source
+  actions without requiring hover; horizontal overflow remains keyboard reachable.
+  Loading, cancellation, empty and unavailable states remain readable; retrieval
+  never takes editor focus or changes its selection. Cards wrap at narrow widths.
 - Links direction, query and grouped occurrences are independently named.
   Group headings expose count/disclosure; passage activation is not a checked
   value or persistent selection. Source context and annotation remain available.

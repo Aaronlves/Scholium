@@ -395,6 +395,11 @@ public actor DiscoveryOperations: DiscoveryUseCases {
         return try await handle.search(request)
     }
 
+    public func relatedContent(_ request: RelatedContentRequest) async throws -> RelatedContentResponse {
+        let handle = try await reference.requireHandle()
+        return try await handle.relatedContent(request)
+    }
+
     public func links(
         for note: VaultQualifiedNoteID,
         direction: WorkspaceLinkDirection

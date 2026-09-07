@@ -37,7 +37,7 @@
   enablement route for presentation, toolbar/overflow validation, and action
   dispatch. There are no custom unavailable animations or Settlement icon tints.
   Invalidation cancels subscriptions and detaches controls; document/revision
-  changes close stale Settlement popovers. Outline and Inspector expose the
+  changes close stale Settlement popovers. Inspector controls expose the
   same no-document prerequisite through native disabled state and Help.
 
 ## Library, Document, and Inspector
@@ -137,11 +137,17 @@
   thumbnail access, system Quick Look with its native opening actions,
   and File-menu copy/reference. The old document
   strip and its editor/reader protocol routes are removed.
-- Inspector presents Outline, About and Links through a native rounded
+- Inspector simplification verification (2026-09-08): 154 owning checks passed,
+  followed by 7 toolbar checks including the two-segment control and its overflow
+  menu. Isolated QA confirmed About/Links, removal of the Outline menu and statistics
+  entry, light/dark appearance, empty/populated Links and About field Tab/Shift-Tab
+  traversal. Both panes share content spacing; ordinary controls use native colors.
+  Full assistive-technology and contrast/transparency/motion acceptance remains open.
+- Inspector presents About, Links and Related Material through a native rounded
   icon-only toolbar group. About exposes current About, file, Settlement,
   and applicable Zotero facts and operations. Metadata uses aligned native
-  fields with visible editing frames and explicit revision-bound recovery.
-  One NSGridView aligns labels and values at 13 points; creator rows retain
+  borderless text fields, native selection controls and explicit revision-bound recovery.
+  One NSGridView aligns system-sized labels and values with an adaptive label column; creator rows retain
   Last Name then First Name across editing, commit and cancellation. Escape
   restores the acknowledged value without replacing the native field editor.
   Zotero is separated by a divider; dates and Settlement appear in collapsed
@@ -190,13 +196,24 @@
   change does not clear or rewrite Settlement;
   only the researcher's explicit settlement action records a new revision.
 
+- Related Material (2026-09-08) captures explicit unsaved editor selections and
+  returns ranked exact paragraphs through the existing local index and source loader.
+  Cards retain separate paragraphs from one Note, show readable excerpts and open
+  checked source locations or stage provider-neutral Chat context without sending.
+  Focused Core, Contracts, Application and App checks cover paragraph boundaries,
+  Unicode/CRLF, ranking, cancellation, freshness, missing sources and context staging.
+  Isolated light/dark QA verified three relevant paragraphs, cross-vault navigation,
+  compact material previews, unchanged drafts and stale-source refusal/refresh.
+  Formal persistent paragraph citations and additional Agent runtime adapters are
+  not implemented; supported-minimum-width and human adaptation acceptance remain open.
+
 ## Agent Integration and Agent Changes
 
 - Settings includes **Agent Integration**, with copyable Codex and Claude Code
   MCP registration commands, live App/bridge/CLI availability, and a Finder
   route to the bundled Core Protocol Skill.
 - Optional in-app Codex Chat appears beside Library in the left sidebar.
-  Outline is a document Inspector mode alongside About/Links. Chat provides
+  Outline and statistics entries are withdrawn; Inspector modes share layout. Chat provides
   history, draft retention, connection/sign-in, permission, native approval
   requests, sending, steering, interruption and stable Note references. Idle chats
   can be archived/restored through temporary multi-selection from the list-header
@@ -211,7 +228,14 @@
   list-to-detail navigation and a glass composer. Speaker labels and alignment
   distinguish messages; user bubbles use the shared Accent at 30% opacity.
   Composer secondary icons are borderless and Send uses an Accent circle;
-  typography and controls remain native. Current activity remains visible; completed activity is expandable.
+  typography and controls remain native. A native multiline editor now owns the full
+  input rectangle and conversation-bound drafts. The 2026-09-08 input correction
+  passed 106 owning Chat/presentation checks, including native whitespace geometry,
+  wrapping, Return/Shift-Return and marked-text dispatch. Isolated QA verified blank
+  clicks, character-level caret placement, Undo, conversation draft retention,
+  disconnected Return preservation and one successful multiline send through the
+  simulated runtime. Installed-IME and real inference acceptance remain open.
+  Current activity remains visible; completed activity is expandable.
   An explicit file/count popover contains rows distinguishing recorded edits, read/no-op outcomes and runtime reports,
   with exact receipt comparison routes. Foundation Markdown intents retain
   paragraphs, quotes, lists, code and comparison rows. Consecutive operation

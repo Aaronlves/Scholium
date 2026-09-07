@@ -37,6 +37,28 @@ struct AgentChatTests {
     try! .init(requestID: request.requestID, result: .object(["status": .string("ok")]))
   }
 
+  @Test("Provider-neutral context staging preserves a draft, deduplicates snapshots and never sends")
+  func stageContext() async throws {
+    let root = try root()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let controller = AgentChatController(triptychID: UUID(), root: root) { request in success(request) }
+    try await eventually { controller.isLoaded }
+    controller.editDraft("My existing question")
+    let receiver: any AgentChatContextReceiving = controller
+    let attachment = AgentChatAttachment(noteID: UUID(), vaultID: UUID(), relativePath: "Source.md",
+        text: "exact source", fingerprint: .init(content: "exact source"), sourceLine: 3)
+    #expect(receiver.attachContext([attachment, attachment]))
+    let presentationID = controller.contextPresentationID
+    #expect(controller.selected?.attachments.count == 1)
+    #expect(controller.selected?.draft == "My existing question")
+    #expect(controller.selected?.messages.isEmpty == true)
+    #expect(controller.state == .disconnected)
+    #expect(receiver.attachContext([attachment]))
+    #expect(controller.contextPresentationID != presentationID)
+    #expect(controller.selected?.attachments.count == 1)
+    try await controller.flushPersistence()
+  }
+
   @Test("Ask waits, decline and cancellation cannot write; Full Access remains Triptych scoped")
   func permissionAdmission() async throws {
     let root = try root()

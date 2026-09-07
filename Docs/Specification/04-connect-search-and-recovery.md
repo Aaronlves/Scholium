@@ -108,6 +108,14 @@ direct-link, exact-identity, and lexical channels, preserving typed
 reasons and source fingerprints. It never synthesizes a relation, score,
 summary, or evidence claim. Search and Graph must share one complete source
 manifest before direct-link candidates are executable.
+Its paragraph stage reads fingerprint-matched candidate Notes and ranks authored
+paragraphs through the same normalization, seed terms and lexical matcher. An
+explicit focus must match the paragraph itself. Paragraphs retain exact source
+ranges and bytes plus a separate readable-text projection. Bounded per-Note and
+overall results preserve useful diversity without collapsing distinct passages.
+Repeated visible paragraphs in one Note appear once. A multi-term focus requires
+more than one matching term, avoiding incidental single-word filler. This creates
+no persistent paragraph IDs, embeddings or inferred relations.
 
 Ordinary Search returns bounded slices, filtered totals and continuations.
 

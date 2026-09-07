@@ -3380,3 +3380,68 @@ private struct SearchSQLiteStatement {
 }
 
 private let searchSQLiteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+
+
+extension TriptychSearchIndex {
+    /// The Note index narrows the corpus; this second, Search-owned stage ranks
+    /// actual paragraphs. Neither presentation nor an Agent invents this ranking.
+    public nonisolated static func relatedPassages(
+        _ request: RelatedContentRequest, sources: [RelatedContentSource]
+    ) throws -> [RelatedContentPassage] {
+        let seedDocument = NoteDocument(relativePath: request.seed.noteID.relativePath, rawContent: request.seed.source)
+        let material = RelatedContentSeedMaterial(projection: SearchDocumentProjection(document: seedDocument), focuses: request.seed.focuses)
+        let focusTermCount = Set(material.termGroups.filter { $0.kind != .sourceNote }.flatMap(\.terms)).count
+        let requiredFocusMatches = min(2, focusTermCount)
+        var ranked: [(passage: RelatedContentPassage, counts: [Int], noteRank: Int)] = []
+        for (noteRank, source) in sources.enumerated() {
+            try Task.checkCancellation()
+            guard source.document.fingerprint == source.candidate.fingerprint,
+                  source.candidate.note != request.seed.noteID else { continue }
+            let semantic = MarkdownSemanticDocument(parsing: source.document)
+            for block in semantic.blocks where block.kind == .paragraph {
+                try Task.checkCancellation()
+                guard block.span.utf16UpperBound - block.span.utf16LowerBound <= RelatedContentContract.maximumPassageUTF16Count,
+                      let range = Range(block.span.nsRange, in: source.document.rawContent) else { continue }
+                let exact = String(source.document.rawContent[range])
+                let visible = ResearchExcerptPresentation.readableText(exact)
+                let normalized = SearchTextNormalization.lexicalNormalize(visible)
+                let matches = material.termGroups.compactMap { group -> RelatedContentSeedTermMatch? in
+                    let terms = group.terms.filter { !SearchMatcher.occurrences(of: .term($0), in: normalized).isEmpty }
+                    return terms.isEmpty ? nil : .init(seedKind: group.kind, terms: terms)
+                }
+                // An explicit focus must match this paragraph itself. Unrelated
+                // paragraphs cannot enter merely because their Note matched.
+                let focused = !request.seed.focuses.isEmpty
+                guard matches.contains(where: { !focused || $0.seedKind != .sourceNote }) else { continue }
+                let focusedMatches = Set(matches.filter { $0.seedKind != .sourceNote }.flatMap(\.terms)).count
+                guard !focused || focusedMatches >= requiredFocusMatches else { continue }
+                let span = block.span
+                let passage = RelatedContentPassage(candidate: source.candidate,
+                    range: .init(utf16LowerBound: span.utf16LowerBound, utf16UpperBound: span.utf16UpperBound,
+                        line: span.start.line, column: span.start.utf16Column, endLine: span.end.line, endColumn: span.end.utf16Column),
+                    source: exact, displayText: visible, matches: matches)
+                let counts = RelatedContentSeedKind.rankingOrder.map { kind in
+                    matches.first { $0.seedKind == kind }?.terms.count ?? 0
+                }
+                ranked.append((passage, counts, noteRank))
+            }
+        }
+        ranked.sort { lhs, rhs in
+            for (left, right) in zip(lhs.counts, rhs.counts) where left != right { return left > right }
+            if lhs.noteRank != rhs.noteRank { return lhs.noteRank < rhs.noteRank }
+            return lhs.passage.range.utf16LowerBound < rhs.passage.range.utf16LowerBound
+        }
+        var perNote: [VaultQualifiedNoteID: Int] = [:]
+        var result: [RelatedContentPassage] = []
+        var seenParagraphs: [VaultQualifiedNoteID: Set<String>] = [:]
+        for item in ranked {
+            let note = item.passage.candidate.note
+            guard perNote[note, default: 0] < RelatedContentContract.maximumPassagesPerNote,
+                  seenParagraphs[note, default: []].insert(SearchTextNormalization.lexicalNormalize(item.passage.displayText)).inserted else { continue }
+            perNote[note, default: 0] += 1
+            result.append(item.passage)
+            if result.count == RelatedContentContract.maximumPassages { break }
+        }
+        return result
+    }
+}

@@ -22,7 +22,7 @@ This documentation cleanup changes no app code and closes no UI acceptance.
   supported in this slice; unsupported server requests are rejected visibly.
   Conversations originate in Scholium and retain their own public history.
 - Complete human VoiceOver, installed-IME and visual-adaptation acceptance for
-  the Chat composer, approvals, file navigation and moved Outline.
+  the Chat composer, approvals, file navigation and Related Material.
 - Diagnose the whole-App gate failures in document scroll restoration, editor
   projection/bridge and stale WebKit localization expectations. The focused
   Chat checks pass; the full integration gate remains unaccepted.
@@ -66,7 +66,7 @@ This documentation cleanup changes no app code and closes no UI acceptance.
   IME exact-source journey, and one visual-adaptation set at supported window
   sizes.
 - Include Agent Integration command copying, Agent Changes comparison/Undo,
-  Library navigation, Inspector Outline/About/Links navigation and
+  Library navigation, Inspector About/Links/Related Material navigation and
   Document mode transitions,
   system Trash, conflict, and recovery where they exercise distinct human
   failure modes.

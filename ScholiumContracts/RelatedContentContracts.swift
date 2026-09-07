@@ -4,12 +4,15 @@ import Foundation
 /// generation. It does not change visible Search grammar, scopes, or Saved
 /// Search semantics.
 public enum RelatedContentContract {
-    public static let currentVersion = 3
-    public static let rankingPolicyVersion = 3
-    public static let maximumCandidates = 8
+    public static let currentVersion = 5
+    public static let rankingPolicyVersion = 4
+    public static let maximumCandidates = 27
     public static let maximumDirectConnectionCandidates = 4
     public static let maximumIdentityCandidates = 3
-    public static let maximumLexicalCandidates = 4
+    public static let maximumLexicalCandidates = 24
+    public static let maximumPassages = 6
+    public static let maximumPassagesPerNote = 2
+    public static let maximumPassageUTF16Count = 32_000
     public static let maximumSeedUTF16Count = 1_048_576
     public static let maximumFocusUTF16Count = 65_536
     public static let maximumSourceSeedTerms = 64
@@ -202,6 +205,32 @@ public struct RelatedContentCandidate: Codable, Hashable, Sendable {
     }
 }
 
+/// One exact, revision-bound research paragraph. Visible text is a read-only
+/// projection; quotation and handoff always use `source` and its original range.
+public struct RelatedContentPassage: Codable, Hashable, Sendable, Identifiable {
+    public let candidate: RelatedContentCandidate
+    public let range: SearchSourceRange
+    public let source: String
+    public let displayText: String
+    public let matches: [RelatedContentSeedTermMatch]
+    public var id: String {
+        "\(candidate.note.vaultID):\(candidate.note.relativePath):\(candidate.fingerprint.sha256):\(range.utf16LowerBound)"
+    }
+    public init(candidate: RelatedContentCandidate, range: SearchSourceRange, source: String,
+                displayText: String, matches: [RelatedContentSeedTermMatch]) {
+        self.candidate = candidate; self.range = range; self.source = source
+        self.displayText = displayText; self.matches = matches
+    }
+}
+
+public struct RelatedContentSource: Sendable {
+    public let candidate: RelatedContentCandidate
+    public let document: NoteDocument
+    public init(candidate: RelatedContentCandidate, document: NoteDocument) {
+        self.candidate = candidate; self.document = document
+    }
+}
+
 public enum RelatedContentResultState: String, Codable, Hashable, Sendable {
     case current
     case empty
@@ -223,6 +252,8 @@ public struct RelatedContentResponse: Codable, Hashable, Sendable {
     public let lexicalCandidates: [RelatedContentCandidate]
     public let identityHasMore: Bool
     public let lexicalHasMore: Bool
+    public let passages: [RelatedContentPassage]
+    public let omittedSourceCount: Int
 
     public init(
         contractVersion: Int = RelatedContentContract.currentVersion,
@@ -235,7 +266,9 @@ public struct RelatedContentResponse: Codable, Hashable, Sendable {
         identityCandidates: [RelatedContentCandidate],
         lexicalCandidates: [RelatedContentCandidate],
         identityHasMore: Bool,
-        lexicalHasMore: Bool
+        lexicalHasMore: Bool,
+        passages: [RelatedContentPassage] = [],
+        omittedSourceCount: Int = 0
     ) {
         self.contractVersion = contractVersion
         self.rankingPolicyVersion = rankingPolicyVersion
@@ -248,5 +281,7 @@ public struct RelatedContentResponse: Codable, Hashable, Sendable {
         self.lexicalCandidates = lexicalCandidates
         self.identityHasMore = identityHasMore
         self.lexicalHasMore = lexicalHasMore
+        self.passages = passages
+        self.omittedSourceCount = omittedSourceCount
     }
 }

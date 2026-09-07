@@ -176,7 +176,7 @@ struct ConnectionsInspectorView: View {
             ContextSearchField(text: query, prompt: "Find in Links", identifier: "scholium.links.search")
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 18) {
+                    LazyVStack(alignment: .leading, spacing: ResearchInspectorLayout.sectionSpacing) {
                         ResearchProjectionFreshnessView(freshness: context.freshness, retry: context.retryRefresh)
                         if groups.isEmpty {
                             ScholiumApparatusStateView(query.wrappedValue.isEmpty ? direction.emptyAnnouncement : "No Results", systemImage: "link")
@@ -230,7 +230,7 @@ struct ConnectionsInspectorView: View {
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.bottom, 20)
+                    .padding(.bottom, ResearchInspectorLayout.bottomInset)
                     .scrollTargetLayout()
                 }
                 .scrollPosition(id: Binding(
@@ -243,7 +243,9 @@ struct ConnectionsInspectorView: View {
                 }
                 .accessibilityLabel(Text(verbatim: ScholiumL10n.dynamicString(direction.title)))
             }
-        }.padding(.horizontal, 16).padding(.top, 14)
+        }
+        .padding(.horizontal, ResearchInspectorLayout.contentInset)
+        .padding(.top, ResearchInspectorLayout.topInset)
     }
 }
 
@@ -302,37 +304,11 @@ private struct LinkOccurrenceRow: View {
 
     private var contextText: AttributedString {
         let occurrence = item.edge.occurrence
-        var text = AttributedString(LinkContextPresentation.readableText(occurrence.localContext.isEmpty ? occurrence.target : occurrence.localContext))
+        var text = AttributedString(ResearchExcerptPresentation.readableText(occurrence.localContext.isEmpty ? occurrence.target : occurrence.localContext))
         if let range = text.range(of: occurrence.alias ?? occurrence.target) {
             text[range].font = ScholiumTypography.interface(.control, emphasis: .strong)
         }
         return text
-    }
-}
-
-/// Read-only snippet formatting uses the existing dialect parser. Navigation
-/// continues to use the original occurrence and its exact source span.
-enum LinkContextPresentation {
-    static func readableText(_ source: String) -> String {
-        let document = NoteDocument(relativePath: "snippet.md", rawContent: source)
-        let links = MarkdownSemanticDocument(parsing: document).links
-        // Annotation content is presented separately. Ignore nested occurrences
-        // inside an already consumed annotation before replacing source ranges.
-        var visibleLinks: [LinkOccurrence] = []
-        for link in links where link.syntax == .wikilink {
-            if let previous = visibleLinks.last,
-               link.span.utf16LowerBound < previous.span.utf16UpperBound { continue }
-            visibleLinks.append(link)
-        }
-        let text = NSMutableString(string: source)
-        for link in visibleLinks.reversed() {
-            let label = link.alias ?? link.target
-            let escaped = label.map { character in
-                "\\`*_{}[]()>#+-.!|".contains(character) ? "\\" + String(character) : String(character)
-            }.joined()
-            text.replaceCharacters(in: link.span.nsRange, with: "[" + escaped + "](scholium-snippet:)")
-        }
-        return MarkdownVisibleText.render(text as String)
     }
 }
 

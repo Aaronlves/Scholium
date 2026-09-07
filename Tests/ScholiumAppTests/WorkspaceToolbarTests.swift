@@ -202,6 +202,16 @@ struct WorkspaceToolbarTests {
             ScholiumWorkspaceToolbarController.Item.inspector,
             in: toolbar
         ))
+        let inspectorModes = try #require(item(
+            ScholiumWorkspaceToolbarController.Item.inspectorModes,
+            in: toolbar
+        ))
+        let modeControl = try #require(inspectorModes.view as? NSSegmentedControl)
+        #expect(ResearchInspectorMode.allCases == [.about, .links, .related])
+        #expect(modeControl.segmentCount == 3)
+        #expect(modeControl.toolTip(forSegment: 0) == ScholiumL10n.localized(ResearchInspectorMode.about.interfaceTitleResource))
+        #expect(modeControl.toolTip(forSegment: 1) == ScholiumL10n.localized(ResearchInspectorMode.links.interfaceTitleResource))
+        #expect(inspectorModes.menuFormRepresentation?.submenu?.items.count == 3)
         #expect(inspector.possibleLabels == [
             "Hide Research Inspector",
             "Show Research Inspector",

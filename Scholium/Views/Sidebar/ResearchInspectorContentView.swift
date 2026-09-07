@@ -234,13 +234,14 @@ struct ResearchOverviewView: View {
     let note: WindowDocumentLocation
     let context: ResearchInspectorContentContext
     @State private var metadataHeight: CGFloat = 140
+    @State private var metadataLabelWidth: CGFloat = OverviewFieldLayout.minimumLabelWidth
     @State private var fileInformationExpanded = false
 
     var body: some View {
         ScrollView(.vertical) {
             VStack(
                 alignment: .leading,
-                spacing: ScholiumMetrics.Apparatus.sectionSpacing
+                spacing: ResearchInspectorLayout.sectionSpacing
             ) {
                 if let session = context.attentionPopoverSession,
                    let scope = context.presentation.notificationScope {
@@ -252,9 +253,9 @@ struct ResearchOverviewView: View {
                     retry: context.retryRefresh
                 )
             }
-            .padding(.horizontal, ScholiumMetrics.Apparatus.contentInset)
-            .padding(.top, ScholiumMetrics.Apparatus.firstSectionSpacing)
-            .padding(.bottom, ScholiumMetrics.Apparatus.bottomInset)
+            .padding(.horizontal, ResearchInspectorLayout.contentInset)
+            .padding(.top, ResearchInspectorLayout.topInset)
+            .padding(.bottom, ResearchInspectorLayout.bottomInset)
             .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
         }
         .scrollContentBackground(.hidden)
@@ -266,7 +267,7 @@ struct ResearchOverviewView: View {
             OverviewMetadataFields(
                 note: note, catalog: context.metadataCatalog,
                 visibleKeys: visibleMetadataKeys, context: context,
-                measuredHeight: $metadataHeight
+                measuredHeight: $metadataHeight, measuredLabelWidth: $metadataLabelWidth
             )
             .frame(height: metadataHeight)
             .accessibilityLabel("About Fields")
@@ -302,7 +303,7 @@ struct ResearchOverviewView: View {
                     ForEach(fileHistoryFacts + settlementFacts) { fact in
                         HStack(alignment: .firstTextBaseline, spacing: OverviewFieldLayout.columnSpacing) {
                             Text(fact.label).foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
-                                .frame(width: OverviewFieldLayout.labelWidth, alignment: .trailing)
+                                .frame(width: metadataLabelWidth, alignment: .trailing)
                             Text(fact.value).foregroundStyle(ScholiumNativeColorRole.label.color).textSelection(.enabled)
                                 .padding(.leading, 6)
                                 .frame(maxWidth: .infinity, alignment: .leading)

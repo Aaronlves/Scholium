@@ -307,7 +307,8 @@ provider; local execution does not imply offline inference. Normal Note work rem
 available without a runtime or sign-in.
 
 Chat adds no automatic Settle, durable philosophical verdict, argument graph,
-proposal lifecycle, autonomous research schedule or multi-provider requirement.
+proposal lifecycle or autonomous research schedule. Research-context handoff is
+provider-neutral; adding runtime adapters does not change its Note-snapshot contract.
 
 ## 9. Analyses workflow
 

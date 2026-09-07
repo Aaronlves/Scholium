@@ -14,7 +14,6 @@ struct InspectorLinkDirectionControl: NSViewRepresentable {
             action: #selector(Coordinator.selectDirection(_:)))
         control.segmentStyle = .roundRect
         control.borderShape = .capsule
-        control.selectedSegmentBezelColor = .unemphasizedSelectedContentBackgroundColor
         control.segmentDistribution = .fillEqually
         control.setAccessibilityLabel(ScholiumL10n.dynamicString("Link Direction"))
         control.setAccessibilityIdentifier("scholium.links.direction")

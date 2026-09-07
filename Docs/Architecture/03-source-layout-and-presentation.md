@@ -170,15 +170,18 @@ destination tab group, Document mode, and Inspector mode. Rapid requests
 converge on the last requested workspace.
 
 `ResearchInspectorView` lives with the Sidebar views, separately from the
-Document leaf. It receives immutable Outline, About and Links presentation values
+Document leaf. It receives immutable About, Links and Related Material presentation values
 composed at the window root. It owns no workspace refresh, Agent
 conversation, mutation, or lifecycle state. Its modes share the one native
 trailing split item and one mode value per Triptych workspace; changing modes,
 notes, or tabs never reconstructs the retained Document host. About contains
 resolved About configuration, current Settlement state, and any portable Zotero
 binding for the selected Analysis. `OverviewMetadataFields` retains one AppKit
-field collection without category headings. Native controls and their field
-editors own focus, text Undo and composition; Tab never waits on SwiftUI state.
+field collection without category headings. Its NSGridView sizes the shared label
+column from localized labels and available width, and reports that width to the
+read-only file facts. Native text fields use borderless rendering, choices use NSPopUpButton and
+Booleans use NSButton checkboxes. Native controls and their field editors own
+focus, text Undo and composition; Tab never waits on SwiftUI state.
 `OverviewMetadataSession` owns only the Note-local managed drafts, serial commit
 queue, acknowledged revision and committed Metadata Undo/Redo. It delegates all
 writes to the existing portable Metadata owner. Settings owns the visible field
@@ -187,15 +190,30 @@ coordinator drains this one session before document departure or aggregate
 saves. About remains mounted across projections. File timestamps and
 Settlement remain quiet read-only snapshot facts.
 
-`WindowShellState` owns Outline/About/Links selection. Its icon-only toolbar
+`WindowShellState` owns About/Links/Related Material selection. Its icon-only toolbar
 control uses AppKit segments; `InspectorLinkDirectionControl` uses native
-textured-rounded capsule segments with system accent.
+capsule segments with system-owned selection. `ResearchInspectorLayout` owns
+the common content-edge, top, section and bottom spacing for these panes.
 `LinksInspectorSession`, retained by the window's ResearchController, owns the
 link direction and per-Note/direction query, collapsed Note groups and scroll
 position. `ConnectionsInspectorView` filters an immutable occurrence projection;
 each link keeps its exact source locator and context. It never creates another
 graph or source owner. Native buttons and fields keep system presentation on the
 Paper content background; feature code paints no competing control theme.
+
+`RelatedMaterialsSession`, retained by ResearchController, owns one disposable
+selection, request generation, loading/error state and paragraph cards per window.
+`WindowRelatedMaterialsActions` captures the retained editor selection and calls
+`DiscoveryOperations.relatedContent` through the active workspace. WorkspaceHandle
+uses the Note index to narrow the corpus, reads fingerprint-matched exact Notes,
+and delegates paragraph ranking to Core Search over the shared semantic parser.
+Each result carries exact Markdown, its source range and a separate readable-text
+projection. `ResearchExcerptPresentation` is shared with Links and Chat excerpts;
+it hides syntax without changing authoritative source. The session preserves
+paragraph identity and backend order. Opening or staging checks revisions again
+and rejects a dirty retained destination. `AgentChatContextReceiving` receives
+provider-neutral attachments with optional exact source ranges. Chat material chips
+open native popovers; the research views own no runtime transport or durable record.
 
 When the split item remains visible without a selected Document, the
 composition root installs a read-only Apparatus content-state projection rather
@@ -218,6 +236,14 @@ this drawing-only offset does not change action frames, spacing or hit areas.
 Native controls retain activation, keyboard focus, menu tracking and disabled
 state. Chat's temporary selection set belongs to its list presentation; archive
 persistence remains with `AgentChatController`.
+
+`AgentChatComposerInput` embeds one native scroll view and `NSTextView` across the
+whole message input slot. AppKit owns hit testing, caret placement, selection, Undo
+and marked text. The host grows to seven lines before scrolling; Return dispatches
+the existing send action, while modified Return inserts a newline. Draft callbacks
+capture their conversation identity; switching or dismantling commits only changed
+text through that binding, then releases delegates and closures. The controller
+remains the only durable draft owner.
 
 ### Interface localization
 

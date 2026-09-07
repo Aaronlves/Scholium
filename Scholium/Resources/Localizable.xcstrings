@@ -1,6 +1,854 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+  "Connect an agent before sending.": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Connect an agent before sending."
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "连接 Agent 后即可发送。"
+        }
+      }
+    }
+  },
+  "Preview material: %@": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Preview material: %@"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "预览材料：%@"
+        }
+      }
+    }
+  },
+  "Remove material: %@": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Remove material: %@"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "移除材料：%@"
+        }
+      }
+    }
+  },
+  "Attached Passage": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Attached Passage"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "所附片段"
+        }
+      }
+    }
+  },
+  "This attached passage is from an earlier version. Its saved location may have changed.": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "This attached passage is from an earlier version. Its saved location may have changed."
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "所附片段来自较早版本，原来的位置可能已经改变。"
+        }
+      }
+    }
+  },
+  "Search needs refreshing before it can find current material.": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Search needs refreshing before it can find current material."
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "需要刷新检索，才能查找当前材料。"
+        }
+      }
+    }
+  },
+  "This passage has no searchable wording. Try another selection.": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "This passage has no searchable wording. Try another selection."
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "这段文字没有可检索的用语，请换一个选区。"
+        }
+      }
+    }
+  },
+  "Search cancelled. You can find material again when ready.": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Search cancelled. You can find material again when ready."
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "已取消查找。你可以随时重新查找材料。"
+        }
+      }
+    }
+  },
+  "Some related material is temporarily unavailable.": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Some related material is temporarily unavailable."
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "部分相关材料暂不可用。"
+        }
+      }
+    }
+  },
+  "Refresh Results": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Refresh Results"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "刷新结果"
+        }
+      }
+    }
+  },
+  "Wording overlaps with the selected passage.": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Wording overlaps with the selected passage."
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "与所选段落有相同用语。"
+        }
+      }
+    }
+  },
+  "Wording overlaps with your request.": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Wording overlaps with your request."
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "与你的问题有相同用语。"
+        }
+      }
+    }
+  },
+  "Wording overlaps with the note's content.": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Wording overlaps with the note's content."
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "与笔记内容有相同用语。"
+        }
+      }
+    }
+  },
+  "Related Material": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Related Material"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "相关材料"
+        }
+      }
+    }
+  },
+  "Find Related Material": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Find Related Material"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "查找相关材料"
+        }
+      }
+    }
+  },
+  "Find from Selection": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Find from Selection"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "查找所选段落的相关材料"
+        }
+      }
+    }
+  },
+  "Finding related material": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Finding related material"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "正在查找相关材料"
+        }
+      }
+    }
+  },
+  "Selected Passage": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Selected Passage"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "所选段落"
+        }
+      }
+    }
+  },
+  "No related material found in Analyses or Topics. Try another passage.": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "No related material found in Analyses or Topics. Try another passage."
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "分析和议题中暂未找到相关材料。可以换一段文字再试。"
+        }
+      }
+    }
+  },
+  "Select a passage in Edit or Source to find related material.": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Select a passage in Edit or Source to find related material."
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "在编辑或源码模式选中一段文字，即可查找相关材料。"
+        }
+      }
+    }
+  },
+  "Some sources changed or could not be opened. Find again to refresh the results.": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Some sources changed or could not be opened. Find again to refresh the results."
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "部分来源已改变或暂时无法打开。请重新查找以更新结果。"
+        }
+      }
+    }
+  },
+  "These passages are retrieval leads, not assessments of support or disagreement.": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "These passages are retrieval leads, not assessments of support or disagreement."
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "这些片段是检索线索，尚不代表支持或反对你的论点。"
+        }
+      }
+    }
+  },
+  "A source has changed. Find related material again to use its current passage.": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "A source has changed. Find related material again to use its current passage."
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "来源内容已改变。请重新查找相关材料，使用当前版本的片段。"
+        }
+      }
+    }
+  },
+  "Open an available conversation before adding this material to Chat.": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Open an available conversation before adding this material to Chat."
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "请先打开一个可用的会话，再将材料加入聊天。"
+        }
+      }
+    }
+  },
+  "Related material is unavailable. Wait for the Triptych to finish opening, then try again.": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Related material is unavailable. Wait for the Triptych to finish opening, then try again."
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "相关材料暂不可用。请等待脉络打开完成后重试。"
+        }
+      }
+    }
+  },
+  "Open Source": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Open Source"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "打开来源"
+        }
+      }
+    }
+  },
+  "Add to Chat": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Add to Chat"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "加入聊天"
+        }
+      }
+    }
+  },
+  "Open source: %@": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Open source: %@"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "打开来源：%@"
+        }
+      }
+    }
+  },
+  "Add to Chat: %@": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Add to Chat: %@"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "加入聊天：%@"
+        }
+      }
+    }
+  },
+  "Add the selected writing passage and this source to the current conversation.": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Add the selected writing passage and this source to the current conversation."
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "将所选写作段落与这份来源一起加入当前会话。"
+        }
+      }
+    }
+  },
+  "Mentioned name: %@": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Mentioned name: %@"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "提及名称：%@"
+        }
+      }
+    }
+  },
+  "Shared terms: %@": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Shared terms: %@"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "共同词语：%@"
+        }
+      }
+    }
+  },
+  "Journal Article": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Journal Article"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "期刊论文"
+        }
+      }
+    }
+  },
+  "Book": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Book"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "图书"
+        }
+      }
+    }
+  },
+  "Chapter": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Chapter"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "书籍章节"
+        }
+      }
+    }
+  },
+  "Encyclopedia Entry": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Encyclopedia Entry"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "百科词条"
+        }
+      }
+    }
+  },
+  "Thesis": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Thesis"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "学位论文"
+        }
+      }
+    }
+  },
+  "Manuscript": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Manuscript"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "手稿"
+        }
+      }
+    }
+  },
+  "Report": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Report"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "报告"
+        }
+      }
+    }
+  },
+  "Preprint": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Preprint"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "预印本"
+        }
+      }
+    }
+  },
+  "Conference Paper": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Conference Paper"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "会议论文"
+        }
+      }
+    }
+  },
+  "Presentation": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Presentation"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "演示报告"
+        }
+      }
+    }
+  },
+  "Webpage": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Webpage"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "网页"
+        }
+      }
+    }
+  },
+  "Dataset": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Dataset"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "数据集"
+        }
+      }
+    }
+  },
+  "Software": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Software"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "软件"
+        }
+      }
+    }
+  },
+  "Archival Item": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Archival Item"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "档案材料"
+        }
+      }
+    }
+  },
+  "Correspondence": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Correspondence"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "通信"
+        }
+      }
+    }
+  },
+  "Audiovisual": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Audiovisual"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "视听资料"
+        }
+      }
+    }
+  },
+  "Other": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Other"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "其他"
+        }
+      }
+    }
+  },
+  "Last name": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Last name"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "姓"
+        }
+      }
+    }
+  },
+  "First name": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "First name"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "名"
+        }
+      }
+    }
+  },
+  "Year or date": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Year or date"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "年份或日期"
+        }
+      }
+    }
+  },
+  "Not specified": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Not specified"
+        }
+      },
+      "zh-Hans": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "未指定"
+        }
+      }
+    }
+  },
     "Select Chats to Archive": {
       "localizations": {
         "en": {

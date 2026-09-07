@@ -9,6 +9,7 @@ struct AgentChatView: View {
   let isVisible: Bool
   let addSelection: () -> Void
   let openReference: (URL) -> Bool
+  let openAttachment: (AgentChatAttachment) -> Void
   let showInLibrary: (URL) -> Void
   let showChanges: (UUID) -> Void
   let showConversationChanges: ([UUID]) -> Void
@@ -38,6 +39,10 @@ struct AgentChatView: View {
     .onChange(of: showsArchived) { _, _ in endChatSelection() }
     .onChange(of: controller.conversations.map(\.id)) { _, ids in
       selectedChatIDs.formIntersection(ids)
+    }
+    .onChange(of: controller.contextPresentationID) { _, _ in
+      showsConversationList = false
+      messageIsFocused = isVisible
     }
     .onChange(of: controller.selected?.attachments.count) { old, new in
       if (new ?? 0) > (old ?? 0) {
@@ -417,11 +422,14 @@ struct AgentChatView: View {
           .menuStyle(.borderlessButton).fixedSize(horizontal: false, vertical: true)
           .font(.caption)
         }
-        ForEach(message.attachments) { attachment in
-          let url = AgentChatReference.url(noteID: attachment.noteID, line: attachment.sourceLine)
-          Button(attachment.relativePath) { _ = openReference(url) }
-            .buttonStyle(.link)
-            .contextMenu { Button("Show in Library") { showInLibrary(url) } }
+        if !message.attachments.isEmpty {
+          ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+              ForEach(message.attachments) { attachment in
+                AgentChatMaterialChip(attachment: attachment, remove: nil, open: { openAttachment(attachment) })
+              }
+            }
+          }
         }
       }
       .padding(message.role == .user ? 12 : 0)
@@ -612,31 +620,37 @@ struct AgentChatView: View {
   }
 
   private var composer: some View {
-    VStack(alignment: .leading) {
-      ForEach(controller.selected?.attachments ?? []) { attachment in
-        HStack {
-          Text(attachment.relativePath).lineLimit(1).font(.caption)
-          Spacer()
-          Button {
-            controller.removeAttachment(attachment.id)
-          } label: {
-            Image(systemName: "xmark")
-          }
-          .help("Remove Material").accessibilityLabel("Remove Material")
+    let conversationID = controller.selectedID
+    return VStack(alignment: .leading) {
+      if controller.selected?.attachments.isEmpty == false {
+        ScrollView(.horizontal) {
+          HStack(spacing: 8) {
+            ForEach(controller.selected?.attachments ?? []) { attachment in
+              AgentChatMaterialChip(attachment: attachment,
+                remove: { controller.removeAttachment(attachment.id) },
+                open: { openAttachment(attachment) })
+            }
+          }.padding(.vertical, 4)
         }
-        Text(attachment.text).lineLimit(3).font(.caption).foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
       }
-      TextField(
-        "Message",
-        text: Binding(get: { controller.selected?.draft ?? "" }, set: controller.editDraft),
-        axis: .vertical
+      AgentChatComposerInput(
+        text: Binding(get: { controller.selected?.draft ?? "" }, set: { value in
+          if let conversationID { controller.editDraft(value, in: conversationID) }
+        }),
+        isFocused: Binding(get: { messageIsFocused }, set: { messageIsFocused = $0 }),
+        conversationID: conversationID,
+        isEnabled: controller.isLoaded,
+        submit: { if controller.canSend { controller.send() } }
       )
-      .lineLimit(1...7)
-      .textFieldStyle(.plain)
-      .focused($messageIsFocused)
-      .padding(.horizontal, 4).padding(.vertical, 6)
-      .accessibilityLabel("Message").accessibilityIdentifier("scholium.chat.message")
-      .disabled(!controller.isLoaded)
+      .overlay(alignment: .topLeading) {
+        if controller.selected?.draft.isEmpty != false {
+          Text("Message").font(.body).foregroundStyle(.secondary)
+            .padding(.horizontal, 9).padding(.vertical, 6).allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+      }
+      .frame(maxWidth: .infinity)
       HStack {
         Menu {
           Button("Add Selection to Chat", action: addSelection)
@@ -701,11 +715,17 @@ struct AgentChatView: View {
         .controlSize(.regular)
         .keyboardShortcut(.return, modifiers: .command)
         .disabled(!controller.canSend)
-        .help("Send").accessibilityLabel("Send")
+        .help(controller.state == .disconnected
+          ? String(localized: "Connect an agent before sending.", bundle: .module)
+          : String(localized: "Send", bundle: .module))
+        .accessibilityLabel("Send")
       }
       .controlSize(.regular)
       .scholiumMenuStyle(.borderlessButton)
       .menuIndicator(.hidden)
+      if controller.state == .disconnected && controller.selected?.draft.isEmpty == false {
+        Text("Connect an agent before sending.").font(.caption).foregroundStyle(.secondary)
+      }
     }
     .buttonStyle(.borderless)
     .padding(12)
