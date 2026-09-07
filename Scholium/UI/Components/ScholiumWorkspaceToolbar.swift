@@ -55,6 +55,8 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     private weak var window: NSWindow?
     private weak var responderBeforeSettlement: NSResponder?
     private var settlementPopoverHostingController: DocumentSettlementPopoverHostingController?
+    private weak var observedChat: AgentChatController?
+    private var chatObservation: AnyCancellable?
     private var presentationCancellables: Set<AnyCancellable> = []
 
     init(
@@ -97,6 +99,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     func invalidate() {
         guard !isInvalidated else { return }
         isInvalidated = true
+        chatObservation?.cancel(); chatObservation = nil; observedChat = nil
         presentationCancellables.removeAll()
         responderBeforeSettlement = nil
         responderBeforeNotifications = nil
@@ -475,15 +478,25 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     private func refreshPresentation() {
         guard !isInvalidated else { return }
         let shellState = appState.shellState
+        let chat = appState.chatController
+        if observedChat !== chat {
+            chatObservation?.cancel(); observedChat = chat
+            chatObservation = chat?.$approvals.map { !$0.isEmpty }.removeDuplicates()
+                .receive(on: DispatchQueue.main).sink { [weak self] _ in self?.refreshPresentation() }
+        }
         refreshNotifications()
 
         if let control = toolbarItem(Item.sidebar)?.view as? NSSegmentedControl {
             control.selectedSegment = shellState.libraryVisible ? shellState.sidebarContent.rawValue : -1
-            let unavailable = !appState.canActivateOutline
-            control.setEnabled(!unavailable, forSegment: SidebarContent.outline.rawValue)
-            control.setToolTip(unavailable
-                ? ScholiumL10n.string("No note open yet") : ScholiumL10n.string("Outline"),
-                forSegment: SidebarContent.outline.rawValue)
+            let unavailable = appState.workspaceAssignment == nil
+            control.setEnabled(!unavailable, forSegment: SidebarContent.chat.rawValue)
+            let awaitingInput = chat?.approvals.isEmpty == false
+            let title = unavailable ? ScholiumL10n.string("No Triptych Open")
+                : awaitingInput ? String(localized: "Chat Needs Your Input") : String(localized: "Chat")
+            control.setToolTip(title, forSegment: SidebarContent.chat.rawValue)
+            control.setImage(ScholiumNativeToolbarPresentation.symbol(
+                named: awaitingInput ? "exclamationmark.bubble" : "bubble.left.and.bubble.right",
+                accessibilityDescription: title), forSegment: SidebarContent.chat.rawValue)
         }
 
         if let item = toolbarItem(Item.back) {
@@ -618,7 +631,7 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         guard !isInvalidated else { return false }
         if item.action == #selector(selectSidebarMenu(_:)) {
-            return item.tag != SidebarContent.outline.rawValue || appState.canActivateOutline
+            return item.tag != SidebarContent.chat.rawValue || appState.workspaceAssignment != nil
         }
         if item.action == #selector(selectInspectorModeFromMenu(_:)) {
             item.state = (item.representedObject as? String) == appState.shellState.inspector.mode.rawValue ? .on : .off
@@ -655,14 +668,14 @@ final class ScholiumWorkspaceToolbarController: NSObject, NSToolbarDelegate, NSP
     }
 
     func activateSidebar(_ content: SidebarContent) {
-        guard !isInvalidated, content != .outline || appState.canActivateOutline else { return }
+        guard !isInvalidated, content != .chat || appState.workspaceAssignment != nil else { return }
         windowActions.setLibraryVisible(appState.shellState.activateSidebar(content))
         refreshPresentation()
     }
 
     private func sidebarModeItem(identifier: NSToolbarItem.Identifier) -> NSToolbarItem {
-        let labels = [ScholiumL10n.string("Triptych"), ScholiumL10n.string("Outline")]
-        let symbols = ["books.vertical", "list.bullet"]
+        let labels = [ScholiumL10n.string("Library"), ScholiumL10n.string("Chat")]
+        let symbols = ["books.vertical", "bubble.left.and.bubble.right"]
         let images = zip(symbols, labels).compactMap {
             ScholiumNativeToolbarPresentation.symbol(named: $0, accessibilityDescription: $1)
         }

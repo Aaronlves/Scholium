@@ -266,7 +266,7 @@ extension ScholiumUITests {
             abs($0 - stableInspectorFrame.width) <= 2
         })
 
-        let showSidebar = sidebarModeControl("Triptych")
+        let showSidebar = sidebarModeControl("Library")
         XCTAssertTrue(showSidebar.waitForExistence(timeout: 5))
         showSidebar.coordinate(
             withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)

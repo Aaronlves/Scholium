@@ -60,186 +60,124 @@
   service, but cannot establish human VoiceOver, Voice Control, Dictation, Full
   Keyboard Access, installed input-method, or perceptual acceptance.
 
-### Workspace, Library, and navigation
+### Workspace and navigation
 
-- The no-document state is one read-only VoiceOver group with no duplicate
-  creation action.
-- Triptych navigation is one native single-choice segmented control with
-  keyboard traversal, selected and inactive-window state, and unavailable-state
-  semantics. All segments retain full localized accessible names and Help when
-  compact presentation replaces text with symbols. Resizing preserves selected
-  workspace and focus. Library rows follow the effective system Source List
-  size; enlarged interface text uses native larger controls and rows.
-- Triptych/Outline toolbar controls expose their sidebar presentation and the
-  collapsed state without requiring pointer input. Outline uses native tree
-  hierarchy, disclosure and current-section semantics; navigation preserves
-  source, composition, and focus. Statistics remain after the tree in reading
-  order. Back/Forward remain in the Document toolbar when Sidebar is hidden.
-- Back/Forward, Sidebar, Inspector, Search, Notifications, filters, folder
-  disclosure, Add, file actions, and hierarchy remain named and reachable
-  without hover. The nonzero Notifications badge has an exact accessible count in native Help;
-  bell and dot geometry preserve the visible distinction without color alone.
-- Triptych opening and creation remain named keyboard- and accessibility-
-  reachable commands in the native File menu; the Window menu exposes open
-  windows, and Settings manages registrations. The Sidebar does not repeat the
-  current Triptych name. The native window subtitle supplies it only when open
-  Workspace windows span distinct Triptychs and disambiguation is necessary.
-- Library rows preserve native selected, focused, inactive, disclosed,
-  drop-target, disabled, loading, stale, empty, and failure distinctions.
-  Quiet pointer selection and keyboard-navigation emphasis remain distinct
-  without changing the selected destination or creating a second focus owner.
-  The emphasized row is the sole visible list-focus indicator, so Scholium adds
-  no duplicate perimeter focus effect. Up/Down moves selection and Left/Right
-  owns Folder disclosure. Note/Folder
-  Move, root placement, system-Trash deletion, and contextual creation have
-  non-drag accessibility actions. Native Folder disclosure carries expanded or
-  collapsed state; the adjacent Folder symbol identifies type and stays hidden
-  from assistive technologies as decorative. Disclosure, item type, and title
-  remain distinct in the row's reading order.
-- Expanded Library and Inspector remain readable or collapse natively; they do
-  not remain open in an unusably compressed state.
-- Attention exposes group, issue, Note, locator, state, actions, freshness, and
-  Retry in a coherent order.
-- Bell Agent Change rows expose exact Note, operation, time, revision state,
-  and valid actions. Background notifications use macOS presentation and its
-  accessibility settings; foreground activity adds no competing overlay.
-- Persistent operation problems and Settings validation retain full readable
-  text, explicit keyboard-accessible repair/dismissal, and their local reading
-  order. No necessary error depends on notification permission or a time limit.
-- Managed New Note announces once, opens Edit, and places insertion at the exact
-  body start. Durable-source/editor-failure names Retry Edit and Source without
-  inviting another creation.
-- Review, Edit, and Source expose current mode, content state, and one coherent
-  focus order. Mode, window, external-change, conflict, and recovery transitions
-  preserve dirty buffer, composition, selection, Undo, scroll, and recovery.
-- Edit entry follows §18.4's retained-selection, exact Review mapping, and body-
-  start order. It exposes the resulting insertion or selection without stealing
-  focus for Rename; direct title activation remains keyboard reachable.
-- Review selection and Edit formatting remain exact and keyboard reachable.
-- Suggestion lists retain document focus and one listbox selection. They do not
-  open during marked-text composition.
-- Document Find exposes query, options, count, navigation, replacement
-  availability, and close in one keyboard order; closing restores the exact
-  editor selection.
-- Statistics identify body versus selection scope. Spelling/grammar preserve
-  system routes. Image Import/Index name the copy-versus-reference consequence
-  and preserve source/focus on failure.
-- Overview attachments expose complete filenames, count, selected file, preview,
-  availability, and a named selection menu with position for multiple files.
-  Filename activation always opens Quick Look; a single file omits selection.
-  Loading, empty and
-  unavailable states stay distinct. Selection menus and Add Document work
-  without hover, and File retains copy-versus-reference commands. Quick Look supports
-  system-native Escape/close and opening actions. Both steps preserve the
-  initiating Note, mode and source selection; preparation errors stay accessible
-  in Overview. Scholium does not rebuild the system preview controls.
-- English, Chinese, mixed content, and other Unicode source retain consistent
-  visible cursor/selection within the declared support boundary. Technical
-  regions are directionally isolated without changing surrounding prose.
-- Tables, footnotes, mathematics, Callouts, links, Mermaid, previews, and embeds
-  expose semantic names, source/fallback, navigation, and bounded scrolling.
-  Exact source remains the fallback for generated Mermaid.
-- Autosave Failed and Conflict state the retained-buffer consequence and
-  applicable recovery. Proven Saved state is silent. Agent Undo reports each
-  outcome without moving Document focus.
-- The app-owned filename title is the first accessible heading in the
-  Review/Edit document plane. In Edit its inline text field is named **Note
-  title**, supports ordinary text selection and IME input, commits through
-  Return or focus departure, cancels through Escape, announces a rejected
-  rename, and never masquerades as Markdown editing. Its surrounding visible
-  spacing has the same pointer route as the field. Authored H1–H6 expose
-  section-heading levels beneath it without changing source markers; their
-  padding and authored blank lines remain pointer-addressable. Source exposes
-  the exact authored hierarchy without adding the projected title.
+§18.2 owns shell composition, command placement and retained state; §18.3 owns
+Library/Search/Notifications interaction. Their accessibility obligations are:
 
-### Metadata and portable settings
+- The no-document presentation is one read-only VoiceOver group, without a
+  duplicate creation action. Expanded peripherals remain readable or collapse.
+- Workspace and Library/Chat selectors expose complete localized names,
+  selection, availability and collapse even when labels become symbols. The
+  source list follows effective system row size and enlarged interface text.
+- Library exposes hierarchy, item type, title, disclosure, drop target and state
+  without duplicate decorative symbols. Truncated identities remain available.
+  Note/Folder creation, Move, root placement and Trash have non-drag actions.
+  Native selection/focus feedback has no second emphasis or perimeter renderer.
+- Back/Forward, Search, Notifications, filters, Add, file actions and Inspector
+  remain discoverable without hover. The bell's nonzero state has a distinct
+  shape and an exact accessible count in Help, without an unread implication.
+- Notifications expose category, issue, Note/locator, revision freshness and
+  valid actions in reading order. Background delivery follows system settings;
+  denial or timeout cannot hide a necessary local error or recovery action.
+- File and Window menus retain named Triptych/window routes. The window subtitle
+  disambiguates multiple Triptychs only when needed; complete identity remains
+  accessible without a repeated Sidebar heading.
 
-- Settings exposes search, native toolbar selection, selected destination, scope, and
-  detail in predictable order. Empty search retains the query and names the
-  absence.
-- Appearance configuration reload exposes success or a persistent field-specific
-  failure, preserves a rejected draft, and never overwrites an external edit.
-  Frontmatter is reachable by scrolling or a named View-menu action and shortcut.
-  Opening starts at the title; source editing preserves focus and composition.
+### Document and input services
+
+§18.4 owns editor modes, title, Find, completion, previews, attachments and
+Metadata interaction; §18.6 owns state/action wording. Verify:
+
+- Managed creation announces once and places insertion at the exact body start.
+  Durable-source/editor failure exposes Retry Edit and Source rather than
+  inviting duplicate creation. Edit entry announces its valid restored or mapped
+  selection without unexpectedly taking title focus.
+- Mode, window, external-change, conflict and recovery transitions preserve
+  source, dirty input, composition, selection, Undo and reading context. Native
+  focus returns to the initiator or next valid target.
+- The app-owned filename title is the first Review/Edit accessible heading.
+  Its Edit field is named **Note title**, exposes rename rejection and keeps
+  IME/text behavior. Authored headings retain semantic levels; Source exposes
+  only exact authored hierarchy. Visible title/heading padding and blank lines
+  remain pointer-addressable under §18.4.
+- Review selection, Edit formatting, statistics and system spelling/grammar
+  routes remain accessible. Statistics identify body versus nonempty selection.
+- Suggestions expose one listbox selection while retaining editor focus and
+  yield immediately to marked text. Find exposes query, options, count,
+  navigation, replacement availability and close in keyboard order, then restores
+  exact selection. Neither consumes input-method candidate commands.
+- Tables, mathematics, Mermaid, footnotes, Callouts, links, embeds and previews
+  expose their semantic content, source/fallback, navigation and bounded scroll.
+  Unicode cursor/selection remains coherent within the declared support scope;
+  technical direction isolation never changes surrounding prose or source.
+- Footnote and annotation previews have equivalent pointer/focus disclosure,
+  explicit activation, dismissal and return context. Inactive annotated links
+  expose a named expanded/collapsed superscript control; exact source remains
+  editable without reliance on hover or color.
+- Attachments expose complete filename, availability, count, selected position,
+  native Quick Look and the copy/reference consequence. Single-file presentation
+  omits selection. Preparation errors stay accessible at the owning Note;
+  opening/closing preserves mode and source selection. No preview requires hover.
+- Autosave failure, conflict and recovery expose the retained-buffer consequence
+  and valid repair; proven save remains silent. Agent Undo names each outcome
+  without moving Document focus.
+
+### Inspector, Settings and integrations
+
+§18.5 owns Inspector composition and passage navigation, Appendix A owns field
+configuration, and §§8 and 15 own integrations. Verify:
+
+- Outline/About/Links is one named single-choice native group with selection,
+  Help and keyboard traversal. Outline exposes hierarchy, current section and
+  disclosure, followed by statistics. No Document and No Headings are distinct.
+- About exposes complete labels/values, contributor identity/order and the
+  source-authority distinction. Configured empty fields remain discoverable;
+  enlarged text and narrow width preserve values. Native field traversal,
+  commit, cancellation, validation and revision-conflict repair remain associated
+  with the field. Hover-revealed actions stay in keyboard order without reflow.
+- Links direction, query and grouped occurrences are independently named.
+  Group headings expose count/disclosure; passage activation is not a checked
+  value or persistent selection. Source context and annotation remain available.
+  Incoming **Edit at Source** and destination navigation have distinct names.
+  Arrival does not replace text selection or rely on its highlight. Reduce Motion
+  reveals the same target with a static brief marker and no animated scroll/fade.
+- Settlement exposes state and state-valid action through wording, symbol, Help,
+  accessible value and its menu route. It remains a milestone, with no inferred
+  task-completion state. Inspector visibility changes no research judgment.
+- Settings exposes search, selected category, scope and content in predictable
+  order. Empty search retains the query. Appearance reload and Metadata settings
+  preserve invalid/conflicting drafts and name the exact field and safe repair.
+  Definitions expose immutable key/kind, order, scope, lifecycle and use count;
+  Archive/Restore describes its effect on stored values. Frontmatter's named
+  route and direct source editing retain composition and source authority.
 - Hotkeys expose command, menu location, binding, recording state, validation,
-  Save, Clear, and Restore. Invalid drafts never change menus.
-- Metadata settings expose role, field definitions, applicability, About
-  always-shown order, dirty/save/conflict state, and exact recovery consequence.
-  Invalid or conflicting drafts remain local and named.
-- Field definitions expose immutable key/kind; editable label/description,
-  field/choice order, and choice addition; lifecycle, scope, and use count.
-  Archive/Restore retain stored values and change no Note automatically.
-- About uses one ungrouped field sequence with complete visible/accessibility
-  labels, contributor identity/order, source-authority distinction, and
-  complete values at narrow width and enlarged text. Empty always-shown fields
-  expose their editable purpose rather than disappearing. Native field traversal, commit, cancellation, validation, and conflict
-  recovery remain programmatically associated with the field; read-only file and Settlement facts expose their source and state.
-  Hover-revealed actions remain in keyboard/accessibility order without reflow.
-- Zotero link/refresh exposes exact item and library identity, current values,
-  proposed fills/updates, retained conflicts, progress, partial commit,
-  cancellation, and retry. Abstract/tags/YAML/Markdown/non-write boundaries are
-  visible before commit.
-
-### Search, Inspector, and Agent integration
-
-- Research Search and Document Find have distinct names, shortcuts, focus,
-  scope, and results.
-- Quick and Advanced Search retain one query and visible scope across presentation
-  changes. The native field preserves composition and focus; opening Advanced
-  Search is explicit, and its window closes with its originating Workspace.
-- Search exposes provider, scope, query, completion/result selection, count,
-  match reason, freshness, destination, and Explain Query. Invalid, ambiguous,
-  provider mismatch, unavailable, partial, stale, and empty remain distinct.
-- Inspector About/Links is one labelled single-choice native toolbar
-  group with visible selection, complete names, Help, and keyboard traversal.
-  Links exposes its Incoming/Outgoing choice and local query independently. No-document Inspector remains a nonempty read-only state.
-- Outgoing and Incoming state the authored occurrence direction textually. Native
-  groups expose Note identity, occurrence count and disclosure state. The
-  entire Note heading toggles disclosure. Passage targets expose an activation
-  action and keyboard focus, never a checked or selected value merely from
-  navigation. Their hover feedback is supplementary to the named keyboard route.
-  After navigation, the revealed paragraph/source location remains accessible
-  when its brief highlight ends. Arrival does not replace the researcher's text
-  selection; a highlight is never the sole means of identifying the destination.
-  Reduce Motion reveals the target without animated scrolling, pulsing or fading;
-  the brief static arrival marker is removed without animation. Each row names
-  source or destination, local context, and whether a link annotation is
-  present. Incoming annotations are identified as read-only at the destination;
-  destination navigation and **Edit at Source** remain separately named.
-- An inactive annotated Wikilink exposes one adjacent superscript disclosure
-  with its linked title and expanded/collapsed state. Pointer hover and keyboard
-  focus reveal the same bounded Markdown annotation; primary activation keeps
-  it open, Escape or outside activation dismisses it, and focus remains on the
-  initiating context. Source editing exposes the exact delimiters without
-  relying on color, hover, position, or icon alone.
-- Settlement exposes the state-valid Settle, Settle Again, or Mark Unsettled
-  researcher action as a milestone rather than task completion, without a
-  parallel review status or Agent launcher. Wording, symbol shape, state-bearing
-  accessibility value, Help, menu route, and Inspector facts preserve state
-  without motion or color. Reduce Motion presents an explicit successful Settle
-  immediately while preserving the same final milestone state.
-  Opening Inspector does not alter reading or focus order.
-- Agent Integration in Settings exposes App/bridge/CLI state, the two distinct
-  setup-copy actions, and the Core Protocol Finder route in one predictable
-  order. Command and path text is selectable; copied-command success is not
-  represented as host configuration success.
-- MCP operations neither activate the App nor move focus. `app_unavailable`,
-  workspace selection, stale revision, conflict, and uncertain outcome have
-  distinct names and recovery.
+  Save, Clear and Restore. An invalid draft never alters active commands.
+- Zotero linking/refresh names exact item/library, proposed fills/updates,
+  retained conflicts, progress, partial commit, cancellation and retry. The
+  read-only Zotero and non-YAML/Markdown boundaries are visible before commit.
+- Agent Integration exposes App/bridge/CLI state, distinct setup-copy actions
+  and the Finder route. Commands/paths are selectable; copy success does not
+  claim host configuration. MCP failures retain distinct unavailable, scope,
+  stale/conflict and uncertain-outcome explanations.
+- Chat exposes list/detail, Back, New Conversation, archive/restore, permission,
+  approval, Send, Stop and file/comparison routes. Labels and alignment distinguish
+  speakers without relying on bubbles. Streaming steals neither focus nor scroll;
+  drafts and uncertain delivery remain inspectable. Activity names action,
+  target and status; file summaries distinguish reads, no-ops, recorded edits
+  and runtime reports. Closing a comparison returns to its origin. Native
+  transparency/contrast and Reduce Motion preserve readable status.
 
 ### Agent Changes
 
-- Agent Changes names Note, operation, exact change position and revisions,
-  `change_id`, and Earlier Revision, Created by External Agent, or system-Trash
-  state as applicable. Before/After and inserted, removed, or changed structure
-  remain perceivable without color. Previous and Next have keyboard, pointer,
-  focus, and accessibility equivalents. Progressive detail exposes complete
-  path and fingerprints.
-- Closing Agent Changes records no review state and never changes Settlement.
-  The Settlement toolbar control retains the accessible Settle route. Direct Undo states its
-  current-fingerprint prerequisite and exact outcome.
-- Source deletion and Agent Change recovery use distinct labels,
-  consequences, and focus restoration.
+§8.4 owns evidence and Undo; §18.5 owns comparison presentation. Each comparison
+exposes Note, operation, exact revisions/position, `change_id` and applicable
+Earlier Revision, Created by External Agent or system-Trash state. Before/After
+and inserted/removed/changed structure remain perceivable without color.
+Previous/Next and progressive path/fingerprint detail have keyboard, pointer,
+focus and accessibility equivalents. Closing implies no review or Settlement.
+Undo states its current-fingerprint prerequisite and outcome. Source deletion
+and Agent Change recovery retain different consequences and return context.
 
 ### Evidence and representative human acceptance
 

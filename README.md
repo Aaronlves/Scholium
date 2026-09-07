@@ -52,7 +52,7 @@ but they never replace exact Markdown, sources, or explicit
 researcher judgment as authority.
 
 The manual core works without Obsidian, Zotero, or Agents. Scholium is not
-project management, reference management, permanent AI chat, or a full
+project management, reference management, a general Agent harness, or a full
 Obsidian replacement.
 
 ## Documentation
@@ -69,6 +69,10 @@ Use the smallest authority set that answers the question:
    acceptance boundaries.
 4. This README, live construction, tests, and scripts provide setup and current
    implementation evidence.
+
+[Design.md](Design.md) holds the stable global design philosophy; feature
+layout and interaction stay in their owning specification chapters. The
+[ownership table](Docs/SCHOLIUM_SPEC.md#single-owner-editing-rule) routes edits.
 
 Target prose is not proof of implementation. The completed migration roadmap
 and superseded decision records remain available through Git history rather
@@ -108,7 +112,8 @@ coherence remain App-owned.
 Every confirmed MCP mutation produces one machine-local Agent Change with exact
 revision evidence. Agent Changes support comparison and eligible direct Undo
 for updates; they are not chat, permission, review, acceptance, Settlement, or
-research discussion. Handoff remains unavailable pending its separate contract.
+research discussion. Explicit selection handoff for the development Chat client
+follows the in-app Chat specification; it is not an external-host handoff service.
 
 The release bundles only the thin Scholium Core Protocol Skill. Researcher-owned
 method Skills live in the external Agent host; Scholium does not register,
@@ -312,8 +317,9 @@ they expose only the authored occurrence and never assign a relationship class.
 
 Authoritative research remains in the selected Markdown folders. The small
 portable `.scholium/` control structure beside Works contains the bounded
-Triptych manifest, portable settings, stable identities, Metadata, Settlement,
-Critique, and recovery state defined by the specification.
+control state listed in
+[§3.3](Docs/Specification/01-foundation-and-triptych.md#33-scholium-and-machine-local-state).
+Research prose and Critiques remain Markdown; save recovery is machine-local.
 
 Bookmarks, absolute paths, window sessions, indexes, saved queries, recovery,
 local bridge authentication, exact Agent Change evidence, and unsupported
@@ -365,3 +371,20 @@ Docs/Status/              Capabilities, interface, open work, and dated proof
 Docs/ZOTERO_MCP.md         Non-normative first-party Zotero operator guide
 Tools/Scripts/             Build, verification, QA, performance, and release tools
 ```
+
+### In-app Codex Chat (development integration)
+
+The left sidebar switches between Library and Chat; Outline now belongs to the
+right document Inspector. Chat uses native macOS text and controls; replies may
+be full research discussions, while operation activity remains expandable.
+In Chat, choose a compatible official Codex executable
+and this checkout's built `scholium` CLI. Connect and sign in through Codex.
+The default configuration directory is separate; choosing an existing Codex
+configuration also inherits that environment's tools and settings.
+
+Use View → Add Selection to Chat (Command-Shift-L) from Edit or Source. Adding
+material does not send it. Select Ask for Approval or Full Access, then Send.
+Note references open in the central document region. Operation History retains
+actual MCP changes and eligible Undo. A disconnected or uncertain request is
+never automatically resent. Provider authentication, account availability,
+cloud execution and signed-distribution acceptance require their own checks.

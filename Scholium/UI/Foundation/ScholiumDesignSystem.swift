@@ -2856,3 +2856,8 @@ extension String {
         }
     }
 }
+
+/// Chat's researcher-authored message fill derives from the shared adaptive Accent.
+enum ScholiumChatAppearance {
+    static var userMessageBackground: Color { ScholiumColorRole.accent.color.opacity(0.3) }
+}

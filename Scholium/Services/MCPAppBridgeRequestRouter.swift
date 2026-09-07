@@ -988,6 +988,12 @@ final class MCPAppBridgeRequestRouter {
                     message: "The exact requested Note path is occupied.",
                     recovery: "Choose another exact .md path after inspecting current workspace state."
                 )
+            case .noChanges:
+                return ScholiumMCPFailure(
+                    code: .noChanges,
+                    message: "The proposed update would not change the Note.",
+                    recovery: "No write or Agent Change was created. Continue without retrying this identical update."
+                )
             case .invalidRequest(let reason):
                 return ScholiumMCPFailure(
                     code: .invalidRequest,

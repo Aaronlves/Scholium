@@ -51,7 +51,7 @@ struct WindowOperationIssue: Equatable, Identifiable {
 }
 
 enum SidebarContent: Int, CaseIterable {
-    case triptych, outline
+    case triptych, chat
 }
 
 /// Presentation state owned by one complete configured window.

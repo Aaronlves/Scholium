@@ -37,8 +37,23 @@ Application and This Triptych settings retain their existing owners.
 `WorkspaceSettingsModel` presents immutable snapshots and delegates writes to
 Application capabilities. Portable Triptych settings contain Metadata
 definitions, About order, Attention timing, and other declared portable state.
-The retired Agent-created-analysis preference is decoded and re-encoded only as
-opaque v8 compatibility data; it has no public, validation, or UI semantics.
+Unsupported pre-production state remains subject to the specification's
+non-migration and byte-preservation boundaries; architecture adds no compatibility
+policy.
 
 Settings search indexes static interface metadata only. It never searches
 research content, reads external Skill files, or supplies Agent permission.
+
+`SettingsToolbarAttachment` projects the selected destination to a native
+preference `NSToolbar`. Its coordinator owns only exact-window attachment and
+frame adjustment from the current top-left corner, constrained to the visible
+screen and immediate under Reduce Motion. SwiftUI retains destination state;
+Application retains configuration persistence. Native search filters static
+page/control metadata. Hotkey recording delegates to
+`ScholiumHotkeyPreferences`, shared with command construction.
+
+The Metadata pane edits field definitions and About visibility/order as separate
+parts of one revision-checked settings draft. It neither writes Note Metadata
+nor source. The selected Triptych's Chat controller supplies connection settings
+through the [Agent client](02-agent-collaboration.md#native-chat-client), not a
+second runtime owned by the preferences window.

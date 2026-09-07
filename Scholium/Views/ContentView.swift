@@ -100,20 +100,27 @@ struct ContentView: View {
                         .opacity(shellState.sidebarContent == .triptych ? 1 : 0)
                         .allowsHitTesting(shellState.sidebarContent == .triptych)
                         .accessibilityHidden(shellState.sidebarContent != .triptych)
-                    DocumentOutlineSidebar(
-                        projection: appState.documentInformation,
-                        isVisible: shellState.sidebarContent == .outline
-                    ) { line, focusesEditor in
-                        if let descriptor = appState.currentDocumentDescriptor,
-                           appState.documentController.chromeProjection.mode != .read {
-                            appState.documentController.session(for: descriptor).editorSession.goToLine(line, focusesEditor: focusesEditor)
-                        } else {
-                            appState.pendingSourceLine = line
-                        }
+                    if let chat = appState.chatController {
+                        AgentChatView(controller: chat,
+                            isVisible: shellState.libraryVisible && shellState.sidebarContent == .chat,
+                            addSelection: { Task { await appState.addCurrentSelectionToChat() } },
+                            openReference: { appState.openChatReference($0) },
+                            showInLibrary: { url in
+                                if appState.openChatReference(url) {
+                                    if !shellState.libraryVisible || shellState.sidebarContent != .triptych {
+                                        windowCoordinator.actions.activateSidebar(.triptych)
+                                    }
+                                }
+                            },
+                            showChanges: { appState.presentationRouter.present(.agentChanges(scope: .exact($0))) },
+                            showConversationChanges: {
+                                appState.presentationRouter.present(.agentChanges(scope: .conversation($0)))
+                            })
+                        .opacity(shellState.sidebarContent == .chat ? 1 : 0)
+                        .allowsHitTesting(shellState.sidebarContent == .chat)
+                        .accessibilityHidden(shellState.sidebarContent != .chat)
                     }
-                    .opacity(shellState.sidebarContent == .outline ? 1 : 0)
-                    .allowsHitTesting(shellState.sidebarContent == .outline)
-                    .accessibilityHidden(shellState.sidebarContent != .outline)
+
                 }
             }
             .scholiumButtonStyle(.automatic)
@@ -724,9 +731,9 @@ struct ContentView: View {
                 },
                 dismiss: { appState.presentationRouter.dismissSheet() }
             )
-        case .agentChanges(let initialChangeID):
+        case .agentChanges(let scope):
             AgentChangesView(
-                initialChangeID: initialChangeID,
+                scope: scope,
                 load: {
                     try await researchController.loadAgentChanges()
                 },
@@ -808,7 +815,15 @@ struct ContentView: View {
 
     @ViewBuilder
     private var apparatusRegion: some View {
-        if let note = appState.currentNote {
+        if shellState.inspector.mode == .outline {
+            DocumentOutlineInspector(projection: appState.documentInformation,
+                                     isVisible: shellState.inspector.isVisible) { line, focusesEditor in
+                if let descriptor = appState.currentDocumentDescriptor,
+                   appState.documentController.chromeProjection.mode != .read {
+                    appState.documentController.session(for: descriptor).editorSession.goToLine(line, focusesEditor: focusesEditor)
+                } else { appState.pendingSourceLine = line }
+            }
+        } else if let note = appState.currentNote {
             ResearchInspectorView(
                 research: researchController,
                 note: note,

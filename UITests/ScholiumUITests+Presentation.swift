@@ -156,7 +156,7 @@ extension ScholiumUITests {
             app.descendants(matching: .any)["Markdown editor, Edit mode"].exists
         )
         XCTAssertTrue(
-            sidebarModeControl("Triptych")
+            sidebarModeControl("Library")
                 .waitForExistence(timeout: 5)
         )
         let inspectorButton = app.toolbars.firstMatch.buttons[
@@ -172,22 +172,26 @@ extension ScholiumUITests {
         let topics = app.radioButtons["Topics"].firstMatch
         XCTAssertTrue(topics.waitForExistence(timeout: 5))
         topics.click()
-        let outline = sidebarModeControl("Outline")
+        let chat = sidebarModeControl("Chat")
         let inspector = app.toolbars.buttons["Show Research Inspector"].firstMatch
-        XCTAssertTrue(waitUntil(timeout: 5) { !outline.isEnabled && !inspector.isEnabled })
+        XCTAssertTrue(waitUntil(timeout: 5) { chat.isEnabled && !inspector.isEnabled })
         XCTAssertTrue(app.descendants(matching: .any)["scholium.noteList"].exists)
         app.menuBars.menuBarItems["View"].click()
         XCTAssertFalse(app.menuItems["Outline"].isEnabled)
         XCTAssertFalse(app.menuItems["Show Research Inspector"].isEnabled)
         app.typeKey(.escape, modifierFlags: [])
-        XCTAssertFalse(outline.isEnabled)
+        XCTAssertTrue(chat.isEnabled)
         XCTAssertFalse(inspector.isEnabled)
+        chat.click()
+        XCTAssertTrue(app.descendants(matching: .any)["scholium.chat"].waitForExistence(timeout: 5))
+        sidebarModeControl("Library").click()
         openNote("QA Topic.md", expectedTitle: "QA Topic", in: app.windows.firstMatch)
-        XCTAssertTrue(waitUntil(timeout: 5) { outline.isEnabled && inspector.isEnabled })
+        XCTAssertTrue(waitUntil(timeout: 5) { chat.isEnabled && inspector.isEnabled })
         inspector.click()
         XCTAssertTrue(app.descendants(matching: .any)["scholium.inspectorMode"].waitForExistence(timeout: 5))
         app.toolbars.buttons["Hide Research Inspector"].firstMatch.click()
-        outline.click()
+        app.menuBars.menuBarItems["View"].click()
+        app.menuItems["Outline"].click()
         XCTAssertTrue(app.descendants(matching: .any)["scholium.documentOutline"].waitForExistence(timeout: 5))
     }
 
@@ -198,7 +202,7 @@ extension ScholiumUITests {
         let originalFrame = window.frame
         let wordmark = app.descendants(matching: .any)["scholium.wordmark"]
         XCTAssertFalse(wordmark.exists)
-        let hideSidebar = sidebarModeControl("Triptych")
+        let hideSidebar = sidebarModeControl("Library")
         XCTAssertTrue(hideSidebar.waitForExistence(timeout: 5))
         let librarySurface = app.descendants(matching: .any)["scholium.librarySurface"]
         XCTAssertTrue(librarySurface.waitForExistence(timeout: 5))
@@ -254,7 +258,7 @@ extension ScholiumUITests {
             waitUntil(timeout: 5) {
                 !self.app.descendants(matching: .any)["scholium.librarySurface"].exists
             })
-        let showSidebar = sidebarModeControl("Triptych")
+        let showSidebar = sidebarModeControl("Library")
         XCTAssertTrue(showSidebar.waitForExistence(timeout: 5))
         XCTAssertTrue(waitForDocumentTitle("QA Autosave A", timeout: 5))
         showSidebar.coordinate(

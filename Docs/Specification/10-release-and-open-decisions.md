@@ -50,13 +50,10 @@ re-evaluation, App/CLI/MCP parity, stale refusal, index rebuild, and incremental
 establishes philosophical relevance, evidential support, or researcher
 acceptance.
 
-Agent evidence includes both copied setup commands; user-scope stdio launch;
-the current-user-only authenticated App bridge; single and ambiguous Triptych
-selection; current status followed by search/read/link retrieval; one body
-update and one create or system-Trash mutation; stale/conflict and uncertain
-outcome recovery; exact Agent Change comparison; direct Undo; accessibility;
-and App-unavailable fallback. It does not require an embedded or
-provider-specific Agent runtime.
+§21.5 owns the packaged external-host journey. Deterministic Agent evidence
+covers both setup commands, tool schemas, scope/currentness, body update and
+create/Trash, stale/conflict/uncertain recovery, comparison, Undo and App absence.
+An embedded provider runtime is not required for external-host acceptance.
 
 These are functional evidence categories, not one serial clean-account or human
 script. Deterministic fixtures own protocol variants and failure branches;
@@ -170,8 +167,7 @@ process-set oracle rather than treating a shorter run as proof of no leak.
 
 A gate campaign may capture all series together or combine focused series from
 the same exact app, fixture, reference-machine configuration, threshold set, and
-prepared driver. A focused report is eligible series evidence but is always
-**Incomplete**, never a G7 pass. A recorded driver, environment, or correctness
+prepared driver. Its evidence class follows the distinction above. A recorded driver, environment, or correctness
 failure invalidates that series; rerun that series rather than every completed
 unaffected series. A valid threshold failure remains failure evidence and cannot
 be erased by choosing a new sample count or repeating the unchanged series.
@@ -273,11 +269,6 @@ external verification; never re-sign an already accepted artifact.
 
 ## 22. Unresolved target decisions
 
-Only current questions that can still change the target belong here:
-
-- define a lightweight, nonauthorizing Handoff and its complete-copy fallback
-  before Scholium offers a route from a Note or selection into an external
-  Agent conversation.
-
-Resolution updates the owning chapter and removes the question in the same
-patch. Git, not this specification, retains decision history.
+No unresolved target decision is registered here. Approved in-app Chat and
+selection handoff are owned by §8.7. Implementation and acceptance gaps remain
+in Implementation Status, not in this decision section.

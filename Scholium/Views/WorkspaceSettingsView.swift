@@ -185,6 +185,8 @@ struct ScholiumSettingsView: View {
             )
             settingsModel.selectPane(destination.pane)
         }
+        .onChange(of: persistedPane) { _, _ in restoreRequestedDestination() }
+        .onChange(of: persistedResearchCategory) { _, _ in restoreRequestedDestination() }
         .onChange(of: destination) { _, destination in
             if !destination.matches(searchQuery) { searchQuery = "" }
             settingsModel.selectPane(destination.pane)
@@ -198,6 +200,12 @@ struct ScholiumSettingsView: View {
                   let first = filteredDestinations.first else { return }
             destination = first
         }
+    }
+
+    private func restoreRequestedDestination() {
+        destination = ScholiumSettingsDestination.restored(
+            pane: WorkspaceSettingsPane(rawValue: persistedPane) ?? .triptychs,
+            researchCategory: ResearchGuidanceCategory(rawValue: persistedResearchCategory) ?? .agentIntegration)
     }
 
     private var filteredApplicationDestinations: [ScholiumSettingsDestination] {

@@ -36,6 +36,7 @@ struct ArchitectureBoundaryTests {
             "Scholium/App/ScholiumApp.swift",
             "Scholium/App/Window/WindowWorkspaceController.swift",
             "Scholium/Services/MCPAppBridgeRequestRouter.swift",
+            "Scholium/Services/AgentChatController.swift",
             "Scholium/Services/ScholiumAppBridgeRequestRouter.swift",
             "Scholium/Services/WindowSession.swift",
             "Scholium/Views/AgentIntegrationSettingsView.swift",

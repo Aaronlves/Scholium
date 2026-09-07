@@ -52,6 +52,9 @@ Scholium 的人工核心不依赖 Obsidian、Zotero 或 Agent。它不是项目�
    开放工作、注明日期的验证证据和尚未完成的验收。
 4. 本 README、实际构建、测试和脚本提供设置方法与当前实现证据。
 
+[Design.md](Design.md) 只负责稳定的全局设计思路，具体布局与交互归各自的规范章节。
+修改文档时以[内容归属表](Docs/SCHOLIUM_SPEC.md#single-owner-editing-rule)定位 owner。
+
 目标文字不等于实现证明。已经完成使命的迁移 Roadmap 与被取代的决策记录保留在
 Git 历史中，不再作为平行权威。
 
@@ -80,7 +83,8 @@ workspace，或直接读取脉络文件。首版只提供 workspace status、Not
 
 每个已确认 MCP 变更只生成一条本机 Agent Change 准确修订证据。Agent Changes 支持
 比较与满足条件的更新直接 Undo；它们不是聊天、权限、审查、接受、Settlement 或
-研究讨论。Handoff 在其独立合同确定前保持不可用。
+研究讨论。开发中的应用内 Chat 按规范提供明确的选区传递；它不是外部 host 之间的
+会话交接服务。
 
 发行版只捆绑精简的 Scholium Core Protocol Skill。研究者自己的 method Skills 位于
 外部 Agent host；Scholium 不注册、检查或执行它们。这些路径只证明工程可达性，不
@@ -258,8 +262,9 @@ bridge 工作；当应用、bridge、所选脉络或当前状态不可用时明�
 ## 存储与安全
 
 权威研究内容始终保存在研究者选择的 Markdown 文件夹。位于“写作”旁边的小型
-便携式 `.scholium/` 控制结构只保存规格允许的脉络 manifest、便携式设置、稳定
-身份、Metadata、Settlement、Critique 与恢复状态。
+便携式 `.scholium/` 控制结构只保存
+[§3.3](Docs/Specification/01-foundation-and-triptych.md#33-scholium-and-machine-local-state)列出的控制状态。
+研究正文和 Critique 保持为 Markdown，保存恢复数据留在本机。
 
 Bookmark、绝对路径、窗口 session、索引、保存的查询、恢复、本机 bridge 认证、
 准确 Agent Change 证据与未知预发布字节保存在本机：

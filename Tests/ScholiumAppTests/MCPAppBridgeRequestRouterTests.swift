@@ -180,6 +180,20 @@ struct MCPAppBridgeRequestRouterTests {
         let initialSource = "\n# Line 1\r\nLine 2\r\n"
         #expect(try Data(contentsOf: createdURL) == Data(initialSource.utf8))
 
+        let unchanged = await router.handle(ScholiumMCPBridgeRequest(
+            tool: .updateNote,
+            arguments: [
+                "triptych_id": .string(triptychID),
+                "note_id": .string(noteID.uuidString),
+                "expected_fingerprint": fingerprintJSON(initialFingerprint),
+                "mode": .string("source"),
+                "content": .string(initialSource),
+            ]
+        ))
+        #expect(unchanged.error?.code == .noChanges)
+        #expect(deliveredChanges.map(\.id) == [createChangeID])
+        #expect(try Data(contentsOf: createdURL) == Data(initialSource.utf8))
+
         let updated = try result(await router.handle(ScholiumMCPBridgeRequest(
             tool: .updateNote,
             arguments: [

@@ -61,6 +61,33 @@ For every user-facing interface, interaction, accessibility, or visual change:
    text, color, focus, keyboard, motion, custom controls, WebKit/AppKit,
    Inspector, Critique, conflict, graph, or spatial relationships.
 
+## Design document change boundary
+
+`Design.md` is a small, stable global charter, not a feature specification.
+Agents must leave it unchanged during routine feature, implementation, bug-fix,
+visual-polish, acceptance and documentation-status work. An explicit researcher
+request to change global design principles or identity authorizes an edit;
+mentioning a feature's design or discovering a local discrepancy does not.
+Use the owning workflow/interface chapter for feature decisions, Architecture
+for mechanisms and shared owners, source for local defaults, and Status for proof.
+
+Do not append feature examples, control recipes, component inventories, state
+tables, numeric layout/opacity/timing rules, API snippets, exceptions or work logs
+to Design. When an authorized global decision replaces a principle, rewrite that
+principle and remove the superseded text; do not append another qualification.
+Do not create another global design file or move overflow into a Design appendix.
+
+The documentation validator fixes Design's section set, limits it to 140 lines
+and 1,100 words, and rejects detailed subheadings, tables, code blocks and local
+geometry/timing recipes. These ceilings are limits, not a filling target.
+Do not weaken them, add permitted sections or bypass the check to accommodate
+routine work; changing this boundary requires an explicit researcher request.
+The validator checks structure, not semantic relevance; passing it never grants
+permission to add a feature detail. Run it after an authorized edit.
+
+The global visual boundary is owned only by Design; feature chapters and skills
+must reference it rather than introduce further branded surfaces or exceptions.
+
 ## Implementation and architecture choices
 
 - Start with the existing owner and established project/platform patterns.

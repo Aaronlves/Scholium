@@ -104,7 +104,9 @@ struct ScholiumFileSelectionTests {
             ).count - 1
             if requestCount > 0 {
                 requestOwners[relativePath] = requestCount
-                if relativePath != "App/ScholiumApp.swift" {
+                if relativePath == "Features/Document/DocumentController.swift" {
+                    #expect(source.contains("presenter: ScholiumFileSelectionPresenter"))
+                } else if relativePath != "App/ScholiumApp.swift" {
                     #expect(source.contains(
                         "@Environment(\\.scholiumFileSelectionPresenter)"
                     ))
@@ -126,7 +128,9 @@ struct ScholiumFileSelectionTests {
         #expect(nativePanelOwners == ["UI/Components/ScholiumFileSelection.swift"])
         #expect(requestOwners == [
             "App/ScholiumApp.swift": 1,
-            "Views/Note/NoteContentView.swift": 2,
+            "Views/Note/NoteContentView.swift": 1,
+            "Features/Document/DocumentController.swift": 1,
+            "Views/AgentChatConnectionSettingsView.swift": 1,
             "Views/RestoreWorkspaceAccessView.swift": 1,
             "Views/WorkspaceSettingsView.swift": 3,
             "Views/WorkspaceSetupView.swift": 2,

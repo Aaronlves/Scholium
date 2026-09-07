@@ -1,7 +1,8 @@
 # Specification: Document and Research Interface
 
-[SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md) · Sections 18.4–18.7. Shared state
-presentation belongs to [Scholium Design](../../Design.md#199-cross-functional-state-language).
+[SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md) · Sections 18.4–18.7: Document,
+Inspector, shared state presentation, and translation. Global design belongs
+to [Scholium Design](../../Design.md).
 
 ## 18.4 Document modes, context, and Metadata
 
@@ -11,7 +12,7 @@ across its Note/tab changes. Switching workspace restores that workspace's
 selection. Mode state never becomes a Note, vault, or Markdown fact.
 
 Review owns read selection; Edit owns formatting. Selection remains available
-to Outline sidebar statistics without creating a separate annotation or
+to Outline Inspector statistics without creating a separate annotation or
 collaboration object.
 
 Managed New Note opens Edit at the exact body start after durable commit.
@@ -25,26 +26,23 @@ keyboard shortcuts, and exact Markdown input. These routes preserve the current
 selection and share the existing source transaction and Undo behavior.
 
 Document Find is one compact nonmodal floating panel at the document's logical
-upper trailing corner. It uses the shared native Liquid Glass floating container and system-owned
-restrained elevation to distinguish temporary controls from opaque Document
-Paper. There is no full-width band, backdrop dimming, or blocked document input.
-Opening, closing, and disclosure preserve prose geometry and scroll position;
-the panel never adds document padding or reserves layout space.
-Find shows the query, match count, Previous/Next, and Close; empty input has no
-no-match message. The native search-field menu owns case and whole-word options,
-with active options also visible in quiet text. Replace expands downward inside
-the same panel with aligned input fields; Find and Replace opens it directly.
-Review has no replacement controls. Opening/closing uses a short trailing-edge
-translation and fade, while replacement disclosure changes panel height. Both
-remain reversible; Reduce Motion presents final states immediately.
-Return/Shift-Return navigate matches through normal document scrolling.
-Escape or Close returns native and embedded document focus without changing
-the current exact selection.
-Clicking the document keeps Find open. Reopening Find focuses its query even
-when already open. Drafts/options remain local to the retained document; narrow
-reflow retains the native fields and never changes source. Query and replacement
-use native field editors. Marked text remains local until committed; incoming
-results cannot overwrite composition or consume its Return/Escape commands.
+upper trailing corner. Native material, colors and control treatment follow
+§19.1. There is no full-width band, backdrop dimming or blocked document input.
+Opening, closing, and disclosure preserve prose geometry and scroll position; the panel
+never adds document padding or reserves layout space. Find shows the query, match count,
+Previous/Next, and Close; empty input has no no-match message. The native search-field
+menu owns case and whole-word options, with active options also visible in quiet text.
+Replace expands downward inside the same panel with aligned input fields; Find and
+Replace opens it directly. Review has no replacement controls. Opening/closing uses a
+short trailing-edge translation and fade, while replacement disclosure changes panel
+height. Both remain reversible; Reduce Motion presents final states immediately.
+Return/Shift-Return navigate matches through normal document scrolling. Escape or Close
+returns native and embedded document focus without changing the current exact selection.
+Clicking the document keeps Find open. Reopening Find focuses its query even when
+already open. Drafts/options remain local to the retained document; narrow reflow
+retains the native fields and never changes source. Query and replacement use native
+field editors. Marked text remains local until committed; incoming results cannot
+overwrite composition or consume its Return/Escape commands.
 
 Caret suggestions use one bounded panel attached to the editor caret. Autosave
 does not dismiss it; acceptance, explicit dismissal, loss of the editing context,
@@ -54,8 +52,8 @@ navigation update the same current candidate, shown with native emphasized
 selection; click or Return accepts it. There is no independent hovered choice. They keep
 document focus, show only useful identity/path context, fit the viewport, and
 never introduce another text owner. These editing auxiliaries follow the
-input-method candidate-window pattern: native system text, controls, selection,
-and elevation above the document. During composition, application suggestions
+input-method candidate-window pattern: native system text, colors, controls, selection,
+and elevation above the document; they do not inherit the main Document palette. During composition, application suggestions
 and previews yield to the input method immediately; candidate navigation and
 acceptance resume only outside composition. §19 governs the material boundary.
 
@@ -165,10 +163,10 @@ An explicit source locator and Managed New Note's body-start insertion take
 precedence. Window restoration retains this state only for still-open tabs;
 closing a tab ends it, without permanent vault-wide cursor history.
 
-Quick Look and external opening preserve the initiating Note, mode, source
-selection, and attachment selection. Preparation failure retains an actionable error in Overview;
-returning from the external application reveals the same Document. Inline
-thumbnail loading never takes editor focus or recreates the reader/editor.
+Quick Look and external opening preserve the initiating Note, mode, source selection,
+and attachment selection. Preparation failure retains an actionable error in Overview;
+returning from the external application reveals the same Document. Inline thumbnail
+loading never takes editor focus or recreates the reader/editor.
 
 Edit treats all visible document rhythm as addressable. Clicking an authored
 heading's visual padding places the caret in that heading; clicking a visible
@@ -183,10 +181,11 @@ addressable and cannot collapse, overlap adjacent content, or jump when its
 first visible character is entered.
 
 Recognized Markdown syntax remains visible while a caret is inside its editable
-construct or immediately at either boundary; moving outside hides it. A range
-selection reveals constructs it actually overlaps. Revealed delimiters use
-Muted Text while authored content keeps its semantic styling. Unrecognized or
-incomplete inline punctuation remains ordinary source, without inferred styling.
+construct or immediately at either boundary; moving outside hides it. A range selection
+reveals constructs it actually overlaps. Revealed delimiters use readable secondary text
+while authored content keeps its semantic styling; Increase Contrast may strengthen the
+syntax ink. Unrecognized or incomplete inline punctuation remains ordinary source,
+without inferred styling.
 
 A valid heading keeps its semantic size while typing and when the caret leaves
 or re-enters it. Editing its prefix immediately updates the level or returns
@@ -201,44 +200,23 @@ Edit prose. Ordinary prose follows language-aware line-breaking rules, and
 closing punctuation is not left alone at a visual-line start merely because it
 follows an interactive inline projection.
 
-### 18.4.1 Advanced CSS boundary
-
-Imported CSS is copied into managed Application Support storage and applies
-only to document content in Review/Edit. It is scoped to ordinary prose,
-headings, lists, quotations, tables, code, links, emphasis, marks, and rules,
-using bounded visual declarations.
-
-Sanitization rejects imports, executable content, external URLs, escaping
-selectors, `!important`, and declarations that hide, reposition, or cover
-protected information. Callouts, footnotes, provenance, diagnostics,
-conflicts, recovery, and chrome remain app-owned. Invalid snippets stay disabled
-with errors. Rendering failure enters persistent CSS Safe Mode until the
-researcher disables or selectively re-enables managed copies.
-
-The Workspace toolbar follows §18.2's bounded-set, menu-parity, and overflow
-contract. Outline is a persistent native heading tree in the shared Sidebar.
+Outline is a persistent native heading tree in the document Inspector.
 Its hierarchy comes from the current source, including unsaved edits; changing
 headings refreshes the projection without rewriting Markdown. Clicking a heading
-locates it while keeping the sidebar open. Up/Down selects and locates a section
+locates it while keeping the Inspector open. Up/Down selects and locates a section
 without taking focus from the outline; Left/Right controls disclosure, and Return
 enters the located document position. Hover never changes the current section.
 Current-section presentation follows the caret in Edit/Source and the reading
 anchor in Review. It never defaults to the first heading before that heading.
 No Document and No Headings remain distinct. There is no second outline popover.
-Statistics stay centered at the bottom of the Outline sidebar while its tree
+Statistics stay centered at the bottom of the Outline Inspector while its tree
 scrolls independently. Body scope is implicit; `Selection` appears only for a
 nonempty selection. One number is shown using the remembered machine-local
 choice among Words, Characters with Spaces, Characters without Spaces, and Han
 Characters. The native menu shows exact measures and values, with a checkmark
 for the current choice. It has no separate statistics heading or decorative card.
-Search belongs beside
-Notifications in the Sidebar header. Agent Changes may appear in the default
-toolbar only while at least one confirmed local change exists. Source remains
-available through the Document Mode menu; a retained toolbar item may prioritize
-Review/Edit while reporting its current value. Document Text Size is per-window
-and source-neutral. Native toolbar and Sidebar-header controls preserve the
-semantic content-plane boundary in §19 without adding feature-owned material or
-geometry.
+Toolbar placement and available commands belong to §18.2. Document Text Size
+is per-window and source-neutral.
 
 About edits Metadata directly through a quiet, ordered list without category
 headings, an alternate editor, or Save/Cancel controls. Labels align to one
@@ -262,12 +240,11 @@ parts and keyboard-accessible ordering. Empty placeholders create no value;
 incomplete nonempty names retain their draft and explain the error. Contributor
 identity and position are included in accessible names.
 
-Settings owns field definitions, visibility, and order. About exposes no Add
-Field or per-row Remove Field command. Configured empty fields remain editable;
-present archived or unsupported values remain visible, with unsupported shapes
-read-only rather than reconstructed. File dates and Settlement facts remain
-read-only rows at the end of the same aligned metadata sequence. Zotero uses
-an applicable relation row with its existing operations in a native menu.
+Settings owns field definitions, visibility, and order. About exposes no Add Field or
+per-row Remove Field command. Configured empty fields remain editable; present archived
+or unsupported values remain visible, with unsupported shapes read-only rather than
+reconstructed. §18.5 owns the separate Zotero, attachment and collapsed File Information
+positions; they do not become editable Metadata fields.
 
 One Note-local session serializes exact Metadata revision commits. Acknowledged
 writes advance only that session's revision and never replace newer typing.
@@ -279,15 +256,38 @@ field and expose Retry or explicit Reload Metadata through its options; reload
 replaces the local Metadata drafts with the current authoritative record. YAML
 has no About edit route.
 
+Short syntax markers may borrow available outer whitespace if revealing them
+would otherwise wrap the prose. The placement stays stable during activation;
+long technical destinations wrap locally. Reveal never clips source, overlaps
+navigation or introduces page-level horizontal scrolling. Input, selection,
+composition and source updates never wait for a transition.
+
+### 18.4.1 Advanced CSS boundary
+
+Imported CSS is copied into managed Application Support storage and applies
+only to document content in Review/Edit. It is scoped to ordinary prose,
+headings, lists, quotations, tables, code, links, emphasis, marks, and rules,
+using bounded visual declarations.
+
+Sanitization rejects imports, executable content, external URLs, escaping
+selectors, `!important`, and declarations that hide, reposition, or cover
+protected information. Callouts, footnotes, provenance, diagnostics,
+conflicts, recovery, and chrome remain app-owned. Invalid snippets stay disabled
+with errors. Rendering failure enters persistent CSS Safe Mode until the
+researcher disables or selectively re-enables managed copies.
+
 ## 18.5 Contextual research and Agent Changes
 
-Apparatus contains one trailing Inspector with **About** and **Links**.
+Apparatus contains one trailing Inspector with **Outline**, **About** and **Links**.
 Research questions and continuing discussion are ordinary Works Notes (§4 and
 §8.6), read and edited in the main Document. They have no dedicated Inspector,
 window, search category, or management commands.
 
-**Operation History** provides a persistent browsing route over machine-local
-Agent Change evidence, independent of Notifications dismissal. Its collection
+**Agent Changes** opens on explicit request and lists the most recent operation
+per Note, independent of Notifications dismissal. Older receipts remain retained
+and individually addressable. Chat's Conversation Changes opens the same interface
+scoped to all retained receipt IDs from that conversation, including earlier
+changes to the same Note. Runtime-only reports never fabricate exact receipts. Its collection
 and exact comparison remain native software-operation views throughout. It is
 not a fourth Document mode, durable review state, or
 research history. An Agent Change notification opens one exact
@@ -297,13 +297,13 @@ and current content without a fabricated empty baseline. A system-Trash change
 shows the original Note identity and location plus the Finder-owned recovery
 boundary; it is not rendered as an editable deletion diff.
 
-Several Agent Changes never become one cumulative diff. They appear one at a
-time in confirmation order with exact position and deterministic **Previous**
-and **Next** routes. The compact header names Note, operation, time, and
-current-revision state; `change_id`, complete path, and exact fingerprints use
-progressive detail. Ordinary Review continues to show the current complete
-Note. If current saved source differs from the ending fingerprint, comparison
-is **Earlier Revision** and is never overlaid on current prose.
+Several Agent Changes never become one cumulative diff. The current collection uses
+exact position and **Previous**/**Next** routes. A direct receipt link opens only that
+change, without unrelated history navigation. The compact header names Note, operation,
+time, and current-revision state; `change_id`, complete path, and exact fingerprints use
+progressive detail. Ordinary Review continues to show the current complete Note. If
+current saved source differs from the ending fingerprint, comparison is **Earlier
+Revision** and is never overlaid on current prose.
 
 Closing returns to the originating context, records no viewed/unread progress,
 and never changes Settlement. Direct Undo remains per eligible update and uses
@@ -311,8 +311,9 @@ and never changes Settlement. Direct Undo remains per eligible update and uses
 source preimage or Undo.
 
 An icon-only native single-choice group in the Inspector's toolbar selects
-About or Links; each icon retains its complete Help and accessibility
-name. Pane content never repeats that selector. Each
+Outline, About or Links; each icon retains its complete Help and accessibility
+name. Outline presents the current document heading tree and statistics.
+Pane content never repeats that selector. Each
 workspace retains its selection across Note and tab changes. Hiding Inspector
 moves no content elsewhere. Without a Document it presents No Document Selected.
 
@@ -353,81 +354,90 @@ last trustworthy content plus Retry. Native editing feedback, keyboard input,
 Undo and recovery remain intact; no field-removal or confirmation buttons are
 introduced.
 
-Links contains one native capsule Incoming/Outgoing segmented choice and a local
-search field. The Inspector selectors use AppKit rounded control artwork rather
-than Liquid Glass. Search scope and options live in the search-field magnifying-
-glass menu, with no separate filter row
-competes with the content. Direction, grouping, and distinct activation targets
-carry the interaction; no standing explanatory caption repeats the controls.
-Each direction groups authored occurrences by linked Note identity, with a
-Note title and occurrence count. Incoming expands to passages in that source
-Note; Outgoing expands to passages in the current Note that link to the named
-destination. The entire group heading, including its Note title and disclosure
-arrow, expands or collapses the passages without navigating. Its contextual
-Open Linked Note action opens the peer when needed. Links passages have a quiet
-hover affordance and retain keyboard activation, but no persistent selected,
-checked, visited or clicked appearance. Passage activation locates its original
-source in the current Document mode. Once the target has been revealed, the
-Document briefly highlights the corresponding visible line in Review or source
-line in Edit/Source, then returns to ordinary reading; it does not wash an entire
-long paragraph or enclosing section with color. The marker fades in briefly,
-holds, then fades out without moving or scaling the text. Reduce Motion keeps
-the same brief marker static.
-Repeated activation locates and briefly highlights the target again. Only one
-arrival highlight appears in a Document at a time; another navigation replaces
-it, and passive refresh never replays it. It is a transient presentation, not a
-source edit or a substitute for the researcher's text selection. If the target
-cannot be resolved, use the existing unavailable/recovery path rather than
-highlighting an unrelated paragraph or claiming arrival. No toast or explanatory
-success caption accompanies the jump.
-Readable context precedes its secondary source line; the existing
-dialect parser projects link labels without exposing link syntax or changing
-source anchors. Explicit outgoing fragments retain Open Linked Passage in the
-secondary menu. Repeated links
-remain separate occurrences. No inferred relation, predicate, or Combined
-direction is introduced.
-Each row retains its exact source anchor, complete local context, and optional
-annotation; repeated links remain repeated occurrences. Outgoing annotation
-editing changes only the current source Note. Incoming annotations are
-read-only and expose a separately named **Edit at Source** route that navigates
-to the source occurrence. Row titles, annotation text, and context wrap and use
-full-row native destination activation. Ordinary incoming, outgoing, and
-in-document link navigation retains the current Document mode and reveals the
-corresponding rendered paragraph in Review or exact line in Edit/Source.
-Outgoing fragment links use the resolved destination anchor. Each Note and
-direction retains its query, group disclosure, and reading position in
-window-local state. Returning restores that context without creating another
-graph or source owner.
+Links contains one native capsule Incoming/Outgoing segmented choice and a local search
+field. The system owns selector artwork and feedback. Search scope and options live in
+the search-field magnifying-glass menu, with no separate filter row. Direction,
+grouping, and distinct activation targets carry the interaction; no standing explanatory
+caption repeats the controls. Each direction groups authored occurrences by linked Note
+identity, with a Note title and occurrence count. Incoming expands to passages in that
+source Note; Outgoing expands to passages in the current Note that link to the named
+destination. The entire group heading, including its Note title and disclosure arrow,
+expands or collapses the passages without navigating. Its contextual Open Linked Note
+action opens the peer when needed. Links passages have a quiet hover affordance and
+retain keyboard activation, but no persistent selected, checked, visited or clicked
+appearance. Passage activation locates its original source in the current Document mode.
+Once the target has been revealed, the Document briefly highlights the corresponding
+visible line in Review or source line in Edit/Source, then returns to ordinary reading;
+it does not wash an entire long paragraph or enclosing section with color. The marker
+fades in briefly, holds, then fades out without moving or scaling the text. Reduce
+Motion keeps the same brief marker static. Repeated activation locates and briefly
+highlights the target again. Only one arrival highlight appears in a Document at a time;
+another navigation replaces it, and passive refresh never replays it. It is a transient
+presentation, not a source edit or a substitute for the researcher's text selection. If
+the target cannot be resolved, use the existing unavailable/recovery path rather than
+highlighting an unrelated paragraph or claiming arrival. No toast or explanatory success
+caption accompanies the jump. Readable context precedes its secondary source line; the
+existing dialect parser projects link labels without exposing link syntax or changing
+source anchors. Explicit outgoing fragments retain Open Linked Passage in the secondary
+menu. Repeated links remain separate occurrences. No inferred relation, predicate, or
+Combined direction is introduced. Each row retains its exact source anchor, complete
+local context, and optional annotation; repeated links remain repeated occurrences.
+Outgoing annotation editing changes only the current source Note. Incoming annotations
+are read-only and expose a separately named **Edit at Source** route that navigates to
+the source occurrence. Row titles, annotation text, and context wrap and use full-row
+native destination activation. Ordinary incoming, outgoing, and in-document link
+navigation retains the current Document mode and reveals the corresponding rendered
+paragraph in Review or exact line in Edit/Source. Outgoing fragment links use the
+resolved destination anchor. Each Note and direction retains its query, group
+disclosure, and reading position in window-local state. Returning restores that context
+without creating another graph or source owner.
 
 Document owns one **Settlement** command with a default native toolbar item and
 complete Research-menu route. It is presented as a research milestone, not task
 completion. Unsettled, Settled, and Changed Since Settle have distinct wording,
-symbol shape, Help, and state-bearing accessibility value. Settled may receive
-restrained Confirmed reinforcement; Changed Since Settle combines the milestone
-identity with Attention without implying failure.
+symbol shape, Help, and state-bearing accessibility value. Toolbar rendering
+uses native state feedback without a feature-owned tint or animation;
+Changed Since Settle does not imply failure.
 
 Activating Settle or Settle Again opens one compact popover with optional
 rationale rather than changing the judgment directly. Successful exact-revision
-Settlement updates the control and Inspector facts. One brief,
-non-celebratory transition may acknowledge an explicit successful Settle, but
-existing state, document switching, refresh, failure, and Mark Unsettled do not
-replay it; Reduce Motion presents the final state immediately. Exact color,
-symbol, material, and motion choreography remain implementation choices. There
-is no parallel Document overlay, Agent launcher, or fixed research-method
-button. Agent Integration belongs to Settings, and the external conversation
-remains in its host.
+Settlement updates the control and Inspector facts without a parallel overlay,
+Agent launcher or research-method button. Agent setup and conversation behavior
+belong to §§8.2 and 8.7.
 
-MCP status, Search, and read calls create no persistent activity UI. A confirmed
-mutation adds its Agent Change to Notifications without activating the App,
-moving focus, or presenting an approval sheet. Dismissal hides the notification
+External-host MCP retrieval creates no persistent activity UI. Confirmed
+mutations add their Agent Change to Notifications without activating the App
+or moving focus. External hosts add no App approval sheet; in-app Chat activity
+and permission follow §8.7. Dismissal hides the notification
 but does not delete exact recovery evidence or imply reading, acceptance,
 adoption, Undo, or Settlement. The Inspector, Document mode, projection
 refresh, and pane visibility never replace the retained editor host or state.
 
 ## 18.6 Document-owned state and action meanings
 
-Shared presentation vocabulary is owned by
-[Scholium Design §19.9](../../Design.md#199-cross-functional-state-language).
+Workflow owners supply typed state; presentation maps it to this vocabulary.
+This is not a universal runtime enum or second state store.
+
+| State | Shared presentation | Not equivalent to |
+| --- | --- | --- |
+| **Ready** | Trustworthy committed representation and valid next action. | Saved, Settled, or merely loaded |
+| **Loading** | No trustworthy projection yet or an explicit refresh wait. | Empty, unavailable, stale |
+| **Empty** | Valid scope contains no items; retain scope and first next step. | Missing or failed source |
+| **Unavailable** | Required source or capability cannot serve; name repair or alternative. | Disabled styling |
+| **Stale** | Older trustworthy projection retained with explicit refresh. | Conflict or failed operation |
+| **Error** | Operation failed; preserve context and expose safe retry or alternative. | Empty or silent disappearance |
+| **Conflict** | Expected authoritative revision diverged; retain buffer and compare. | Stale derived data |
+| **Recovery** | Consequential repair after failure or interruption with verification. | Generic toast or overwrite |
+| **Disabled** | Known action lacks a prerequisite; keep discoverable when core. | Unavailable content |
+
+Every state retains its feature owner and visible context. Accessibility,
+announcement and persistent-repair requirements are owned by §20.
+
+Settle and Dismiss retain their workflow meanings. Page and pane states may use
+a shared Content State presentation; field validation, compact rows, operation
+feedback, and recovery notices keep purpose-owned presentations while reusing
+this vocabulary.
+
 These Document states retain their source-specific meanings:
 
 | State | Meaning |
@@ -447,10 +457,8 @@ revision and returns to Editing or explicit Reload. Editor Undo affects only
 the live editor; Agent direct Undo follows the selected Agent Change's
 fingerprint-bound recovery contract.
 
-After Saving, the only terminal outcomes are silent Saved, persistent Autosave
-Failed, or persistent Conflict. Failures remain above Document content with
-their consequence and repair. There is no Save button, success toast, timeout,
-or saved-with-warning state.
+§14 owns save outcomes and interrupted-save recovery. Failed saves and conflicts
+remain persistent above Document content with the applicable repair.
 
 Recovery candidates use one native Recovery surface with exact source,
 relationship to canonical source, Copy, Reveal, and Restore only when the

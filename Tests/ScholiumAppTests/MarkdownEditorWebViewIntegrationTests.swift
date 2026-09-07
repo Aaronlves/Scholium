@@ -9,6 +9,36 @@ import WebKit
 @Suite("Markdown editor WKWebView integration", .serialized)
 @MainActor
 struct MarkdownEditorWebViewIntegrationTests {
+    @Test("Chat receives the current unsaved Unicode selection without changing source or Undo")
+    func chatSelectionSnapshot() async throws {
+        let source = "\u{FEFF}# Fixture\r\n\r\n中文 😀 passage\r\nnext line\r\n"
+        let harness = EditorHarness(source: source, laysOutForPointerTesting: true)
+        defer { harness.close() }
+        try await harness.waitUntilReady()
+        harness.session.setMode(.source)
+        try await harness.waitUntilPresentedMode(.source)
+        harness.session.goToLine(3)
+        try await harness.session.focusAndWait()
+        _ = try await harness.callPageJavaScript("document.execCommand('insertText', false, '未保存 ');")
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while !harness.session.isDirty && ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+        let unsaved = try await harness.session.currentText(for: harness.documentID)
+        #expect(unsaved.contains("未保存 "))
+        let excerpt = "中文 😀 passage\r\nnext"
+        let range = try #require(unsaved.range(of: excerpt))
+        let lower = range.lowerBound.utf16Offset(in: unsaved), upper = range.upperBound.utf16Offset(in: unsaved)
+        let map = EditorSourceOffsetMap(source: unsaved)
+        let expectedHead = try #require(map.editorUTF16Offset(forSourceUTF16Offset: upper))
+        harness.session.revealSourceRange(fromUTF16: try #require(map.editorUTF16Offset(forSourceUTF16Offset: lower)), toUTF16: expectedHead)
+        try await harness.waitUntilSelection(head: expectedHead, stage: "chat selection")
+        let beforeGeneration = harness.session.generation
+        let snapshot = try await harness.session.chatSelection()
+        #expect(snapshot.source == unsaved && snapshot.excerpt == excerpt && snapshot.line == 3)
+        #expect(harness.session.generation == beforeGeneration && harness.session.isDirty)
+        #expect(try await harness.session.currentText(for: harness.documentID) == unsaved)
+        await harness.closeAndDrain()
+    }
+
     @Test("Syntax families retain exact source and Callout geometry through entry and exit")
     func syntaxFamiliesRetainSourceAndCalloutGeometry() async throws {
         let source = "Lead.\r\n\r\n## 标题 Heading\r\n\r\n**Bold** and *emphasis* and ~~strike~~ and ==mark== and `code`.\r\n\r\n> [!state] Stable Callout\r\n> 中文正文 **reason**.\r\n> Second paragraph.\r\n\r\n> A quotation.\r\n\r\n- [ ] A task\r\n\r\n| A | B |\r\n|---|---|\r\n| 1 | 2 |\r\n\r\n$$\r\nx^2\r\n$$\r\n\r\nAfter.\r\n"

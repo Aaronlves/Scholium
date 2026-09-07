@@ -128,26 +128,11 @@ struct SidebarLibraryFilterMenu: View {
                 }
             }
         } label: {
-            Image(systemName: activeFilterCount == 0
+            ScholiumSidebarHeaderIcon(systemImage: activeFilterCount == 0
                 ? "line.3.horizontal.decrease"
                 : "line.3.horizontal.decrease.circle.fill")
-                .scholiumForeground(.mutedText)
-                .frame(
-                    width: ScholiumMetrics.Accessibility.minimumCustomTarget,
-                    height: ScholiumMetrics.Accessibility.minimumCustomTarget
-                )
-                .accessibilityHidden(true)
         }
-        .frame(
-            width: ScholiumMetrics.Accessibility.preferredCustomTarget,
-            height: ScholiumMetrics.Accessibility.preferredCustomTarget
-        )
-        .scholiumMenuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .scholiumContentControlPointerFeedback(
-            isActive: activeFilterCount > 0,
-            in: Circle()
-        )
+        .scholiumSidebarHeaderControl(isActive: activeFilterCount > 0)
         .help(activeFilterCount == 0
             ? "Organize, filter, and sort Library notes"
             : "\(activeFilterCount) Library filters active")

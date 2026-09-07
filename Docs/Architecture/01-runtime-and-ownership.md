@@ -61,7 +61,8 @@ ApplicationBootstrapController
 ```
 
 The App bridge is process-global but operates only on currently open workspace
-capabilities. It is not an Agent lifecycle or workspace owner. The CLI stdio
+capabilities. It is not an Agent lifecycle or workspace owner. The adjacent Chat registry
+owns in-app runtime connections under the Agent Collaboration chapter. The CLI stdio
 server is a delivery adapter and cannot import Core or construct services.
 
 ### Runtime bootstrap, refresh, and Search
@@ -221,33 +222,31 @@ transactions, cancellation, deterministic ranking, and in-memory **This Note**
 matcher. Application authorizes visible scope and exposes Note Search to the GUI
 and App bridge. Adapters do not own another parser, corpus, or ranking rule.
 
-Saved Searches persist only raw query, visible presentation scope, and Search contract version. `WindowSearchController` owns execution cancellation,
-freshness, serialized persistence, and load failure. Explicit recovery uses the
-same-directory exact-state preserver before clearing that failure;
-`DiscoveryController` owns the visible completion/result selection. Search
-views and their composition consumer observe `DiscoveryController` directly;
-`WindowSearchController` never republishes Discovery changes as its own. None
-of that window state, parsed AST, resolved anchor, result bytes, or generation
-enters the persisted definition.
+Saved Searches persist only raw query, visible presentation scope, and Search contract
+version. `WindowSearchController` owns execution cancellation, freshness, serialized
+persistence, and load failure. Explicit recovery uses the same-directory exact-state
+preserver before clearing that failure; `DiscoveryController` owns the visible
+completion/result selection. Search views and their composition consumer observe
+`DiscoveryController` directly; `WindowSearchController` never republishes Discovery
+changes as its own. None of that window state, parsed AST, resolved anchor, result
+bytes, or generation enters the persisted definition.
 
 ### Application capabilities and delivery
 
 Application composes a private `WorkspaceHandle`; the macOS adapter exposes
-`DocumentUseCases`, `DiscoveryUseCases`, `AgentCollaborationUseCases`, and one
-app-owned `WindowResearchCapabilities` value composed from the current
-research-state ports plus immutable identity/assignment values. Contracts
-declares no aggregate Research mega-port.
-Configuration preflights roots and reads the portable manifest before
-registration. `WorkspaceRegistry` is the single machine-local owner of
-Triptych membership, role Vault UUID/path/bookmark bindings, default selection,
-and portable-container access. Valid Triptych and role Vault UUIDs remain
-authoritative. Missing manifest creates identity. Rejected selection or
-manifest leaves the one registration unchanged; renewed access replaces its
-exact bookmark binding.
-`WorkspaceStore` coalesces duplicate runtime
-installation, retains one event subscription before publishing activation,
-starts it with the handle's explicitly phased latest `WorkspaceSnapshot`, and accepts only increasing
-generations. Commands remain direct capability calls, not event-bus messages.
+`DocumentUseCases`, `DiscoveryUseCases`, `AgentCollaborationUseCases`, and one app-owned
+`WindowResearchCapabilities` value composed from the current research-state ports plus
+immutable identity/assignment values. Contracts declares no aggregate Research
+mega-port. Configuration preflights roots and reads the portable manifest before
+registration. `WorkspaceRegistry` is the single machine-local owner of Triptych
+membership, role Vault UUID/path/bookmark bindings, default selection, and
+portable-container access. Valid Triptych and role Vault UUIDs remain authoritative.
+Missing manifest creates identity. Rejected selection or manifest leaves the one
+registration unchanged; renewed access replaces its exact bookmark binding.
+`WorkspaceStore` coalesces duplicate runtime installation, retains one event
+subscription before publishing activation, starts it with the handle's explicitly phased
+latest `WorkspaceSnapshot`, and accepts only increasing generations. Commands remain
+direct capability calls, not event-bus messages.
 
 `WorkspaceStore` owns the live runtime, accepted Application-event
 subscription, latest explicitly phased immutable snapshots used by direct app adapters,
@@ -264,23 +263,19 @@ mirrors. Each window receives one atomic capability generation. CSS/App
 Support, Obsidian reads, and Zotero HTTP stay behind Application actors; the
 store owns no Core authority.
 
-`WorkspaceStore` owns bridge lifetime and editor flush;
-`LocalAgentBridgeRequestRouter` maps wire operations. The App listens
-only on `127.0.0.1`. A `0700` Application Support directory holds its rotated
-`0600` transport secret. Peers authenticate nonce-bound HMACs before request
-decoding. The App creates the process-generation secret;
-the CLI reads it and an external Agent invokes the CLI. Pairing Codes/Sessions
-authenticate one attributed Run, not per-document decisions. No App Group exists.
-`ResearchConnectionCoordinator` owns process credentials;
-`WorkspaceHandle` owns Runs. Transport owns no durable decisions.
+`WorkspaceStore` owns bridge lifetime and editor flush. The App's current
+`ScholiumAppBridgeServer` and client use the authenticated loopback transport;
+request routing and conversation-token admission belong to
+[Agent Collaboration](02-agent-collaboration.md#delivery-path). Transport
+credentials do not create a research Run, pairing lifecycle or write permission.
 
 ### Window state and feature controllers
 
 `WindowModel` is the per-window composition root.
 `WindowShellState` alone owns selected workspace, Inspector mode, Library
 disclosure, initial restore, peripheral visibility, text scale, appearance,
-the typed window-feedback queue, and shell status. Presentation expires
-Confirmation/Information; Warning/Error require identity dismissal.
+persistent operation issues and shell status. Issue delivery and dismissal are
+owned by [Presentation](03-source-layout-and-presentation.md#presentation).
 `WindowWorkspaceController` alone owns Triptych
 selection, registration, capability generation, identity, access recovery,
 and restoration. It calls `WorkspaceStore` for configuration, activation
@@ -303,7 +298,7 @@ owns and cancels serialized transition tasks. `WindowEditorFlushCoordinator`
 owns ordered current-editor and aggregate-window registrations. They survive
 preparation so cancelled application termination remains retryable, and end
 only after AppKit commits the close.
-`WindowSearchController` owns Search/temporary Find execution and
+`WindowSearchController` owns Search execution and
 cancellation, provider-aware result routing, generation reruns, and serialized
 Saved Search loading and persistence. It
 coordinates the `DiscoveryController` completion/result projection while
@@ -373,7 +368,7 @@ managed creator snapshots the current Settings revision and prepared role
 source before committing; GUI, researcher CLI, and Agent adapters never compose
 their own headers. A failed final source-and-identity proof persists one
 coordinated recovery record; researcher creation freezes only its exact path
-and reserved identity, while Agent creation separately links its Run operation.
+and reserved identity, while MCP creation links its machine-local Agent Change.
 Machine-local recovery duties are independently bounded files behind one
 cross-process record-store lock, so accumulated pending duties cannot consume a
 new duty's write budget. Managed identity reconciliation and portable Zotero
@@ -398,7 +393,7 @@ Note already passes them, and otherwise clears only that excluding filter set
 before requesting the minimum scroll needed to expose the row. The adjacent
 adaptive expand/collapse button mutates only the current `WindowShellState`
 disclosure scope and does not own a second reveal route.
-Folder disclosure and subtree expansion remain `DiscoveryController` state. A
+Folder disclosure and subtree expansion remain `WindowShellState` state. A
 native `NSOutlineView` disclosure commits that state through its delegate;
 AppKit owns the disclosure control, Left/Right commands, indentation, and row
 presentation without a second SwiftUI gesture or animation owner. This prevents
@@ -556,7 +551,7 @@ retained but are not projected into the native container. `DocumentController` a
 Apparatus derives from the active document, keeps window-owned visibility, and
 restores the selected workspace's mode. Only New Window creates a shell. The
 Document presentation owns one live Review/Edit/Source selection per workspace,
-defaults each to Review, and carries that selection across Note and tab changes.
+defaults writable workspaces to Edit, and carries that selection across Note and tab changes.
 `WindowSessionSnapshot` stores the selected workspace plus three
 `WindowWorkspaceSessionSnapshot` values containing role-partitioned tab order,
 selection, Document mode, Inspector mode, and lightweight presentation for
@@ -583,7 +578,7 @@ The one `NSWindow.toolbar` is divided into Library, Document, and Apparatus
 sections by native tracking separators. Ordinary actions are standard bordered
 `NSToolbarItem` instances with no custom view or fixed-size host; AppKit owns
 their regular Glass, edge highlight, shadow, adaptive appearance, and geometry.
-A native sidebar-view segmented control projects the window-owned Triptych/Outline
+A native sidebar-view segmented control projects the window-owned Library/Chat
 mode and native split visibility, including the all-off collapsed state.
 `WorkspaceWindowCoordinator` installs toolbar state after split attachment.
 The toolbar controller derives command availability once for presentation,
@@ -598,7 +593,7 @@ Back/Forward sit after the Sidebar boundary, followed by a native label renderin
 system secondary document identity. The duplicate system title is visually hidden;
 SwiftUI still owns the window's title/subtitle metadata. `ContentView` retains
 both sidebar presentations and switches their visibility and accessibility.
-The Outline uses source-derived headings in a native `NSOutlineView`, with a
+The Inspector Outline uses source-derived headings in a native `NSOutlineView`, with a
 fixed native statistics menu beneath it. Its keyboard navigation uses the
 versioned editor jump command's explicit focus flag; no heading visit enters
 document history. Inspector retains its native projection and visibility controls.
@@ -610,10 +605,8 @@ a geometry owner or painted titlebar layer. The Inspector projection
 retains its native 70 × 20 fitting size while automatic styling adopts the
 current system material.
 
-`ResearchSearchField` uses `NSSearchField` at the top of the Sidebar and in the
-advanced window. Its delegate sends only committed text to the existing Search
-owner. `WorkspaceSegmentedControl` uses native round-rect capsule segments, adapting text
-to symbols within its native layout without changing selection or callbacks.
+Search-field and workspace-selector adapters are described in
+[Source Layout and Presentation](03-source-layout-and-presentation.md#presentation).
 `ScholiumWorkspaceToolbarController` projects the existing queue through a native
 action item and anchors `NSPopover` directly to that toolbar item. A native
 flexible space positions the bell against the Sidebar tracking separator; native
@@ -654,39 +647,14 @@ observe shell visibility without reasserting split state or storing width.
 
 ### Inspector ownership
 
-The Inspector has About and Links pages. One native
-icon-only toolbar group owns projection selection and mirrors the workspace's
-retained mode; Links owns its separate native direction selector. About conditionally
-presents current-Note Needs Attention routed to the Workspace popover, then
-one ungrouped native About field list. Empty core and all present values show.
-A Note-local Metadata session serializes revision-checked saves and Undo/Redo;
-AppKit owns the continuous field editors and key loop. File and Settlement facts
-are read-only; Settings owns field visibility. No Metadata sheet exists.
+Inspector field, Outline and Links composition is owned by
+[Source Layout and Presentation](03-source-layout-and-presentation.md#presentation).
+The shell retains the workspace's Inspector mode and native visibility only;
+Document retains buffer, editing, autosave, Undo and conflict authority.
 
-For Analysis, `WorkspaceSnapshotBuilder` joins portable Zotero binding by Note
-UUID; the window supplies exact library/key and `ZoteroBridge`. About exposes
-link/manage and bound open/refresh actions without inline machine data.
-`ZoteroBindingPanelView` searches local items or prepares exact binding,
-rendering an immutable plan. Complete keys never fall back to collection
-search; refresh directly addresses the bound user or group item.
-`ZoteroBindingOperations` revalidates source, exact server/library/item,
-binding/Metadata revisions; writes absent fields for Link and Fill or previewed
-differences for Refresh; reports partial commit; and refreshes derived state
-after mutation. UI owns no mapping or writes; frontmatter is excluded.
-
-Outgoing and Incoming project every direct link occurrence as a separate
-full-row target in one flat list without peer-role grouping, and show its
-source-owned Markdown annotation and local context when present. Incoming
-annotation is read-only there; the
-named source action opens the source occurrence for editing. Settle and
-Critique remain researcher-owned current-state
-operations at their specified surfaces. Agent conversation, tool selection,
-and lifecycle state belong to the external Agent host, not the Inspector.
-
-The Inspector may navigate or open another note in the owning workspace's
-Document tabs, but it never owns a document buffer, editing, autosave, undo, or
-conflict state. Those remain exclusively in the Document surface and its
-existing controllers.
+Zotero bindings and the ordered binding/Metadata transaction belong to [Source Storage
+and Read Models](05-source-storage-and-read-models.md#shared-read-models-and-metadata).
+Inspector consumes that capability without another mapping or write owner.
 
 ### Container decision rule
 
@@ -716,26 +684,24 @@ presentation-local and create no durable readiness, machine-status, or
 research-access owner. No Application service embeds, locates, fingerprints,
 executes, installs, updates, or removes a CLI.
 
-Packaging emits a sandboxed App archive and an independent CLI archive with
-`scholium`, its Core resource bundle, and a user-local installer. Both carry
-matching provenance. The CLI has no App Sandbox or App Group entitlement. The
-CLI update module owns verified, recoverable self-update and has no App
-authority. It promotes a complete transaction before replacement; the packaged
-installer is first-install-only. The App retains sandboxing, user-selected
-read-write access, app-scoped bookmarks, Zotero client access, and App Sandbox's
-required network-server entitlement for that listener. One home-relative exception
-exposes only `Library/Application Support/Scholium`; the App has no `.local`
-access or embedded CLI. The copied Agent instruction limits installation to
-`~/.local/bin/scholium` and its adjacent resource bundle and never authorizes
-`sudo`, `PATH`, shell-profile, Agent-configuration, or quarantine mutation.
-Agent preparation starts Application registration before
-presenting Agent; its local gate prevents Ready until registration succeeds,
-while Application owns the transaction and failure. Bootstrap and Workspace
-use nonoptional Codable route bindings with a `defaultValue`; the route's
-`windowID` is their only session identity. Workspace restoration is automatic,
-while Bootstrap restoration is disabled. It recovers only Triptych and
-peripheral presentation; ordinary cold launch opens no Document unless an
-explicit route names one. Success waits for native window readiness before
-dismissing Bootstrap; failure preserves setup. Restore Access rebinds expired authorization or asks
-`WorkspaceRegistry` to remove one inactive machine-local registration without
-reading vaults before ordinary Bootstrap.
+Packaging emits a sandboxed App archive and an independent CLI archive with `scholium`,
+its Core resource bundle, and a user-local installer. Both carry matching provenance.
+The CLI has no App Sandbox or App Group entitlement. The CLI update module owns
+verified, recoverable self-update and has no App authority. It promotes a complete
+transaction before replacement; the packaged installer is first-install-only. The App
+retains sandboxing, user-selected read-write access, app-scoped bookmarks, Zotero client
+access, and App Sandbox's required network-server entitlement for that listener. One
+home-relative exception exposes only `Library/Application Support/Scholium`; the App has
+no `.local` access or embedded CLI. The copied Agent instruction limits installation to
+`~/.local/bin/scholium` and its adjacent resource bundle and never authorizes `sudo`,
+`PATH`, shell-profile, Agent-configuration, or quarantine mutation. Agent preparation
+starts Application registration before presenting Agent; its local gate prevents Ready
+until registration succeeds, while Application owns the transaction and failure.
+Bootstrap and Workspace use nonoptional Codable route bindings with a `defaultValue`;
+the route's `windowID` is their only session identity. Workspace restoration is
+automatic, while Bootstrap restoration is disabled. It recovers only Triptych and
+peripheral presentation; ordinary cold launch opens no Document unless an explicit route
+names one. Success waits for native window readiness before dismissing Bootstrap;
+failure preserves setup. Restore Access rebinds expired authorization or asks
+`WorkspaceRegistry` to remove one inactive machine-local registration without reading
+vaults before ordinary Bootstrap.

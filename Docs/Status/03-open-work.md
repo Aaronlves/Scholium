@@ -2,20 +2,41 @@
 
 [IMPLEMENTATION_STATUS.md](../IMPLEMENTATION_STATUS.md) · Work and acceptance still open.
 
+## Native design conformance
+
+The documentation decision permits additional background and Accent only in
+the main workspace; all auxiliary surfaces use system appearance. This is a
+target decision, not an implementation or acceptance pass. Audit reachable
+command-tint adapters, custom row/pointer feedback, preview WebKit CSS and
+inherited auxiliary-window palettes against Design. The document renderer's
+source fidelity and researcher-owned content formatting remain separate owners.
+This documentation cleanup changes no app code and closes no UI acceptance.
+
+## In-app Chat acceptance
+
+- The first Codex client slice is implemented. Complete signed-in inference and
+  live official-runtime tool execution with a disposable Triptych before calling
+  the runtime integration accepted. The isolated official-runtime smoke covers
+  handshake, account/model queries and thread creation without inference.
+- MCP form/URL elicitation and paginated imported runtime history are not
+  supported in this slice; unsupported server requests are rejected visibly.
+  Conversations originate in Scholium and retain their own public history.
+- Complete human VoiceOver, installed-IME and visual-adaptation acceptance for
+  the Chat composer, approvals, file navigation and moved Outline.
+- Diagnose the whole-App gate failures in document scroll restoration, editor
+  projection/bridge and stale WebKit localization expectations. The focused
+  Chat checks pass; the full integration gate remains unaccepted.
+
 ## External-host and release acceptance
 
-- Run a clean-account artifact smoke with the signed App already running:
-  register `scholium mcp serve` independently in Codex and Claude Code, confirm
-  fixed seven-tool discovery, exercise Note Search, read and links, and one
-  create/update/trash sequence; verify stale-fingerprint rejection, then inspect
-  Agent Changes and Update Undo.
-- Verify running-App absence, multiple-open-Triptych selection, reconnect, App
-  relaunch, sandbox boundary, and packaged absolute CLI-path behavior on the
-  actual release artifacts. These are external-host and packaging claims, not
-  established by local unit tests.
-- Complete Developer ID signing, notarization, distribution provenance,
-  clean-machine installation, and the documented release smoke before claiming
-  a distributable Core release.
+- Complete the packaged external-host journey required by §21.5. Keep protocol
+  variants and failure branches in deterministic checks; do not multiply them
+  into a second clean-account matrix. Local checks do not establish production
+  App/CLI installation, bridge or packaged-path behavior.
+- Complete profile-appropriate distribution provenance, artifact checks and
+  the clean-account smoke in §21.5 before claiming a distributable release.
+  The source-first Beta uses ad-hoc signing; Developer ID and notarization
+  belong only to a future notarized channel.
 
 ## Human interface and accessibility acceptance
 
@@ -45,13 +66,21 @@
   IME exact-source journey, and one visual-adaptation set at supported window
   sizes.
 - Include Agent Integration command copying, Agent Changes comparison/Undo,
-  Library navigation, Inspector About/Links navigation and
+  Library navigation, Inspector Outline/About/Links navigation and
   Document mode transitions,
   system Trash, conflict, and recovery where they exercise distinct human
   failure modes.
 - Retain the current distinction between deterministic build/test evidence and
   human acceptance. Automated accessibility structure checks do not constitute
   VoiceOver, keyboard, IME, or visual acceptance.
+
+## Portable attachment location boundary
+
+The storage architecture records absolute referenced-attachment locations in
+portable catalogs, while §3.3 excludes machine paths from portable control state.
+Reconcile this implementation boundary before claiming conformance; retain
+existing source, referenced files and control bytes while resolving location
+ownership. This documentation pass does not authorize a data migration.
 
 ## Remaining product work
 

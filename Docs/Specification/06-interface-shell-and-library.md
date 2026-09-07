@@ -9,76 +9,80 @@ and Library presentation without restating those workflows.
 
 ### 18.1 Interface principles
 
-- Keep Document the largest and most stable region. Navigation, Metadata,
-  research context, diagnostics, and Agent assistance remain subordinate.
-- Prefer native macOS windows, split views, inspectors, toolbars, menus, sheets,
-  alerts, file panels, controls, selection, and focus.
-- Give every mutable fact one owner. Commands route to the focused
-  window/document; identities, repositories, indexes, watchers, and registries
-  are shared workspace services, not view state.
-- Derive reading and research projections reversibly from authoritative
-  Markdown. Managed Metadata remains a separate portable authority.
-- Distinguish source, researcher prose, external Agent content, Agent Changes,
-  Settle, Critique, Connect, and diagnostics through text and
-  structure, not color alone.
-- Apply §20's route applicability. Menus remain comprehensive; the toolbar stays
-  bounded to frequent or high-value commands, and no toolbar command exists only
-  there. Hover, drag, color, motion, secondary click, and gesture are
-  supplementary.
-- Construct no workspace until Application Support bootstrap is Ready.
+[Design](../../Design.md) owns the global native design and visual identity;
+§2 owns document and researcher authority, and §20 owns accessible routes.
+This chapter owns shell composition, navigation and command placement.
+Bootstrap readiness is governed by §16.
 
 ### 18.2 Workspace shell and Document tabs
 
 Each configured window contains one native split view:
 
-1. **Sidebar**: one region with **Triptych** and **Outline** presentations.
-   Triptych contains Search, Analyses–Topics–Works navigation, and Library. Outline contains the current
-   Document's persistent heading hierarchy and bottom-centered statistics.
+1. **Sidebar**: one region with **Library** and **Chat** presentations.
+   Library contains Search and Analyses–Topics–Works navigation. Chat belongs
+   to the Triptych and retains its conversation while the Document changes.
 2. **Document**: the selected Note or the restrained no-document state.
-3. **Apparatus**: the trailing Research Inspector's About and Links pages.
+3. **Apparatus**: the trailing Research Inspector's Outline, About and Links pages.
+   Outline contains current-document headings and statistics.
 
-The native window and split controller own frame, dividers, collapse,
-compression, fullscreen, and toolbar geometry. Scholium owns semantic order,
-readable peripheral thresholds, and the one initial Inspector reveal request.
-It never continuously reasserts divider positions. The Sidebar uses the
-supported macOS version's native navigation material above the warm Document
-underlay; native safe areas keep Document content unobscured. Sidebar content
-adds no custom material or parallel depth cue. Document and Apparatus keep
-continuous opaque semantic backgrounds, and the system separator is the sole
-interactive boundary. Design §19 owns this semantic material boundary; the
-architecture set records its current framework implementation.
+Native split behavior governs resizing and collapse. Scholium requests the
+initial Inspector reveal but never continuously reasserts divider positions.
+The main/auxiliary color and material boundary follows §19.1; native safe areas
+protect content. A popover opened here is still an auxiliary surface.
 
-New windows show Library, hide Inspector, and begin in Analyses/About.
-The toolbar's leading native icon selector, labelled Triptych / Outline in Help
-and accessibility, shows the chosen sidebar
-presentation. Choosing the other item switches content at the same width;
-choosing the visible item again collapses the sidebar, leaving neither item
-selected. Selecting either item while collapsed reveals it. Both presentations
-retain their independent scrolling and disclosure while switching. Native split
-visibility remains authoritative, including menu and window-resize changes.
-Outline and Inspector use native enabled, selected, pressed, and disabled
-states, with no hand-tinted unavailable symbols or custom refusal animation.
-With no Note open, opening either presentation is disabled; an already visible
-presentation can still be closed. Native Help gives the reason “No note open yet”
-(简体中文：“尚未打开笔记”). Toolbar validation and View menus derive availability
-from the same current window state. Native spacers express logical grouping;
-the system owns glass shapes, proximity effects, and transitions.
-This native state contract applies to every toolbar component, including history,
-document mode, Settlement, and Inspector modes. A disabled
-action cannot execute through another toolbar or overflow route. Document-specific
-popovers close when their document or required source revision changes; detaching
-a window ends its toolbar interactions and prevents stale state from updating it.
-Back/Forward begin the Document toolbar region, after the sidebar tracking
-boundary and before its Muted Text document name. They remain available with
-the sidebar collapsed and traverse document visits, not heading jumps.
-Visibility and workspace session state are installed before first presentation,
-then native state is authoritative. Each workspace retains Library filters and
-disclosure, selected tab, live Document mode, and Inspector mode. A transition
-commits only after source safety succeeds; failure preserves the exact origin
-workspace and buffer.
+New windows show Library, hide Inspector, and begin in Analyses/About. The toolbar's
+leading native icon selector, labelled Library / Chat in Help and accessibility, shows
+the chosen sidebar presentation. Choosing the other item switches content at the same
+width; choosing the visible item again collapses the sidebar, leaving neither item
+selected. Selecting either item while collapsed reveals it. Both presentations retain
+their independent scrolling and disclosure while switching. Native split visibility
+remains authoritative, including menu and window-resize changes. Outline and Inspector
+use native enabled, selected, pressed, and disabled states, with no hand-tinted
+unavailable symbols or custom refusal animation. Chat is available with an open Triptych
+even without a Note. Chat inherits the Sidebar background with list-to-detail
+navigation. Conversation rows share cards with native secondary backgrounds by calendar
+day, with internal separators and Today/Yesterday/date headings instead of repeated
+dates. Empty unused sessions are omitted. Each conversation's entire row, including
+padding, opens its detail. The archive menu appears only at the list's top right: it
+opens Archived Chats or enters selection mode. Only in this mode, rows show leading
+selection circles; clicking a row toggles selection instead of navigating. A temporary
+bottom action bar offers Cancel and archive/restore with the selected count. Empty
+selection or active execution disables the batch action; canceling changes no
+conversations. Detail options open only this conversation's Agent Changes. Library and
+Chat share a panel-header trailing action group: icon typography, spacing, quiet neutral
+ink, target sizing and pointer feedback, without permanent glass discs. Only the bottom
+composer uses rounded Liquid Glass. A single disconnected-state Connect Codex action
+connects automatically; sign-in appears only when needed. Connection editing belongs in
+Settings, with manual paths behind its advanced disclosure. Composer secondary controls
+are borderless; permission uses an icon with a checked menu and accessible current
+value. The circular Send button uses shared Accent; availability, keyboard sending and
+native state feedback remain authoritative. Back returns to conversations while work
+continues. User messages align trailing in content-sized shared-Accent bubbles with
+legible full-opacity text; the speaker label remains above and outside the bubble; Agent
+replies support natural long-form prose. Completed operations collapse into compact,
+typed summaries. Current activity, approval requests, failure and uncertainty remain
+visible. A compact file/change count opens a popover, with exact comparisons available
+only by explicit action. File rows distinguish recorded edits, reads, verified no-op
+updates and runtime reports. They describe observed operations, not current filesystem
+or acceptance state. Chat adds no permanent change-review pane or technical
+history-management task. Outline remains document-dependent in the Inspector. Toolbar
+validation and View menus derive availability from the same current window state. Native
+spacers express logical grouping; the system owns glass shapes, proximity effects, and
+transitions. This native state contract applies to every toolbar component, including
+history, document mode, Settlement, and Inspector modes. A disabled action cannot
+execute through another toolbar or overflow route. Document-specific popovers close when
+their document or required source revision changes; detaching a window ends its toolbar
+interactions and prevents stale state from updating it. Back/Forward begin the Document
+toolbar region, after the sidebar tracking boundary and before its Muted Text document
+name. They remain available with the sidebar collapsed and traverse document visits, not
+heading jumps. Visibility and workspace session state are installed before first
+presentation, then native state is authoritative. Each workspace retains Library filters
+and disclosure, selected tab, live Document mode, and Inspector mode. A transition
+commits only after source safety succeeds; failure preserves the exact origin workspace
+and buffer.
 
 The native toolbar remains a bounded, stable set for frequent or high-value
-commands: the native **Triptych / Outline** sidebar selector, Triptych Notifications, Back/Forward,
+commands: the native **Library / Chat** sidebar selector, Triptych Notifications, Back/Forward,
 current-Document identity and mode,
 Settlement, confirmed Agent Changes when present, Inspector
 projection, and Inspector visibility. Every command also exists in its owning
@@ -110,10 +114,7 @@ save/conflict buffer and provide Retry. Window-session persistence is
 best-effort only after source safety. Cold launch begins with no document
 selected unless the researcher explicitly opens one.
 
-The Sidebar begins with its native Search field and has no separate brand
-header or persistent Triptych title. The native
-File menu opens a registered Triptych in its own window and creates a Triptych;
-Settings manages registrations and the Window menu switches among open windows.
+The Sidebar has no separate brand header or persistent Triptych title.
 When open Workspace windows belong to more than one distinct Triptych, the
 native window subtitle names the Triptych; it remains absent when that
 disambiguation is unnecessary. The no-document state contains only a decorative
@@ -125,20 +126,26 @@ Menus follow task ownership:
 - **File**: Triptych/window, New Note, Import, Duplicate, Rename, Move, Reveal,
   and system-Trash actions.
 - **Edit**: editing, Find, and formatting.
-- **View**: Back/Forward, Triptych, Outline, Sidebar visibility, Search, Advanced Search, Document mode/text size,
-  Sidebar, and Inspector.
-- **Research**: Settle, and persistent Operation History.
+- **View**: Back/Forward, Library, Chat, Outline, Sidebar visibility, Search,
+  Advanced Search, Document mode/text size, and Inspector.
+- **Research**: Settle, and Agent Changes.
 - **Window**: standard windows plus Notifications.
 - **Settings**: one native preferences window with icon-and-label toolbar categories,
   Settings search, and explicit Application, This Triptych, or This Mac scope.
-  Switching categories smoothly adjusts the window to the pane’s preferred size;
-  Reduce Motion makes the adjustment immediate.
+  Switching categories adjusts the window from its current top-left corner to
+  the pane’s preferred size within screen bounds, using native animation and
+  an immediate Reduce Motion result.
 
 Settings search indexes static page/control metadata, not research or Skill
 content. Triptychs, Document Appearance, and Hotkeys are Application settings;
 Metadata Profiles and Attention are Triptych settings; Agent Integration and
 Zotero are Research Guidance. Scope is explicit where a page mixes This
 Triptych and This Mac.
+
+Settings uses one content axis for controls and a trailing-aligned label column,
+with supporting copy beside its owner. Native collections hold field/shortcut
+rows and adjacent actions. Appearance controls and configuration-file editing
+belong to §18.4; Settings adds no nested advanced appearance editor.
 
 Hotkeys is machine-local and limited to frequent Scholium-specific menu
 commands. It requires Command, rejects conflicts and reserved shortcuts, and
@@ -147,9 +154,8 @@ supports clear and restore. Standard macOS commands remain outside remapping.
 ### 18.3 Library and Search
 
 The Triptych workspace navigator is one native single-choice segmented control
-for Analyses, Topics, and Works in stable order. It uses neutral native selection
-without Liquid Glass, an explicit Accent fill, an additional outer frame, or
-a custom shadow.
+for Analyses, Topics, and Works in stable order. The system owns its selection,
+material and geometry; Scholium adds no selection skin or outer frame.
 Ordinary widths show complete localized text; when those labels cannot fit,
 the entire control uses stable role symbols with complete Help and accessible
 names. Resizing preserves selection and focus. Counts do not occupy the control.
@@ -211,7 +217,8 @@ in this one outline. Search, Expand/Collapse, Reveal, keyboard traversal, and
 native split collapse keep deep structures usable; Scholium does not add an
 intermediate content-list pane merely to flatten source organization. Standard
 controls and rows retain their macOS cursor behavior; link cursors are reserved
-according to §19.3.
+to document links and genuinely link-equivalent targets where native controls
+do not already own cursor behavior.
 
 New Note/Folder, Rename, Move, Copy Relative Path, Reveal, Expand/Collapse, and
 system-Trash actions are available through menu and named accessibility routes;
@@ -298,21 +305,21 @@ text. Clearing quick-search text reveals the retained Library immediately.
 Its result list inherits the Sidebar's existing background without painting a
 second content surface; the system continues to own row selection feedback.
 
-Advanced Search opens explicitly from that menu or View, carrying query and scope into a resizable native window. Its own search menu has no
-Advanced Search entry. It uses one query field, one quiet summary/action line,
-and an independently scrolling native result list. The system owns row selection,
-focus feedback, and keyboard traversal. Note rows use a small document symbol,
-title, available bounded snippet, and one secondary location/reason line in
-interface typography. Repeated workspace labels, ranking decoration, and permanent
-“Retrieval lead” labels do not occupy each row. Before a query, the window shows
-a neutral Search prompt; an initial or cleared projection does not claim an index
-failure. Empty and genuinely unavailable states use native content-state views,
-preserving the actual reason and any valid retry. Saved Searches remains directly
-available. Explain Query opens a compact transient explanation of the actual
-conditions; tokenizer, normalization, ranking recipes, and repeated result titles
-do not occupy the search workspace. Opening a result returns to the originating
-Document while keeping the advanced window and query available for continued
-search. Ordinary input never opens an advanced window automatically.
+Advanced Search opens explicitly from that menu or View, carrying query and scope into a
+resizable native window. Its own search menu has no Advanced Search entry. It uses one
+query field, one quiet summary/action line, and an independently scrolling native result
+list. The system owns row selection, focus feedback, and keyboard traversal. Note rows
+use a small document symbol, title, available bounded snippet, and one secondary
+location/reason line in interface typography. Repeated workspace labels, ranking
+decoration, and permanent “Retrieval lead” labels do not occupy each row. Before a
+query, the window shows a neutral Search prompt; an initial or cleared projection does
+not claim an index failure. Empty and genuinely unavailable states use native
+content-state views, preserving the actual reason and any valid retry. Saved Searches
+remains directly available. Explain Query opens a compact transient explanation of the
+actual conditions; tokenizer, normalization, ranking recipes, and repeated result titles
+do not occupy the search workspace. Opening a result returns to the originating Document
+while keeping the advanced window and query available for continued search. Ordinary
+input never opens an advanced window automatically.
 
 Both presentations use one Search session and one result-validation contract.
 Only the active presentation issues queries. Closing Search cancels work and

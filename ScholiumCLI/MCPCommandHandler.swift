@@ -4,10 +4,22 @@ import ScholiumContracts
 
 extension ScholiumCLI {
     static func runMCP(_ arguments: [String]) async throws {
-        guard arguments == ["serve"] else {
+        let token: UUID?
+        if arguments == ["serve"] {
+            token = nil
+        } else if arguments.count == 3, arguments[0] == "serve",
+                  arguments[1] == "--conversation-token", let id = UUID(uuidString: arguments[2]) {
+            token = id
+        } else {
             throw commandUsageError("mcp serve")
         }
-        let server = ScholiumMCPServer(bridge: try CLIContext.makeMCPBridge())
+        let bridge = try CLIContext.makeMCPBridge()
+        let server = ScholiumMCPServer { request in
+            try await bridge.call(ScholiumMCPBridgeRequest(
+                requestID: request.requestID, tool: request.tool,
+                arguments: request.arguments, conversationToken: token
+            ))
+        }
         var parser = ZoteroMCPFrameParser()
         for try await byte in FileHandle.standardInput.bytes {
             for frame in try parser.append(byte) {

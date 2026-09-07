@@ -152,6 +152,7 @@ while IFS= read -r file; do
     "${ROOT}/Scholium/Services/MCPAppBridgeRequestRouter.swift"|\
     "${ROOT}/Scholium/Services/ScholiumAppBridgeRequestRouter.swift"|\
     "${ROOT}/Scholium/Services/WindowSession.swift"|\
+    "${ROOT}/Scholium/Services/AgentChatController.swift"|\
     "${ROOT}/Scholium/Views/AgentIntegrationSettingsView.swift"|\
     "${ROOT}/ScholiumCLI/CLIContext.swift"|\
     "${ROOT}/ScholiumCLI/MCPCommandHandler.swift") ;;
@@ -443,3 +444,5 @@ if (( release_status != 0 )); then
 fi
 release_summary="$(rg 'Build complete!' "${release_log}" | tail -n 1 || true)"
 print "Release build: ${release_summary:-passed}"
+
+python3 "${ROOT}/Tools/Scripts/verify-chat-cli.py" "${RELEASE_SCRATCH}/release/scholium"

@@ -3,6 +3,7 @@ import Combine
 import Foundation
 
 enum ResearchInspectorMode: String, CaseIterable, Identifiable, Sendable {
+    case outline
     case about
     case links
 
@@ -14,6 +15,7 @@ enum ResearchInspectorMode: String, CaseIterable, Identifiable, Sendable {
 
     var interfaceTitleResource: LocalizedStringResource {
         switch self {
+        case .outline: "Outline"
         case .about: "About"
         case .links: "Links"
         }
@@ -21,6 +23,7 @@ enum ResearchInspectorMode: String, CaseIterable, Identifiable, Sendable {
 
     var systemImage: String {
         switch self {
+        case .outline: "list.bullet"
         case .about: "info.circle"
         case .links: "link"
         }

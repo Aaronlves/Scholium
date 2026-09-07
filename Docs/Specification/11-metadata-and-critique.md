@@ -15,10 +15,8 @@ facts, and integrations remain separate authorities.
 | `summary` | Multiline text | Optional researcher-authored navigation description. |
 | `keywords` | Text list | Optional researcher-authored retrieval terms. |
 
-Ordinary managed creation inserts no YAML. Explicit typed creation may include
-nonempty authored values. YAML is editable as raw Source or in the explicitly
-document Frontmatter above the title, sharing the same source and Undo history.
-It is excluded from About and Metadata forms. Every other key remains exact custom source without managed semantics.
+Source editing and creation follow §§5.1–5.3. The allowlist applies to all
+three vault roles; other keys remain exact custom source without managed semantics.
 
 ### Analyses
 
@@ -47,22 +45,17 @@ Source-type profiles own applicable fields and recommended discovery order.
 maintained for an Agent. MCP creation does not accept the prior
 `source_type`/managed bibliographic creation route.
 
-Default About always shows managed `type`, `authors`, and `publication_date`
-even when empty. Every other present
-managed value appears automatically in its catalog order. Managed `title`
-is the analyzed work's optional academic title: it appears in About when
-present and remains searchable, but never establishes the Note title.
+Default Analysis About always shows managed `type`, `authors`, and
+`publication_date` even when empty. Other-field visibility follows the shared
+rule below. Managed `title` is the optional academic title; §5.2 owns Note identity.
 
 ### Topics
 
 | Authority | Key | Shape | Default group |
 | --- | --- | --- | --- |
 | Managed Metadata | `aliases` | Text list | Topic Description |
-| Authored YAML | `summary` | Multiline text | Authored YAML |
-| Authored YAML | `keywords` | Text list | Authored YAML |
 
-Topic identity is its filename. Body headings and similar-looking custom YAML
-keys have no canonical identity meaning.
+Note identity for every role is defined in §5.2.
 
 ### Works
 
@@ -70,11 +63,8 @@ keys have no canonical identity meaning.
 | --- | --- | --- | --- |
 | Managed Metadata | `work_type` | `paper`, `chapter`, `book`, `talk`, `review`, `teaching`, or `other` | Work Description |
 | Managed Metadata | `coauthors` | Text list | Work Description |
-| Authored YAML | `summary` | Multiline text | Authored YAML |
-| Authored YAML | `keywords` | Text list | Authored YAML |
 
-Work identity is its filename. Body headings and similar-looking custom YAML
-keys, including status or deadline fields, have no canonical meaning.
+Custom status or deadline fields create no product workflow semantics.
 
 ### Shared presentation and settings rules
 
@@ -84,12 +74,12 @@ Group order is:
 - Topic: Topic Description, Custom Metadata;
 - Work: Work Description, Custom Metadata.
 
-Catalog groups organize definitions and discovery; Overview does not display
-category headings. Its single ordered list uses consistent label/value axes.
+Catalog groups organize definitions and discovery. §§18.4–18.5 own About layout.
 Configured managed fields are always shown; configuration controls their
 order rather than hiding other stored values. Every other present managed value,
 including an archived custom value, follows automatically. Empty unconfigured
-fields remain discoverable through Add Field rather than filling the Inspector.
+fields become available by configuring About in Settings, not through an
+Inspector Add Field command.
 Authored YAML is excluded from these groups and has no dedicated field controls.
 
 Defined, applicable, recommended, present, and About-always-shown remain
@@ -107,9 +97,13 @@ choices may be inserted at any position.
 Archive/Restore preserves stored values, About presentation, and
 Search/editing validation while removing the field from new-value,
 About-always-shown choices. Restore About defaults changes no definitions.
-Navigating to Frontmatter never creates an empty envelope or changes source.
 
 ## Appendix B. Critique requirements
+
+Critique has no fixed product operation, academic profile, result schema or
+registered method. Optional headings such as Overall Assessment, Strengths,
+Major Concerns, Source Support, Objections and Alternatives, Revision Priorities,
+Specific Findings and Evidence Limits are writing aids, not required fields.
 
 A Critique inspects the bounded Work plus applicable Analyses and Topics. It
 distinguishes what those Notes report, support, dispute, or leave uncertain
@@ -125,7 +119,7 @@ It is not a score or universal method.
 Passage Critique identifies the exact target, issue, significance, research
 basis, and recommendation without generalizing to the complete Work. Every
 Critique records material access limits and uncertainty but does not inventory
-reading. It never certifies novelty, publishability, doctoral level, field
+reading. It never certifies research maturity, novelty, publishability, doctoral level, field
 completeness, or researcher competence.
 
 **Traced**, **Untraced**, **Disputed**, and **Beyond Sources** remain attributed

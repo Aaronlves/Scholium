@@ -8,7 +8,7 @@
   destructive roles retain semantic tint. Window roots, independently hosted
   split regions, and sheet/popover content install the same default; local form choices use its shared
   entry. Icon Buttons, icon Menus, and Notifications share one native chrome
-  recipe. Feature-owned prominent styles and local tint overrides are removed;
+  recipe. Some feature routes, including Chat Send, use native prominence and shared Accent;
   selection, links, and explicit status indicators retain their semantic colors.
 - Starting, Registry Recovery, Ready, and Storage Unavailable are distinct app
   roots. Failure states retain Details, Retry, and the applicable recovery or
@@ -26,7 +26,7 @@
   visual-effect host, or edge shadow. Document and Apparatus remain continuous
   through the transparent titlebar with no separate toolbar band. Standard
   AppKit toolbar items own their native Liquid Glass, and compact Sidebar-header
-  controls retain their established 28pt targets. The 70 × 20 Inspector
+  controls retain their established 28pt targets. The native Inspector
   projection control and split geometry remain unchanged.
 - The Sidebar begins with a persistent native Search field, a neutral workspace
   segmented control, and the muted Library operation row. It has no wordmark
@@ -71,29 +71,14 @@
   distinct menu route. The panel adds no document padding or scroll headroom.
   Narrow reflow retains field identity, active
   options stay visible, and dismissal restores native editor focus.
-- Notification row pointer tracking now clips its observation view to its own
-  bounds, intersects the visible region, retains tracking identity, and clears
-  published hover on detach/window changes. Viewport bounds changes reconcile
-  a stationary pointer after scrolling. On 2026-09-06, six focused tracking and
-  interaction tests passed. The native probe reproduced parent-sized visible
-  rectangles before clipping; QA scrolling no longer showed accumulated row
-  fills. The updated disposable QA remains open for researcher pointer acceptance.
+- Notification row pointer tracking clips to its visible bounds and clears
+  transient state on detach/window changes. Pointer acceptance remains open.
 - Notification delivery now uses one App-level UserNotifications owner for
   confirmed background MCP changes. First delivery requests system permission;
   foreground activity remains in the bell/local Note state. Generic system text
   carries no Note title, path, or source, and click routes validate exact receipts.
   The top overlay, global priority/expiry stack, and Settings feedback queue are
   removed. Operation failures remain persistent locally; ordinary success is quiet.
-  On 2026-09-06, 48 focused tests passed, including first authorization, denial,
-  concurrent delivery, foreground cancellation, coalescing, exact click routing,
-  and a memory-only cold-window handoff that cannot replay during restoration.
-  Disposable 500-Note QA checked light/dark, 500-point width, local warning
-  wrapping/actions, dismissal with editor focus, the bell, and Settings.
-  The complete verifier passed Core, Contracts, and Application but failed App
-  tests on editor, typography, scroll, and localization assertions. Two new raw
-  typography references were corrected and rechecked; other failures remain.
-  Real system permission/click delivery, full VoiceOver, and system accessibility
-  adaptations remain unverified. No release or human acceptance is claimed.
 - Editor and reader previews now use native glass containers with inert local
   WebKit content. Completion retains CodeMirror's keyboard and AX listbox while
   native rows project the results. A native parent separates their geometry and
@@ -110,41 +95,10 @@
   editor. YAML remains above the title: Review shows source text and Edit allows direct
   editing. Initial title positioning leaves it above the viewport; Source retains
   exact source. Disclosure controls and automatic collapse have been removed. Ordinary New Note creates no YAML scaffold.
-- Document activation now resets opening position separately from editor
-  reconstruction. Readiness is keyed to each opening; pending Edit no longer
-  exposes a temporary Review layout. Mathematics and cached reopening pass
-  regression checks. A user recording subsequently captured one YAML frame
-  before title positioning; post-readiness geometry tests alone missed it.
-  Pending presentation now covers live WebKit instead of hiding its layout,
-  and readiness awaits CodeMirror's measured title-position writes.
-  A 25-second disposable QA recording (1,427 decoded frames) had no YAML OCR
-  hits during repeated switching; visual review and upward-scroll/reopening
-  checks passed. Four focused regression tests passed. This is bounded QA,
-  not proof against every compositor timing. Four-opening measurements showed
-  roughly 60 ms additional warm-opening latency; no fixed delay was added.
-- Frontmatter scroll cutover: title-position and exact-source/Undo integration
-  checks pass, including deferred scroll restoration. Disposable QA confirms
-  opening at the title and scrolling upward to the indented YAML region.
-- Earlier 2026-09-06 verification: appearance file reload, invalid/stale edits, exact
-  YAML projection and Undo passed focused tests. Disposable 500-note QA
-  visually checked light/dark Appearance, pane resizing, reload/error recovery,
-  YAML on/off in Review/Edit, full Source, managed About and YAML-free creation.
-  The follow-up resolved all 10 baseline failures: native Settings has an
-  explicit system-style boundary, preview tests use the native host, and newer
-  focus requests supersede delayed navigation callbacks. The complete repository
-  gate passes, including 609 App tests, symbol-graph validation and Release build.
-  Computer Use checked Settings, navigation-to-Review focus and native annotation
-  previews. One isolated QA remains available at the researcher's request.
-  VoiceOver and system accessibility overrides were not manually exercised;
-  a successful Release build is not packaged-release acceptance.
-- Subsequent Settings polish shortens the two integration toolbar labels and
-  anchors native frame interpolation at the current top-left corner. The
-  scene's flexible content boundary prevents pane layout from interrupting
-  expansion. The researcher accepted the animation; Computer Use checked all
-  seven panes after spacing adjustments, including short-pane search visibility.
-  Metadata single-field lookup no longer rebuilds the complete presentation
-  catalog. Owning suites passed (44 tests; final spacing follow-up 24 tests).
-  This scoped follow-up did not repeat the earlier complete repository gate.
+- Document readiness covers live WebKit until measured title positioning, with
+  opening-position state separate from retained-editor reconstruction.
+- Settings pane changes interpolate from the current top-left corner, keeping
+  its native content flexible during resizing.
 - Review and inactive Edit show a link annotation from one trailing superscript
   marker in the shared bounded preview surface, never as a block inserted into
   prose. Hover or focus reveals it, click keeps it open, and Escape or outside
@@ -183,7 +137,7 @@
   thumbnail access, system Quick Look with its native opening actions,
   and File-menu copy/reference. The old document
   strip and its editor/reader protocol routes are removed.
-- Inspector presents About and Links through a native rounded
+- Inspector presents Outline, About and Links through a native rounded
   icon-only toolbar group. About exposes current About, file, Settlement,
   and applicable Zotero facts and operations. Metadata uses aligned native
   fields with visible editing frames and explicit revision-bound recovery.
@@ -214,7 +168,7 @@
   current Document mode and locate the rendered block or editor line after
   presentation readiness. It has no Actions mode.
 - Search uses a persistent native field. Its magnifying-glass menu contains
-  scope, content type, Clear Filters, and the quick-only Advanced Search entry.
+  scope, Clear Filters, and the quick-only Advanced Search entry.
   The advanced window retains query/results when opening a Note, keeps Saved
   Searches in a compact action line, and exposes concise query conditions in a
   transient information popover. Native Search-field composition owns input;
@@ -241,11 +195,28 @@
 - Settings includes **Agent Integration**, with copyable Codex and Claude Code
   MCP registration commands, live App/bridge/CLI availability, and a Finder
   route to the bundled Core Protocol Skill.
-- Agent conversation remains in the external host. Scholium shows no chat,
-  Agent picker, session, task, activity stack, or result-review workflow.
+- Optional in-app Codex Chat appears beside Library in the left sidebar.
+  Outline is a document Inspector mode alongside About/Links. Chat provides
+  history, draft retention, connection/sign-in, permission, native approval
+  requests, sending, steering, interruption and stable Note references. Idle chats
+  can be archived/restored through temporary multi-selection from the list-header
+  archive menu. Whole rows open detail or toggle selection; Cancel exits without
+  mutation. Detail has no archive action; Library and Chat share one quiet trailing
+  header action group. Connection is one click; manual paths and connection
+  editing are in Settings. Detail options open conversation-scoped Agent Changes.
+  The View menu adds the selected editor passage to Chat without sending it.
+  Chat inherits the Sidebar background, with connected native cards grouped by day,
+  list-to-detail navigation and a glass composer. Speaker labels and alignment
+  distinguish messages; user bubbles use the shared Accent at 30% opacity.
+  Composer secondary icons are borderless and Send uses an Accent circle;
+  typography and controls remain native. Current activity remains visible; completed activity is expandable.
+  An explicit file/count popover contains rows distinguishing recorded edits, read/no-op outcomes and runtime reports,
+  with exact receipt comparison routes. Foundation Markdown intents retain
+  paragraphs, quotes, lists, code and comparison rows. Consecutive operation
+  messages share a native disclosure. Confirmed changes open their exact review.
 
-- **Operation History** has an independent menu entry and a native collection
-  over retained machine-local Agent Changes. Closing a notification does not
+- **Agent Changes** has a menu entry listing the most recent receipt per Note;
+  exact receipt links open only that change. Older evidence remains retained. Closing a notification does not
   remove it. Inspector controls and notification search menus use AppKit
   presentation on purpose-owned backgrounds; no custom Paper button skin remains
   in the changed Inspector controls.

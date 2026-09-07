@@ -92,8 +92,8 @@ extension ScholiumCLI {
         ]
         return [
             "mcp serve": .init(
-                rule: .init(pathLength: 2),
-                help: "Usage: scholium mcp serve\n\nRuns the local stdio MCP adapter for the currently running Scholium App. The adapter does not open a Triptych or read its filesystem directly."
+                rule: .init(pathLength: 2, options: ["--conversation-token": .value]),
+                help: "Usage: scholium mcp serve [--conversation-token <uuid>]\n\nRuns the local stdio MCP adapter for the currently running Scholium App. The adapter does not open a Triptych or read its filesystem directly."
             ),
             "doctor": .init(
                 rule: .init(pathLength: 1, options: format),

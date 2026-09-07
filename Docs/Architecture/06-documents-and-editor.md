@@ -64,7 +64,7 @@ Focus request revisions prevent delayed navigation callbacks from overriding new
 Managed New Note skips Review-first presentation. `DocumentController`
 installs its snapshot, exact source, active Edit phase, and body-start offset in
 one MainActor transaction. Until typed acknowledgement, the host exposes
-neither Review nor Empty Note. Bridge 21 initialization maps one collapsed
+neither Review nor Empty Note. Typed initialization maps one collapsed
 body-boundary selection into CodeMirror UTF-16 and returns it with the mode.
 Native code verifies that range, converges style and scroll, awaits focus, then
 publishes readiness, announces once, and consumes the intent. A clean external
@@ -200,7 +200,7 @@ synchronized native DOM selection stays visually transparent. Source adds
 active-line and gutter markers only for collapsed selections, so a triple-click
 range ending after a line break cannot mark the next logical line. Review
 likewise retains WebKit's
-native `Selection` and Comment-range semantics, while a CSS Custom Highlight
+native `Selection`, while a CSS Custom Highlight
 mirrors only intersected nonempty text-node subranges. Its contextual action
 converts the retained DOM Range to a document-coordinate anchor and remeasures
 that anchor on viewport resize. The
@@ -250,7 +250,7 @@ autosave. Both runtimes cap source at 8 MB UTF-8. Source crosses
 structured arguments in the page content world; it is never interpolated into
 executable JavaScript.
 
-Bridge 15 sends source deltas immediately in generation order, includes a
+The typed bridge sends source deltas immediately in generation order, includes a
 nonmutating exact UTF-16 source-range reveal operation, and carries an optional
 initial selection in the same typed initialization transaction. Identity remains
 strict while snapshot queries may observe a later generation than the caller
@@ -349,7 +349,7 @@ and malformed ranges whose boundaries cannot be proved. Outside proven edit
 ranges, BOM, newline style, final newline, YAML, comments, unknown syntax, and
 malformed source remain exact.
 
-Before autosave, manual Save, Read, Dialogue, or Critique flushes,
+At autosave and explicit source-snapshot or document-departure boundaries,
 Swift requests complete CodeMirror text and reconciles it with the checked
 mirror. A clean external revision may replace the buffer through a
 generation-checked non-history transaction; a dirty buffer stays exact and
@@ -437,16 +437,9 @@ delimiter rules to CodeMirror. Swift parses committed revisions for Read,
 graph, diagnostics, and persistence-adjacent consumers. TypeScript incrementally
 parses the uncommitted buffer for immediate Live Preview only, and shared
 fixtures require its source spans and meanings to agree with Contracts.
-Dialect 5 explicitly carries the case-sensitive named/inline footnote syntax,
-two-space-or-tab continuation ownership, first-reference ordinal rule, and the
-adjacent link-annotation delimiters alongside callouts and mathematics. A valid
-ordinary Wikilink may be followed immediately by `{{annotation Markdown}}`.
-The first unescaped `}}` closes it; `\{{` and `\}}` escape delimiter
-recognition; annotations may span lines and may not nest. Empty-visible,
-nested, or unclosed annotation source remains exact ordinary source, while the
-Wikilink remains a link and Contracts emits a source-located diagnostic. The
-TypeScript adapter fails closed when it
-receives a dialect it does not implement.
+`MarkdownEditingDialect` carries the source syntax owned by §§5 and 12.
+Shared fixtures test both parsers against those rules. The TypeScript adapter
+fails closed when it receives a dialect it does not implement.
 
 Complete note source uses one CodeMirror language owner built from
 `yamlFrontmatter` around the locked Markdown language. Closed frontmatter is a
@@ -466,7 +459,7 @@ UTF-16 offset, so CRLF, leading BOM, Unicode decomposition, and final-newline
 form remain source-authoritative. These nodes locate editing syntax; Swift
 `MarkdownSemanticDocument` and `GraphSnapshot` remain the authorities for
 diagnostics, identity, authored link occurrences, and committed Read output.
-Graph contract 6 publishes only directed source-to-destination occurrences.
+`GraphSnapshot` publishes only directed source-to-destination occurrences.
 Outgoing and Incoming are two projections of the same occurrence, preserving
 its whole span, link span, optional annotation, and local context without
 deduplication or inferred meaning.
@@ -645,8 +638,8 @@ Triple-click starts in an immediate phase because paragraph selection is one
 discrete projection gesture, but the same phase remains non-idle until mouse-up,
 preserving the pointer-selection completion boundary.
 Review mirrors this completion boundary with one pointer-active flag around its
-native DOM Selection; selection paint may follow the gesture, while Comment is
-evaluated only after pointer-up. Keyboard selection has no pending pointer phase
+native DOM Selection; selection paint may follow the gesture, while completed
+selection context is evaluated only after pointer-up. Keyboard selection has no pending pointer phase
 and remains immediate. Projected widgets map pointer-down to one collapsed exact
 source position and commit the matching projection snapshot in that same
 pointer-down transaction, never a constructed range or a deferred boundary

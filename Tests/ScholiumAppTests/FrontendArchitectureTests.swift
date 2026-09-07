@@ -732,7 +732,8 @@ struct FrontendArchitectureTests {
         for (path, source) in applicationSources.sorted(by: { $0.key < $1.key }) {
             let sourceRange = NSRange(source.startIndex..<source.endIndex, in: source)
             if path != designSystemPath && !NativeSettingsSourceScope.paths.contains(path)
-                && path != "Scholium/UI/Components/ScholiumWorkspaceToolbar.swift" {
+                && path != "Scholium/UI/Components/ScholiumWorkspaceToolbar.swift"
+                && path != "Scholium/UI/Components/ScholiumSidebarHeaderControl.swift" {
                 #expect(
                     rawAppKitPaletteAccess.firstMatch(
                         in: source,
@@ -748,9 +749,9 @@ struct FrontendArchitectureTests {
                     "\(path) owns a numeric semantic-color opacity recipe"
                 )
             }
-            if NativeSettingsSourceScope.paths.contains(path)
+            if NativeSettingsSourceScope.paths.union(NativeChatSourceScope.paths).contains(path)
                 || path == "Scholium/Views/SearchWorkspaceView.swift" {
-                // macOS owns Settings controls and native Search list selection.
+                // macOS owns Settings, Chat controls and native Search list selection.
             } else if path == "Scholium/Views/Note/DocumentFindPanel.swift" {
                 // Editor auxiliary controls deliberately restore system semantics.
                 #expect(directSystemForeground.numberOfMatches(in: source, range: sourceRange) == 2)
@@ -820,7 +821,7 @@ struct FrontendArchitectureTests {
         router.present(.transactionRecovery)
         #expect(router.sheet?.id == "transaction-recovery")
 
-        router.present(.agentChanges(initialChangeID: nil))
+        router.present(.agentChanges(scope: .current))
         #expect(router.sheet?.id == "agent-changes")
         router.dismissSheet(if: "transaction-recovery")
         #expect(router.sheet?.id == "agent-changes")
@@ -1743,12 +1744,14 @@ struct FrontendArchitectureTests {
                 == 1
         )
         #expect(!filterMenuSource.contains(".buttonStyle(.glass)"))
-        #expect(sidebarSource.contains(".scholiumMenuStyle(.borderlessButton)"))
-        #expect(filterMenuSource.contains(".scholiumMenuStyle(.borderlessButton)"))
-        #expect(sidebarSource.contains(".menuIndicator(.hidden)"))
-        #expect(filterMenuSource.contains(".menuIndicator(.hidden)"))
-        #expect(sidebarSource.contains(".scholiumForeground(.mutedText)"))
-        #expect(filterMenuSource.contains(".scholiumForeground(.mutedText)"))
+        let headerControlSource = try String(contentsOf: repository.appendingPathComponent(
+            "Scholium/UI/Components/ScholiumSidebarHeaderControl.swift"), encoding: .utf8)
+        #expect(sidebarSource.contains(".scholiumSidebarHeaderControl("))
+        #expect(filterMenuSource.contains(".scholiumSidebarHeaderControl("))
+        #expect(headerControlSource.contains(".menuStyle(.button)"))
+        #expect(headerControlSource.contains(".menuIndicator(.hidden)"))
+        #expect(headerControlSource.contains("static let foreground = Color(nsColor: .secondaryLabelColor)"))
+        #expect(headerControlSource.contains(".scholiumContentControlPointerFeedback("))
         #expect(!sidebarSource.contains(".tint("))
         #expect(!filterMenuSource.contains(".tint("))
         #expect(componentsSource.contains("struct ScholiumQuietRowButtonStyle"))
@@ -2021,12 +2024,12 @@ struct FrontendArchitectureTests {
             ))
         #expect(
             sidebarSource.components(
-                separatedBy: ".scholiumContentControlPointerFeedback("
+                separatedBy: ".scholiumSidebarHeaderControl("
             ).count == 2
         )
         #expect(
             filterMenuSource.components(
-                separatedBy: ".scholiumContentControlPointerFeedback("
+                separatedBy: ".scholiumSidebarHeaderControl("
             ).count == 2
         )
         #expect(!sidebarSource.contains("@State private var createControlIsHovering"))
@@ -3039,8 +3042,8 @@ struct FrontendArchitectureTests {
                 ) == nil,
                 "Custom typeface escaped the semantic typography owner: \(sourceURL.path)"
             )
-            if NativeSettingsSourceScope.paths.contains(sourceURL.path.replacingOccurrences(of: repository.path + "/", with: "")) {
-                // Native Settings typography follows the system.
+            if NativeSettingsSourceScope.paths.union(NativeChatSourceScope.paths).contains(sourceURL.path.replacingOccurrences(of: repository.path + "/", with: "")) {
+                // Native Settings and Chat typography follows the system.
             } else if sourceURL == applicationRoot.appendingPathComponent("Views/Note/DocumentFindPanel.swift") {
                 #expect(rawSemanticStylePattern.numberOfMatches(in: source, range: sourceRange) == 3)
 
@@ -3270,7 +3273,7 @@ struct FrontendArchitectureTests {
         #expect(tabs.contains("ScholiumGrid.Spacing.regionContentInset"))
     }
 
-    @Test("Outline sidebar has a matching View-menu route")
+    @Test("Library, Chat and the right Outline have matching View-menu routes")
     func outlineHasViewMenuRoute() throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -3293,10 +3296,14 @@ struct FrontendArchitectureTests {
             viewCommandsStart.lowerBound..<viewCommandsEnd.lowerBound
         ]
 
+        #expect(viewCommands.contains("Button(\"Library\")"))
+        #expect(viewCommands.contains("Button(\"Chat\")"))
         #expect(viewCommands.contains("Button(\"Outline\")"))
+        #expect(viewCommands.contains("appState?.researchInspectorMode = .outline"))
+        #expect(viewCommands.contains("workspaceWindowActions?.setResearchInspectorVisible(true)"))
         #expect(
             viewCommands.contains(
-                "workspaceWindowActions?.activateSidebar(.outline)"
+                "workspaceWindowActions?.activateSidebar(.chat)"
             )
         )
     }
@@ -3452,7 +3459,8 @@ struct FrontendArchitectureTests {
         let footnotes = try source("WebEditor/live-footnote-projection.ts")
         #expect(semanticLayout.components(separatedBy: "StateField.define").count == 3)
         #expect(mermaidProjection.contains("StateField.define<LiveMermaidProjectionState>"))
-        #expect(structuredBlocks.components(separatedBy: "StateField.define").count == 4)
+        #expect(structuredBlocks.contains("StateField.define<LiveTableProjectionState>"))
+        #expect(structuredBlocks.contains("StateField.define<LiveCalloutProjectionState>"))
         #expect(displayMath.contains("StateField.define<LiveDisplayMathProjectionState>"))
         #expect(footnotes.contains("StateField.define<LiveFootnoteReferenceState>"))
         #expect(!editorSource.contains("liveFrontmatterGuardField"))
@@ -3685,9 +3693,9 @@ struct FrontendArchitectureTests {
             ),
             encoding: .utf8
         )
-        // Outline moved to the persistent Sidebar; the toolbar no longer owns headings.
+        // The right Outline Inspector owns headings; the toolbar only navigates.
         let outlineSource = try String(contentsOf: repository.appendingPathComponent(
-            "Scholium/Views/Sidebar/DocumentOutlineSidebar.swift"), encoding: .utf8)
+            "Scholium/Views/Sidebar/DocumentOutlineInspector.swift"), encoding: .utf8)
         #expect(!toolbarSource.contains("workspaceSnapshot?.headings"))
         #expect(!outlineSource.contains("MarkdownSemanticDocument("))
         #expect(!toolbarSource.contains("MarkdownSemanticDocument("))

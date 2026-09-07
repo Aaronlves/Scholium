@@ -523,6 +523,7 @@ struct WindowControllerArchitectureTests {
             (nil as String?, ResearchInspectorMode.about),
             ("about", .about),
             ("links", .links),
+            ("outline", .outline),
             ("unknown", .about),
         ]
     )
@@ -2057,6 +2058,7 @@ struct WindowControllerArchitectureTests {
             "preserveUnreadableSavedSearchesAndReset": 1,
             "cssSnippetStore": 1,
             "zoteroBridge": 1,
+            "chatRegistry": 1,
             "$latestWorkspaceActivation": 1,
             "$workspaceEvents": 1,
         ]
@@ -2075,7 +2077,7 @@ struct WindowControllerArchitectureTests {
             }
         }
 
-        #expect(compositionAndSubscription.values.reduce(0, +) == 7)
+        #expect(compositionAndSubscription.values.reduce(0, +) == 8)
         #expect(windowIntentAndDelivery.values.reduce(0, +) == 7)
         #expect(actual == approved)
         #expect(!windowModelSource.contains("workspaceStore.windowSession"))

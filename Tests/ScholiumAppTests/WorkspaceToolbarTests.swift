@@ -11,16 +11,16 @@ struct WorkspaceToolbarTests {
     func sidebarModes() {
         let state = WindowShellState()
         #expect(state.sidebarContent == .triptych && state.libraryVisible)
-        #expect(state.activateSidebar(.outline))
+        #expect(state.activateSidebar(.chat))
         state.recordLibraryVisibility(true)
-        #expect(state.sidebarContent == .outline)
-        #expect(!state.activateSidebar(.outline))
+        #expect(state.sidebarContent == .chat)
+        #expect(!state.activateSidebar(.chat))
         state.recordLibraryVisibility(false)
         #expect(state.activateSidebar(.triptych))
         state.recordLibraryVisibility(true)
         #expect(!state.activateSidebar(.triptych))
         state.recordLibraryVisibility(false)
-        #expect(state.activateSidebar(.outline))
+        #expect(state.activateSidebar(.chat))
     }
 
     @Test("Window appearance keeps native toolbar chrome aligned with the selected scheme")
@@ -196,7 +196,7 @@ struct WorkspaceToolbarTests {
         #expect(selector.isSelected(forSegment: 0))
         #expect(!selector.isSelected(forSegment: 1))
         #expect(!selector.isEnabled(forSegment: 1))
-        #expect(selector.toolTip(forSegment: 1) == ScholiumL10n.string("No note open yet"))
+        #expect(selector.toolTip(forSegment: 1) == String(localized: "No Triptych Open"))
 
         let inspector = try #require(item(
             ScholiumWorkspaceToolbarController.Item.inspector,
@@ -233,7 +233,7 @@ struct WorkspaceToolbarTests {
             if let menu = command.menuFormRepresentation { #expect(!controller.validateMenuItem(menu)) }
         }
         controller.invalidate()
-        controller.activateSidebar(.outline)
+        controller.activateSidebar(.chat)
         #expect(model.shellState.sidebarContent == .triptych)
         #expect(toolbar.delegate == nil)
         #expect(toolbar.items.allSatisfy { $0.action == nil && $0.menuFormRepresentation == nil })

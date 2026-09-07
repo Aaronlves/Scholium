@@ -182,7 +182,7 @@ public final class ScholiumAppBridgeClient: @unchecked Sendable {
     ) throws {
         containerURL = applicationSupportURL.standardizedFileURL
         port = ScholiumAppBridgeLocation.port(applicationSupportURL: containerURL)
-        self.timeout = min(max(timeout, 0.1), 30)
+        self.timeout = min(max(timeout, 0.1), 600)
     }
 
     public func send(
@@ -202,7 +202,8 @@ public final class ScholiumAppBridgeClient: @unchecked Sendable {
             throw ScholiumAppBridgeError.systemCall("create its socket", errno)
         }
         defer { Darwin.close(descriptor) }
-        try AppBridgeIO.configure(descriptor, timeout: timeout)
+        let responseTimeout = request.mcpRequest.conversationToken == nil ? timeout : 600
+        try AppBridgeIO.configure(descriptor, timeout: responseTimeout)
         var address = AppBridgeIO.address(port: port)
         let connected = withUnsafePointer(to: &address) { pointer in
             pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
@@ -431,7 +432,8 @@ public final class ScholiumAppBridgeServer: @unchecked Sendable {
                 semaphore.signal()
             }
             lock.withLock { handlerTask = task }
-            let finished = semaphore.wait(timeout: .now() + operationTimeout) == .success
+            let budget = request.mcpRequest.conversationToken == nil ? operationTimeout : 590
+            let finished = semaphore.wait(timeout: .now() + budget) == .success
             lock.withLock { handlerTask = nil }
             guard finished else {
                 task.cancel()

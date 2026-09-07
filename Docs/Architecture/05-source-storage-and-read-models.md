@@ -158,23 +158,14 @@ the schema, location, validation, and transaction. No metadata file is a
 writable projection of Markdown or YAML.
 
 `WorkspaceSnapshot` carries the resolved catalog next to its generation;
-`WorkspaceNoteSnapshot` carries the optional validated metadata snapshot next
-to exact source. `ResearchNoteTitleResolver` uses only the Markdown filename
-without its extension for every Note. Its fingerprint-bound cached projection
-therefore has no Metadata revision dependency. Managed Analysis `title`, YAML
-`title`, and body headings have no Note-identity semantics. App's independent `AboutProfileCatalog`
-owns researcher-configured always-shown choices and order, then appends every
-other present managed value in catalog order; presentation adds label, help,
-catalog group, and control style only. The Overview field list omits visual
-group headings. Its single Note-local session delegates commits and Undo/Redo to
-the existing exact Metadata revision owner. Add Field exposes only role-valid
-missing keys and inserts directly into the native list. No separate Metadata
-editor or frontmatter mutation route exists.
-About reads managed Metadata only. The authored-source descriptor and targeted
-About YAML mutation route are absent; Source and the document Frontmatter
-above the title share ordinary raw editing.
-Unknown YAML remains byte-preserved custom source and is never surfaced as a
-managed-field alias.
+`WorkspaceNoteSnapshot` carries the optional validated metadata snapshot next to exact
+source. `ResearchNoteTitleResolver` uses only the Markdown filename without its
+extension for every Note. Its fingerprint-bound cached projection therefore has no
+Metadata revision dependency. Managed Analysis `title`, YAML `title`, and body headings
+have no Note-identity semantics. The About projection and native field session are owned
+by [Source Layout and Presentation](03-source-layout-and-presentation.md#presentation);
+they consume this catalog and revision-aware Metadata capability. Authored YAML remains
+exact source and is never a managed-field alias.
 
 `FrontmatterPatchPlanner` remains a source-fidelity utility for bounded typed
 serialization and explicit source operations. It is not a Metadata writer.

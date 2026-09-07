@@ -16,6 +16,18 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DOCS_ROOT = REPOSITORY_ROOT / "Docs"
 MAX_AUTHORITY_LINE_LENGTH = 300
 MAX_CHAPTER_WORDS = 6_500
+MAX_DESIGN_LINES = 140
+MAX_DESIGN_WORDS = 1_100
+DESIGN_HEADINGS = (
+    "# Scholium Design",
+    "## 19. Scholarly Editorialism",
+    "### 19.1 Content and native Liquid Glass",
+    "### 19.2 Background and Accent",
+    "### 19.3 Typography, layout and motion",
+    "### 19.4 Symbols and identity artwork",
+    "### 19.5 Interface writing",
+    "### 19.6 Apple references",
+)
 
 MANIFESTS = (
     (
@@ -42,6 +54,37 @@ NUMERIC_SECTION_REFERENCE = re.compile(r"\d+(?:\.\d+)*")
 def failure(message: str) -> None:
     print(f"Documentation authority validation failed: {message}", file=sys.stderr)
     raise SystemExit(1)
+
+
+def validate_design_document(path: Path) -> None:
+    """Enforce the stable charter boundary; semantic admission remains in AGENTS.md."""
+    source = path.read_text(encoding="utf-8")
+    lines = source.splitlines()
+    if len(lines) > MAX_DESIGN_LINES or len(source.split()) > MAX_DESIGN_WORDS:
+        failure("Design.md exceeds its charter budget; move detail to its owner")
+    headings = tuple(line.strip() for line in lines if re.match(r"^\s*#{1,6}\s", line))
+    if headings != DESIGN_HEADINGS:
+        failure("Design.md must retain its closed global section set; no feature sections")
+    if re.search(r"^\s*(?:\||```|~~~|<table\b|<script\b|<style\b)", source, re.MULTILINE):
+        failure("Design.md cannot contain tables, code blocks or rendering recipes")
+    if re.search(r"\b\d+(?:\.\d+)?\s*(?:pt\b|px\b|ms\b|seconds?\b|%)", source):
+        failure("Design.md cannot contain local geometry, opacity or timing recipes")
+
+
+def validate_unique_specification_paragraphs(paths: list[Path]) -> None:
+    """Catch copied prose, without pretending to decide semantic equivalence."""
+    owners: dict[str, Path] = {}
+    for path in paths:
+        for paragraph in re.split(r"\n\s*\n", path.read_text(encoding="utf-8")):
+            normalized = " ".join(paragraph.split())
+            if len(normalized.split()) < 35 or normalized.startswith(("#", "|", "```")):
+                continue
+            if normalized in owners:
+                failure(
+                    f"repeated specification paragraph in {owners[normalized].name} "
+                    f"and {path.name}; retain one owner and link to it"
+                )
+            owners[normalized] = path
 
 
 def markdown_target(raw_target: str) -> str:
@@ -228,6 +271,7 @@ def validate_specification_references(
 
 
 def main() -> None:
+    validate_design_document(REPOSITORY_ROOT / "Design.md")
     declared_sets: list[list[Path]] = []
     for manifest, chapter_directory, additional_chapters in MANIFESTS:
         declared_sets.append(
@@ -239,6 +283,7 @@ def main() -> None:
     validate_line_lengths(authority_paths)
     valid_section_ids = validate_specification_sections(declared_sets[0])
     validate_specification_references(authority_paths, valid_section_ids)
+    validate_unique_specification_paragraphs(declared_sets[0])
 
     link_sources = authority_paths + [
         REPOSITORY_ROOT / "README.md",

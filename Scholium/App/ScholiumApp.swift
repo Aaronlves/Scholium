@@ -885,6 +885,8 @@ private struct ScholiumSettingsRoot: View {
     var body: some View {
         ScholiumSettingsView()
             .environmentObject(settingsModel)
+            .environment(\.agentChatSettingsController,
+                settingsModel.snapshot.activeTriptychID.map { workspaceStore.chatRegistry.controller(for: $0) })
             .tint(nil)
             .buttonStyle(.automatic)
             .preferredColorScheme(
@@ -1371,16 +1373,27 @@ private struct ScholiumSidebarCommandContent: View {
         }
         .keyboardShortcut("f", modifiers: [.command, .option, .shift])
         .disabled(editorActions?.canEditFrontmatter != true || editorActions?.isComposing == true)
-        Button("Operation History…") {
-            appState?.presentationRouter.present(.agentChanges(initialChangeID: nil))
+        Button("Agent Changes…") {
+            appState?.presentationRouter.present(.agentChanges(scope: .current))
         }
         .disabled(appState?.windowWorkspaceController.activeCapabilities == nil)
-        Button("Triptych") {
+        Button("Library") {
             workspaceWindowActions?.activateSidebar(.triptych)
         }
         .disabled(workspaceWindowActions == nil)
+        Button("Chat") { workspaceWindowActions?.activateSidebar(.chat) }
+            .disabled(appState?.workspaceAssignment == nil)
+        Button("Add Selection to Chat") {
+            Task { await appState?.addCurrentSelectionToChat() }
+            if appState?.shellState.sidebarContent != .chat || appState?.shellState.libraryVisible != true {
+                workspaceWindowActions?.activateSidebar(.chat)
+            }
+        }
+        .keyboardShortcut("l", modifiers: [.command, .shift])
+        .disabled(appState?.currentNote == nil)
         Button("Outline") {
-            workspaceWindowActions?.activateSidebar(.outline)
+            appState?.researchInspectorMode = .outline
+            workspaceWindowActions?.setResearchInspectorVisible(true)
         }
         .scholiumActivationPointer()
         .disabled(workspaceWindowActions == nil || appState?.canActivateOutline != true)
@@ -1938,7 +1951,7 @@ final class WindowModel: ObservableObject {
             },
             showAgentChange: { [weak self] changeID in
                 self?.presentationRouter.present(
-                    .agentChanges(initialChangeID: changeID)
+                    .agentChanges(scope: .exact(changeID))
                 )
             }
         )
@@ -2081,8 +2094,12 @@ final class WindowModel: ObservableObject {
         set { researchController.selectInspectorMode(newValue) }
     }
 
+    var chatController: AgentChatController? {
+        workspaceAssignment.map { workspaceStore.chatRegistry.controller(for: $0.id) }
+    }
+
     var canActivateOutline: Bool {
-        currentNote != nil || (shellState.libraryVisible && shellState.sidebarContent == .outline)
+        currentNote != nil
     }
 
     var canToggleResearchInspector: Bool {
@@ -2192,6 +2209,7 @@ final class WindowModel: ObservableObject {
             try await self.flushRegisteredEditorIfNeeded(
                 capturingEditorState: true
             )
+            try await self.chatController?.flushPersistence()
         },
         presentationSnapshot: { [weak self] in
             guard let self,
@@ -5752,7 +5770,7 @@ final class WindowModel: ObservableObject {
                 reportOperationIssue(String(localized: "This Agent Change is no longer available."), kind: .warning)
                 return
             }
-            presentationRouter.present(.agentChanges(initialChangeID: route.changeID))
+            presentationRouter.present(.agentChanges(scope: .exact(route.changeID)))
         } catch {
             reportOperationIssue(error.localizedDescription, kind: .error)
         }

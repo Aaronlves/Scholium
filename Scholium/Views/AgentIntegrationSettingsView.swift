@@ -4,6 +4,7 @@ import SwiftUI
 
 struct AgentIntegrationSettingsView: View {
     @EnvironmentObject private var settingsModel: WorkspaceSettingsModel
+    @Environment(\.agentChatSettingsController) private var chatController
 
     @State private var copyStatus: String?
 
@@ -14,6 +15,12 @@ struct AgentIntegrationSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.sectionSeparation) {
+                if let chatController {
+                    AgentChatConnectionSettingsView(controller: chatController).id(chatController.triptychID)
+                } else {
+                    Text("Open a Triptych to manage its Chat connection.").foregroundStyle(.secondary)
+                }
+                DisclosureGroup("Connect an External Agent") {
                 researchSettingsSection("Status") {
                     VStack(alignment: .leading, spacing: ScholiumGrid.Spacing.inlineControlGap) {
                         statusRow("Scholium App", detail: "Available", available: true)
@@ -68,7 +75,7 @@ struct AgentIntegrationSettingsView: View {
                     }
                 }
 
-
+                }
             }
             .padding(24)
             .frame(maxWidth: 760, alignment: .topLeading)

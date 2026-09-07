@@ -137,7 +137,7 @@ struct ScholiumLocalizationTests {
         )
 
         #expect(!catalog.contains("垃圾箱"))
-        #expect(!catalog.contains("废纸篓"))
+        #expect(ScholiumL10n.string("Move Note to Trash", locale: simplifiedChinese) == "将笔记移到废纸篓")
         for retiredKey in [
             "\"Research Action\" :",
             "\"Discussion\" :",

@@ -104,7 +104,7 @@ enum DocumentStatisticKind: String, CaseIterable, Identifiable {
 }
 
 
-struct DocumentOutlineSidebar: View {
+struct DocumentOutlineInspector: View {
     @ObservedObject var projection: DocumentInformationProjection
     let isVisible: Bool
     let openHeading: (Int, Bool) -> Void
@@ -136,7 +136,7 @@ struct DocumentOutlineSidebar: View {
             }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("scholium.outlineSidebar")
+        .accessibilityIdentifier("scholium.outlineInspector")
     }
 }
 

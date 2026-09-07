@@ -38,20 +38,21 @@ research-content authority. Rendered views, YAML projections, Metadata,
 indexes, diagnostics, and external Agent output must not reconstruct
 or silently replace it.
 
-The manual core—setup, open, create, read, edit, autosave, Search, Library,
-tabs, conflicts, and recovery—must work without Obsidian, Zotero, or Agents.
-Scholium supports source-grounded research, writing, annotation, deliberate
-Agent collaboration, Settle, Search, Connect, organization, provenance, and
-recovery. It is not project management, reference management, permanent AI
-chat, or an Obsidian replacement.
+The manual core—setup, open, create, read, edit, autosave, Search, Library, tabs,
+conflicts, and recovery—must work without Obsidian, Zotero, or Agents. Scholium supports
+source-grounded research, writing, annotation, deliberate Agent collaboration, Settle,
+Search, Connect, organization, provenance, and recovery. It is not project management,
+reference management, a general Agent harness or an Obsidian replacement.
 
 ### 2.2 Researcher responsibility and optional agent access
 
-The researcher governs the Triptych and instructs an external Agent in the
-Agent host. A clear create, modify, or move-to-Trash instruction authorizes only
-the named task and targets; Scholium adds no second approval sheet and does not
-attempt to reconstruct the conversation. The Core Protocol defaults to
-read-only work when no such instruction exists.
+The researcher governs the Triptych and instructs an Agent in an external host or the
+optional in-app Chat. Chat connects an existing runtime; Scholium does not implement the
+model/tool execution loop. A clear create, modify, or move-to-Trash instruction
+authorizes only the named task and targets. For external hosts, Scholium adds no second
+approval sheet and does not attempt to reconstruct the conversation. In-app Chat follows
+the selected permission policy in §8.7 without a separate proposal lifecycle. The Core
+Protocol defaults to read-only work when no such instruction exists.
 
 Scholium provides:
 
@@ -127,11 +128,11 @@ interpret the same Triptych:
 
 Researcher-authored research content belongs in ordinary Markdown Notes.
 
-Application Support contains machine-local access and execution state:
-security-scoped bookmarks and paths, window sessions, derived indexes and
-caches, local MCP bridge state, exact Agent Change evidence, and recovery artifacts.
-Note Markdown/YAML remains the sole writable research-content authority.
-Attachment bytes remain ordinary Finder-owned files.
+Application Support contains machine-local access and execution state: security-scoped
+bookmarks and paths, window sessions, in-app Chat drafts and public conversation
+projections, derived indexes and caches, local MCP bridge state, exact Agent Change
+evidence, and recovery artifacts. Note Markdown/YAML remains the sole writable
+research-content authority. Attachment bytes remain ordinary Finder-owned files.
 
 Portable control state never contains secrets, absolute paths, bookmarks,
 indexes, live editor state, or temporary execution state. Scholium never
@@ -146,11 +147,8 @@ fidelity/provenance/uncertainty/conflict rules, and safe external-edit
 conventions. It remains researcher-owned research context, not the MCP or Core
 Protocol.
 
-Scholium ships one protected, project-neutral `scholium-core-protocol` Skill.
-It does not create or alter workspace `AGENTS.md`/`CLAUDE.md`, scan arbitrary
-Skill locations, or register researcher methods. Settings reveals the bundled
-folder and copies host-specific user-scope setup commands; the researcher owns
-whether and how optional method Skills are installed.
+§8.2 owns bundled Core Protocol discovery and external-host setup; §8.5 owns
+its content. The Guide is not a second protocol or method registry.
 
 ### 3.5 Import
 

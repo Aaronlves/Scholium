@@ -2,13 +2,14 @@
 
 [SCHOLIUM_SPEC.md](../SCHOLIUM_SPEC.md) · Sections 8–11.
 
-## 8. External agent collaboration
+## 8. Agent collaboration
 
 ### 8.1 Ownership and authority
 
-The researcher converses with an external Agent in Codex, Claude, or another
-compatible MCP host. Scholium does not embed chat, choose a model, store model
-credentials, supervise an Agent, or own the conversation. The researcher's
+The researcher converses with an Agent in an external MCP host or in the
+optional in-app Chat (§8.7). External hosts retain their conversation ownership.
+Scholium provides a native client for supported runtimes; authentication and
+the Agent execution loop remain runtime-owned. The researcher's
 current instruction supplies the task, scope, and any permission to create,
 modify, or move a Note to system Trash.
 
@@ -25,12 +26,12 @@ Scholium separates three instruction owners:
    create evidence, expand write scope, weaken source fidelity, or override the
    Core Protocol.
 
-Scholium creates no application task type, academic profile, method
-registration, per-task credential, write ledger, result schema, or completion
-state for Agent work. MCP tool availability is not permission. Scholium neither
-reconstructs nor independently validates the external conversation; the Core
-Protocol requires researcher authority for every Note mutation, including
-question and discussion writing under §8.6.
+Scholium creates no academic task type, profile, method registration, or philosophical
+result/completion state. Chat execution and input-delivery state are software
+operations, never research acceptance. MCP tool availability is not permission. For an
+external host, Scholium neither reconstructs nor independently validates its
+conversation; the Core Protocol requires researcher authority for every Note mutation,
+including question and discussion writing under §8.6.
 
 The authority stack is:
 
@@ -74,11 +75,9 @@ install Skills, or claim that configuration succeeded. The Core Protocol ships
 as an ordinary `scholium-core-protocol` Skill folder; researchers may install
 it alongside their own method Skills.
 
-MCP initialization contains only compact tool facts: begin with current
-workspace status, Markdown source is authoritative, Search/Metadata/links are
-retrieval aids, mutations require current fingerprints, and Scholium does not
-decide whether the chat authorized a write. It does not duplicate the Core
-Protocol's philosophical method.
+MCP initialization carries only the entry/currentness, source-authority and
+mutation facts needed to use the tools. It references the Core Protocol boundary
+in §8.5 instead of becoming a second philosophical instruction source.
 
 ### 8.3 Tool contract
 
@@ -152,8 +151,11 @@ failures return `isError: true` with
 - `app_unavailable`, `workspace_selection_required`, and
   `workspace_not_ready`;
 - `not_found`, `ambiguous`, and `path_occupied`;
-- `stale_revision`, `conflict`, and `invalid_request`; and
+- `stale_revision`, `conflict`, `no_changes`, and `invalid_request`; and
 - `operation_uncertain` and `internal_error`.
+
+An identical update returns `no_changes` before writing or preparing an Agent
+Change. It warrants no edit claim or automatic retry.
 
 Protocol parsing and unknown-method failures remain JSON-RPC errors. Tool
 annotations identify the four retrieval tools as read-only, local, and
@@ -251,6 +253,62 @@ Authored attribution and version references are research content, not authentica
 history or researcher acceptance. Agent Changes retain their distinct operation-
 evidence role under §8.4.
 
+### 8.7 In-app Chat
+
+Chat belongs to one Triptych and may reference several Notes across its vaults. Sending
+the first message starts a conversation without an academic task or Record. Library
+navigation and current Note changes do not change the active conversation or silently
+share another document. Conversation history, drafts, attachments and uncertain delivery
+survive reopening in machine-local storage. Titles derive from the first message; saving
+and reopening need no technical session-management decision. Archiving hides an idle
+conversation from the active list while preserving its messages, draft and modification
+links. Restoring makes it writable again; archived conversations cannot send or become
+active tool runs. Runtime history remains runtime-owned; a retained public projection is
+not a second writable Note or researcher endorsement.
+
+The researcher selects Ask for Approval or Full Access per conversation. Ask
+requires confirmation of each Scholium Note mutation and displays runtime
+approval requests. Full Access permits autonomous operations in the runtime's
+full-access environment and permits scoped MCP mutations without an additional
+proposal approval. Both preserve exact source, current revisions, live editors,
+readback, conflict and recovery. Full Access does not imply that arbitrary
+filesystem edits acquire Agent Change evidence. Raw edits remain external edits.
+A permission change applies only while the conversation is idle; it persists
+across turns. Runtime tools outside Scholium obey the actual runtime policy,
+not a simulated UI permission. Unsupported approval requests cannot run silently.
+
+One active execution owns a conversation's tool admission. In-app MCP calls bind
+an ephemeral execution token to the selected conversation and exact Triptych;
+a model-supplied other Triptych is rejected. The token is routing state, not
+research permission. Decline or Stop revokes pending approvals and new operation
+admission; already admitted source transactions finish or recover through their
+existing owner. Successful interruption is distinct from rollback. Uncertain
+requests are retained and never automatically resent. Continuing after an
+uncertain delivery is an explicit action that does not resend its old message.
+
+The client supports sending, streaming public answers, additional input,
+interruption, sign-in, disconnection and conversation reopening. Source excerpts
+come from one checked editor source/selection snapshot, retaining Note identity,
+source fingerprint and locator. Adding an excerpt prepares input without sending.
+No-selection and unavailable-editor states request an explicit selection rather
+than sharing the whole document. A Note reference opens its verified identity
+in the same Triptych; missing identities remain explicit and never fall back to
+an arbitrary path. Show in Library is a separate navigation action.
+
+One-click connection discovers an installed executable and the Scholium CLI, prepares
+its MCP configuration, and requests provider sign-in if needed. Advanced paths and
+connection management live in Settings. These machine paths, credentials and runtime
+data stay outside portable `.scholium`; existing Triptych control settings keep their
+current portable owner. A separate configuration directory is the default; choosing an
+existing runtime directory explicitly inherits its configuration and tools. Scholium
+does not copy credentials, change global host settings, or promise arbitrary
+desktop-thread adoption. Cloud inference and account usage remain subject to the
+provider; local execution does not imply offline inference. Normal Note work remains
+available without a runtime or sign-in.
+
+Chat adds no automatic Settle, durable philosophical verdict, argument graph,
+proposal lifecycle, autonomous research schedule or multi-provider requirement.
+
 ## 9. Analyses workflow
 
 Analyses reconstruct and assess identifiable papers or other sources. They are
@@ -308,24 +366,13 @@ Agent need not imitate the researcher's sentence-level style.
 ### 11.2 Critique target and storage
 
 A Critique is an attributed Agent assessment of one Work or selected passage.
-Broader dialogue remains in the external Agent conversation. Each Work has at
+Broader dialogue follows the external-host or in-app Chat boundary in §8. Each Work has at
 most one current Critique document under `Critiques/`; later rounds update it.
 Critique source is read-only in Scholium but remains ordinary externally
 editable Markdown.
 
 ### 11.3 Critique method and form
 
-Critique has no fixed product operation, academic profile, result schema, or
-registered method. The researcher may select a personal method Skill.
-Whole-Work assessment may
-address material claims, arguments, method fit, coverage, contribution,
-objections, implications, alternatives, and revision priorities as warranted
-by genre and inspected evidence. Passage assessment remains bounded.
-
-A Critique can include Overall Assessment, Strengths, Major Concerns, Source
-Support, Objections and Alternatives, Revision Priorities, Specific Findings,
-and Evidence Limits when useful; this is not a required schema. **Traced**,
-**Untraced**, **Disputed**, and **Beyond Sources** are attributed Agent
-judgments, not Scholium statuses. Critique never certifies maturity,
-originality, publication readiness, or researcher competence and never
-modifies the Work unless that separate edit is explicitly requested.
+[Appendix B](11-metadata-and-critique.md#appendix-b-critique-requirements) owns
+Critique outcomes, evidence limits and form. This workflow adds no assessment
+schema, research status or registered method.

@@ -78,6 +78,20 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
     let applicationRuntime: WorkspaceRuntime
     let cssSnippetStore: CSSSnippetStore
     let zoteroBridge: ZoteroBridge
+    private var requestRouter: ScholiumAppBridgeRequestRouter?
+    private var chatRegistryStorage: AgentChatRegistry?
+    var chatRegistry: AgentChatRegistry {
+        if let current = chatRegistryStorage { return current }
+        let registry = AgentChatRegistry(root: applicationSupportURL.appendingPathComponent("Chat")) { [weak self] request in
+            guard let router = self?.requestRouter else {
+                return try! ScholiumMCPBridgeResponse(requestID: request.requestID, error: .init(
+                    code: .appUnavailable, message: "Scholium is unavailable.", recovery: "Reconnect Chat."))
+            }
+            return await router.handleChatOperation(request)
+        }
+        chatRegistryStorage = registry
+        return registry
+    }
     private(set) var appBridge: ScholiumAppBridgeServer?
     private(set) var appBridgeStartupFailure: ScholiumAppBridgeError?
 
@@ -130,8 +144,16 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
                     guard let self else { return [] }
                     return self.handles.values.map(\.assignment)
                 },
-                didConfirmChange: { SystemNotificationService.shared.receive($0) }
+                didConfirmChange: { SystemNotificationService.shared.receive($0) },
+                chatHandler: { [weak self] request in
+                    guard let self else {
+                        return try! ScholiumMCPBridgeResponse(requestID: request.requestID, error: .init(
+                            code: .appUnavailable, message: "Scholium is unavailable.", recovery: "Reconnect Chat."))
+                    }
+                    return await self.chatRegistry.handle(request)
+                }
             )
+            requestRouter = router
             appBridge = try ScholiumAppBridgeServer(
                 applicationSupportURL: bridgeContainerURL
             ) { request in
@@ -180,7 +202,9 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
     deinit {
         let bridge = appBridge
         let runtime = applicationRuntime
+        let chat = chatRegistryStorage
         Task {
+            await chat?.shutdown()
             if let bridge {
                 while !(await bridge.stopAndWait(timeout: 30)) {
                     await Task.yield()
@@ -191,6 +215,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
     }
 
     func shutdownApplicationRuntime() async {
+        await chatRegistry.shutdown()
         if let appBridge,
            !(await appBridge.stopAndWait()) {
             Self.publicationLogger.fault(
@@ -247,6 +272,7 @@ final class WorkspaceStore: ObservableObject, WorkspaceEditorFlushRegistry {
         guard handles[id] == nil, installationTasks[id] == nil else {
             throw ScholiumApplicationError.workspaceRegistrationInUse(id)
         }
+        await chatRegistry.disconnect(triptychID: id)
         try await applicationRuntime.removeLocalTriptychRegistration(id: id)
         workspaceSnapshots[id] = nil
         workspaceEvents[id] = nil

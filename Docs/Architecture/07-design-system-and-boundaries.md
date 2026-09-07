@@ -1,431 +1,84 @@
 # Architecture: Design System and Boundary Enforcement
 
-[IMPLEMENTATION_ARCHITECTURE.md](../IMPLEMENTATION_ARCHITECTURE.md) · Design-system
-implementation, component boundaries, and executable enforcement.
+[IMPLEMENTATION_ARCHITECTURE.md](../IMPLEMENTATION_ARCHITECTURE.md) · Shared
+presentation implementation and executable boundary enforcement.
 
 ## Design-system implementation
 
-[Design §19](../../Design.md#19-scholarly-editorialism-and-design-variables)
-owns palette meanings, semantic typography and surface roles, adaptive layout
-principles, reuse boundaries, motion intent, and the shared cross-functional
-state language. Section 20 remains the complete accessibility and adaptation
-authority. The app implements the design contract in
-`Scholium/UI/Foundation` through `ScholiumColorVariables`,
-`ScholiumColorResolver`, derived `ScholiumColorRole`s, `ScholiumGrid`,
-`ScholiumMetrics`, `ScholiumMotion`, and `ScholiumTypography`.
-These shared types are current reusable implementation inventories, not a
-permission list for every bounded feature-local layout value.
+[Design](../../Design.md) owns global intent and identity; §18 owns feature
+presentation and state wording; §20 owns accessibility. This chapter maps shared
+presentation responsibilities to code. It does not require a wrapper around a
+standard system control or copy a feature's layout recipe.
 
-`ScholiumButtons` owns native command styling through `scholiumButtonStyle`.
-Its primitive-style adapter forwards the original configuration to a native
-Button and applies neutral Ink or destructive tint, without new activation,
-focus, sizing, or role behavior. Window roots, independently hosted split
-regions, and sheet/popover content install the contextual default; bounded feature overrides use the same
-entry. `scholiumIconControl` supplies one native Glass/chrome recipe to icon
-Buttons, icon Menus, and Notifications. Custom row and segmented-selection
-styles retain their existing shared feedback owners. AppKit toolbar/tab
-controls and embedded-document controls retain their native or renderer owners.
-Menu triggers use the corresponding `scholiumMenuStyle` adapter because macOS
-MenuStyle does not inherit ButtonStyle. The command scope installs both defaults.
+| Responsibility | Current implementation owner |
+| --- | --- |
+| Background/Accent input and adapted document colors | `ScholiumColorVariables`, `ScholiumColorResolver`, `ScholiumColorRole` in `Scholium/UI/Foundation/ScholiumDesignSystem.swift`. |
+| Native semantic colors | `ScholiumNativeColorRole`; AppKit/SwiftUI owns actual control rendering. |
+| Native-to-document style transport | `ScholiumWebDesignTokens`; generated CSS consumes resolved values, not another palette or settings store. |
+| Shared custom geometry | `ScholiumGrid`, `ScholiumMetrics`, `ScholiumShape`, surface/boundary/elevation roles; exact defaults remain in code. |
+| App-owned typography | `ScholiumTypography` in `Scholium/Styling`; standard controls retain system type. |
+| Document typography | `DocumentAppearanceSettings` and the rendering pipeline in [Documents and Editor](06-documents-and-editor.md#shared-document-rendering). |
+| Shared symbols | `ScholiumSystemSymbol`; `ScholiumWebSymbolAssets` transports those symbols into WebKit. |
+| Purpose-specific custom motion | `ScholiumMotion`; native controls retain their system lifecycle. |
+| Page/pane state presentation | `ScholiumContentStateView`; compact Apparatus, field validation and recovery use their own bounded presentations. |
 
-Accent and Paper are the only configurable inputs. Section 19.2's Paper is the exact
-Light Document anchor; one resolver derives every other appearance role for
-native and generated WebKit CSS. The Workspace `NSSplitViewItem` supplies the
-complete native Sidebar material while the adjacent Document surface extends
-its Paper background beneath that glass. Sidebar SwiftUI and source-list
-content stays transparent. Inspector uses a distinct Apparatus role whose tone
-is deliberately much closer to Document than Navigation. Sticky Inspector headers and
-sticky-header occlusion and link-annotation disclosure reuse that exact Apparatus role rather than a
-floating-control surface. `ScholiumWebDesignTokens` injects the resolved role
-declarations and fixed Markup syntax exception into every document HTML
-surface; authored Editor styles only consume those properties and contain no
-fallback palette. Functional/status anchors stay private. Tests enforce the
-input boundary, mappings, parity, and contrast; no
-static appearance palette or JSON mirror exists.
-`ScholiumSystemSymbol` centralizes native symbol names, while
-`ScholiumWebSymbolAssets` transports the same SF Symbols into WebKit as CSS
-masks without introducing a second path catalog.
+Shared values need repeated semantic or adaptation responsibility. Equal numbers
+alone do not create a common owner. Native geometry stays with the platform;
+local values remain with their feature. No JSON palette, geometry mirror or
+second appearance configuration is authoritative.
 
-`scholiumForeground` is the adaptive SwiftUI foreground boundary for
-Scholium-owned copy and glyphs. Feature views select a `ScholiumColorRole`
-rather than system primary/secondary styles or a resolved `Color`; the single
-`TextField` prompt that must remain a `Text` value consumes the same semantic
-role directly. `ScholiumNativeColorRole` resolves AppKit-owned label, secondary
-label, window/text background, control accent, search-match highlight, and
-structural shadow. Native Inspector and operation controls consume these roles;
-their system appearance remains distinct from the authored Paper surface.
-Bootstrap's closed narrative-art palette and the fixed Markup highlight remain
-the two nonconfigurable authored exceptions declared by Design §19.2.
-Repository inventory tests reject raw Swift inputs outside those owners,
-direct AppKit palette access, leaf semantic-color opacity recipes, and authored
-WebKit color declarations or literals.
+The current native command adapters are `scholiumButtonStyle` and
+`scholiumMenuStyle` in `ScholiumButtons`. They forward activation and roles to
+native controls while applying shared command tint. `scholiumIconControl` owns a
+bounded native glass icon recipe. These are existing mechanisms, not a mandate
+to apply tint or glass throughout the app. Remaining custom feedback paths and
+new target conformance are tracked in [Open Work](../Status/03-open-work.md).
 
-`ScholiumSurfaceRole` maps a Scholium-owned content surface to its default
-semantic boundary and, where applicable, one purpose-named
-`ScholiumElevationRole`. The current shared custom transient roles are
-`floatingControl`, `boundedPanel`, and `searchOverlay`; ordinary structural
-surfaces resolve to none. Sidebar elevation has no Scholium renderer: AppKit's
-Sidebar split-item behavior owns its glass edge and shadow, while the Document
-item's `automaticallyAdjustsSafeAreaInsets` extends Paper beneath it and keeps
-readable content in the unobscured safe area. `ScholiumWebDesignTokens` exports
-only the transient role names as CSS shadow declarations without converting
-points to CSS pixels.
-The shared segmented selection plate retains its control elevation. Semantic
-floats instead use `scholiumFloatingSurface` (SwiftUI) or the bounded
-`DocumentFloatingSurfaceController` (AppKit `NSGlassEffectView`). Find, query explanations,
-and progress overlays share native Liquid Glass; no feature adds a second
-shadow or frosted-material recipe. Persistent operation, document integrity,
-and recovery notices remain opaque content surfaces.
-
-The editor and reader project inert preview HTML into a transparent, local-only
-WKWebView inside the native glass container. `DocumentWebViewContainer` keeps
-that container beside the document WebView so both remain accessible. CSS retains the document's semantic
-colors; CSP and navigation policy deny scripting, remote resources, and links.
-CodeMirror retains completion transactions, keyboard handling and its sole AX
-listbox; native rows are a non-AX visual and pointer projection. Versioned,
-identity-bound payloads and surface IDs reject stale activation. Native floating
-geometry is clamped to the originating viewport and changes no prose geometry.
-Completion width fits the intrinsic candidate labels and details plus row insets,
-with a viewport-bounded upper limit; preview prose has its own reading width.
-The native completion host persists across selection updates. Shared completion
-metrics define single-line and described rows. `NativeFloatingChoiceList` uses
-an inset `NSTableView` whose row views draw system selection. One pointer tracker
-translates movement into the same selection used by keyboard navigation, with
-no independent hover state or custom fill. Completion projects the editor's
-selection through the versioned `select` intent and retains editor first
-responder; native row emphasis reflects that active candidate session.
-The completion glass container and sole CodeMirror AX list remain; no menu loop,
-popover migration, or keyboard interceptor is used. Outline has its own persistent
-`NSOutlineView` with native disclosure and selection; it does not consume the
-completion tracker. `DocumentInformationProjection` publishes exact-document
-headings, current section, and statistics to its sidebar. Find
-restores native control defaults within its own scope; both query and replacement
-use AppKit field editors. Their marked-text guard prevents partial model updates
-and incoming presentation refreshes from overwriting composition. Editor
-composition events immediately hide application suggestions and previews. Autosave invalidates
-transport requests but preserves the float; activation is still bound to the
-accepted session, document, live buffer revision, and current surface ID.
-System materials own contrast, transparency, and elevation adaptation.
-
-Repository ownership tests treat authored shadow syntax as a closed inventory.
-The shared native elevation modifier is the only `.shadow` owner; WebKit previews and suggestions author no material or elevation. The remaining
-inset `box-shadow` declarations are classified as editor boundaries or focus
-rings rather than elevation. Adding a raw shadow, a direct SwiftUI hover site
-outside the design-system owner, a WebKit `:hover` site, or another AppKit
-pointer tracker fails the inventory until its semantic owner and exception
-class are made explicit. The bounded WebKit hover inventory may shrink during
-later simplification but must not grow.
-
-`ScholiumContentInteractionSurface` is the shared SwiftUI, AppKit, and WebKit
-mapping for content-control selection, hover, keyboard-focus, and press
-emphasis. Hover resolves to a low-opacity semantic `primaryText` veil,
-preserving the native toolbar's relative light/dark response over every content
-plane without copying its dynamic AppKit pixels; keyboard focus retains the
-stronger raised blend, while selection remains an explicit persistent input.
-Its generated CSS declarations transport those same mixes and the Accent focus
-ring into both retained document surfaces. The overloaded
-`scholiumActivationFocus` modifier keeps matching custom button-like controls
-in the complete keyboard chain, clears pointer-generated keyboard-only focus,
-and locally replaces the native focus effect with that shared surface without
-inspecting AppKit events or changing window-wide focus behavior.
-Native Buttons, sheets, and alerts do not consume this adapter: AppKit owns
-their modality-sensitive focus return. `ScholiumSegmentedControl` is the one
-custom group that consumes the adapter; feature views do
-not add unconditional `FocusState` assignments after native presentation
-dismissal, which prevents pointer interactions from manufacturing keyboard
-focus rings while retaining native keyboard traversal and return behavior.
-
-Custom link-equivalent cursors have one cross-runtime boundary.
-`scholiumActivationPointer` and `ScholiumPointingHandButton` are adapters for
-bounded custom targets whose semantics require the link pointer and whose host
-does not already own cursor behavior; generated document CSS provides the
-corresponding WebKit link behavior. Standard SwiftUI/AppKit controls and native
-table or outline rows do not consume these adapters. The Library outline adds
-no cursor rectangles or pointer tracker. Text, drag, divider, resize, disabled,
-and passive surfaces retain their task-specific cursors.
-
-`ScholiumContentControlButtonFeedbackModifier` is the single transient-state
-owner for custom SwiftUI Buttons. The generic
-`ScholiumContentControlButtonStyle` and geometry-owning quiet-row style both
-delegate to it. It normally owns one lightweight SwiftUI hover state, consumes
-`ButtonStyle.Configuration.isPressed`, and resolves semantic ink, one
-continuous surface, and immediate press dimming. Native Source List rows do not
-consume this custom Button path. Borderless native Menus
-instead use `scholiumContentControlPointerFeedback`: a zero-hit-test AppKit
-adapter observes the complete Menu frame because the host does not reliably
-forward pointer state into its label. The enclosing Button or Menu retains
-activation, focus, menu tracking, and accessibility; no leaf or compound
-wrapper adds another transient-state owner. The tracking view clips to its own
-bounds, retains one in-visible-rect tracking identity, and intersects local bounds
-with the visible region. Pointer movement, viewport bounds changes, and window
-activity reconcile hover; detach publishes a reset before removing observers.
-CodeMirror suggestions project one current listbox item on the persistent raised
-surface; native pointer movement updates that item without a second hover fill. The protected Callout stylesheet owns
-only its disclosure geometry and selectors; its fold mark consumes the shared
-hover/focus values instead of declaring another opacity or focus color.
-Review preview delegation resolves one footnote, link-annotation marker, or link
-anchor for both pointer and focus entry, ignores movement inside that anchor,
-and closes on matching pointer or focus exit as well as scroll, resize, source
-activation, or window blur. Edit's corresponding controller additionally owns
-Command-armed link feedback, the same annotation-template presentation, and a
-current-buffer one-definition footnote projection. Neither creates another
-source, selection, or focus owner.
-`ScholiumTriptychWorkspaceNavigator` is a thin `NSTableView` adapter for the
-three vertical workspace rows and neutral Note totals. AppKit owns source-list
-geometry, color, hover, focus, active/inactive selection, and Up/Down traversal
-while one shared Sidebar adapter determines whether that native selection is
-pointer-quiet or keyboard-emphasized. The selected row remains the sole visible
-focus indicator, so the table and outline containers disable their redundant
-perimeter focus rings without changing keyboard traversal. The coordinator only
-projects availability and publishes a selected workspace intent. Scholium
-semantic text colors adapt to AppKit's emphasized selected-row background
-without adding an Accent mark, underline, border, shadow, custom corner, or
-parallel transition.
-`SidebarSourceListRowView` filters native emphasis setters by the shared input
-modality, so a later AppKit repaint cannot re-emphasize pointer selection. Native
-responder/window changes still drive the row; no drawing-cycle synchronization
-is installed.
-`ScholiumSegmentedControl` owns the current bounded text-only horizontal
-single-choice groups that match its contract. It receives only a binding and
-finite option labels, then owns equal layout, the Paper-derived track, adaptive
-raised selection plate, continuous corners, pointer and press feedback,
-Left/Right traversal, and accessibility state. A future group may remain native
-or feature-owned when its semantics or interaction genuinely differ.
-The Research Inspector's icon-only projection group remains a native AppKit
-toolbar control because its placement and icon semantics differ from bounded
-text choices in content.
-`ScholiumEditorialIconControl` supplies labels and focus for matching
-compact icon actions in content-owned headers. Shared icon chrome gives each a 28pt
-target and semantic ink while a regular circular Glass Button or Menu owns
-hover, focus, press, active-window, and accessibility adaptation. The 20pt label
-inside the native regular control preserves the established 28pt outer size;
-callers add no padding or second hover enclosure. The visible symbol remains
-available to the native control so an icon-only Menu stays in the accessibility
-tree; each callsite replaces its inferred symbol name with the complete action
-label and value. The presentation adds no raw radius, animation, scale, or
-shadow. The Debug Editorial
-Parchment acceptance board consumes these production components and resolved
-roles; it is not a second design-system source.
-
-Workspace toolbar observations update standard bordered `NSToolbarItem`
-actions, native sidebar/Inspector segmented controls, and a bounded Muted Text
-identity field. The system window title remains available to window management
-but its duplicate visual title is hidden. AppKit therefore owns regular Glass, edge highlight, shadow, hover,
-press, focus, geometry, and adaptive appearance. The Inspector projection
-uses automatic native segmented-control styling and retains its 70 × 20 fitting
-size. AppKit owns hover, press, focus, active-window, Reduce Transparency, menu
-tracking, and disabled rendering; SwiftUI does not reconstruct those states or
-paint a toolbar band.
-
-The shared icon chrome clears the workspace Accent tint for Sidebar Search,
-Notifications, and other icon actions. Their system material therefore remains
-monochrome; Scholium color stays limited to the explicit nonzero Notifications
-dot and other semantic states rather than staining ordinary control
-backgrounds. Triptych opening and creation stay in the native File menu,
-registration management stays in Settings, and open-window switching stays in
-the Window menu, so the Sidebar adds no persistent context selector.
-`ScholiumWindowLifecycleRegistry` publishes only exact registered
-window-to-Triptych membership, allowing SwiftUI's native window subtitle to
-appear when those windows span more than one distinct Triptych and disappear
-again when they do not.
-The Library header contains separate borderless SwiftUI Menus for Organize and
-Add. Organize separates Integrity from Content presence, uses one Metadata
-group, and exposes Order choices directly. Each
-Menu retains its own label, disabled state, focus target, activation, and menu
-presentation while hiding the redundant indicator and persistent container.
-The shared zero-hit-test pointer reader supplies only the shallow circular
-hover and press surface. Their symbols and the Library section title use Muted
-Text. The Scholium wordmark owns the Sidebar's brand-title role while Library
-begins the subordinate section; the current Triptych name adds no persistent
-competing title. Library Folder
-rows supply a decorative monochrome Folder glyph in the same semantic icon slot
-as Note symbols, while AppKit's unmodified outline disclosure remains the sole
-owner of collapsed and expanded state indication. The source list does not
-override `frameOfOutlineCell(atRow:)` or replace the native disclosure button.
-Its 16pt grid-owned hierarchy step is supplied through
-`NSOutlineView.indentationPerLevel`; AppKit continues to position disclosure,
-cell, and selection.
-
-`MCPAgentChangesView` uses one continuous semantic Document surface and a flat
-machine-local change list. Each row distinguishes operation, stable Note
-identity, source path, exact revision state, and available recovery without
-treating the entry as a research result. Exact comparison reuses the shared
-comparison components; Update Undo uses a native confirmation and remains
-visibly unavailable when Application reports revision drift. The view adds no
-second history, acceptance, or source-authority visual language.
-
-Inspector and Agent Changes controls route hover, keyboard focus, and press
-through shared component owners. System confirmation actions remain
-native-owned. Technical fingerprints use `ScholiumApparatusFactGrid`, the same
-adaptive label/value owner as Inspector About. Consumers provide semantic
-values only; the grid chooses aligned or stacked structure and its exact-value
-style distinguishes scholarly prose from revision identity.
-`ScholiumTypography` is the sole native text resolver for Scholium-owned
-surfaces. It exposes only `InterfaceRole`, `ScholarlyRole`, and `ExactRole`;
-feature modules publish no Library, Apparatus, Agent Changes, or Chrome font
-aliases. Every custom top-level view shares the 17pt Semibold Interface primary
-title, while research-object titles share the 20pt Bold Scholarly title.
-Emphasis and tabular figures are resolver inputs rather than cross-product
-roles. The 13pt control role also supplies the native Metadata field point size.
-Brand and Bootstrap retain the approved identity/hero exceptions.
-Alegreya and Victor Mono resolution remains private. `ScholiumSymbolStyle`
-separately maps purpose-named component scale to SF Symbols.
-Repository tests reject fixed SwiftUI point sizes, raw SwiftUI text styles,
-leaf-owned font weight, direct SwiftUI system-font construction, and low-level
-typeface access outside the owner. Scholium-owned explanatory copy selects an
-explicit semantic role; standard control labels, menus, alerts, and toolbar
-identity retain platform typography. A runtime test registers every bundled
-Alegreya and Victor Mono face and resolves it through AppKit. Document
-typography remains in the Appearance/CSS pipeline. No recommendation-specific
-color, spacing, radius, footer, badge, or elevation Variable exists.
-
-`ScholiumGrid.Peripheral.contentInset` is the one 28pt outer page-edge source
-for Library and Inspector. `ScholiumMetrics.Library` and
-`ScholiumMetrics.Apparatus` map to it; their internal row, hierarchy, and section
-variables remain separate.
-
-`ScholiumLibrarySourceState` owns the Library empty, loading, and error page
-inset. It maps horizontal content to the peripheral
-edge and vertical entry to `sourceStateVerticalInset`; it does not wrap
-populated OutlineRows or alter their denser row-surface inset.
-
-`ScholiumGrid` owns the shared 4pt rhythm, bounded 2pt optical exception,
-reusable semantic spacing, and component anchors. `ScholiumMetrics` maps
-genuinely shared responsibilities to those roles without copying values; no
-geometry JSON mirror exists. The shared 4pt label/accessory, 8pt inline-control,
-12pt nested-content, 16pt section, and 20pt region values remain preferred at
-matching call sites. A bounded component may keep a clear local cadence when it
-is not reused, accessibility-critical, or an adaptation rule; equal numbers do
-not create shared ownership. Tests exercise promoted roles and representative
-consumers rather than scanning every production spacing, padding, line spacing,
-or spacer value. Native control geometry, scene/window dimensions, Document CSS
-units, the Debug proof catalog, and coordinate-driven Bootstrap art remain
-separate classifications.
-
-`ScholiumMetrics.ResearchGuidance` owns the categorized Settings surface's
-native list-detail containment thresholds and the explanatory collection-row
-rhythm. `researchSettingsCollectionRow` applies that one content/action layout
-to Skill and Academic Profile rows while each caller
-retains its domain values, operations, accessibility identifiers, and state.
-The shared presentation component performs no persistence, routing, or
-authorization work and does not style native controls themselves.
-
-The Settings root keeps destination selection in SwiftUI and projects it to
-`SettingsToolbarAttachment`. Its coordinator installs an AppKit preference
-`NSToolbar` with native icon-and-label selectable items; it forwards selection
-intents and owns only native window geometry. Pane changes use `NSWindow`
-frame animation anchored to the upper center, constrained to the visible
-screen, and immediate under Reduce Motion. The scene imposes no fixed size.
-Settings content uses native window backgrounds and controls. The native search
-field filters static destination metadata; Triptych selection stays in its pane.
-Hotkey rows use native menus; the AppKit recorder translates key events into
-`ScholiumHotkeyPreferences`, the machine-local owner shared with commands.
-
-The This Triptych Metadata detail consumes one candidate
-`NoteMetadataCatalog` derived from its settings draft. Its field-definition and
-About always-shown sections mutate separate subvalues and save only through the
-existing exact-revision Settings transaction. Present values remain visible in
-About independently of that empty-field preference. The inline Add
-Field form owns only a key and supported simple value kind; it has no source,
-About, Agent, Zotero, or body mutation authority.
-
-Agent Integration is informational and operational: it presents host-specific
-MCP setup commands and the bundled Core Protocol path. It persists no Agent
-preference, credentials, sessions, or execution state. Help and accessibility
-hints appear only when they supply otherwise missing action, exact value,
-disabled-state, consequence, or recovery context; errors and recovery
-instructions stay visible at their owning surface.
-
-`ScholiumCornerRole` is the current shared responsibility vocabulary for custom
-corner geometry. `ScholiumShape` exposes Native aliases and generates the
-WebKit custom properties needed by shared or WebKit-specific constructs; it
-does not define a numbered radius scale. Feature-local geometry may remain with
-one bounded surface when it has no cross-runtime or adaptation contract.
-`scholiumEditorialSurface` accepts a
-`RoundedRectangularShape` and publishes it with `containerShape`, so a genuinely
-nested custom surface such as the Search availability banner can resolve
-`ConcentricRectangle` from its container. Independent Native controls consume a
-purpose-named role, while Review/Edit styles consume generated
-`--scholium-corner-*` properties. Tests preserve shared Native/WebKit parity and
-representative adoption without treating every numeric corner as a catalog
-violation.
-
-- AppKit owns window, toolbar, split, divider, collapse, fullscreen, and frame
-  geometry. The Library's 300pt content minimum is native split-item state, not
-  grid spacing or persisted divider state;
-- `ScholiumMetrics.Onboarding` owns the separate Bootstrap window and setup-form
-  measures;
-- `ScholiumMetrics.Workspace` owns the configured-workspace initial size, not a
-  minimum;
-- `ScholiumMetrics.Document` names the explicit CSS-pixel top inset and
-  per-window text-scale range; and
-- `DocumentAppearanceSettings.defaultSettings` is the sole built-in owner of
-  Review/Edit Body, heading, Callout, Source typography, and line-width values. The generated
-  `ScholiumWebDesignTokens` transport derives those values rather than keeping
-  a second typography table. `ScholiumDocumentRhythm` retains only
-  renderer-specific layout values; the unit-explicit
-  `ScholiumDocumentPresentationConfiguration` supplies scale and minimum
-  insets without overriding Appearance semantics. The normalized **48–96ch**
-  line width has a **66ch** default; generated CSS exports it as
-  `--scholium-document-line-width` together with an internal derived half-width
-  length so the supported WebKit runtime does not depend on CSS division.
-  Read/Live resolve it against Body type and Source against retained
-  exact-source type. Dynamic presentation updates reuse the existing
-  CodeMirror remeasure path rather than reconstructing editor state.
-
-`ScholiumMotion` exposes purpose-named animations and returns no animation
-when Reduce Motion is active. It does not install a global animation policy.
+Custom link-equivalent cursors use `scholiumActivationPointer` and
+`ScholiumPointingHandButton` where the host does not already own the cursor.
+Standard native controls and list rows do not consume these adapters. Document
+CSS provides the corresponding link behavior in its renderer.
 
 ## Component boundaries
 
-`Scholium/UI/Components` implements the component distinctions established by
-the specification. Reusable feature components remain stateless leaves
-receiving immutable values and typed closures; feature roots retain state and
-action routing. The bounded AppKit window-shell adapters are infrastructure
-exceptions: they own native controller and split-item lifetimes, weak
-exact-window attachment, toolbar/delegate installation, explicit split
-intents, and native visibility mirroring, but no
-Triptych, document, or researcher-visible semantic state. `WindowShellState`,
-`WindowWorkspaceController`, and the feature controllers own their bounded
-state; `WindowModel` composes them and routes focused commands. This document records that
-dependency direction, while the specification owns the stable rule for when
-Scholium-specific components or distinct research surfaces are appropriate.
-`ScholiumContentStateView` is the single presentation leaf for page- and
-pane-level state copy. It accepts only visible content, indicator treatment,
-region placement, density, and an action view; Document, Library, Search,
-Agent Changes, Attention, Recovery, and Settings owners continue
-to derive their own states and transitions. `ScholiumApparatusStateView`,
-inline field feedback, and `ScholiumRecoveryNotice` remain separate owners for
-their distinct compact, validation, and persistent-recovery responsibilities.
-`SystemNotificationService` is the App-level macOS delivery owner. The running
-MCP router hands it one confirmed mutation result after the Application
-transaction; it does not observe per-window history or derived refreshes.
-`UNUserNotificationCenter` is attached at App launch without requesting permission.
-Only the first eligible background event requests system authorization; denial
-remains quiet. Same-Note bursts coalesce, activation cancels pending delivery,
-and native delegate presentation suppresses foreground banners.
+Reusable presentation leaves receive values and typed actions. They own no
+Document, workflow, permission, navigation or operation lifecycle. A shared
+component is justified by a repeated task, one presentation responsibility and
+an adaptation contract; feature-local views need no catalog promotion.
 
-An opaque `AgentChangeNotificationRoute` carries exact identity without Note
-prose, title, or path. Clicks reuse a matching window or open the target Triptych;
-its current Agent Change owner revalidates before presenting the comparison.
-A cold-window handoff is memory-only and consumed once; window restoration
-does not serialize or replay notification clicks.
-Notification failure never changes a committed MCP result or source authority.
-`WindowShellState` retains persistent operation issues without expiry or priority.
-`ScholiumOperationIssueView` renders them in the Document region. Settings retains
-field/save errors and local copy acknowledgement. Bell projections, local
-Settlement, `ScholiumDocumentStatusNotice`, and recovery retain their own state.
-No global overlay host, activity banner projection, or Settings feedback queue remains.
+Concrete feature ownership is recorded only in its chapter:
+
+- [Runtime and Ownership](01-runtime-and-ownership.md#document-tabs-and-native-shell):
+  native split, tabs, toolbar validation and window teardown.
+- [Source Layout and Presentation](03-source-layout-and-presentation.md#presentation):
+  window routes, Search, Inspector, Sidebar headers and notifications.
+- [Research Guidance](04-research-guidance.md#settings-authority):
+  Settings composition and native preference-window geometry.
+- [Documents and Editor](06-documents-and-editor.md#editor-boundary-contract):
+  retained editor, native previews, completion, Find and cross-runtime input.
+- [Agent Collaboration](02-agent-collaboration.md#native-chat-client):
+  Chat runtime, conversation state and receipt projections.
+
+Native container adapters are bounded infrastructure: they own native attachment
+and teardown, delegate/target lifetime and geometry, translating typed intents
+without acquiring a competing domain state. A presentation reuse decision never
+moves a feature's authoritative state into a style or component.
+
+The selected Xcode also bundles `AppKit-Implementing-Liquid-Glass-Design.md`
+under `IDEIntelligenceChat.framework/Resources/AdditionalDocumentation`.
+It is an implementation reference, not a product design owner; sample custom
+controls do not override Design's native presentation boundary.
 
 ## Boundary enforcement
 
-`ScholiumContractsTests`, `ScholiumApplicationTests`, and the architecture and
-composition suites in `ScholiumAppTests` exercise their respective module,
-runtime, window, document, presentation, and design-system boundaries.
-`Tools/Scripts/verify.sh` adds package-graph, source-import, I/O, and public
-symbol-graph guards so delivery targets cannot reacquire Core-owned authority.
+Contracts, Application and App suites exercise their own module, runtime,
+document and presentation responsibilities. Design checks cover semantic input
+ownership, native/WebKit transport, contrast and actual shared consumers; they
+must not freeze local implementation defaults or require obsolete custom skins.
+`Tools/Scripts/verify.sh` also checks package dependencies, imports, I/O and
+public symbols so delivery targets cannot acquire Core authority.
 
-See [IMPLEMENTATION_STATUS.md](../IMPLEMENTATION_STATUS.md) for dated evidence,
-reachable behavior, and remaining acceptance work. This document intentionally
-does not duplicate test counts or claim that a dated pass proves the
-current checkout.
+Debug presentation proofs consume production components and values; they are
+not a second design system. [Verification Evidence](../Status/04-verification.md)
+owns dated outcomes. A structural check or compiled preview does not establish
+runtime interaction or human acceptance.

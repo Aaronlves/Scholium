@@ -19,15 +19,9 @@
   Note title identity uses its filename; Analysis academic title Metadata and
   body headings remain independently searchable. Question-centered Works Notes
   use ordinary editing, Search, links and file operations.
-- Review and Edit project the filename title at the top of their shared
-  scrolling document plane while retaining authored H1 as a body section.
-  Edit routes inline title changes through the existing safe Rename transaction
-  and retains rejected drafts; Source remains an exact-source surface without
-  the projection. Review and inactive Edit share local semantic-block geometry;
-  each authored blank line remains one stable prose-height Edit row rather than
-  duplicating Review paragraph-end spacing or collapsing beneath a caret. Revealed
-  heading and quotation prefixes retain their line's full computed size outside
-  the prose measure without moving visible text or adjacent blocks.
+- Review, Edit and Source retain one document session and exact-source authority.
+  [Reachable Interface](02-interface.md) owns title, syntax, geometry and input
+  presentation evidence; these are not separate product capabilities.
 - Notes can bind regular document files independently of Markdown: copy stores
   exact bytes under `Attachments`, reference retains the Finder-owned file, and
   both persist a stable-Note relationship in portable control state with only
@@ -61,16 +55,19 @@
   inventing an empty text preimage or deletion comparison. This evidence is not
   portable research history or a second source authority.
 - Settings exposes Agent Integration instructions for Codex and Claude Code and
-  reveals the bundled `scholium-core-protocol` Skill. Scholium stores no Agent
-  credential, session, task, Run, or host preference.
+  reveals the bundled `scholium-core-protocol` Skill. External-host setup stores no credentials. In-app Chat separately retains
+  public conversation state and selected runtime configuration.
 - The Core Protocol uses ordinary Note operations for explicitly requested
   question/discussion writing. Substantive discussion does not authorize an
   automatic write or create an application-managed inquiry lifecycle.
 
 ## Deliberately unavailable
 
-- The App contains no Agent chat, Agent lifecycle, Research Actions, Handoff,
-  Reading Leads, passage Discussion, or Review Comment subsystem.
+- The App contains no Research Actions, Reading Leads, passage Discussion,
+  or Review Comment subsystem. In-app Chat is the bounded runtime client
+  specified in §8.7; it is not a research-task lifecycle.
 - The MCP server exposes no Resources, Prompts, Tasks, model invocation,
   acceptance, or research-result endpoints.
-- Handoff remains a future §22 decision, not a current implementation claim.
+- There is no external-host conversation handoff service. The in-app client
+  supports explicit source-selection attachment under §8.7; its current interface
+  is recorded in the reachable-interface chapter.

@@ -11,6 +11,7 @@ struct InterfacePresentationOwnershipTests {
     ).filter { !NativeSettingsSourceScope.paths.contains($0.key) }
     #expect(directStyles == ["Scholium/App/ScholiumApp.swift": 1,
                              "Scholium/UI/Components/ScholiumButtons.swift": 1,
+                             "Scholium/UI/Components/ScholiumSidebarHeaderControl.swift": 1,
                              "Scholium/Views/Backlinks/ConnectionsInspectorView.swift": 2,
                              "Scholium/Views/MCPAgentChangesView.swift": 1,
                              "Scholium/Views/SearchWorkspaceView.swift": 1,
@@ -18,24 +19,28 @@ struct InterfacePresentationOwnershipTests {
                              "Scholium/Views/Sidebar/OverviewNotificationsView.swift": 1,
                              "Scholium/Views/Sidebar/ResearchInspectorContentView.swift": 2,
                              "Scholium/Views/Note/DocumentFindPanel.swift": 3,
-                             "Scholium/Views/Sidebar/DocumentOutlineSidebar.swift": 1],
+                             "Scholium/Views/Sidebar/DocumentOutlineInspector.swift": 1,
+                             "Scholium/Views/Sidebar/AgentChatView.swift": 7],
             Comment(rawValue: diagnostic(for: directStyles)))
     let menuStyles = try occurrenceInventory(
       pattern: #"\.menuStyle\s*\(\s*\."#, extensions: ["swift"]
     ).filter { !NativeSettingsSourceScope.paths.contains($0.key) }
     #expect(menuStyles == ["Scholium/UI/Components/ScholiumButtons.swift": 1,
+                             "Scholium/UI/Components/ScholiumSidebarHeaderControl.swift": 1,
                            "Scholium/Views/Backlinks/ConnectionsInspectorView.swift": 1,
                            "Scholium/Views/SearchWorkspaceView.swift": 1,
                            "Scholium/Views/Sidebar/OverviewAttachmentsView.swift": 2,
                            "Scholium/Views/Sidebar/ResearchInspectorContentView.swift": 1,
                            "Scholium/Views/Note/DocumentFindPanel.swift": 1,
-                           "Scholium/Views/Sidebar/DocumentOutlineSidebar.swift": 1],
+                           "Scholium/Views/Sidebar/DocumentOutlineInspector.swift": 1,
+                           "Scholium/Views/Sidebar/AgentChatView.swift": 1],
             Comment(rawValue: diagnostic(for: menuStyles)))
     let prominentStyles = try occurrenceInventory(
       pattern: #"\.(borderedProminent|glassProminent)\b"#,
       extensions: ["swift"]
     )
-    #expect(prominentStyles.isEmpty, Comment(rawValue: diagnostic(for: prominentStyles)))
+    #expect(prominentStyles == ["Scholium/Views/Sidebar/AgentChatView.swift": 1],
+            Comment(rawValue: diagnostic(for: prominentStyles)))
     let linkButtons = try occurrenceInventory(
       pattern: #"\.scholiumButtonStyle\(\.link\)"#, extensions: ["swift"]
     )
@@ -43,15 +48,17 @@ struct InterfacePresentationOwnershipTests {
             Comment(rawValue: diagnostic(for: linkButtons)))
     let tintOwners = try occurrenceInventory(pattern: #"\.tint\s*\("#, extensions: ["swift"])
     #expect(tintOwners == [
+      "Scholium/Views/Sidebar/AgentChatView.swift": 1,
       "Scholium/App/ScholiumApp.swift": 3,
       "Scholium/UI/Components/ScholiumButtons.swift": 3,
+      "Scholium/UI/Components/ScholiumSidebarHeaderControl.swift": 1,
       "Scholium/UI/Components/ExactSourceComparisonView.swift": 1,
       "Scholium/Views/Backlinks/ConnectionsInspectorView.swift": 1,
       "Scholium/Views/Sidebar/ResearchInspectorView.swift": 1,
       "Scholium/Views/SearchWorkspaceView.swift": 1,
       "Scholium/Views/Sidebar/ZoteroBindingPanelView.swift": 1,
       "Scholium/Views/Note/DocumentFindPanel.swift": 1,
-      "Scholium/Views/Sidebar/DocumentOutlineSidebar.swift": 1,
+      "Scholium/Views/Sidebar/DocumentOutlineInspector.swift": 1,
       "Scholium/Views/WorkspaceSetupView.swift": 1,
     ], Comment(rawValue: diagnostic(for: tintOwners)))
   }

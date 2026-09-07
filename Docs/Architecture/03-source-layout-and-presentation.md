@@ -94,6 +94,11 @@ owns only its native auxiliary window and closes with the source workspace.
 Both surfaces project the same query, scope, and results; there is no centered
 Search overlay or second query engine.
 
+`ScholiumTriptychWorkspaceNavigator` wraps `WorkspaceSegmentedControl`, an
+`NSSegmentedControl` that projects the three role destinations. Native layout
+adapts complete labels to symbols; the coordinator publishes only selection
+intents. It is not a vertical workspace table or a custom selection plate.
+
 `ContextSearchField` lets AppKit own search text entry and its magnifying-glass
 options menu; query/scope values and commands come from the feature model.
 Notification consumers reuse that native presentation.
@@ -120,8 +125,9 @@ returns a registration failure to the retained Triptych review and keeps
 workspace routing closed until registration completes. Ready explicitly opens
 the configured workspace.
 
-Agent conversation and tool selection live in the configured external host.
-Scholium has no chat, Agent lifecycle, Run, or portable result browser. The
+Agent execution and tool selection remain in the external runtime. Optional
+Triptych-level Chat uses the official Codex App Server client described in the
+Agent architecture chapter; it adds no Run or portable result browser. The
 Settings **Agent Integration** destination shows exact Codex and Claude Code MCP
 registration commands and reveals the bundled Core Protocol Skill. It does not
 store credentials or choose an Agent application.
@@ -130,19 +136,29 @@ Each workspace window may present machine-local **Agent Changes**. The view
 reads the window `ResearchController`'s borrowed `AgentChangeSummary` values
 recorded by successful MCP mutations and
 compares exact before and after source where both revisions remain available.
-Direct Update is available only after Application revalidates the target and
+Direct Undo is available only after Application revalidates the target and
 performs the exact write. Undo is bounded to the recorded after fingerprint and
 becomes unavailable as soon as authoritative source diverges. Agent Changes
 owns no portable research history and is not a source of truth.
 
-Notifications is one native transient SwiftUI popover owned by each exact
-`WindowModel`, not an app-wide Scene, sheet, inline Library destination,
-utility panel, or always-on-top surface. Per-workspace
-`AttentionPresentationState` projects structural and Settlement attention from
-current immutable state. The machine-local dismissal ledger changes
-presentation only. No queue item authorizes a source mutation, and the
-Document editing controls consume no notification state.
-Its bell anchor is a stable native toolbar item; the nonzero dot is only a presentation of the existing exact queue.
+Notifications is one native transient SwiftUI popover owned by each exact `WindowModel`,
+not an app-wide Scene, sheet, inline Library destination, utility panel, or
+always-on-top surface. Per-workspace `AttentionPresentationState` projects structural
+and Settlement attention from current immutable state. The machine-local dismissal
+ledger changes presentation only. No queue item authorizes a source mutation, and the
+Document editing controls consume no notification state. Its bell anchor is a stable
+native toolbar item; the nonzero dot is only a presentation of the existing exact queue.
+
+`SystemNotificationService` owns App-level macOS delivery. The mutation router
+submits confirmed results; the service does not infer events from per-window
+refresh. `UNUserNotificationCenter` is attached at launch, with authorization
+requested on the first eligible background event. Coalescing, activation
+cancellation and delegate suppression govern delivery. An opaque
+`AgentChangeNotificationRoute` carries identity only. The receiving window
+revalidates the receipt; cold-window handoff is memory-only and consumed once.
+`WindowShellState` retains persistent operation issues without expiry;
+`ScholiumOperationIssueView` renders them in the Document region. Settings errors
+remain with their field/save owner. No delivery result changes source authority.
 
 Ordinary workspace navigation uses a workspace-keyed
 `DiscoveryLibraryRequest(.stagedReplacement)`. `DiscoveryController` retains
@@ -154,7 +170,7 @@ destination tab group, Document mode, and Inspector mode. Rapid requests
 converge on the last requested workspace.
 
 `ResearchInspectorView` lives with the Sidebar views, separately from the
-Document leaf. It receives immutable About and Links presentation values
+Document leaf. It receives immutable Outline, About and Links presentation values
 composed at the window root. It owns no workspace refresh, Agent
 conversation, mutation, or lifecycle state. Its modes share the one native
 trailing split item and one mode value per Triptych workspace; changing modes,
@@ -171,7 +187,7 @@ coordinator drains this one session before document departure or aggregate
 saves. About remains mounted across projections. File timestamps and
 Settlement remain quiet read-only snapshot facts.
 
-`WindowShellState` owns About/Links selection. Its icon-only toolbar
+`WindowShellState` owns Outline/About/Links selection. Its icon-only toolbar
 control uses AppKit segments; `InspectorLinkDirectionControl` uses native
 textured-rounded capsule segments with system accent.
 `LinksInspectorSession`, retained by the window's ResearchController, owns the
@@ -185,6 +201,14 @@ When the split item remains visible without a selected Document, the
 composition root installs a read-only Apparatus content-state projection rather
 than an empty host or stale Inspector leaf; the split controller remains the
 sole visibility owner.
+Library and Chat share `ScholiumSidebarHeader` for outer title-row geometry,
+`ScholiumSidebarHeaderActions` for trailing grouping, and
+`ScholiumSidebarHeaderControl` for target sizing and pointer feedback. Their
+monochrome symbols and native control tint share the same system secondary
+label color. Header Buttons and Menus use native borderless styles without the
+Paper-derived neutral-command wrappers. Chat's temporary selection set belongs to
+its list presentation; archive persistence remains with `AgentChatController`.
+
 ### Interface localization
 
 The application target owns interface localization. `Package.swift` declares

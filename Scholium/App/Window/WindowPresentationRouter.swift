@@ -1,6 +1,17 @@
 import ScholiumContracts
 import SwiftUI
 
+enum AgentChangesScope {
+    case current
+    case exact(UUID)
+    case conversation([UUID])
+
+    var exactID: UUID? {
+        if case .exact(let id) = self { return id }
+        return nil
+    }
+}
+
 enum WindowSheetRoute: Identifiable {
     case noteFileOperation(NoteFileRequest)
     case folderFileOperation(FolderFileRequest)
@@ -8,7 +19,7 @@ enum WindowSheetRoute: Identifiable {
     case transactionRecovery
     case identityResolution(NoteIdentityAmbiguity)
     case zoteroBinding(ZoteroBindingPanelRoute)
-    case agentChanges(initialChangeID: UUID?)
+    case agentChanges(scope: AgentChangesScope)
 
     var id: String {
         switch self {

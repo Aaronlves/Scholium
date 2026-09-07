@@ -183,7 +183,7 @@ struct SidebarView: View {
     }
 
     private var libraryHeader: some View {
-        HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+        ScholiumSidebarHeader {
             Text("Library")
                 .font(ScholiumTypography.interface(.sectionTitle))
                 .scholiumForeground(.mutedText)
@@ -191,38 +191,21 @@ struct SidebarView: View {
 
             Spacer(minLength: 0)
 
-            HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+            ScholiumSidebarHeaderActions {
                 libraryFilterMenu
 
                 Menu {
                     rootCreationActions
                 } label: {
-                    Image(systemName: "plus")
-                        .scholiumForeground(.mutedText)
-                        .frame(
-                            width: ScholiumMetrics.Accessibility.minimumCustomTarget,
-                            height: ScholiumMetrics.Accessibility.minimumCustomTarget
-                        )
-                        .accessibilityHidden(true)
+                    ScholiumSidebarHeaderIcon(systemImage: "plus")
                 }
-                .frame(
-                    width: ScholiumMetrics.Accessibility.preferredCustomTarget,
-                    height: ScholiumMetrics.Accessibility.preferredCustomTarget
-                )
-                .scholiumMenuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .scholiumContentControlPointerFeedback(in: Circle())
+                .scholiumSidebarHeaderControl()
                 .disabled(!context.canMutateLibrary)
                 .help("Create New")
                 .accessibilityLabel("Create New")
                 .accessibilityIdentifier("scholium.libraryCreate")
             }
         }
-        .frame(
-            maxWidth: .infinity,
-            minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget
-        )
-        .padding(.horizontal, ScholiumMetrics.Library.contentInset)
         .background {
             SidebarLibraryHeaderDropDestination(
                 dropInventory: dropInventory,

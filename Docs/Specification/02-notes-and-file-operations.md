@@ -14,27 +14,14 @@ editable Markdown.
 ### 5.1 Document modes and YAML
 
 - **Review** renders committed content for reading, navigation, and selection.
-- **Edit** modifies the exact body through a reversible semantic projection. It
-  shares Review typography and components, reveals syntax only for the active
-  construct, and shows neither YAML nor line numbers.
-- **Source** edits complete Markdown and YAML with logical source-line numbers
-  and exact-source typography. Soft wrapping never changes source lines.
+- **Edit** modifies source through a reversible semantic projection; Frontmatter
+  remains directly source-editable above the title under §18.4.
+- **Source** edits complete Markdown and YAML with logical source-line numbers.
 
-All modes share one document session, selection, Undo history, viewport,
-appearance, and line-width setting. A mode change must preserve dirty source,
-selection, focus, marked text, scroll, and recovery authority. Review and Edit
-share one recognizable philosophy-manuscript hierarchy and measure, but may
-differ where editing requires caret placement, exact spaces, blank source rows,
-composition, or active syntax. Every authored blank line remains addressable
-and cannot collapse, overlap its neighbors, or jump when editing begins.
-
-Inactive structural syntax may be de-emphasized; entering the construct reveals
-the exact prefix at the same source location without moving the researcher to a
-different semantic block or losing selection, composition, or scroll context.
-No particular prefix track, line-box recipe, or pixel-identical Review/Edit
-geometry is part of the product contract. Source accepts researcher
-responsibility for protected YAML while still using targeted, byte-preserving
-validation.
+All modes share one document session. A mode change preserves dirty source,
+selection, focus, marked text, Undo, scroll and recovery authority. §18.4 owns
+mode presentation, syntax visibility, typography and layout. Source editing
+retains targeted, byte-preserving validation.
 
 Edit activation is construct-scoped. Pointer and keyboard entry place the caret
 at the corresponding exact source location without an intermediate false
@@ -47,7 +34,7 @@ Syntax presentation groups by editing behavior rather than by visual similarity:
 | Family | Edit behavior |
 | --- | --- |
 | Emphasis, strong, strike, highlight, inline code | Retain styled prose; reveal only the active delimiters locally. |
-| ATX headings and quotation prefixes | Expand exact prefixes within the measure, with the bounded whitespace exception in §19.3. |
+| ATX headings and quotation prefixes | Expand exact prefixes within the measure, with the bounded whitespace exception in §18.4. |
 | Setext headings and thematic breaks | Preserve their source row; do not treat a whole delimiter line as an inline prefix. |
 | Lists and tasks | Keep their semantic marker track; prefix editing and task toggling remain distinct. |
 | Callouts | Retain expanded editable prose, a quiet role label and header/body structure; reveal markers only on active lines. Folding is a separate accessible disclosure, and selection inside a folded body exposes it. |
@@ -80,13 +67,12 @@ places the selection in that definition without renumbering existing forms.
 Inline Footnote inserts `^[…]` at each selection and retains selected text as
 its content. Each invocation is one source transaction and one Undo event.
 
-Statistics are derived from the current unsaved body or selection, appear in
-the fixed footer of the Outline sidebar, and are never stored. They report
-language-aware word tokens, Han characters, and Unicode grapheme clusters with
-and without whitespace while excluding YAML, delimiters, and link destinations.
-Word counts use the platform tokenizer rather than treating every script as
-Latin.
-Spelling and grammar use installed macOS text services.
+Statistics are derived from the current unsaved body or selection, are never stored, and
+use §18.4's Outline Inspector presentation. They report language-aware word tokens, Han
+characters, and Unicode grapheme clusters with and without whitespace while excluding
+YAML, delimiters, and link destinations. Word counts use the platform tokenizer rather
+than treating every script as Latin. Spelling and grammar use installed macOS text
+services.
 
 **Import Image…** copies a supported image without replacement to
 `Attachments/<uuid>/<filename>`, records its stable vault-relative location,
@@ -131,25 +117,15 @@ Protected constructs follow these rules:
 - Link and footnote previews are bounded read-only projections with keyboard,
   pointer, accessibility, dismissal, and source-navigation routes. Missing or
   ambiguous destinations remain exact source.
-- Named and inline footnotes share one reading presentation: a compact
-  superscript ordinal in prose and one generated end section ordered by first
-  reference. Their authoring syntax remains distinguishable only when editing
-  exact source; an inline footnote does not become a separate visible Note kind.
-- An annotated Wikilink keeps the linked title inline and replaces only its
-  inactive annotation markup with a small adjacent disclosure. Keyboard and
-  pointer activation expose the same annotation; moving the Edit caret into
-  the occurrence reveals its exact authored syntax. This disclosure is not a
-  footnote, Comment, Metadata field, or second writable annotation.
+- §18.4 owns the shared reading presentation and activation of named/inline
+  footnotes and annotated Wikilinks. These projections create no separate Note,
+  Comment, Metadata field or writable annotation authority.
 
 ### 5.2 Authored YAML and Scholium Metadata
 
 [Appendix A](11-metadata-and-critique.md#shared-authored-yaml) owns the authored
-YAML allowlist. `summary` and `keywords` remain authored source, editable in
-Source or the Frontmatter above the document title, and searchable as source.
-YAML has no field-form editor or Inspector/Metadata presentation. Frontmatter
-remains above the title and is reached by scrolling or the View menu. Source always
-retains the complete document. Every other key is preserved exactly but has no
-canonical product semantics.
+YAML allowlist. These values remain exact source; §18.4 owns Frontmatter and
+Source editing. YAML has no Metadata form or Inspector editing route.
 
 All other canonical structured values are **Scholium Metadata**. One portable,
 schema-checked JSON record belongs to each stable Note identity. It is separate
@@ -171,17 +147,11 @@ Scholium Metadata: it is visible and searchable but never replaces Note
 identity. YAML `title` and body headings likewise have no identity semantics.
 Rename never synchronizes Metadata or body headings.
 
-About is the current Note's primary Metadata view and ordinary editing surface.
-It always shows the role's configured core managed fields even when empty,
-automatically adds every other present managed value, and excludes YAML fields.
-Overview owns all managed-field editing in one ordered, ungrouped list. Field
-labels share a trailing-aligned axis; values and native controls share the next
-axis. Add Field inserts a role-valid field directly into this list. There is no
-separate Metadata editor, sheet, or confirmation footer. A field edit uses the
-loaded Metadata revision; no Overview action patches YAML. File and Settlement
-facts are read-only and visually subordinate. Conflicts retain local drafts. CLI metadata read/set/remove
-operations use the same managed owner and Metadata fingerprint, never the
-source fingerprint.
+About is the ordinary Metadata editing surface; §§18.4–18.5 own its field
+layout and interaction. A field edit uses the loaded Metadata revision, never
+patches YAML, and retains local drafts on conflict. CLI metadata read/set/remove
+operations share the managed owner and Metadata fingerprint, never the source
+fingerprint. Appendix A owns field configuration and visibility.
 
 Metadata imposes no Markdown body schema. A standalone Markdown copy contains
 only authored source; moving the complete Triptych carries its identity-keyed

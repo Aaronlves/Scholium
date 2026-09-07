@@ -179,9 +179,7 @@ extension WorkspaceHandle {
             )
         }
         guard intended.fingerprint != current.fingerprint else {
-            throw AgentCollaborationError.invalidRequest(
-                "The proposed update would not change the Note."
-            )
+            throw AgentCollaborationError.noChanges
         }
         let prepared = try await services.agentChangeStore.prepare(
             operation: .update,

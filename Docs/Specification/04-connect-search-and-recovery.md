@@ -41,11 +41,8 @@ Search has three visible scopes:
 - **This Vault** searches present Notes in the selected role vault; and
 - **Triptych** searches all present Notes.
 
-Search owns known-Note navigation but not Recents, Quick Open, or navigation
-history. It is one window-owned search session with quick and advanced presentations
-defined in §18.3, visible scope, and bounded result lists. Moving to Advanced
-Search retains query, scope, and workspace; dismissal cancels work and
-clears query/results while retaining ordinary scope and Saved Searches.
+Search owns known-Note retrieval. §18.3 owns quick/advanced presentation and
+session dismissal; neither presentation creates Recents or navigation history.
 
 During live workspace opening, **This Note** performs exact lexical Search over
 the current unsaved buffer. **This Vault** may reuse only lexical Note matches
@@ -94,15 +91,15 @@ are bounded before execution.
 Every Note result identifies its provider object, stable identity, exact source
 fingerprint, matched field/reason, and available locator/range.
 
-Search indexes visible semantic text, valid link-annotation content, and
-canonical fields, not raw delimiters or link destinations. Annotation hits use
-the distinct `link_annotation` field, identify the owning occurrence and source
-range, and remain discovery candidates only: annotation prose never creates a
-predicate or a second edge. Exact filename Note title, alias, and path identity
-outrank lexical matches. An Analysis academic title remains a weighted `title`
-lexical match, not Note identity; normalized Note title, role order, and path provide stable ties.
-Results explain matched field and rank reason without exposing internal scores.
-CJK uses deterministic projection and substring verification.
+Search indexes visible semantic text, valid link-annotation content, and canonical
+fields, not raw delimiters or link destinations. Annotation hits use the distinct
+`link_annotation` field, identify the owning occurrence and source range, and remain
+discovery candidates only: annotation prose never creates a predicate or a second edge.
+Exact filename Note title, alias, and path identity outrank lexical matches. An Analysis
+academic title remains a weighted `title` lexical match, not Note identity; normalized
+Note title, role order, and path provide stable ties. Results explain matched field and
+rank reason without exposing internal scores. CJK uses deterministic projection and
+substring verification.
 
 The versioned **Related-Content Retrieval** contract is an internal,
 nonpersistent discovery operation over exact current Notes and optional passage
@@ -120,14 +117,13 @@ its own generation, and freshness. **Building**, **Limited**, **Partial**,
 failed refresh may retain only that provider's last complete compatible
 generation. Derived indexes remain disposable and never writable authority.
 
-The parser exposes one typed capability description used by completion,
-**Explain Query**, CLI help, and the MCP tool schema. Completion edits only
-visible query text.
-Saved Searches store only raw query, visible scope, and contract version; they store no AST, resolved identity, result, or
-generation. Changed semantics require **Needs Editing** rather than silent
-rewrite or execution. Invalid saved bytes remain unchanged and nonexecuting; a
-damaged Saved Search store has a confirmed archive-and-reset route that never
-changes vault content.
+The parser exposes one typed capability description used by completion, **Explain
+Query**, CLI help, and the MCP tool schema. Completion edits only visible query text.
+Saved Searches store only raw query, visible scope, and contract version; they store no
+AST, resolved identity, result, or generation. Changed semantics require **Needs
+Editing** rather than silent rewrite or execution. Invalid saved bytes remain unchanged
+and nonexecuting; a damaged Saved Search store has a confirmed archive-and-reset route
+that never changes vault content.
 
 App, CLI, and Scholium MCP consume the same result identity,
 reasons, provenance, availability, and freshness. Presentation may reword but
@@ -172,11 +168,8 @@ reminder under §7.
 Autosave creates no visible version history, Checkpoint product, whole-Triptych
 rollback, or settled-version store.
 
-Each MCP mutation stores one machine-local Agent Change under §8.4. An update
-retains only exact starting and final revisions needed for comparison and
-eligible direct Undo. Creation and system-Trash operations retain their own
-operation receipts and recovery. Agent Change evidence grants no authority and
-uses the ordinary repository save path.
+§8.4 owns Agent Change retention and eligible direct Undo; §6 owns system-Trash
+receipts and Finder recovery. Neither is an autosave version history.
 
 Interrupted-save recovery remains machine-local and source-specific. When
 startup proves a distinct retained candidate, **Recovery** shows its Note,
@@ -191,11 +184,9 @@ record to a unique non-record sibling, then retries preflight. It never moves
 source, valid neighbor records, settings, identity state, or the complete
 `.scholium` directory.
 
-System-Trash recovery is a separate forward plan showing source items, known
-Finder destinations, and receipts. An unknown native outcome permits
-**Resolve** after researcher inspection; that releases the gate and removes
-only the Scholium plan. It never restores or erases source, and neither route
-reads or changes research prose.
+System-Trash receipt semantics are owned by §6 and recovery presentation by
+§18.6; neither restore-candidate handling nor Metadata recovery may reuse its
+forward plan as source-replacement authority.
 
 Watchers and sync observations are refresh evidence only. External absence or
 restoration passes through ordinary identity and exact-byte reconciliation and

@@ -101,22 +101,10 @@ Bootstrap asks one decision at a time, preserves input on failure, and opens the
 configured workspace only after registration succeeds. It contains no inert
 workspace shell, project model, feature tour, or duplicate navigation.
 
-Agent setup is not part of first launch. The workspace remains fully usable
-without an Agent, CLI, or external host configuration. Later, Settings →
-Research Guidance → **Agent Integration** reports only what Scholium can verify
-locally: whether the App bridge and compatible CLI are available.
-
-The page provides user-scope Codex and Claude setup commands using the verified
-absolute CLI path and a Finder route to the bundled Core Protocol. Copying or
-revealing performs no research read and grants no write authority. Scholium
-does not edit external host settings, install Skills, store a readiness flag,
-or claim the copied command was run. A missing CLI offers only the official
-standalone installation instructions.
-
-The App never embeds, updates, removes, or configures the external Agent. The
-standalone CLI retains explicit, verified, architecture-matched, recoverable
-self-update of only its executable and adjacent resource bundle; it never runs
-in the background or edits PATH, shell profiles, or the App.
+Agent setup is optional and deferred until after first launch. §8.2 owns
+external-host commands and Core Protocol discovery; §8.7 owns in-app runtime
+connection. A missing CLI links to its official installation instructions.
+§21.5 owns standalone CLI update and distribution requirements.
 
 Success attaches one native workspace window before Bootstrap closes. Expired
 access uses **Restore Access** without discarding active document state.
@@ -135,11 +123,10 @@ registered Triptychs.
 
 Scholium does not become:
 
-- permanent LLM chat, project/task management, a plugin marketplace, fourth
+- a general LLM chat product, project/task management, a plugin marketplace, fourth
   vault, or All Notes mode;
-- an embedded Agent runtime, reasoning monitor, background Agent manager,
-  streamed tool viewer, relay, cloud orchestrator, or second proposal/approval
-  layer;
+- a self-built Agent harness, private-reasoning monitor, background Agent
+  manager, cloud orchestrator, or second proposal/approval lifecycle;
 - an automatic judge of philosophical support, truth, sufficiency, settlement,
   prose authorization, quality, or researcher competence;
 - a Zotero replacement, embedded PDF reader, proprietary backup format, or
@@ -154,20 +141,18 @@ and PDFs; external Agents remain authoritative for optional open-ended work.
 
 Outside Beta/1.0 are document/project/HTML/PDF/DOCX export, executable
 extensions and Skill marketplace/evolution/sharing, Work finding overlays,
-active-table-cell hybrid editing, and PDF attachment presentation. A future PDF
-route may use Quick Look, Open, and Reveal in Finder but not become an embedded
-reader.
+and active-table-cell hybrid editing. Note attachments already have the target
+Quick Look and external-opening routes in §18.4; a persistent embedded PDF
+reader remains excluded.
 
-Beta/1.0 interface localization covers English and Simplified Chinese.
-Additional translations, right-to-left chrome/navigation, and complete RTL
-input acceptance remain deferred; exact Unicode preservation is mandatory.
+§18.7 owns the localization scope. Additional translations, right-to-left
+chrome/navigation, and complete RTL input acceptance remain deferred; exact
+Unicode preservation is mandatory.
 
-External-host Skill registrations are nonauthoritative discovery pointers, not
-Scholium state, capability, evidence, or permission. Researcher Skill edits
-remain host-owned and are never silently replaced by Scholium. The protected
-Core Protocol follows the compatible CLI release.
+§8 owns method-Skill authority and runtime scope. This boundary creates no
+additional registration or credential store.
 
-Scholium defines no separate durable Agent memory or ontology. Analyses,
-Topics, Works, and authored Markdown remain the research context. A future
-lightweight Handoff requires its own approved contract and cannot become a
-hidden research object or permission mechanism.
+Scholium defines no separate durable Agent memory or ontology. Analyses, Topics, Works,
+and authored Markdown remain the research context. Chat provides explicit selection
+handoff under §8.7; its snapshots and conversation state cannot become hidden research
+authority.

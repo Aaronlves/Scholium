@@ -324,7 +324,7 @@ extension ScholiumUITests {
 
         let library = app.descendants(matching: .any)["scholium.librarySurface"]
         if !library.exists {
-            let showSidebar = sidebarModeControl("Triptych")
+            let showSidebar = sidebarModeControl("Library")
             XCTAssertTrue(showSidebar.waitForExistence(timeout: 5))
             showSidebar.coordinate(
                 withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)
@@ -344,7 +344,7 @@ extension ScholiumUITests {
         ).click()
         XCTAssertTrue(waitUntil(timeout: 5) { !library.exists })
 
-        let showSidebar = sidebarModeControl("Triptych")
+        let showSidebar = sidebarModeControl("Library")
         XCTAssertTrue(showSidebar.waitForExistence(timeout: 5))
         XCTAssertTrue(showSidebar.isHittable)
         XCTAssertEqual(
@@ -595,9 +595,9 @@ extension ScholiumUITests {
 
     @MainActor
     func sidebarVisibilityControl(in root: XCUIElement? = nil) -> XCUIElement {
-        let outline = sidebarModeControl("Outline", in: root)
-        return outline.isSelected || (outline.value as? String) == "1"
-            ? outline : sidebarModeControl("Triptych", in: root)
+        let chat = sidebarModeControl("Chat", in: root)
+        return chat.isSelected || (chat.value as? String) == "1"
+            ? chat : sidebarModeControl("Library", in: root)
     }
 
 

@@ -2,7 +2,7 @@ import Foundation
 
 public enum ScholiumMCPContract {
     public static let maximumDocumentUTF8ByteCount = 512 * 1_024
-    public static let currentToolSchemaVersion = 3
+    public static let currentToolSchemaVersion = 4
 }
 
 /// JSON values accepted at the MCP delivery boundary. Domain owners decode
@@ -100,6 +100,7 @@ public enum ScholiumMCPFailureCode: String, Codable, CaseIterable, Sendable {
     case staleRevision = "stale_revision"
     case conflict
     case invalidRequest = "invalid_request"
+    case noChanges = "no_changes"
     case operationUncertain = "operation_uncertain"
     case internalError = "internal_error"
 }
@@ -128,28 +129,32 @@ public struct ScholiumMCPFailure: Codable, Hashable, Sendable, Error {
 /// currently running App. It carries no Agent identity, task, permission, or
 /// durable lifecycle state.
 public struct ScholiumMCPBridgeRequest: Codable, Hashable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public let schemaVersion: Int
     public let requestID: UUID
     public let tool: ScholiumMCPToolName
     public let arguments: [String: MCPJSONValue]
+    public let conversationToken: UUID?
 
     public init(
         requestID: UUID = UUID(),
         tool: ScholiumMCPToolName,
-        arguments: [String: MCPJSONValue] = [:]
+        arguments: [String: MCPJSONValue] = [:],
+        conversationToken: UUID? = nil
     ) {
         schemaVersion = Self.currentSchemaVersion
         self.requestID = requestID
         self.tool = tool
         self.arguments = arguments
+        self.conversationToken = conversationToken
     }
 
     private enum CodingKeys: String, CodingKey, CaseIterable {
         case schemaVersion = "schema_version"
         case requestID = "request_id"
         case tool, arguments
+        case conversationToken = "conversation_token"
     }
 
     public init(from decoder: Decoder) throws {
@@ -178,6 +183,7 @@ public struct ScholiumMCPBridgeRequest: Codable, Hashable, Sendable {
             [String: MCPJSONValue].self,
             forKey: .arguments
         ) ?? [:]
+        conversationToken = try container.decodeIfPresent(UUID.self, forKey: .conversationToken)
     }
 }
 

@@ -845,6 +845,22 @@ final class MarkdownEditorSession: NSObject, ObservableObject {
         try await currentTextSnapshot(for: expectedDocumentID).text
     }
 
+    func chatSelection() async throws -> (source: String, excerpt: String, line: Int) {
+        guard !isComposing, isReady, isLoaded, let webView else { throw SessionError.unavailable }
+        let epoch = requestEpoch, identity = documentID
+        let result = try await send(.queryText, in: webView)
+        guard epoch == requestEpoch, identity == documentID, self.webView === webView,
+              let source = result.text, let selection = result.selections.first else { throw SessionError.invalidResult }
+        let map = EditorSourceOffsetMap(source: source)
+        guard let lower = map.sourceUTF16Offset(forEditorUTF16Offset: min(selection.anchor, selection.head)),
+              let upper = map.sourceUTF16Offset(forEditorUTF16Offset: max(selection.anchor, selection.head)),
+              upper > lower, upper - lower <= 32_000,
+              let range = Range(NSRange(location: lower, length: upper - lower), in: source) else {
+            throw SessionError.invalidResult
+        }
+        return (source, String(source[range]), 1 + source[..<range.lowerBound].utf8.filter { $0 == 10 }.count)
+    }
+
     func currentTextSnapshot(
         for expectedDocumentID: String? = nil
     ) async throws -> MarkdownEditorTextSnapshot {

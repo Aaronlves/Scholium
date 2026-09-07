@@ -254,6 +254,7 @@ public enum AgentCollaborationError: LocalizedError, Hashable, Sendable {
     case staleRevision(expected: DocumentFingerprint, current: DocumentFingerprint)
     case pathOccupied(String)
     case invalidRequest(String)
+    case noChanges
     case changeConfirmationUncertain(UUID)
 
     public var errorDescription: String? {
@@ -263,6 +264,7 @@ public enum AgentCollaborationError: LocalizedError, Hashable, Sendable {
         case .staleRevision: "The Note fingerprint is stale."
         case .pathOccupied: "The requested Note path is occupied."
         case .invalidRequest(let reason): reason
+        case .noChanges: "The proposed update would not change the Note."
         case .changeConfirmationUncertain:
             "The source operation may have committed, but its Agent Change could not be confirmed."
         }

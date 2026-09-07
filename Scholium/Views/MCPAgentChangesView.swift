@@ -51,6 +51,22 @@ enum AgentChangePresentation {
         }
     }
 
+    /// Presentation only: older exact evidence remains available by its receipt ID.
+    static func latestPerNote(_ changes: [AgentChange]) -> [AgentChange] {
+        var seen = Set<UUID>()
+        return changes.sorted(by: newestFirst).filter { seen.insert($0.noteID).inserted }
+    }
+
+    static func inScope(_ changes: [AgentChange], scope: AgentChangesScope) -> [AgentChange] {
+        switch scope {
+        case .exact(let id): return changes.filter { $0.id == id }
+        case .conversation(let ids):
+            let selected = Set(ids)
+            return changes.filter { selected.contains($0.id) }
+        case .current: return latestPerNote(changes)
+        }
+    }
+
     static func newestFirst(_ lhs: AgentChange, _ rhs: AgentChange) -> Bool {
         let lhsDate = lhs.confirmedAt ?? lhs.createdAt
         let rhsDate = rhs.confirmedAt ?? rhs.createdAt
@@ -67,13 +83,14 @@ struct AgentChangesView: View {
     typealias Undo = @MainActor (AgentChange) async throws -> Void
 
     @Environment(\.dismiss) private var dismiss
-    let initialChangeID: UUID?
+    let scope: AgentChangesScope
+    private var initialChangeID: UUID? { scope.exactID }
     let load: Loader
     let loadReview: ReviewLoader
     let undo: Undo
 
     @State private var changes: [AgentChange] = []
-    @State private var showsHistory = true
+    @State private var showsCollection = true
     @State private var selectedIndex: Int?
     @State private var review: AgentChangeReview?
     @State private var isLoading = true
@@ -85,8 +102,8 @@ struct AgentChangesView: View {
 
     var body: some View {
         ExactSourceComparisonSheetLayout(
-            title: "Operation History",
-            detail: "Confirmed Agent changes and their recovery evidence.",
+            title: { if case .conversation = scope { return "Conversation Changes" }; return "Agent Changes" }(),
+            detail: "Recent changes to your notes.",
             identifier: "scholium.agentChanges"
         ) {
             Button("Close", action: dismiss.callAsFunction)
@@ -97,7 +114,7 @@ struct AgentChangesView: View {
         } footer: {
             footer
         }
-        .task { showsHistory = initialChangeID == nil; await reload(preserving: initialChangeID) }
+        .task { showsCollection = initialChangeID == nil; await reload(preserving: initialChangeID) }
         .confirmationDialog(
             "Undo Agent Change?",
             isPresented: Binding(
@@ -133,15 +150,15 @@ struct AgentChangesView: View {
         } else if changes.isEmpty {
             ScholiumContentStateView(
                 "No Agent Changes",
-                detail: Text("Successful MCP mutations will appear here."),
+                detail: Text("Notes changed by an Agent will appear here."),
                 indicator: .symbol("sparkles")
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if showsHistory {
+        } else if showsCollection {
             List {
                 ForEach(changes.sorted(by: AgentChangePresentation.newestFirst)) { change in
                     Button {
-                        showsHistory = false
+                        showsCollection = false
                         if let index = changes.firstIndex(where: { $0.id == change.id }) { select(index) }
                     } label: {
                         VStack(alignment: .leading, spacing: 4) {
@@ -178,30 +195,32 @@ struct AgentChangesView: View {
 
     @ViewBuilder
     private var footer: some View {
-        if !showsHistory, let selectedIndex, !changes.isEmpty {
+        if !showsCollection, let selectedIndex, !changes.isEmpty {
             HStack(spacing: ScholiumMetrics.ResearchSheet.footerControlSpacing) {
-                Button("History") { showsHistory = true }
-                    .disabled(undoingID != nil)
+                if initialChangeID == nil {
+                    Button("All Changes") { showsCollection = true }
+                        .disabled(undoingID != nil)
 
-                Button("Previous") { select(selectedIndex - 1) }
-                    .scholiumActivationPointer()
-                    .disabled(selectedIndex == 0 || isLoadingReview || undoingID != nil)
-                    .keyboardShortcut(.leftArrow, modifiers: [.command])
-                    .accessibilityIdentifier("scholium.agentChanges.previous")
+                    Button("Previous") { select(selectedIndex - 1) }
+                        .scholiumActivationPointer()
+                        .disabled(selectedIndex == 0 || isLoadingReview || undoingID != nil)
+                        .keyboardShortcut(.leftArrow, modifiers: [.command])
+                        .accessibilityIdentifier("scholium.agentChanges.previous")
 
-                Text("Change \(selectedIndex + 1) of \(changes.count)")
-                    .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                    .scholiumForeground(.secondaryText)
-                    .accessibilityIdentifier("scholium.agentChanges.position")
+                    Text("Change \(selectedIndex + 1) of \(changes.count)")
+                        .font(ScholiumTypography.interface(.small, emphasis: .strong))
+                        .scholiumForeground(.secondaryText)
+                        .accessibilityIdentifier("scholium.agentChanges.position")
 
-                Button("Next") { select(selectedIndex + 1) }
-                    .scholiumActivationPointer()
-                    .disabled(
-                        selectedIndex == changes.count - 1
-                            || isLoadingReview || undoingID != nil
-                    )
-                    .keyboardShortcut(.rightArrow, modifiers: [.command])
-                    .accessibilityIdentifier("scholium.agentChanges.next")
+                    Button("Next") { select(selectedIndex + 1) }
+                        .scholiumActivationPointer()
+                        .disabled(
+                            selectedIndex == changes.count - 1
+                                || isLoadingReview || undoingID != nil
+                        )
+                        .keyboardShortcut(.rightArrow, modifiers: [.command])
+                        .accessibilityIdentifier("scholium.agentChanges.next")
+                }
 
                 Spacer(minLength: 0)
 
@@ -242,7 +261,9 @@ struct AgentChangesView: View {
         errorMessage = nil
         reviewErrorMessage = nil
         do {
-            changes = try await load().sorted(by: Self.precedesInConfirmationOrder)
+            let loaded = try await load()
+            changes = AgentChangePresentation.inScope(loaded, scope: scope)
+                .sorted(by: Self.precedesInConfirmationOrder)
             if changes.isEmpty {
                 selectedIndex = nil
                 review = nil
