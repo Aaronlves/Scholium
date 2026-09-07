@@ -50,7 +50,7 @@ Fail a case if the agent:
 | “修复这个已经证实的越界写入。” | Select trust Harden mode with the functional owner, correct the consequential boundary, and add executable adversarial proof. |
 | “修复 watcher 在外部重命名后没有刷新 clean window；授权、revision 和 recovery safety 不变。” | Select vault-file-coordination alone; ordinary observation and convergence do not add the trust overlay when no researcher-control or loss-prevention contract changes. |
 | “只诊断 MCP 连接运行中 App 后把操作路由到错误 Triptych 的问题，不修改代码。” | Select Agent collaboration for the request trace; add trust for consequential scope selection and remain read-only. |
-| “修复 Research Record 追加时接受过时 Note fingerprint 的问题，保留已有历史。” | Select Agent collaboration and current-revision trust checks; add engineering only when live ownership proves cross-layer implementation. |
+| “修复 Agent 修改 Note 时接受过时 fingerprint 的问题，保留原文。” | Select Agent collaboration and current-revision trust checks; add engineering only when live ownership proves cross-layer implementation. |
 | “只修 Agent Changes 窗口的焦点和最小宽度，不改变 MCP 或存储合同。” | Select native-interface implementation plus Xcode interaction verification; do not load Agent collaboration for presentation-only work. |
 | “改写外部 Agent 使用的哲学分析方法，不改 Scholium MCP 或 Core Protocol。” | Route to philosophical prompt and skill design; do not edit application code or the bundled protocol through the developer collaboration owner. |
 | “Rename a developer skill.” | Check collisions, update folder/frontmatter/metadata/catalog/routing, validate the canonical tree, and explain task-snapshot reload. |

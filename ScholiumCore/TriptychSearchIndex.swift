@@ -522,7 +522,7 @@ public actor TriptychSearchIndex {
                     scope: request.presentationScope,
                     explanation: ast.explanation(scope: request.presentationScope),
                     freshnessToken: freshness,
-                    availability: .note(availability),
+                    availability: availability,
                     results: [],
                     hasMore: false,
                     diagnostics: [SearchQueryDiagnostic(
@@ -533,30 +533,13 @@ public actor TriptychSearchIndex {
                     )]
                 )
             }
-            guard ast.provider == .note else {
-                return SearchResponse(
-                    requestID: request.id,
-                    scope: request.presentationScope,
-                    explanation: ast.explanation(scope: request.presentationScope),
-                    freshnessToken: freshness,
-                    availability: .note(availability),
-                    results: [],
-                    hasMore: false,
-                    diagnostics: [SearchQueryDiagnostic(
-                        code: .providerMismatch,
-                        message: "The Note index cannot execute a non-Note provider plan.",
-                        utf16LowerBound: 0,
-                        utf16UpperBound: request.query.utf16.count
-                    )]
-                )
-            }
             guard request.limit > 0 else {
                 return SearchResponse(
                     requestID: request.id,
                     scope: request.presentationScope,
                     explanation: ast.explanation(scope: request.presentationScope),
                     freshnessToken: freshness,
-                    availability: .note(availability),
+                    availability: availability,
                     results: [],
                     hasMore: false
                 )
@@ -762,7 +745,7 @@ public actor TriptychSearchIndex {
                 scope: request.presentationScope,
                 explanation: ast.explanation(scope: request.presentationScope),
                 freshnessToken: freshness,
-                availability: .note(availability),
+                availability: availability,
                 results: [],
                 hasMore: false
             )
@@ -871,7 +854,7 @@ public actor TriptychSearchIndex {
             scope: request.presentationScope,
             explanation: ast.explanation(scope: request.presentationScope),
             freshnessToken: freshness,
-            availability: .note(availability),
+            availability: availability,
             results: hits.map(SearchResult.note),
             hasMore: hasMore
         )
@@ -1078,7 +1061,7 @@ public actor TriptychSearchIndex {
                 scope: request.presentationScope,
                 explanation: ast.explanation(scope: request.presentationScope),
                 freshnessToken: freshness,
-                availability: .note(availability),
+                availability: availability,
                 results: [],
                 hasMore: false
             )
@@ -1121,7 +1104,7 @@ public actor TriptychSearchIndex {
             scope: request.presentationScope,
             explanation: ast.explanation(scope: request.presentationScope),
             freshnessToken: freshness,
-            availability: .note(availability),
+            availability: availability,
             results: page.prefix(limit).map(SearchResult.note),
             hasMore: page.count > limit
         )

@@ -446,58 +446,6 @@ public struct MarkdownSemanticDocument: Codable, Hashable, Sendable {
 }
 
 public enum MarkdownSemanticParser {
-    /// Parses links in a standalone prose fragment without allowing a leading
-    /// `---` sequence to be reinterpreted as Note frontmatter. Returned spans
-    /// are relative to the exact fragment supplied by the caller.
-    package static func links(inFragment source: String) -> [LinkOccurrence] {
-        let prefix = "\n"
-        let document = NoteDocument(
-            relativePath: "research-record-fragment.md",
-            rawContent: prefix + source
-        )
-        func removingPrefix(from span: SourceSpan) -> SourceSpan {
-            SourceSpan(
-                utf8LowerBound: span.utf8LowerBound - prefix.utf8.count,
-                utf8UpperBound: span.utf8UpperBound - prefix.utf8.count,
-                utf16LowerBound: span.utf16LowerBound - prefix.utf16.count,
-                utf16UpperBound: span.utf16UpperBound - prefix.utf16.count,
-                start: SourcePosition(
-                    line: span.start.line - 1,
-                    utf8Column: span.start.utf8Column,
-                    utf16Column: span.start.utf16Column
-                ),
-                end: SourcePosition(
-                    line: span.end.line - 1,
-                    utf8Column: span.end.utf8Column,
-                    utf16Column: span.end.utf16Column
-                )
-            )
-        }
-        return parse(document).links.compactMap { occurrence in
-            guard occurrence.span.utf8LowerBound >= prefix.utf8.count,
-                occurrence.span.utf16LowerBound >= prefix.utf16.count
-            else { return nil }
-            return LinkOccurrence(
-                syntax: occurrence.syntax,
-                target: occurrence.target,
-                alias: occurrence.alias,
-                fragment: occurrence.fragment,
-                annotation: occurrence.annotation.map { annotation in
-                    LinkAnnotation(
-                        markdown: annotation.markdown,
-                        text: annotation.text,
-                        span: removingPrefix(from: annotation.span),
-                        contentSpan: removingPrefix(from: annotation.contentSpan)
-                    )
-                },
-                localContext: occurrence.localContext,
-                isExternal: occurrence.isExternal,
-                span: removingPrefix(from: occurrence.span),
-                linkSpan: removingPrefix(from: occurrence.linkSpan)
-            )
-        }
-    }
-
     public static func parse(_ document: NoteDocument) -> MarkdownSemanticDocument {
         let sourceMapper = SemanticSourceMapper(document.rawContent)
         let bodyOffset = sourceMapper.utf16Offset(forUTF8Offset: document.bodyByteRange.lowerBound) ?? 0

@@ -721,7 +721,7 @@ struct WorkspaceRuntimeTests {
             executionScope: .currentVault(fixture.analysisNoteID.vaultID),
             limit: 20
         ))
-        guard case .limited = thisVaultResponse.availability.noteAvailability else {
+        guard case .limited = thisVaultResponse.availability else {
             Issue.record("Opening This Vault Search did not expose its limited state.")
             await runtime.shutdown()
             return
@@ -735,7 +735,7 @@ struct WorkspaceRuntimeTests {
             executionScope: .currentVault(fixture.analysisNoteID.vaultID),
             limit: 20
         ))
-        guard case .limited = trustedOpeningResponse.availability.noteAvailability else {
+        guard case .limited = trustedOpeningResponse.availability else {
             Issue.record("Trusted opening Search did not retain its limited state.")
             await runtime.shutdown()
             return
@@ -765,7 +765,7 @@ struct WorkspaceRuntimeTests {
             limit: 20
         ))
         #expect(notYetIndexed.results.isEmpty)
-        guard case .limited = notYetIndexed.availability.noteAvailability else {
+        guard case .limited = notYetIndexed.availability else {
             Issue.record("Opening-only source was not reported as outside the limited index.")
             await runtime.shutdown()
             return

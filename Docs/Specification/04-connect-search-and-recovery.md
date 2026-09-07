@@ -86,7 +86,7 @@ resolved destinations of occurrences authored in A; `to-note:B` returns Notes
 whose authored occurrences resolve to B. These queries preserve occurrence
 direction, remain direct, and require a current complete graph.
 
-Unknown fields or values, malformed syntax, provider mismatch, unsupported
+Unknown fields or values, malformed syntax, unsupported
 grouping/OR/regex/fuzzy/range syntax, CJK prefix use, and unsafe structured
 exclusion produce an inline diagnostic and never broaden retrieval. Queries
 are bounded before execution.

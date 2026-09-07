@@ -12,6 +12,7 @@ mkdir -p "${TEST_TEMP}"
 export TMPDIR="${TEST_TEMP}"
 
 python3 "${ROOT}/Tools/Scripts/validate-documentation-authority.py"
+"${ROOT}/Tools/Scripts/validate-interface-localization.sh"
 
 # The Core resource tree is the sole repository authority for release-shipped
 # product Skills. Every shipped SKILL.md must have the local reference files
@@ -38,20 +39,6 @@ if missing:
 
 print(f"Shipped Skill references: {len(skill_roots)} SKILL.md roots validated")
 PY
-
-# Scholium's current interface contract is English-only. Keep this guard
-# scoped to production Swift sources so CJK research fixtures, user Markdown,
-# and documentation remain valid test data rather than false UI failures.
-if rg -n --glob '*.swift' '[\p{Han}]' \
-  "${ROOT}/Scholium/App" \
-  "${ROOT}/Scholium/Features" \
-  "${ROOT}/Scholium/Models" \
-  "${ROOT}/Scholium/Services" \
-  "${ROOT}/Scholium/Views" \
-  "${ROOT}/ScholiumCore"; then
-  echo "English-only UI guard failed: production Swift sources contain CJK text." >&2
-  exit 1
-fi
 
 # Agent collaboration has one fixed MCP surface. Legacy action/run/result,
 # discussion, browser, and local bridge owners must not return.
@@ -83,16 +70,16 @@ for retired_path in \
 done
 
 if rg -n --glob '*.swift' --glob '*.sh' \
-  'scholium[[:space:]]+(agent|research|skills|workflow)|agent[[:space:]]+(connect|start|resume|complete)|research-records/v1' \
+  'scholium[[:space:]]+(agent|research|skills|workflow)|agent[[:space:]]+(connect|start|resume|complete)|research-records' \
   "${LEGACY_AGENT_ROOTS[@]}" \
   "${ROOT}/Tools/Scripts/package-app.sh"; then
   echo "Agent collaboration CLI/storage guard failed: a retired route or path returned." >&2
   exit 1
 fi
 
-# The current server surface is closed and has exactly ten tool identities.
-if [[ "$(rg -c 'case [A-Za-z]+ = "scholium_' "${ROOT}/ScholiumContracts/ScholiumMCPContracts.swift")" != "10" ]]; then
-  echo "MCP surface guard failed: expected exactly ten Scholium tool identities." >&2
+# The current server surface is closed and has exactly seven tool identities.
+if [[ "$(rg -c 'case [A-Za-z]+ = "scholium_' "${ROOT}/ScholiumContracts/ScholiumMCPContracts.swift")" != "7" ]]; then
+  echo "MCP surface guard failed: expected exactly seven Scholium tool identities." >&2
   exit 1
 fi
 

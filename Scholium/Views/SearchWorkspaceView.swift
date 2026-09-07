@@ -72,7 +72,7 @@ enum SearchStatePresentation {
         if let issue = state.executionIssue { return executionIssue(issue) }
         guard !state.isRunning, state.responseRequestID != nil,
               state.criteria.scope != .thisNote else { return nil }
-        return note(state.availability.noteAvailability)
+        return note(state.availability)
     }
 
     static func executionIssue(
@@ -160,13 +160,13 @@ enum SearchStatePresentation {
     }
 
     static func suppressesNoMatchContent(
-        for availability: SearchProviderAvailability,
+        for availability: SearchAvailability,
         scope: SearchPresentationScope,
         hasExecutionIssue: Bool
     ) -> Bool {
         if hasExecutionIssue { return true }
         if scope == .thisNote { return false }
-        return switch availability.noteAvailability {
+        return switch availability {
         case .unavailable, .building, .failed(lastGood: nil, reason: _):
             true
         case .current, .limited, .refreshing, .stale,
@@ -860,8 +860,6 @@ struct ResearchSearchView<Library: View>: View {
             String(localized: "This Search field is not supported.")
         case .unsupportedField:
             String(localized: "This known Search field is not available in the current contract.")
-        case .providerMismatch:
-            String(localized: "This field does not apply to the selected Search provider.")
         case .unsupportedScopeSelector:
             String(localized: "Choose Search scope with the visible scope control.")
         case .duplicateClause:

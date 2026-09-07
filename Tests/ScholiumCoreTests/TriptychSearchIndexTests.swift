@@ -769,7 +769,7 @@ struct TriptychSearchIndexTests {
             limit: 1
         ))
         #expect(response.noteResults.isEmpty)
-        #expect(response.availability == .note(.unavailable))
+        #expect(response.availability == .unavailable)
     }
 
     @Test("A refreshing writer serves one fixed last-good read generation and cancellation rolls back")
@@ -816,7 +816,7 @@ struct TriptychSearchIndexTests {
         ))
         #expect(duringRefresh.noteResults.count == 1)
         #expect(duringRefresh.freshnessToken == .triptych(first.generation))
-        guard case .refreshing(let readGeneration) = duringRefresh.availability.noteAvailability else {
+        guard case .refreshing(let readGeneration) = duringRefresh.availability else {
             Issue.record("The old WAL read should remain explicitly refreshing")
             refresh.cancel()
             _ = try? await refresh.value

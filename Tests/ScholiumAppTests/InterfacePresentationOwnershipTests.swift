@@ -47,7 +47,7 @@ struct InterfacePresentationOwnershipTests {
       "Scholium/UI/Components/ScholiumButtons.swift": 3,
       "Scholium/UI/Components/ExactSourceComparisonView.swift": 1,
       "Scholium/Views/Backlinks/ConnectionsInspectorView.swift": 1,
-      "Scholium/Views/Note/NoteContentView.swift": 1,
+      "Scholium/Views/Sidebar/ResearchInspectorView.swift": 1,
       "Scholium/Views/SearchWorkspaceView.swift": 1,
       "Scholium/Views/Sidebar/ZoteroBindingPanelView.swift": 1,
       "Scholium/Views/Note/DocumentFindPanel.swift": 1,

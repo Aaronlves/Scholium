@@ -153,7 +153,9 @@ its retained selected tab, and only then commits Shell selection, the
 destination tab group, Document mode, and Inspector mode. Rapid requests
 converge on the last requested workspace.
 
-The Research Inspector receives immutable About and Links presentation values composed at the window root. It owns no workspace refresh, Agent
+`ResearchInspectorView` lives with the Sidebar views, separately from the
+Document leaf. It receives immutable About and Links presentation values
+composed at the window root. It owns no workspace refresh, Agent
 conversation, mutation, or lifecycle state. Its modes share the one native
 trailing split item and one mode value per Triptych workspace; changing modes,
 notes, or tabs never reconstructs the retained Document host. About contains

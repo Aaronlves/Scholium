@@ -456,8 +456,7 @@ Recovery candidates use one native Recovery surface with exact source,
 relationship to canonical source, Copy, Reveal, and Restore only when the
 recorded revision permits it. System-Trash recovery is visibly distinct and
 offers only safe forward cleanup or **Resolve** after an unknown native
-outcome. Source Trash has no Research Record effect. Any future Record deletion
-route requires its own §22 contract, name, consequence, and confirmation.
+outcome. Research discussion in Works follows the same Note Trash contract.
 
 ## 18.7 Simplified Chinese terminology and translation boundary
 
@@ -481,8 +480,6 @@ paths, source, researcher prose, and Skill names remain verbatim.
 | Annotated Wikilink / Link Annotation | 带注释双链 / 链接注释 |
 | Summary / Source Basis / Limitations | 摘要 / 来源依据 / 局限 |
 | Review / Edit / Source | 审阅 / 编辑 / 源文本 |
-| Research Record | 研究记录 |
-| Research Step / Basis / Modified | 研究步骤 / 依据 / 已修改 |
 | No Document Selected | 未选择文档 |
 | Expand / Collapse All Folders | 展开 / 折叠所有文件夹 |
 | Move to Trash… | 移至纸篓… |

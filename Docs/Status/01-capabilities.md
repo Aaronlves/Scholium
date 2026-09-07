@@ -15,7 +15,7 @@
   transaction for App, researcher CLI, and MCP callers. Metadata settings,
   About editing, Settlement, Critique, Zotero bindings, transaction recovery,
   and source conflict handling remain reachable through their existing owners.
-- Search contract 15 searches Notes through one source-authoritative path.
+- Search contract 16 searches Notes through one source-authoritative path.
   Note title identity uses its filename; Analysis academic title Metadata and
   body headings remain independently searchable. Question-centered Works Notes
   use ordinary editing, Search, links and file operations.
@@ -73,5 +73,4 @@
   Reading Leads, passage Discussion, or Review Comment subsystem.
 - The MCP server exposes no Resources, Prompts, Tasks, model invocation,
   acceptance, or research-result endpoints.
-- Research Record deletion, merge/split, and write suspension plus Handoff
-  remain future §22 decisions, not current implementation claims.
+- Handoff remains a future §22 decision, not a current implementation claim.

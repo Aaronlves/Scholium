@@ -7,7 +7,7 @@
 **2026-09-07 — question-centered Works cutover:** standalone research-record
 presentation, storage, search federation, contracts, and Agent tools are removed.
 Research content uses ordinary Works Notes; no migration, export, compatibility
-adapter, or automatic recording path was added. Search contract is 15 and MCP
+adapter, or automatic recording path was added. Search contract is 16 and MCP
 tool schema is 3, with seven tools.
 
 - SwiftPM Debug App and CLI builds pass with the selected Xcode beta toolchain.
@@ -30,10 +30,22 @@ tool schema is 3, with seven tools.
   for snippet formatting, exact-source frontmatter editing/Undo, and opening
   readiness across cached editor reconstruction. QA confirms annotation display
   and excerpt navigation retaining Edit mode (108 distinct checks overall).
-  No complete repository gate was run over the pre-existing mixed worktree.
-  Full accessibility/adaptation, packaged external-host and human acceptance
-  remain outside this evidence. Logs: `.build/records-removal/` and
-  `.build/interface-repair/`.
+  This UI evidence predates the residue cleanup below. Full accessibility/
+  adaptation, packaged external-host and human acceptance remain outside it.
+  Logs: `.build/records-removal/` and `.build/interface-repair/`.
+- Residue cleanup removes unused view/state/parser owners, metrics, and copy;
+  Search availability flows directly across layers under contract 16, and
+  Settlement uses independent `.scholium/settlements/v2/` storage. No old-data
+  migration or deletion occurs. 83 initial owning checks and 136 final checks
+  pass (overlapping counts), including Search, Settlement, workspace execution,
+  localization, and document/interface ownership. Native and CLI Debug compile.
+- The complete verifier passes static guards, bilingual localization, generated
+  editor-resource reproduction, and RDF-1 fixture checks. Core passes 347 of
+  348 tests; the generated-state corruption fixture reports `couldNotExecuteSQL`
+  under concurrent execution and passes in isolated reproduction. The cause is
+  unconfirmed. The gate stops there; later whole-module checks and the Release
+  build are not claimed. Final owning checks pass separately. Logs:
+  `.build/residue-cleanup/` and `.build/verification/`.
 
 
 **2026-09-06 Inspector and continuous Metadata editing:** 11 focused tests in

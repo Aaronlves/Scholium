@@ -38,7 +38,7 @@ struct WindowSearchControllerTests {
             scope: .triptych,
             explanation: explanation(provider: .note),
             freshnessToken: .triptych(generation),
-            availability: .note(.current(generation)),
+            availability: .current(generation),
             results: [],
             hasMore: false
         ), for: request)
@@ -236,7 +236,7 @@ struct WindowSearchControllerTests {
             scope: .triptych,
             explanation: explanation(provider: .note),
             freshnessToken: freshness,
-            availability: .note(.current(generation)),
+            availability: .current(generation),
             results: [.note(hit)],
             hasMore: false
         ), for: request)

@@ -32,7 +32,7 @@ struct DiscoverySearchState: Equatable, Sendable {
     var selectedResultID: String?
     var responseRequestID: UUID?
     var freshnessToken: SearchFreshnessToken?
-    var availability: SearchProviderAvailability = .note(.unavailable)
+    var availability: SearchAvailability = .unavailable
     var diagnostics: [SearchQueryDiagnostic] = []
     var hasMore = false
     var executionIssue: SearchExecutionIssue?

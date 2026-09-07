@@ -2487,7 +2487,7 @@ struct FrontendArchitectureTests {
                     clauses: []
                 ),
                 freshnessToken: .triptych(generation),
-                availability: .note(.current(generation)),
+                availability: .current(generation),
                 results: [],
                 hasMore: false
             ), for: request)
@@ -2540,7 +2540,7 @@ struct FrontendArchitectureTests {
                     clauses: []
                 ),
                 freshnessToken: freshness,
-                availability: .note(.current(generation)),
+                availability: .current(generation),
                 results: [.note(hit)],
                 hasMore: false
             ), for: first)
@@ -2569,7 +2569,7 @@ struct FrontendArchitectureTests {
                     clauses: []
                 ),
                 freshnessToken: freshness,
-                availability: .note(.current(generation)),
+                availability: .current(generation),
                 results: [.note(hit)],
                 hasMore: false
             ), for: second)
@@ -2591,7 +2591,7 @@ struct FrontendArchitectureTests {
                     clauses: []
                 ),
                 freshnessToken: freshness,
-                availability: .note(.current(generation)),
+                availability: .current(generation),
                 results: [.note(hit)],
                 hasMore: false
             ), for: scoped)

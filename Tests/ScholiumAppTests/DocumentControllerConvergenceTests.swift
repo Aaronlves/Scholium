@@ -466,12 +466,12 @@ struct DocumentControllerConvergenceTests {
             (
                 name: "DocumentSessionFallback",
                 start: "private struct DocumentSessionFallback: View {",
-                end: "struct ResearchInspectorView: View {"
+                end: "struct NoteContentView: View {"
             ),
             (
                 name: "NoteContentView",
                 start: "struct NoteContentView: View {",
-                end: "// MARK: - Source comparison and Critique decisions"
+                end: "// MARK: - Source comparison"
             ),
         ]
 

@@ -110,6 +110,10 @@ resumes an interrupted binding; absence of both original entry and a valid
 binding becomes `outcomeUnknown`. Returned URLs remain machine-local recovery
 evidence only.
 
+`SettlementStore` owns portable judgments at `.scholium/settlements/v2/`,
+independently of research prose. It uses strict schema decoding, coordinated
+writes, and the shared Triptych lock; unsupported directories are not imported.
+
 Settlement, stable identity records, Zotero bindings, and Agent Changes are not
 portable cleanup targets of source deletion. Watcher reconciliation, Finder
 actions, and sync tools cannot construct or execute the plan; they publish

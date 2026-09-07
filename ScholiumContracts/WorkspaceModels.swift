@@ -388,21 +388,6 @@ public struct WorkspaceResearchSnapshot: Sendable {
 }
 
 
-/// A persisted Critique association together with its version-bound external
-/// instructions.
-public struct CritiquePreparation: Sendable {
-    public let association: CritiqueAssociation
-    public let instructions: String
-
-    public init(
-        association: CritiqueAssociation,
-        instructions: String
-    ) {
-        self.association = association
-        self.instructions = instructions
-    }
-}
-
 /// The completeness boundary carried by every immutable Triptych projection.
 /// An opening snapshot contains one trustworthy, usable vault while the
 /// remaining vaults and cross-vault derived state are still loading.

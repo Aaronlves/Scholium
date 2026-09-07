@@ -122,7 +122,8 @@ interpret the same Triptych:
 - manifest and stable identity mappings;
 - the Triptych Guide and Triptych-local settings;
 - Metadata profiles and identity-keyed Note Metadata;
-- Analysis–Zotero bindings and attachment identity/location catalogs.
+- Analysis–Zotero bindings and attachment identity/location catalogs;
+- fingerprint-bound Settlement judgments.
 
 Researcher-authored research content belongs in ordinary Markdown Notes.
 

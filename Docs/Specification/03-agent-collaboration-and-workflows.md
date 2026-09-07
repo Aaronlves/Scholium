@@ -29,9 +29,8 @@ Scholium creates no application task type, academic profile, method
 registration, per-task credential, write ledger, result schema, or completion
 state for Agent work. MCP tool availability is not permission. Scholium neither
 reconstructs nor independently validates the external conversation; the Core
-Protocol requires explicit researcher authority for Note mutation and permits
-only §8.6's bounded, attributed Research Record maintenance without a separate
-per-step request.
+Protocol requires researcher authority for every Note mutation, including
+question and discussion writing under §8.6.
 
 The authority stack is:
 

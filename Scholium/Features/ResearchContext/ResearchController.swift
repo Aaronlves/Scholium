@@ -54,7 +54,6 @@ final class ResearchController: ObservableObject {
 
     let linksInspector = LinksInspectorSession()
 
-    @Published private(set) var activeDocument: VaultNoteReference?
     @Published private(set) var researchSnapshot: WorkspaceResearchSnapshot?
     @Published private(set) var agentChanges: [AgentChange]?
     @Published private(set) var agentChangesError: String?
@@ -266,11 +265,6 @@ final class ResearchController: ObservableObject {
         capabilities?.recoveryRecordsURL
     }
 
-    func setActiveDocument(_ reference: VaultNoteReference?) {
-        guard activeDocument != reference else { return }
-        activeDocument = reference
-    }
-
     func selectInspectorMode(_ mode: ResearchInspectorMode) {
         shellState.selectInspectorMode(mode)
     }
@@ -312,7 +306,6 @@ final class ResearchController: ObservableObject {
     }
 
     func reset() {
-        activeDocument = nil
         transactionRecoveryRecords = []
         transactionRecoveryError = nil
         interruptedSaveRecoveries = []

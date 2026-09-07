@@ -4,7 +4,7 @@ import Foundation
 /// Stable versions that make a Search generation reproducible and prevent a
 /// saved query or derived database from silently acquiring new semantics.
 public enum SearchContract {
-    public static let currentVersion = 15
+    public static let currentVersion = 16
     public static let schemaVersion = 12
     public static let tokenizerPolicyVersion = 2
     public static let rankingPolicyVersion = 2
@@ -278,21 +278,6 @@ public enum SearchAvailability: Codable, Hashable, Sendable {
     }
 }
 
-public struct SearchProviderAvailability: Codable, Hashable, Sendable {
-    public let noteAvailability: SearchAvailability
-
-    public init(_ noteAvailability: SearchAvailability) {
-        self.noteAvailability = noteAvailability
-    }
-
-    public static func note(_ availability: SearchAvailability) -> Self {
-        Self(availability)
-    }
-
-    public var provider: SearchProvider { .note }
-
-}
-
 public enum SearchQueryDiagnosticCode: String, Codable, Hashable, Sendable {
     case emptyClause
     case unclosedPhrase
@@ -301,7 +286,6 @@ public enum SearchQueryDiagnosticCode: String, Codable, Hashable, Sendable {
     case cjkPrefixUnsupported
     case unknownField
     case unsupportedField
-    case providerMismatch
     case unsupportedScopeSelector
     case duplicateClause
     case missingCompanion
@@ -376,7 +360,7 @@ public struct SearchResponse: Codable, Hashable, Sendable {
     public let scope: SearchPresentationScope
     public let explanation: SearchExplanation
     public let freshnessToken: SearchFreshnessToken
-    public let availability: SearchProviderAvailability
+    public let availability: SearchAvailability
     public let results: [SearchResult]
     public let hasMore: Bool
     public let totalResultCount: Int?
@@ -388,7 +372,7 @@ public struct SearchResponse: Codable, Hashable, Sendable {
         scope: SearchPresentationScope,
         explanation: SearchExplanation,
         freshnessToken: SearchFreshnessToken,
-        availability: SearchProviderAvailability,
+        availability: SearchAvailability,
         results: [SearchResult],
         hasMore: Bool,
         totalResultCount: Int? = nil,
@@ -406,10 +390,5 @@ public struct SearchResponse: Codable, Hashable, Sendable {
         self.diagnostics = diagnostics
     }
 
-    public var provider: SearchProvider { availability.provider }
-
-    public var hasConsistentProviderIdentity: Bool {
-        results.allSatisfy { $0.provider == provider }
-            && explanation.provider == provider
-    }
+    public var provider: SearchProvider { .note }
 }

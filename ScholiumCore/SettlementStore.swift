@@ -40,9 +40,8 @@ public enum SettlementStoreError: LocalizedError, Sendable {
     }
 }
 
-/// Portable researcher-owned Settle judgments. The path remains compatible
-/// with earlier Scholium releases, but this store has no dependency on Agent
-/// tasks, Agent Changes, or mutation evidence.
+/// Portable researcher-owned Settle judgments, independent of Agent Changes
+/// and research prose authored in Notes.
 public actor SettlementStore {
     private struct State: Codable, Hashable {
         static let currentSchemaVersion = 2
@@ -125,11 +124,11 @@ public actor SettlementStore {
     ) throws {
         self.triptychID = triptychID
         storageURL = controlURL
-            .appendingPathComponent("research-records", isDirectory: true)
-            .appendingPathComponent("v1", isDirectory: true)
+            .appendingPathComponent("settlements", isDirectory: true)
+            .appendingPathComponent("v2", isDirectory: true)
         storage = SecureRecordDirectory(
             trustedRootURL: controlURL,
-            components: ["research-records", "v1"],
+            components: ["settlements", "v2"],
             directoryMode: 0o755,
             fileMode: 0o600,
             maximumByteCount: Self.maximumByteCount
@@ -149,8 +148,8 @@ public actor SettlementStore {
             )
             try lock.withExclusiveLock {
                 try Self.coordinateWrite(at: storageURL) {
-                    try storage.ensureDirectories(["settlements"])
-                    try storage.removeAbandonedStagingFiles(in: ["settlements"])
+                    try storage.ensureDirectories([])
+                    try storage.removeAbandonedStagingFiles(in: [nil])
                 }
             }
         } catch {
@@ -178,7 +177,7 @@ public actor SettlementStore {
         return try withExclusiveCoordination {
             let readback = try storage.replace(
                 encode(state),
-                directory: "settlements",
+                directory: nil,
                 fileName: fileName(noteID)
             )
             return try decodeAndValidate(readback, expectedNoteID: noteID).settlement
@@ -189,11 +188,11 @@ public actor SettlementStore {
         try withSharedCoordination {
             var settlements: [SettlementRecord] = []
             var issues: [SettlementStoreIssue] = []
-            for name in try storage.fileNames(in: "settlements")
+            for name in try storage.fileNames(in: nil)
                 where name.hasSuffix(".json") {
                 do {
                     let state = try decodeAndValidate(
-                        storage.read(directory: "settlements", fileName: name),
+                        storage.read(directory: nil, fileName: name),
                         expectedNoteID: noteID(from: name)
                     )
                     guard name == fileName(state.settlement.noteID) else {
@@ -221,7 +220,7 @@ public actor SettlementStore {
         try withSharedCoordination {
             do {
                 return try decodeAndValidate(
-                    storage.read(directory: "settlements", fileName: fileName(noteID)),
+                    storage.read(directory: nil, fileName: fileName(noteID)),
                     expectedNoteID: noteID
                 ).settlement
             } catch let error as SecureRecordDirectoryError {

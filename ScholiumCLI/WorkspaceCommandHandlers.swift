@@ -183,9 +183,9 @@ extension ScholiumCLI {
         let progress: SearchBuildProgress?
         let reason: String?
 
-        init(_ availability: SearchProviderAvailability) {
+        init(_ availability: SearchAvailability) {
             provider = .note
-            switch availability.noteAvailability {
+            switch availability {
                 case .unavailable:
                     status = "unavailable"
                     noteGeneration = nil

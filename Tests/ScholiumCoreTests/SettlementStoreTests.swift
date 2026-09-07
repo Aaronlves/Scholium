@@ -25,6 +25,8 @@ struct SettlementStoreTests {
             rationale: "Reconsidered"
         )
         #expect(replacement.fingerprint == secondRevision)
+        #expect(store.storageURL == fixture.controlURL.appendingPathComponent("settlements/v2", isDirectory: true))
+        #expect(FileManager.default.fileExists(atPath: fixture.settlementURL(noteID).path))
         let reopened = try fixture.store()
         let listing = try await reopened.listing()
         #expect(listing.issues.isEmpty)
@@ -95,7 +97,7 @@ struct SettlementStoreTests {
 
         func settlementURL(_ noteID: UUID) -> URL {
             controlURL
-                .appendingPathComponent("research-records/v1/settlements")
+                .appendingPathComponent("settlements/v2")
                 .appendingPathComponent("\(noteID.uuidString.lowercased()).json")
         }
 

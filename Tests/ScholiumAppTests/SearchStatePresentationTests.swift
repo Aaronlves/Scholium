@@ -60,32 +60,32 @@ struct SearchStatePresentationTests {
     @Test("Completed zero-match searches retain No Results while unexplained projections do not")
     func noMatchPresentationBoundary() throws {
         #expect(!SearchStatePresentation.suppressesNoMatchContent(
-            for: .note(.current(noteGeneration)),
+            for: .current(noteGeneration),
             scope: .triptych,
             hasExecutionIssue: false
         ))
         #expect(SearchStatePresentation.suppressesNoMatchContent(
-            for: .note(.unavailable),
+            for: .unavailable,
             scope: .triptych,
             hasExecutionIssue: false
         ))
         #expect(!SearchStatePresentation.suppressesNoMatchContent(
-            for: .note(.stale(lastGood: noteGeneration, reason: "changed")),
+            for: .stale(lastGood: noteGeneration, reason: "changed"),
             scope: .triptych,
             hasExecutionIssue: false
         ))
         #expect(!SearchStatePresentation.suppressesNoMatchContent(
-            for: .note(.limited(lastGood: noteGeneration)),
+            for: .limited(lastGood: noteGeneration),
             scope: .currentVault,
             hasExecutionIssue: false
         ))
         #expect(!SearchStatePresentation.suppressesNoMatchContent(
-            for: .note(.unavailable),
+            for: .unavailable,
             scope: .thisNote,
             hasExecutionIssue: false
         ))
         #expect(SearchStatePresentation.suppressesNoMatchContent(
-            for: .note(.current(noteGeneration)),
+            for: .current(noteGeneration),
             scope: .thisNote,
             hasExecutionIssue: true
         ))

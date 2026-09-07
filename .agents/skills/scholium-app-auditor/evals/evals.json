@@ -24,12 +24,12 @@
     },
     {
       "id": 2,
-      "prompt": "只诊断 Research Record 追加拒绝了当前有效 Note 引用的问题；不要做全应用审计。",
-      "expected_output": "Routes the bounded Record operation to scholium-agent-collaboration rather than the whole-app auditor.",
+      "prompt": "只诊断 Agent 修改 Note 时拒绝了当前有效 fingerprint 的问题；不要做全应用审计。",
+      "expected_output": "Routes the bounded Note mutation to scholium-agent-collaboration rather than the whole-app auditor.",
       "files": [],
       "assertions": [
-        "Recognizes Record reference validation as a narrow functional owner.",
-        "Does not broaden one Record operation into a whole-app audit.",
+        "Recognizes Note revision validation as a narrow functional owner.",
+        "Does not broaden one Note mutation into a whole-app audit.",
         "Remains read-only because the request asks only for diagnosis."
       ]
     }

@@ -5324,22 +5324,6 @@
         }
       }
     },
-    "Disposition" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Disposition"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "处置"
-          }
-        }
-      }
-    },
     "Document" : {
       "localizations" : {
         "en" : {
@@ -11080,22 +11064,6 @@
         }
       }
     },
-    "Rationale (optional)" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Rationale (optional)"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "理由（可选）"
-          }
-        }
-      }
-    },
     "Read only the currently linked Zotero item, then review every Metadata field it can fill or update." : {
       "localizations" : {
         "zh-Hans" : {
@@ -11122,22 +11090,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "重新关联并填充"
-          }
-        }
-      }
-    },
-    "Rebut" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Rebut"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "反驳"
           }
         }
       }
@@ -11503,22 +11455,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "常规，400"
-          }
-        }
-      }
-    },
-    "Reject" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Reject"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "拒绝"
           }
         }
       }
@@ -12957,22 +12893,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "保存当前搜索…"
-          }
-        }
-      }
-    },
-    "Save Disposition" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Save Disposition"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "保存处置"
           }
         }
       }
@@ -14934,22 +14854,6 @@
         }
       }
     },
-    "The Work still matches the Critique target revision, so Accept requires this explanation." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "The Work still matches the Critique target revision, so Accept requires this explanation."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此写作仍与评析目标修订一致，因此接受该发现需要填写此说明。"
-          }
-        }
-      }
-    },
     "The active Triptych changed. The metadata draft was preserved and was not written." : {
       "localizations" : {
         "zh-Hans" : {
@@ -15967,22 +15871,6 @@
         }
       }
     },
-    "This field does not apply to the selected Search provider." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "This field does not apply to the selected Search provider."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "此字段不适用于所选搜索提供方。"
-          }
-        }
-      }
-    },
     "This field is not applicable to the selected Source Type." : {
       "localizations" : {
         "zh-Hans" : {
@@ -16754,22 +16642,6 @@
         }
       }
     },
-    "Update Disposition" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Update Disposition"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "更新处置"
-          }
-        }
-      }
-    },
     "Updated by External Agent" : {
       "localizations" : {
         "zh-Hans" : {
@@ -17149,22 +17021,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "全词匹配"
-          }
-        }
-      }
-    },
-    "Why no text change is required" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Why no text change is required"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "为何无需修改文本"
           }
         }
       }

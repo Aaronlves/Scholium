@@ -3561,7 +3561,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
         parsed: SearchQueryParseResult
     ) async -> SearchResponse {
         let noteAvailability = await services.searchIndex.availability()
-        let availability = SearchProviderAvailability.note(noteAvailability)
+        let availability = noteAvailability
         let freshness: SearchFreshnessToken
         switch request.executionScope {
         case .currentNote(let source):
@@ -3623,7 +3623,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
               case .currentVault = request.executionScope else {
             return response
         }
-        let availability = response.availability.noteAvailability
+        let availability = response.availability
         let openingAvailability: SearchAvailability = switch availability {
         case .current(let generation), .refreshing(let generation):
             .limited(lastGood: generation)
@@ -3638,7 +3638,7 @@ public actor WorkspaceHandle: WorkspaceSourceOperationGateOwner {
             scope: response.scope,
             explanation: response.explanation,
             freshnessToken: response.freshnessToken,
-            availability: .note(openingAvailability),
+            availability: openingAvailability,
             results: response.results,
             hasMore: response.hasMore,
             totalResultCount: response.totalResultCount,
