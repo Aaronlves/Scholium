@@ -12,6 +12,14 @@ enum NativeChatSourceScope {
   ]
 }
 
+/// Shared native sidebar presentation is allowed to use system typography and color.
+enum NativeSidebarSourceScope {
+  static let paths: Set<String> = [
+    "Scholium/UI/Components/ScholiumSidebarHeaderControl.swift",
+    "Scholium/Views/Sidebar/SidebarView.swift",
+  ]
+}
+
 @Suite("Native research conversation presentation")
 struct AgentChatPresentationTests {
   @Test("Long replies preserve paragraphs, quotation, argument numbering and exact code")

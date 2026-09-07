@@ -478,17 +478,16 @@ struct ScholiumQuietRowButtonStyle: ButtonStyle {
     }
 }
 
-/// Page-level Library content when no OutlineRow is being
-/// presented. It deliberately uses the shared peripheral page edge rather
-/// than the tighter row-surface inset used by Notes and Folders.
+/// Page-level Library state aligns with sidebar content text. Native outline
+/// rows retain their own disclosure and item-type hierarchy.
 struct ScholiumLibrarySourceState<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
     var body: some View {
         content()
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, ScholiumMetrics.Library.contentInset)
-            .padding(.vertical, ScholiumMetrics.Library.sourceStateVerticalInset)
+            .padding(.horizontal, ScholiumSidebarLayout.textInset)
+            .padding(.vertical, ScholiumSidebarLayout.sectionSpacing)
     }
 }
 

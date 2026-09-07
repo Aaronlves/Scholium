@@ -90,12 +90,12 @@ struct SidebarView: View {
                 usesAccessibilitySize: dynamicTypeSize.isAccessibilitySize,
                 select: context.selectTriptychWorkspace
             )
-                .padding(.horizontal, ScholiumMetrics.Library.contentInset)
-                .padding(.top, ScholiumMetrics.Library.workspaceNavigatorTopSpacing)
+                .padding(.horizontal, ScholiumSidebarLayout.edgeInset)
+                .padding(.top, ScholiumSidebarLayout.edgeInset)
 
             libraryHeader
-                .padding(.top, ScholiumMetrics.Library.sectionSpacing)
-                .padding(.bottom, ScholiumGrid.Spacing.labelAccessoryGap)
+                .padding(.top, ScholiumSidebarLayout.sectionSpacing)
+                .padding(.bottom, ScholiumSidebarLayout.controlGap)
 
             sourceRegion
         }
@@ -125,7 +125,7 @@ struct SidebarView: View {
             VStack(spacing: 0) {
                 if activeLibraryMenuFilterCount > 0 {
                     activeFilterStatus
-                        .padding(.horizontal, ScholiumMetrics.Library.contentInset)
+                        .padding(.horizontal, ScholiumSidebarLayout.textInset)
                         .padding(.bottom, ScholiumGrid.Spacing.inlineControlGap)
                 }
 
@@ -160,13 +160,13 @@ struct SidebarView: View {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     if activeLibraryMenuFilterCount > 0 {
                         activeFilterStatus
-                            .padding(.horizontal, ScholiumMetrics.Library.contentInset)
+                            .padding(.horizontal, ScholiumSidebarLayout.textInset)
                             .padding(.bottom, ScholiumGrid.Spacing.inlineControlGap)
                     }
 
                     sourceStateContent
                 }
-                .padding(.bottom, ScholiumMetrics.Library.contentInset)
+                .padding(.bottom, ScholiumSidebarLayout.textInset)
                 .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
             }
             .scrollContentBackground(.hidden)
@@ -185,8 +185,9 @@ struct SidebarView: View {
     private var libraryHeader: some View {
         ScholiumSidebarHeader {
             Text("Library")
-                .font(ScholiumTypography.interface(.sectionTitle))
-                .scholiumForeground(.mutedText)
+                .font(.headline)
+                .foregroundStyle(.secondary)
+                .padding(.leading, ScholiumSidebarLayout.rowInset)
                 .accessibilityAddTraits(.isHeader)
 
             Spacer(minLength: 0)

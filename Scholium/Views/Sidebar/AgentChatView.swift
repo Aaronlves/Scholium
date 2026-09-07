@@ -73,6 +73,8 @@ struct AgentChatView: View {
             ? controller.selected!.title : String(localized: "New Conversation")
       )
       .font(.headline).lineLimit(1)
+      .padding(
+        .leading, showsConversationList && !showsArchived ? ScholiumSidebarLayout.rowInset : 0)
       Spacer(minLength: 0)
       ScholiumSidebarHeaderActions {
         Button {
@@ -108,7 +110,7 @@ struct AgentChatView: View {
           .accessibilityIdentifier("scholium.chat.options")
         }
       }
-    }.padding(.vertical, 6)
+    }
   }
 
   private var archiveMenu: some View {
@@ -126,7 +128,7 @@ struct AgentChatView: View {
     } label: {
       ScholiumSidebarHeaderIcon(systemImage: "archivebox")
     }
-    .scholiumSidebarHeaderControl(isActive: showsArchived)
+    .scholiumSidebarHeaderControl()
     .help("Archived Chats").accessibilityLabel("Archived Chats")
     .accessibilityIdentifier("scholium.chat.archived")
   }
@@ -170,7 +172,7 @@ struct AgentChatView: View {
       Calendar.current.startOfDay(for: $0.updatedAt)
     }
     return ScrollView {
-      LazyVStack(alignment: .leading, spacing: 16) {
+      LazyVStack(alignment: .leading, spacing: ScholiumSidebarLayout.sectionSpacing) {
         ForEach(groups.keys.sorted(by: >), id: \.self) { day in
           VStack(alignment: .leading, spacing: 8) {
             Group {
@@ -183,7 +185,7 @@ struct AgentChatView: View {
               }
             }
             .font(.caption).foregroundStyle(.secondary)
-            .padding(.horizontal, 10)
+            .padding(.horizontal, ScholiumSidebarLayout.rowInset)
             .accessibilityAddTraits(.isHeader)
             VStack(spacing: 0) {
               ForEach(groups[day] ?? []) { conversation in
@@ -233,7 +235,7 @@ struct AgentChatView: View {
                       .font(.callout).foregroundStyle(.secondary).lineLimit(1)
                     }
                   }
-                  .padding(.horizontal, 12).padding(.vertical, 14)
+                  .padding(.horizontal, ScholiumSidebarLayout.rowInset).padding(.vertical, 14)
                   .frame(maxWidth: .infinity, alignment: .leading)
                   .contentShape(Rectangle())
                 }
@@ -247,7 +249,7 @@ struct AgentChatView: View {
                 )
                 .accessibilityIdentifier("scholium.chat.conversation.\(conversation.id)")
                 if conversation.id != groups[day]?.last?.id {
-                  Divider().padding(.horizontal, 12)
+                  Divider().padding(.horizontal, ScholiumSidebarLayout.rowInset)
                 }
               }
             }
@@ -264,7 +266,7 @@ struct AgentChatView: View {
           .font(.callout).foregroundStyle(.secondary).padding(.vertical, 8)
         }
 
-      }.padding(10)
+      }.padding(ScholiumSidebarLayout.edgeInset)
     }
     .overlay {
       if !controller.isLoaded && controller.error == nil { ProgressView("Loading Conversations…") }
@@ -318,7 +320,9 @@ struct AgentChatView: View {
               timelineItem(item).id(item.id)
             }
             Color.clear.frame(height: 1).id("latest")
-          }.padding().frame(maxWidth: .infinity, alignment: .leading)
+          }.padding(.horizontal, ScholiumSidebarLayout.textInset)
+            .padding(.vertical, ScholiumSidebarLayout.edgeInset)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .defaultScrollAnchor(.bottom)
         .defaultScrollAnchor(.top, for: .alignment)
@@ -706,7 +710,7 @@ struct AgentChatView: View {
     .buttonStyle(.borderless)
     .padding(12)
     .scholiumFloatingSurface(in: RoundedRectangle(cornerRadius: 24))
-    .padding(10)
+    .padding(ScholiumSidebarLayout.edgeInset)
   }
 
   private func approvalView(_ approval: AgentChatApproval) -> some View {

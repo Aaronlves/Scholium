@@ -49,8 +49,11 @@ selection circles; clicking a row toggles selection instead of navigating. A tem
 bottom action bar offers Cancel and archive/restore with the selected count. Empty
 selection or active execution disables the batch action; canceling changes no
 conversations. Detail options open only this conversation's Agent Changes. Library and
-Chat share a panel-header trailing action group: icon typography, spacing, quiet neutral
-ink, target sizing and pointer feedback, without permanent glass discs. Only the bottom
+Chat share a native panel-header action group with consistent symbol sizing,
+neutral ink and complete button hit areas. Native controls own interaction feedback.
+Sidebar container edges align across Search, the workspace navigator, conversation
+cards and the composer; headings, dates and row text use one content inset.
+Inspector/editorial geometry does not determine these sidebar relationships. Only the bottom
 composer uses rounded Liquid Glass. A single disconnected-state Connect Codex action
 connects automatically; sign-in appears only when needed. Connection editing belongs in
 Settings, with manual paths behind its advanced disclosure. Composer secondary controls

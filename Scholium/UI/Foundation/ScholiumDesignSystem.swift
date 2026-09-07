@@ -1364,10 +1364,6 @@ enum ScholiumMetrics {
         /// still owns resizing and collapse; this is not a preferred width or
         /// a window minimum.
         static let minimumReadableWidth: CGFloat = 300
-        /// Library and Inspector share the peripheral page edge. This does not
-        /// merge their row, hierarchy, or section rhythm, and it deliberately
-        /// does not derive geometry from the traffic-light group.
-        static let contentInset = ScholiumGrid.Peripheral.contentInset
         /// One semantic item-type slot shared by Folder and Note rows after
         /// AppKit's native disclosure gutter.
         static let leadingSlotWidth = ScholiumGrid.Dimension.iconTrackWidth
@@ -1375,11 +1371,6 @@ enum ScholiumMetrics {
         /// The native outline remains responsible for indentation; Scholium
         /// supplies only its 4-unit hierarchy step.
         static let hierarchyIndent = ScholiumGrid.Dimension.iconTrackWidth
-        static let workspaceNavigatorTopSpacing = ScholiumGrid.Spacing.nestedContentInset
-        static let sectionSpacing = ScholiumGrid.Spacing.sectionSeparation
-        /// Empty, loading, and error content begins one section step below the
-        /// stable LibraryHeader while retaining the shared peripheral edge.
-        static let sourceStateVerticalInset = ScholiumGrid.Spacing.sectionSeparation
     }
 
     enum Attention {

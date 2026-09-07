@@ -1,24 +1,35 @@
 import SwiftUI
 
-/// Shared title-row geometry keeps Library and both Chat presentations on one grid.
+/// Local native-sidebar layout defaults, independent of the editorial geometry used by document-related panes.
+enum ScholiumSidebarLayout {
+  static let edgeInset: CGFloat = 12
+  static let rowInset: CGFloat = 12
+  static var textInset: CGFloat { edgeInset + rowInset }
+  static let controlWidth: CGFloat = 36
+  static let controlHeight: CGFloat = 32
+  static let controlGap: CGFloat = 4
+  static let sectionSpacing: CGFloat = 16
+  static let headerHeight: CGFloat = 40
+}
+
+/// Title rows and their trailing actions share the same container edge.
 struct ScholiumSidebarHeader<Content: View>: View {
   @ViewBuilder var content: Content
 
   var body: some View {
-    HStack(spacing: ScholiumGrid.Spacing.inlineControlGap) {
+    HStack(spacing: 8) {
       content
     }
-    .frame(maxWidth: .infinity, minHeight: ScholiumMetrics.Accessibility.preferredCustomTarget)
-    .padding(.horizontal, ScholiumMetrics.Library.contentInset)
+    .frame(maxWidth: .infinity, minHeight: ScholiumSidebarLayout.headerHeight)
+    .padding(.horizontal, ScholiumSidebarLayout.edgeInset)
   }
 }
 
-/// The trailing action group of a panel header, separate from the window toolbar.
 struct ScholiumSidebarHeaderActions<Content: View>: View {
   @ViewBuilder var content: Content
 
   var body: some View {
-    HStack(spacing: ScholiumGrid.Spacing.labelAccessoryGap) {
+    HStack(spacing: ScholiumSidebarLayout.controlGap) {
       content
     }
     .fixedSize(horizontal: true, vertical: false)
@@ -26,32 +37,33 @@ struct ScholiumSidebarHeaderActions<Content: View>: View {
   }
 }
 
-/// Shared by Library and Chat headers: semantic ink, native activation and one hover owner.
+/// The label owns its complete hit area; native controls own activation and state.
 struct ScholiumSidebarHeaderIcon: View {
-  static let foreground = Color(nsColor: .secondaryLabelColor)
-
   let systemImage: String
+  // At body size, the compose symbol's visible strokes sit half a point down
+  // and right of the archive/ellipsis optical center. Scale the correction
+  // with the symbol's text style; the surrounding hit area remains unchanged.
+  @ScaledMetric(relativeTo: .body) private var composeOpticalCorrection: CGFloat = 0.5
+
   var body: some View {
     Image(systemName: systemImage)
-      .font(ScholiumTypography.interface(.control))
+      .font(.body)
       .symbolRenderingMode(.monochrome)
-      .frame(
-        width: ScholiumMetrics.Accessibility.minimumCustomTarget,
-        height: ScholiumMetrics.Accessibility.minimumCustomTarget
+      .foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
+      .offset(
+        x: systemImage == "square.and.pencil" ? -composeOpticalCorrection : 0,
+        y: systemImage == "square.and.pencil" ? -composeOpticalCorrection : 0
       )
+      .frame(width: ScholiumSidebarLayout.controlWidth, height: ScholiumSidebarLayout.controlHeight)
+      .contentShape(Rectangle())
   }
 }
 
 extension View {
-  func scholiumSidebarHeaderControl(isActive: Bool = false) -> some View {
-    frame(
-      width: ScholiumMetrics.Accessibility.preferredCustomTarget,
-      height: ScholiumMetrics.Accessibility.preferredCustomTarget
-    )
-    .menuStyle(.button)
-    .buttonStyle(.borderless)
-    .tint(ScholiumSidebarHeaderIcon.foreground)
-    .menuIndicator(.hidden)
-    .scholiumContentControlPointerFeedback(isActive: isActive, in: Circle())
+  func scholiumSidebarHeaderControl() -> some View {
+    self.menuStyle(.button)
+      .buttonStyle(.plain)
+      .menuIndicator(.hidden)
+      .tint(nil as Color?)
   }
 }

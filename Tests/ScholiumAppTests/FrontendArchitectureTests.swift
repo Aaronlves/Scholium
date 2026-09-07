@@ -732,8 +732,7 @@ struct FrontendArchitectureTests {
         for (path, source) in applicationSources.sorted(by: { $0.key < $1.key }) {
             let sourceRange = NSRange(source.startIndex..<source.endIndex, in: source)
             if path != designSystemPath && !NativeSettingsSourceScope.paths.contains(path)
-                && path != "Scholium/UI/Components/ScholiumWorkspaceToolbar.swift"
-                && path != "Scholium/UI/Components/ScholiumSidebarHeaderControl.swift" {
+                && path != "Scholium/UI/Components/ScholiumWorkspaceToolbar.swift" {
                 #expect(
                     rawAppKitPaletteAccess.firstMatch(
                         in: source,
@@ -749,7 +748,7 @@ struct FrontendArchitectureTests {
                     "\(path) owns a numeric semantic-color opacity recipe"
                 )
             }
-            if NativeSettingsSourceScope.paths.union(NativeChatSourceScope.paths).contains(path)
+            if NativeSettingsSourceScope.paths.union(NativeChatSourceScope.paths).union(NativeSidebarSourceScope.paths).contains(path)
                 || path == "Scholium/Views/SearchWorkspaceView.swift" {
                 // macOS owns Settings, Chat controls and native Search list selection.
             } else if path == "Scholium/Views/Note/DocumentFindPanel.swift" {
@@ -1185,7 +1184,6 @@ struct FrontendArchitectureTests {
         #expect(!appSource.contains("Collapse Note"))
         #expect(sidebarTreeRowsSource.contains("ScholiumTypography.nativeSourceList("))
         #expect(sidebarSource.contains("ScholiumTypography.interface(.small, emphasis: .medium)"))
-        #expect(ScholiumMetrics.Library.contentInset == ScholiumGrid.Peripheral.contentInset)
         #expect(ScholiumMetrics.Library.minimumReadableWidth == 300)
     }
 
@@ -1750,8 +1748,15 @@ struct FrontendArchitectureTests {
         #expect(filterMenuSource.contains(".scholiumSidebarHeaderControl("))
         #expect(headerControlSource.contains(".menuStyle(.button)"))
         #expect(headerControlSource.contains(".menuIndicator(.hidden)"))
-        #expect(headerControlSource.contains("static let foreground = Color(nsColor: .secondaryLabelColor)"))
-        #expect(headerControlSource.contains(".scholiumContentControlPointerFeedback("))
+        #expect(headerControlSource.contains(".foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)"))
+        #expect(headerControlSource.contains(".buttonStyle(.plain)"))
+        #expect(!headerControlSource.contains(".scholiumContentControlPointerFeedback("))
+        #expect(!headerControlSource.contains("ScholiumGrid."))
+        #expect(!headerControlSource.contains("ScholiumTypography."))
+        #expect(!headerControlSource.contains("ScholiumColorRole."))
+        #expect(ScholiumSidebarLayout.textInset == ScholiumSidebarLayout.edgeInset + ScholiumSidebarLayout.rowInset)
+        #expect(ScholiumSidebarLayout.controlWidth >= ScholiumSidebarLayout.controlHeight)
+        #expect(ScholiumSidebarLayout.controlHeight >= ScholiumMetrics.Accessibility.preferredCustomTarget)
         #expect(!sidebarSource.contains(".tint("))
         #expect(!filterMenuSource.contains(".tint("))
         #expect(componentsSource.contains("struct ScholiumQuietRowButtonStyle"))
@@ -1768,6 +1773,8 @@ struct FrontendArchitectureTests {
         #expect(workspaceNavigatorSource.contains("NSSegmentedControl"))
         #expect(workspaceNavigatorSource.contains("NSViewRepresentable"))
         #expect(workspaceNavigatorSource.contains("control.segmentStyle = .roundRect"))
+        #expect(workspaceNavigatorSource.contains("control.segmentDistribution = .fillEqually"))
+        #expect(!workspaceNavigatorSource.contains("setWidth("))
         #expect(workspaceNavigatorSource.contains("control.controlSize = usesAccessibilitySize ? .large : .regular"))
         #expect(workspaceNavigatorSource.contains("selectWorkspace"))
         #expect(!workspaceNavigatorSource.contains("@FocusState"))
@@ -1806,7 +1813,7 @@ struct FrontendArchitectureTests {
         #expect(designSystemSource.contains(".scholiumIconControl()"))
         #expect(
             sidebarSource.contains(
-                ".padding(.horizontal, ScholiumMetrics.Library.contentInset)"
+                ".padding(.horizontal, ScholiumSidebarLayout.edgeInset)"
             ))
         #expect(!sidebarSource.contains("attentionHorizontalInset"))
         #expect(!sidebarSource.contains("brandHeader"))
@@ -2062,6 +2069,8 @@ struct FrontendArchitectureTests {
         #expect(!sidebarSource.contains("ScholiumTypography.Brand.wordmark"))
         #expect(workspaceNavigatorSource.contains("control.trackingMode = .selectOne"))
         #expect(workspaceNavigatorSource.contains("control.segmentStyle = .roundRect"))
+        #expect(workspaceNavigatorSource.contains("control.segmentDistribution = .fillEqually"))
+        #expect(!workspaceNavigatorSource.contains("setWidth("))
         #expect(!workspaceNavigatorSource.contains("selectedSegmentBezelColor"))
 
     }
@@ -2333,10 +2342,7 @@ struct FrontendArchitectureTests {
         #expect(!toolbar.contains("ScholiumWorkspaceDocumentCommandsToolbarView"))
         #expect(!noteSource.contains("\"scholium.documentMore\""))
 
-        #expect(ScholiumMetrics.Library.contentInset == ScholiumGrid.Peripheral.contentInset)
-        #expect(ScholiumMetrics.Library.sectionSpacing == ScholiumGrid.Spacing.sectionSeparation)
         #expect(ScholiumMetrics.Apparatus.contentInset == ScholiumGrid.Apparatus.contentInset)
-        #expect(ScholiumMetrics.Apparatus.contentInset == ScholiumMetrics.Library.contentInset)
         #expect(ScholiumMetrics.Apparatus.sectionSpacing == ScholiumGrid.Apparatus.sectionGap)
         #expect(
             ScholiumMetrics.Apparatus.sectionContentSpacing
@@ -3042,7 +3048,7 @@ struct FrontendArchitectureTests {
                 ) == nil,
                 "Custom typeface escaped the semantic typography owner: \(sourceURL.path)"
             )
-            if NativeSettingsSourceScope.paths.union(NativeChatSourceScope.paths).contains(sourceURL.path.replacingOccurrences(of: repository.path + "/", with: "")) {
+            if NativeSettingsSourceScope.paths.union(NativeChatSourceScope.paths).union(NativeSidebarSourceScope.paths).contains(sourceURL.path.replacingOccurrences(of: repository.path + "/", with: "")) {
                 // Native Settings and Chat typography follows the system.
             } else if sourceURL == applicationRoot.appendingPathComponent("Views/Note/DocumentFindPanel.swift") {
                 #expect(rawSemanticStylePattern.numberOfMatches(in: source, range: sourceRange) == 3)
@@ -3128,10 +3134,6 @@ struct FrontendArchitectureTests {
         #expect(ScholiumShape.editorialControlCornerRadius == 8)
         #expect(ScholiumShape.editorialPanelCornerRadius == 10)
         #expect(ScholiumShape.editorialTextEditorCornerRadius == 6)
-        #expect(
-            ScholiumMetrics.Library.workspaceNavigatorTopSpacing
-                == ScholiumGrid.Spacing.nestedContentInset
-        )
     }
 
     @Test("Compact Sidebar Glass controls preserve the established 28-point target")
@@ -3241,13 +3243,7 @@ struct FrontendArchitectureTests {
         #expect(ScholiumGrid.Dimension.regionHeaderHeight == 48)
         #expect(ScholiumGrid.Document.narrowWidthThresholdRootEms == 44)
 
-        #expect(ScholiumMetrics.Library.contentInset == ScholiumGrid.Peripheral.contentInset)
         #expect(ScholiumMetrics.Apparatus.contentInset == ScholiumGrid.Peripheral.contentInset)
-        #expect(
-            ScholiumMetrics.Library.workspaceNavigatorTopSpacing
-                == ScholiumGrid.Spacing.nestedContentInset
-        )
-        #expect(ScholiumMetrics.Library.sectionSpacing == ScholiumGrid.Spacing.sectionSeparation)
         #expect(ScholiumMetrics.Search.responsiveMargin == ScholiumGrid.Spacing.regionContentInset)
 
         let repository = URL(fileURLWithPath: #filePath)

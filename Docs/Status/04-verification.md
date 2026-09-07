@@ -4,20 +4,30 @@
 
 ## Current verification snapshot
 
-**2026-09-08 — sidebar header color and geometry correction:** The shared owner
-now includes outer header insets and row sizing, not only the trailing controls.
-Library and both Chat presentations use the same title-row/action-group/control
-components. Header tint uses the system secondary label color; both Button and
-Menu use the native borderless button presentation, avoiding the previous
-Paper-derived tint wrappers and distinct borderless-menu renderer.
+**2026-09-08 — native sidebar layout cleanup:** Sidebar-owned container/content
+insets replace the old Library aliases into the peripheral editorial grid. The
+header label owns a wider full hit region and native typography; plain Buttons
+and Menus use one system secondary-label role with inherited tint reset. The
+custom header pointer/press painter and active-state parameter are removed.
+A disposable identical-symbol comparison exposed the borderless menu rendering
+difference before choosing the native plain path; all probe code was removed.
+The workspace navigator uses AppKit `fillEqually`, replacing manual per-segment
+widths that added to native chrome and overflowed the visual container edge.
 
-Disposable dark QA verifies common trailing columns across Library, chat list
-and detail, preserved accessible controls, archive menu activation/dismissal and
-list/detail navigation. Existing conversations remain available in the retained
-QA. Owning presentation/architecture checks are recorded in
-`.build/chat-refinement/header-native-ink-tests.log`; Debug and UI logs use the
-same `header-native-ink` prefix. This correction does not close full light-mode,
-contrast/transparency or VoiceOver acceptance.
+The final 98 owning presentation/architecture checks pass. QA at a 300-point
+sidebar covers light/dark Chat list/detail, aligned text/container tracks,
+full-row whitespace activation, the enlarged archive-menu hit region, native
+menu open/Escape, selected-mode disabled controls and cancellation. The corrected
+navigator and Search edges were visually checked in dark mode. Existing QA
+conversations remain available; the QA is retained for feedback. An attempted
+wider-sidebar drag did not change the divider, so it is not wider-layout proof.
+The compose symbol subsequently received a body-scaled half-point drawing
+correction left/up within the unchanged header hit area. Symbol and screenshot
+bounds informed this correction; dark QA checked its pairing with archive and
+ellipsis. The 98 owning checks pass in `sidebar-optical-tests.log`.
+Full VoiceOver, increased contrast/transparency/motion adaptation and whole-app
+acceptance remain open. Evidence: `.build/chat-refinement/native-sidebar-tests.log`,
+`native-sidebar-build.log`, `native-sidebar-qa.log` and Computer Use observations.
 
 This is a record of reported execution on the named dates, not proof that a
 later worktree passes. Test counts overlap and must not be summed. Logs are

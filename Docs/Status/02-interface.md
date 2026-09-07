@@ -202,7 +202,9 @@
   can be archived/restored through temporary multi-selection from the list-header
   archive menu. Whole rows open detail or toggle selection; Cancel exits without
   mutation. Detail has no archive action; Library and Chat share one quiet trailing
-  header action group. Connection is one click; manual paths and connection
+  header action group with native plain rendering. Sidebar-owned outer/content
+  insets align Search, workspace navigation, cards and text; AppKit distributes
+  workspace segments equally without manually assigned segment widths. Connection is one click; manual paths and connection
   editing are in Settings. Detail options open conversation-scoped Agent Changes.
   The View menu adds the selected editor passage to Chat without sending it.
   Chat inherits the Sidebar background, with connected native cards grouped by day,

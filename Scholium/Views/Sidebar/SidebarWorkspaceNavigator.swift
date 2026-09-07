@@ -17,6 +17,7 @@ struct ScholiumTriptychWorkspaceNavigator: NSViewRepresentable {
         let control = WorkspaceSegmentedControl()
         control.segmentCount = WorkspaceVaultSlot.allCases.count
         control.trackingMode = .selectOne
+        control.segmentDistribution = .fillEqually
         control.segmentStyle = .roundRect
         control.borderShape = .capsule
         control.target = context.coordinator
@@ -89,8 +90,6 @@ final class WorkspaceSegmentedControl: NSSegmentedControl {
             } else if !usesSymbols && image(forSegment: index) != nil {
                 setImage(nil, forSegment: index)
             }
-            let width = max(0, bounds.width / CGFloat(segmentCount))
-            if self.width(forSegment: index) != width { setWidth(width, forSegment: index) }
         }
     }
 }

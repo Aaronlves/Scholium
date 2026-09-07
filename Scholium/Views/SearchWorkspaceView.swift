@@ -362,7 +362,7 @@ struct ResearchSearchView<Library: View>: View {
                     .accessibilityIdentifier("scholium.closeSearchButton")
             }
         }
-        .padding(.horizontal, isAdvanced ? 24 : ScholiumMetrics.Library.contentInset)
+        .padding(.horizontal, isAdvanced ? 24 : ScholiumSidebarLayout.edgeInset)
         .padding(.top, isAdvanced ? 20 : 10)
         .padding(.bottom, isAdvanced ? 4 : 8)
     }
@@ -425,7 +425,7 @@ struct ResearchSearchView<Library: View>: View {
         .scholiumForeground(.secondaryText)
         .controlSize(.small)
         .tint(ScholiumColorRole.primaryText.color)
-        .padding(.horizontal, isAdvanced ? 24 : ScholiumMetrics.Library.contentInset)
+        .padding(.horizontal, isAdvanced ? 24 : ScholiumSidebarLayout.edgeInset)
         .padding(.top, isAdvanced ? 8 : 0)
         .padding(.bottom, 12)
     }

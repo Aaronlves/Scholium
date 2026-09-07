@@ -132,7 +132,7 @@ struct SidebarLibraryFilterMenu: View {
                 ? "line.3.horizontal.decrease"
                 : "line.3.horizontal.decrease.circle.fill")
         }
-        .scholiumSidebarHeaderControl(isActive: activeFilterCount > 0)
+        .scholiumSidebarHeaderControl()
         .help(activeFilterCount == 0
             ? "Organize, filter, and sort Library notes"
             : "\(activeFilterCount) Library filters active")

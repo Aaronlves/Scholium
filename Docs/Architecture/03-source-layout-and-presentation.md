@@ -201,13 +201,23 @@ When the split item remains visible without a selected Document, the
 composition root installs a read-only Apparatus content-state projection rather
 than an empty host or stale Inspector leaf; the split controller remains the
 sole visibility owner.
-Library and Chat share `ScholiumSidebarHeader` for outer title-row geometry,
-`ScholiumSidebarHeaderActions` for trailing grouping, and
-`ScholiumSidebarHeaderControl` for target sizing and pointer feedback. Their
-monochrome symbols and native control tint share the same system secondary
-label color. Header Buttons and Menus use native borderless styles without the
-Paper-derived neutral-command wrappers. Chat's temporary selection set belongs to
-its list presentation; archive persistence remains with `AgentChatController`.
+Library and Chat use `ScholiumSidebarLayout` for container edges, content insets
+and header action slots. Search and the workspace navigator use the container
+edge; headings, dates, conversation text and empty states use the content inset.
+The Inspector's editorial metrics do not own sidebar geometry. The native
+segmented navigator uses `fillEqually`; it does not add manual segment widths
+to AppKit's own control chrome.
+
+`ScholiumSidebarHeader`, `ScholiumSidebarHeaderActions` and
+`ScholiumSidebarHeaderIcon` provide structure and complete label hit areas.
+Header Buttons and Menus use native plain presentation and the existing native
+secondary-label color role, with inherited tint reset. There is no additional
+pointer reader, hover/press paint or color recipe. The shared symbol leaf applies
+a body-scaled optical correction to the compose symbol's visible strokes;
+this drawing-only offset does not change action frames, spacing or hit areas.
+Native controls retain activation, keyboard focus, menu tracking and disabled
+state. Chat's temporary selection set belongs to its list presentation; archive
+persistence remains with `AgentChatController`.
 
 ### Interface localization
 
