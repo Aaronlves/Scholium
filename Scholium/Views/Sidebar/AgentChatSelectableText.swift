@@ -101,7 +101,7 @@ struct AgentChatSelectableText: NSViewRepresentable {
     let result = NSMutableAttributedString(string: "")
     for run in text.runs {
       var attributes: [NSAttributedString.Key: Any] = [
-        .font: font, .foregroundColor: NSColor.labelColor,
+        .font: font, .foregroundColor: ScholiumNativeColorRole.label.nsColor,
       ]
       var traits: NSFontTraitMask = []
       if run.inlinePresentationIntent?.contains(.stronglyEmphasized) == true {

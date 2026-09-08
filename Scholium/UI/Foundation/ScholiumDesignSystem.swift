@@ -38,11 +38,8 @@ enum ScholiumColorRole: String, CaseIterable, Sendable {
     case raisedSurfaceBackground
     case primaryText
     case secondaryText
-    case mutedText
     case separator
     case accent
-    case accentHover
-    case notificationHighlight
     case information
     case attention
     case destructive
@@ -158,11 +155,8 @@ struct ScholiumResolvedColorPalette: Equatable, Sendable {
     let raisedSurfaceBackground: UInt32
     let primaryText: UInt32
     let secondaryText: UInt32
-    let mutedText: UInt32
     let separator: UInt32
     let accent: UInt32
-    let accentHover: UInt32
-    let notificationHighlight: UInt32
     let information: UInt32
     let attention: UInt32
     let destructive: UInt32
@@ -182,11 +176,8 @@ struct ScholiumResolvedColorPalette: Equatable, Sendable {
         case .raisedSurfaceBackground: raisedSurfaceBackground
         case .primaryText: primaryText
         case .secondaryText: secondaryText
-        case .mutedText: mutedText
         case .separator: separator
         case .accent: accent
-        case .accentHover: accentHover
-        case .notificationHighlight: notificationHighlight
         case .information: information
         case .attention: attention
         case .destructive: destructive
@@ -267,14 +258,6 @@ struct ScholiumColorResolver: Sendable {
             target: contrastTarget,
             preferLight: isDark
         )
-        let mutedText = Self.contrastColor(
-            paperSource,
-            startingLightness: isDark ? 0.76 : 0.478,
-            chromaLimit: 0.020,
-            backgrounds: backgrounds,
-            target: contrastTarget,
-            preferLight: isDark
-        )
         let separator = Self.tone(
             paperSource,
             lightness: isDark
@@ -291,23 +274,6 @@ struct ScholiumColorResolver: Sendable {
             backgrounds: backgrounds,
             target: contrastTarget,
             preferLight: isDark
-        )
-        let accentHover = Self.contrastColor(
-            accentSource,
-            startingLightness: isDark
-                ? (increasedContrast ? 0.90 : 0.82)
-                : (increasedContrast ? 0.30 : 0.42),
-            chromaLimit: isDark ? 0.16 : 0.17,
-            backgrounds: backgrounds,
-            target: contrastTarget,
-            preferLight: isDark
-        )
-        let notificationHighlight = Self.tone(
-            Self.oklch(from: FunctionalAnchor.attention),
-            lightness: isDark
-                ? (increasedContrast ? 0.84 : 0.76)
-                : (increasedContrast ? 0.54 : 0.62),
-            chromaLimit: increasedContrast ? 0.13 : 0.10
         )
         let comparisonBackgroundLightness =
             isDark
@@ -362,11 +328,8 @@ struct ScholiumColorResolver: Sendable {
             raisedSurfaceBackground: raisedSurfaceBackground,
             primaryText: primaryText,
             secondaryText: secondaryText,
-            mutedText: mutedText,
             separator: separator,
             accent: accent,
-            accentHover: accentHover,
-            notificationHighlight: notificationHighlight,
             information: semanticColor(FunctionalAnchor.information),
             attention: semanticColor(FunctionalAnchor.attention),
             destructive: semanticColor(FunctionalAnchor.destructive),
@@ -907,7 +870,7 @@ enum ScholiumWebDesignTokens {
         .scholium-document pre.raw-html,
         .cm-editor.scholium-live-mode .cm-live-raw-html {
           box-sizing: border-box;
-          color: var(--scholium-color-muted-text);
+          color: var(--scholium-color-secondary-text);
           background: color-mix(in srgb, var(--scholium-color-primary-text) 7%, transparent);
           font-family: "Victor Mono", ui-monospace, monospace;
         }

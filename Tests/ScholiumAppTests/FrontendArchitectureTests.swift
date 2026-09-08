@@ -2154,7 +2154,7 @@ struct FrontendArchitectureTests {
         #expect(attentionSource.contains("notificationCategory(\"Agent Changes\")"))
         #expect(attentionSource.contains("AgentChangeNotificationRow("))
         #expect(attentionSource.contains("notificationCategory(group.titleResource)"))
-        #expect(attentionSource.contains(".scholiumForeground(.mutedText)"))
+        #expect(attentionSource.contains(".scholiumForeground(.secondaryText)"))
         #expect(attentionSource.contains(".listRowBackground(Color.clear)"))
         #expect(attentionSource.contains(".listRowSeparator(.hidden)"))
         #expect(!attentionSource.contains(".scholiumSurface(.denseEvidence)"))
@@ -3736,11 +3736,8 @@ struct FrontendArchitectureTests {
             .raisedSurfaceBackground: 0xDDD8CF,
             .primaryText: 0x28241D,
             .secondaryText: 0x4C473E,
-            .mutedText: 0x615C53,
             .separator: 0xC5C0B5,
             .accent: 0x9D4114,
-            .accentHover: 0x812F02,
-            .notificationHighlight: 0xAD7B3D,
             .information: 0x3D6379,
             .attention: 0x81520A,
             .destructive: 0x8D453E,
@@ -3759,11 +3756,8 @@ struct FrontendArchitectureTests {
             .raisedSurfaceBackground: 0x4D483F,
             .primaryText: 0xF0EAE1,
             .secondaryText: 0xD0CABF,
-            .mutedText: 0xBEB8AD,
             .separator: 0x7C776D,
             .accent: 0xFFA17B,
-            .accentHover: 0xFEAE8E,
-            .notificationHighlight: 0xDAA668,
             .information: 0x95BED6,
             .attention: 0xE3AF71,
             .destructive: 0xF6A39A,
@@ -3782,11 +3776,8 @@ struct FrontendArchitectureTests {
             .raisedSurfaceBackground: 0xDDD8CF,
             .primaryText: 0x28241D,
             .secondaryText: 0x454138,
-            .mutedText: 0x474239,
             .separator: 0x8B857C,
             .accent: 0x6E2B0A,
-            .accentHover: 0x501A01,
-            .notificationHighlight: 0x95631E,
             .information: 0x163C50,
             .attention: 0x4E3107,
             .destructive: 0x681212,
@@ -3805,11 +3796,8 @@ struct FrontendArchitectureTests {
             .raisedSurfaceBackground: 0x4D483F,
             .primaryText: 0xF0EAE1,
             .secondaryText: 0xEAE4D9,
-            .mutedText: 0xEAE4D9,
             .separator: 0xA39E94,
             .accent: 0xFEDCCF,
-            .accentHover: 0xFDDED2,
-            .notificationHighlight: 0xF6BF7E,
             .information: 0xC5E8FD,
             .attention: 0xFEDFBC,
             .destructive: 0xFFDBD6,
@@ -3865,7 +3853,7 @@ struct FrontendArchitectureTests {
         }
 
         let foregroundRoles: [ScholiumColorRole] = [
-            .primaryText, .secondaryText, .mutedText, .accent, .accentHover,
+            .primaryText, .secondaryText, .accent,
             .information, .attention, .destructive, .confirmed, .agentAuthorship,
         ]
         let backgroundRoles: [ScholiumColorRole] = [

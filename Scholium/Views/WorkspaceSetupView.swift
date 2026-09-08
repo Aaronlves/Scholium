@@ -697,7 +697,7 @@ private struct BootstrapWelcomeTriptychRole: View {
                 .font(ScholiumTypography.interface(.sectionTitle))
             Text(detail)
                 .font(ScholiumTypography.interface(.small))
-                .scholiumForeground(.mutedText)
+                .scholiumForeground(.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -770,7 +770,7 @@ private struct BootstrapSetupPathChoice: View {
                     .scholiumForeground(
                         isSelected
                             ? .accent
-                            : .mutedText
+                            : .secondaryText
                     )
                     .accessibilityHidden(true)
             }
@@ -1046,7 +1046,7 @@ private struct BootstrapStructurePreview: View {
             }
             Text(".scholium/ · portable control folder")
                 .font(ScholiumTypography.interface(.small))
-                .scholiumForeground(.mutedText)
+                .scholiumForeground(.secondaryText)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

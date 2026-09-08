@@ -65,7 +65,7 @@ body,
 }
 
 .cm-gutters {
-  color: var(--scholium-color-muted-text);
+  color: var(--scholium-color-secondary-text);
   background: color-mix(in srgb, var(--scholium-color-surface-background) 96%, var(--scholium-color-primary-text) 4%);
   border-right: 1px solid var(--scholium-color-separator);
 }
@@ -125,7 +125,7 @@ body,
 .scholium-live-mode :is(.cm-live-syntax-marker, .cm-live-heading-source-marker,
   .cm-live-quote-source-marker, .cm-live-callout-source-marker, .cm-live-list-source-prefix),
 .scholium-live-mode .cm-live-syntax-marker * {
-  color: var(--scholium-color-muted-text);
+  color: var(--scholium-color-secondary-text);
 }
 
 /* Syntax occupies the document measure. Exact short tokens stay mounted so
@@ -144,7 +144,7 @@ body,
   font-weight: 400;
   font-variant-caps: normal;
   letter-spacing: 0;
-  color: var(--scholium-color-muted-text);
+  color: var(--scholium-color-secondary-text);
   transition: color 100ms ease-out;
 }
 .scholium-live-mode .cm-syntax-token[data-syntax-open="false"] {
@@ -385,7 +385,7 @@ body,
   font-variant-numeric: tabular-nums;
   box-shadow: inset 0 -1px var(--scholium-color-separator);
 }
-.cm-live-table-separator { color: var(--scholium-color-muted-text); }
+.cm-live-table-separator { color: var(--scholium-color-secondary-text); }
 
 /* Inactive semantic tables are supplied as direct CodeMirror block widgets
    and share tables.css with Read. These source-line rules remain only while

@@ -333,7 +333,7 @@ struct AttentionQueueView: View {
     ) -> some View {
         Text(title)
             .font(ScholiumTypography.interface(.small))
-            .scholiumForeground(.mutedText)
+            .scholiumForeground(.secondaryText)
             .padding(
                 .leading,
                 ScholiumGrid.Dimension.iconTrackWidth
@@ -689,7 +689,7 @@ struct AttentionQueueRow: View {
             }
         } label: {
             Image(systemName: "ellipsis")
-                .scholiumForeground(.mutedText)
+                .scholiumForeground(.secondaryText)
                 .frame(
                     width: ScholiumGrid.Dimension.preferredCustomTarget,
                     height: ScholiumGrid.Dimension.preferredCustomTarget

@@ -126,7 +126,7 @@ struct ScholiumApparatusFactList: View {
     private func factLabel(_ label: String) -> some View {
         Text(label)
             .font(ScholiumTypography.interface(.small, emphasis: .medium))
-            .scholiumForeground(.mutedText)
+            .scholiumForeground(.secondaryText)
             .fixedSize(horizontal: false, vertical: true)
     }
 
@@ -198,7 +198,7 @@ struct ScholiumDisclosureHeaderButton<Label: View, Trailing: View>: View {
             HStack(spacing: ScholiumMetrics.Apparatus.iconToTextSpacing) {
                 Image(systemName: "chevron.right")
                     .font(ScholiumTypography.interface(.small, emphasis: .strong))
-                    .scholiumForeground(.mutedText)
+                    .scholiumForeground(.secondaryText)
                     .rotationEffect(.degrees(isExpanded ? 90 : 0))
                     .animation(
                         ScholiumMotion.disclosure(reduceMotion: reduceMotion),

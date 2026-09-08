@@ -32,7 +32,10 @@ struct AgentChatSourceEvidenceView: View {
               VStack(alignment: .leading, spacing: 4) {
                 Text("Read from line \(read.startLine), \(read.lineCount) lines")
                 if !read.excerpt.isEmpty {
-                  Text(read.excerpt).font(.callout).foregroundStyle(.primary).textSelection(.enabled)
+                  Text(read.excerpt)
+                    .font(.callout)
+                    .foregroundStyle(ScholiumNativeColorRole.label.color)
+                    .textSelection(.enabled)
                 }
                 if read.excerptIsTruncated { Text("Preview excerpt") }
               }
@@ -46,6 +49,6 @@ struct AgentChatSourceEvidenceView: View {
         }
       }
     }
-    .font(.caption).foregroundStyle(.secondary)
+    .font(.caption).foregroundStyle(ScholiumNativeColorRole.secondaryLabel.color)
   }
 }

@@ -558,7 +558,7 @@ private struct InterruptedSaveRecoveryRow: View {
     private var timestamp: some View {
         Text(recovery.createdAt.formatted(date: .abbreviated, time: .shortened))
             .font(ScholiumTypography.interface(.small))
-            .scholiumForeground(.mutedText)
+            .scholiumForeground(.secondaryText)
     }
 
     private var sourceStateTitle: String {

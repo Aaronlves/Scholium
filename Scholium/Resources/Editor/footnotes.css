@@ -74,7 +74,7 @@
 
 .footnote-reference:disabled,
 .footnote-reference[aria-disabled="true"] {
-  color: var(--scholium-color-muted-text);
+  color: var(--scholium-color-secondary-text);
   cursor: default;
   text-decoration: line-through;
 }

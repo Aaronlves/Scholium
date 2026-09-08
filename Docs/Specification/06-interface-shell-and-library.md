@@ -112,7 +112,7 @@ history, document mode, Settlement, and Inspector modes. A disabled action canno
 execute through another toolbar or overflow route. Document-specific popovers close when
 their document or required source revision changes; detaching a window ends its toolbar
 interactions and prevents stale state from updating it. Back/Forward begin the Document
-toolbar region, after the sidebar tracking boundary and before its Muted Text document
+toolbar region, after the sidebar tracking boundary and before its secondary-text document
 name. They remain available with the sidebar collapsed and traverse document visits, not
 heading jumps. Visibility and workspace session state are installed before first
 presentation, then native state is authoritative. Each workspace retains Library filters

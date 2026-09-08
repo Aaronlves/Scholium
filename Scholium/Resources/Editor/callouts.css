@@ -15,7 +15,6 @@
   --scholium-callout-block-gap: 1.4em;
   --scholium-callout-ink: var(--scholium-color-primary-text, CanvasText);
   --scholium-callout-secondary-ink: var(--scholium-color-secondary-text, CanvasText);
-  --scholium-callout-muted-ink: var(--scholium-color-muted-text, GrayText);
   --scholium-callout-rule: var(--scholium-color-separator, GrayText);
   --scholium-callout-surface: color-mix(
     in srgb,
@@ -157,7 +156,7 @@
   justify-self: end;
   width: 1.58rem;
   height: 1.58rem;
-  color: var(--scholium-callout-muted-ink);
+  color: var(--scholium-callout-secondary-ink);
   isolation: isolate;
 }
 
@@ -484,7 +483,6 @@ aside.scholium-callout-quote .scholium-callout-body {
   .scholium-callout {
     --scholium-callout-rule: var(--scholium-color-primary-text, CanvasText);
     --scholium-callout-secondary-ink: var(--scholium-color-primary-text, CanvasText);
-    --scholium-callout-muted-ink: var(--scholium-color-primary-text, CanvasText);
     --scholium-callout-surface: color-mix(
       in srgb,
       var(--scholium-color-primary-text, CanvasText) 9%,
@@ -556,7 +554,6 @@ aside.scholium-callout-quote .scholium-callout-body {
   .scholium-callout {
     --scholium-callout-ink: CanvasText;
     --scholium-callout-secondary-ink: CanvasText;
-    --scholium-callout-muted-ink: CanvasText;
     --scholium-callout-rule: CanvasText;
     --scholium-callout-surface: transparent;
     --scholium-callout-surface-emphasis: transparent;

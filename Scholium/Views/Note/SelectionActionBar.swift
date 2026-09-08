@@ -34,7 +34,7 @@ final class SelectionActionBar: NSStackView {
             more.menu?.addItem(item)
         }
         [explain, polish, more].forEach { control in
-            control.contentTintColor = .labelColor
+            control.contentTintColor = ScholiumNativeColorRole.label.nsColor
             addArrangedSubview(control)
         }
         setAccessibilityElement(true)
